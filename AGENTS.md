@@ -1,6 +1,6 @@
 # AGENTS.md
 
-> **IMPORTANT for agents:** Always commit after all edits are done. Do not leave uncommitted changes at the end of a task.
+> **IMPORTANT for agents:** Always commit after all edits are done (with prefix like feat/fix/doc/refactor/chore). Do not leave uncommitted changes at the end of a task.
 
 ## Global Instructions
 - This app has no real users or real data yet. Feel free to make whatever huge changes/refactors you want and do not worry about it.
