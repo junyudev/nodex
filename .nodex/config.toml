@@ -1,0 +1,13 @@
+# Production Config for CLI
+url = "http://localhost:51289"
+project = "nodex"
+# session_id = "nodex"
+
+
+# Dev Server Config
+[server]
+dir = "~/.nodex/dev/"
+port = 51283
+backup_auto_enabled = false
+# backup_interval_hours = 6
+# backup_retention = 28
