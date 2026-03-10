@@ -1,0 +1,68 @@
+appId: com.nodex.kanban
+productName: Nodex
+directories:
+  buildResources: resources
+  output: dist
+files:
+- out/**/*
+asarUnpack:
+- "**/*.node"
+npmRebuild: true
+extraResources:
+- from: resources/icon.png
+  to: icon.png
+extraMetadata:
+  main: out/main/index.js
+protocols:
+- name: Nodex Deep Link
+  schemes:
+  - nodex
+
+# --- macOS ---
+mac:
+  icon: icon.icon
+  target:
+  - dmg
+  - zip
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  category: public.app-category.developer-tools
+  entitlementsInherit: resources/entitlements.mac.plist
+  # Uncomment after setting up Apple Developer credentials:
+  # identity: "Developer ID Application: Your Name (TEAM_ID)"
+  # notarize:
+  #   teamId: TEAM_ID
+
+dmg:
+  title: "${productName} ${version}"
+  iconSize: 80
+  contents:
+  - x: 130
+    y: 220
+    type: file
+  - x: 410
+    y: 220
+    type: link
+    path: /Applications
+
+# --- Auto-update / Release hosting ---
+publish:
+  provider: github
+  owner: Asphocarp
+  repo: nodex
+
+# --- Windows (uncomment to enable) ---
+# win:
+#   target:
+#     - nsis
+#   artifactName: "${productName}-Setup-${version}.${ext}"
+# nsis:
+#   oneClick: false
+#   allowToChangeInstallationDirectory: true
+
+# --- Linux (uncomment to enable) ---
+# linux:
+#   target:
+#     - AppImage
+#     - deb
+#   category: Development
+#   artifactName: "${productName}-${version}-${arch}.${ext}"

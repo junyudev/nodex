@@ -1,0 +1,1330 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/vscode-theme-vars.css";
+@import "./styles/design-system-theme.css";
+@import "./styles/design-local-utilities.css";
+@source "../../node_modules/streamdown/dist/index.js";
+@source "../../node_modules/@blocknote/shadcn";
+
+/* fix button pointer */
+@layer base {
+  button {
+    @apply cursor-pointer;
+  }
+}
+
+/* Nerd Font Symbols (icons only — used as fallback in terminal) */
+@font-face {
+  font-family: "Symbols Nerd Font Mono";
+  src: url("/fonts/SymbolsNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Nodex Design System - Based on Notion's design language
+ * Source: design/tokens.json
+ */
+
+@property --top-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --bottom-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --edge-fade-distance {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 1rem;
+}
+
+@layer components {
+  .inline-chevron {
+    vertical-align: middle;
+    line-height: 1;
+    display: inline-block;
+    transform: translateY(-1px);
+  }
+
+  .hide-scrollbar {
+    transition: scrollbar-color 0.15s;
+    scrollbar-color: transparent transparent !important;
+  }
+
+  .hide-scrollbar:hover {
+    scrollbar-color: color-mix(in srgb, var(--foreground) 14%, transparent)
+      transparent;
+  }
+
+  .hide-scrollbar::-webkit-scrollbar-thumb {
+    background-color: transparent;
+  }
+
+  .hide-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--foreground) 14%, transparent);
+  }
+
+  .hide-scrollbar::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  @keyframes edge-fade {
+    0% {
+      --top-fade: 0;
+      --bottom-fade: var(--edge-fade-distance, 1rem);
+    }
+
+    1% {
+      --top-fade: 0;
+      --bottom-fade: var(--edge-fade-distance, 1rem);
+    }
+
+    99% {
+      --top-fade: var(--edge-fade-distance, 1rem);
+      --bottom-fade: 0;
+    }
+
+    to {
+      --top-fade: var(--edge-fade-distance, 1rem);
+      --bottom-fade: 0;
+    }
+  }
+
+  @keyframes edge-fade-top {
+    0% {
+      --top-fade: var(--edge-fade-distance, 1rem);
+      --bottom-fade: var(--edge-fade-distance, 1rem);
+    }
+
+    1% {
+      --top-fade: var(--edge-fade-distance, 1rem);
+      --bottom-fade: var(--edge-fade-distance, 1rem);
+    }
+
+    99% {
+      --top-fade: var(--edge-fade-distance, 1rem);
+      --bottom-fade: 0;
+    }
+
+    to {
+      --top-fade: var(--edge-fade-distance, 1rem);
+      --bottom-fade: 0;
+    }
+  }
+
+  @supports (animation-timeline: --scroll-fade) {
+    .vertical-scroll-fade-mask {
+      -webkit-mask: linear-gradient(
+        to bottom in oklch,
+        oklch(60% 0 0/0),
+        oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)),
+        oklch(60% 0 0/0)
+      );
+      mask: linear-gradient(
+        to bottom in oklch,
+        oklch(60% 0 0/0),
+        oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)),
+        oklch(60% 0 0/0)
+      );
+      animation-name: edge-fade;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: scroll(self y);
+    }
+
+    .vertical-scroll-fade-mask-top {
+      -webkit-mask: linear-gradient(
+        to bottom in oklch,
+        oklch(60% 0 0/0),
+        oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)),
+        oklch(60% 0 0/0)
+      );
+      mask: linear-gradient(
+        to bottom in oklch,
+        oklch(60% 0 0/0),
+        oklch(85% 0 0) var(--top-fade) calc(100% - var(--bottom-fade)),
+        oklch(60% 0 0/0)
+      );
+      animation-name: edge-fade-top;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: scroll(self y);
+    }
+  }
+
+  .icon-3xs {
+    width: 10px;
+    height: 10px;
+  }
+
+  .icon-xxs {
+    width: 12px;
+    height: 12px;
+  }
+
+  .icon-2xs {
+    width: 14px;
+    height: 14px;
+  }
+
+  .icon-xs {
+    width: 16px;
+    height: 16px;
+  }
+
+  .icon-sm {
+    width: 18px;
+    height: 18px;
+  }
+
+  .icon-base {
+    width: 20px;
+    height: 20px;
+  }
+
+  .icon-md {
+    width: 24px;
+    height: 24px;
+  }
+
+  .icon-lg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .heading-4xl {
+    font-size: var(--text-4xl);
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .heading-3xl {
+    font-size: var(--text-3xl);
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .heading-2xl {
+    font-size: var(--text-2xl);
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .heading-xl {
+    font-size: var(--text-xl);
+    font-weight: 500;
+    line-height: 1.2;
+  }
+
+  .heading-lg {
+    font-size: var(--text-heading-lg);
+    font-weight: 500;
+    line-height: 1.2;
+  }
+
+  .heading-base {
+    font-size: var(--text-heading-md);
+    font-weight: 500;
+    line-height: 1.33;
+  }
+
+  .heading-dialog {
+    font-size: var(--text-heading-md);
+    letter-spacing: -0.36px;
+    font-weight: 500;
+    line-height: 28px;
+  }
+
+  .heading-sm {
+    font-size: var(--text-sm);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .heading-xs {
+    font-size: var(--text-xs);
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .loading-shimmer-pure-text,
+  .loading-shimmer {
+    --text-primary: var(--color-token-description-foreground);
+    --text-secondary: var(--text-primary);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .loading-shimmer-pure-text,
+    .loading-shimmer {
+      --text-secondary: color-mix(
+        in srgb,
+        var(--text-primary) 55%,
+        transparent
+      );
+    }
+  }
+
+  .loading-shimmer-pure-text,
+  .loading-shimmer {
+    --text-tertiary: var(--text-primary);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .loading-shimmer-pure-text,
+    .loading-shimmer {
+      --text-tertiary: color-mix(in srgb, var(--text-primary) 35%, transparent);
+    }
+  }
+
+  .loading-shimmer-pure-text,
+  .loading-shimmer {
+    --text-quaternary: var(--text-primary);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .loading-shimmer-pure-text,
+    .loading-shimmer {
+      --text-quaternary: color-mix(
+        in srgb,
+        var(--text-primary) 18%,
+        transparent
+      );
+    }
+  }
+
+  .loading-shimmer-pure-text,
+  .loading-shimmer {
+    --shimmer-text-secondary: var(--text-secondary);
+    --shimmer-contrast: #ffffffbf;
+  }
+
+  .dark .loading-shimmer-pure-text,
+  .dark .loading-shimmer {
+    --shimmer-text-secondary: var(--text-primary);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .dark .loading-shimmer-pure-text,
+    .dark .loading-shimmer {
+      --shimmer-text-secondary: color-mix(
+        in srgb,
+        var(--text-primary) 45%,
+        transparent
+      );
+    }
+  }
+
+  .dark .loading-shimmer-pure-text,
+  .dark .loading-shimmer {
+    --shimmer-contrast: #0009;
+  }
+
+  .loading-shimmer-pure-text,
+  .loading-shimmer {
+    background: var(--shimmer-text-secondary)
+      linear-gradient(
+        to right,
+        transparent 0%,
+        var(--shimmer-contrast) 40%,
+        var(--shimmer-contrast) 60%,
+        transparent 100%
+      );
+    background: var(--shimmer-text-secondary)-webkit-gradient(
+        linear,
+        100% 0,
+        0 0,
+        from(transparent),
+        color-stop(0.4, var(--shimmer-contrast)),
+        color-stop(0.6, var(--shimmer-contrast)),
+        to(transparent)
+      );
+    text-fill-color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-position: -100% 0;
+    background-repeat: no-repeat;
+    background-size: 50% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation-name: loading-shimmer;
+    animation-duration: 2s;
+    animation-timing-function: steps(48, end);
+    animation-iteration-count: infinite;
+    animation-delay: 0s;
+    display: inline-block;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-shimmer-pure-text,
+    .loading-shimmer {
+      animation: none;
+    }
+  }
+
+  .loading-shimmer:hover {
+    -webkit-text-fill-color: var(--text-primary);
+    background: 0 0;
+    animation: none;
+  }
+
+  .loading-shimmer-pure-text-inverted {
+    background: var(--text-primary)
+      linear-gradient(
+        to right,
+        var(--text-primary) 0%,
+        var(--text-quaternary) 50%,
+        var(--text-primary) 100%
+      );
+    background: var(--text-primary)-webkit-gradient(
+        linear,
+        100% 0,
+        0 0,
+        from(var(--text-primary)),
+        color-stop(0.5, var(--text-quaternary)),
+        to(var(--text-primary))
+      );
+    text-fill-color: transparent;
+    -webkit-text-fill-color: transparent;
+    background-position: -100% 0;
+    background-repeat: no-repeat;
+    background-size: 50% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    animation-name: loading-shimmer;
+    animation-duration: 5s;
+    animation-timing-function: steps(120, end);
+    animation-iteration-count: infinite;
+    animation-delay: 0.5s;
+    display: inline-block;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-shimmer-pure-text-inverted {
+      animation: none;
+    }
+  }
+
+  .pulsing-dot {
+    background-color: currentColor;
+    border-radius: 50%;
+    width: 6px;
+    height: 6px;
+    animation: 1.5s infinite pulse;
+    display: inline-block;
+  }
+
+  .panel-animated [data-panel] {
+    will-change: flex-grow, max-width;
+    transition:
+      flex-grow var(--transition-duration-relaxed) var(--transition-ease-basic),
+      max-width var(--transition-duration-relaxed) var(--transition-ease-basic);
+  }
+
+  .panel-animated.panel-dragging [data-panel] {
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .panel-animated [data-panel] {
+      transition: none;
+    }
+  }
+
+  .review-diff-virtualized {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 360px;
+  }
+
+  .thread-diff-virtualized {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 40vh;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply text-foreground;
+    font-family: var(--font-system);
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: grayscale;
+    background: transparent;
+  }
+}
+
+/* ===== Scrollbar Utilities ===== */
+
+@utility scrollbar-token {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--foreground) 8%, transparent)
+    transparent;
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--foreground) 8%, transparent);
+    border-radius: 4px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--foreground) 14%, transparent);
+  }
+}
+
+@utility hide-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ===== NFM Editor Overrides ===== */
+/* These target BlockNote's internal DOM which we don't control. */
+
+.nfm-editor {
+  min-height: 120px;
+  position: relative;
+}
+
+/* Notion-style link */
+.nfm-editor a {
+  color: var(--foreground) !important;
+  text-decoration: underline !important;
+  text-decoration-thickness: 0.05em !important;
+  text-decoration-color: var(--link-decoration-color) !important;
+  text-underline-offset: 10% !important;
+  opacity: 0.7 !important;
+  cursor: pointer;
+}
+.nfm-editor a:hover {
+  opacity: 1;
+}
+.nfm-render-link {
+  color: var(--foreground) !important;
+  text-decoration: underline !important;
+  text-decoration-thickness: 0.05em !important;
+  text-decoration-color: var(--link-decoration-color) !important;
+  text-underline-offset: 10% !important;
+  opacity: 0.7 !important;
+  cursor: pointer;
+}
+.nfm-render-link:hover {
+  opacity: 1;
+}
+
+/* Search match highlights (applied by ProseMirror extension) */
+.nfm-search-match {
+  background: color-mix(in srgb, var(--yellow-bg) 78%, transparent);
+  border-radius: 2px;
+}
+.nfm-search-match-active {
+  background: color-mix(in srgb, var(--accent-blue) 28%, transparent);
+}
+
+.nfm-editor [class*="bn-"] {
+  font-family: inherit;
+}
+
+.nfm-editor .bn-editor {
+  background-color: transparent;
+  color: var(--foreground);
+  font-size: 16px;
+  padding-inline: 0;
+}
+
+.nfm-editor .bn-default-styles {
+  -webkit-font-smoothing: auto;
+}
+
+.nfm-editor
+  .bn-block-content[data-is-empty-and-focused]
+  [data-placeholder]::before {
+  color: var(--foreground-tertiary);
+}
+
+.nfm-editor .bn-block-content {
+  padding: 4px 2px;
+}
+
+/* Disable most built-in BlockNote structural animations (indent/outdent, depth guides, heading morph). */
+.nfm-editor .bn-block-outer,
+.nfm-editor .bn-block-content,
+.nfm-editor .bn-block-content::before,
+.nfm-editor .bn-block-group .bn-block-group > .bn-block-outer::before {
+  transition: none !important;
+}
+
+.bn-container[data-color-scheme="dark"] {
+  --bn-colors-editor-background: #202020;
+}
+
+/* ===== Code Block Theme Overrides ===== */
+/* BlockNote core hardcodes dark bg (#161616) on code blocks. Override it with our own theme variable. */
+.bn-container .bn-block-content[data-content-type="codeBlock"] {
+  background: var(--code-block-bg);
+  color: var(--foreground);
+  border-radius: 10px;
+}
+
+/* Ensure Shiki pre elements inside code blocks inherit our background */
+.bn-block-content[data-content-type="codeBlock"] pre {
+  background-color: transparent !important;
+  font-size: 85%;
+}
+
+/* Code block language selector: adapt text color per theme */
+.bn-container[data-color-scheme="light"]
+  .bn-block-content[data-content-type="codeBlock"]
+  > div
+  > select {
+  color: var(--foreground);
+}
+
+/* Shiki dual-theme: in dark mode, swap token colors to --shiki-dark */
+.bn-container[data-color-scheme="dark"] .shiki {
+  color: var(--shiki-dark) !important;
+}
+.nfm-code-block {
+  background: var(--code-block-bg);
+  border-radius: 10px;
+}
+
+/* Dark mode callout: translucent surface matching Notion's --c-graBacSec */
+.dark .nfm-callout {
+  background: var(--background-tertiary) !important;
+  border-radius: 10px !important;
+  border: 1px solid transparent;
+  padding: 12px 20px 12px 12px;
+}
+.dark .nfm-code-block .shiki {
+  color: var(--shiki-dark) !important;
+}
+
+/* ===== NFM Toggle Styling ===== */
+
+.nfm-toggle-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  list-style: none;
+}
+.nfm-toggle-summary::-webkit-details-marker {
+  display: none;
+}
+.nfm-toggle-summary::marker {
+  content: "";
+}
+
+.nfm-toggle-caret {
+  width: 0.8em;
+  height: 0.8em;
+  display: block;
+  fill: currentColor;
+  flex-shrink: 0;
+  color: inherit;
+  transition: transform 200ms ease-out;
+  transform: rotateZ(-90deg);
+  opacity: 1;
+  margin-top: 0.25em;
+}
+.nfm-toggle[open] > .nfm-toggle-summary .nfm-toggle-caret {
+  transform: rotateZ(0deg);
+}
+
+/* Match editor toggle caret to read-only renderer icon */
+.nfm-editor .bn-toggle-button {
+  transition: transform 200ms ease-out;
+}
+.nfm-editor .bn-toggle-button > svg {
+  display: none;
+}
+.nfm-editor .bn-toggle-button::before {
+  content: "";
+  width: 0.8em;
+  height: 0.8em;
+  display: block;
+  flex-shrink: 0;
+  background-color: #848483;
+  opacity: 1;
+  transform: rotateZ(-90deg);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.835 3.25a.8.8 0 0 0-.69 1.203l5.164 8.854a.8.8 0 0 0 1.382 0l5.165-8.854a.8.8 0 0 0-.691-1.203z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.835 3.25a.8.8 0 0 0-.69 1.203l5.164 8.854a.8.8 0 0 0 1.382 0l5.165-8.854a.8.8 0 0 0-.691-1.203z'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+/* Keep toggle caret size stable in toggle-list card descendants */
+.nodex-toggle-list-editor .bn-toggle-button {
+  font-size: 16px;
+  line-height: 1;
+}
+.nodex-toggle-list-editor .bn-toggle-button::before {
+  width: 12px;
+  height: 12px;
+}
+
+/* Toggle caret becomes text-colored when toggle has children */
+.nfm-editor
+  .bn-block:has(> .bn-block-group > .bn-block-outer)
+  > .bn-block-content
+  .bn-toggle-button::before {
+  background-color: currentColor;
+  color: var(--foreground);
+}
+
+.bn-toggle-wrapper {
+  align-items: flex-start;
+}
+.bn-toggle-wrapper .bn-toggle-button {
+  margin-right: 5px;
+  margin-top: 0.25em;
+}
+
+/* Projected card toggle: hollow triangle caret (outline-only) */
+.bn-toggle-wrapper[data-projected="true"] .bn-toggle-button::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.835 3.25a.8.8 0 0 0-.69 1.203l5.164 8.854a.8.8 0 0 0 1.382 0l5.165-8.854a.8.8 0 0 0-.691-1.203z' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2.835 3.25a.8.8 0 0 0-.69 1.203l5.164 8.854a.8.8 0 0 0 1.382 0l5.165-8.854a.8.8 0 0 0-.691-1.203z' fill='none' stroke='black' stroke-width='1.5'/%3E%3C/svg%3E");
+}
+
+/* ===== Side Menu ===== */
+
+.nfm-editor .bn-side-menu .bn-button[aria-label="Add block"] {
+  height: 24px;
+  width: 24px;
+  cursor: grab;
+  transition: opacity 200ms ease-out;
+}
+.nfm-editor .bn-side-menu .bn-button[draggable="true"] {
+  height: 24px;
+  width: 18px;
+  margin-right: 10px;
+  cursor: grab;
+  transition: opacity 200ms ease-out;
+}
+
+/*
+ * BlockNote toggles pointer-events on the floating wrapper, but HTML children
+ * can still remain hit-testable. Disable the full subtree while a text
+ * selection gesture is active so the visible add/drag buttons never clip the
+ * native range.
+ */
+.nfm-editor[data-side-menu-selection-guard] .bn-side-menu,
+.nfm-editor[data-side-menu-selection-guard] .bn-side-menu * {
+  pointer-events: none !important;
+}
+
+/*
+ * BlockNote appends the native drag image to document.body at (0, 0).
+ * Keep it out of hit-testing so it cannot steal clicks or dragover/drop.
+ */
+.bn-drag-preview {
+  pointer-events: none;
+  user-select: none;
+}
+
+.nfm-editor [data-test="dragHandle"] {
+  display: none;
+}
+.nfm-editor .bn-side-menu .bn-button[draggable="true"]::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex-shrink: 0;
+  background-color: currentColor;
+  color: #ada9a3;
+  fill: #ada9a3;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M6.25 4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m5 0a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m1.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 10a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m6.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 16a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M6.25 4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m5 0a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m1.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 10a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m6.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 16a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.dark .nfm-editor .bn-side-menu .bn-button[draggable="true"]::before {
+  color: #7d7a75;
+  fill: #7d7a75;
+}
+
+.nfm-editor .bn-side-menu .bn-button svg {
+  width: 18px;
+  height: 18px;
+  cursor: grab;
+  opacity: 0.4;
+  transition: opacity 150ms ease;
+}
+
+.nfm-editor .bn-block-group .bn-block-group .bn-block-outer::before {
+  border-left: none !important;
+}
+
+.nfm-editor[data-dragging] .bn-formatting-toolbar {
+  display: none !important;
+}
+
+/* ===== Custom Checkbox ===== */
+.nfm-editor .bn-block-content[data-content-type="checkListItem"] > div > input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border: 1.5px solid var(--foreground);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  margin-top: 4px;
+  margin-left: 1px;
+  margin-right: 7px;
+  position: relative;
+}
+.nfm-editor
+  .bn-block-content[data-content-type="checkListItem"]
+  > div
+  > input:checked {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+.nfm-editor
+  .bn-block-content[data-content-type="checkListItem"]
+  > div
+  > input:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ===== Custom Bullet ===== */
+.nfm-editor .bn-block-content[data-content-type="bulletListItem"]::before {
+  font-size: 1.9em;
+  line-height: 0;
+  height: 20px;
+  align-items: center;
+  margin-left: -1px;
+  margin-right: 1px;
+}
+.nfm-editor
+  [data-content-type="bulletListItem"]
+  ~ .bn-block-group
+  > .bn-block-outer[data-prev-type="bulletListItem"]
+  > .bn-block
+  > .bn-block-content::before,
+.nfm-editor
+  [data-content-type="bulletListItem"]
+  ~ .bn-block-group
+  > .bn-block-outer:not([data-prev-type])
+  > .bn-block
+  > .bn-block-content[data-content-type="bulletListItem"]::before {
+  content: "∘";
+  font-size: 1.25em;
+  line-height: 0;
+  height: 21px;
+  align-items: center;
+}
+
+/* Inline code – Notion style */
+.nfm-editor .bn-inline-content code {
+  color: var(--inline-code-text);
+  background: var(--inline-code-bg);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 85%;
+  position: relative;
+  bottom: 0.065em;
+}
+
+/* ===== ProseMirror / DnD Overrides ===== */
+
+.prosemirror-dropcursor-block {
+  background-color: #a0caf2 !important;
+  height: 3.5px !important;
+}
+.dark .prosemirror-dropcursor-block {
+  background-color: #1d4b77 !important;
+}
+
+/* ProseMirror decoration class applied to selected image block containers. */
+.nfm-editor
+  .nodex-selected-image-block
+  .bn-block-content[data-content-type="image"]
+  .bn-file-block-content-wrapper {
+  border-radius: 8px;
+}
+
+.nfm-editor
+  .nodex-selected-image-block
+  .bn-block-content[data-content-type="image"]
+  .bn-visual-media-wrapper {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.nfm-editor
+  .nodex-selected-image-block
+  .bn-block-content[data-content-type="image"]
+  .bn-visual-media-wrapper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent-blue) 24%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--accent-blue) 45%, transparent);
+}
+
+.nfm-editor > [data-toggle-drop-overlay] {
+  position: absolute;
+  pointer-events: none;
+  z-index: 88;
+  background: rgba(35, 131, 226, 0.14);
+  border-radius: 4px;
+}
+
+.nfm-editor[data-toggle-drop-active] .prosemirror-dropcursor-block {
+  display: none !important;
+}
+
+.nfm-editor[data-card-drop-hover] {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--accent-blue) 45%, transparent);
+  border-radius: 8px;
+}
+
+.nfm-editor > [data-card-drop-indicator] {
+  position: absolute;
+  pointer-events: none;
+  z-index: 90;
+  height: 3.5px;
+  border-radius: 999px;
+  background-color: #a0caf2;
+  transform: translateY(-1.75px);
+}
+.dark .nfm-editor > [data-card-drop-indicator] {
+  background-color: #1d4b77;
+}
+
+/* ===== Toggle List Editor (BlockNote targeting via marker classes) ===== */
+
+.nodex-toggle-list-editor-shell .bn-editor {
+  min-height: 320px;
+  font-size: 16px;
+}
+
+/* Editable chip hover (card-toggle-block.tsx sets data-chip-editable) */
+[data-chip-editable]:hover {
+  filter: brightness(0.93);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.dark [data-chip-editable]:hover {
+  filter: brightness(1.18);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Toggle-list checkbox checkmark (::after can't be expressed in Tailwind) */
+.nodex-toggle-list-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 3.5px;
+  height: 7px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* ===== Inline Toggle-List Card Editor (BlockNote targeting) ===== */
+
+.nfm-editor .bn-block-content[data-content-type="toggleListInlineView"] {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+/*
+ * BlockNote renders .bn-block-group as a sibling of .bn-block-content,
+ * so the active frame must live on .bn-block to cover both.
+ * Constrain the first combinator to the owner's direct .react-renderer
+ * so ancestor .bn-block containers don't overmatch via :has(...).
+ */
+.nfm-editor
+  .bn-block:has(
+    > .react-renderer
+      .bn-block-content[data-content-type="toggleListInlineView"]
+      [data-inline-view-shell]
+  ) {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px transparent;
+}
+
+.nfm-editor
+  .bn-block:has(
+    > .react-renderer
+      .bn-block-content[data-content-type="toggleListInlineView"]
+      [data-inline-view-shell][data-active="true"]
+  ) {
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.nfm-editor
+  .bn-block-content[data-content-type="toggleListInlineView"]
+  ~ .bn-block-group,
+.nfm-editor .bn-block-content[data-content-type="cardRef"] ~ .bn-block-group {
+  margin-left: 0;
+}
+
+.nfm-editor
+  .bn-block-content[data-content-type="toggleListInlineView"]
+  ~ .bn-block-group
+  > .bn-block-outer::before,
+.nfm-editor
+  .bn-block-content[data-content-type="cardRef"]
+  ~ .bn-block-group
+  > .bn-block-outer::before {
+  content: none;
+}
+
+/* fix extra margin-left caused by `.bn-block-group .bn-block-group {margin-left: 24px;}` */
+.node-toggleListInlineView + .bn-block-group {
+  margin-left: 0;
+}
+.node-cardRef + .bn-block-group {
+  margin-left: 0;
+}
+
+/* ===== Terminal Panel ===== */
+
+@keyframes terminal-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.nodex-terminal {
+  padding: 4px 4px;
+  background: var(--background);
+  position: relative;
+}
+
+/* Canvas generated by ghostty-web */
+.nodex-terminal canvas {
+  display: block;
+  width: 100% !important;
+}
+
+/* ===== CardRef Block ===== */
+.nfm-editor .bn-block-content[data-content-type="cardRef"] {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+/* Card-ref shell border (mirrors inline-view-shell) */
+.nfm-editor
+  .bn-block:has(
+    > .react-renderer
+      .bn-block-content[data-content-type="cardRef"]
+      [data-card-ref-shell]
+  ) {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px transparent;
+}
+
+.nfm-editor
+  .bn-block:has(
+    > .react-renderer
+      .bn-block-content[data-content-type="cardRef"]
+      [data-card-ref-shell][data-active="true"]
+  ) {
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* ===== Codex Threads: Markdown + Tool Cards ===== */
+
+.codex-markdown {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--foreground);
+  white-space: normal;
+}
+
+.codex-markdown > * > :first-child {
+  margin-top: 0;
+}
+
+.codex-markdown > * > :last-child {
+  margin-bottom: 0;
+}
+
+.codex-markdown h1,
+.codex-markdown h2,
+.codex-markdown h3,
+.codex-markdown h4,
+.codex-markdown h5,
+.codex-markdown h6 {
+  margin: 0.65em 0 0.2em;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.codex-markdown h1 {
+  font-size: 1rem;
+}
+
+.codex-markdown h2 {
+  font-size: 0.925rem;
+}
+
+.codex-markdown h3 {
+  font-size: 0.875rem;
+}
+
+.codex-markdown p,
+.codex-markdown ul,
+.codex-markdown ol,
+.codex-markdown table,
+.codex-markdown blockquote,
+.codex-markdown pre {
+  margin: 0.2em 0;
+}
+
+.codex-markdown ul,
+.codex-markdown ol {
+  padding-left: 1.1em;
+  list-style-position: outside;
+}
+
+.codex-markdown li {
+  margin: 0.05em 0;
+}
+
+.codex-markdown code {
+  font-family: var(--font-mono);
+  font-size: 85%;
+  color: var(--inline-code-text);
+  background: var(--inline-code-bg);
+  border-radius: 4px;
+  padding: 0.2em 0.4em;
+  position: relative;
+  bottom: 0.065em;
+}
+
+.codex-markdown pre {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 0.5rem;
+}
+
+.codex-markdown pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.codex-markdown .nfm-code-block {
+  border: 1px solid var(--border);
+  background: var(--code-block-bg);
+  border-radius: 10px;
+}
+
+.codex-markdown .nfm-code-block .shiki,
+.codex-markdown .nfm-code-block .shiki pre {
+  background: transparent !important;
+}
+
+.codex-markdown blockquote {
+  border-left: 3px solid var(--border-strong);
+  background: var(--background-secondary);
+  border-radius: 0 6px 6px 0;
+  padding: 0.25rem 0.6rem;
+  color: var(--foreground-secondary);
+}
+
+.codex-markdown a {
+  color: var(--color-token-text-link-foreground);
+  text-decoration: none;
+}
+
+.codex-markdown a:hover {
+  text-decoration: underline;
+}
+
+.codex-markdown table {
+  border-collapse: collapse;
+  width: fit-content;
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+.codex-markdown th,
+.codex-markdown td {
+  border: 1px solid var(--border);
+  padding: 0.38rem 0.55rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.codex-markdown th {
+  background: var(--background-secondary);
+  color: var(--foreground-secondary);
+  font-weight: 600;
+}
+
+.codex-markdown tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--background-secondary) 55%, transparent);
+}
+
+.codex-markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.55em 0;
+}
+
+.codex-markdown details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background-secondary);
+  padding: 0.2rem 0.4rem;
+}
+
+.codex-markdown summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.codex-markdown .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.55em 0;
+}
+
+.codex-markdown-user ul,
+.codex-markdown-user ol {
+  margin: 0.15em 0;
+}
+
+.codex-markdown-plan {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.codex-markdown-plan > * > :first-child {
+  margin-top: 0;
+}
+
+.codex-markdown-plan > * > :last-child {
+  margin-bottom: 0;
+}
+
+.codex-markdown-plan p,
+.codex-markdown-plan h1,
+.codex-markdown-plan h2,
+.codex-markdown-plan h3,
+.codex-markdown-plan h4,
+.codex-markdown-plan h5,
+.codex-markdown-plan h6 {
+  margin: 0.5rem 0;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.codex-markdown-plan ul,
+.codex-markdown-plan ol {
+  margin: 0 0 1rem;
+  padding-left: 1rem;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.codex-markdown-plan li {
+  margin-bottom: 0.375rem;
+}
+
+.codex-markdown-plan code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--inline-code-text);
+  background: var(--inline-code-bg);
+  border-radius: 4px;
+  padding: 0.2rem 0.38rem;
+}
+
+.codex-markdown-plan pre {
+  margin: 0.5rem 0 1rem;
+}
+
+.codex-tool-code {
+  line-height: 1.45;
+}
+
+@keyframes codex-leading-label-sweep {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: -50% 50%;
+  }
+}
+
+.codex-tool-leading-label--in-progress {
+  background: linear-gradient(
+    90deg,
+    var(--foreground-secondary) 40%,
+    var(--foreground) 50%,
+    var(--foreground-secondary) 60%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: codex-leading-label-sweep 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-tool-leading-label--in-progress {
+    animation: none;
+    background: none;
+    color: var(--foreground-secondary);
+  }
+}
