@@ -61,7 +61,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "smol-toml": "^1.4.2",
-    "streamdown": "2.0.0-canary.2",
+    "streamdown": "2.4.0",
     "tailwind-merge": "^3.5.0",
     "tldts": "^7.0.25"
   },
