@@ -68,6 +68,20 @@ When behavior changes, update the narrowest source-of-truth doc:
 - New implementation caveat/regression learning: `docs/ENGINEERING_LEARNINGS.md`
 - New reliability/security expectation: `docs/RELIABILITY.md` or `docs/SECURITY.md`
 
+Treat `CHANGELOG.md` as a required deliverable for any user-visible change:
+- Keep an `Unreleased` section at the top.
+- Write for humans, not commit-log style.
+- Only include externally relevant changes:
+  - Added
+  - Changed
+  - Deprecated
+  - Removed
+  - Fixed
+  - Security
+- Do not add entries for pure refactors, formatting, comments, test-only changes, or internal tooling changes unless they affect users.
+- Use one bullet per user-visible change.
+- Prefer impact-oriented wording, not implementation wording.
+
 ## Testing Expectations
 - Prefer targeted tests while iterating: `bun test <path-to-test>`
 - Run full checks before handoff:
