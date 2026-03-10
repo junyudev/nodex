@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { inspectClipboardPasteItems } from "./clipboard-paste-inspector";
 import * as dbService from "./kanban/db-service";
 import * as backupService from "./kanban/backup-service";
 import * as canvasService from "./kanban/canvas-service";
@@ -321,6 +322,10 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions = {}): v
       return null;
     }
   });
+
+  registerHandle("clipboard:inspect-paste", () =>
+    inspectClipboardPasteItems()
+  );
 
   // Terminal
   registerHandle(

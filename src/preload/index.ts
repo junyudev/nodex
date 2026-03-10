@@ -1,8 +1,11 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type {
   AppInitializationStep,
   DatabaseMigrationProgress,
 } from "../shared/app-startup";
+import { inspectClipboardPasteItems } from "../main/clipboard-paste-inspector";
 
 const SERVER_URL_ARG_PREFIX = "--nodex-server-url=";
 const ASSET_PATH_PREFIX_ARG_PREFIX = "--nodex-asset-path-prefix=";
@@ -73,4 +76,29 @@ contextBridge.exposeInMainWorld("api", {
   },
   serverUrl,
   assetPathPrefix,
+  inspectPasteClipboard: () => inspectClipboardPasteItems(),
+  getPathInfoForFile: (file: File) => {
+    try {
+      const absolutePath = webUtils.getPathForFile(file);
+      if (!absolutePath) return null;
+
+      const stats = fs.statSync(absolutePath);
+      const kind = stats.isDirectory() ? "folder" : "file";
+      return {
+        path: absolutePath,
+        kind,
+        name: path.basename(absolutePath),
+        ...(kind === "file" ? { bytes: stats.size } : {}),
+      };
+    } catch {
+      return null;
+    }
+  },
+  getPathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
 });

@@ -1,5 +1,6 @@
 import type { NfmInlineContent, NfmStyleSet, NfmColor } from "./types";
 import { NFM_COLORS } from "./types";
+import { getXmlAttr } from "./xml-attributes";
 
 /**
  * Parse a string of NFM inline content into structured NfmInlineContent[].
@@ -42,6 +43,15 @@ export function parseInlineContent(input: string): NfmInlineContent[] {
         items.push({ type: "linebreak" });
         i += 4;
         continue;
+      }
+
+      if (input.startsWith("<attachment", i)) {
+        const attachment = tryParseAttachment();
+        if (attachment) {
+          flushText();
+          items.push(attachment);
+          continue;
+        }
       }
 
       // <span underline="true"> or <span color="Color">
@@ -184,6 +194,43 @@ export function parseInlineContent(input: string): NfmInlineContent[] {
     if (input.startsWith(closeTag, i)) i = closeIdx + closeTag.length;
 
     return inner;
+  }
+
+  function tryParseAttachment(): NfmInlineContent | null {
+    const match = input.slice(i).match(/^<attachment(?:\s+([^>]*))?\s*\/>/);
+    if (!match) return null;
+
+    const attrString = match[1] ?? "";
+    const kind = getXmlAttr(attrString, "kind");
+    const mode = getXmlAttr(attrString, "mode");
+    const source = getXmlAttr(attrString, "source");
+    const name = getXmlAttr(attrString, "name");
+    const mimeType = getXmlAttr(attrString, "mime");
+    const bytesValue = getXmlAttr(attrString, "bytes");
+    const origin = getXmlAttr(attrString, "origin");
+
+    if (
+      (kind !== "text" && kind !== "file" && kind !== "folder")
+      || (mode !== "materialized" && mode !== "link")
+      || !source
+      || !name
+    ) {
+      return null;
+    }
+
+    const bytes = bytesValue ? Number.parseInt(bytesValue, 10) : undefined;
+    i += match[0].length;
+
+    return {
+      type: "attachment",
+      kind,
+      mode,
+      source,
+      name,
+      ...(mimeType ? { mimeType } : {}),
+      ...(typeof bytes === "number" && Number.isFinite(bytes) && bytes >= 0 ? { bytes } : {}),
+      ...(origin ? { origin } : {}),
+    };
   }
 
   const items = parseRun({}, []);

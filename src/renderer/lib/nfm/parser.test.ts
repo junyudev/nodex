@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { NfmBlock } from "./types";
+import { serializeClipboardText } from "./clipboard-text-serializer";
 import { parseNfm } from "./parser";
 import { serializeNfm } from "./serializer";
 
@@ -51,5 +52,18 @@ describe("NFM code fences", () => {
 
     expect(parsed[0].language).toBe("");
     expect(parsed[0].code).toBe("value");
+  });
+
+  test("attachments round-trip inline while legacy resource tags fall back to plain text", () => {
+    const attachmentNfm = 'before <attachment kind="file" mode="link" source="/tmp/report.txt" name="report.txt" /> after';
+    const attachmentBlocks = parseNfm(attachmentNfm);
+
+    expect(attachmentBlocks[0]?.type).toBe("paragraph");
+    expect(serializeNfm(attachmentBlocks)).toBe(attachmentNfm);
+    expect(serializeClipboardText(attachmentBlocks)).toBe("before [Attachment: report.txt] after");
+
+    const legacyBlocks = parseNfm('<resource kind="file" mode="link" source="/tmp/report.txt" name="report.txt" />');
+    expect(legacyBlocks[0]?.type).toBe("paragraph");
+    expect(serializeNfm(legacyBlocks)).toBe('\\<resource kind="file" mode="link" source="/tmp/report.txt" name="report.txt" /\\>');
   });
 });

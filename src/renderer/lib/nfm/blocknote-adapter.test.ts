@@ -248,6 +248,96 @@ describe("blocknote adapter", () => {
     expect(heading.isToggleable).toBe(undefined);
   });
 
+  test("attachment inline content parses and serializes with escaped paths", () => {
+    const nfm = 'before <attachment kind="file" mode="link" source="/tmp/My &amp; Stuff/report.txt" name="report &amp; notes.txt" mime="text/plain" bytes="42" origin="/tmp/My &amp; Stuff/report.txt" /> after';
+    const blocks = parseNfm(nfm);
+
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]?.type).toBe("paragraph");
+    if (!blocks[0] || blocks[0].type !== "paragraph") return;
+
+    expect(blocks[0].content[1]?.type).toBe("attachment");
+    if (blocks[0].content[1]?.type !== "attachment") return;
+
+    expect(blocks[0].content[1].source).toBe("/tmp/My & Stuff/report.txt");
+    expect(blocks[0].content[1].name).toBe("report & notes.txt");
+    expect(blocks[0].content[1].mimeType).toBe("text/plain");
+    expect(blocks[0].content[1].bytes).toBe(42);
+    expect(serializeNfm(blocks)).toBe(nfm);
+  });
+
+  test("attachment inline content round-trips between BlockNote and NFM", () => {
+    const attachmentDoc = asDoc([
+      {
+        type: "paragraph",
+        props: {},
+        content: [
+          { type: "text", text: "See ", styles: {} },
+          {
+            type: "attachment",
+            props: {
+              kind: "text",
+              mode: "materialized",
+              source: "nodex://assets/demo.txt",
+              name: "demo.txt",
+              mimeType: "text/plain",
+              bytes: 12,
+              origin: "/tmp/demo.txt",
+            },
+          },
+        ],
+        children: [],
+      },
+    ]);
+
+    const nfmBlocks = blockNoteToNfm(attachmentDoc);
+    expect(nfmBlocks.length).toBe(1);
+    expect(nfmBlocks[0]?.type).toBe("paragraph");
+    if (nfmBlocks[0]?.type !== "paragraph") return;
+    expect(nfmBlocks[0].content[1]?.type).toBe("attachment");
+    const reloaded = nfmToBlockNote(nfmBlocks);
+    expect(reloaded.length).toBe(1);
+    expect(reloaded[0]?.type).toBe("paragraph");
+    const attachment = Array.isArray(reloaded[0]?.content) ? reloaded[0]?.content[1] : undefined;
+    expect(attachment?.type).toBe("attachment");
+    expect(attachment?.props.source).toBe("nodex://assets/demo.txt");
+    expect(attachment?.props.origin).toBe("/tmp/demo.txt");
+  });
+
+  test("folder attachments do not persist bytes through BlockNote round-trip", () => {
+    const attachmentDoc = asDoc([
+      {
+        type: "paragraph",
+        props: {},
+        content: [
+          {
+            type: "attachment",
+            props: {
+              kind: "folder",
+              mode: "link",
+              source: "/tmp/Designs",
+              name: "Designs",
+              bytes: 4096,
+            },
+          },
+        ],
+        children: [],
+      },
+    ]);
+
+    const nfmBlocks = blockNoteToNfm(attachmentDoc);
+    expect(nfmBlocks[0]?.type).toBe("paragraph");
+    if (nfmBlocks[0]?.type !== "paragraph") return;
+
+    const attachment = nfmBlocks[0].content[0];
+    expect(attachment?.type).toBe("attachment");
+    if (attachment?.type !== "attachment") return;
+    expect(attachment.bytes).toBe(undefined);
+
+    const serialized = serializeNfm(nfmBlocks);
+    expect(serialized.includes("bytes=")).toBeFalse();
+  });
+
   test("serialize toggle heading round-trip", () => {
     const nfm = "▶# Toggle Heading 1";
     const blocks = parseNfm(nfm);

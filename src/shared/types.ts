@@ -1,6 +1,8 @@
 export type Priority = "p0-critical" | "p1-high" | "p2-medium" | "p3-low" | "p4-later";
 
 export type Estimate = "xs" | "s" | "m" | "l" | "xl";
+export type ResourceBlockKind = "text" | "file" | "folder";
+export type ResourceBlockMode = "materialized" | "link";
 
 export type CardRunInTarget = "localProject" | "newWorktree" | "cloud";
 export type WorktreeStartMode = "autoBranch" | "detachedHead";
@@ -231,6 +233,25 @@ export interface ProjectInput {
   description?: string;
   icon?: string;
   workspacePath?: string | null;
+}
+
+export interface UploadedResourceAsset {
+  source: string;
+  name: string;
+  mimeType: string;
+  bytes: number;
+}
+
+export interface ClipboardPasteInspectionItem {
+  path: string;
+  kind: Exclude<ResourceBlockKind, "text">;
+  name: string;
+  mimeType?: string;
+  bytes?: number;
+}
+
+export interface ClipboardPasteInspectionResult {
+  items: ClipboardPasteInspectionItem[];
 }
 
 export type BackupTrigger = "manual" | "auto" | "pre-restore";

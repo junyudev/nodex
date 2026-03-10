@@ -1,4 +1,5 @@
 import type { NfmInlineContent, NfmStyleSet } from "./types";
+import { escapeXmlAttr } from "./xml-attributes";
 
 const ESCAPABLE = /[\\*~`$\[\]<>{}|^]/g;
 
@@ -16,6 +17,21 @@ export function serializeInlineContent(items: NfmInlineContent[]): string {
 
 function serializeItem(item: NfmInlineContent): string {
   if (item.type === "linebreak") return "<br>";
+
+  if (item.type === "attachment") {
+    const attrs = [
+      `kind="${escapeXmlAttr(item.kind)}"`,
+      `mode="${escapeXmlAttr(item.mode)}"`,
+      `source="${escapeXmlAttr(item.source)}"`,
+      `name="${escapeXmlAttr(item.name)}"`,
+    ];
+    if (item.mimeType) attrs.push(`mime="${escapeXmlAttr(item.mimeType)}"`);
+    if (item.kind !== "folder" && typeof item.bytes === "number" && Number.isFinite(item.bytes)) {
+      attrs.push(`bytes="${Math.max(0, Math.floor(item.bytes))}"`);
+    }
+    if (item.origin) attrs.push(`origin="${escapeXmlAttr(item.origin)}"`);
+    return `<attachment ${attrs.join(" ")} />`;
+  }
 
   if (item.type === "link") {
     const inner = applyStyles(escapeNfm(item.text), item.styles);

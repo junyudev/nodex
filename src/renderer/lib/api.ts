@@ -423,6 +423,9 @@ async function httpInvoke(channel: string, ...args: unknown[]): Promise<unknown>
       const data = await res.json();
       return data.path ?? null;
     }
+    case "clipboard:inspect-paste": {
+      return { items: [] };
+    }
     case "window:show-emoji-panel": {
       // Browser runtime has no native desktop emoji panel.
       return false;

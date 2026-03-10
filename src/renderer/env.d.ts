@@ -2,6 +2,7 @@ import type {
   AppInitializationStep,
   DatabaseMigrationProgress,
 } from "../shared/app-startup";
+import type { ClipboardPasteInspectionItem, ClipboardPasteInspectionResult } from "../shared/types";
 
 declare global {
   interface Window {
@@ -17,6 +18,9 @@ declare global {
       ) => () => void;
       serverUrl?: string;
       assetPathPrefix?: string;
+      inspectPasteClipboard?: () => ClipboardPasteInspectionResult;
+      getPathInfoForFile?: (file: File) => ClipboardPasteInspectionItem | null;
+      getPathForFile?: (file: File) => string;
     };
   }
 }

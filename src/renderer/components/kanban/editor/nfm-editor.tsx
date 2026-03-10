@@ -16,6 +16,10 @@ import {
   NFM_DISABLED_EXTENSIONS,
 } from "./nfm-editor-extensions";
 import { createNfmLinkExtension } from "./nfm-link-extension";
+import {
+  NOTION_BLOCKS_MIME,
+  NOTION_MULTI_TEXT_MIME,
+} from "./notion-paste";
 import { NfmFormattingToolbar } from "./nfm-formatting-toolbar";
 import { ChipPropertyEditor } from "./chip-property-editor";
 import { useEditorDragBehaviors } from "./use-editor-drag-behaviors";
@@ -55,6 +59,19 @@ import {
 import { NfmDragHandleMenu, type SendBlocksMode } from "./nfm-drag-handle-menu";
 import { NfmSideMenu } from "./nfm-side-menu";
 import { resolveSendBlockSelection } from "./send-block-selection";
+import { PasteResourceDialog } from "./paste-resource-dialog";
+import {
+  canMaterializePasteResourceItems,
+  continueInlinePaste,
+  capturePasteResourceTarget,
+  createPastedTextUploadFile,
+  derivePastedTextAttachmentName,
+  insertAttachmentsAtPasteTarget,
+  normalizeClipboardFileDraftItems,
+  shouldPromptForOversizedText,
+  type PasteAttachmentInlineContent,
+  type PasteResourceDialogState,
+} from "./paste-resource";
 import { SendBlocksDialog } from "./send-blocks-dialog";
 import { useSideMenuSelectionGuard } from "./side-menu-selection-guard";
 import { ImagePreviewDialog } from "./image-preview-dialog";
@@ -105,10 +122,19 @@ import {
 import { TOGGLE_LIST_STATUS_ORDER, type ToggleListStatusId } from "@/lib/toggle-list/types";
 import { useKanban } from "@/lib/use-kanban";
 import type { MetaChipPropertyType } from "@/lib/toggle-list/meta-chips";
-import type { BlockDropImportSourceUpdate, Board } from "@/lib/types";
-import { resolveAssetSourceToHttpUrl, uploadImageAsset } from "@/lib/assets";
+import type {
+  BlockDropImportSourceUpdate,
+  Board,
+} from "@/lib/types";
+import {
+  materializeLocalResourceAsset,
+  resolveAssetSourceToHttpUrl,
+  uploadImageAsset,
+  uploadResourceAsset,
+} from "@/lib/assets";
 import { useSpellcheck } from "@/lib/use-spellcheck";
 import { useTheme } from "@/lib/use-theme";
+import { usePasteResourceSettings } from "@/lib/use-paste-resource-settings";
 import { cn } from "@/lib/utils";
 
 interface ActiveChipEdit {
@@ -317,6 +343,7 @@ export function NfmEditor({
 }: NfmEditorProps) {
   const { resolved: themeMode } = useTheme();
   const { spellcheck } = useSpellcheck();
+  const { settings: pasteResourceSettings } = usePasteResourceSettings();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [replaceOpen, setReplaceOpen] = useState(false);
@@ -325,6 +352,9 @@ export function NfmEditor({
   const [searchActiveIndex, setSearchActiveIndex] = useState(-1);
   const [activeChipEdit, setActiveChipEdit] = useState<ActiveChipEdit | null>(null);
   const [sendBlocksDialog, setSendBlocksDialog] = useState<SendBlocksDialogState | null>(null);
+  const [pasteResourceDialog, setPasteResourceDialog] = useState<PasteResourceDialogState | null>(null);
+  const [pasteResourcePending, setPasteResourcePending] = useState(false);
+  const [pasteResourceError, setPasteResourceError] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ source: string; alt: string } | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suppressExternalDropRef = useRef(false);
@@ -503,6 +533,130 @@ export function NfmEditor({
     return serializeNfm(nfmBlocks);
   }, [editor]);
 
+  const closePasteResourceDialog = useCallback(() => {
+    setPasteResourcePending(false);
+    setPasteResourceError(null);
+    setPasteResourceDialog(null);
+  }, []);
+
+  const restoreEditorFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      editor?.focus();
+    });
+  }, [editor]);
+
+  const handlePasteResourceChoice = useCallback(async (mode: "materialized" | "link") => {
+    if (!editor || !pasteResourceDialog || pasteResourcePending) return;
+    if (mode === "materialized" && !canMaterializePasteResourceItems(pasteResourceDialog.items)) {
+      setPasteResourceError("Folders can only be kept as links.");
+      return;
+    }
+
+    try {
+      setPasteResourcePending(true);
+      setPasteResourceError(null);
+
+      const nextAttachments: PasteAttachmentInlineContent[] = [];
+
+      for (const item of pasteResourceDialog.items) {
+        if (item.kind === "text") {
+          const text = pasteResourceDialog.textPayload ?? "";
+          const uploaded = await uploadResourceAsset(createPastedTextUploadFile(text));
+          nextAttachments.push({
+            type: "attachment",
+            props: {
+              kind: "text",
+              mode,
+              source: uploaded.source,
+              name: derivePastedTextAttachmentName(text),
+              mimeType: uploaded.mimeType,
+              bytes: uploaded.bytes,
+            },
+          });
+          continue;
+        }
+
+        if (mode === "link" && item.path) {
+          nextAttachments.push({
+            type: "attachment",
+            props: {
+              kind: item.kind,
+              mode: "link",
+              source: item.path,
+              name: item.name,
+              ...(item.mimeType ? { mimeType: item.mimeType } : {}),
+              ...(item.kind === "file" && typeof item.bytes === "number" ? { bytes: item.bytes } : {}),
+            },
+          });
+          continue;
+        }
+
+        if (item.path) {
+          const uploaded = await materializeLocalResourceAsset(item.path);
+          nextAttachments.push({
+            type: "attachment",
+            props: {
+              kind: item.kind,
+              mode: "materialized",
+              source: uploaded.source,
+              name: uploaded.name,
+              mimeType: uploaded.mimeType,
+              bytes: uploaded.bytes,
+              origin: item.path,
+            },
+          });
+          continue;
+        }
+
+        if (item.file) {
+          const uploaded = await uploadResourceAsset(item.file);
+          nextAttachments.push({
+            type: "attachment",
+            props: {
+              kind: item.kind,
+              mode: "materialized",
+              source: uploaded.source,
+              name: uploaded.name,
+              mimeType: uploaded.mimeType,
+              bytes: uploaded.bytes,
+            },
+          });
+        }
+      }
+
+      if (nextAttachments.length === 0) {
+        throw new Error("No pasted attachment could be created.");
+      }
+
+      const inserted = insertAttachmentsAtPasteTarget(editor, pasteResourceDialog.target, nextAttachments);
+      if (!inserted) {
+        throw new Error("Could not insert the attachment at the current cursor position.");
+      }
+
+      closePasteResourceDialog();
+    } catch (error) {
+      console.error("Failed to insert pasted attachments", error);
+      setPasteResourceError(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "Failed to insert the pasted attachment.",
+      );
+    } finally {
+      setPasteResourcePending(false);
+    }
+  }, [closePasteResourceDialog, editor, pasteResourceDialog, pasteResourcePending]);
+
+  const handleContinuePasteInline = useCallback(() => {
+    if (!editor || !pasteResourceDialog?.textPayload || pasteResourcePending) return;
+
+    editor.focus();
+    const continued = continueInlinePaste(editor, pasteResourceDialog);
+    if (!continued) {
+      editor.insertInlineContent(pasteResourceDialog.textPayload, { updateSelection: true });
+    }
+    closePasteResourceDialog();
+  }, [closePasteResourceDialog, editor, pasteResourceDialog, pasteResourcePending]);
+
   useEffect(() => {
     const runtime = editor as unknown as {
       onBeforeChange?: (listener: (event: { getChanges: () => NfmEditorChange[] }) => boolean | void) => () => void;
@@ -546,6 +700,84 @@ export function NfmEditor({
     if (suppressExternalDropRef.current || suppressExternalContentSyncRef.current) return;
     onChangeRef.current(nfmString);
   }, [editor, serializeEditorToNfm]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !editor) return;
+
+    const handlePasteCapture = (event: ClipboardEvent) => {
+      if (!event.clipboardData || pasteResourceDialog) return;
+
+      const clipboardTypes = Array.from(event.clipboardData.types);
+      if (
+        clipboardTypes.includes(NOTION_BLOCKS_MIME)
+        || clipboardTypes.includes(NOTION_MULTI_TEXT_MIME)
+      ) {
+        return;
+      }
+
+      const plainText = event.clipboardData.getData("text/plain");
+      const clipboardFiles = Array.from(event.clipboardData.files ?? []);
+      const nonImageFiles = clipboardFiles.filter((file) => !file.type.startsWith("image/"));
+      const inspectedItems = window.api?.inspectPasteClipboard?.().items ?? [];
+      const shouldPromptFiles = inspectedItems.length > 0 || nonImageFiles.length > 0;
+      const shouldPromptText = !shouldPromptFiles
+        && shouldPromptForOversizedText(
+          plainText,
+          serializeEditorToNfm().length,
+          pasteResourceSettings,
+        );
+
+      if (!shouldPromptFiles && !shouldPromptText) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const target = capturePasteResourceTarget(editor);
+
+      if (inspectedItems.length > 0) {
+        setPasteResourceDialog({
+          target,
+          items: inspectedItems.map((item) => ({
+            kind: item.kind,
+            name: item.name,
+            path: item.path,
+            mimeType: item.mimeType,
+            bytes: item.bytes,
+          })),
+          allowLink: inspectedItems.every((item) => item.path.length > 0),
+        });
+        return;
+      }
+
+      if (nonImageFiles.length > 0) {
+        const fileDraftItems = normalizeClipboardFileDraftItems(nonImageFiles);
+        setPasteResourceDialog({
+          target,
+          items: fileDraftItems,
+          allowLink: fileDraftItems.every((item) => Boolean(item.path)),
+        });
+        return;
+      }
+
+      if (shouldPromptText) {
+        setPasteResourceDialog({
+          target,
+          items: [{ kind: "text", name: "Pasted text" }],
+          textPayload: plainText,
+          htmlPayload: event.clipboardData.getData("text/html") || undefined,
+          markdownPayload: event.clipboardData.getData("text/markdown") || undefined,
+          blocknoteHtmlPayload: event.clipboardData.getData("blocknote/html") || undefined,
+          allowLink: false,
+        });
+      }
+    };
+
+    container.addEventListener("paste", handlePasteCapture, true);
+    return () => {
+      container.removeEventListener("paste", handlePasteCapture, true);
+    };
+  }, [editor, pasteResourceDialog, pasteResourceSettings, serializeEditorToNfm]);
 
   // Sync external content changes (card switching)
   const prevContentRef = useRef(content);
@@ -1593,6 +1825,27 @@ export function NfmEditor({
           }}
           onAppendToCard={handleAppendBlocksToCard}
           onSendToProject={handleSendBlocksToProject}
+        />
+      )}
+      {pasteResourceDialog && (
+        <PasteResourceDialog
+          open={pasteResourceDialog !== null}
+          state={pasteResourceDialog}
+          pending={pasteResourcePending}
+          error={pasteResourceError}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              closePasteResourceDialog();
+            }
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            restoreEditorFocus();
+          }}
+          onChooseMode={(mode) => {
+            void handlePasteResourceChoice(mode);
+          }}
+          onContinueInline={handleContinuePasteInline}
         />
       )}
       {imagePreview && (

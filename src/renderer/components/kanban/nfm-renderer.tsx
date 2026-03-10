@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { FileCode2, FileText, Folder, Link2 } from "lucide-react";
 import type {
   NfmBlock,
   NfmInlineContent,
@@ -354,6 +355,27 @@ function InlineItem({ item }: { item: NfmInlineContent }) {
     );
   }
 
+  if (item.type === "attachment") {
+    const Icon = item.mode === "link"
+      ? Link2
+      : item.kind === "folder"
+        ? Folder
+        : item.kind === "file"
+          ? FileCode2
+          : FileText;
+    const label = item.name.trim() || (item.kind === "text" ? "Pasted text" : "Untitled attachment");
+
+    return (
+      <span
+        className="inline-flex max-w-[18rem] items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] px-2 py-0.5 align-middle text-[12px] leading-5 text-[color-mix(in_srgb,var(--foreground)_84%,transparent)] shadow-[inset_0_0_0_0.5px_color-mix(in_srgb,var(--foreground)_10%,transparent)]"
+        title={item.mode === "link" ? item.source : (item.origin || item.source)}
+      >
+        <Icon className="size-3 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
+
   // text span
   const classes = styleClasses(item.styles);
   if (!classes) return <>{item.text}</>;
@@ -417,6 +439,7 @@ function inlineText(items: NfmInlineContent[]): string {
   return items
     .map((item) => {
       if (item.type === "linebreak") return " ";
+      if (item.type === "attachment") return item.name;
       return item.text;
     })
     .join("")

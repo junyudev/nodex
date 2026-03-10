@@ -197,6 +197,10 @@ function serializeInlinePlainText(items: NfmInlineContent[]): string {
   return items
     .map((item) => {
       if (item.type === "linebreak") return "\n";
+      if (item.type === "attachment") {
+        const label = item.name.trim() || "Untitled attachment";
+        return `[Attachment: ${label}]`;
+      }
       if (item.type === "link") {
         const inner = applyStyleMarkers(item.text, item.styles);
         return `[${inner}](${item.href})`;

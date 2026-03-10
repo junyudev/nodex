@@ -19,6 +19,7 @@ import type {
   BlockDropImportInput,
   BlockDropImportResult,
   CalendarOccurrence,
+  ClipboardPasteInspectionResult,
   CardCreateInput,
   CardUpdateResult,
   CardDropMoveToEditorInput,
@@ -223,6 +224,7 @@ export interface IpcApi {
   "canvas:get": { args: [projectId: string]; result: CanvasData | null };
   "canvas:save": { args: [projectId: string, data: CanvasData]; result: void };
   "asset:resolve-path": { args: [source: string]; result: string | null };
+  "clipboard:inspect-paste": { args: []; result: ClipboardPasteInspectionResult };
   "window:show-emoji-panel": { args: []; result: boolean };
   "window:new": { args: []; result: boolean };
   "workbench:resume:consume": { args: []; result: WorkbenchResumeSnapshot | null };

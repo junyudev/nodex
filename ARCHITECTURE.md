@@ -15,7 +15,8 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `index.ts`: application bootstrap (startup-init gating, DB init with migration progress fanout, HTTP server start, multi-window registry, profile-scoped single-instance lock, notifier fanout).
 - `instance-scope.ts`: resolves/apply Electron `userData` + `sessionData` paths under the resolved server dir so each configured profile owns its own process lock scope.
 - `http-server.ts`: Hono routes for projects, cards, history, backups, and assets.
-- `ipc-handlers.ts`: mirrors core operations through IPC.
+- `ipc-handlers.ts`: mirrors core operations through IPC, including asset-path resolution and clipboard paste inspection for desktop-only file/folder paste flows.
+- `clipboard-paste-inspector.ts`: best-effort Electron clipboard inspection for pasted absolute file/folder paths across supported native formats.
 - `kanban/db-service.ts`: SQLite CRUD, move logic, project lifecycle, atomic block-drop import (`sourceUpdates + card creates`), and atomic card-to-editor move drop (`target updates + source delete`) grouped in one transaction.
 - `kanban/history-service.ts`: undo/redo and change history records, including grouped undo/redo via `history.group_id`.
 - `kanban/recurrence-service.ts`: recurrence expansion, exception application, and next-occurrence computation.
@@ -41,7 +42,7 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `components/workbench/*`: staged workbench shell (`left-sidebar`, `stage-rail`, `main-view-host`, `stage-threads`) and shell composition.
 - `components/workbench/stage-threads/*`: Codex transcript rendering modules (item dispatcher, markdown pipeline, tool-card registry/specializations).
 - `components/kanban/*`: board UI, card-stage editor, history panel, toggle-list UI.
-- `components/kanban/editor/*`: BlockNote/NFM integration, custom blocks, keyboard behaviors, single-editor projection helpers for `cardRef`/`toggleListInlineView` children, a shared per-editor projection sync controller (`projection-sync-controller.ts`) that owns one listener set and an owner registry, shared editor drag session coordination for editor->board drops, card-drag target registry for board->editor drops, bridged in-editor drop-indicator rendering for dnd-kit drags, and `cardToggle` snapshot/meta round-trip helpers.
+- `components/kanban/editor/*`: BlockNote/NFM integration, custom blocks and inline attachment chips, keyboard behaviors, paste-resource prompting/materialization, single-editor projection helpers for `cardRef`/`toggleListInlineView` children, a shared per-editor projection sync controller (`projection-sync-controller.ts`) that owns one listener set and an owner registry, shared editor drag session coordination for editor->board drops, card-drag target registry for board->editor drops, bridged in-editor drop-indicator rendering for dnd-kit drags, and `cardToggle` snapshot/meta round-trip helpers.
 - `lib/api.ts`: transport abstraction (IPC in Electron, HTTP+SSE in browser).
 - `lib/kanban-store.ts`: shared per-project board store with one realtime subscription, deduped fetches, optimistic journal rebase (`baseBoard + pending/local ops`), LWW conflict superseding, typed conflict resolution (`updated|conflict|not_found`), and O(1) `cardIndex` lookup map.
 - `lib/use-kanban.ts`, `lib/use-history.ts`, `lib/use-projects.ts`: stateful hooks over API channels (`use-kanban` is store-backed via `useSyncExternalStore`).

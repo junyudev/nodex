@@ -10,6 +10,7 @@ interface TooltipProps {
   contentClassName?: string;
   delayDuration?: number;
   disableAnimation?: boolean;
+  disableHoverableContent?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -29,10 +30,15 @@ export function Tooltip({
   contentClassName,
   delayDuration,
   disableAnimation = false,
+  disableHoverableContent,
   onOpenChange,
 }: TooltipProps) {
   return (
-    <RadixTooltip.Root delayDuration={delayDuration} onOpenChange={onOpenChange}>
+    <RadixTooltip.Root
+      delayDuration={delayDuration}
+      disableHoverableContent={disableHoverableContent}
+      onOpenChange={onOpenChange}
+    >
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
       <RadixTooltip.Portal>
         <RadixTooltip.Content
@@ -40,7 +46,7 @@ export function Tooltip({
           sideOffset={sideOffset}
           collisionPadding={8}
           className={cn(
-            "z-50 max-w-[min(28rem,calc(var(--spacing)*72))] rounded-xl border px-2 py-1 text-sm",
+            "z-50 rounded-xl border px-2 py-1 text-sm",
             "border-[color-mix(in_srgb,var(--border)_85%,transparent)]",
             "bg-[color-mix(in_srgb,var(--background-secondary)_96%,transparent)] text-(--foreground)",
             "shadow-[0_12px_30px_rgba(0,0,0,0.22)] backdrop-blur-md",

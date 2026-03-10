@@ -51,6 +51,15 @@ import {
 } from "../../lib/sans-font-size";
 import { useCodeFontSize } from "../../lib/use-code-font-size";
 import { useNfmAutolinkSettings } from "../../lib/use-nfm-autolink-settings";
+import {
+  DEFAULT_DESCRIPTION_SOFT_LIMIT,
+  DEFAULT_TEXT_PROMPT_CHAR_THRESHOLD,
+  MAX_DESCRIPTION_SOFT_LIMIT,
+  MAX_TEXT_PROMPT_CHAR_THRESHOLD,
+  MIN_DESCRIPTION_SOFT_LIMIT,
+  MIN_TEXT_PROMPT_CHAR_THRESHOLD,
+} from "../../lib/paste-resource-settings";
+import { usePasteResourceSettings } from "../../lib/use-paste-resource-settings";
 import type { StageRailLayoutMode } from "../../lib/stage-rail-layout-mode";
 import { useSansFontSize } from "../../lib/use-sans-font-size";
 import type { ThreadPromptSubmitShortcut } from "../../lib/thread-panel-prompt-submit-shortcut";
@@ -450,6 +459,94 @@ function NfmAutolinkBareDomainsSettingControl() {
       value={settings.linkifyBareDomains}
       onChange={(value) => updateSettings({ linkifyBareDomains: value })}
       disabled={disabled}
+    />
+  );
+}
+
+function PasteResourceNumberSettingControl({
+  value,
+  defaultValue,
+  min,
+  max,
+  onChange,
+  ariaLabel,
+}: {
+  value: number;
+  defaultValue: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = useCallback(() => {
+    const parsed = Number.parseInt(draft, 10);
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+
+    const normalized = Math.min(max, Math.max(min, parsed));
+    onChange(normalized);
+  }, [draft, max, min, onChange, value]);
+
+  return (
+    <div className="flex items-center gap-3">
+      <Input
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value);
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          commit();
+          event.currentTarget.blur();
+        }}
+        spellCheck={false}
+        inputMode="numeric"
+        aria-label={ariaLabel}
+        className="h-8 w-28 rounded-md border border-(--border) bg-(--background) px-2 text-sm text-(--foreground)"
+      />
+      <span className="text-sm text-(--foreground-secondary) tabular-nums">
+        Default {defaultValue.toLocaleString()}
+      </span>
+    </div>
+  );
+}
+
+function PasteResourceTextThresholdSettingControl() {
+  const { settings, updateSettings } = usePasteResourceSettings();
+
+  return (
+    <PasteResourceNumberSettingControl
+      value={settings.textPromptCharThreshold}
+      defaultValue={DEFAULT_TEXT_PROMPT_CHAR_THRESHOLD}
+      min={MIN_TEXT_PROMPT_CHAR_THRESHOLD}
+      max={MAX_TEXT_PROMPT_CHAR_THRESHOLD}
+      onChange={(value) => updateSettings({ textPromptCharThreshold: value })}
+      ariaLabel="Paste resource text threshold"
+    />
+  );
+}
+
+function PasteResourceDescriptionSoftLimitSettingControl() {
+  const { settings, updateSettings } = usePasteResourceSettings();
+
+  return (
+    <PasteResourceNumberSettingControl
+      value={settings.descriptionSoftLimit}
+      defaultValue={DEFAULT_DESCRIPTION_SOFT_LIMIT}
+      min={MIN_DESCRIPTION_SOFT_LIMIT}
+      max={MAX_DESCRIPTION_SOFT_LIMIT}
+      onChange={(value) => updateSettings({ descriptionSoftLimit: value })}
+      ariaLabel="Paste resource description soft limit"
     />
   );
 }
@@ -1693,6 +1790,18 @@ export function SettingsOverlay({
                     description="Link plain domains like example.com. Leave off to avoid filename-like text such as .md paths."
                   >
                     <NfmAutolinkBareDomainsSettingControl />
+                  </SettingRow>
+                  <SettingRow
+                    label="Large paste text threshold"
+                    description="Prompt when pasted plain text reaches this many characters, so you can materialize it instead of inflating the note."
+                  >
+                    <PasteResourceTextThresholdSettingControl />
+                  </SettingRow>
+                  <SettingRow
+                    label="Large paste description soft limit"
+                    description="Prompt before pasted plain text pushes the note near its description size ceiling."
+                  >
+                    <PasteResourceDescriptionSoftLimitSettingControl />
                   </SettingRow>
                   <SettingRow
                     label="Markdown file links"

@@ -70,7 +70,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Sidebar stage collapse/expand and show-more/show-less interactions animate list height and row visibility
 - Hidden top-level sidebar sections stay hidden until re-enabled from Settings -> Workspace -> `Sidebar sections`, and then return in their previously saved order
 - When the sidebar is collapsed, hovering the left window edge reveals a transient floating sidebar without shifting the stage rail; moving away or pressing `Escape` dismisses it while keeping the sidebar collapsed
-- Sidebar footer includes a settings trigger in the same row as project spaces/switcher controls; this opens a full-page settings overlay with a left navigation rail, a `Back to app` affordance, flat section dividers, dense `Workspace`, `Editor`, and `Card` sections (`Theme`, `Stage rail layout`, `Thread finished notifications`, `Sidebar sections`, `Sans font size`, `Code font size`, `Spellcheck`, `Auto-link while typing`, `Auto-link on paste`, `Recognize bare domains`, `Open markdown file links in`, `Kanban card properties`, `Card stage collapsed properties`), a `Worktrees` section (`Worktree start mode`, `Auto branch prefix`, managed-worktree inventory), plus a `Backups` section (auto-backup on/off, frequency hours, retention, manual backup, restore). `Sans font size` defaults to `15px`, persists locally, updates `--vscode-font-size`, and scales the shared sans typography tokens used by the renderer; `Code font size` defaults to `14px`, persists locally, and sets `--vscode-editor-font-size` globally.
+- Sidebar footer includes a settings trigger in the same row as project spaces/switcher controls; this opens a full-page settings overlay with a left navigation rail, a `Back to app` affordance, flat section dividers, dense `Workspace`, `Editor`, and `Card` sections (`Theme`, `Stage rail layout`, `Thread finished notifications`, `Sidebar sections`, `Sans font size`, `Code font size`, `Spellcheck`, `Auto-link while typing`, `Auto-link on paste`, `Recognize bare domains`, `Large paste text threshold`, `Large paste description soft limit`, `Open markdown file links in`, `Kanban card properties`, `Card stage collapsed properties`), a `Worktrees` section (`Worktree start mode`, `Auto branch prefix`, managed-worktree inventory), plus a `Backups` section (auto-backup on/off, frequency hours, retention, manual backup, restore). `Sans font size` defaults to `15px`, persists locally, updates `--vscode-font-size`, and scales the shared sans typography tokens used by the renderer; `Code font size` defaults to `14px`, persists locally, and sets `--vscode-editor-font-size` globally.
 - On macOS, traffic-light window controls stay visible at top-left; when the sidebar is expanded, the sidebar collapse control sits beside them in the sidebar top strip, and when collapsed the same control is rendered in the titlebar left region
 - Card stage session selection lives in the sidebar alongside the current DB project's grouped card navigator; card history opens as a card-specific overlay from Card Stage
 - Settings can choose which optional card-stage rows start behind the Card Stage `more properties` toggle (`Tags`, `Assignee`, `Threads`, `Schedule`, `Agent blocked`, and `Agent status`)
@@ -149,7 +149,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 |----------|------|----------|-------------|
 | `id` | string | Yes | 7-character alphanumeric ID |
 | `title` | string | Yes | Task name (max 512 chars) |
-| `description` | string | No | [Notion-flavored Markdown (NFM)](../references/notion-flavored-markdown-spec.md) details (default: ""), including `<image ...>` blocks with local asset URIs (max 1,000,000 chars) |
+| `description` | string | No | [Notion-flavored Markdown (NFM)](../references/notion-flavored-markdown-spec.md) details (default: ""), including `<image ...>` blocks and inline `<attachment kind="text|file|folder" mode="materialized|link" ... />` chips with local or managed asset URIs (max 1,000,000 chars) |
 | `priority` | enum | No | p0-critical, p1-high, p2-medium, p3-low, p4-later (default: p2-medium) |
 | `estimate` | enum | No | xs, s, m, l, xl |
 | `tags` | string[] | No | Custom labels (default: [], max 64 tags, each max 64 chars) |
@@ -225,6 +225,13 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Pasting images uploads them to shared local assets and inserts image blocks automatically
 - Pasting from Notion preserves block structure (including toggle blocks and nested children) when Notion clipboard metadata is present
 - Notion paste preserves inline rich text marks (`bold`, `italic`, `strikethrough`, `code`, `underline`) and inline text/background colors from Notion annotation metadata (`h` color tokens)
+- When pasting plain text that exceeds the configurable `Large paste text threshold` (default `100,000`) or would push the description near the configurable `Large paste description soft limit` (default `750,000`), Nodex intercepts the paste and offers `Save in Nodex`, `Paste anyway`, or `Cancel`, with a truncated, scrollable preview of the pasted text and character/line metadata in the dialog
+- On Electron desktop, if the native clipboard exposes actual file or folder entries, Nodex intercepts the paste before default BlockNote handling. File paste offers `Save in Nodex`, `Keep as link`, or `Cancel`; folder paste offers only `Keep as link` or `Cancel`. Plain copied absolute paths in `text/plain` do not trigger this prompt, and browser runtime does not promise file/folder paste parity
+- `Save in Nodex` stores pasted text/files in shared local assets and inserts an inline `attachment` chip. Saved text-like attachments open a scrollable preview capped to `200` lines or `64 KiB`
+- `Keep as link` inserts an inline `attachment` chip that references the original absolute path for pasted files/folders; this option is not shown for oversized plain-text prompts, and it is the only supported folder-paste action
+- `Paste anyway` bypasses the attachment flow and inserts the oversized text directly into the note despite the warning
+- Attachment chips stay inline with surrounding paragraph content, show only concise label/icon chrome, reveal a short hover hint, and open a click popover with metadata plus `Open`, `Reveal`, `Copy path`, and `Open original` actions when an original path exists
+- Detailed attachment-chip rules and examples: [NFM Editor Attachment Chip Behavior](./nfm-editor-attachment-chip-behavior.md)
 - Slash menu (`/`) for inserting block types
 - Slash menu includes a custom `Toggle List Inline View` block insertion item
 - `Toggle List Inline View` is a custom NFM block (`<toggle-list-inline-view ... />`) that renders a low-distraction inline sequence of toggle rows for a chosen source project
@@ -580,6 +587,7 @@ nodex/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/assets/images` | Upload image via multipart `file`; returns `{source}` with canonical `nodex://assets/<file-name>` URI |
+| POST | `/api/assets/resources` | Upload or materialize pasted text/files/folders; accepts multipart `file` or JSON `{localPath}` and returns `{source, name, mimeType, bytes}` |
 | GET | `/api/assets/[fileName]` | Serve asset bytes for editor/read-only rendering |
 
 ### Database Schema

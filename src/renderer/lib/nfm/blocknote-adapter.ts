@@ -207,6 +207,21 @@ function nfmInlineToBN(items: NfmInlineContent[]): BNInlineContent[] {
       return { type: "text", text: "\n", styles: {} };
     }
 
+    if (item.type === "attachment") {
+      return {
+        type: "attachment",
+        props: {
+          kind: item.kind,
+          mode: item.mode,
+          source: item.source,
+          name: item.name,
+          ...(item.mimeType ? { mimeType: item.mimeType } : {}),
+          ...(item.kind !== "folder" && item.bytes !== undefined ? { bytes: item.bytes } : {}),
+          ...(item.origin ? { origin: item.origin } : {}),
+        },
+      };
+    }
+
     if (item.type === "link") {
       return {
         type: "link",
@@ -514,7 +529,35 @@ function bnInlineToNfm(content: BNInlineContent[] | undefined): NfmInlineContent
   for (const item of content) {
     if (!item || !item.type) continue;
 
-    if (item.type === "link") {
+    if (item.type === "attachment") {
+      const kind = normalizeString(item.props?.kind);
+      const mode = normalizeString(item.props?.mode);
+      const source = normalizeString(item.props?.source);
+      const name = normalizeString(item.props?.name);
+      const mimeType = normalizeString(item.props?.mimeType);
+      const bytes = normalizeNonNegativeNumber(item.props?.bytes);
+      const origin = normalizeString(item.props?.origin);
+
+      if (
+        (kind !== "text" && kind !== "file" && kind !== "folder")
+        || (mode !== "materialized" && mode !== "link")
+        || !source
+        || !name
+      ) {
+        continue;
+      }
+
+      items.push({
+        type: "attachment",
+        kind,
+        mode,
+        source,
+        name,
+        ...(mimeType ? { mimeType } : {}),
+        ...(kind !== "folder" && bytes !== undefined ? { bytes } : {}),
+        ...(origin ? { origin } : {}),
+      });
+    } else if (item.type === "link") {
       // Link content is StyledText[]. Flatten to plain text + first style set.
       // NFM links don't support per-span formatting, so we take the dominant style.
       const contentArr = item.content || [];
@@ -686,6 +729,12 @@ function normalizeBooleanString(value: unknown): boolean | undefined {
   if (value === "true") return true;
   if (value === "false") return false;
   return undefined;
+}
+
+function normalizeNonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value !== "number") return undefined;
+  if (!Number.isFinite(value) || value < 0) return undefined;
+  return Math.floor(value);
 }
 
 function isToggleListPropertyKey(value: string): value is "priority" | "estimate" | "status" | "tags" {

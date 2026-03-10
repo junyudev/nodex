@@ -30,8 +30,11 @@ import type {
 import { MAX_CARD_WRITE_BODY_BYTES } from "../shared/card-limits";
 import {
   MAX_IMAGE_UPLOAD_BYTES,
+  MAX_RESOURCE_UPLOAD_BYTES,
   readAssetFile,
   resolveAssetPath,
+  materializeLocalResource,
+  saveUploadedResource,
   saveUploadedImage,
   isSupportedImageMimeType,
 } from "./kanban/asset-service";
@@ -514,6 +517,43 @@ async function handleImageUpload(c: Context) {
   }
 }
 
+async function handleResourceUpload(c: Context) {
+  const contentType = c.req.header("content-type") ?? "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const body = await c.req.json().catch(() => ({}));
+      if (!isRecord(body) || typeof body.localPath !== "string") {
+        return c.json({ error: "Missing localPath" }, 400);
+      }
+
+      const result = materializeLocalResource(body.localPath);
+      return c.json({
+        source: result.source,
+        name: result.name,
+        mimeType: result.mimeType,
+        bytes: result.bytes,
+      }, 201);
+    }
+
+    const body = await c.req.parseBody();
+    const upload = body.file;
+    if (!(upload instanceof File)) {
+      return c.json({ error: "Missing resource file" }, 400);
+    }
+
+    const result = await saveUploadedResource(upload);
+    return c.json({
+      source: result.source,
+      name: result.name,
+      mimeType: result.mimeType,
+      bytes: result.bytes,
+    }, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+}
+
 app.post(
   "/api/assets/images",
   bodyLimit({
@@ -521,6 +561,15 @@ app.post(
     onError: (c) => c.json({ error: "Image exceeds 10MB upload limit" }, 413),
   }),
   async (c) => handleImageUpload(c),
+);
+
+app.post(
+  "/api/assets/resources",
+  bodyLimit({
+    maxSize: MAX_RESOURCE_UPLOAD_BYTES,
+    onError: (c) => c.json({ error: "Resource exceeds 64MB upload limit" }, 413),
+  }),
+  async (c) => handleResourceUpload(c),
 );
 
 app.get("/api/assets/:fileName", (c) => {

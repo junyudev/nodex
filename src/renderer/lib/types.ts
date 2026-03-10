@@ -6,6 +6,7 @@ export type {
   Column,
   Board,
   CanvasData,
+  ClipboardPasteInspectionResult,
   CardInput,
   CardCreateInput,
   CardUpdateResult,
@@ -72,6 +73,7 @@ export type {
   WorktreeStartMode,
   UpdateBackupSettingsInput,
   UpdateThreadNotificationSettingsInput,
+  UploadedResourceAsset,
 } from "../../shared/types";
 export type {
   WorkbenchRecentCardSession,

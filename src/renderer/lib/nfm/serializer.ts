@@ -1,6 +1,7 @@
 import type { NfmBlock, NfmColor } from "./types";
 import { isChildlessNfmBlockType } from "./childless";
 import { serializeInlineContent } from "./serializer-inline";
+import { escapeXmlAttr } from "./xml-attributes";
 
 /**
  * Serialize a block tree back to Notion-flavored Markdown string.
@@ -213,10 +214,6 @@ function findLongestRepeatedRun(text: string, char: string): number {
 
 function colorSuffix(color?: NfmColor): string {
   return color ? ` {color="${color}"}` : "";
-}
-
-function escapeXmlAttr(value: string): string {
-  return value.replace(/"/g, "&quot;");
 }
 
 function supportsNestedChildren(block: NfmBlock): boolean {

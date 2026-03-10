@@ -6,6 +6,7 @@ import {
   defaultStyleSpecs,
 } from "@blocknote/core";
 import { dualThemeCodeBlockOptions } from "./code-block-options";
+import { createAttachmentInlineContentSpec } from "./attachment-chip";
 import { createCalloutBlock } from "./callout-block";
 import { createCardToggleBlockSpec } from "./card-toggle-block";
 import { createCardRefBlockSpec } from "./card-ref-block";
@@ -29,6 +30,9 @@ export const toggleListSchema = BlockNoteSchema.create({
     toggleListInlineView: createToggleListInlineViewBlockSpec(),
     cardRef: createCardRefBlockSpec(),
   },
-  inlineContentSpecs: defaultInlineContentSpecs,
+  inlineContentSpecs: {
+    ...defaultInlineContentSpecs,
+    attachment: createAttachmentInlineContentSpec(),
+  },
   styleSpecs: defaultStyleSpecs,
 });

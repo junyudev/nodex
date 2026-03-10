@@ -11,6 +11,7 @@ import type {
 import { NFM_COLORS } from "./types";
 import { isChildlessNfmBlockType } from "./childless";
 import { parseInlineContent } from "./parser-inline";
+import { getXmlAttr } from "./xml-attributes";
 
 /**
  * Parse a Notion-flavored Markdown string into a block tree.
@@ -570,13 +571,6 @@ function looksLikeNfmBlockStart(line: string): boolean {
   if (/^- \[[xX ]\]\s/.test(trimmed)) return true;
   if (/^- /.test(trimmed)) return true;
   return /^\d+\.\s/.test(trimmed);
-}
-
-function getXmlAttr(attrs: string, name: string): string | undefined {
-  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`${escapedName}="([^"]*)"`);
-  const match = attrs.match(pattern);
-  return match ? match[1] : undefined;
 }
 
 function normalizeChildlessBlocks(blocks: NfmBlock[]): NfmBlock[] {

@@ -400,6 +400,7 @@ function inlineToText(content: NfmInlineContent[]): string {
   return content
     .map((item) => {
       if (item.type === "linebreak") return "\n";
+      if (item.type === "attachment") return item.name;
       return item.text;
     })
     .join("");
@@ -407,7 +408,7 @@ function inlineToText(content: NfmInlineContent[]): string {
 
 function findInlineSpan(content: NfmInlineContent[], text: string): StyledInline | undefined {
   return content.find((item): item is StyledInline => {
-    if (item.type === "linebreak") return false;
+    if (item.type === "linebreak" || item.type === "attachment") return false;
     return item.text === text;
   });
 }

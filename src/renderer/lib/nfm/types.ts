@@ -83,7 +83,22 @@ export interface NfmLineBreak {
   type: "linebreak";
 }
 
-export type NfmInlineContent = NfmTextSpan | NfmLinkSpan | NfmLineBreak;
+export interface NfmAttachmentInlineContent {
+  type: "attachment";
+  kind: "text" | "file" | "folder";
+  mode: "materialized" | "link";
+  source: string;
+  name: string;
+  mimeType?: string;
+  bytes?: number;
+  origin?: string;
+}
+
+export type NfmInlineContent =
+  | NfmTextSpan
+  | NfmLinkSpan
+  | NfmLineBreak
+  | NfmAttachmentInlineContent;
 
 // --- Block types ---
 
