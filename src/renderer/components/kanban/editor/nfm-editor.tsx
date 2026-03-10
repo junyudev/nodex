@@ -1426,10 +1426,11 @@ export function NfmEditor({
   const customSideMenu = useCallback(
     () => (
       <NfmSideMenu
-        dragHandleMenu={() => (
+        dragHandleMenu={({ releaseSideMenuFreeze }) => (
           <NfmDragHandleMenu
             canSendBlocks={sourceCardContext !== undefined}
             onSendBlocks={openSendBlocksDialog}
+            releaseSideMenuFreeze={releaseSideMenuFreeze}
           />
         )}
       />
