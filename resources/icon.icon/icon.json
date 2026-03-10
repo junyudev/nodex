@@ -1,0 +1,26 @@
+{
+  "fill": {
+    "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "nodex-icon-foreground.svg",
+          "name": "nodex-icon-foreground",
+          "is-glass": false,
+          "material-strength": 0
+        }
+      ],
+      "material-strength": 0,
+      "specular": false,
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

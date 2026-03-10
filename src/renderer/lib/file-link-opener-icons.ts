@@ -1,0 +1,25 @@
+import type { FileLinkOpenerId } from "../../shared/file-link-openers";
+
+export const FILE_LINK_OPENER_ICON_URLS: Record<FileLinkOpenerId, string> = {
+  vscode: new URL("../assets/open-file-targets/vscode.png", import.meta.url).href,
+  vscodeInsiders: new URL("../assets/open-file-targets/vscode-insiders.png", import.meta.url).href,
+  cursor: new URL("../assets/open-file-targets/cursor.png", import.meta.url).href,
+  bbedit: new URL("../assets/open-file-targets/bbedit.png", import.meta.url).href,
+  sublimeText: new URL("../assets/open-file-targets/sublime-text.png", import.meta.url).href,
+  windsurf: new URL("../assets/open-file-targets/windsurf.png", import.meta.url).href,
+  antigravity: new URL("../assets/open-file-targets/antigravity.png", import.meta.url).href,
+  fileManager: new URL("../assets/open-file-targets/finder.png", import.meta.url).href,
+  terminal: new URL("../assets/open-file-targets/terminal.png", import.meta.url).href,
+  iterm2: new URL("../assets/open-file-targets/iterm2.png", import.meta.url).href,
+  ghostty: new URL("../assets/open-file-targets/ghostty.png", import.meta.url).href,
+  warp: new URL("../assets/open-file-targets/warp.png", import.meta.url).href,
+  xcode: new URL("../assets/open-file-targets/xcode.png", import.meta.url).href,
+  androidStudio: new URL("../assets/open-file-targets/android-studio.png", import.meta.url).href,
+  intellij: new URL("../assets/open-file-targets/intellij.png", import.meta.url).href,
+  goland: new URL("../assets/open-file-targets/goland.png", import.meta.url).href,
+  rustrover: new URL("../assets/open-file-targets/rustrover.png", import.meta.url).href,
+  pycharm: new URL("../assets/open-file-targets/pycharm.png", import.meta.url).href,
+  webstorm: new URL("../assets/open-file-targets/webstorm.svg", import.meta.url).href,
+  zed: new URL("../assets/open-file-targets/zed.png", import.meta.url).href,
+  textmate: new URL("../assets/open-file-targets/textmate.png", import.meta.url).href,
+};
