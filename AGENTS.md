@@ -13,7 +13,7 @@
 
 
 ## Project Overview
-Nodex is a local-first kanban system for coding agents.
+Nodex is a local-first, block-based agent orchestrator.
 It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 
 ## Setup Commands
