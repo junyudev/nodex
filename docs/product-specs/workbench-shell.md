@@ -23,7 +23,7 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 
 ## Stage Semantics
 - View: existing board/list/toggle-list/canvas/calendar host with search toolbar.
-- Card: Card Stage editor session tabs; history opens as a card-specific overlay from Card Stage, and the sidebar mirrors card navigation with collapsible current DB-project status groups plus a `Recent` session subsection. A collapsed status group may still keep its active card row visible under the header.
+- Card: Card Stage editor session tabs; history opens as a card-specific overlay from Card Stage, and the sidebar mirrors card navigation with collapsible current DB-project status groups plus a `Recent` session subsection. Status groups start collapsed by default, and a collapsed status group may still keep its active card row visible under the header.
 - Thread: Codex app-server-backed thread workspace with account/auth controls, a permission mode selector, streaming turn/item feed, reverse navigation to owning card, and stage-local project context (`threadsProjectId`).
 - Diff: interactive mock placeholder for diff previews.
 - Terminal panel: mixed tabs (`project` and `card` bound), globally docked at bottom, with per-tab project routing.
@@ -64,6 +64,7 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 ## Persistence
 - Stage focus is persisted globally (not keyed by DB datasource project).
 - Sidebar stage section expansion (including the top-level `Recents` group) and stage tab selections are persisted per project.
+- Sidebar card-status subgroup expansion and per-section overflow expansion (`Show more` / `Show less`) are persisted per project.
 - Full-rail stage panel widths are persisted globally after panel border resize.
 - Sliding-window requested pane count (1-4) is persisted globally.
 - Sliding-window pane widths are persisted globally by stage id.

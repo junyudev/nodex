@@ -183,6 +183,10 @@ interface WorkbenchShellProps {
   ) => void;
   setSidebarStageExpanded: (projectId: string, stageId: SidebarGroupId, expanded: boolean) => void;
   isSidebarStageExpanded: (projectId: string, stageId: SidebarGroupId) => boolean;
+  setSidebarSectionExpanded: (projectId: string, sectionId: string, expanded: boolean) => void;
+  isSidebarSectionExpanded: (projectId: string, sectionId: string) => boolean;
+  setSidebarSectionShowAll: (projectId: string, sectionId: string, showAll: boolean) => void;
+  isSidebarSectionShowAll: (projectId: string, sectionId: string) => boolean;
   setActiveCardsTab: (projectId: string, tabId: string) => void;
   setActiveThreadsTab: (projectId: string, tabId: string) => void;
   setThreadsTabs: (projectId: string, tabs: ThreadsStageTab[]) => void;
@@ -325,6 +329,10 @@ export function WorkbenchShell({
   setFocusedStage,
   setSidebarStageExpanded,
   isSidebarStageExpanded,
+  setSidebarSectionExpanded,
+  isSidebarSectionExpanded,
+  setSidebarSectionShowAll,
+  isSidebarSectionShowAll,
   setActiveCardsTab,
   setActiveThreadsTab,
   setThreadsTabs,
@@ -1036,6 +1044,24 @@ export function WorkbenchShell({
     sidebar.topLevelSectionOrder,
     sidebar.topLevelSections,
   );
+  const sidebarSectionExpandedState = useMemo(() => {
+    const stateBySection: Record<string, boolean> = {};
+    for (const group of [dbStageGroup, ...topLevelStageGroups.values()]) {
+      for (const section of group.sections) {
+        stateBySection[section.id] = isSidebarSectionExpanded(dbProjectId, section.id);
+      }
+    }
+    return stateBySection;
+  }, [dbProjectId, dbStageGroup, isSidebarSectionExpanded, topLevelStageGroups]);
+  const sidebarSectionShowAllState = useMemo(() => {
+    const stateBySection: Record<string, boolean> = {};
+    for (const group of [dbStageGroup, ...topLevelStageGroups.values()]) {
+      for (const section of group.sections) {
+        stateBySection[section.id] = isSidebarSectionShowAll(dbProjectId, section.id);
+      }
+    }
+    return stateBySection;
+  }, [dbProjectId, dbStageGroup, isSidebarSectionShowAll, topLevelStageGroups]);
   const stageGroups: StageSidebarGroup[] = [
     dbStageGroup,
     ...orderedTopLevelSectionIds.flatMap((sectionId, index, visibleIds) => {
@@ -1541,7 +1567,13 @@ export function WorkbenchShell({
             stageGroups={stageGroups}
             collapsed={false}
             width={sidebar.width}
+            expandedSections={sidebarSectionExpandedState}
+            showAllItemsBySection={sidebarSectionShowAllState}
             onResizeWidth={setSidebarWidth}
+            onSetSectionExpanded={(sectionId, expanded) =>
+              setSidebarSectionExpanded(dbProjectId, sectionId, expanded)}
+            onSetSectionShowAll={(sectionId, showAll) =>
+              setSidebarSectionShowAll(dbProjectId, sectionId, showAll)}
             onSelectSpace={setDbProject}
             onOpenSettings={() => setSettingsOpen(true)}
             projectPickerOpenTick={projectPickerOpenTick}
@@ -1578,7 +1610,13 @@ export function WorkbenchShell({
               stageGroups={stageGroups}
               collapsed={false}
               width={sidebar.width}
+              expandedSections={sidebarSectionExpandedState}
+              showAllItemsBySection={sidebarSectionShowAllState}
               onResizeWidth={setSidebarWidth}
+              onSetSectionExpanded={(sectionId, expanded) =>
+                setSidebarSectionExpanded(dbProjectId, sectionId, expanded)}
+              onSetSectionShowAll={(sectionId, showAll) =>
+                setSidebarSectionShowAll(dbProjectId, sectionId, showAll)}
               onSelectSpace={setDbProject}
               onOpenSettings={() => setSettingsOpen(true)}
               projectPickerOpenTick={projectPickerOpenTick}

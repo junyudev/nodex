@@ -73,7 +73,11 @@ interface LeftSidebarProps {
   utilityActions?: React.ReactNode;
   collapsed: boolean;
   width: number;
+  expandedSections: Record<string, boolean>;
+  showAllItemsBySection: Record<string, boolean>;
   onResizeWidth: (width: number) => void;
+  onSetSectionExpanded: (sectionId: string, expanded: boolean) => void;
+  onSetSectionShowAll: (sectionId: string, showAll: boolean) => void;
   onSelectSpace: (projectId: string) => void;
   onOpenSettings: () => void;
   projectPickerOpenTick: number;
@@ -381,7 +385,11 @@ export function LeftSidebar({
   utilityActions,
   collapsed,
   width,
+  expandedSections,
+  showAllItemsBySection,
   onResizeWidth,
+  onSetSectionExpanded,
+  onSetSectionShowAll,
   onSelectSpace,
   onOpenSettings,
   projectPickerOpenTick,
@@ -389,8 +397,6 @@ export function LeftSidebar({
   onDeleteProject,
   onRenameProject,
 }: LeftSidebarProps) {
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
-  const [showAllItemsBySection, setShowAllItemsBySection] = useState<Record<string, boolean>>({});
   const projectById = useMemo(
     () => new Map(projects.map((project) => [project.id, project])),
     [projects],
@@ -540,15 +546,9 @@ export function LeftSidebar({
 
           const resetGroupOverflowExpansion = () => {
             if (sections.length === 0) return;
-            setShowAllItemsBySection((prev) => {
-              let changed = false;
-              const next = { ...prev };
-              sections.forEach((section) => {
-                if (next[section.id] !== true) return;
-                changed = true;
-                delete next[section.id];
-              });
-              return changed ? next : prev;
+            sections.forEach((section) => {
+              if (showAllItemsBySection[section.id] !== true) return;
+              onSetSectionShowAll(section.id, false);
             });
           };
 
@@ -632,10 +632,7 @@ export function LeftSidebar({
                   <CollapsiblePrimitive.Root
                     open={sectionExpanded}
                     onOpenChange={(open) => {
-                      setExpandedSections((prev) => ({
-                        ...prev,
-                        [section.id]: open,
-                      }));
+                      onSetSectionExpanded(section.id, open);
                     }}
                   >
                     <CollapsiblePrimitive.Trigger asChild>
@@ -691,10 +688,7 @@ export function LeftSidebar({
                           <CollapsiblePrimitive.Root
                             open={showAllItems}
                             onOpenChange={(open) => {
-                              setShowAllItemsBySection((prev) => ({
-                                ...prev,
-                                [section.id]: open,
-                              }));
+                              onSetSectionShowAll(section.id, open);
                             }}
                           >
                             <CollapsiblePrimitive.Content
@@ -760,10 +754,7 @@ export function LeftSidebar({
                       <CollapsiblePrimitive.Root
                         open={showAllItems}
                         onOpenChange={(open) => {
-                          setShowAllItemsBySection((prev) => ({
-                            ...prev,
-                            [section.id]: open,
-                          }));
+                          onSetSectionShowAll(section.id, open);
                         }}
                       >
                         <CollapsiblePrimitive.Content

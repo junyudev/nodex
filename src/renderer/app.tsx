@@ -90,6 +90,10 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     setFocusedStage,
     setSidebarStageExpanded,
     isSidebarStageExpanded,
+    setSidebarSectionExpanded,
+    isSidebarSectionExpanded,
+    setSidebarSectionShowAll,
+    isSidebarSectionShowAll,
     setActiveCardsTab,
     setActiveThreadsTab,
     setThreadsTabs,
@@ -661,6 +665,10 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       setFocusedStage={setFocusedStage}
       setSidebarStageExpanded={setSidebarStageExpanded}
       isSidebarStageExpanded={isSidebarStageExpanded}
+      setSidebarSectionExpanded={setSidebarSectionExpanded}
+      isSidebarSectionExpanded={isSidebarSectionExpanded}
+      setSidebarSectionShowAll={setSidebarSectionShowAll}
+      isSidebarSectionShowAll={isSidebarSectionShowAll}
       setActiveCardsTab={setActiveCardsTab}
       setActiveThreadsTab={setActiveThreadsTab}
       setThreadsTabs={setThreadsTabs}

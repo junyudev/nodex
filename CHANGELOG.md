@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed BlockNote drag-handle delete getting the side menu stuck at a stale position after removing a block.
+- Fixed the Cards sidebar so status groups start collapsed by default instead of opening every group on first render.
+- Fixed sidebar status-group collapse and `Show more` state resetting after reload; both now persist per project.
 
 ## [0.1.0] - 2026-03-10
 

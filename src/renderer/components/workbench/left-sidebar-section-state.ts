@@ -6,6 +6,7 @@ interface SidebarSectionLikeItem {
 interface SidebarSectionLike<Item extends SidebarSectionLikeItem> {
   id: string;
   items: Item[];
+  collapsible?: boolean;
 }
 
 export interface SidebarSectionRenderState<Item extends SidebarSectionLikeItem> {
@@ -22,7 +23,7 @@ export function resolveStageSidebarSectionRenderState<Item extends SidebarSectio
   showAllItemsBySection: Record<string, boolean>,
   collapseLimit = 10,
 ): SidebarSectionRenderState<Item> {
-  const expanded = expandedSections[section.id] ?? true;
+  const expanded = section.collapsible ? (expandedSections[section.id] ?? false) : true;
   if (!expanded) {
     return {
       expanded,

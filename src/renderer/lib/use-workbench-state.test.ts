@@ -169,6 +169,30 @@ describe("use-workbench-state helpers", () => {
     expect(state.recentCardSessions[0]?.id).toBe("recent-1");
   });
 
+  test("loads persisted sidebar section collapse and show-more state per project", () => {
+    resetStorage();
+    sessionStorageRef.setItem(
+      workbenchStorageKeys.workbench,
+      JSON.stringify({
+        sidebarSectionExpandedByProject: {
+          default: {
+            "cards:status:6-in-progress": true,
+          },
+        },
+        sidebarSectionShowAllByProject: {
+          default: {
+            "recents:list": true,
+          },
+        },
+      }),
+    );
+
+    const state = workbenchTestHelpers.loadInitialState();
+
+    expect(state.sidebarSectionExpandedByProject.default?.["cards:status:6-in-progress"]).toBeTrue();
+    expect(state.sidebarSectionShowAllByProject.default?.["recents:list"]).toBeTrue();
+  });
+
   test("normalizeRecentSessions caps persisted sessions at ten", () => {
     resetStorage();
     const normalized = workbenchTestHelpers.normalizeRecentSessions(

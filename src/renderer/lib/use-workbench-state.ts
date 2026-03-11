@@ -73,6 +73,7 @@ export interface FilesStageTab {
 
 export type StagePanelWidths = Partial<Record<StageId, number>>;
 export type StageCollapsedState = Partial<Record<StageId, boolean>>;
+export type SidebarSectionState = Record<string, boolean>;
 
 const WORKBENCH_STORAGE_KEY = "nodex-workbench-v1";
 const SIDEBAR_STORAGE_KEY = "nodex-sidebar-v1";
@@ -105,6 +106,8 @@ interface WorkbenchPrefs {
   focusedStage?: StageId;
   stageNavDirection?: StageNavDirection;
   sidebarStageExpandedByProject?: Record<string, Partial<Record<SidebarGroupId, boolean>>>;
+  sidebarSectionExpandedByProject?: Record<string, SidebarSectionState>;
+  sidebarSectionShowAllByProject?: Record<string, SidebarSectionState>;
   activeCardsTabId?: string;
   threadsTabs?: ThreadsStageTab[];
   activeThreadsTabId?: string;
@@ -137,6 +140,8 @@ interface WorkbenchState {
   focusedStage: StageId;
   stageNavDirection: StageNavDirection;
   sidebarStageExpandedByProject: Record<string, Partial<Record<SidebarGroupId, boolean>>>;
+  sidebarSectionExpandedByProject: Record<string, SidebarSectionState>;
+  sidebarSectionShowAllByProject: Record<string, SidebarSectionState>;
   activeCardsTabId: string;
   threadsTabs: ThreadsStageTab[];
   activeThreadsTabId: string;
@@ -313,6 +318,26 @@ function normalizeSidebarStageExpanded(
     },
     {},
   );
+}
+
+function normalizeSidebarSectionStateByProject(
+  value: unknown,
+): Record<string, SidebarSectionState> {
+  if (typeof value !== "object" || value === null) return {};
+
+  return Object.entries(value).reduce<Record<string, SidebarSectionState>>((acc, [projectId, sectionMap]) => {
+    if (typeof sectionMap !== "object" || sectionMap === null) return acc;
+
+    const parsed = Object.entries(sectionMap).reduce<SidebarSectionState>((sectionAcc, [sectionId, enabled]) => {
+      if (typeof sectionId !== "string" || sectionId.length === 0) return sectionAcc;
+      if (typeof enabled !== "boolean") return sectionAcc;
+      sectionAcc[sectionId] = enabled;
+      return sectionAcc;
+    }, {});
+
+    acc[projectId] = parsed;
+    return acc;
+  }, {});
 }
 
 function normalizeThreadsTabs(value: unknown): ThreadsStageTab[] {
@@ -606,6 +631,12 @@ function loadInitialState(options: LoadInitialStateOptions = {}): WorkbenchState
     sidebarStageExpandedByProject: normalizeSidebarStageExpanded(
       persistedWorkbench?.sidebarStageExpandedByProject,
     ),
+    sidebarSectionExpandedByProject: normalizeSidebarSectionStateByProject(
+      persistedWorkbench?.sidebarSectionExpandedByProject,
+    ),
+    sidebarSectionShowAllByProject: normalizeSidebarSectionStateByProject(
+      persistedWorkbench?.sidebarSectionShowAllByProject,
+    ),
     activeCardsTabId,
     threadsTabs,
     activeThreadsTabId,
@@ -837,6 +868,8 @@ export function useWorkbenchState(
           : null;
 
       const sidebarStageExpandedByProject = { ...prev.sidebarStageExpandedByProject };
+      const sidebarSectionExpandedByProject = { ...prev.sidebarSectionExpandedByProject };
+      const sidebarSectionShowAllByProject = { ...prev.sidebarSectionShowAllByProject };
       const slidingWindowPaneCount = clampSlidingWindowPaneCount(prev.slidingWindowPaneCount);
       const terminalPanelOpen = prev.terminalPanelOpen;
       const terminalPanelHeight = clampTerminalPanelHeight(prev.terminalPanelHeight);
@@ -844,12 +877,24 @@ export function useWorkbenchState(
       Object.keys(sidebarStageExpandedByProject).forEach((projectId) => {
         if (!projectIds.has(projectId)) delete sidebarStageExpandedByProject[projectId];
       });
+      Object.keys(sidebarSectionExpandedByProject).forEach((projectId) => {
+        if (!projectIds.has(projectId)) delete sidebarSectionExpandedByProject[projectId];
+      });
+      Object.keys(sidebarSectionShowAllByProject).forEach((projectId) => {
+        if (!projectIds.has(projectId)) delete sidebarSectionShowAllByProject[projectId];
+      });
 
       projects.forEach((project) => {
         const projectId = project.id;
         sidebarStageExpandedByProject[projectId] = ensureSidebarStageState(
           sidebarStageExpandedByProject[projectId],
         );
+        sidebarSectionExpandedByProject[projectId] = normalizeSidebarSectionStateByProject({
+          [projectId]: sidebarSectionExpandedByProject[projectId],
+        })[projectId] ?? {};
+        sidebarSectionShowAllByProject[projectId] = normalizeSidebarSectionStateByProject({
+          [projectId]: sidebarSectionShowAllByProject[projectId],
+        })[projectId] ?? {};
       });
 
       const cardsTabs = makeCardsStageTabs(recentCardSessions);
@@ -911,6 +956,8 @@ export function useWorkbenchState(
         focusedStage,
         stageNavDirection,
         sidebarStageExpandedByProject,
+        sidebarSectionExpandedByProject,
+        sidebarSectionShowAllByProject,
         activeCardsTabId,
         threadsTabs,
         activeThreadsTabId,
@@ -938,6 +985,8 @@ export function useWorkbenchState(
       focusedStage: state.focusedStage,
       stageNavDirection: state.stageNavDirection,
       sidebarStageExpandedByProject: state.sidebarStageExpandedByProject,
+      sidebarSectionExpandedByProject: state.sidebarSectionExpandedByProject,
+      sidebarSectionShowAllByProject: state.sidebarSectionShowAllByProject,
       activeCardsTabId: state.activeCardsTabId,
       threadsTabs: state.threadsTabs,
       activeThreadsTabId: state.activeThreadsTabId,
@@ -1226,6 +1275,50 @@ export function useWorkbenchState(
       };
     });
   }, []);
+
+  const setSidebarSectionExpanded = useCallback((projectId: string, sectionId: string, expanded: boolean) => {
+    setState((prev) => {
+      const projectMap = prev.sidebarSectionExpandedByProject[projectId] ?? {};
+      if (projectMap[sectionId] === expanded) return prev;
+      return {
+        ...prev,
+        sidebarSectionExpandedByProject: {
+          ...prev.sidebarSectionExpandedByProject,
+          [projectId]: {
+            ...projectMap,
+            [sectionId]: expanded,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const isSidebarSectionExpanded = useCallback((projectId: string, sectionId: string): boolean => {
+    const value = state.sidebarSectionExpandedByProject[projectId]?.[sectionId];
+    return typeof value === "boolean" ? value : false;
+  }, [state.sidebarSectionExpandedByProject]);
+
+  const setSidebarSectionShowAll = useCallback((projectId: string, sectionId: string, showAll: boolean) => {
+    setState((prev) => {
+      const projectMap = prev.sidebarSectionShowAllByProject[projectId] ?? {};
+      if (projectMap[sectionId] === showAll) return prev;
+      return {
+        ...prev,
+        sidebarSectionShowAllByProject: {
+          ...prev.sidebarSectionShowAllByProject,
+          [projectId]: {
+            ...projectMap,
+            [sectionId]: showAll,
+          },
+        },
+      };
+    });
+  }, []);
+
+  const isSidebarSectionShowAll = useCallback((projectId: string, sectionId: string): boolean => {
+    const value = state.sidebarSectionShowAllByProject[projectId]?.[sectionId];
+    return typeof value === "boolean" ? value : false;
+  }, [state.sidebarSectionShowAllByProject]);
 
   const setStageCollapsed = useCallback((_projectId: string, stageId: StageId, collapsed: boolean) => {
     setState((prev) => {
@@ -1647,6 +1740,10 @@ export function useWorkbenchState(
     switchToStageIndex,
     setSidebarStageExpanded,
     isSidebarStageExpanded,
+    setSidebarSectionExpanded,
+    isSidebarSectionExpanded,
+    setSidebarSectionShowAll,
+    isSidebarSectionShowAll,
     setStageCollapsed,
     isStageCollapsed,
     setActiveCardsTab,
