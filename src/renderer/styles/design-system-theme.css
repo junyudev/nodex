@@ -714,7 +714,6 @@
   --inset-toolbar: var(--height-toolbar);
   --safe-area-left: 0px;
   --safe-area-right: 0px;
-  --cursor-interaction: default;
   --vscode-editor-font-family:
     ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
