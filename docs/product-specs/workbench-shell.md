@@ -19,6 +19,7 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
   - sliding window: 1-4 stage panels render at once; focused stage and direction determine the contiguous visible window.
   - full rail: all stages render at once and remain mounted.
   - focused stage is visually emphasized and auto-revealed without forced centering.
+  - titlebar pane controls flank the minimap: `-` sits on the left and removes the current right-most pane, while `+` sits on the right and appends the next right pane when available before falling back to prepending the left pane at the right edge.
 - Stage order: `View -> Card -> Thread -> Diff`.
 
 ## Stage Semantics

@@ -420,7 +420,7 @@ async function renderShell(
     setActiveTerminalTab: () => undefined,
     setActiveFilesTab: () => undefined,
     setStagePanelWidths: () => undefined,
-    setSlidingWindowPaneCount: () => undefined,
+    stepSlidingWindowPaneCount: () => undefined,
     setTerminalPanelOpen: () => undefined,
     setTerminalPanelHeight: () => undefined,
     openProjectTerminalTab: () => "project:default",
@@ -450,6 +450,17 @@ describe("WorkbenchShell", () => {
   test("does not render inline task search input by default", async () => {
     const markup = await renderShell(false);
     expect(markup.includes("Search tasks")).toBeFalse();
+  });
+
+  test("places pane controls on either side of the minimap", async () => {
+    const markup = await renderShell(false, "sliding-window");
+    const minusIndex = markup.indexOf("aria-label=\"Decrease visible panes\"");
+    const minimapIndex = markup.indexOf("aria-label=\"Database\"");
+    const plusIndex = markup.indexOf("aria-label=\"Increase visible panes\"");
+
+    expect(minusIndex >= 0).toBeTrue();
+    expect(minimapIndex > minusIndex).toBeTrue();
+    expect(plusIndex > minimapIndex).toBeTrue();
   });
 
   test("renders a left-edge hover trigger when the sidebar is collapsed", async () => {

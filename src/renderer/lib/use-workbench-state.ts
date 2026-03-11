@@ -805,6 +805,122 @@ export function resolveEffectiveSlidingWindowPaneCount(
   return clampSlidingWindowPaneCount(Math.min(normalizedRequestedPaneCount, maxByWidth));
 }
 
+type SlidingWindowPaneCountAction = "decrease" | "increase";
+
+function areStageWindowsEqual(a: readonly StageId[], b: readonly StageId[]): boolean {
+  return a.length === b.length && a.every((stageId, index) => stageId === b[index]);
+}
+
+function resolveSlidingWindowWindowState(
+  targetWindow: readonly StageId[],
+  paneCount: number,
+  focusedStage: StageId,
+  stageNavDirection: StageNavDirection,
+): { focusedStage: StageId; stageNavDirection: StageNavDirection } {
+  const fallbackStage = targetWindow[targetWindow.length - 1] ?? focusedStage;
+  const focusCandidates = targetWindow.includes(focusedStage)
+    ? [focusedStage, fallbackStage, targetWindow[0] ?? focusedStage]
+    : [fallbackStage, targetWindow[0] ?? fallbackStage];
+  const directionCandidates = stageNavDirection === "right"
+    ? ["right", "left"] as const
+    : ["left", "right"] as const;
+
+  for (const candidateFocus of focusCandidates) {
+    for (const candidateDirection of directionCandidates) {
+      const candidateWindow = resolveExpandedStages(
+        candidateFocus,
+        candidateDirection,
+        paneCount,
+        false,
+      );
+      if (!areStageWindowsEqual(candidateWindow, targetWindow)) continue;
+      return {
+        focusedStage: candidateFocus,
+        stageNavDirection: candidateDirection,
+      };
+    }
+  }
+
+  return {
+    focusedStage: fallbackStage,
+    stageNavDirection: "left",
+  };
+}
+
+export function resolveSlidingWindowPaneCountChange(
+  focusedStage: StageId,
+  stageNavDirection: StageNavDirection,
+  paneCount: number,
+  action: SlidingWindowPaneCountAction,
+): {
+  focusedStage: StageId;
+  stageNavDirection: StageNavDirection;
+  slidingWindowPaneCount: number;
+} {
+  const normalizedPaneCount = clampSlidingWindowPaneCount(paneCount);
+  const currentWindow = resolveExpandedStages(
+    focusedStage,
+    stageNavDirection,
+    normalizedPaneCount,
+    false,
+  );
+
+  if (action === "increase") {
+    if (normalizedPaneCount >= STAGE_ORDER.length) {
+      return {
+        focusedStage,
+        stageNavDirection,
+        slidingWindowPaneCount: normalizedPaneCount,
+      };
+    }
+
+    const rightEdgeStage = currentWindow[currentWindow.length - 1];
+    const leftEdgeStage = currentWindow[0];
+    const rightEdgeIndex = rightEdgeStage ? stageIndexOf(rightEdgeStage) : -1;
+    const leftEdgeIndex = leftEdgeStage ? stageIndexOf(leftEdgeStage) : -1;
+
+    const targetWindow = rightEdgeIndex >= 0 && rightEdgeIndex < STAGE_ORDER.length - 1
+      ? [...currentWindow, STAGE_ORDER[rightEdgeIndex + 1]]
+      : leftEdgeIndex > 0
+        ? [STAGE_ORDER[leftEdgeIndex - 1], ...currentWindow]
+        : currentWindow;
+    const nextPaneCount = clampSlidingWindowPaneCount(normalizedPaneCount + 1);
+    const nextWindowState = resolveSlidingWindowWindowState(
+      targetWindow,
+      nextPaneCount,
+      focusedStage,
+      stageNavDirection,
+    );
+
+    return {
+      ...nextWindowState,
+      slidingWindowPaneCount: nextPaneCount,
+    };
+  }
+
+  if (normalizedPaneCount <= 1 || currentWindow.length <= 1) {
+    return {
+      focusedStage,
+      stageNavDirection,
+      slidingWindowPaneCount: normalizedPaneCount,
+    };
+  }
+
+  const targetWindow = currentWindow.slice(0, -1);
+  const nextPaneCount = clampSlidingWindowPaneCount(normalizedPaneCount - 1);
+  const nextWindowState = resolveSlidingWindowWindowState(
+    targetWindow,
+    nextPaneCount,
+    focusedStage,
+    stageNavDirection,
+  );
+
+  return {
+    ...nextWindowState,
+    slidingWindowPaneCount: nextPaneCount,
+  };
+}
+
 function makeCardsStageTabs(
   recentSessions: RecentCardSession[],
 ): CardsStageTab[] {
@@ -1459,6 +1575,32 @@ export function useWorkbenchState(
     });
   }, []);
 
+  const stepSlidingWindowPaneCount = useCallback((action: SlidingWindowPaneCountAction) => {
+    setState((prev) => {
+      const nextWindowState = resolveSlidingWindowPaneCountChange(
+        prev.focusedStage,
+        prev.stageNavDirection,
+        prev.slidingWindowPaneCount,
+        action,
+      );
+
+      if (
+        prev.focusedStage === nextWindowState.focusedStage
+        && prev.stageNavDirection === nextWindowState.stageNavDirection
+        && prev.slidingWindowPaneCount === nextWindowState.slidingWindowPaneCount
+      ) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        focusedStage: nextWindowState.focusedStage,
+        stageNavDirection: nextWindowState.stageNavDirection,
+        slidingWindowPaneCount: nextWindowState.slidingWindowPaneCount,
+      };
+    });
+  }, []);
+
   const setTerminalPanelOpen = useCallback((_projectId: string, open: boolean) => {
     setState((prev) => {
       if (prev.terminalPanelOpen === open) return prev;
@@ -1753,6 +1895,7 @@ export function useWorkbenchState(
     setActiveFilesTab,
     setStagePanelWidths,
     setSlidingWindowPaneCount,
+    stepSlidingWindowPaneCount,
     setTerminalPanelOpen,
     setTerminalPanelHeight,
     toggleTerminalPanel,
@@ -1804,4 +1947,5 @@ export const workbenchTestHelpers = {
   resolveNearestSlidingWindowDirection,
   resolveSlidingWindowFocusIntent,
   resolveEffectiveSlidingWindowPaneCount,
+  resolveSlidingWindowPaneCountChange,
 };

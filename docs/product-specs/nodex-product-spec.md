@@ -49,7 +49,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Sliding-window mode supports 1-4 visible stage panes; requested pane count persists globally across projects
 - Sliding-window mode includes resizable separators between adjacent panes; separator drag updates pane widths in real time and persists per-stage widths globally
 - Sliding-window mode auto-caps effective visible panes by available width while preserving requested pane count
-- Workbench top toolbar includes sidebar collapse plus sliding-window pane-count decrease/increase actions
+- Workbench top toolbar includes sidebar collapse plus sliding-window pane-count controls flanking the minimap; `-` sits to the left of the minimap and always removes the current right-most pane, while `+` sits to the right and tries to append the next pane on the right before falling back to prepending the left pane at the right edge
 - URL sync: `/?project=<id>`, persisted to localStorage
 - Sidebar project switcher selects the DB-stage datasource only; it does not reset Card/Thread/Terminal stage contexts
 - Task search query is persisted per project and restored on space switching; search input lives in the View stage toolbar

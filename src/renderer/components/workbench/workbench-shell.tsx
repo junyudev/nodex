@@ -193,7 +193,7 @@ interface WorkbenchShellProps {
   setActiveTerminalTab: (projectId: string, tabId: string) => void;
   setActiveFilesTab: (projectId: string, tabId: string) => void;
   setStagePanelWidths: (projectId: string, widths: StagePanelWidths) => void;
-  setSlidingWindowPaneCount: (paneCount: number) => void;
+  stepSlidingWindowPaneCount: (action: "decrease" | "increase") => void;
   setTerminalPanelOpen: (projectId: string, open: boolean) => void;
   setTerminalPanelHeight: (projectId: string, height: number) => void;
   openProjectTerminalTab: (projectId: string) => string;
@@ -339,7 +339,7 @@ export function WorkbenchShell({
   setActiveTerminalTab,
   setActiveFilesTab,
   setStagePanelWidths,
-  setSlidingWindowPaneCount,
+  stepSlidingWindowPaneCount,
   setTerminalPanelOpen,
   setTerminalPanelHeight,
   openProjectTerminalTab,
@@ -736,21 +736,61 @@ export function WorkbenchShell({
 
   const decreaseSlidingWindowPaneCount = useCallback(() => {
     if (stageRailLayoutMode !== "sliding-window") return;
-    setSlidingWindowPaneCount(slidingWindowPaneCount - 1);
+    stepSlidingWindowPaneCount("decrease");
   }, [
-    setSlidingWindowPaneCount,
-    slidingWindowPaneCount,
+    stepSlidingWindowPaneCount,
     stageRailLayoutMode,
   ]);
 
   const increaseSlidingWindowPaneCount = useCallback(() => {
     if (stageRailLayoutMode !== "sliding-window") return;
-    setSlidingWindowPaneCount(slidingWindowPaneCount + 1);
+    stepSlidingWindowPaneCount("increase");
   }, [
-    setSlidingWindowPaneCount,
-    slidingWindowPaneCount,
+    stepSlidingWindowPaneCount,
     stageRailLayoutMode,
   ]);
+
+  const decreasePaneCountButton = (
+    <button
+      type="button"
+      onClick={decreaseSlidingWindowPaneCount}
+      disabled={stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount <= 1}
+      title="Decrease visible panes"
+      aria-label="Decrease visible panes"
+      className={cn(
+        "inline-flex size-7 items-center justify-center rounded-lg transition-colors",
+        stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount <= 1
+          ? "cursor-not-allowed text-(--foreground-secondary) opacity-30"
+          : "text-(--foreground-secondary) hover:bg-(--background-secondary) hover:text-(--foreground)",
+      )}
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8.5 3.5L5 7L8.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+
+  const increasePaneCountButton = (
+    <button
+      type="button"
+      onClick={increaseSlidingWindowPaneCount}
+      disabled={stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount >= STAGE_ORDER.length}
+      title="Increase visible panes"
+      aria-label="Increase visible panes"
+      className={cn(
+        "inline-flex size-7 items-center justify-center rounded-lg transition-colors",
+        stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount >= STAGE_ORDER.length
+          ? "cursor-not-allowed text-(--foreground-secondary) opacity-30"
+          : "text-(--foreground-secondary) hover:bg-(--background-secondary) hover:text-(--foreground)",
+      )}
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M5.5 3.5L9 7L5.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
 
   const activeTerminalTab = useMemo(
     () => terminalTabs.find((tab) => tab.id === activeTerminalTabId) ?? terminalTabs[0] ?? null,
@@ -1645,13 +1685,20 @@ export function WorkbenchShell({
             ) : null}
           </div>
           <div className="justify-self-center">
-            <StageMinimap
-              focusedStage={focusedStage}
-              stageNavDirection={stageNavDirection}
-              layoutMode={stageRailLayoutMode}
-              slidingWindowPaneCount={slidingWindowPaneCount}
-              onFocusStage={(stageId) => handleStageRailFocus(stageId)}
-            />
+            <div
+              className="flex items-center gap-3"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              {decreasePaneCountButton}
+              <StageMinimap
+                focusedStage={focusedStage}
+                stageNavDirection={stageNavDirection}
+                layoutMode={stageRailLayoutMode}
+                slidingWindowPaneCount={slidingWindowPaneCount}
+                onFocusStage={(stageId) => handleStageRailFocus(stageId)}
+              />
+              {increasePaneCountButton}
+            </div>
           </div>
           <div className="flex items-center justify-end gap-0.5">
             {activeProjectPendingMutationCount > 0 ? (
@@ -1690,45 +1737,6 @@ export function WorkbenchShell({
                 <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
                 <path d="M4 5.5L6 7.5L4 9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 <line x1="7.5" y1="9.5" x2="10" y2="9.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={decreaseSlidingWindowPaneCount}
-              disabled={stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount <= 1}
-              title="Decrease visible panes"
-              aria-label="Decrease visible panes"
-              className={cn(
-                "inline-flex size-7 items-center justify-center rounded-lg transition-colors",
-                stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount <= 1
-                  ? "cursor-not-allowed text-(--foreground-secondary) opacity-30"
-                  : "text-(--foreground-secondary) hover:bg-(--background-secondary) hover:text-(--foreground)",
-              )}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <svg width="16" height="16" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
-                <line x1="4" y1="7" x2="10" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={increaseSlidingWindowPaneCount}
-              disabled={stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount >= STAGE_ORDER.length}
-              title="Increase visible panes"
-              aria-label="Increase visible panes"
-              className={cn(
-                "inline-flex size-7 items-center justify-center rounded-lg transition-colors",
-                stageRailLayoutMode !== "sliding-window" || slidingWindowPaneCount >= STAGE_ORDER.length
-                  ? "cursor-not-allowed text-(--foreground-secondary) opacity-30"
-                  : "text-(--foreground-secondary) hover:bg-(--background-secondary) hover:text-(--foreground)",
-              )}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <svg width="16" height="16" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
-                <line x1="4" y1="7" x2="10" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="7" y1="4" x2="7" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               </svg>
             </button>
           </div>

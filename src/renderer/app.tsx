@@ -100,7 +100,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     setActiveTerminalTab,
     setActiveFilesTab,
     setStagePanelWidths,
-    setSlidingWindowPaneCount,
+    stepSlidingWindowPaneCount,
     setTerminalPanelOpen,
     setTerminalPanelHeight,
     toggleTerminalPanel,
@@ -675,7 +675,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       setActiveTerminalTab={setActiveTerminalTab}
       setActiveFilesTab={setActiveFilesTab}
       setStagePanelWidths={setStagePanelWidths}
-      setSlidingWindowPaneCount={setSlidingWindowPaneCount}
+      stepSlidingWindowPaneCount={stepSlidingWindowPaneCount}
       setTerminalPanelOpen={setTerminalPanelOpen}
       setTerminalPanelHeight={setTerminalPanelHeight}
       openProjectTerminalTab={openProjectTerminalTab}

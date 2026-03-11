@@ -372,6 +372,90 @@ describe("use-workbench-state helpers", () => {
     expect(workbenchTestHelpers.resolveEffectiveSlidingWindowPaneCount(4, 540)).toBe(1);
   });
 
+  test("resolveSlidingWindowPaneCountChange grows the window to the right before falling back left", () => {
+    const appendRight = workbenchTestHelpers.resolveSlidingWindowPaneCountChange(
+      "db",
+      "right",
+      2,
+      "increase",
+    );
+    const appendLeftFallback = workbenchTestHelpers.resolveSlidingWindowPaneCountChange(
+      "threads",
+      "right",
+      2,
+      "increase",
+    );
+
+    expect(appendRight.slidingWindowPaneCount).toBe(3);
+    expect(appendRight.focusedStage).toBe("db");
+    expect(appendRight.stageNavDirection).toBe("right");
+    expect(
+      JSON.stringify(
+        workbenchTestHelpers.resolveExpandedStages(
+          appendRight.focusedStage,
+          appendRight.stageNavDirection,
+          appendRight.slidingWindowPaneCount,
+          false,
+        ),
+      ),
+    ).toBe(JSON.stringify(["db", "cards", "threads"]));
+
+    expect(appendLeftFallback.slidingWindowPaneCount).toBe(3);
+    expect(
+      JSON.stringify(
+        workbenchTestHelpers.resolveExpandedStages(
+          appendLeftFallback.focusedStage,
+          appendLeftFallback.stageNavDirection,
+          appendLeftFallback.slidingWindowPaneCount,
+          false,
+        ),
+      ),
+    ).toBe(JSON.stringify(["cards", "threads", "files"]));
+  });
+
+  test("resolveSlidingWindowPaneCountChange removes the right-most pane", () => {
+    const keepFocus = workbenchTestHelpers.resolveSlidingWindowPaneCountChange(
+      "cards",
+      "right",
+      3,
+      "decrease",
+    );
+    const dropFocusedRightEdge = workbenchTestHelpers.resolveSlidingWindowPaneCountChange(
+      "threads",
+      "left",
+      2,
+      "decrease",
+    );
+
+    expect(keepFocus.slidingWindowPaneCount).toBe(2);
+    expect(keepFocus.focusedStage).toBe("cards");
+    expect(keepFocus.stageNavDirection).toBe("right");
+    expect(
+      JSON.stringify(
+        workbenchTestHelpers.resolveExpandedStages(
+          keepFocus.focusedStage,
+          keepFocus.stageNavDirection,
+          keepFocus.slidingWindowPaneCount,
+          false,
+        ),
+      ),
+    ).toBe(JSON.stringify(["cards", "threads"]));
+
+    expect(dropFocusedRightEdge.slidingWindowPaneCount).toBe(1);
+    expect(dropFocusedRightEdge.focusedStage).toBe("cards");
+    expect(dropFocusedRightEdge.stageNavDirection).toBe("left");
+    expect(
+      JSON.stringify(
+        workbenchTestHelpers.resolveExpandedStages(
+          dropFocusedRightEdge.focusedStage,
+          dropFocusedRightEdge.stageNavDirection,
+          dropFocusedRightEdge.slidingWindowPaneCount,
+          false,
+        ),
+      ),
+    ).toBe(JSON.stringify(["cards"]));
+  });
+
   test("normalizes sliding-window pane count and rejects invalid values", () => {
     expect(workbenchTestHelpers.normalizeSlidingWindowPaneCount(3)).toBe(3);
     expect(workbenchTestHelpers.normalizeSlidingWindowPaneCount(0)).toBe(1);
