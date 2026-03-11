@@ -14,6 +14,7 @@ import {
   updateHistorySettings,
   updateThreadNotificationSettings,
 } from "./kanban/config";
+import { isCardStatus, type CardStatus } from "../shared/card-status";
 import { dbNotifier } from "./kanban/db-notifier";
 import {
   checkoutGitBranch,
@@ -379,6 +380,14 @@ function normalizeCardBody(body: Record<string, unknown>): Record<string, unknow
   return result;
 }
 
+function parseOptionalStatus(value: unknown): CardStatus | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (!isCardStatus(value)) {
+    throw new Error("Invalid status");
+  }
+  return value;
+}
+
 function normalizeCardInputValue(value: unknown): unknown {
   if (!isRecord(value)) return value;
   return normalizeCardBody(value);
@@ -477,9 +486,10 @@ app.post("/api/projects/:projectId/board", cardWriteBodyLimit, async (c) => {
   const projectId = c.req.param("projectId");
   const body = (await c.req.json()) as Record<string, unknown>;
   try {
-    const { columnId, sessionId, placement, ...input } = normalizeCardBody(body);
-    if (typeof columnId !== "string" || columnId.length === 0) {
-      return c.json({ error: "Missing columnId" }, 400);
+    const { status, sessionId, placement, ...input } = normalizeCardBody(body);
+    const normalizedStatus = parseOptionalStatus(status);
+    if (!normalizedStatus) {
+      return c.json({ error: "Missing status" }, 400);
     }
     if (placement !== undefined && placement !== "top" && placement !== "bottom") {
       return c.json({ error: "Invalid placement" }, 400);
@@ -488,7 +498,7 @@ app.post("/api/projects/:projectId/board", cardWriteBodyLimit, async (c) => {
     const normalizedPlacement: CardCreatePlacement = placement === "top" ? "top" : "bottom";
     const card = await dbService.createCard(
       projectId,
-      columnId,
+      normalizedStatus,
       input as unknown as CardInput,
       normalizedSessionId,
       normalizedPlacement,
@@ -609,12 +619,12 @@ app.get("/api/assets/:fileName", (c) => {
 
 app.get("/api/projects/:projectId/card", async (c) => {
   const projectId = c.req.param("projectId");
-  const columnId = c.req.query("columnId") || undefined;
+  const status = parseOptionalStatus(c.req.query("status") || undefined);
   const cardId = c.req.query("cardId");
   if (!cardId) return c.json({ error: "Missing cardId" }, 400);
-  const result = await dbService.getCard(projectId, cardId, columnId);
+  const result = await dbService.getCard(projectId, cardId, status);
   if (!result) return c.json({ error: "Not found" }, 404);
-  return c.json({ ...result.card, columnId: result.columnId });
+  return c.json(result);
 });
 
 app.put("/api/projects/:projectId/card", cardWriteBodyLimit, async (c) => {
@@ -622,7 +632,7 @@ app.put("/api/projects/:projectId/card", cardWriteBodyLimit, async (c) => {
   const body = (await c.req.json()) as Record<string, unknown>;
   try {
     const {
-      columnId,
+      status,
       cardId,
       sessionId,
       expectedRevision,
@@ -631,7 +641,7 @@ app.put("/api/projects/:projectId/card", cardWriteBodyLimit, async (c) => {
     if (typeof cardId !== "string") {
       return c.json({ error: "Missing cardId" }, 400);
     }
-    const normalizedColumnId = typeof columnId === "string" ? columnId : undefined;
+    const normalizedStatus = parseOptionalStatus(status);
     const normalizedSessionId = typeof sessionId === "string" ? sessionId : undefined;
     const normalizedExpectedRevision = typeof expectedRevision === "number"
       && Number.isInteger(expectedRevision)
@@ -639,7 +649,7 @@ app.put("/api/projects/:projectId/card", cardWriteBodyLimit, async (c) => {
       : undefined;
     const result = await dbService.updateCard(
       projectId,
-      normalizedColumnId,
+      normalizedStatus,
       cardId,
       updates as Partial<CardInput>,
       normalizedSessionId,
@@ -659,11 +669,11 @@ app.put("/api/projects/:projectId/card", cardWriteBodyLimit, async (c) => {
 
 app.delete("/api/projects/:projectId/card", async (c) => {
   const projectId = c.req.param("projectId");
-  const columnId = c.req.query("columnId") || undefined;
+  const status = parseOptionalStatus(c.req.query("status") || undefined);
   const cardId = c.req.query("cardId");
   const sessionId = c.req.query("sessionId") || undefined;
   if (!cardId) return c.json({ error: "Missing cardId" }, 400);
-  const success = await dbService.deleteCard(projectId, columnId, cardId, sessionId);
+  const success = await dbService.deleteCard(projectId, status, cardId, sessionId);
   if (!success) return c.json({ error: "Not found" }, 404);
   return c.json({ success: true });
 });
@@ -764,7 +774,7 @@ app.put("/api/projects/:projectId/card-occurrence", cardWriteBodyLimit, async (c
 
 app.get("/api/projects/:projectId/column", async (c) => {
   const projectId = c.req.param("projectId");
-  const columnId = c.req.query("id");
+  const columnId = parseOptionalStatus(c.req.query("id"));
   if (!columnId) return c.json({ error: "Missing id" }, 400);
   const column = await dbService.readColumn(projectId, columnId);
   return c.json(column);
@@ -810,9 +820,9 @@ app.post("/api/projects/:projectId/card-move-to-project", async (c) => {
     const input: MoveCardToProjectInput = {
       cardId: body.cardId,
       sourceProjectId,
-      sourceColumnId: typeof body.sourceColumnId === "string" ? body.sourceColumnId : undefined,
+      sourceStatus: parseOptionalStatus(body.sourceStatus),
       targetProjectId: body.targetProjectId,
-      targetColumnId: typeof body.targetColumnId === "string" ? body.targetColumnId : undefined,
+      targetStatus: parseOptionalStatus(body.targetStatus),
     };
 
     const result = await dbService.moveCardToProject(input);

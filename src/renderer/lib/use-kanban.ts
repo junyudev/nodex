@@ -185,9 +185,9 @@ export function useKanban(options: UseKanbanOptions) {
   );
 
   const getCard = useCallback(
-    async (cardId: string, columnId?: string): Promise<{ card: Card; columnId: string } | null> => {
+    async (cardId: string, columnId?: string): Promise<Card | null> => {
       try {
-        return (await invoke("card:get", projectId, cardId, columnId)) as { card: Card; columnId: string } | null;
+        return (await invoke("card:get", projectId, cardId, columnId)) as Card | null;
       } catch (err) {
         store.setError(toErrorMessage(err));
         return null;
@@ -274,7 +274,7 @@ export function useKanban(options: UseKanbanOptions) {
       const outcome = await store.runOptimisticMutation<MoveCardToProjectResult>({
         kind: "card:move-to-project",
         conflictKeys: conflictKeysForDelete(input.cardId),
-        apply: buildDeleteCardTransform(input.sourceColumnId, input.cardId),
+        apply: buildDeleteCardTransform(input.sourceStatus, input.cardId),
         runRemote: async () => (await invoke("card:move-to-project", {
           ...input,
           sourceProjectId: projectId,
@@ -301,7 +301,7 @@ export function useKanban(options: UseKanbanOptions) {
       const outcome = await store.runOptimisticMutation<BlockDropImportResult>({
         kind: "card:import-block-drop",
         conflictKeys: [
-          `column:${input.targetColumnId}:cards`,
+          `column:${input.targetStatus}:cards`,
           ...input.sourceUpdates.map((update) => conflictKeyForCard(update.cardId)),
           ...optimisticCards.map((card) => conflictKeyForCard(card.id)),
         ],

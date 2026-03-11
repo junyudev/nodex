@@ -42,8 +42,8 @@ interface CardToggleSnapshotPayload {
     agentBlocked?: boolean;
   };
   projectId?: string;
-  columnId?: string;
-  columnName?: string;
+  status?: string;
+  statusName?: string;
   capturedAt?: string;
 }
 
@@ -221,8 +221,8 @@ export function updateCardToggleSnapshotForMetaEdit(
   if (propertyType === "status") {
     const statusId = value as ToggleListStatusId;
     if (!(statusId in TOGGLE_LIST_STATUS_LABELS)) return snapshot;
-    parsed.columnId = statusId;
-    parsed.columnName = TOGGLE_LIST_STATUS_LABELS[statusId];
+    parsed.status = statusId;
+    parsed.statusName = TOGGLE_LIST_STATUS_LABELS[statusId];
     return encodeCardToggleSnapshot(parsed);
   }
 

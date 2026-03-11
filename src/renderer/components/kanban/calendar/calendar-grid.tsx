@@ -25,7 +25,8 @@ import { columnStyles } from "../column";
 import { CalendarEventBlock } from "./calendar-event-block";
 import { CalendarInlineCreator } from "./calendar-inline-creator";
 import { OccurrenceScopeDialog } from "./occurrence-scope-dialog";
-import { ARCHIVE_COLUMN_ID, type Card as CardType, type OccurrenceEditScope } from "@/lib/types";
+import type { Card as CardType, OccurrenceEditScope } from "@/lib/types";
+import { ARCHIVED_CARD_OPTION_ID } from "@/lib/kanban-options";
 import {
   applyPreviewToScheduledEvents,
   areCalendarEventPreviewsEqual,
@@ -1519,7 +1520,7 @@ export function CalendarGrid({
                     const leftPct = (segment.startDayIndex / dayCount) * 100;
                     const widthPct = ((segment.endDayIndex - segment.startDayIndex) / dayCount) * 100;
                     const top = segment.lane * (ALL_DAY_EVENT_HEIGHT + ALL_DAY_EVENT_GAP) + 4;
-                    const isArchivedEvent = event.columnId === ARCHIVE_COLUMN_ID;
+                    const isArchivedEvent = event.columnId === ARCHIVED_CARD_OPTION_ID;
                     const isMoveDragSource = activeMoveDragEventId === event.id;
 
                     return (
@@ -1625,7 +1626,7 @@ export function CalendarGrid({
                   ? (columnStyles[moveOverlayForDay.columnId]?.accentColor ?? "#8E8B86")
                   : "#8E8B86";
                 const isMoveOverlayArchived =
-                  moveOverlayForDay?.columnId === ARCHIVE_COLUMN_ID;
+                  moveOverlayForDay?.columnId === ARCHIVED_CARD_OPTION_ID;
 
                 return (
                   <div
@@ -1673,7 +1674,7 @@ export function CalendarGrid({
                     {events.map((event) => {
                       const styles = columnStyles[event.columnId];
                       const accentColor = styles?.accentColor ?? "#8E8B86";
-                      const isArchivedEvent = event.columnId === ARCHIVE_COLUMN_ID;
+                      const isArchivedEvent = event.columnId === ARCHIVED_CARD_OPTION_ID;
                       const isDragSourceGhost = activeMoveDragEventId === event.id;
 
                       return (

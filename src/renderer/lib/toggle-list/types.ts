@@ -1,27 +1,15 @@
-import type { Card, Priority } from "../types";
+import type { Card, CardStatus, Priority } from "../types";
+import {
+  CARD_STATUS_LABELS,
+  CARD_STATUS_ORDER,
+} from "../../../shared/card-status";
 
-export const TOGGLE_LIST_STATUS_ORDER = [
-  "1-ideas",
-  "2-analyzing",
-  "3-backlog",
-  "4-planning",
-  "5-ready",
-  "6-in-progress",
-  "7-review",
-  "8-done",
-] as const;
+export const TOGGLE_LIST_STATUS_ORDER = [...CARD_STATUS_ORDER] as const;
 
-export type ToggleListStatusId = (typeof TOGGLE_LIST_STATUS_ORDER)[number];
+export type ToggleListStatusId = CardStatus;
 
 export const TOGGLE_LIST_STATUS_LABELS: Record<ToggleListStatusId, string> = {
-  "1-ideas": "Ideas",
-  "2-analyzing": "Analyzing",
-  "3-backlog": "Backlog",
-  "4-planning": "Planning",
-  "5-ready": "Ready",
-  "6-in-progress": "In Progress",
-  "7-review": "Review",
-  "8-done": "Done",
+  ...CARD_STATUS_LABELS,
 };
 
 export const TOGGLE_LIST_PRIORITY_ORDER: Priority[] = [

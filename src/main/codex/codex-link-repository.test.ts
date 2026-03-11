@@ -51,7 +51,7 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
 describe("codex-link-repository", () => {
   test("upserts and queries thread links", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Implement Codex integration" });
+      const card = await createCard("codex", "in_progress", { title: "Implement Codex integration" });
 
       const first = upsertCodexCardThreadLink({
         projectId: "codex",
@@ -98,7 +98,7 @@ describe("codex-link-repository", () => {
 
   test("archives, renames, and status updates links", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Review links" });
+      const card = await createCard("codex", "in_progress", { title: "Review links" });
 
       upsertCodexCardThreadLink({
         projectId: "codex",
@@ -129,7 +129,7 @@ describe("codex-link-repository", () => {
 
   test("project rename keeps linked thread rows", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Rename project" });
+      const card = await createCard("codex", "in_progress", { title: "Rename project" });
 
       upsertCodexCardThreadLink({
         projectId: "codex",
@@ -153,7 +153,7 @@ describe("codex-link-repository", () => {
 
   test("persists thread snapshots and cascades cleanup on unlink", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Snapshot cache" });
+      const card = await createCard("codex", "in_progress", { title: "Snapshot cache" });
 
       upsertCodexCardThreadLink({
         projectId: "codex",

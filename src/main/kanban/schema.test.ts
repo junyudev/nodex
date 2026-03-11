@@ -12,6 +12,10 @@ function isUnsupportedSqliteError(error: unknown): boolean {
   return message.includes("better-sqlite3") && message.includes("not yet supported");
 }
 
+function encodeBase64Utf8(value: string): string {
+  return Buffer.from(value, "utf8").toString("base64");
+}
+
 describe("schema initialization", () => {
   test("initializes the latest schema from a fresh database", async () => {
     closeDatabase();
@@ -196,7 +200,7 @@ describe("schema initialization", () => {
       `).run(
         "legacy-card",
         "legacy-project",
-        "1-ideas",
+        "draft",
         "Legacy card",
         "Legacy description",
         "p2-medium",
@@ -230,7 +234,7 @@ describe("schema initialization", () => {
         "legacy-project",
         "update",
         "legacy-card",
-        "1-ideas",
+        "draft",
         "2026-03-10T00:05:00.000Z",
         JSON.stringify({ description: "Old" }),
         JSON.stringify({ description: "Legacy description" }),
@@ -271,6 +275,246 @@ describe("schema initialization", () => {
         | { auto_vacuum: number }
         | undefined;
       expect(autoVacuum?.auto_vacuum).toBe(2);
+      migratedDb.close();
+    } catch (error) {
+      if (isUnsupportedSqliteError(error)) {
+        initializationRan = false;
+      } else {
+        throw error;
+      }
+    } finally {
+      closeDatabase();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      delete process.env.KANBAN_DIR;
+    }
+
+    if (!initializationRan) {
+      expect(true).toBeTrue();
+    }
+  });
+
+  test("migrates persisted legacy NFM status payloads on startup", async () => {
+    closeDatabase();
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-schema-v22-"));
+    process.env.KANBAN_DIR = tempDir;
+
+    let initializationRan = true;
+    try {
+      const dbPath = getDatabasePath();
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      const db = new Database(dbPath);
+      db.exec(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          icon TEXT NOT NULL DEFAULT '',
+          workspace_path TEXT,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE cards (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          description_revision_id INTEGER,
+          priority TEXT NOT NULL DEFAULT 'p2-medium',
+          estimate TEXT,
+          tags TEXT NOT NULL DEFAULT '[]',
+          due_date TEXT,
+          assignee TEXT,
+          agent_blocked INTEGER NOT NULL DEFAULT 0,
+          agent_status TEXT,
+          run_in_target TEXT NOT NULL DEFAULT 'local_project',
+          run_in_local_path TEXT,
+          run_in_base_branch TEXT,
+          run_in_worktree_path TEXT,
+          run_in_environment_path TEXT,
+          revision INTEGER NOT NULL DEFAULT 1,
+          scheduled_start TEXT,
+          scheduled_end TEXT,
+          is_all_day INTEGER NOT NULL DEFAULT 0,
+          recurrence_json TEXT,
+          reminders_json TEXT NOT NULL DEFAULT '[]',
+          schedule_timezone TEXT,
+          created TEXT NOT NULL,
+          "order" INTEGER NOT NULL
+        );
+
+        CREATE TABLE description_blocks (
+          hash TEXT PRIMARY KEY,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          operation TEXT NOT NULL,
+          card_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          timestamp TEXT NOT NULL,
+          previous_values TEXT,
+          new_values TEXT,
+          from_status TEXT,
+          to_status TEXT,
+          from_archived INTEGER,
+          to_archived INTEGER,
+          from_order INTEGER,
+          to_order INTEGER,
+          card_snapshot TEXT,
+          previous_description_revision_id INTEGER,
+          new_description_revision_id INTEGER,
+          snapshot_description_revision_id INTEGER,
+          session_id TEXT,
+          group_id TEXT,
+          is_undone INTEGER NOT NULL DEFAULT 0,
+          undo_of INTEGER
+        );
+
+        PRAGMA user_version = 22;
+      `);
+
+      const legacyRules = encodeBase64Utf8(JSON.stringify({
+        mode: "basic",
+        includeHostCard: false,
+        filter: {
+          any: [
+            {
+              all: [
+                { field: "status", op: "in", values: ["5-ready", "7-review"] },
+              ],
+            },
+          ],
+        },
+        sort: [],
+      }));
+      const legacySnapshot = encodeBase64Utf8(JSON.stringify({
+        projectId: "default",
+        columnId: "5-ready",
+        columnName: "Ready",
+      }));
+      const legacyDescription = [
+        `<card-toggle card="legacy-card" meta="[Ready]" project="default" column="5-ready" column-name="Ready" snapshot="${legacySnapshot}">`,
+        "\tLegacy title",
+        "</card-toggle>",
+        `<toggle-list-inline-view project="default" rules-v2="${legacyRules}" />`,
+      ].join("\n");
+
+      db.prepare(`
+        INSERT INTO projects (id, name, description, icon, workspace_path, created)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run("default", "Default", "", "", null, "2026-03-12T00:00:00.000Z");
+
+      db.prepare(`
+        INSERT INTO cards (
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+          tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+          run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+          scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "legacy-card",
+        "default",
+        "backlog",
+        0,
+        "Legacy",
+        legacyDescription,
+        null,
+        "p2-medium",
+        null,
+        "[]",
+        null,
+        null,
+        0,
+        null,
+        "local_project",
+        null,
+        null,
+        null,
+        null,
+        1,
+        null,
+        null,
+        0,
+        null,
+        "[]",
+        null,
+        "2026-03-12T00:00:00.000Z",
+        0,
+      );
+
+      db.prepare(`
+        INSERT INTO description_blocks (hash, content, created_at)
+        VALUES (?, ?, ?)
+      `).run(
+        "legacy-block",
+        `<card-toggle card="legacy-card" meta="[Review]" project="default" column="7-review" column-name="Review">`,
+        "2026-03-12T00:00:00.000Z",
+      );
+
+      db.prepare(`
+        INSERT INTO history (
+          id, project_id, operation, card_id, status, archived, timestamp, previous_values, new_values,
+          from_status, to_status, from_archived, to_archived, from_order, to_order, card_snapshot,
+          previous_description_revision_id, new_description_revision_id, snapshot_description_revision_id,
+          session_id, group_id, is_undone, undo_of
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        1,
+        "default",
+        "update",
+        "legacy-card",
+        "backlog",
+        0,
+        "2026-03-12T00:00:00.000Z",
+        JSON.stringify({ columnId: "5-ready", columnName: "Ready" }),
+        JSON.stringify({ columnId: "7-review", columnName: "Review" }),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        JSON.stringify({ columnId: "5-ready", columnName: "Ready" }),
+        null,
+        null,
+        null,
+        null,
+        null,
+        0,
+        null,
+      );
+      db.close();
+
+      await initializeDatabase();
+
+      const migratedDb = new Database(dbPath, { readonly: true });
+      const descriptionRow = migratedDb.prepare("SELECT description FROM cards WHERE id = ?").get("legacy-card") as
+        | { description: string }
+        | undefined;
+      const blockRow = migratedDb.prepare("SELECT content FROM description_blocks WHERE hash = ?").get("legacy-block") as
+        | { content: string }
+        | undefined;
+      const historyRow = migratedDb.prepare("SELECT previous_values, new_values, card_snapshot FROM history WHERE id = 1").get() as
+        | { previous_values: string | null; new_values: string | null; card_snapshot: string | null }
+        | undefined;
+
+      expect(descriptionRow?.description.includes('status="backlog"')).toBeTrue();
+      expect(descriptionRow?.description.includes('status-name="Backlog"')).toBeTrue();
+      expect(descriptionRow?.description.includes('column="5-ready"')).toBeFalse();
+      expect(descriptionRow?.description.includes("[Backlog]")).toBeTrue();
+      expect(descriptionRow?.description.includes('"values":["backlog","in_review"]')).toBeTrue();
+      expect(blockRow?.content.includes('status="in_review"')).toBeTrue();
+      expect(blockRow?.content.includes('status-name="In Review"')).toBeTrue();
+      expect(historyRow?.previous_values?.includes('"status":"backlog"')).toBeTrue();
+      expect(historyRow?.new_values?.includes('"status":"in_review"')).toBeTrue();
+      expect(historyRow?.card_snapshot?.includes('"statusName":"Backlog"')).toBeTrue();
       migratedDb.close();
     } catch (error) {
       if (isUnsupportedSqliteError(error)) {

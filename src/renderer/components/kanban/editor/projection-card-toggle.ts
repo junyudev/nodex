@@ -36,7 +36,7 @@ export interface ProjectedCardPatch {
   cardId: string;
   sourceProjectId: string;
   updates: Partial<CardInput>;
-  targetColumnId?: ToggleListStatusId;
+  targetStatus?: ToggleListStatusId;
 }
 
 type ProjectedCardComparable = Pick<
@@ -239,8 +239,8 @@ export function buildProjectedCardToggleBlock(
     props: {
       ...baseProps,
       sourceProjectId,
-      sourceColumnId: card.columnId,
-      sourceColumnName: card.columnName,
+      sourceStatus: card.columnId,
+      sourceStatusName: card.columnName,
       [PROJECTION_OWNER_PROP]: ownerBlockId,
       [PROJECTION_KIND_PROP]: projectionKind,
       [PROJECTION_SOURCE_PROJECT_PROP]: sourceProjectId,
@@ -304,9 +304,9 @@ export function isProjectedCardMoveDirty(
   card: Pick<ProjectedCardComparable, "columnId">,
 ): boolean {
   return Boolean(
-    patch.targetColumnId
-    && patch.targetColumnId.length > 0
-    && patch.targetColumnId !== card.columnId,
+    patch.targetStatus
+    && patch.targetStatus.length > 0
+    && patch.targetStatus !== card.columnId,
   );
 }
 
@@ -350,7 +350,7 @@ export function collectProjectedCardPatchesForOwner(
         : {}),
     };
 
-    const targetColumnId = metaOverrides.statusId && isToggleListStatusId(metaOverrides.statusId)
+    const targetStatus = metaOverrides.statusId && isToggleListStatusId(metaOverrides.statusId)
       ? metaOverrides.statusId
       : undefined;
 
@@ -358,7 +358,7 @@ export function collectProjectedCardPatchesForOwner(
       cardId,
       sourceProjectId,
       updates,
-      ...(targetColumnId ? { targetColumnId } : {}),
+      ...(targetStatus ? { targetStatus } : {}),
     });
   }
 
@@ -476,8 +476,8 @@ export function serializeProjectionRows(rows: unknown[]): string {
         || toStringProp(props, "cardId"),
       sourceProjectId: toStringProp(props, PROJECTION_SOURCE_PROJECT_PROP)
         || toStringProp(props, "sourceProjectId"),
-      sourceColumnId: toStringProp(props, "sourceColumnId"),
-      sourceColumnName: toStringProp(props, "sourceColumnName"),
+      sourceStatus: toStringProp(props, "sourceStatus"),
+      sourceStatusName: toStringProp(props, "sourceStatusName"),
       meta: toStringProp(props, "meta"),
       snapshot: toStringProp(props, "snapshot"),
       title: patch?.title ?? "",

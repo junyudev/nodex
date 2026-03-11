@@ -1,8 +1,6 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import {
-  ARCHIVE_COLUMN_ID,
-  ARCHIVE_COLUMN_NAME,
   type BlockDropImportInput,
   type BlockDropImportResult,
   type Board,
@@ -27,6 +25,10 @@ import {
   type ReminderConfig,
 } from "../../shared/types";
 import {
+  DEFAULT_CARD_STATUS,
+  type CardStatus,
+} from "../../shared/card-status";
+import {
   normalizeProjectIcon,
   normalizeProjectIconUpdate,
 } from "../../shared/project-icon";
@@ -47,7 +49,8 @@ import * as fs from "fs";
 interface DbCard {
   id: string;
   project_id: string;
-  column_id: string;
+  status: CardStatus;
+  archived: number;
   title: string;
   description: string;
   description_revision_id: number | null;
@@ -148,19 +151,21 @@ function resolveColumnId(
   database: Database.Database,
   projectId: string,
   cardId: string,
-  columnId?: string,
-): string | null {
+  columnId?: CardStatus,
+): CardStatus | null {
   if (columnId) return columnId;
   const row = database
-    .prepare("SELECT column_id FROM cards WHERE id = ? AND project_id = ?")
-    .get(cardId, projectId) as { column_id: string } | undefined;
-  return row?.column_id ?? null;
+    .prepare("SELECT status FROM cards WHERE id = ? AND project_id = ? AND archived = 0")
+    .get(cardId, projectId) as { status: CardStatus } | undefined;
+  return row?.status ?? null;
 }
 
 function rowToCard(row: DbCard): Card {
   const runInTarget = parseRunInTarget(row.run_in_target);
   return {
     id: row.id,
+    status: row.status,
+    archived: row.archived === 1,
     title: row.title,
     description: row.description,
     priority: row.priority as Card["priority"],
@@ -192,6 +197,27 @@ function parseRunInTarget(value: string | null | undefined): Card["runInTarget"]
   if (value === "new_worktree") return "newWorktree";
   if (value === "cloud") return "cloud";
   return "localProject";
+}
+
+function resolveCardState(
+  database: Database.Database,
+  projectId: string,
+  cardId: string,
+  status?: CardStatus,
+): { status: CardStatus; archived: boolean } | null {
+  if (status) {
+    const row = database
+      .prepare("SELECT status, archived FROM cards WHERE id = ? AND project_id = ? AND status = ? AND archived = 0")
+      .get(cardId, projectId, status) as { status: CardStatus; archived: number } | undefined;
+    if (!row) return null;
+    return { status: row.status, archived: row.archived === 1 };
+  }
+
+  const row = database
+    .prepare("SELECT status, archived FROM cards WHERE id = ? AND project_id = ?")
+    .get(cardId, projectId) as { status: CardStatus; archived: number } | undefined;
+  if (!row) return null;
+  return { status: row.status, archived: row.archived === 1 };
 }
 
 function toRunInTargetDbValue(value: CardInput["runInTarget"]): string {
@@ -488,12 +514,12 @@ export function renameProject(
 
 // === Card CRUD ===
 
-export async function readColumn(projectId: string, columnId: string): Promise<Column> {
+export async function readColumn(projectId: string, columnId: CardStatus): Promise<Column> {
   const columnMeta = COLUMNS.find((c) => c.id === columnId);
   if (!columnMeta) throw new Error(`Unknown column: ${columnId}`);
 
   const stmt = getDb().prepare(
-    'SELECT * FROM cards WHERE project_id = ? AND column_id = ? ORDER BY "order" ASC'
+    'SELECT * FROM cards WHERE project_id = ? AND archived = 0 AND status = ? ORDER BY "order" ASC'
   );
   const rows = stmt.all(projectId, columnId) as DbCard[];
 
@@ -511,7 +537,7 @@ export async function getBoard(projectId: string): Promise<Board> {
 
 export async function createCard(
   projectId: string,
-  columnId: string,
+  columnId: CardStatus,
   input: CardCreateInput,
   sessionId?: string,
   placement: CardCreatePlacement = "bottom",
@@ -534,14 +560,14 @@ export async function createCard(
         database
           .prepare(
             `UPDATE cards SET "order" = "order" + 1
-             WHERE project_id = ? AND column_id = ?`,
+             WHERE project_id = ? AND archived = 0 AND status = ?`,
           )
           .run(projectId, columnId);
         return 0;
       }
 
       const maxOrderRow = database
-        .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
+        .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 0 AND status = ?')
         .get(projectId, columnId) as { maxOrder: number | null } | undefined;
       return (maxOrderRow?.maxOrder ?? -1) + 1;
     })();
@@ -554,14 +580,15 @@ export async function createCard(
 
     database.prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+        id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       projectId,
       columnId,
+      0,
       input.title,
       input.description || "",
       descriptionRevisionId,
@@ -589,6 +616,8 @@ export async function createCard(
 
     const result: Card = {
       id,
+      status: input.status ?? columnId,
+      archived: false,
       title: input.title,
       description: input.description || "",
       priority: input.priority || "p2-medium",
@@ -633,7 +662,7 @@ export async function createCard(
 
 export async function updateCard(
   projectId: string,
-  columnId: string | undefined,
+  columnId: CardStatus | undefined,
   cardId: string,
   updates: Partial<CardInput>,
   sessionId?: string,
@@ -643,14 +672,14 @@ export async function updateCard(
   const database = getDb();
 
   const result = database.transaction(() => {
-    const resolvedColumnId = resolveColumnId(database, projectId, cardId, columnId);
-    if (!resolvedColumnId) {
+    const resolvedState = resolveCardState(database, projectId, cardId, columnId);
+    if (!resolvedState || resolvedState.archived) {
       return { status: "not_found" } as const;
     }
 
     const existing = database
-      .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
-      .get(cardId, projectId, resolvedColumnId) as DbCard | undefined;
+      .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
+      .get(cardId, projectId, resolvedState.status) as DbCard | undefined;
 
     if (!existing) {
       return { status: "not_found" } as const;
@@ -664,7 +693,6 @@ export async function updateCard(
       return {
         status: "conflict",
         card: rowToCard(existing),
-        columnId: resolvedColumnId,
       } as const;
     }
 
@@ -709,7 +737,7 @@ export async function updateCard(
       historyService.recordUpdate(
         cardId,
         projectId,
-        resolvedColumnId,
+        resolvedState.status,
         previousValues,
         newValues,
         previousDescriptionRevisionId,
@@ -725,7 +753,6 @@ export async function updateCard(
     return {
       status: "updated",
       card: rowToCard(updated),
-      columnId: resolvedColumnId,
       didMutate,
     } as const;
   })();
@@ -735,31 +762,30 @@ export async function updateCard(
   }
 
   if (result.didMutate) {
-    dbNotifier.notifyChange(projectId, "update", result.columnId, cardId);
+    dbNotifier.notifyChange(projectId, "update", result.card.status, cardId);
   }
 
   return {
     status: "updated",
     card: result.card,
-    columnId: result.columnId,
   };
 }
 
 export async function deleteCard(
   projectId: string,
-  columnId: string | undefined,
+  columnId: CardStatus | undefined,
   cardId: string,
   sessionId?: string
 ): Promise<boolean> {
   const database = getDb();
 
   const result = database.transaction(() => {
-    const resolvedColumnId = resolveColumnId(database, projectId, cardId, columnId);
-    if (!resolvedColumnId) return null;
+    const resolvedState = resolveCardState(database, projectId, cardId, columnId);
+    if (!resolvedState || resolvedState.archived) return null;
 
     const cardRow = database
-      .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
-      .get(cardId, projectId, resolvedColumnId) as DbCard | undefined;
+      .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
+      .get(cardId, projectId, resolvedState.status) as DbCard | undefined;
 
     if (!cardRow) return null;
 
@@ -769,20 +795,20 @@ export async function deleteCard(
 
     database
       .prepare(
-        `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND column_id = ? AND "order" > ?`
+        `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
       )
-      .run(projectId, resolvedColumnId, cardRow.order);
+      .run(projectId, resolvedState.status, cardRow.order);
 
     historyService.clearRedoStack(projectId, sessionId);
     historyService.recordDelete(
       card,
       projectId,
-      resolvedColumnId,
+      resolvedState.status,
       cardRow.description_revision_id,
       sessionId,
     );
 
-    return resolvedColumnId;
+    return resolvedState.status;
   })();
 
   if (!result) return false;
@@ -816,8 +842,8 @@ const columnOrderIndex = new Map(
 );
 
 function compareCardsByBoardPosition(left: DbCard, right: DbCard): number {
-  const leftIndex = columnOrderIndex.get(left.column_id) ?? Number.MAX_SAFE_INTEGER;
-  const rightIndex = columnOrderIndex.get(right.column_id) ?? Number.MAX_SAFE_INTEGER;
+  const leftIndex = columnOrderIndex.get(left.status) ?? Number.MAX_SAFE_INTEGER;
+  const rightIndex = columnOrderIndex.get(right.status) ?? Number.MAX_SAFE_INTEGER;
   if (leftIndex !== rightIndex) return leftIndex - rightIndex;
   if (left.order !== right.order) return left.order - right.order;
   return left.id.localeCompare(right.id);
@@ -826,12 +852,12 @@ function compareCardsByBoardPosition(left: DbCard, right: DbCard): number {
 function listOrderedColumnCards(
   database: Database.Database,
   projectId: string,
-  columnId: string,
+  columnId: CardStatus,
 ): DbCard[] {
   return database
     .prepare(
       `SELECT * FROM cards
-       WHERE project_id = ? AND column_id = ?
+       WHERE project_id = ? AND archived = 0 AND status = ?
        ORDER BY "order" ASC`,
     )
     .all(projectId, columnId) as DbCard[];
@@ -840,14 +866,14 @@ function listOrderedColumnCards(
 function rewriteColumnOrdering(
   database: Database.Database,
   cards: readonly DbCard[],
-  columnId: string,
+  columnId: CardStatus,
 ): void {
   const updateCardPosition = database.prepare(
-    'UPDATE cards SET column_id = ?, "order" = ? WHERE id = ?',
+    'UPDATE cards SET status = ?, archived = 0, "order" = ? WHERE id = ?',
   );
 
   cards.forEach((card, index) => {
-    if (card.column_id === columnId && card.order === index) return;
+    if (card.status === columnId && card.archived === 0 && card.order === index) return;
     updateCardPosition.run(columnId, index, card.id);
   });
 }
@@ -863,7 +889,7 @@ function readCardRowsByIds(
   return database
     .prepare(
       `SELECT * FROM cards
-       WHERE project_id = ? AND id IN (${placeholders})`,
+       WHERE project_id = ? AND archived = 0 AND id IN (${placeholders})`,
     )
     .all(projectId, ...cardIds) as DbCard[];
 }
@@ -872,15 +898,15 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
   const database = getDb();
 
   const result = database.transaction(() => {
-    // Resolve fromColumnId — either explicitly provided (atomic claim) or auto-resolved
-    let fromColumnId: string;
+    // Resolve fromStatus — either explicitly provided (atomic claim) or auto-resolved
+    let fromStatus: CardStatus;
     let card: DbCard | undefined;
 
-    if (input.fromColumnId) {
+    if (input.fromStatus) {
       // Atomic claim: assert card is still in the expected column
       card = database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
-        .get(input.cardId, input.projectId, input.fromColumnId) as DbCard | undefined;
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
+        .get(input.cardId, input.projectId, input.fromStatus) as DbCard | undefined;
 
       if (!card) {
         // Distinguish: card doesn't exist vs card moved to different column
@@ -890,16 +916,16 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
         return exists ? "wrong_column" : "not_found";
       }
 
-      fromColumnId = input.fromColumnId;
+      fromStatus = input.fromStatus;
     } else {
       // Auto-resolve column
       const resolved = resolveColumnId(database, input.projectId, input.cardId);
       if (!resolved) return "not_found";
-      fromColumnId = resolved;
+      fromStatus = resolved;
 
       card = database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
-        .get(input.cardId, input.projectId, fromColumnId) as DbCard | undefined;
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
+        .get(input.cardId, input.projectId, fromStatus) as DbCard | undefined;
 
       if (!card) return "not_found";
     }
@@ -909,29 +935,29 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
     // Resolve newOrder: undefined means append to end of target column
     const newOrder = input.newOrder ?? (() => {
       const row = database
-        .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-        .get(input.projectId, input.toColumnId) as { maxOrder: number | null } | undefined;
+        .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 0 AND status = ?')
+        .get(input.projectId, input.toStatus) as { maxOrder: number | null } | undefined;
       const max = row?.maxOrder ?? -1;
       // If moving within the same column, the card itself is counted in MAX — end position is max (not max+1)
-      if (fromColumnId === input.toColumnId) return max;
+      if (fromStatus === input.toStatus) return max;
       return max + 1;
     })();
 
-    if (fromColumnId === input.toColumnId) {
+    if (fromStatus === input.toStatus) {
       if (newOrder > currentOrder) {
         database
           .prepare(
             `UPDATE cards SET "order" = "order" - 1
-             WHERE project_id = ? AND column_id = ? AND "order" > ? AND "order" <= ?`
+             WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ? AND "order" <= ?`
           )
-          .run(input.projectId, fromColumnId, currentOrder, newOrder);
+          .run(input.projectId, fromStatus, currentOrder, newOrder);
       } else if (newOrder < currentOrder) {
         database
           .prepare(
             `UPDATE cards SET "order" = "order" + 1
-             WHERE project_id = ? AND column_id = ? AND "order" >= ? AND "order" < ?`
+             WHERE project_id = ? AND archived = 0 AND status = ? AND "order" >= ? AND "order" < ?`
           )
-          .run(input.projectId, fromColumnId, newOrder, currentOrder);
+          .run(input.projectId, fromStatus, newOrder, currentOrder);
       }
       database
         .prepare('UPDATE cards SET "order" = ? WHERE id = ?')
@@ -940,41 +966,41 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
       database
         .prepare(
           `UPDATE cards SET "order" = "order" - 1
-           WHERE project_id = ? AND column_id = ? AND "order" > ?`
+           WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
         )
-        .run(input.projectId, fromColumnId, currentOrder);
+        .run(input.projectId, fromStatus, currentOrder);
 
       database
         .prepare(
           `UPDATE cards SET "order" = "order" + 1
-           WHERE project_id = ? AND column_id = ? AND "order" >= ?`
+           WHERE project_id = ? AND archived = 0 AND status = ? AND "order" >= ?`
         )
-        .run(input.projectId, input.toColumnId, newOrder);
+        .run(input.projectId, input.toStatus, newOrder);
 
       database
-        .prepare('UPDATE cards SET column_id = ?, "order" = ? WHERE id = ?')
-        .run(input.toColumnId, newOrder, input.cardId);
+        .prepare('UPDATE cards SET status = ?, archived = 0, "order" = ? WHERE id = ?')
+        .run(input.toStatus, newOrder, input.cardId);
     }
 
     historyService.clearRedoStack(input.projectId, input.sessionId);
     historyService.recordMove(
       input.cardId,
       input.projectId,
-      fromColumnId,
-      input.toColumnId,
+      fromStatus,
+      input.toStatus,
       currentOrder,
       newOrder,
       input.sessionId
     );
 
-    return { movedFromColumnId: fromColumnId };
+    return { movedFromColumnId: fromStatus };
   })();
 
   // Error results are strings
   if (typeof result === "string") return result;
 
-  dbNotifier.notifyChange(input.projectId, "move", input.toColumnId, input.cardId);
-  if (result.movedFromColumnId !== input.toColumnId) {
+  dbNotifier.notifyChange(input.projectId, "move", input.toStatus, input.cardId);
+  if (result.movedFromColumnId !== input.toStatus) {
     dbNotifier.notifyChange(input.projectId, "move", result.movedFromColumnId, input.cardId);
   }
 
@@ -998,8 +1024,8 @@ export async function moveCards(
   const result = database.transaction(() => {
     let selectedCards: DbCard[];
 
-    if (input.fromColumnId) {
-      const sourceCards = listOrderedColumnCards(database, input.projectId, input.fromColumnId);
+    if (input.fromStatus) {
+      const sourceCards = listOrderedColumnCards(database, input.projectId, input.fromStatus);
       const sourceCardIdSet = new Set(sourceCards.map((card) => card.id));
       const missingCardId = uniqueCardIds.find((cardId) => !sourceCardIdSet.has(cardId));
 
@@ -1025,16 +1051,16 @@ export async function moveCards(
     }
 
     const selectedCardIdSet = new Set(selectedCards.map((card) => card.id));
-    const cardsByColumn = new Map<string, DbCard[]>();
+    const cardsByColumn = new Map<CardStatus, DbCard[]>();
 
-    for (const columnId of new Set([input.toColumnId, ...selectedCards.map((card) => card.column_id)])) {
+    for (const columnId of new Set([input.toStatus, ...selectedCards.map((card) => card.status)])) {
       cardsByColumn.set(
-        columnId,
+        columnId as CardStatus,
         listOrderedColumnCards(database, input.projectId, columnId),
       );
     }
 
-    const targetCards = cardsByColumn.get(input.toColumnId) ?? [];
+    const targetCards = cardsByColumn.get(input.toStatus) ?? [];
     const remainingTargetCards = targetCards.filter((card) => !selectedCardIdSet.has(card.id));
     const requestedOrder = input.newOrder ?? targetCards.length;
     const selectedTargetCardsBeforeRequested = targetCards.filter((card) =>
@@ -1051,12 +1077,12 @@ export async function moveCards(
     reorderedTargetCards.splice(insertIndex, 0, ...selectedCards);
     const movedCards = selectedCards.map((card) => ({
       id: card.id,
-      fromColumnId: card.column_id,
+      fromStatus: card.status,
       fromOrder: card.order,
       toOrder: reorderedTargetCards.findIndex((candidate) => candidate.id === card.id),
     }));
     const hasAnyChange = movedCards.some((card) =>
-      card.fromColumnId !== input.toColumnId || card.fromOrder !== card.toOrder
+      card.fromStatus !== input.toStatus || card.fromOrder !== card.toOrder
     );
 
     if (!hasAnyChange) {
@@ -1066,22 +1092,22 @@ export async function moveCards(
     }
 
     for (const [columnId, columnCards] of cardsByColumn) {
-      if (columnId === input.toColumnId) continue;
+      if (columnId === input.toStatus) continue;
       rewriteColumnOrdering(
         database,
         columnCards.filter((card) => !selectedCardIdSet.has(card.id)),
         columnId,
       );
     }
-    rewriteColumnOrdering(database, reorderedTargetCards, input.toColumnId);
+    rewriteColumnOrdering(database, reorderedTargetCards, input.toStatus);
 
     historyService.clearRedoStack(input.projectId, input.sessionId);
     [...movedCards].reverse().forEach((card) => {
       historyService.recordMove(
         card.id,
         input.projectId,
-        card.fromColumnId,
-        input.toColumnId,
+        card.fromStatus,
+        input.toStatus,
         card.fromOrder,
         card.toOrder,
         input.sessionId,
@@ -1097,9 +1123,9 @@ export async function moveCards(
   if (typeof result === "string") return result;
 
   result.movedCards.forEach((card) => {
-    dbNotifier.notifyChange(input.projectId, "move", input.toColumnId, card.id);
-    if (card.fromColumnId !== input.toColumnId) {
-      dbNotifier.notifyChange(input.projectId, "move", card.fromColumnId, card.id);
+    dbNotifier.notifyChange(input.projectId, "move", input.toStatus, card.id);
+    if (card.fromStatus !== input.toStatus) {
+      dbNotifier.notifyChange(input.projectId, "move", card.fromStatus, card.id);
     }
   });
 
@@ -1121,12 +1147,12 @@ export async function moveCardToProject(
     if (!targetProject) return "target_project_not_found";
 
     let sourceCard: DbCard | undefined;
-    let sourceColumnId: string;
+    let sourceStatus: CardStatus;
 
-    if (input.sourceColumnId) {
+    if (input.sourceStatus) {
       sourceCard = database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
-        .get(input.cardId, input.sourceProjectId, input.sourceColumnId) as DbCard | undefined;
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
+        .get(input.cardId, input.sourceProjectId, input.sourceStatus) as DbCard | undefined;
 
       if (!sourceCard) {
         const exists = database
@@ -1135,41 +1161,39 @@ export async function moveCardToProject(
         return exists ? "wrong_column" : "not_found";
       }
 
-      sourceColumnId = input.sourceColumnId;
+      sourceStatus = input.sourceStatus;
     } else {
       const resolvedColumnId = resolveColumnId(database, input.sourceProjectId, input.cardId);
       if (!resolvedColumnId) return "not_found";
 
       sourceCard = database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
         .get(input.cardId, input.sourceProjectId, resolvedColumnId) as DbCard | undefined;
       if (!sourceCard) return "not_found";
 
-      sourceColumnId = resolvedColumnId;
+      sourceStatus = resolvedColumnId;
     }
 
-    const targetColumnId = input.targetColumnId ?? sourceColumnId;
-    const isKnownTargetColumn =
-      targetColumnId === ARCHIVE_COLUMN_ID
-      || COLUMNS.some((column) => column.id === targetColumnId);
+    const targetStatus = input.targetStatus ?? sourceStatus;
+    const isKnownTargetColumn = COLUMNS.some((column) => column.id === targetStatus);
     if (!isKnownTargetColumn) {
-      throw new Error(`Unknown column: ${targetColumnId}`);
+      throw new Error(`Unknown column: ${targetStatus}`);
     }
 
     const maxOrderRow = database
-      .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-      .get(input.targetProjectId, targetColumnId) as { maxOrder: number | null } | undefined;
+      .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 0 AND status = ?')
+      .get(input.targetProjectId, targetStatus) as { maxOrder: number | null } | undefined;
     const targetOrder = (maxOrderRow?.maxOrder ?? -1) + 1;
 
     database
       .prepare(
         `UPDATE cards
-         SET project_id = ?, column_id = ?, "order" = ?
+         SET project_id = ?, status = ?, archived = 0, "order" = ?
          WHERE id = ? AND project_id = ?`,
       )
       .run(
         input.targetProjectId,
-        targetColumnId,
+        targetStatus,
         targetOrder,
         input.cardId,
         input.sourceProjectId,
@@ -1178,9 +1202,9 @@ export async function moveCardToProject(
     database
       .prepare(
         `UPDATE cards SET "order" = "order" - 1
-         WHERE project_id = ? AND column_id = ? AND "order" > ?`,
+         WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`,
       )
-      .run(input.sourceProjectId, sourceColumnId, sourceCard.order);
+      .run(input.sourceProjectId, sourceStatus, sourceCard.order);
 
     [
       "recurrence_exceptions",
@@ -1196,23 +1220,23 @@ export async function moveCardToProject(
     return {
       cardId: input.cardId,
       sourceProjectId: input.sourceProjectId,
-      sourceColumnId,
+      sourceStatus: sourceStatus,
       targetProjectId: input.targetProjectId,
-      targetColumnId,
+      targetStatus: targetStatus,
     };
   })();
 
   if (typeof result === "string") return result;
 
-  dbNotifier.notifyChange(result.sourceProjectId, "delete", result.sourceColumnId, result.cardId);
-  dbNotifier.notifyChange(result.targetProjectId, "create", result.targetColumnId, result.cardId);
+  dbNotifier.notifyChange(result.sourceProjectId, "delete", result.sourceStatus, result.cardId);
+  dbNotifier.notifyChange(result.targetProjectId, "create", result.targetStatus, result.cardId);
 
   return result;
 }
 
 interface AppliedSourceUpdate {
   projectId: string;
-  columnId: string;
+  columnId: CardStatus;
   cardId: string;
 }
 
@@ -1236,9 +1260,9 @@ export async function importBlockDropAsCards(
     throw new Error("insertIndex must be a non-negative integer");
   }
 
-  const targetColumn = COLUMNS.find((column) => column.id === input.targetColumnId);
+  const targetColumn = COLUMNS.find((column) => column.id === input.targetStatus);
   if (!targetColumn) {
-    throw new Error(`Unknown column: ${input.targetColumnId}`);
+    throw new Error(`Unknown status: ${input.targetStatus}`);
   }
 
   for (const card of input.cards) {
@@ -1270,14 +1294,14 @@ export async function importBlockDropAsCards(
         database,
         sourceUpdate.projectId,
         sourceUpdate.cardId,
-        sourceUpdate.columnId,
+        sourceUpdate.status,
       );
       if (!resolvedColumnId) {
         throw new Error(`Card not found: ${sourceUpdate.cardId}`);
       }
 
       const existing = database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
         .get(
           sourceUpdate.cardId,
           sourceUpdate.projectId,
@@ -1338,17 +1362,17 @@ export async function importBlockDropAsCards(
     }
 
     const maxOrderRow = database
-      .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-      .get(projectId, input.targetColumnId) as { maxOrder: number | null } | undefined;
+      .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 0 AND status = ?')
+      .get(projectId, input.targetStatus) as { maxOrder: number | null } | undefined;
     const maxOrder = maxOrderRow?.maxOrder ?? -1;
     const insertIndex = Math.min(input.insertIndex ?? maxOrder + 1, maxOrder + 1);
 
     database
       .prepare(
         `UPDATE cards SET "order" = "order" + ?
-         WHERE project_id = ? AND column_id = ? AND "order" >= ?`
+         WHERE project_id = ? AND archived = 0 AND status = ? AND "order" >= ?`
       )
-      .run(input.cards.length, projectId, input.targetColumnId, insertIndex);
+      .run(input.cards.length, projectId, input.targetStatus, insertIndex);
 
     for (const [offset, cardInput] of input.cards.entries()) {
       const requestedId = normalizeClientId(cardInput.clientId);
@@ -1366,14 +1390,15 @@ export async function importBlockDropAsCards(
 
       database.prepare(`
         INSERT INTO cards (
-          id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
           tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
           assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         projectId,
-        input.targetColumnId,
+        input.targetStatus,
+        0,
         cardInput.title,
         cardInput.description || "",
         descriptionRevisionId,
@@ -1401,6 +1426,8 @@ export async function importBlockDropAsCards(
 
       const createdCard: Card = {
         id,
+        status: cardInput.status ?? input.targetStatus,
+        archived: false,
         title: cardInput.title,
         description: cardInput.description || "",
         priority: cardInput.priority || "p2-medium",
@@ -1429,7 +1456,7 @@ export async function importBlockDropAsCards(
       historyService.recordCreate(
         createdCard,
         projectId,
-        input.targetColumnId,
+        input.targetStatus,
         descriptionRevisionId,
         sessionId,
         groupId,
@@ -1443,7 +1470,7 @@ export async function importBlockDropAsCards(
     dbNotifier.notifyChange(update.projectId, "update", update.columnId, update.cardId);
   }
   for (const card of createdCards) {
-    dbNotifier.notifyChange(projectId, "create", input.targetColumnId, card.id);
+    dbNotifier.notifyChange(projectId, "create", input.targetStatus, card.id);
   }
 
   return {
@@ -1453,7 +1480,7 @@ export async function importBlockDropAsCards(
 }
 
 interface AppliedTargetDescriptionUpdate {
-  columnId: string;
+  columnId: CardStatus;
   cardId: string;
 }
 
@@ -1473,7 +1500,7 @@ export async function moveCardDropToEditor(
 
   const sourceCards = Array.isArray(input.sourceCards) && input.sourceCards.length > 0
     ? input.sourceCards
-    : [{ cardId: input.sourceCardId, columnId: input.sourceColumnId }];
+    : [{ cardId: input.sourceCardId, status: input.sourceStatus }];
   const uniqueSourceCardIds = Array.from(new Set(sourceCards.map((source) => source.cardId)));
   if (uniqueSourceCardIds.length !== sourceCards.length) {
     throw new Error("source cards must be unique");
@@ -1497,7 +1524,7 @@ export async function moveCardDropToEditor(
   const groupId = input.groupId || randomUUID();
   const nowIso = new Date().toISOString();
   const appliedTargetUpdates: AppliedTargetDescriptionUpdate[] = [];
-  let sourceColumnId = "";
+  let sourceStatus: CardStatus = DEFAULT_CARD_STATUS;
 
   database.transaction(() => {
     const sourceRows = [...sourceCards.map((source) => {
@@ -1505,17 +1532,17 @@ export async function moveCardDropToEditor(
         database,
         sourceProjectId,
         source.cardId,
-        source.columnId,
+        source.status,
       );
       if (!resolvedSourceColumnId) {
         throw new Error(`Card not found: ${source.cardId}`);
       }
-      if (source.columnId && source.columnId !== resolvedSourceColumnId) {
+      if (source.status && source.status !== resolvedSourceColumnId) {
         throw new Error("Card is no longer in the expected column");
       }
 
       const sourceRow = database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
         .get(
           source.cardId,
           sourceProjectId,
@@ -1538,14 +1565,14 @@ export async function moveCardDropToEditor(
         database,
         projectId,
         targetUpdate.cardId,
-        targetUpdate.columnId,
+        targetUpdate.status,
       );
       if (!resolvedTargetColumnId) {
         throw new Error(`Card not found: ${targetUpdate.cardId}`);
       }
 
       const existingTarget = database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
         .get(
           targetUpdate.cardId,
           projectId,
@@ -1603,18 +1630,18 @@ export async function moveCardDropToEditor(
       });
     }
 
-    sourceColumnId = sourceRows[0]?.column_id ?? "";
+    sourceStatus = sourceRows[0]?.status ?? DEFAULT_CARD_STATUS;
 
     const deleteCardStmt = database.prepare("DELETE FROM cards WHERE id = ? AND project_id = ?");
     const collapseOrderStmt = database.prepare(
       `UPDATE cards SET "order" = "order" - 1
-       WHERE project_id = ? AND column_id = ? AND "order" > ?`,
+       WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`,
     );
-    const sourceRowsByColumn = new Map<string, DbCard[]>();
+    const sourceRowsByColumn = new Map<CardStatus, DbCard[]>();
     sourceRows.forEach((row: DbCard) => {
-      const rows = sourceRowsByColumn.get(row.column_id) ?? [];
+      const rows = sourceRowsByColumn.get(row.status) ?? [];
       rows.push(row);
-      sourceRowsByColumn.set(row.column_id, rows);
+      sourceRowsByColumn.set(row.status, rows);
     });
 
     for (const rows of sourceRowsByColumn.values()) {
@@ -1622,7 +1649,7 @@ export async function moveCardDropToEditor(
         .sort((left: DbCard, right: DbCard) => right.order - left.order)
         .forEach((row: DbCard) => {
           deleteCardStmt.run(row.id, sourceProjectId);
-          collapseOrderStmt.run(sourceProjectId, row.column_id, row.order);
+          collapseOrderStmt.run(sourceProjectId, row.status, row.order);
         });
     }
 
@@ -1630,7 +1657,7 @@ export async function moveCardDropToEditor(
       historyService.recordDelete(
         rowToCard(row),
         sourceProjectId,
-        row.column_id,
+        row.status,
         row.description_revision_id,
         sessionId,
         groupId,
@@ -1645,14 +1672,14 @@ export async function moveCardDropToEditor(
     dbNotifier.notifyChange(
       sourceProjectId,
       "delete",
-      source.columnId ?? sourceColumnId,
+      source.status ?? sourceStatus,
       source.cardId,
     );
   });
 
   return {
     sourceCardId: input.sourceCardId,
-    sourceColumnId,
+    sourceStatus: sourceStatus,
     sourceCardIds: sourceCards.map((source) => source.cardId),
     updatedCardIds: [...new Set(appliedTargetUpdates.map((update) => update.cardId))],
     groupId,
@@ -1662,27 +1689,27 @@ export async function moveCardDropToEditor(
 export async function getCard(
   projectId: string,
   cardId: string,
-  columnId?: string,
-): Promise<{ card: Card; columnId: string } | null> {
+  columnId?: CardStatus,
+): Promise<Card | null> {
   const database = getDb();
   const row = columnId
     ? database
-        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
+        .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND status = ?")
         .get(cardId, projectId, columnId) as DbCard | undefined
     : database
         .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ?")
         .get(cardId, projectId) as DbCard | undefined;
 
-  return row ? { card: rowToCard(row), columnId: row.column_id } : null;
+  return row ? rowToCard(row) : null;
 }
 
 export function findCardLocationById(
   cardId: string,
-): { projectId: string; columnId: string } | null {
+): { projectId: string; columnId: CardStatus } | null {
   const database = getDb();
   const row = database
-    .prepare("SELECT project_id, column_id FROM cards WHERE id = ?")
-    .get(cardId) as { project_id: string; column_id: string } | undefined;
+    .prepare("SELECT project_id, status FROM cards WHERE id = ? AND archived = 0")
+    .get(cardId) as { project_id: string; status: CardStatus } | undefined;
 
   if (!row) {
     return null;
@@ -1690,7 +1717,7 @@ export function findCardLocationById(
 
   return {
     projectId: row.project_id,
-    columnId: row.column_id,
+    columnId: row.status,
   };
 }
 
@@ -1707,7 +1734,6 @@ export function getCardSync(
 }
 
 function resolveColumnName(columnId: string): string {
-  if (columnId === ARCHIVE_COLUMN_ID) return ARCHIVE_COLUMN_NAME;
   return COLUMNS.find((column) => column.id === columnId)?.name ?? columnId;
 }
 
@@ -1861,8 +1887,7 @@ export async function listCalendarOccurrences(
         ...card,
         id: `${card.id}:${occurrence.occurrenceStart.toISOString()}`,
         cardId: card.id,
-        columnId: row.column_id,
-        columnName: resolveColumnName(row.column_id),
+        statusName: resolveColumnName(row.status),
         occurrenceStart: occurrence.occurrenceStart,
         occurrenceEnd: occurrence.occurrenceEnd,
         scheduledStart: occurrence.occurrenceStart,
@@ -1882,7 +1907,7 @@ export async function listCalendarOccurrences(
 
 async function updateCardScheduleForNextOccurrence(
   projectId: string,
-  columnId: string,
+  columnId: CardStatus,
   card: Card,
   occurrenceStart: Date,
   sessionId?: string,
@@ -1926,17 +1951,17 @@ export async function completeCardOccurrence(
 ): Promise<{ success: boolean; error?: string }> {
   const target = await getCard(projectId, input.cardId);
   if (!target) return { success: false, error: "Card not found" };
-  if (!target.card.scheduledStart || !target.card.scheduledEnd) {
+  if (!target.scheduledStart || !target.scheduledEnd) {
     return { success: false, error: "Card is not scheduled" };
   }
 
   const durationMs = Math.max(
     60_000,
-    target.card.scheduledEnd.getTime() - target.card.scheduledStart.getTime(),
+    target.scheduledEnd.getTime() - target.scheduledStart.getTime(),
   );
   const occurrenceStart = input.occurrenceStart;
   const occurrenceEnd = new Date(occurrenceStart.getTime() + durationMs);
-  const shouldAdvance = occurrenceStart.getTime() <= target.card.scheduledStart.getTime();
+  const shouldAdvance = occurrenceStart.getTime() <= target.scheduledStart.getTime();
   const database = getDb();
   const groupId = resolveGroupId();
   const now = new Date();
@@ -1945,47 +1970,48 @@ export async function completeCardOccurrence(
 
   database.transaction(() => {
     const maxArchiveOrderRow = database
-      .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-      .get(projectId, ARCHIVE_COLUMN_ID) as { maxOrder: number | null } | undefined;
+      .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 1 AND status = ?')
+      .get(projectId, "done") as { maxOrder: number | null } | undefined;
     const archiveOrder = (maxArchiveOrderRow?.maxOrder ?? -1) + 1;
     const archiveDescriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
       database,
       archiveCardId,
-      target.card.description,
+      target.description,
       nowIso,
     );
 
     database.prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+        id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       archiveCardId,
       projectId,
-      ARCHIVE_COLUMN_ID,
-      target.card.title,
-      target.card.description,
+      "done",
+      1,
+      target.title,
+      target.description,
       archiveDescriptionRevisionId,
-      target.card.priority,
-      target.card.estimate ?? null,
-      JSON.stringify(target.card.tags),
-      target.card.dueDate?.toISOString().split("T")[0] ?? null,
+      target.priority,
+      target.estimate ?? null,
+      JSON.stringify(target.tags),
+      target.dueDate?.toISOString().split("T")[0] ?? null,
       occurrenceStart.toISOString(),
       occurrenceEnd.toISOString(),
-      target.card.isAllDay ? 1 : 0,
+      target.isAllDay ? 1 : 0,
       null,
       "[]",
-      target.card.scheduleTimezone?.trim() || null,
-      target.card.assignee ?? null,
-      target.card.agentBlocked ? 1 : 0,
-      target.card.agentStatus ?? null,
-      toRunInTargetDbValue(target.card.runInTarget),
-      target.card.runInLocalPath?.trim() || null,
-      target.card.runInBaseBranch?.trim() || null,
-      target.card.runInWorktreePath?.trim() || null,
-      target.card.runInEnvironmentPath?.trim() || null,
+      target.scheduleTimezone?.trim() || null,
+      target.assignee ?? null,
+      target.agentBlocked ? 1 : 0,
+      target.agentStatus ?? null,
+      toRunInTargetDbValue(target.runInTarget),
+      target.runInLocalPath?.trim() || null,
+      target.runInBaseBranch?.trim() || null,
+      target.runInWorktreePath?.trim() || null,
+      target.runInEnvironmentPath?.trim() || null,
       nowIso,
       archiveOrder,
     );
@@ -1993,24 +2019,26 @@ export async function completeCardOccurrence(
     historyService.clearRedoStack(projectId, sessionId);
     historyService.recordCreate(
       {
-        ...target.card,
+        ...target,
         id: archiveCardId,
+        status: "done",
+        archived: true,
         recurrence: undefined,
         reminders: [],
-        isAllDay: target.card.isAllDay,
+        isAllDay: target.isAllDay,
         scheduledStart: occurrenceStart,
         scheduledEnd: occurrenceEnd,
         created: now,
         order: archiveOrder,
       },
       projectId,
-      ARCHIVE_COLUMN_ID,
+      "done",
       archiveDescriptionRevisionId,
       sessionId,
       groupId,
     );
 
-    if (target.card.recurrence && !shouldAdvance) {
+    if (target.recurrence && !shouldAdvance) {
       upsertSkipRecurrenceException(
         database,
         projectId,
@@ -2020,21 +2048,21 @@ export async function completeCardOccurrence(
       );
     }
 
-    const isOneTime = !target.card.recurrence;
+    const isOneTime = !target.recurrence;
     if (!isOneTime && !shouldAdvance) return;
 
     let nextScheduledStart: Date | null = null;
     let nextScheduledEnd: Date | null = null;
 
     if (!isOneTime) {
-      const exceptions = queryRecurrenceExceptions(database, projectId, target.card.id);
-      const next = nextOccurrenceAfter(target.card, occurrenceStart, { exceptions });
+      const exceptions = queryRecurrenceExceptions(database, projectId, target.id);
+      const next = nextOccurrenceAfter(target, occurrenceStart, { exceptions });
       nextScheduledStart = next?.occurrenceStart ?? null;
       nextScheduledEnd = next?.occurrenceEnd ?? null;
     }
 
-    const prevStartIso = target.card.scheduledStart?.toISOString() ?? null;
-    const prevEndIso = target.card.scheduledEnd?.toISOString() ?? null;
+    const prevStartIso = target.scheduledStart?.toISOString() ?? null;
+    const prevEndIso = target.scheduledEnd?.toISOString() ?? null;
     const nextStartIso = nextScheduledStart?.toISOString() ?? null;
     const nextEndIso = nextScheduledEnd?.toISOString() ?? null;
 
@@ -2047,17 +2075,17 @@ export async function completeCardOccurrence(
     `).run(
       nextStartIso,
       nextEndIso,
-      target.card.id,
+      target.id,
       projectId,
     );
 
     historyService.recordUpdate(
-      target.card.id,
+      target.id,
       projectId,
-      target.columnId,
+      target.status,
       {
-        scheduledStart: target.card.scheduledStart,
-        scheduledEnd: target.card.scheduledEnd,
+        scheduledStart: target.scheduledStart,
+        scheduledEnd: target.scheduledEnd,
       },
       {
         scheduledStart: nextScheduledStart ?? undefined,
@@ -2070,8 +2098,8 @@ export async function completeCardOccurrence(
     );
   })();
 
-  dbNotifier.notifyChange(projectId, "update", target.columnId, input.cardId);
-  dbNotifier.notifyChange(projectId, "create", ARCHIVE_COLUMN_ID, archiveCardId);
+  dbNotifier.notifyChange(projectId, "update", target.status, input.cardId);
+  dbNotifier.notifyChange(projectId, "create", "done", archiveCardId);
   return { success: true };
 }
 
@@ -2082,7 +2110,7 @@ export async function skipCardOccurrence(
 ): Promise<{ success: boolean; error?: string }> {
   const target = await getCard(projectId, input.cardId);
   if (!target) return { success: false, error: "Card not found" };
-  if (!target.card.scheduledStart || !target.card.scheduledEnd) {
+  if (!target.scheduledStart || !target.scheduledEnd) {
     return { success: false, error: "Card is not scheduled" };
   }
 
@@ -2091,7 +2119,7 @@ export async function skipCardOccurrence(
   const nowIso = new Date().toISOString();
 
   database.transaction(() => {
-    if (target.card.recurrence) {
+    if (target.recurrence) {
       upsertSkipRecurrenceException(
         database,
         projectId,
@@ -2104,13 +2132,13 @@ export async function skipCardOccurrence(
 
   await updateCardScheduleForNextOccurrence(
     projectId,
-    target.columnId,
-    target.card,
+    target.status,
+    target,
     occurrenceStart,
     sessionId,
   );
 
-  dbNotifier.notifyChange(projectId, "update", target.columnId, input.cardId);
+  dbNotifier.notifyChange(projectId, "update", target.status, input.cardId);
   return { success: true };
 }
 
@@ -2144,7 +2172,7 @@ export async function updateCardOccurrence(
 ): Promise<{ success: boolean; error?: string }> {
   const target = await getCard(projectId, input.cardId);
   if (!target) return { success: false, error: "Card not found" };
-  const card = target.card;
+  const card = target;
   const dragShiftRecurrence = shiftRecurringUntilDateWithDraggedDate(
     card.recurrence,
     input.occurrenceStart,
@@ -2153,7 +2181,7 @@ export async function updateCardOccurrence(
   );
 
   if (input.scope === "all") {
-    const result = await updateCard(projectId, target.columnId, input.cardId, {
+    const result = await updateCard(projectId, target.status, input.cardId, {
       scheduledStart: input.updates.scheduledStart,
       scheduledEnd: input.updates.scheduledEnd,
       isAllDay: input.updates.isAllDay,
@@ -2171,7 +2199,7 @@ export async function updateCardOccurrence(
 
   if (input.scope === "this") {
     if (!card.recurrence) {
-      const result = await updateCard(projectId, target.columnId, input.cardId, {
+      const result = await updateCard(projectId, target.status, input.cardId, {
         scheduledStart: input.updates.scheduledStart,
         scheduledEnd: input.updates.scheduledEnd,
         isAllDay: input.updates.isAllDay,
@@ -2186,8 +2214,8 @@ export async function updateCardOccurrence(
 
     const database = getDb();
     const existing = database
-      .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
-      .get(input.cardId, projectId, target.columnId) as DbCard | undefined;
+      .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
+      .get(input.cardId, projectId, target.status) as DbCard | undefined;
     if (!existing) return { success: false, error: "Card no longer exists" };
 
     const timing = normalizeOccurrenceTiming(card, input.occurrenceStart, input.updates);
@@ -2207,19 +2235,20 @@ export async function updateCardOccurrence(
       );
       database.prepare(
         `UPDATE cards SET "order" = "order" + 1
-         WHERE project_id = ? AND column_id = ? AND "order" > ?`
-      ).run(projectId, target.columnId, existing.order);
+         WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
+      ).run(projectId, target.status, existing.order);
 
       database.prepare(`
         INSERT INTO cards (
-          id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
           tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
           assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         detachedCardId,
         projectId,
-        target.columnId,
+        target.status,
+        0,
         card.title,
         card.description,
         detachedDescriptionRevisionId,
@@ -2254,13 +2283,13 @@ export async function updateCardOccurrence(
       );
     })();
 
-    dbNotifier.notifyChange(projectId, "update", target.columnId, input.cardId);
-    dbNotifier.notifyChange(projectId, "create", target.columnId, detachedCardId);
+    dbNotifier.notifyChange(projectId, "update", target.status, input.cardId);
+    dbNotifier.notifyChange(projectId, "create", target.status, detachedCardId);
     return { success: true };
   }
 
   if (!card.recurrence) {
-    const result = await updateCard(projectId, target.columnId, input.cardId, {
+    const result = await updateCard(projectId, target.status, input.cardId, {
       scheduledStart: input.updates.scheduledStart,
       scheduledEnd: input.updates.scheduledEnd,
       isAllDay: input.updates.isAllDay,
@@ -2276,8 +2305,8 @@ export async function updateCardOccurrence(
   // this-and-future: split the series into a new card from occurrence start onward
   const database = getDb();
   const existing = database
-    .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND column_id = ?")
-    .get(input.cardId, projectId, target.columnId) as DbCard | undefined;
+    .prepare("SELECT * FROM cards WHERE id = ? AND project_id = ? AND archived = 0 AND status = ?")
+    .get(input.cardId, projectId, target.status) as DbCard | undefined;
   if (!existing) return { success: false, error: "Card no longer exists" };
 
   const oldCard = rowToCard(existing);
@@ -2290,7 +2319,7 @@ export async function updateCardOccurrence(
   const isEquivalentToAll = oldScheduledStart !== undefined &&
     input.occurrenceStart.getTime() <= oldScheduledStart.getTime();
   if (isEquivalentToAll) {
-    const result = await updateCard(projectId, target.columnId, input.cardId, {
+    const result = await updateCard(projectId, target.status, input.cardId, {
       scheduledStart: input.updates.scheduledStart,
       scheduledEnd: input.updates.scheduledEnd,
       isAllDay: input.updates.isAllDay,
@@ -2349,7 +2378,7 @@ export async function updateCardOccurrence(
     historyService.recordUpdate(
       input.cardId,
       projectId,
-      target.columnId,
+      target.status,
       {
         recurrence: oldCard.recurrence,
       },
@@ -2364,8 +2393,8 @@ export async function updateCardOccurrence(
 
     database.prepare(
       `UPDATE cards SET "order" = "order" + 1
-       WHERE project_id = ? AND column_id = ? AND "order" > ?`
-    ).run(projectId, target.columnId, existing.order);
+       WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
+    ).run(projectId, target.status, existing.order);
     const nextDescriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
       database,
       nextCardId,
@@ -2375,14 +2404,15 @@ export async function updateCardOccurrence(
 
     database.prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+        id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       nextCardId,
       projectId,
-      target.columnId,
+      target.status,
+      0,
       oldCard.title,
       oldCard.description,
       nextDescriptionRevisionId,
@@ -2424,15 +2454,15 @@ export async function updateCardOccurrence(
     historyService.recordCreate(
       createdCard,
       projectId,
-      target.columnId,
+      target.status,
       nextDescriptionRevisionId,
       sessionId,
       groupId,
     );
   })();
 
-  dbNotifier.notifyChange(projectId, "update", target.columnId, input.cardId);
-  dbNotifier.notifyChange(projectId, "create", target.columnId, nextCardId);
+  dbNotifier.notifyChange(projectId, "update", target.status, input.cardId);
+  dbNotifier.notifyChange(projectId, "create", target.status, nextCardId);
   return { success: true };
 }
 

@@ -221,7 +221,7 @@ mock.module("@/lib/use-kanban", () => ({
     board: {
       columns: [
         {
-          id: "6-in-progress",
+          id: "in_progress",
           name: "In Progress",
           cards: [
             {
@@ -260,7 +260,7 @@ mock.module("@/lib/use-kanban", () => ({
           created: new Date("2026-02-25T00:00:00.000Z"),
           order: 0,
           runInTarget: "newWorktree",
-          columnId: "6-in-progress",
+          columnId: "in_progress",
           columnName: "In Progress",
           boardIndex: 0,
         },
@@ -276,7 +276,7 @@ mock.module("@/lib/use-kanban", () => ({
           created: new Date("2026-02-25T00:00:00.000Z"),
           order: 1,
           runInTarget: "newWorktree",
-          columnId: "6-in-progress",
+          columnId: "in_progress",
           columnName: "In Progress",
           boardIndex: 1,
         },
@@ -295,7 +295,7 @@ mock.module("@/lib/use-kanban", () => ({
 
 mock.module("@/lib/kanban-options", () => ({
   KANBAN_STATUS_LABELS: {
-    "6-in-progress": "In Progress",
+    in_progress: "In Progress",
   },
 }));
 
@@ -834,9 +834,9 @@ describe("WorkbenchShell", () => {
     const recentsGroup = stageGroups.find((group) => group.id === "recents");
     const cardsGroup = stageGroups.find((group) => group.id === "cards");
     const sectionIds = cardsGroup?.sections?.map((section) => section.id).join(",");
-    const statusSection = cardsGroup?.sections?.find((section) => section.id === "cards:status:6-in-progress");
+    const statusSection = cardsGroup?.sections?.find((section) => section.id === "cards:status:in_progress");
 
-    expect(sectionIds).toBe("cards:status:6-in-progress");
+    expect(sectionIds).toBe("cards:status:in_progress");
     expect(statusSection?.label).toBe("In Progress");
     expect(statusSection?.count).toBe(2);
     expect(statusSection?.collapsible).toBeTrue();
@@ -891,7 +891,7 @@ describe("WorkbenchShell", () => {
     const stageGroups = (sidebarProps?.stageGroups as SidebarGroup[] | undefined) ?? [];
     const cardsGroup = stageGroups.find((group) => group.id === "cards");
     const statusCard = cardsGroup?.sections
-      ?.find((section) => section.id === "cards:status:6-in-progress")
+      ?.find((section) => section.id === "cards:status:in_progress")
       ?.items?.find((item) => item.id === "project-card:card-1");
 
     expect(Boolean(statusCard?.onSelect)).toBeTrue();
@@ -918,7 +918,7 @@ describe("WorkbenchShell", () => {
     const sidebarProps = (globalThis as { __lastLeftSidebarProps?: Record<string, unknown> }).__lastLeftSidebarProps;
     const stageGroups = (sidebarProps?.stageGroups as SidebarGroup[] | undefined) ?? [];
     const cardsGroup = stageGroups.find((group) => group.id === "cards");
-    const statusSection = cardsGroup?.sections?.find((section) => section.id === "cards:status:6-in-progress");
+    const statusSection = cardsGroup?.sections?.find((section) => section.id === "cards:status:in_progress");
 
     expect(statusSection?.items?.map((item) => item.label).join(",")).toBe("Card 1,Ops Card");
   });
@@ -1198,7 +1198,7 @@ describe("WorkbenchShell", () => {
     const cardsGroup = stageGroups.find((group) => group.id === "cards");
     const filesGroup = stageGroups.find((group) => group.id === "files");
     const dbItem = dbGroup?.items?.[0];
-    const cardsItem = cardsGroup?.items?.[0];
+    const cardsItem = cardsGroup?.sections?.[0]?.items?.[0];
     const filesItem = filesGroup?.items?.[0];
 
     expect(Boolean(dbItem)).toBeTrue();
@@ -1469,7 +1469,7 @@ describe("WorkbenchShell", () => {
 
     openCardStageFromView(
       "default",
-      "6-in-progress",
+      "in_progress",
       { id: "card-1", title: "Card 1" },
       [],
       {
@@ -1516,7 +1516,7 @@ describe("WorkbenchShell", () => {
 
     openCardStageFromView(
       "default",
-      "6-in-progress",
+      "in_progress",
       { id: "card-1", title: "Card 1" },
       [],
       {

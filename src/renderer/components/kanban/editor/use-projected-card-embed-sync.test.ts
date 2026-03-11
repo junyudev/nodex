@@ -12,6 +12,8 @@ import {
 function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
   return {
     id: "card-1",
+    status: "backlog",
+    archived: false,
     title: "Initial title",
     description: "Initial description",
     priority: "p1-high",
@@ -20,7 +22,7 @@ function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
     agentBlocked: false,
     created: new Date("2026-02-16T00:00:00.000Z"),
     order: 0,
-    columnId: "3-backlog",
+    columnId: "backlog",
     columnName: "Backlog",
     boardIndex: 0,
     ...overrides,
@@ -195,9 +197,9 @@ describe("projected card embed sync helpers", () => {
   });
 
   test("isProjectedPatchDirty treats status moves as dirty", () => {
-    const card = makeCard({ columnId: "3-backlog" });
+    const card = makeCard({ columnId: "backlog" });
     expect(isProjectedPatchDirty(
-      makePatch({ targetColumnId: "8-done", updates: { title: card.title, description: card.description } }),
+      makePatch({ targetStatus: "done", updates: { title: card.title, description: card.description } }),
       card,
     )).toBeTrue();
   });

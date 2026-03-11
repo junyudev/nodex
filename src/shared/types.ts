@@ -7,8 +7,14 @@ export type ResourceBlockMode = "materialized" | "link";
 export type CardRunInTarget = "localProject" | "newWorktree" | "cloud";
 export type WorktreeStartMode = "autoBranch" | "detachedHead";
 
-export const ARCHIVE_COLUMN_ID = "n-archive";
-export const ARCHIVE_COLUMN_NAME = "Archive";
+export {
+  CARD_STATUS_COLUMNS,
+  CARD_STATUS_LABELS,
+  CARD_STATUS_ORDER,
+  DEFAULT_CARD_STATUS,
+  type CardStatus,
+} from "./card-status";
+import type { CardStatus } from "./card-status";
 
 export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -46,8 +52,7 @@ export type OccurrenceActionSource =
 
 export interface CalendarOccurrence extends Card {
   cardId: string;
-  columnId: string;
-  columnName: string;
+  statusName: string;
   occurrenceStart: Date;
   occurrenceEnd: Date;
   isRecurring: boolean;
@@ -67,6 +72,8 @@ export interface CardOccurrenceUpdateInput extends CardOccurrenceActionInput {
 
 export interface Card {
   id: string;
+  status: CardStatus;
+  archived: boolean;
   title: string;
   description: string;
   priority: Priority;
@@ -93,7 +100,7 @@ export interface Card {
 }
 
 export interface Column {
-  id: string;
+  id: CardStatus;
   name: string;
   cards: Card[];
 }
@@ -103,6 +110,7 @@ export interface Board {
 }
 
 export interface CardInput {
+  status?: CardStatus;
   title: string;
   description?: string;
   priority?: Priority;
@@ -133,12 +141,10 @@ export type CardUpdateResult =
   | {
       status: "updated";
       card: Card;
-      columnId: string;
     }
   | {
       status: "conflict";
       card: Card;
-      columnId: string;
     }
   | {
       status: "not_found";
@@ -148,16 +154,16 @@ export type CardCreatePlacement = "top" | "bottom";
 
 export interface MoveCardInput {
   cardId: string;
-  fromColumnId?: string;
-  toColumnId: string;
+  fromStatus?: CardStatus;
+  toStatus: CardStatus;
   newOrder?: number;
   groupId?: string;
 }
 
 export interface MoveCardsInput {
   cardIds: string[];
-  fromColumnId?: string;
-  toColumnId: string;
+  fromStatus?: CardStatus;
+  toStatus: CardStatus;
   newOrder?: number;
   groupId?: string;
 }
@@ -165,28 +171,28 @@ export interface MoveCardsInput {
 export interface MoveCardToProjectInput {
   cardId: string;
   sourceProjectId: string;
-  sourceColumnId?: string;
+  sourceStatus?: CardStatus;
   targetProjectId: string;
-  targetColumnId?: string;
+  targetStatus?: CardStatus;
 }
 
 export interface MoveCardToProjectResult {
   cardId: string;
   sourceProjectId: string;
-  sourceColumnId: string;
+  sourceStatus: CardStatus;
   targetProjectId: string;
-  targetColumnId: string;
+  targetStatus: CardStatus;
 }
 
 export interface BlockDropImportSourceUpdate {
   projectId: string;
-  columnId?: string;
+  status?: CardStatus;
   cardId: string;
   updates: Partial<CardInput>;
 }
 
 export interface BlockDropImportInput {
-  targetColumnId: string;
+  targetStatus: CardStatus;
   insertIndex?: number;
   cards: CardCreateInput[];
   sourceUpdates: BlockDropImportSourceUpdate[];
@@ -201,10 +207,10 @@ export interface BlockDropImportResult {
 export interface CardDropMoveToEditorInput {
   sourceProjectId?: string;
   sourceCardId: string;
-  sourceColumnId?: string;
+  sourceStatus?: CardStatus;
   sourceCards?: Array<{
     cardId: string;
-    columnId?: string;
+    status?: CardStatus;
   }>;
   targetUpdates: BlockDropImportSourceUpdate[];
   groupId?: string;
@@ -212,7 +218,7 @@ export interface CardDropMoveToEditorInput {
 
 export interface CardDropMoveToEditorResult {
   sourceCardId: string;
-  sourceColumnId: string;
+  sourceStatus: CardStatus;
   sourceCardIds: string[];
   updatedCardIds: string[];
   groupId: string;

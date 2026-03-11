@@ -263,7 +263,7 @@ describe("codex-service thread start fallback", () => {
 describe("codex-service readThread fallback", () => {
   test("retries with includeTurns=false for pre-materialization errors", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Read thread fallback" });
+      const card = await createCard("codex", "in_progress", { title: "Read thread fallback" });
       upsertCodexCardThreadLink({
         projectId: "codex",
         cardId: card.id,
@@ -316,7 +316,7 @@ describe("codex-service readThread fallback", () => {
 
   test("does not retry includeTurns=false for non-rollout errors", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Read thread non-rollout error" });
+      const card = await createCard("codex", "in_progress", { title: "Read thread non-rollout error" });
       upsertCodexCardThreadLink({
         projectId: "codex",
         cardId: card.id,
@@ -364,7 +364,7 @@ describe("codex-service readThread fallback", () => {
 describe("codex-service thread snapshot cache", () => {
   test("serializeThreadDetail rehydrates from persisted snapshot when in-memory cache is empty", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Thread snapshot fallback" });
+      const card = await createCard("codex", "in_progress", { title: "Thread snapshot fallback" });
       upsertCodexCardThreadLink({
         projectId: "codex",
         cardId: card.id,
@@ -416,7 +416,7 @@ describe("codex-service thread snapshot cache", () => {
 
   test("persists thread token usage updates in serialized snapshots", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Thread token usage" });
+      const card = await createCard("codex", "in_progress", { title: "Thread token usage" });
       upsertCodexCardThreadLink({
         projectId: "codex",
         cardId: card.id,
@@ -751,7 +751,7 @@ describe("codex-service startTurn", () => {
 
   test("seeds an optimistic user message as soon as turn/start returns a turn", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Optimistic follow-up prompt" });
+      const card = await createCard("codex", "in_progress", { title: "Optimistic follow-up prompt" });
       upsertCodexCardThreadLink({
         projectId: "codex",
         cardId: card.id,
@@ -812,7 +812,7 @@ describe("codex-service startTurn", () => {
 
   test("seeds an optimistic user message as soon as turn/steer is accepted", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Optimistic steering prompt" });
+      const card = await createCard("codex", "in_progress", { title: "Optimistic steering prompt" });
       upsertCodexCardThreadLink({
         projectId: "codex",
         cardId: card.id,
@@ -1483,7 +1483,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("includes collaborationMode payload in the initial turn/start request", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Plan mode start thread" });
+      const card = await createCard("codex", "in_progress", { title: "Plan mode start thread" });
       const service = createService();
       const client = Reflect.get(service as object, "client") as {
         start: () => Promise<void>;
@@ -1568,7 +1568,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("queues auto title generation when no explicit thread name is provided", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Auto title thread" });
+      const card = await createCard("codex", "in_progress", { title: "Auto title thread" });
       const service = createService();
       const serviceInternals = service as unknown as {
         queueGeneratedThreadTitle: (input: { threadId: string; firstPrompt: string; cwd: string }) => void;
@@ -1647,7 +1647,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("skips auto title generation when an explicit thread name is provided", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Named thread" });
+      const card = await createCard("codex", "in_progress", { title: "Named thread" });
       const service = createService();
       const serviceInternals = service as unknown as {
         queueGeneratedThreadTitle: (input: { threadId: string; firstPrompt: string; cwd: string }) => void;
@@ -1730,7 +1730,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("applies model and reasoning overrides to the first turn", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", { title: "Start thread" });
+      const card = await createCard("codex", "in_progress", { title: "Start thread" });
       const service = createService();
       const client = Reflect.get(service as object, "client") as {
         start: () => Promise<void>;
@@ -1815,7 +1815,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("seeds the first prompt into a new thread before live transcript items arrive", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Optimistic first prompt",
       });
       const service = createService();
@@ -1892,7 +1892,7 @@ describe("codex-service startThreadForCard", () => {
   test("persists fallback cwd and uses local run-in override when thread payload omits cwd", async () => {
     const ran = await withTempDatabase(async () => {
       const localRunPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-local-run-"));
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Start thread local override",
         runInTarget: "localProject",
         runInLocalPath: localRunPath,
@@ -1974,7 +1974,7 @@ describe("codex-service startThreadForCard", () => {
   test("reuses persisted managed worktree path for new-worktree cards", async () => {
     const ran = await withTempDatabase(async () => {
       const managedWorktreePath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-managed-worktree-"));
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Reuse managed worktree path",
         runInTarget: "newWorktree",
         runInWorktreePath: managedWorktreePath,
@@ -2056,7 +2056,7 @@ describe("codex-service startThreadForCard", () => {
       initializeGitRepository(repoPath);
       createProject({ id: "worktree-project", name: "Worktree Project", workspacePath: repoPath });
       const missingWorktreePath = path.join(repoPath, "missing-worktree-path");
-      const card = await createCard("worktree-project", "6-in-progress", {
+      const card = await createCard("worktree-project", "in_progress", {
         title: "Recreate missing managed worktree",
         runInTarget: "newWorktree",
         runInWorktreePath: missingWorktreePath,
@@ -2144,7 +2144,7 @@ describe("codex-service startThreadForCard", () => {
         expect(fs.existsSync(firstThreadCwd)).toBeTrue();
 
         const updated = await getCard("worktree-project", card.id);
-        expect(updated?.card.runInWorktreePath).toBe(firstThreadCwd);
+        expect(updated?.runInWorktreePath).toBe(firstThreadCwd);
       } finally {
         await service.shutdown();
         fs.rmSync(repoPath, { recursive: true, force: true });
@@ -2173,7 +2173,7 @@ describe("codex-service startThreadForCard", () => {
         "utf8",
       );
 
-      const card = await createCard("env-setup-project", "6-in-progress", {
+      const card = await createCard("env-setup-project", "in_progress", {
         title: "Run environment setup",
         runInTarget: "newWorktree",
         runInEnvironmentPath: ".codex/environments/environment.toml",
@@ -2252,7 +2252,7 @@ describe("codex-service startThreadForCard", () => {
         expect(fs.existsSync(path.join(createdWorktreePath, ".setup-success.txt"))).toBeTrue();
 
         const updated = await getCard("env-setup-project", card.id);
-        expect(updated?.card.runInWorktreePath).toBe(createdWorktreePath);
+        expect(updated?.runInWorktreePath).toBe(createdWorktreePath);
 
         const progressEvents = events.filter(
           (event): event is Extract<CodexEvent, { type: "threadStartProgress" }> => event.type === "threadStartProgress",
@@ -2302,7 +2302,7 @@ describe("codex-service startThreadForCard", () => {
         "utf8",
       );
 
-      const card = await createCard("env-large-output-project", "6-in-progress", {
+      const card = await createCard("env-large-output-project", "in_progress", {
         title: "Run environment setup with large output",
         runInTarget: "newWorktree",
         runInEnvironmentPath: ".codex/environments/environment.toml",
@@ -2403,7 +2403,7 @@ describe("codex-service startThreadForCard", () => {
         "utf8",
       );
 
-      const card = await createCard("env-setup-fail-project", "6-in-progress", {
+      const card = await createCard("env-setup-fail-project", "in_progress", {
         title: "Failing setup",
         runInTarget: "newWorktree",
         runInEnvironmentPath: ".codex/environments/environment.toml",
@@ -2449,7 +2449,7 @@ describe("codex-service startThreadForCard", () => {
         expect(requests.length).toBe(0);
 
         const updated = await getCard("env-setup-fail-project", card.id);
-        expect(updated?.card.runInWorktreePath).toBe(undefined);
+        expect(updated?.runInWorktreePath).toBe(undefined);
 
         const progressEvents = events.filter(
           (event): event is Extract<CodexEvent, { type: "threadStartProgress" }> => event.type === "threadStartProgress",
@@ -2491,7 +2491,7 @@ describe("codex-service startThreadForCard", () => {
         "utf8",
       );
 
-      const card = await createCard("persist-fail-project", "6-in-progress", {
+      const card = await createCard("persist-fail-project", "in_progress", {
         title: "Persist missing card",
         runInTarget: "newWorktree",
         runInEnvironmentPath: ".codex/environments/environment.toml",
@@ -2531,7 +2531,7 @@ describe("codex-service startThreadForCard", () => {
         });
 
         await runningSetupSeen;
-        await deleteCard("persist-fail-project", "6-in-progress", card.id);
+        await deleteCard("persist-fail-project", "in_progress", card.id);
 
         let failed = false;
         let message = "";
@@ -2569,7 +2569,7 @@ describe("codex-service startThreadForCard", () => {
       const managedWorktreePath = path.join(kanbanDir, "worktrees", "reuse-env", "codex");
       fs.mkdirSync(managedWorktreePath, { recursive: true });
 
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Reuse persisted worktree with env",
         runInTarget: "newWorktree",
         runInWorktreePath: managedWorktreePath,
@@ -2646,7 +2646,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("lists managed worktrees once per path when reused by multiple threads", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Managed worktree dedupe",
         runInTarget: "newWorktree",
       });
@@ -2693,7 +2693,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("deletes managed worktree directory and unlinks all threads that point to that path", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Managed worktree delete",
         runInTarget: "newWorktree",
       });
@@ -2747,7 +2747,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("removes git worktree metadata when deleting a managed worktree", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Managed git worktree remove",
         runInTarget: "newWorktree",
       });
@@ -2793,7 +2793,7 @@ describe("codex-service startThreadForCard", () => {
 
   test("blocks cloud run target before thread creation", async () => {
     const ran = await withTempDatabase(async () => {
-      const card = await createCard("codex", "6-in-progress", {
+      const card = await createCard("codex", "in_progress", {
         title: "Cloud run target",
         runInTarget: "cloud",
       });

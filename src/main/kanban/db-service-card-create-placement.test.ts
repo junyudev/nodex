@@ -47,16 +47,16 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
 describe("createCard placement", () => {
   test("inserts at top when placement is top and shifts existing order", async () => {
     const ran = await withTempDatabase(async () => {
-      const first = await createCard("default", "6-in-progress", { title: "First" });
-      const second = await createCard("default", "6-in-progress", { title: "Second" });
-      const top = await createCard("default", "6-in-progress", { title: "Top" }, undefined, "top");
+      const first = await createCard("default", "in_progress", { title: "First" });
+      const second = await createCard("default", "in_progress", { title: "Second" });
+      const top = await createCard("default", "in_progress", { title: "Top" }, undefined, "top");
 
       expect(first.order).toBe(0);
       expect(second.order).toBe(1);
       expect(top.order).toBe(0);
 
       const board = await getBoard("default");
-      const column = board.columns.find((entry) => entry.id === "6-in-progress");
+      const column = board.columns.find((entry) => entry.id === "in_progress");
       expect(column !== undefined).toBeTrue();
       expect(column?.cards.map((card) => card.title).join(",")).toBe("Top,First,Second");
       expect(column?.cards.map((card) => card.order).join(",")).toBe("0,1,2");
@@ -68,19 +68,19 @@ describe("createCard placement", () => {
   test("redo preserves top insertion position", async () => {
     const ran = await withTempDatabase(async () => {
       const sessionId = "session-create-top";
-      await createCard("default", "6-in-progress", { title: "First" });
-      await createCard("default", "6-in-progress", { title: "Second" });
-      await createCard("default", "6-in-progress", { title: "Top" }, sessionId, "top");
+      await createCard("default", "in_progress", { title: "First" });
+      await createCard("default", "in_progress", { title: "Second" });
+      await createCard("default", "in_progress", { title: "Top" }, sessionId, "top");
 
       let board = await getBoard("default");
-      let column = board.columns.find((entry) => entry.id === "6-in-progress");
+      let column = board.columns.find((entry) => entry.id === "in_progress");
       expect(column?.cards.map((card) => card.title).join(",")).toBe("Top,First,Second");
 
       const undoResult = undoLatest("default", sessionId);
       expect(undoResult.success).toBeTrue();
 
       board = await getBoard("default");
-      column = board.columns.find((entry) => entry.id === "6-in-progress");
+      column = board.columns.find((entry) => entry.id === "in_progress");
       expect(column?.cards.map((card) => card.title).join(",")).toBe("First,Second");
       expect(column?.cards.map((card) => card.order).join(",")).toBe("0,1");
 
@@ -88,7 +88,7 @@ describe("createCard placement", () => {
       expect(redoResult.success).toBeTrue();
 
       board = await getBoard("default");
-      column = board.columns.find((entry) => entry.id === "6-in-progress");
+      column = board.columns.find((entry) => entry.id === "in_progress");
       expect(column?.cards.map((card) => card.title).join(",")).toBe("Top,First,Second");
       expect(column?.cards.map((card) => card.order).join(",")).toBe("0,1,2");
     });

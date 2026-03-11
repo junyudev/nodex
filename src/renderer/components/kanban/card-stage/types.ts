@@ -36,7 +36,7 @@ export interface CardStageProps {
     updates: Partial<CardInput>,
   ) => void;
   onDelete: (columnId: string, cardId: string) => Promise<void>;
-  onMove: (fromColumnId: string, cardId: string, toColumnId: string) => Promise<void>;
+  onMove: (fromStatus: Card["status"], cardId: string, toStatus: Card["status"]) => Promise<void>;
   onCompleteOccurrence?: (cardId: string, occurrenceStart: Date) => Promise<void>;
   onSkipOccurrence?: (cardId: string, occurrenceStart: Date) => Promise<void>;
   onColumnIdChange?: (columnId: string) => void;

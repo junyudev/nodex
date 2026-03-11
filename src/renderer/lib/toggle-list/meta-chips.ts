@@ -26,25 +26,19 @@ const ESTIMATE_CHIP_CLASS_BY_TOKEN: Record<string, string> = {
 
 /** Status chips get a dot element prepended in card-toggle-block.tsx — no ::before needed. */
 const STATUS_CHIP_CLASS_BY_LABEL: Record<string, string> = {
-  Ideas: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-ideas-bg)] text-[var(--status-ideas-text)]`,
-  Analyzing: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-analyzing-bg)] text-[var(--status-analyzing-text)]`,
+  Draft: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-ideas-bg)] text-[var(--status-ideas-text)]`,
   Backlog: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-backlog-bg)] text-[var(--status-backlog-text)]`,
-  Planning: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-planning-bg)] text-[var(--status-planning-text)]`,
-  Ready: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-ready-bg)] text-[var(--status-ready-text)]`,
   "In Progress": `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-in-progress-bg)] text-[var(--status-in-progress-text)]`,
-  Review: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-review-bg)] text-[var(--status-review-text)]`,
+  "In Review": `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-review-bg)] text-[var(--status-review-text)]`,
   Done: `${CHIP_BASE} rounded-lg px-2 pl-[calc(var(--spacing)*1.75)] gap-[calc(var(--spacing)*1.25)] bg-[var(--status-done-bg)] text-[var(--status-done-text)]`,
 };
 
 /** CSS variable name for the status dot color, keyed by label. */
 const STATUS_DOT_VAR_BY_LABEL: Record<string, string> = {
-  Ideas: "var(--status-ideas-dot)",
-  Analyzing: "var(--status-analyzing-dot)",
+  Draft: "var(--status-ideas-dot)",
   Backlog: "var(--status-backlog-dot)",
-  Planning: "var(--status-planning-dot)",
-  Ready: "var(--status-ready-dot)",
   "In Progress": "var(--status-in-progress-dot)",
-  Review: "var(--status-review-dot)",
+  "In Review": "var(--status-review-dot)",
   Done: "var(--status-done-dot)",
 };
 
@@ -101,14 +95,11 @@ const TOKEN_TO_ESTIMATE: Record<string, Estimate> = {
 };
 
 const LABEL_TO_STATUS_ID: Record<string, ToggleListStatusId> = {
-  Ideas: "1-ideas",
-  Analyzing: "2-analyzing",
-  Backlog: "3-backlog",
-  Planning: "4-planning",
-  Ready: "5-ready",
-  "In Progress": "6-in-progress",
-  Review: "7-review",
-  Done: "8-done",
+  Draft: "draft",
+  Backlog: "backlog",
+  "In Progress": "in_progress",
+  "In Review": "in_review",
+  Done: "done",
 };
 
 export function tokenToPriorityValue(token: string): Priority | undefined {

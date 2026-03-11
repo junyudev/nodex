@@ -15,7 +15,27 @@ import * as descriptionRevisionService from "./description-revision-service";
 
 export type HistoryOperation = "create" | "update" | "delete" | "move";
 
-interface HistoryEntry extends PublicHistoryEntry {
+interface HistoryEntry {
+  id: number;
+  projectId: string;
+  operation: HistoryOperation;
+  cardId: string;
+  columnId: Card["status"];
+  archived: boolean;
+  timestamp: string;
+  previousValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  fromStatus: Card["status"] | null;
+  toStatus: Card["status"] | null;
+  fromArchived: boolean | null;
+  toArchived: boolean | null;
+  fromOrder: number | null;
+  toOrder: number | null;
+  cardSnapshot: Card | null;
+  sessionId: string | null;
+  groupId: string | null;
+  isUndone: boolean;
+  undoOf: number | null;
   previousDescriptionRevisionId: number | null;
   newDescriptionRevisionId: number | null;
   snapshotDescriptionRevisionId: number | null;
@@ -47,12 +67,15 @@ interface DbHistoryRow {
   project_id: string;
   operation: string;
   card_id: string;
-  column_id: string;
+  status: Card["status"];
+  archived: number;
   timestamp: string;
   previous_values: string | null;
   new_values: string | null;
-  from_column_id: string | null;
-  to_column_id: string | null;
+  from_status: Card["status"] | null;
+  to_status: Card["status"] | null;
+  from_archived: number | null;
+  to_archived: number | null;
   from_order: number | null;
   to_order: number | null;
   card_snapshot: string | null;
@@ -68,7 +91,8 @@ interface DbHistoryRow {
 interface DbCard {
   id: string;
   project_id: string;
-  column_id: string;
+  status: Card["status"];
+  archived: number;
   title: string;
   description: string;
   description_revision_id: number | null;
@@ -105,6 +129,8 @@ function dbCardToCard(row: DbCard): Card {
       : "localProject";
   return {
     id: row.id,
+    status: row.status,
+    archived: row.archived === 1,
     title: row.title,
     description: row.description,
     priority: row.priority as Card["priority"],
@@ -198,12 +224,15 @@ function rowToHistoryEntry(database: Database.Database, row: DbHistoryRow): Hist
     projectId: row.project_id,
     operation: row.operation as HistoryOperation,
     cardId: row.card_id,
-    columnId: row.column_id,
+    columnId: row.status,
+    archived: row.archived === 1,
     timestamp: row.timestamp,
     previousValues,
     newValues,
-    fromColumnId: row.from_column_id,
-    toColumnId: row.to_column_id,
+    fromStatus: row.from_status,
+    toStatus: row.to_status,
+    fromArchived: row.from_archived === null ? null : row.from_archived === 1,
+    toArchived: row.to_archived === null ? null : row.to_archived === 1,
     fromOrder: row.from_order,
     toOrder: row.to_order,
     cardSnapshot,
@@ -241,12 +270,15 @@ function toPublicHistoryEntry(entry: HistoryEntry): StoredHistoryEntry {
     projectId: entry.projectId,
     operation: entry.operation,
     cardId: entry.cardId,
-    columnId: entry.columnId,
+    status: entry.columnId,
+    archived: entry.archived,
     timestamp: entry.timestamp,
     previousValues: entry.previousValues,
     newValues: entry.newValues,
-    fromColumnId: entry.fromColumnId,
-    toColumnId: entry.toColumnId,
+    fromStatus: entry.fromStatus,
+    toStatus: entry.toStatus,
+    fromArchived: entry.fromArchived,
+    toArchived: entry.toArchived,
     fromOrder: entry.fromOrder,
     toOrder: entry.toOrder,
     cardSnapshot: entry.cardSnapshot,
@@ -277,7 +309,8 @@ function toHistoryPanelEntry(
     projectId: row.project_id,
     operation: row.operation as HistoryOperation,
     cardId: row.card_id,
-    columnId: row.column_id,
+    status: row.status,
+    archived: row.archived === 1,
     timestamp: row.timestamp,
     sessionId: row.session_id,
     groupId: row.group_id,
@@ -287,15 +320,17 @@ function toHistoryPanelEntry(
       row.operation as HistoryOperation,
       fieldChanges,
       descriptionChange,
-      row.from_column_id,
-      row.to_column_id,
+      row.from_status,
+      row.to_status,
       snapshot,
     ),
     fieldChanges,
     move: row.operation === "move"
       ? {
-          fromColumnId: row.from_column_id,
-          toColumnId: row.to_column_id,
+          fromStatus: row.from_status,
+          toStatus: row.to_status,
+          fromArchived: row.from_archived === null ? null : row.from_archived === 1,
+          toArchived: row.to_archived === null ? null : row.to_archived === 1,
           fromOrder: row.from_order,
           toOrder: row.to_order,
         }
@@ -365,8 +400,8 @@ function describePanelEntry(
   operation: HistoryOperation,
   fieldChanges: HistoryPanelFieldChange[],
   descriptionChange: HistoryPanelDescriptionDelta | null,
-  fromColumnId: string | null,
-  toColumnId: string | null,
+  fromStatus: string | null,
+  toStatus: string | null,
   snapshot: HistoryPanelSnapshot | null,
 ): string | null {
   if (operation === "update") {
@@ -390,7 +425,7 @@ function describePanelEntry(
   }
 
   if (operation === "move") {
-    return `${fromColumnId ?? "Unknown"} -> ${toColumnId ?? "Unknown"}`;
+    return `${fromStatus ?? "Unknown"} -> ${toStatus ?? "Unknown"}`;
   }
 
   if (operation === "create") {
@@ -437,7 +472,7 @@ function countDescriptionChangeKinds(
 export function recordCreate(
   card: Card,
   projectId: string,
-  columnId: string,
+  columnId: Card["status"],
   snapshotDescriptionRevisionId: number | null,
   sessionId?: string,
   groupId?: string,
@@ -445,9 +480,9 @@ export function recordCreate(
   const database = getDb();
   const stmt = database.prepare(`
     INSERT INTO history (
-      project_id, operation, card_id, column_id, timestamp,
+      project_id, operation, card_id, status, archived, timestamp,
       new_values, card_snapshot, new_description_revision_id, snapshot_description_revision_id, session_id, group_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const newValues = stripDescription(card as unknown as Record<string, unknown>);
@@ -456,6 +491,7 @@ export function recordCreate(
     "create",
     card.id,
     columnId,
+    card.archived ? 1 : 0,
     new Date().toISOString(),
     JSON.stringify(newValues),
     cardToSnapshot(card),
@@ -472,7 +508,7 @@ export function recordCreate(
 export function recordUpdate(
   cardId: string,
   projectId: string,
-  columnId: string,
+  columnId: Card["status"],
   previousValues: Partial<Card>,
   newValues: Partial<Card>,
   previousDescriptionRevisionId: number | null,
@@ -483,9 +519,9 @@ export function recordUpdate(
   const database = getDb();
   const stmt = database.prepare(`
     INSERT INTO history (
-      project_id, operation, card_id, column_id, timestamp,
+      project_id, operation, card_id, status, archived, timestamp,
       previous_values, new_values, previous_description_revision_id, new_description_revision_id, session_id, group_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const storedPreviousValues = stripDescription(previousValues as Record<string, unknown>);
@@ -495,6 +531,7 @@ export function recordUpdate(
     "update",
     cardId,
     columnId,
+    0,
     new Date().toISOString(),
     JSON.stringify(storedPreviousValues),
     JSON.stringify(storedNewValues),
@@ -511,7 +548,7 @@ export function recordUpdate(
 export function recordDelete(
   card: Card,
   projectId: string,
-  columnId: string,
+  columnId: Card["status"],
   snapshotDescriptionRevisionId: number | null,
   sessionId?: string,
   groupId?: string,
@@ -519,9 +556,9 @@ export function recordDelete(
   const database = getDb();
   const stmt = database.prepare(`
     INSERT INTO history (
-      project_id, operation, card_id, column_id, timestamp,
+      project_id, operation, card_id, status, archived, timestamp,
       previous_values, card_snapshot, previous_description_revision_id, snapshot_description_revision_id, session_id, group_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const previousValues = stripDescription(card as unknown as Record<string, unknown>);
@@ -530,6 +567,7 @@ export function recordDelete(
     "delete",
     card.id,
     columnId,
+    card.archived ? 1 : 0,
     new Date().toISOString(),
     JSON.stringify(previousValues),
     cardToSnapshot(card),
@@ -546,8 +584,8 @@ export function recordDelete(
 export function recordMove(
   cardId: string,
   projectId: string,
-  fromColumnId: string,
-  toColumnId: string,
+  fromStatus: Card["status"],
+  toStatus: Card["status"],
   fromOrder: number,
   toOrder: number,
   sessionId?: string,
@@ -556,19 +594,22 @@ export function recordMove(
   const database = getDb();
   const stmt = database.prepare(`
     INSERT INTO history (
-      project_id, operation, card_id, column_id, timestamp,
-      from_column_id, to_column_id, from_order, to_order, session_id, group_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      project_id, operation, card_id, status, archived, timestamp,
+      from_status, to_status, from_archived, to_archived, from_order, to_order, session_id, group_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
     projectId,
     "move",
     cardId,
-    toColumnId,
+    toStatus,
+    0,
     new Date().toISOString(),
-    fromColumnId,
-    toColumnId,
+    fromStatus,
+    toStatus,
+    0,
+    0,
     fromOrder,
     toOrder,
     sessionId || null,
@@ -835,8 +876,8 @@ function notifyEntries(
 
   for (const entry of entries) {
     queueNotify(entry.columnId, entry.cardId);
-    if (entry.fromColumnId) queueNotify(entry.fromColumnId, entry.cardId);
-    if (entry.toColumnId) queueNotify(entry.toColumnId, entry.cardId);
+    if (entry.fromStatus) queueNotify(entry.fromStatus, entry.cardId);
+    if (entry.toStatus) queueNotify(entry.toStatus, entry.cardId);
   }
 }
 
@@ -852,9 +893,9 @@ function undoCreate(database: Database.Database, entry: HistoryEntry): void {
   database.prepare("DELETE FROM cards WHERE id = ?").run(entry.cardId);
   database
     .prepare(
-      `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND column_id = ? AND "order" > ?`
+      `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND archived = ? AND status = ? AND "order" > ?`
     )
-    .run(entry.projectId, entry.columnId, card.order);
+    .run(entry.projectId, entry.archived ? 1 : 0, entry.columnId, card.order);
 }
 
 function undoUpdate(database: Database.Database, entry: HistoryEntry): void {
@@ -964,9 +1005,9 @@ function undoDelete(database: Database.Database, entry: HistoryEntry): void {
 
   database
     .prepare(
-      `UPDATE cards SET "order" = "order" + 1 WHERE project_id = ? AND column_id = ? AND "order" >= ?`
+      `UPDATE cards SET "order" = "order" + 1 WHERE project_id = ? AND archived = ? AND status = ? AND "order" >= ?`
     )
-    .run(entry.projectId, entry.columnId, snapshot.order);
+    .run(entry.projectId, entry.archived ? 1 : 0, entry.columnId, snapshot.order);
 
   const dueDate = snapshot.dueDate;
   const scheduledStart = snapshot.scheduledStart;
@@ -976,15 +1017,16 @@ function undoDelete(database: Database.Database, entry: HistoryEntry): void {
   database
     .prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+        id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       snapshot.id,
       entry.projectId,
       entry.columnId,
+      entry.archived ? 1 : 0,
       snapshot.title,
       snapshot.description,
       entry.snapshotDescriptionRevisionId,
@@ -1012,7 +1054,7 @@ function undoDelete(database: Database.Database, entry: HistoryEntry): void {
 }
 
 function undoMove(database: Database.Database, entry: HistoryEntry): void {
-  if (!entry.fromColumnId || entry.fromOrder === null) return;
+  if (!entry.fromStatus || entry.fromOrder === null) return;
 
   const card = database
     .prepare("SELECT * FROM cards WHERE id = ?")
@@ -1021,23 +1063,23 @@ function undoMove(database: Database.Database, entry: HistoryEntry): void {
   if (!card) return;
 
   const currentOrder = card.order;
-  const currentColumnId = card.column_id;
-  const targetColumnId = entry.fromColumnId;
+  const currentColumnId = card.status;
+  const targetStatus = entry.fromStatus;
   const targetOrder = entry.fromOrder;
 
-  if (currentColumnId === targetColumnId) {
+  if (currentColumnId === targetStatus) {
     if (targetOrder > currentOrder) {
       database
         .prepare(
           `UPDATE cards SET "order" = "order" - 1
-           WHERE project_id = ? AND column_id = ? AND "order" > ? AND "order" <= ?`
+           WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ? AND "order" <= ?`
         )
         .run(entry.projectId, currentColumnId, currentOrder, targetOrder);
     } else if (targetOrder < currentOrder) {
       database
         .prepare(
           `UPDATE cards SET "order" = "order" + 1
-           WHERE project_id = ? AND column_id = ? AND "order" >= ? AND "order" < ?`
+           WHERE project_id = ? AND archived = 0 AND status = ? AND "order" >= ? AND "order" < ?`
         )
         .run(entry.projectId, currentColumnId, targetOrder, currentOrder);
     }
@@ -1045,23 +1087,23 @@ function undoMove(database: Database.Database, entry: HistoryEntry): void {
       .prepare('UPDATE cards SET "order" = ? WHERE id = ?')
       .run(targetOrder, entry.cardId);
   } else {
-    database
-      .prepare(
-        `UPDATE cards SET "order" = "order" - 1
-         WHERE project_id = ? AND column_id = ? AND "order" > ?`
+      database
+        .prepare(
+          `UPDATE cards SET "order" = "order" - 1
+         WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
       )
       .run(entry.projectId, currentColumnId, currentOrder);
 
-    database
-      .prepare(
-        `UPDATE cards SET "order" = "order" + 1
-         WHERE project_id = ? AND column_id = ? AND "order" >= ?`
+      database
+        .prepare(
+          `UPDATE cards SET "order" = "order" + 1
+         WHERE project_id = ? AND archived = 0 AND status = ? AND "order" >= ?`
       )
-      .run(entry.projectId, targetColumnId, targetOrder);
+      .run(entry.projectId, targetStatus, targetOrder);
 
     database
-      .prepare('UPDATE cards SET column_id = ?, "order" = ? WHERE id = ?')
-      .run(targetColumnId, targetOrder, entry.cardId);
+      .prepare('UPDATE cards SET status = ?, archived = 0, "order" = ? WHERE id = ?')
+      .run(targetStatus, targetOrder, entry.cardId);
   }
 }
 
@@ -1073,16 +1115,16 @@ function redoCreate(database: Database.Database, entry: HistoryEntry): void {
   const snapshot = entry.cardSnapshot;
 
   const maxOrderRow = database
-    .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-    .get(entry.projectId, entry.columnId) as { maxOrder: number | null } | undefined;
+    .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = ? AND status = ?')
+    .get(entry.projectId, entry.archived ? 1 : 0, entry.columnId) as { maxOrder: number | null } | undefined;
   const maxOrder = maxOrderRow?.maxOrder ?? -1;
   const order = Math.min(Math.max(snapshot.order, 0), maxOrder + 1);
 
   database
     .prepare(
-      `UPDATE cards SET "order" = "order" + 1 WHERE project_id = ? AND column_id = ? AND "order" >= ?`
+      `UPDATE cards SET "order" = "order" + 1 WHERE project_id = ? AND archived = ? AND status = ? AND "order" >= ?`
     )
-    .run(entry.projectId, entry.columnId, order);
+    .run(entry.projectId, entry.archived ? 1 : 0, entry.columnId, order);
 
   const dueDate = snapshot.dueDate;
   const scheduledStart = snapshot.scheduledStart;
@@ -1092,15 +1134,16 @@ function redoCreate(database: Database.Database, entry: HistoryEntry): void {
   database
     .prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+        id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       snapshot.id,
       entry.projectId,
       entry.columnId,
+      entry.archived ? 1 : 0,
       snapshot.title,
       snapshot.description,
       entry.snapshotDescriptionRevisionId,
@@ -1237,13 +1280,13 @@ function redoDelete(database: Database.Database, entry: HistoryEntry): void {
   database.prepare("DELETE FROM cards WHERE id = ?").run(entry.cardId);
   database
     .prepare(
-      `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND column_id = ? AND "order" > ?`
+      `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND archived = ? AND status = ? AND "order" > ?`
     )
-    .run(entry.projectId, entry.columnId, card.order);
+    .run(entry.projectId, entry.archived ? 1 : 0, entry.columnId, card.order);
 }
 
 function redoMove(database: Database.Database, entry: HistoryEntry): void {
-  if (!entry.toColumnId || entry.toOrder === null) return;
+  if (!entry.toStatus || entry.toOrder === null) return;
 
   const card = database
     .prepare("SELECT * FROM cards WHERE id = ?")
@@ -1252,23 +1295,23 @@ function redoMove(database: Database.Database, entry: HistoryEntry): void {
   if (!card) return;
 
   const currentOrder = card.order;
-  const currentColumnId = card.column_id;
-  const targetColumnId = entry.toColumnId;
+  const currentColumnId = card.status;
+  const targetStatus = entry.toStatus;
   const targetOrder = entry.toOrder;
 
-  if (currentColumnId === targetColumnId) {
+  if (currentColumnId === targetStatus) {
     if (targetOrder > currentOrder) {
       database
         .prepare(
           `UPDATE cards SET "order" = "order" - 1
-           WHERE project_id = ? AND column_id = ? AND "order" > ? AND "order" <= ?`
+           WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ? AND "order" <= ?`
         )
         .run(entry.projectId, currentColumnId, currentOrder, targetOrder);
     } else if (targetOrder < currentOrder) {
       database
         .prepare(
           `UPDATE cards SET "order" = "order" + 1
-           WHERE project_id = ? AND column_id = ? AND "order" >= ? AND "order" < ?`
+           WHERE project_id = ? AND archived = 0 AND status = ? AND "order" >= ? AND "order" < ?`
         )
         .run(entry.projectId, currentColumnId, targetOrder, currentOrder);
     }
@@ -1279,20 +1322,20 @@ function redoMove(database: Database.Database, entry: HistoryEntry): void {
     database
       .prepare(
         `UPDATE cards SET "order" = "order" - 1
-         WHERE project_id = ? AND column_id = ? AND "order" > ?`
+         WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
       )
       .run(entry.projectId, currentColumnId, currentOrder);
 
     database
       .prepare(
         `UPDATE cards SET "order" = "order" + 1
-         WHERE project_id = ? AND column_id = ? AND "order" >= ?`
+         WHERE project_id = ? AND archived = 0 AND status = ? AND "order" >= ?`
       )
-      .run(entry.projectId, targetColumnId, targetOrder);
+      .run(entry.projectId, targetStatus, targetOrder);
 
     database
-      .prepare('UPDATE cards SET column_id = ?, "order" = ? WHERE id = ?')
-      .run(targetColumnId, targetOrder, entry.cardId);
+      .prepare('UPDATE cards SET status = ?, archived = 0, "order" = ? WHERE id = ?')
+      .run(targetStatus, targetOrder, entry.cardId);
   }
 }
 
@@ -1353,8 +1396,8 @@ export function reconstructCardStateAtEntry(
       }
     }
 
-    if (entry.operation === "move" && entry.toColumnId) {
-      columnId = entry.toColumnId;
+    if (entry.operation === "move" && entry.toStatus) {
+      columnId = entry.toStatus;
     }
 
     if (entry.id === targetEntryId) {
@@ -1456,15 +1499,16 @@ export function revertEntry(
           // Record reverse update history
           database.prepare(`
             INSERT INTO history (
-              project_id, operation, card_id, column_id, timestamp,
+              project_id, operation, card_id, status, archived, timestamp,
               previous_values, new_values, previous_description_revision_id, new_description_revision_id, session_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             projectId,
             "update",
             entry.cardId,
             entry.columnId,
+            entry.archived ? 1 : 0,
             new Date().toISOString(),
             JSON.stringify(storedRevertedPreviousValues),
             JSON.stringify(storedRevertedNewValues),
@@ -1476,36 +1520,36 @@ export function revertEntry(
         }
 
         case "move": {
-          if (!entry.fromColumnId) throw new Error("No source column to revert to");
+          if (!entry.fromStatus) throw new Error("No source column to revert to");
           const card = database.prepare("SELECT * FROM cards WHERE id = ?").get(entry.cardId) as DbCard | undefined;
           if (!card) throw new Error("Card no longer exists");
 
           const currentOrder = card.order;
-          const currentColumnId = card.column_id;
-          const targetColumnId = entry.fromColumnId;
+          const currentColumnId = card.status;
+          const targetStatus = entry.fromStatus;
 
           // Append to end of target column
           const maxRow = database
-            .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-            .get(projectId, targetColumnId) as { maxOrder: number | null } | undefined;
+            .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 0 AND status = ?')
+            .get(projectId, targetStatus) as { maxOrder: number | null } | undefined;
           const targetOrder = (maxRow?.maxOrder ?? -1) + 1;
 
           // Remove from current column
           database.prepare(
-            `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND column_id = ? AND "order" > ?`
+            `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
           ).run(projectId, currentColumnId, currentOrder);
 
           // Move card
-          database.prepare('UPDATE cards SET column_id = ?, "order" = ? WHERE id = ?')
-            .run(targetColumnId, targetOrder, entry.cardId);
+          database.prepare('UPDATE cards SET status = ?, archived = 0, "order" = ? WHERE id = ?')
+            .run(targetStatus, targetOrder, entry.cardId);
 
           // Record reverse move history
           database.prepare(`
-            INSERT INTO history (project_id, operation, card_id, column_id, timestamp, from_column_id, to_column_id, from_order, to_order, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO history (project_id, operation, card_id, status, archived, timestamp, from_status, to_status, from_archived, to_archived, from_order, to_order, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            projectId, "move", entry.cardId, targetColumnId, new Date().toISOString(),
-            currentColumnId, targetColumnId, currentOrder, targetOrder,
+            projectId, "move", entry.cardId, targetStatus, 0, new Date().toISOString(),
+            currentColumnId, targetStatus, 0, 0, currentOrder, targetOrder,
             sessionId || null
           );
           break;
@@ -1522,21 +1566,22 @@ export function revertEntry(
 
           database.prepare("DELETE FROM cards WHERE id = ?").run(entry.cardId);
           database.prepare(
-            `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND column_id = ? AND "order" > ?`
-          ).run(projectId, card.column_id, order);
+            `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND archived = ? AND status = ? AND "order" > ?`
+          ).run(projectId, card.archived, card.status, order);
 
           // Record delete history
           database.prepare(`
             INSERT INTO history (
-              project_id, operation, card_id, column_id, timestamp,
+              project_id, operation, card_id, status, archived, timestamp,
               previous_values, card_snapshot, previous_description_revision_id, snapshot_description_revision_id, session_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             projectId,
             "delete",
             entry.cardId,
-            card.column_id,
+            card.status,
+            card.archived,
             new Date().toISOString(),
             JSON.stringify(previousValues),
             cardSnapshot,
@@ -1554,8 +1599,8 @@ export function revertEntry(
 
           const snapshot = entry.cardSnapshot;
           const maxRow = database
-            .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-            .get(projectId, entry.columnId) as { maxOrder: number | null } | undefined;
+            .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = ? AND status = ?')
+            .get(projectId, entry.archived ? 1 : 0, entry.columnId) as { maxOrder: number | null } | undefined;
           const order = (maxRow?.maxOrder ?? -1) + 1;
 
           const dueDate = snapshot.dueDate;
@@ -1564,12 +1609,12 @@ export function revertEntry(
           const created = snapshot.created;
 
           database.prepare(`
-            INSERT INTO cards (id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+            INSERT INTO cards (id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
               tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
               assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order")
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            snapshot.id, projectId, entry.columnId, snapshot.title, snapshot.description,
+            snapshot.id, projectId, entry.columnId, entry.archived ? 1 : 0, snapshot.title, snapshot.description,
             entry.snapshotDescriptionRevisionId,
             snapshot.priority, snapshot.estimate || null, JSON.stringify(snapshot.tags),
             toDateOnlyString(dueDate),
@@ -1593,15 +1638,16 @@ export function revertEntry(
           const createdNewValues = stripDescription({ ...snapshot, order } as Record<string, unknown>);
           database.prepare(`
             INSERT INTO history (
-              project_id, operation, card_id, column_id, timestamp,
+              project_id, operation, card_id, status, archived, timestamp,
               new_values, card_snapshot, new_description_revision_id, snapshot_description_revision_id, session_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             projectId,
             "create",
             entry.cardId,
             entry.columnId,
+            entry.archived ? 1 : 0,
             new Date().toISOString(),
             JSON.stringify(createdNewValues),
             newCardSnapshot,
@@ -1638,7 +1684,7 @@ export function restoreToEntry(
   }
 
   const database = getDb();
-  const { state, columnId: targetColumnId } = reconstructed;
+  const { state, columnId: targetStatus } = reconstructed;
 
   try {
     database.transaction(() => {
@@ -1646,7 +1692,7 @@ export function restoreToEntry(
 
       if (card) {
         // Card exists — compute diff and apply
-        const currentColumnId = card.column_id;
+        const currentColumnId = card.status;
         const fields: string[] = [];
         const values: (string | number | null)[] = [];
         const previousValues: Record<string, unknown> = {};
@@ -1757,29 +1803,29 @@ export function restoreToEntry(
         }
 
         // Handle column change
-        if (currentColumnId !== targetColumnId) {
+        if (currentColumnId !== targetStatus) {
           const currentOrder = card.order;
           // Remove from current column
           database.prepare(
-            `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND column_id = ? AND "order" > ?`
+            `UPDATE cards SET "order" = "order" - 1 WHERE project_id = ? AND archived = 0 AND status = ? AND "order" > ?`
           ).run(projectId, currentColumnId, currentOrder);
 
           // Append to target column
           const maxRow = database
-            .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-            .get(projectId, targetColumnId) as { maxOrder: number | null } | undefined;
+            .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 0 AND status = ?')
+            .get(projectId, targetStatus) as { maxOrder: number | null } | undefined;
           const targetOrder = (maxRow?.maxOrder ?? -1) + 1;
 
-          database.prepare('UPDATE cards SET column_id = ?, "order" = ? WHERE id = ?')
-            .run(targetColumnId, targetOrder, cardId);
+          database.prepare('UPDATE cards SET status = ?, archived = 0, "order" = ? WHERE id = ?')
+            .run(targetStatus, targetOrder, cardId);
 
           // Record move
           database.prepare(`
-            INSERT INTO history (project_id, operation, card_id, column_id, timestamp, from_column_id, to_column_id, from_order, to_order, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO history (project_id, operation, card_id, status, archived, timestamp, from_status, to_status, from_archived, to_archived, from_order, to_order, session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            projectId, "move", cardId, targetColumnId, new Date().toISOString(),
-            currentColumnId, targetColumnId, currentOrder, targetOrder,
+            projectId, "move", cardId, targetStatus, 0, new Date().toISOString(),
+            currentColumnId, targetStatus, 0, 0, currentOrder, targetOrder,
             sessionId || null
           );
         }
@@ -1791,15 +1837,16 @@ export function restoreToEntry(
 
           database.prepare(`
             INSERT INTO history (
-              project_id, operation, card_id, column_id, timestamp,
+              project_id, operation, card_id, status, archived, timestamp,
               previous_values, new_values, previous_description_revision_id, new_description_revision_id, session_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             projectId,
             "update",
             cardId,
-            targetColumnId,
+            targetStatus,
+            0,
             new Date().toISOString(),
             JSON.stringify(stripDescription(previousValues)),
             JSON.stringify(stripDescription(newValues)),
@@ -1811,8 +1858,8 @@ export function restoreToEntry(
       } else {
         // Card was deleted — re-create from reconstructed state
         const maxRow = database
-          .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
-          .get(projectId, targetColumnId) as { maxOrder: number | null } | undefined;
+          .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND archived = 0 AND status = ?')
+          .get(projectId, targetStatus) as { maxOrder: number | null } | undefined;
         const order = (maxRow?.maxOrder ?? -1) + 1;
 
         const dueDate = state.dueDate;
@@ -1828,12 +1875,12 @@ export function restoreToEntry(
         );
 
         database.prepare(`
-          INSERT INTO cards (id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+          INSERT INTO cards (id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
             tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
             assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order")
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          cardId, projectId, targetColumnId,
+          cardId, projectId, targetStatus, 0,
           state.title as string, restoredDescription, restoredDescriptionRevisionId,
           (state.priority as string) ?? "p2-medium", (state.estimate as string) || null,
           JSON.stringify(state.tags ?? []),
@@ -1857,6 +1904,8 @@ export function restoreToEntry(
 
         // Record create
         const restoredCard = {
+          status: targetStatus,
+          archived: false,
           id: cardId, title: state.title, description: restoredDescription,
           priority: state.priority ?? "p2-medium", estimate: state.estimate || null,
           tags: state.tags ?? [], dueDate: state.dueDate ?? null,
@@ -1879,15 +1928,16 @@ export function restoreToEntry(
         const snap = JSON.stringify(restoredCardValues);
         database.prepare(`
           INSERT INTO history (
-            project_id, operation, card_id, column_id, timestamp,
+            project_id, operation, card_id, status, archived, timestamp,
             new_values, card_snapshot, new_description_revision_id, snapshot_description_revision_id, session_id
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           projectId,
           "create",
           cardId,
-          targetColumnId,
+          targetStatus,
+          0,
           new Date().toISOString(),
           JSON.stringify(restoredCardValues),
           snap,
@@ -1899,7 +1949,7 @@ export function restoreToEntry(
     })();
 
     afterRecord(projectId);
-    dbNotifier.notifyChange(projectId, "restore", targetColumnId, cardId);
+    dbNotifier.notifyChange(projectId, "restore", targetStatus, cardId);
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : "Restore failed" };

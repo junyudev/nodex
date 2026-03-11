@@ -19,6 +19,8 @@ import {
 function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
   return {
     id: "card-1",
+    status: "backlog",
+    archived: false,
     title: "Example card",
     description: "First paragraph",
     priority: "p1-high",
@@ -27,7 +29,7 @@ function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
     agentBlocked: false,
     created: new Date("2026-02-10T00:00:00.000Z"),
     order: 0,
-    columnId: "5-ready",
+    columnId: "backlog",
     columnName: "Ready",
     boardIndex: 1,
     ...overrides,
@@ -166,7 +168,7 @@ describe("projection card toggle helpers", () => {
     expect(patches[0]?.updates.description).toBe("Projected description");
     expect(patches[0]?.updates.priority).toBe("p1-high");
     expect(patches[0]?.updates.estimate).toBe("m");
-    expect(patches[0]?.targetColumnId).toBe("5-ready");
+    expect(patches[0]?.targetStatus).toBe(undefined);
   });
 
   test("collectProjectedCardPatchesForOwner strips nested projected rows from description", () => {

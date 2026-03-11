@@ -11,6 +11,8 @@ import {
 function createScheduledCard(overrides: Partial<Card>): Card {
   return {
     id: "card-1",
+    status: "draft",
+    archived: false,
     title: "Recurring task",
     description: "",
     priority: "p2-medium",

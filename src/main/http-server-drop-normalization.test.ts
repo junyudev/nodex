@@ -7,7 +7,7 @@ import {
 describe("http drop payload normalization", () => {
   test("normalizes nested dueDate values in block-drop import payload", () => {
     const normalized = normalizeBlockDropImportBody({
-      targetColumnId: "6-in-progress",
+      targetStatus: "in_progress",
       cards: [
         {
           title: "Card A",
@@ -77,7 +77,7 @@ describe("http drop payload normalization", () => {
     let errorMessage = "";
     try {
       normalizeBlockDropImportBody({
-        targetColumnId: "6-in-progress",
+        targetStatus: "in_progress",
         cards: [
           {
             title: "Broken Date",

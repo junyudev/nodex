@@ -89,8 +89,8 @@ Workbench reopen flow:
 - SQLite is the only source of persistent truth; renderer state is a cache.
 - All card writes must pass `card-input-validation` constraints.
 - Recurrence exceptions and reminder receipts are project-scoped and persisted in SQLite.
-- Completing an occurrence creates a new card in hidden status `n-archive`; archive cards are excluded from Kanban columns but still surfaced by calendar occurrence queries.
-- `move` operations are claim-safe: optional `fromColumnId` enables optimistic concurrency checks.
+- Completing an occurrence creates a `done` card with `archived = true`; archived cards stay out of board/sidebar/toggle-list flows but still surface in calendar occurrence queries.
+- `move` operations are claim-safe: optional `fromStatus` enables optimistic concurrency checks.
 - `card:update` supports optimistic concurrency claims with `expectedRevision`; stale claims return typed `conflict` with latest card snapshot and do not mutate DB state.
 - Project-scoped data stays isolated (`project_id` on cards/history with cascading cleanup).
 - Renderer never accesses SQLite directly.

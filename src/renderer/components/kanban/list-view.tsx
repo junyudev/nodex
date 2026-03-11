@@ -356,7 +356,7 @@ export function ListView({ projectId, searchQuery, openCardStage, cardStageCardI
           <tbody>
             {sortedCards.map((card) => {
               const priorityOption = resolveKanbanPriorityOption(card.priority);
-              const style = columnStyles[card.columnId] || columnStyles["1-ideas"];
+              const style = columnStyles[card.columnId] || columnStyles.draft;
 
               return (
                 <tr

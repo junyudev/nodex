@@ -7,7 +7,14 @@ import {
 } from "@/lib/stage-wheel-navigation";
 import { CalendarToolbar } from "./calendar/calendar-toolbar";
 import { CalendarGrid } from "./calendar/calendar-grid";
-import type { CalendarOccurrence, Card as CardType } from "@/lib/types";
+import {
+  type CalendarOccurrence,
+  type Card as CardType,
+} from "@/lib/types";
+import {
+  ARCHIVED_CARD_OPTION_ID,
+  ARCHIVED_CARD_OPTION_NAME,
+} from "@/lib/kanban-options";
 
 interface CalendarViewProps {
   projectId: string;
@@ -125,6 +132,24 @@ function resolveCalendarRenderWindow(
   return { start, endExclusive };
 }
 
+type ScheduledOccurrence = CalendarOccurrence & {
+  columnId: string;
+  columnName: string;
+  scheduledStart: Date;
+  scheduledEnd: Date;
+};
+
+function toScheduledOccurrence(occurrence: CalendarOccurrence): ScheduledOccurrence | null {
+  if (!occurrence.scheduledStart || !occurrence.scheduledEnd) return null;
+  return {
+    ...occurrence,
+    columnId: occurrence.archived ? ARCHIVED_CARD_OPTION_ID : occurrence.status,
+    columnName: occurrence.archived ? ARCHIVED_CARD_OPTION_NAME : occurrence.statusName,
+    scheduledStart: occurrence.scheduledStart,
+    scheduledEnd: occurrence.scheduledEnd,
+  };
+}
+
 export function CalendarView({
   projectId,
   searchQuery,
@@ -158,10 +183,7 @@ export function CalendarView({
     return getVisibleDays(effectiveAnchor, dayCount);
   }, [anchorDate, dayCount]);
   const renderWindow = useMemo(() => resolveCalendarRenderWindow(visibleDays), [visibleDays]);
-  const [scheduledCards, setScheduledCards] = useState<
-    Array<CalendarOccurrence & { scheduledStart: Date; scheduledEnd: Date }>
-  >([]);
-  type ScheduledOccurrence = CalendarOccurrence & { scheduledStart: Date; scheduledEnd: Date };
+  const [scheduledCards, setScheduledCards] = useState<ScheduledOccurrence[]>([]);
   type OccurrenceOverlay =
     | { kind: "hide" }
     | { kind: "upsert"; event: ScheduledOccurrence };
@@ -185,17 +207,7 @@ export function CalendarView({
       deferredSearch,
     ).then((occurrences) => {
       if (cancelled) return;
-      setScheduledCards(
-        occurrences
-          .filter(
-            (
-              occurrence,
-            ): occurrence is CalendarOccurrence & {
-              scheduledStart: Date;
-              scheduledEnd: Date;
-            } => Boolean(occurrence.scheduledStart && occurrence.scheduledEnd),
-          ),
-      );
+      setScheduledCards(occurrences.map(toScheduledOccurrence).filter((occurrence): occurrence is ScheduledOccurrence => Boolean(occurrence)));
     });
 
     return () => {
@@ -291,7 +303,7 @@ export function CalendarView({
 
       const loaded = await getCard(masterCardId, card.columnId);
       if (loaded) {
-        openCardStage(projectId, loaded.card.id, loaded.card.title);
+        openCardStage(projectId, loaded.id, loaded.title);
         return;
       }
 
@@ -311,8 +323,11 @@ export function CalendarView({
           event: {
             id: optimisticEventId,
             cardId: clientId,
-            columnId: "1-ideas",
-            columnName: "Ideas",
+            status: "draft",
+            archived: false,
+            statusName: "Draft",
+            columnId: "draft",
+            columnName: "Draft",
             title,
             description: "",
             priority: "p2-medium",
@@ -329,7 +344,7 @@ export function CalendarView({
         });
         return next;
       });
-      const created = await createCard("1-ideas", {
+      const created = await createCard("draft", {
         clientId,
         title,
         scheduledStart: start,
@@ -534,9 +549,7 @@ export function CalendarView({
     let cancelled = false;
     void getCard(pendingReminderOpen.cardId).then((result) => {
       if (cancelled) return;
-      if (result) {
-        openCardStage(projectId, result.card.id, result.card.title);
-      }
+      if (result) openCardStage(projectId, result.id, result.title);
       onReminderHandled?.(pendingReminderOpen);
     });
 

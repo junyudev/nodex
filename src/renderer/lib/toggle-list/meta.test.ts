@@ -4,6 +4,8 @@ import { formatMeta } from "./meta";
 
 const baseCard: ToggleListCard = {
   id: "card-1",
+  status: "backlog",
+  archived: false,
   title: "Example",
   description: "",
   priority: "p0-critical",
@@ -12,7 +14,7 @@ const baseCard: ToggleListCard = {
   agentBlocked: false,
   created: new Date("2026-02-10T00:00:00.000Z"),
   order: 0,
-  columnId: "3-backlog",
+  columnId: "backlog",
   columnName: "Backlog",
   boardIndex: 0,
 };

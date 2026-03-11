@@ -50,11 +50,11 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
 describe("moveCardDropToEditor", () => {
   test("updates target description and deletes source card in one grouped undo step", async () => {
     const ran = await withTempDatabase(async () => {
-      const source = await createCard("default", "6-in-progress", {
+      const source = await createCard("default", "in_progress", {
         title: "Source card",
         description: "Source description",
       });
-      const target = await createCard("default", "6-in-progress", {
+      const target = await createCard("default", "in_progress", {
         title: "Target card",
         description: "Before drop",
       });
@@ -63,12 +63,12 @@ describe("moveCardDropToEditor", () => {
         "default",
         {
           sourceCardId: source.id,
-          sourceColumnId: "6-in-progress",
+          sourceStatus: "in_progress",
           groupId: "group-drop-1",
           targetUpdates: [
             {
               projectId: "default",
-              columnId: "6-in-progress",
+              status: "in_progress",
               cardId: target.id,
               updates: { description: "After drop" },
             },
@@ -85,7 +85,7 @@ describe("moveCardDropToEditor", () => {
       const targetAfterMove = await getCard("default", target.id);
 
       expect(sourceAfterMove === null).toBeTrue();
-      expect(targetAfterMove?.card.description).toBe("After drop");
+      expect(targetAfterMove?.description).toBe("After drop");
 
       const historyAfterMove = getRecentHistory("default", 10, 0);
       const groupedEntries = historyAfterMove.filter((entry) => entry.groupId === "group-drop-1");
@@ -96,8 +96,8 @@ describe("moveCardDropToEditor", () => {
 
       const sourceAfterUndo = await getCard("default", source.id);
       const targetAfterUndo = await getCard("default", target.id);
-      expect(sourceAfterUndo?.columnId).toBe("6-in-progress");
-      expect(targetAfterUndo?.card.description).toBe("Before drop");
+      expect(sourceAfterUndo?.status).toBe("in_progress");
+      expect(targetAfterUndo?.description).toBe("Before drop");
 
       const redoResult = redoLatest("default", "session-1");
       expect(redoResult.success).toBeTrue();
@@ -105,7 +105,7 @@ describe("moveCardDropToEditor", () => {
       const sourceAfterRedo = await getCard("default", source.id);
       const targetAfterRedo = await getCard("default", target.id);
       expect(sourceAfterRedo === null).toBeTrue();
-      expect(targetAfterRedo?.card.description).toBe("After drop");
+      expect(targetAfterRedo?.description).toBe("After drop");
     });
     if (!ran) {
       expect(true).toBeTrue();
@@ -114,7 +114,7 @@ describe("moveCardDropToEditor", () => {
 
   test("validation failure keeps source card unchanged", async () => {
     const ran = await withTempDatabase(async () => {
-      const source = await createCard("default", "6-in-progress", {
+      const source = await createCard("default", "in_progress", {
         title: "Source card",
         description: "Source description",
       });
@@ -123,11 +123,11 @@ describe("moveCardDropToEditor", () => {
       try {
         await moveCardDropToEditor("default", {
           sourceCardId: source.id,
-          sourceColumnId: "6-in-progress",
+          sourceStatus: "in_progress",
           targetUpdates: [
             {
               projectId: "default",
-              columnId: "6-in-progress",
+              status: "in_progress",
               cardId: source.id,
               updates: { description: "Invalid" },
             },
@@ -140,7 +140,7 @@ describe("moveCardDropToEditor", () => {
       expect(errorMessage).toBe("Cannot drop a card into itself");
 
       const sourceAfterError = await getCard("default", source.id);
-      expect(sourceAfterError?.card.description).toBe("Source description");
+      expect(sourceAfterError?.description).toBe("Source description");
     });
     if (!ran) {
       expect(true).toBeTrue();
@@ -151,11 +151,11 @@ describe("moveCardDropToEditor", () => {
     const ran = await withTempDatabase(async () => {
       createProject({ id: "other", name: "Other" });
 
-      const source = await createCard("other", "6-in-progress", {
+      const source = await createCard("other", "in_progress", {
         title: "Cross-project source",
         description: "From other project",
       });
-      const target = await createCard("default", "6-in-progress", {
+      const target = await createCard("default", "in_progress", {
         title: "Default target",
         description: "Before cross-project drop",
       });
@@ -165,12 +165,12 @@ describe("moveCardDropToEditor", () => {
         {
           sourceProjectId: "other",
           sourceCardId: source.id,
-          sourceColumnId: "6-in-progress",
+          sourceStatus: "in_progress",
           groupId: "group-drop-cross-project",
           targetUpdates: [
             {
               projectId: "default",
-              columnId: "6-in-progress",
+              status: "in_progress",
               cardId: target.id,
               updates: { description: "After cross-project drop" },
             },
@@ -184,7 +184,7 @@ describe("moveCardDropToEditor", () => {
       const sourceAfterMove = await getCard("other", source.id);
       const targetAfterMove = await getCard("default", target.id);
       expect(sourceAfterMove === null).toBeTrue();
-      expect(targetAfterMove?.card.description).toBe("After cross-project drop");
+      expect(targetAfterMove?.description).toBe("After cross-project drop");
     });
     if (!ran) {
       expect(true).toBeTrue();
@@ -193,15 +193,15 @@ describe("moveCardDropToEditor", () => {
 
   test("supports deleting multiple source cards in one grouped editor drop", async () => {
     const ran = await withTempDatabase(async () => {
-      const sourceOne = await createCard("default", "6-in-progress", {
+      const sourceOne = await createCard("default", "in_progress", {
         title: "Source one",
         description: "One",
       });
-      const sourceTwo = await createCard("default", "7-review", {
+      const sourceTwo = await createCard("default", "in_review", {
         title: "Source two",
         description: "Two",
       });
-      const target = await createCard("default", "6-in-progress", {
+      const target = await createCard("default", "in_progress", {
         title: "Target card",
         description: "Before",
       });
@@ -210,22 +210,22 @@ describe("moveCardDropToEditor", () => {
         "default",
         {
           sourceCardId: sourceOne.id,
-          sourceColumnId: "6-in-progress",
+          sourceStatus: "in_progress",
           sourceCards: [
             {
               cardId: sourceOne.id,
-              columnId: "6-in-progress",
+              status: "in_progress",
             },
             {
               cardId: sourceTwo.id,
-              columnId: "7-review",
+              status: "in_review",
             },
           ],
           groupId: "group-drop-many",
           targetUpdates: [
             {
               projectId: "default",
-              columnId: "6-in-progress",
+              status: "in_progress",
               cardId: target.id,
               updates: { description: "After" },
             },
@@ -243,7 +243,7 @@ describe("moveCardDropToEditor", () => {
 
       expect(firstAfterMove === null).toBeTrue();
       expect(secondAfterMove === null).toBeTrue();
-      expect(targetAfterMove?.card.description).toBe("After");
+      expect(targetAfterMove?.description).toBe("After");
 
       const historyAfterMove = getRecentHistory("default", 10, 0);
       const groupedEntries = historyAfterMove.filter((entry) => entry.groupId === "group-drop-many");
@@ -256,19 +256,19 @@ describe("moveCardDropToEditor", () => {
 
   test("undo restores same-column multi-card editor drops in original order", async () => {
     const ran = await withTempDatabase(async () => {
-      const sourceOne = await createCard("default", "6-in-progress", {
+      const sourceOne = await createCard("default", "in_progress", {
         title: "Source one",
         description: "One",
       });
-      const target = await createCard("default", "6-in-progress", {
+      const target = await createCard("default", "in_progress", {
         title: "Target card",
         description: "Before",
       });
-      const sourceTwo = await createCard("default", "6-in-progress", {
+      const sourceTwo = await createCard("default", "in_progress", {
         title: "Source two",
         description: "Two",
       });
-      await createCard("default", "6-in-progress", {
+      await createCard("default", "in_progress", {
         title: "Tail",
         description: "Tail",
       });
@@ -277,22 +277,22 @@ describe("moveCardDropToEditor", () => {
         "default",
         {
           sourceCardId: sourceOne.id,
-          sourceColumnId: "6-in-progress",
+          sourceStatus: "in_progress",
           sourceCards: [
             {
               cardId: sourceOne.id,
-              columnId: "6-in-progress",
+              status: "in_progress",
             },
             {
               cardId: sourceTwo.id,
-              columnId: "6-in-progress",
+              status: "in_progress",
             },
           ],
           groupId: "group-drop-same-column-many",
           targetUpdates: [
             {
               projectId: "default",
-              columnId: "6-in-progress",
+              status: "in_progress",
               cardId: target.id,
               updates: { description: "After" },
             },
@@ -307,14 +307,14 @@ describe("moveCardDropToEditor", () => {
       expect(undoResult.success).toBeTrue();
 
       const board = await getBoard("default");
-      const column = board.columns.find((entry) => entry.id === "6-in-progress");
+      const column = board.columns.find((entry) => entry.id === "in_progress");
       const targetAfterUndo = await getCard("default", target.id);
 
       expect(column?.cards.map((card) => card.title).join(",")).toBe(
         "Source one,Target card,Source two,Tail",
       );
       expect(column?.cards.map((card) => card.order).join(",")).toBe("0,1,2,3");
-      expect(targetAfterUndo?.card.description).toBe("Before");
+      expect(targetAfterUndo?.description).toBe("Before");
     });
     if (!ran) {
       expect(true).toBeTrue();

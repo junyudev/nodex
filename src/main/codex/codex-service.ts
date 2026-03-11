@@ -1387,7 +1387,7 @@ export class CodexService extends EventEmitter {
       throw new Error(`Card '${input.cardId}' not found in project '${input.projectId}'`);
     }
 
-    const runInTarget = cardRecord.card.runInTarget ?? "localProject";
+    const runInTarget = cardRecord.runInTarget ?? "localProject";
 
     if (runInTarget === "cloud") {
       throw new Error("Cloud run target is not available yet. Choose Local project or New worktree.");
@@ -1397,7 +1397,7 @@ export class CodexService extends EventEmitter {
 
     if (runInTarget === "newWorktree") {
       const managedRoot = path.resolve(getKanbanDir(), "worktrees");
-      const persistedWorktreePath = cardRecord.card.runInWorktreePath?.trim();
+      const persistedWorktreePath = cardRecord.runInWorktreePath?.trim();
       if (persistedWorktreePath) {
         const resolvedPersistedPath = path.resolve(persistedWorktreePath);
         if (isPathWithin(managedRoot, resolvedPersistedPath) && existsSync(resolvedPersistedPath)) {
@@ -1426,9 +1426,9 @@ export class CodexService extends EventEmitter {
         serverDir: getKanbanDir(),
         projectId: input.projectId,
         cardId: input.cardId,
-        threadTitle: input.threadTitle?.trim() || cardRecord.card.title.trim() || cardRecord.card.id,
+        threadTitle: input.threadTitle?.trim() || cardRecord.title.trim() || cardRecord.id,
         branchPrefix: input.worktreeBranchPrefix,
-        preferredBaseBranch: cardRecord.card.runInBaseBranch ?? null,
+        preferredBaseBranch: cardRecord.runInBaseBranch ?? null,
         mode: input.worktreeStartMode ?? "detachedHead",
         onLog: (output) => {
           if (!output.data) return;
@@ -1448,7 +1448,7 @@ export class CodexService extends EventEmitter {
         outputDelta: `Worktree created at ${resolvedWorktreePath}\n`,
       });
 
-      const selectedEnvironmentPath = cardRecord.card.runInEnvironmentPath?.trim() || null;
+      const selectedEnvironmentPath = cardRecord.runInEnvironmentPath?.trim() || null;
       if (selectedEnvironmentPath) {
         try {
           const environmentDefinition = await readWorktreeEnvironmentDefinition({
@@ -1493,7 +1493,7 @@ export class CodexService extends EventEmitter {
 
       const updated = await dbService.updateCard(
         input.projectId,
-        cardRecord.columnId,
+        cardRecord.status,
         input.cardId,
         { runInWorktreePath: resolvedWorktreePath },
       );
@@ -1508,7 +1508,7 @@ export class CodexService extends EventEmitter {
       };
     }
 
-    const localOverride = cardRecord.card.runInLocalPath?.trim();
+    const localOverride = cardRecord.runInLocalPath?.trim();
     if (!localOverride) {
       return {
         cwd: workspacePath,

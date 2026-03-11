@@ -97,8 +97,8 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions = {}): v
     );
   });
 
-  registerHandle("card:get", (_, projectId: string, cardId: string, columnId?: string) =>
-    dbService.getCard(projectId, cardId, columnId)
+  registerHandle("card:get", (_, projectId: string, cardId: string, status?: string) =>
+    dbService.getCard(projectId, cardId, status as Parameters<typeof dbService.getCard>[2])
   );
 
   registerHandle("card:delete", (_, projectId, columnId, cardId, sessionId?) =>

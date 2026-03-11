@@ -64,12 +64,12 @@ describe("history description revisions", () => {
 
       const initialDescription = "# Heading\n\nOriginal body";
       const updatedDescription = "# Heading\n\nUpdated body\n\nThird block";
-      const created = await createCard(projectId, "1-ideas", {
+      const created = await createCard(projectId, "draft", {
         title: "Revision card",
         description: initialDescription,
       });
 
-      const updated = await updateCard(projectId, "1-ideas", created.id, {
+      const updated = await updateCard(projectId, "draft", created.id, {
         description: updatedDescription,
       });
       expect(updated.status).toBe("updated");
@@ -132,12 +132,12 @@ describe("history description revisions", () => {
       const projectId = "history-panel-project";
       createProject({ id: projectId, name: "History panel" });
 
-      const created = await createCard(projectId, "1-ideas", {
+      const created = await createCard(projectId, "draft", {
         title: "Panel card",
         description: "# Heading\n\nAlpha",
       });
 
-      const updated = await updateCard(projectId, "1-ideas", created.id, {
+      const updated = await updateCard(projectId, "draft", created.id, {
         description: "# Heading\n\nBeta\n\nGamma",
         tags: ["delta"],
       });
@@ -168,12 +168,12 @@ describe("history description revisions", () => {
       const projectId = "history-restore-project";
       createProject({ id: projectId, name: "History restore" });
 
-      const created = await createCard(projectId, "1-ideas", {
+      const created = await createCard(projectId, "draft", {
         title: "Restorable card",
         description: "Original description",
       });
 
-      const updated = await updateCard(projectId, "1-ideas", created.id, {
+      const updated = await updateCard(projectId, "draft", created.id, {
         description: "Updated description",
       });
       expect(updated.status).toBe("updated");

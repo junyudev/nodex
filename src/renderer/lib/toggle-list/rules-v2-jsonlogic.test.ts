@@ -11,14 +11,14 @@ describe("toggle-list rules v2 jsonlogic interop", () => {
         any: [
           {
             all: [
-              { field: "status", op: "in", values: ["1-ideas"] },
+              { field: "status", op: "in", values: ["draft"] },
               { field: "priority", op: "in", values: ["p0-critical"] },
               { field: "tags", op: "hasNone", values: ["sidebar"] },
             ],
           },
           {
             all: [
-              { field: "status", op: "in", values: ["3-backlog"] },
+              { field: "status", op: "in", values: ["backlog"] },
               { field: "priority", op: "in", values: ["p0-critical", "p1-high"] },
             ],
           },
@@ -62,7 +62,7 @@ describe("toggle-list rules v2 jsonlogic interop", () => {
         or: [
           {
             and: [
-              { in: [{ var: "status" }, ["1-ideas"]] },
+              { in: [{ var: "status" }, ["draft"]] },
               { and: [{ in: ["frontend", { var: "tags" }] }, { in: ["ui", { var: "tags" }] }] },
             ],
           },

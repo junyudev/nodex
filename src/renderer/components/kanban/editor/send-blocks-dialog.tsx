@@ -93,7 +93,7 @@ export function SendBlocksDialog({
     defaultValues: {
       targetProjectId: sourceProjectId,
       targetCardId: "",
-      targetColumnId: "",
+      targetStatus: "",
       cardQuery: "",
     },
     onSubmit: async ({ value }) => {
@@ -111,10 +111,10 @@ export function SendBlocksDialog({
             cardId: nextSelectedCard.cardId,
           });
         } else {
-          if (!value.targetColumnId) return;
+          if (!value.targetStatus) return;
           await onSendToProject({
             projectId: value.targetProjectId,
-            columnId: value.targetColumnId,
+            columnId: value.targetStatus,
           });
         }
 
@@ -163,7 +163,7 @@ export function SendBlocksDialog({
     form.reset({
       targetProjectId: resolveDefaultProjectId(projects, sourceProjectId),
       targetCardId: "",
-      targetColumnId: "",
+      targetStatus: "",
       cardQuery: "",
     });
     setSubmitting(false);
@@ -203,16 +203,16 @@ export function SendBlocksDialog({
   useEffect(() => {
     if (mode !== "project") return;
     const columns = selectedBoard?.columns ?? [];
-    if (formValues.targetColumnId && columns.some((column) => column.id === formValues.targetColumnId)) return;
-    form.setFieldValue("targetColumnId", columns[0]?.id ?? "");
-  }, [form, formValues.targetColumnId, mode, selectedBoard]);
+    if (formValues.targetStatus && columns.some((column) => column.id === formValues.targetStatus)) return;
+    form.setFieldValue("targetStatus", columns[0]?.id ?? "");
+  }, [form, formValues.targetStatus, mode, selectedBoard]);
 
   const targetProject = projects.find((project) => project.id === formValues.targetProjectId);
   const targetProjectIcon = normalizeProjectIcon(targetProject?.icon);
 
   const selectedCard = availableCards.find((card) => card.cardId === formValues.targetCardId);
   const canSubmitAppend = Boolean(selectedCard && !boardsLoading && !projectsLoading);
-  const canSubmitProject = Boolean(formValues.targetColumnId && !boardsLoading && !projectsLoading);
+  const canSubmitProject = Boolean(formValues.targetStatus && !boardsLoading && !projectsLoading);
 
   const submitLabel = mode === "card" ? "Append blocks" : "Create cards";
 
@@ -243,7 +243,7 @@ export function SendBlocksDialog({
               onValueChange={(value) => {
                 form.setFieldValue("targetProjectId", value);
                 form.setFieldValue("targetCardId", "");
-                form.setFieldValue("targetColumnId", "");
+                form.setFieldValue("targetStatus", "");
                 form.setFieldValue("cardQuery", "");
               }}
             >
@@ -325,10 +325,10 @@ export function SendBlocksDialog({
               <p className="text-xs font-medium text-(--foreground-secondary)">
                 Destination column
               </p>
-              <Select value={formValues.targetColumnId} onValueChange={(value) => form.setFieldValue("targetColumnId", value)}>
+              <Select value={formValues.targetStatus} onValueChange={(value) => form.setFieldValue("targetStatus", value)}>
                 <SelectTrigger className="h-8 w-full">
                   <span className="truncate text-sm">
-                    {selectedBoard?.columns.find((column) => column.id === formValues.targetColumnId)?.name ?? "Select column"}
+                    {selectedBoard?.columns.find((column) => column.id === formValues.targetStatus)?.name ?? "Select column"}
                   </span>
                 </SelectTrigger>
                 <SelectContent sideOffset={6}>

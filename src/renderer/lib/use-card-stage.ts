@@ -13,7 +13,7 @@ export interface CardStageHandlers {
     updates: Partial<CardInput>,
   ) => void;
   onDelete: (columnId: string, cardId: string) => Promise<void>;
-  onMove: (fromColumnId: string, cardId: string, toColumnId: string) => Promise<void>;
+  onMove: (fromStatus: string, cardId: string, toStatus: string) => Promise<void>;
   onCompleteOccurrence?: (cardId: string, occurrenceStart: Date) => Promise<void>;
   onSkipOccurrence?: (cardId: string, occurrenceStart: Date) => Promise<void>;
 }

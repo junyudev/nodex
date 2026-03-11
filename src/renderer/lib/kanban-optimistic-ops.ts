@@ -9,6 +9,7 @@ import type {
   MoveCardsInput,
   Board,
 } from "./types";
+import { DEFAULT_CARD_STATUS } from "../../shared/card-status";
 
 export type BoardTransform = (board: Board) => Board;
 
@@ -171,6 +172,8 @@ export function buildPatchCardTransform(
 export function createOptimisticCard(input: CardCreateInput): Card {
   return {
     id: input.clientId ?? `optimistic:${crypto.randomUUID()}`,
+    status: input.status ?? DEFAULT_CARD_STATUS,
+    archived: false,
     title: input.title,
     description: input.description ?? "",
     priority: input.priority ?? "p2-medium",
@@ -223,7 +226,7 @@ export function buildDeleteCardTransform(
 
 export function buildMoveCardTransform(input: MoveCardInput): BoardTransform {
   return (board) => {
-    const location = findCardLocation(board, input.cardId, input.fromColumnId);
+    const location = findCardLocation(board, input.cardId, input.fromStatus);
     if (!location) return board;
 
     const sourceColumn = board.columns[location.columnIndex];
@@ -235,7 +238,7 @@ export function buildMoveCardTransform(input: MoveCardInput): BoardTransform {
     withoutSourceCards.splice(location.cardIndex, 1);
     let nextBoard = replaceColumnCards(board, location.columnIndex, withoutSourceCards);
 
-    const targetColumnIndex = nextBoard.columns.findIndex((column) => column.id === input.toColumnId);
+    const targetColumnIndex = nextBoard.columns.findIndex((column) => column.id === input.toStatus);
     if (targetColumnIndex < 0) return board;
     const targetColumn = nextBoard.columns[targetColumnIndex];
     if (!targetColumn) return board;
@@ -277,7 +280,7 @@ export function buildMoveCardsTransform(input: MoveCardsInput): BoardTransform {
 
     if (movingCards.length === 0) return board;
 
-    const targetColumnIndex = nextBoard.columns.findIndex((column) => column.id === input.toColumnId);
+    const targetColumnIndex = nextBoard.columns.findIndex((column) => column.id === input.toStatus);
     if (targetColumnIndex < 0) return board;
     const targetColumn = nextBoard.columns[targetColumnIndex];
     if (!targetColumn) return board;
@@ -294,7 +297,7 @@ function applySourceUpdateTransform(
   board: Board,
   update: BlockDropImportInput["sourceUpdates"][number],
 ): Board {
-  return buildPatchCardTransform(update.columnId, update.cardId, update.updates)(board);
+  return buildPatchCardTransform(update.status, update.cardId, update.updates)(board);
 }
 
 export function buildImportBlockDropTransform(
@@ -312,7 +315,7 @@ export function buildImportBlockDropTransform(
       const card = optimisticCards[index];
       if (!card) continue;
       const cardInsertIndex = insertIndex === undefined ? undefined : insertIndex + index;
-      nextBoard = insertCardIntoColumn(nextBoard, input.targetColumnId, card, "bottom", cardInsertIndex);
+      nextBoard = insertCardIntoColumn(nextBoard, input.targetStatus, card, "bottom", cardInsertIndex);
     }
     return nextBoard;
   };
@@ -395,15 +398,15 @@ export function conflictKeysForDelete(cardId: string): string[] {
 export function conflictKeysForMove(input: MoveCardInput): string[] {
   return [
     conflictKeyForCardPosition(input.cardId),
-    `column:${input.toColumnId}:cards`,
-    ...(input.fromColumnId ? [`column:${input.fromColumnId}:cards`] : []),
+    `column:${input.toStatus}:cards`,
+    ...(input.fromStatus ? [`column:${input.fromStatus}:cards`] : []),
   ];
 }
 
 export function conflictKeysForMoveMany(input: MoveCardsInput): string[] {
   const keys = [
-    `column:${input.toColumnId}:cards`,
-    ...(input.fromColumnId ? [`column:${input.fromColumnId}:cards`] : []),
+    `column:${input.toStatus}:cards`,
+    ...(input.fromStatus ? [`column:${input.fromStatus}:cards`] : []),
   ];
   for (const cardId of input.cardIds) {
     keys.push(conflictKeyForCardPosition(cardId));

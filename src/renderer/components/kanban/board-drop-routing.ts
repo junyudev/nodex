@@ -1,5 +1,6 @@
 import type {
   BlockDropImportSourceUpdate,
+  CardStatus,
   CardDropMoveToEditorInput,
 } from "@/lib/types";
 import { resolveCardDropTargetAtPointer } from "./editor/card-drop-target-registry";
@@ -23,7 +24,7 @@ interface BuildExternalCardDropMoveRequestInput {
   sourceProjectId: string;
   sourceCards: Array<{
     cardId: string;
-    columnId: string;
+    status: CardStatus;
   }>;
   groupId: string;
   targetUpdates: BlockDropImportSourceUpdate[];
@@ -51,10 +52,10 @@ export function buildExternalCardDropMoveRequest({
     targetProjectId,
     input: {
       sourceCardId: primarySource.cardId,
-      sourceColumnId: primarySource.columnId,
+      sourceStatus: primarySource.status,
       sourceCards: sourceCards.map((source) => ({
         cardId: source.cardId,
-        columnId: source.columnId,
+        status: source.status,
       })),
       targetUpdates,
       groupId,

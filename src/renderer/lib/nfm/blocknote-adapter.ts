@@ -178,8 +178,8 @@ function nfmBlockToBN(
           meta: block.meta,
           snapshot: block.snapshot ?? "",
           sourceProjectId: block.sourceProjectId ?? "",
-          sourceColumnId: block.sourceColumnId ?? "",
-          sourceColumnName: block.sourceColumnName ?? "",
+          sourceStatus: block.sourceStatus ?? "",
+          sourceStatusName: block.sourceStatusName ?? "",
         },
         content: nfmInlineToBN(block.content),
         children,
@@ -425,8 +425,8 @@ function bnBlockToNfm(block: BNBlock): NfmBlock | null {
       const meta = normalizeString(block.props?.meta) ?? "";
       const snapshot = normalizeString(block.props?.snapshot);
       const sourceProjectId = normalizeString(block.props?.sourceProjectId);
-      const sourceColumnId = normalizeString(block.props?.sourceColumnId);
-      const sourceColumnName = normalizeString(block.props?.sourceColumnName);
+      const sourceStatus = normalizeString(block.props?.sourceStatus);
+      const sourceStatusName = normalizeString(block.props?.sourceStatusName);
 
       return {
         type: "cardToggle",
@@ -434,8 +434,8 @@ function bnBlockToNfm(block: BNBlock): NfmBlock | null {
         meta,
         ...(snapshot !== undefined ? { snapshot } : {}),
         ...(sourceProjectId !== undefined ? { sourceProjectId } : {}),
-        ...(sourceColumnId !== undefined ? { sourceColumnId } : {}),
-        ...(sourceColumnName !== undefined ? { sourceColumnName } : {}),
+        ...(sourceStatus !== undefined ? { sourceStatus } : {}),
+        ...(sourceStatusName !== undefined ? { sourceStatusName } : {}),
         content: bnInlineToNfm(block.content),
         children,
       };

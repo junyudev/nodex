@@ -1206,9 +1206,9 @@ export function WorkbenchShell({
     if (!cardStageProjectId) return;
     await deleteCardForCardStage(columnId, cardId);
   }, [cardStageProjectId, deleteCardForCardStage]);
-  const handleCardStageMove = useCallback(async (fromColumnId: string, cardId: string, toColumnId: string) => {
+  const handleCardStageMove = useCallback(async (fromStatus: Card["status"], cardId: string, toStatus: Card["status"]) => {
     if (!cardStageProjectId) return;
-    await moveCardForCardStage({ cardId, fromColumnId, toColumnId });
+    await moveCardForCardStage({ cardId, fromStatus, toStatus });
   }, [cardStageProjectId, moveCardForCardStage]);
   const handleCardStageCompleteOccurrence = useCallback(async (cardId: string, occurrenceStart: Date) => {
     if (!cardStageProjectId) return;

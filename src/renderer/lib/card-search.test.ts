@@ -9,6 +9,8 @@ import type { Card } from "./types";
 function makeCard(overrides: Partial<Card> = {}): Card {
   return {
     id: "abc1234",
+    status: "draft",
+    archived: false,
     title: "Improve NFM search",
     description: "Use token based matching for board search.",
     priority: "p2-medium",

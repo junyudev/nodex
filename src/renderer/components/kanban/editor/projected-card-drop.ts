@@ -9,7 +9,7 @@ export interface ProjectedCardDropSource {
   ownerBlockId: string;
   sourceProjectId: string;
   sourceCardId: string;
-  sourceColumnId?: string;
+  sourceStatus?: string;
 }
 
 function toStringProp(
@@ -42,12 +42,12 @@ export function resolveProjectedCardDropSource(
     || toStringProp(props, "cardId");
   if (!sourceProjectId || !sourceCardId) return null;
 
-  const sourceColumnId = toStringProp(props, "sourceColumnId");
+  const sourceStatus = toStringProp(props, "sourceStatus");
   return {
     ownerBlockId,
     sourceProjectId,
     sourceCardId,
-    sourceColumnId: sourceColumnId.length > 0 ? sourceColumnId : undefined,
+    sourceStatus: sourceStatus.length > 0 ? sourceStatus : undefined,
   };
 }
 
@@ -62,8 +62,8 @@ export function materializeProjectedCardToggleBlock(
     sourceProjectId: source.sourceProjectId,
   };
 
-  if (source.sourceColumnId) {
-    nextProps.sourceColumnId = source.sourceColumnId;
+  if (source.sourceStatus) {
+    nextProps.sourceStatus = source.sourceStatus;
   }
 
   delete nextProps[PROJECTION_OWNER_PROP];

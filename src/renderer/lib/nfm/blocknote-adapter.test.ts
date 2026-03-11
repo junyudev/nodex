@@ -485,7 +485,7 @@ describe("blocknote adapter", () => {
   });
 
   test("serialize and parse toggle-list inline view round-trip", () => {
-    const nfm = '<toggle-list-inline-view project="default" statuses="5-ready" priorities="p1-high,p2-medium" tags="frontend,ui" tag-mode="all" rank-primary="priority" rank-primary-direction="desc" rank-secondary="created" rank-secondary-direction="asc" property-order="status,priority,estimate,tags" hidden-properties="estimate,tags" include-host-card="true" show-empty-estimate="true" />';
+    const nfm = '<toggle-list-inline-view project="default" statuses="backlog" priorities="p1-high,p2-medium" tags="frontend,ui" tag-mode="all" rank-primary="priority" rank-primary-direction="desc" rank-secondary="created" rank-secondary-direction="asc" property-order="status,priority,estimate,tags" hidden-properties="estimate,tags" include-host-card="true" show-empty-estimate="true" />';
     const blocks = parseNfm(nfm);
     const serialized = serializeNfm(blocks);
     expect(serialized).toBe(
@@ -811,7 +811,7 @@ describe("blocknote adapter", () => {
   });
 
   test("serialize and parse card-toggle round-trip", () => {
-    const nfm = `<card-toggle card=\"abc123\" meta=\"[P1] [In Progress]\" snapshot=\"c25hcHNob3Q=\" project=\"default\" column=\"6-in-progress\" column-name=\"In Progress\">
+    const nfm = `<card-toggle card=\"abc123\" meta=\"[P1] [In Progress]\" snapshot=\"c25hcHNob3Q=\" project=\"default\" status=\"in_progress\" status-name=\"In Progress\">
 \tDropped card
 \tChild details
 </card-toggle>`;
@@ -821,7 +821,7 @@ describe("blocknote adapter", () => {
   });
 
   test("card-toggle NFM → BN maps props and children", () => {
-    const blocks = parseNfm(`<card-toggle card=\"abc123\" meta=\"[P1]\" snapshot=\"c25hcA==\" project=\"default\" column=\"6-in-progress\" column-name=\"In Progress\">
+    const blocks = parseNfm(`<card-toggle card=\"abc123\" meta=\"[P1]\" snapshot=\"c25hcA==\" project=\"default\" status=\"in_progress\" status-name=\"In Progress\">
 \tDropped card
 \tChild details
 </card-toggle>`);
@@ -833,8 +833,8 @@ describe("blocknote adapter", () => {
     expect(bnBlocks[0].props.meta).toBe("[P1]");
     expect(bnBlocks[0].props.snapshot).toBe("c25hcA==");
     expect(bnBlocks[0].props.sourceProjectId).toBe("default");
-    expect(bnBlocks[0].props.sourceColumnId).toBe("6-in-progress");
-    expect(bnBlocks[0].props.sourceColumnName).toBe("In Progress");
+    expect(bnBlocks[0].props.sourceStatus).toBe("in_progress");
+    expect(bnBlocks[0].props.sourceStatusName).toBe("In Progress");
     expect(extractText(bnBlocks[0].content)).toBe("Dropped card");
     expect(bnBlocks[0].children.length).toBe(1);
   });
@@ -849,8 +849,8 @@ describe("blocknote adapter", () => {
             meta: "[P1]",
             snapshot: "c25hcA==",
             sourceProjectId: "default",
-            sourceColumnId: "6-in-progress",
-            sourceColumnName: "In Progress",
+            sourceStatus: "in_progress",
+            sourceStatusName: "In Progress",
           },
           content: [{ type: "text", text: "Dropped card", styles: {} }],
           children: [
@@ -872,8 +872,8 @@ describe("blocknote adapter", () => {
     expect(blocks[0].meta).toBe("[P1]");
     expect(blocks[0].snapshot).toBe("c25hcA==");
     expect(blocks[0].sourceProjectId).toBe("default");
-    expect(blocks[0].sourceColumnId).toBe("6-in-progress");
-    expect(blocks[0].sourceColumnName).toBe("In Progress");
+    expect(blocks[0].sourceStatus).toBe("in_progress");
+    expect(blocks[0].sourceStatusName).toBe("In Progress");
     expect(blocks[0].children.length).toBe(1);
   });
 

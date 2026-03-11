@@ -49,11 +49,11 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
 describe("importBlockDropAsCards", () => {
   test("supports grouped source updates even when no new cards are created", async () => {
     const ran = await withTempDatabase(async () => {
-      const source = await createCard("default", "6-in-progress", {
+      const source = await createCard("default", "in_progress", {
         title: "Source card",
         description: "Source before",
       });
-      const target = await createCard("default", "6-in-progress", {
+      const target = await createCard("default", "in_progress", {
         title: "Target card",
         description: "Target before",
       });
@@ -61,18 +61,18 @@ describe("importBlockDropAsCards", () => {
       const result = await importBlockDropAsCards(
         "default",
         {
-          targetColumnId: "6-in-progress",
+          targetStatus: "in_progress",
           cards: [],
           sourceUpdates: [
             {
               projectId: "default",
-              columnId: "6-in-progress",
+              status: "in_progress",
               cardId: source.id,
               updates: { description: "Source after" },
             },
             {
               projectId: "default",
-              columnId: "6-in-progress",
+              status: "in_progress",
               cardId: target.id,
               updates: { description: "Target after" },
             },
@@ -85,10 +85,10 @@ describe("importBlockDropAsCards", () => {
       expect(result.cards.length).toBe(0);
       expect(result.groupId).toBe("group-send-blocks");
 
-      const sourceAfter = await getCard("default", source.id, "6-in-progress");
-      const targetAfter = await getCard("default", target.id, "6-in-progress");
-      expect(sourceAfter?.card.description).toBe("Source after");
-      expect(targetAfter?.card.description).toBe("Target after");
+      const sourceAfter = await getCard("default", source.id, "in_progress");
+      const targetAfter = await getCard("default", target.id, "in_progress");
+      expect(sourceAfter?.description).toBe("Source after");
+      expect(targetAfter?.description).toBe("Target after");
 
       const groupedEntries = getRecentHistory("default", 20, 0)
         .filter((entry) => entry.groupId === "group-send-blocks");
@@ -96,17 +96,17 @@ describe("importBlockDropAsCards", () => {
 
       const undoResult = undoLatest("default", "session-1");
       expect(undoResult.success).toBeTrue();
-      const sourceAfterUndo = await getCard("default", source.id, "6-in-progress");
-      const targetAfterUndo = await getCard("default", target.id, "6-in-progress");
-      expect(sourceAfterUndo?.card.description).toBe("Source before");
-      expect(targetAfterUndo?.card.description).toBe("Target before");
+      const sourceAfterUndo = await getCard("default", source.id, "in_progress");
+      const targetAfterUndo = await getCard("default", target.id, "in_progress");
+      expect(sourceAfterUndo?.description).toBe("Source before");
+      expect(targetAfterUndo?.description).toBe("Target before");
 
       const redoResult = redoLatest("default", "session-1");
       expect(redoResult.success).toBeTrue();
-      const sourceAfterRedo = await getCard("default", source.id, "6-in-progress");
-      const targetAfterRedo = await getCard("default", target.id, "6-in-progress");
-      expect(sourceAfterRedo?.card.description).toBe("Source after");
-      expect(targetAfterRedo?.card.description).toBe("Target after");
+      const sourceAfterRedo = await getCard("default", source.id, "in_progress");
+      const targetAfterRedo = await getCard("default", target.id, "in_progress");
+      expect(sourceAfterRedo?.description).toBe("Source after");
+      expect(targetAfterRedo?.description).toBe("Target after");
     });
 
     if (!ran) {

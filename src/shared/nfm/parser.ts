@@ -513,8 +513,8 @@ function parseCardToggle(
   const meta = getXmlAttr(attrString, "meta") ?? "";
   const snapshot = getXmlAttr(attrString, "snapshot");
   const sourceProjectId = getXmlAttr(attrString, "project");
-  const sourceColumnId = getXmlAttr(attrString, "column");
-  const sourceColumnName = getXmlAttr(attrString, "column-name");
+  const sourceStatus = getXmlAttr(attrString, "status");
+  const sourceStatusName = getXmlAttr(attrString, "status-name");
 
   const titleLines: string[] = [];
   const childrenLines: string[] = [];
@@ -555,8 +555,8 @@ function parseCardToggle(
       meta,
       ...(snapshot ? { snapshot } : {}),
       ...(sourceProjectId ? { sourceProjectId } : {}),
-      ...(sourceColumnId ? { sourceColumnId } : {}),
-      ...(sourceColumnName ? { sourceColumnName } : {}),
+      ...(sourceStatus ? { sourceStatus } : {}),
+      ...(sourceStatusName ? { sourceStatusName } : {}),
       content: titleContent,
       children: parseNfm(childSource),
     },

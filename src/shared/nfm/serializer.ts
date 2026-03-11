@@ -113,8 +113,8 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
         ];
         if (block.snapshot) attrs.push(`snapshot="${escapeXmlAttr(block.snapshot)}"`);
         if (block.sourceProjectId) attrs.push(`project="${escapeXmlAttr(block.sourceProjectId)}"`);
-        if (block.sourceColumnId) attrs.push(`column="${escapeXmlAttr(block.sourceColumnId)}"`);
-        if (block.sourceColumnName) attrs.push(`column-name="${escapeXmlAttr(block.sourceColumnName)}"`);
+        if (block.sourceStatus) attrs.push(`status="${escapeXmlAttr(block.sourceStatus)}"`);
+        if (block.sourceStatusName) attrs.push(`status-name="${escapeXmlAttr(block.sourceStatusName)}"`);
         lines.push(prefix + `<card-toggle ${attrs.join(" ")}>`);
         lines.push(prefix + "\t" + serializeInlineContent(block.content));
         lines.push(...serializeBlocks(block.children, indent + 1));

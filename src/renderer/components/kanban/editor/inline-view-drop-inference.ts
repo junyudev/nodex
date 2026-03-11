@@ -9,7 +9,7 @@ import { TOGGLE_LIST_STATUS_ORDER } from "../../../lib/toggle-list/types";
 export interface InlineViewProjectedRow {
   blockId: string;
   cardId: string;
-  sourceColumnId?: ToggleListStatusId;
+  sourceStatus?: ToggleListStatusId;
 }
 
 export interface InferInlineViewDropImportInput {
@@ -21,7 +21,7 @@ export interface InferInlineViewDropImportInput {
 }
 
 export interface InferInlineViewDropImportResult {
-  targetColumnId: ToggleListStatusId;
+  targetStatus: ToggleListStatusId;
   insertIndex?: number;
   cards: CardInput[];
 }
@@ -68,11 +68,11 @@ function resolveFallbackStatus(settings: ToggleListSettings): ToggleListStatusId
 
 function resolveInsertIndexForColumn(
   board: Board,
-  targetColumnId: ToggleListStatusId,
+  targetStatus: ToggleListStatusId,
   afterCardId?: string,
   beforeCardId?: string,
 ): number | undefined {
-  const targetColumn = board.columns.find((column) => column.id === targetColumnId);
+  const targetColumn = board.columns.find((column) => column.id === targetStatus);
   if (!targetColumn) return undefined;
 
   if (afterCardId) {
@@ -136,14 +136,14 @@ export function inferInlineViewDropImport(
 
   const beforeCard = beforeRow ? cardById.get(beforeRow.cardId) : undefined;
   const afterCard = afterRow ? cardById.get(afterRow.cardId) : undefined;
-  const targetColumnId = afterCard?.columnId
+  const targetStatus = afterCard?.columnId
     ?? beforeCard?.columnId
-    ?? afterRow?.sourceColumnId
-    ?? beforeRow?.sourceColumnId
+    ?? afterRow?.sourceStatus
+    ?? beforeRow?.sourceStatus
     ?? resolveFallbackStatus(input.settings);
   const insertIndex = resolveInsertIndexForColumn(
     input.board,
-    targetColumnId,
+    targetStatus,
     afterCard?.id,
     beforeCard?.id,
   );
@@ -161,7 +161,7 @@ export function inferInlineViewDropImport(
   });
 
   return {
-    targetColumnId,
+    targetStatus,
     ...(insertIndex !== undefined ? { insertIndex } : {}),
     cards,
   };

@@ -125,6 +125,8 @@ installDomShims();
 function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
   return {
     id: "card-1",
+    status: "backlog",
+    archived: false,
     title: "Saved title",
     description: "Saved description",
     priority: "p1-high",
@@ -133,7 +135,7 @@ function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
     agentBlocked: false,
     created: new Date("2026-02-16T00:00:00.000Z"),
     order: 0,
-    columnId: "3-backlog",
+    columnId: "backlog",
     columnName: "Backlog",
     boardIndex: 0,
     ...overrides,
@@ -266,7 +268,7 @@ function buildOwnerInput(
   card: ToggleListCard,
   updateCard: (columnId: string, cardId: string, updates: Partial<CardInput>) => Promise<void>,
   patchCard: (columnId: string, cardId: string, updates: Partial<CardInput>) => void = () => {},
-  moveCard: (input: { cardId: string; fromColumnId?: string; toColumnId: string }) => Promise<boolean> = async () => true,
+  moveCard: (input: { cardId: string; fromStatus?: string; toStatus: string }) => Promise<boolean> = async () => true,
   savedColumnId = card.columnId,
 ) {
   const savedCard = makeCard({
@@ -531,7 +533,7 @@ describe("projection sync controller", () => {
           id: "card-1",
           title: "Saved title",
           description: "",
-          columnId: "8-done",
+          columnId: "done",
           columnName: "Done",
         }),
         async () => {
@@ -542,11 +544,11 @@ describe("projection sync controller", () => {
         },
         async (input) => {
           moveCalls += 1;
-          expect(input.fromColumnId).toBe("3-backlog");
-          expect(input.toColumnId).toBe("8-done");
+          expect(input.fromStatus).toBe("backlog");
+          expect(input.toStatus).toBe("done");
           return true;
         },
-        "3-backlog",
+        "backlog",
       ),
     );
     await waitForMicrotasks();

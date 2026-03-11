@@ -156,6 +156,8 @@ export function buildCardStageStoryCard(controls: Pick<CardStageStoryControls, "
 
   return {
     id: "story-card-stage-1",
+    status: "in_progress",
+    archived: false,
     title: "Refine card stage thread property UI",
     description: [
       "## Story intent",

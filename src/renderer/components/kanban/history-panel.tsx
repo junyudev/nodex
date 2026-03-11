@@ -721,8 +721,8 @@ function UpdateDetails({ entry }: { entry: HistoryPanelEntry }) {
 }
 
 function MoveDetails({ entry }: { entry: HistoryPanelEntry }) {
-  const fromColumn = getColumnLabel(entry.move?.fromColumnId ?? null);
-  const toColumn = getColumnLabel(entry.move?.toColumnId ?? null);
+  const fromColumn = getColumnLabel(entry.move?.fromStatus ?? null);
+  const toColumn = getColumnLabel(entry.move?.toStatus ?? null);
 
   return (
     <div className="grid grid-cols-2 gap-4 rounded-lg bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)] px-3 py-2.5">
@@ -1143,7 +1143,7 @@ function getRevertLabel(op: string): string {
 function getRevertConfirmMessage(entry: HistoryPanelEntry): string {
   switch (entry.operation) {
     case "update": return "Revert this update? The changed fields will be restored to their previous values.";
-    case "move": return `Revert this move? The card will be moved back to ${getColumnLabel(entry.move?.fromColumnId ?? null)}.`;
+    case "move": return `Revert this move? The card will be moved back to ${getColumnLabel(entry.move?.fromStatus ?? null)}.`;
     case "create": return "This will delete the card. This action creates a history entry and can be reversed.";
     case "delete": return "Restore this deleted card? It will be re-created from the saved snapshot.";
     default: return "Are you sure?";
@@ -1200,7 +1200,7 @@ function getOperationIcon(op: string) {
 
 function getEntrySummary(entry: HistoryPanelEntry): string | null {
   if (entry.operation === "move") {
-    return `${getColumnLabel(entry.move?.fromColumnId ?? null)} \u2192 ${getColumnLabel(entry.move?.toColumnId ?? null)}`;
+    return `${getColumnLabel(entry.move?.fromStatus ?? null)} \u2192 ${getColumnLabel(entry.move?.toStatus ?? null)}`;
   }
 
   const fieldChanges = entry.fieldChanges ?? [];

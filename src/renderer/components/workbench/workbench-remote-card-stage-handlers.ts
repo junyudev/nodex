@@ -14,12 +14,12 @@ export function makeRemoteCardStageHandlers(projectId: string): CardStageHandler
     onDelete: async (columnId: string, cardId: string) => {
       await invoke("card:delete", projectId, columnId, cardId);
     },
-    onMove: async (fromColumnId: string, cardId: string, toColumnId: string) => {
+    onMove: async (fromStatus: string, cardId: string, toStatus: string) => {
       await invoke("card:move", {
         projectId,
         cardId,
-        fromColumnId,
-        toColumnId,
+        fromStatus,
+        toStatus,
       });
     },
     onCompleteOccurrence: async (cardId: string, occurrenceStart: Date) => {

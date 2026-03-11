@@ -15,26 +15,26 @@ interface ColumnProps {
   projectId: string;
   projectName: string;
   column: ColumnType;
-  onAddCard: (columnId: string, input: CardInput, placement?: CardCreatePlacement) => Promise<void>;
-  onEditCard: (columnId: string, card: CardType, event: React.MouseEvent<HTMLDivElement>) => void;
+  onAddCard: (columnId: CardType["status"], input: CardInput, placement?: CardCreatePlacement) => Promise<void>;
+  onEditCard: (columnId: CardType["status"], card: CardType, event: React.MouseEvent<HTMLDivElement>) => void;
   onUpdateCardProperty: (input: CardPropertyUpdateInput) => Promise<void>;
   onMoveCardToProjectFromMenu?: (input: {
     cardId: string;
-    sourceColumnId: string;
+    sourceStatus: CardType["status"];
     targetProjectId: string;
   }) => Promise<void> | void;
   onDeleteCardFromMenu?: (input: {
     cardId: string;
-    columnId: string;
+    columnId: CardType["status"];
   }) => Promise<void> | void;
   onCopyCardLinkFromMenu?: (input: {
     cardId: string;
     projectId: string;
   }) => Promise<void> | void;
   onOpenCardMenu?: (cardId: string) => void;
-  onNativeDragOver?: (columnId: string, event: React.DragEvent<HTMLDivElement>) => void;
-  onNativeDragLeave?: (columnId: string, event: React.DragEvent<HTMLDivElement>) => void;
-  onNativeDrop?: (columnId: string, event: React.DragEvent<HTMLDivElement>) => void;
+  onNativeDragOver?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
+  onNativeDragLeave?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
+  onNativeDrop?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
   dragDisabled?: boolean;
   dropIndicatorIndex?: number;
   focusedCardId?: string;
@@ -44,7 +44,7 @@ interface ColumnProps {
 
 // Column colors - Notion exact RGBA values from Chrome DevTools inspection
 export const columnStyles: Record<string, { dotColor: string; headerBg: string; badgeBg: string; badgeText: string; dropBg: string; accentColor: string }> = {
-  "1-ideas": {
+  draft: {
     dotColor: "bg-[var(--column-ideas-dot)]",
     headerBg: "bg-[var(--column-ideas-header-bg)]",
     badgeBg: "bg-[var(--status-ideas-bg)]",
@@ -52,15 +52,7 @@ export const columnStyles: Record<string, { dotColor: string; headerBg: string; 
     dropBg: "bg-[var(--column-ideas-drop-bg)]",
     accentColor: "var(--status-ideas-dot)",
   },
-  "2-analyzing": {
-    dotColor: "bg-[var(--column-analyzing-dot)]",
-    headerBg: "bg-[var(--column-analyzing-header-bg)]",
-    badgeBg: "bg-[var(--status-analyzing-bg)]",
-    badgeText: "text-[var(--status-analyzing-text)]",
-    dropBg: "bg-[var(--column-analyzing-drop-bg)]",
-    accentColor: "var(--status-analyzing-dot)",
-  },
-  "3-backlog": {
+  backlog: {
     dotColor: "bg-[var(--column-backlog-dot)]",
     headerBg: "bg-[var(--column-backlog-header-bg)]",
     badgeBg: "bg-[var(--status-backlog-bg)]",
@@ -68,23 +60,7 @@ export const columnStyles: Record<string, { dotColor: string; headerBg: string; 
     dropBg: "bg-[var(--column-backlog-drop-bg)]",
     accentColor: "var(--status-backlog-dot)",
   },
-  "4-planning": {
-    dotColor: "bg-[var(--column-planning-dot)]",
-    headerBg: "bg-[var(--column-planning-header-bg)]",
-    badgeBg: "bg-[var(--status-planning-bg)]",
-    badgeText: "text-[var(--status-planning-text)]",
-    dropBg: "bg-[var(--column-planning-drop-bg)]",
-    accentColor: "var(--status-planning-dot)",
-  },
-  "5-ready": {
-    dotColor: "bg-[var(--column-ready-dot)]",
-    headerBg: "bg-[var(--column-ready-header-bg)]",
-    badgeBg: "bg-[var(--status-ready-bg)]",
-    badgeText: "text-[var(--status-ready-text)]",
-    dropBg: "bg-[var(--column-ready-drop-bg)]",
-    accentColor: "var(--status-ready-dot)",
-  },
-  "6-in-progress": {
+  in_progress: {
     dotColor: "bg-[var(--column-in-progress-dot)]",
     headerBg: "bg-[var(--column-in-progress-header-bg)]",
     badgeBg: "bg-[var(--status-in-progress-bg)]",
@@ -92,7 +68,7 @@ export const columnStyles: Record<string, { dotColor: string; headerBg: string; 
     dropBg: "bg-[var(--column-in-progress-drop-bg)]",
     accentColor: "var(--status-in-progress-dot)",
   },
-  "7-review": {
+  in_review: {
     dotColor: "bg-[var(--column-review-dot)]",
     headerBg: "bg-[var(--column-review-header-bg)]",
     badgeBg: "bg-[var(--status-review-bg)]",
@@ -100,7 +76,7 @@ export const columnStyles: Record<string, { dotColor: string; headerBg: string; 
     dropBg: "bg-[var(--column-review-drop-bg)]",
     accentColor: "var(--status-review-dot)",
   },
-  "8-done": {
+  done: {
     dotColor: "bg-[var(--column-done-dot)]",
     headerBg: "bg-[var(--column-done-header-bg)]",
     badgeBg: "bg-[var(--status-done-bg)]",
@@ -312,12 +288,12 @@ export function Column({
                           projects: contextMenuProjects,
                           onMoveToProject: (targetProjectId) => onMoveCardToProjectFromMenu({
                             cardId: card.id,
-                            sourceColumnId: column.id,
+                            sourceStatus: column.id,
                             targetProjectId,
                           }),
                           onDelete: ({ cardId, columnId }) => onDeleteCardFromMenu?.({
                             cardId,
-                            columnId,
+                            columnId: columnId as CardType["status"],
                           }),
                           onCopyLink: ({ cardId, projectId }) => onCopyCardLinkFromMenu?.({
                             cardId,

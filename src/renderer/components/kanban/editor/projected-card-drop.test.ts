@@ -31,7 +31,7 @@ describe("projected card drop helpers", () => {
       props: {
         cardId: "card-123",
         sourceProjectId: "default",
-        sourceColumnId: "6-in-progress",
+        sourceStatus: "in_progress",
         [PROJECTION_OWNER_PROP]: "owner-1",
         [PROJECTION_SOURCE_PROJECT_PROP]: "default",
         [PROJECTION_CARD_ID_PROP]: "card-123",
@@ -44,7 +44,7 @@ describe("projected card drop helpers", () => {
       ownerBlockId: "owner-1",
       sourceProjectId: "default",
       sourceCardId: "card-123",
-      sourceColumnId: "6-in-progress",
+      sourceStatus: "in_progress",
     }));
   });
 
@@ -69,7 +69,7 @@ describe("projected card drop helpers", () => {
         cardId: "card-123",
         meta: "[P1]",
         sourceProjectId: "default",
-        sourceColumnId: "6-in-progress",
+        sourceStatus: "in_progress",
         [PROJECTION_OWNER_PROP]: "owner-1",
         [PROJECTION_SOURCE_PROJECT_PROP]: "default",
         [PROJECTION_CARD_ID_PROP]: "card-123",
@@ -87,7 +87,7 @@ describe("projected card drop helpers", () => {
     expect(materialized.type).toBe("cardToggle");
     expect(materialized.props?.cardId).toBe("card-123");
     expect(materialized.props?.sourceProjectId).toBe("default");
-    expect(materialized.props?.sourceColumnId).toBe("6-in-progress");
+    expect(materialized.props?.sourceStatus).toBe("in_progress");
     expect(materialized.props?.[PROJECTION_OWNER_PROP] === undefined).toBeTrue();
     expect(materialized.props?.[PROJECTION_SOURCE_PROJECT_PROP] === undefined).toBeTrue();
     expect(materialized.props?.[PROJECTION_CARD_ID_PROP] === undefined).toBeTrue();

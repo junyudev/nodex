@@ -13,15 +13,12 @@ const __dirname = dirname(__filename);
 
 // ─── Constants ───
 
-const COLUMNS = [
-  { id: "1-ideas", name: "Ideas" },
-  { id: "2-analyzing", name: "Analyzing" },
-  { id: "3-backlog", name: "Backlog" },
-  { id: "4-planning", name: "Planning" },
-  { id: "5-ready", name: "Ready" },
-  { id: "6-in-progress", name: "In Progress" },
-  { id: "7-review", name: "Review" },
-  { id: "8-done", name: "Done" },
+const STATUSES = [
+  { id: "draft", name: "Draft" },
+  { id: "backlog", name: "Backlog" },
+  { id: "in_progress", name: "In Progress" },
+  { id: "in_review", name: "In Review" },
+  { id: "done", name: "Done" },
 ];
 
 const PRIORITIES = new Set([
@@ -423,36 +420,38 @@ function apiPrefix(config) {
   return `/api/projects/${encodeURIComponent(config.project)}`;
 }
 
-// ─── Column Helpers ───
+// ─── Status Helpers ───
 
-function normalizeColumnId(input) {
-  if (COLUMNS.some(c => c.id === input)) return input;
-
-  const num = parseInt(input, 10);
-  if (!isNaN(num)) {
-    const col = COLUMNS.find(c => c.id.startsWith(`${num}-`));
-    if (col) return col.id;
+function normalizeStatusId(input) {
+  if (typeof input !== "string" || input.trim().length === 0) {
+    throw new Error("Status is required");
   }
 
-  const lower = input.toLowerCase().replace(/-/g, " ");
-  const byName = COLUMNS.find(c => c.name.toLowerCase() === lower);
+  const trimmed = input.trim();
+  if (STATUSES.some((status) => status.id === trimmed)) return trimmed;
+
+  const normalized = trimmed.toLowerCase().replace(/[\s-]+/g, "_");
+  if (STATUSES.some((status) => status.id === normalized)) return normalized;
+
+  const byName = STATUSES.find((status) => status.name.toLowerCase() === trimmed.toLowerCase());
   if (byName) return byName.id;
 
-  const bySuffix = COLUMNS.find(c => c.id.split("-").slice(1).join("-") === input.toLowerCase());
-  if (bySuffix) return bySuffix.id;
-
-  const candidates = COLUMNS.flatMap(c => [c.id, c.name.toLowerCase(), c.id.split("-").slice(1).join("-")]);
+  const candidates = STATUSES.flatMap((status) => [
+    status.id,
+    status.id.replace(/_/g, "-"),
+    status.name.toLowerCase(),
+  ]);
   const suggestion = closestMatch(input, candidates);
   const suffix = suggestion ? ` Did you mean "${suggestion}"?` : "";
-  throw new Error(`Unknown column: ${input}.${suffix} Valid: ${COLUMNS.map(c => c.id).join(", ")}`);
+  throw new Error(`Unknown status: ${input}.${suffix} Valid: ${STATUSES.map((status) => status.id).join(", ")}`);
 }
 
 // ─── Card Formatting ───
 
-function cardToKV(card, columnId) {
+function cardToKV(card, statusId) {
   return {
     id: card.id,
-    column: columnId,
+    status: statusId,
     title: card.title,
     description: card.description || "",
     priority: card.priority,
@@ -461,16 +460,16 @@ function cardToKV(card, columnId) {
     dueDate: card.dueDate || "",
     assignee: card.assignee || "",
     blocked: card.agentBlocked ? "true" : "false",
-    status: card.agentStatus || "",
+    agentStatus: card.agentStatus || "",
     created: card.created,
     order: card.order,
   };
 }
 
-const LS_HEADERS = ["id", "column", "title", "priority", "estimate", "assignee", "blocked", "status", "tags", "order"];
+const LS_HEADERS = ["id", "status", "title", "priority", "estimate", "assignee", "blocked", "agentStatus", "tags", "order"];
 const LS_FULL_HEADERS = [
   "id",
-  "column",
+  "status",
   "title",
   "description",
   "descriptionLen",
@@ -486,16 +485,16 @@ const LS_FULL_HEADERS = [
   "order",
 ];
 
-function cardToRow(card, columnId) {
+function cardToRow(card, statusId) {
   return {
     id: card.id,
-    column: columnId,
+    status: statusId,
     title: card.title,
     priority: card.priority,
     estimate: card.estimate || "",
     assignee: card.assignee || "",
     blocked: card.agentBlocked ? "true" : "false",
-    status: card.agentStatus || "",
+    agentStatus: card.agentStatus || "",
     tags: Array.isArray(card.tags) ? card.tags.join(";") : "",
     order: card.order,
   };
@@ -511,7 +510,7 @@ function truncateDescription(description, maxChars) {
   return { value: `${description.slice(0, maxChars - 3)}...`, truncated: true };
 }
 
-function cardToFullRow(card, columnId, options) {
+function cardToFullRow(card, statusId, options) {
   const description = card.description || "";
   const truncated = options.descriptionFull
     ? { value: description, truncated: false }
@@ -519,7 +518,7 @@ function cardToFullRow(card, columnId, options) {
 
   return {
     id: card.id,
-    column: columnId,
+    status: statusId,
     title: card.title,
     description: truncated.value,
     descriptionLen: description.length,
@@ -922,22 +921,22 @@ async function cmdLs(positional, flags, config) {
   let cards = [];
 
   if (positional[0]) {
-    const colId = normalizeColumnId(positional[0]);
-    const col = await apiGet(`${prefix}/column?id=${encodeURIComponent(colId)}`);
-    cards = col.cards.map((card) => {
+    const statusId = normalizeStatusId(positional[0]);
+    const column = await apiGet(`${prefix}/column?id=${encodeURIComponent(statusId)}`);
+    cards = column.cards.map((card) => {
       if (lsOptions.full) {
-        return cardToFullRow(card, col.id, lsOptions);
+        return cardToFullRow(card, column.id, lsOptions);
       }
-      return cardToRow(card, col.id);
+      return cardToRow(card, column.id);
     });
   } else {
     const board = await apiGet(`${prefix}/board`);
-    for (const col of board.columns) {
-      for (const card of col.cards) {
+    for (const column of board.columns) {
+      for (const card of column.cards) {
         if (lsOptions.full) {
-          cards.push(cardToFullRow(card, col.id, lsOptions));
+          cards.push(cardToFullRow(card, column.id, lsOptions));
         } else {
-          cards.push(cardToRow(card, col.id));
+          cards.push(cardToRow(card, column.id));
         }
       }
     }
@@ -974,20 +973,20 @@ async function cmdGet(positional, flags, config) {
   if (flags.json) {
     jsonOut(card, flags);
   } else {
-    keyValueOut(cardToKV(card, card.columnId), flags);
+    keyValueOut(cardToKV(card, card.status), flags);
   }
 }
 
 // ─── Command: add ───
 
 async function cmdAdd(positional, flags, config) {
-  const columnRaw = positional[0];
+  const statusRaw = positional[0];
   const title = positional[1];
-  if (!columnRaw || !title) throw new Error("Usage: nodex add <column> <title> [opts]");
+  if (!statusRaw || !title) throw new Error("Usage: nodex add <status> <title> [opts]");
 
   const prefix = apiPrefix(config);
-  const columnId = normalizeColumnId(columnRaw);
-  const body = { columnId, title };
+  const status = normalizeStatusId(statusRaw);
+  const body = { status, title };
   if (config.sessionId) body.sessionId = config.sessionId;
 
   if (flags.description !== undefined) body.description = await resolveValue(flags.description);
@@ -1011,7 +1010,7 @@ async function cmdAdd(positional, flags, config) {
     jsonOut(card, flags);
     return;
   }
-  keyValueOut(cardToKV(card, columnId), flags);
+  keyValueOut(cardToKV(card, status), flags);
 }
 
 // ─── Command: update ───
@@ -1074,7 +1073,7 @@ async function cmdUpdate(positional, flags, config) {
   if (flags.json) {
     jsonOut(card, flags);
   } else if (flags.verbose) {
-    keyValueOut(cardToKV(card, card.columnId || "unknown"), flags);
+    keyValueOut(cardToKV(card, card.status || "unknown"), flags);
   } else {
     rowsOut(["status", "cardId"], [{ status: "updated", cardId }], flags);
   }
@@ -1102,17 +1101,17 @@ async function cmdRm(positional, flags, config) {
 
 async function cmdMv(positional, flags, config) {
   const cardId = positional[0];
-  const fromColumnRaw = positional[1];
-  const toColumnRaw = positional[2];
-  if (!cardId || !fromColumnRaw || !toColumnRaw) throw new Error("Usage: nodex mv <card-id> <from> <to> [order]");
+  const fromStatusRaw = positional[1];
+  const toStatusRaw = positional[2];
+  if (!cardId || !fromStatusRaw || !toStatusRaw) throw new Error("Usage: nodex mv <card-id> <from-status> <to-status> [order]");
   assertNoConflictingClearFlags(flags);
 
   const prefix = apiPrefix(config);
-  const fromColumn = normalizeColumnId(fromColumnRaw);
-  const toColumn = normalizeColumnId(toColumnRaw);
+  const fromStatus = normalizeStatusId(fromStatusRaw);
+  const toStatus = normalizeStatusId(toStatusRaw);
 
-  // Atomic move: asserts card is still in <from> column (fails with 409 if already moved)
-  const body = { cardId, fromColumnId: fromColumn, toColumnId: toColumn };
+  // Atomic move: asserts card is still in <from-status> (fails with 409 if already moved)
+  const body = { cardId, fromStatus, toStatus };
   if (positional[3] !== undefined) body.newOrder = parseNonNegativeInt(positional[3], "order");
   if (config.sessionId) body.sessionId = config.sessionId;
 
@@ -1182,7 +1181,7 @@ async function cmdMv(positional, flags, config) {
     jsonOut({
       success: moveResult.success !== false,
       cardId,
-      toColumnId: toColumn,
+      toStatus,
       card: cardAfterMove || undefined,
       updated: hasCardUpdates,
     }, flags);
@@ -1190,13 +1189,13 @@ async function cmdMv(positional, flags, config) {
   }
 
   if (flags.verbose && cardAfterMove) {
-    keyValueOut(cardToKV(cardAfterMove, toColumn), flags);
+    keyValueOut(cardToKV(cardAfterMove, toStatus), flags);
     return;
   }
 
   rowsOut(
-    ["status", "cardId", "toColumnId"],
-    [{ status: "moved", cardId, toColumnId: toColumn }],
+    ["status", "cardId", "toStatus"],
+    [{ status: "moved", cardId, toStatus }],
     flags
   );
 }
@@ -1217,15 +1216,15 @@ async function cmdHistory(_positional, flags, config) {
     data = await apiGet(url);
   }
 
-  const headers = ["id", "operation", "cardId", "columnId", "timestamp", "fromColumn", "toColumn"];
+  const headers = ["id", "operation", "cardId", "status", "timestamp", "fromStatus", "toStatus"];
   const rows = data.entries.map(e => ({
     id: e.id,
     operation: e.operation,
     cardId: e.cardId,
-    columnId: e.columnId,
+    status: e.status,
     timestamp: e.timestamp,
-    fromColumn: e.fromColumnId || "",
-    toColumn: e.toColumnId || "",
+    fromStatus: e.fromStatus || "",
+    toStatus: e.toStatus || "",
   }));
 
   if (flags.json) {
@@ -1569,12 +1568,12 @@ Config:
   nodex config show              Show resolved config with sources
 
 Agent Commands:
-  nodex ls [column]              List cards
+  nodex ls [status]              List cards
   nodex get <card-id>            Get card details
-  nodex add <column> <title>     Create card
+  nodex add <status> <title>     Create card
   nodex update <card-id>         Update card
   nodex rm <card-id>             Delete card
-  nodex mv <card-id> <column>    Move card (supports update opts)
+  nodex mv <card-id> <from> <to> Move card (supports update opts)
   nodex history                  View edit history
   nodex undo                     Undo last action
   nodex redo                     Redo last undone
@@ -1607,16 +1606,16 @@ Env vars: NODEX_URL, NODEX_SESSION_ID, NODEX_PROJECT
 Server env vars: KANBAN_DIR, KANBAN_PORT, KANBAN_BACKUP_*
 
 File Input: Use @filepath or @- for stdin
-  nodex add 3 "Task" -d @./plan.md
-  cat notes.md | nodex add 3 "Task" -d @-`);
+  nodex add backlog "Task" -d @./plan.md
+  cat notes.md | nodex add backlog "Task" -d @-`);
 }
 
 function printCommandHelp(cmd) {
   const help = {
-    ls: `Usage: nodex ls [column] [options]
+    ls: `Usage: nodex ls [status] [options]
 
-  List cards. Without column, lists all cards across all columns.
-  Column accepts: full ID (5-ready), number (5), or name (ready).
+  List cards. Without a status, lists all cards across all workflow statuses.
+  Status accepts canonical ids plus ergonomic separators: draft, backlog, in_progress/in-progress, in_review/in-review, done.
 
   Options:
     -p, --project <id>  Project (default: "default")
@@ -1635,12 +1634,12 @@ function printCommandHelp(cmd) {
 
     get: `Usage: nodex get <card-id>
 
-  Get detailed card info. Column is auto-resolved.
+  Get detailed card info. Status is auto-resolved.
   Default output format is JSON Lines.`,
 
-    add: `Usage: nodex add <column> <title> [options]
+    add: `Usage: nodex add <status> <title> [options]
 
-  Create a new card. Column accepts: full ID, number, or name.
+  Create a new card. Status accepts canonical ids plus ergonomic separators.
 
   Options:
     -p, --project <id>        Project (default: "default")
@@ -1659,7 +1658,7 @@ function printCommandHelp(cmd) {
 
     update: `Usage: nodex update <card-id> [options]
 
-  Update card properties. Column is auto-resolved.
+  Update card properties. Status is auto-resolved.
   Default output: updated,<card-id> (minimal). Use -v for full details.
 
   Options:
@@ -1687,12 +1686,12 @@ function printCommandHelp(cmd) {
 
     rm: `Usage: nodex rm <card-id>
 
-  Delete a card. Column is auto-resolved.`,
+  Delete a card. Status is auto-resolved.`,
 
-    mv: `Usage: nodex mv <card-id> <from> <to> [order] [opts]
+    mv: `Usage: nodex mv <card-id> <from-status> <to-status> [order] [opts]
 
-  Move card from one column to another. Fails if the card is no longer in <from>
-  (e.g. already claimed by another agent). Order defaults to end of column.
+  Move card from one workflow status to another. Fails if the card is no longer in <from-status>
+  (e.g. already claimed by another agent). Order defaults to end of the target status.
 
   Options:
     -p, --project <id>          Project (default: "default")

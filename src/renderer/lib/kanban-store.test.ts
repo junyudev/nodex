@@ -20,11 +20,13 @@ function createBoard(title = "Initial title"): Board {
   return {
     columns: [
       {
-        id: "1-ideas",
+        id: "draft",
         name: "Ideas",
         cards: [
           {
             id: "card-1",
+            status: "draft",
+            archived: false,
             title,
             description: "Initial description",
             priority: "p2-medium",
@@ -38,7 +40,7 @@ function createBoard(title = "Initial title"): Board {
         ],
       },
       {
-        id: "8-done",
+        id: "done",
         name: "Done",
         cards: [],
       },
@@ -181,7 +183,7 @@ describe("kanban store", () => {
     await waitForMicrotasks();
     notifications = 0;
 
-    store.applyLocalPatch("1-ideas", "card-1", {
+    store.applyLocalPatch("draft", "card-1", {
       title: "Updated title",
     });
 
@@ -203,7 +205,7 @@ describe("kanban store", () => {
     const store = registry.getStore("default");
     await store.fetchBoard();
 
-    store.applyLocalPatch("1-ideas", "card-1", {
+    store.applyLocalPatch("draft", "card-1", {
       title: "Updated title",
     });
 
@@ -224,7 +226,7 @@ describe("kanban store", () => {
     const pendingMutation = store.runOptimisticMutation({
       kind: "card:update",
       conflictKeys: conflictKeysForPatch("card-1", { title: "Updated title" }),
-      apply: buildPatchCardTransform("1-ideas", "card-1", { title: "Updated title" }, { bumpRevision: true }),
+      apply: buildPatchCardTransform("draft", "card-1", { title: "Updated title" }, { bumpRevision: true }),
       runRemote: async () => deferred.promise,
     });
 
@@ -245,7 +247,7 @@ describe("kanban store", () => {
     await store.fetchBoard();
     const before = store.getSnapshot();
 
-    const changed = store.applyLocalPatch("1-ideas", "card-1", {
+    const changed = store.applyLocalPatch("draft", "card-1", {
       title: "Initial title",
     });
     const after = store.getSnapshot();
@@ -271,30 +273,30 @@ describe("kanban store", () => {
     const mutationA = store.runOptimisticMutation({
       kind: "card:update",
       conflictKeys: conflictKeysForPatch("card-1", { title: "A" }),
-      apply: buildPatchCardTransform("1-ideas", "card-1", { title: "A" }),
+      apply: buildPatchCardTransform("draft", "card-1", { title: "A" }),
       runRemote: async () => {
         const result = await deferredA.promise;
-        serverBoard = buildPatchCardTransform("1-ideas", "card-1", { title: "A" })(serverBoard);
+        serverBoard = buildPatchCardTransform("draft", "card-1", { title: "A" })(serverBoard);
         return result;
       },
     });
     const mutationB = store.runOptimisticMutation({
       kind: "card:update",
       conflictKeys: conflictKeysForPatch("card-1", { title: "B" }),
-      apply: buildPatchCardTransform("1-ideas", "card-1", { title: "B" }),
+      apply: buildPatchCardTransform("draft", "card-1", { title: "B" }),
       runRemote: async () => {
         const result = await deferredB.promise;
-        serverBoard = buildPatchCardTransform("1-ideas", "card-1", { title: "B" })(serverBoard);
+        serverBoard = buildPatchCardTransform("draft", "card-1", { title: "B" })(serverBoard);
         return result;
       },
     });
     const mutationC = store.runOptimisticMutation({
       kind: "card:update",
       conflictKeys: conflictKeysForPatch("card-1", { title: "C" }),
-      apply: buildPatchCardTransform("1-ideas", "card-1", { title: "C" }),
+      apply: buildPatchCardTransform("draft", "card-1", { title: "C" }),
       runRemote: async () => {
         const result = await deferredC.promise;
-        serverBoard = buildPatchCardTransform("1-ideas", "card-1", { title: "C" })(serverBoard);
+        serverBoard = buildPatchCardTransform("draft", "card-1", { title: "C" })(serverBoard);
         return result;
       },
     });
@@ -336,11 +338,11 @@ describe("kanban store", () => {
 
     const createMutation = store.runOptimisticMutation({
       kind: "card:create",
-      conflictKeys: conflictKeysForCreate("1-ideas", optimisticCard.id),
-      apply: buildCreateCardTransform("1-ideas", optimisticCard, "bottom"),
+      conflictKeys: conflictKeysForCreate("draft", optimisticCard.id),
+      apply: buildCreateCardTransform("draft", optimisticCard, "bottom"),
       runRemote: async () => {
         const result = await createRemoteDeferred.promise;
-        serverBoard = buildCreateCardTransform("1-ideas", optimisticCard, "bottom")(serverBoard);
+        serverBoard = buildCreateCardTransform("draft", optimisticCard, "bottom")(serverBoard);
         return result;
       },
     });
@@ -349,10 +351,10 @@ describe("kanban store", () => {
     const updateMutation = store.runOptimisticMutation({
       kind: "card:update",
       conflictKeys: conflictKeysForPatch("card-created", { title: "Created edited" }),
-      apply: buildPatchCardTransform("1-ideas", "card-created", { title: "Created edited" }),
+      apply: buildPatchCardTransform("draft", "card-created", { title: "Created edited" }),
       runRemote: async () => {
         const result = await updateRemoteDeferred.promise;
-        serverBoard = buildPatchCardTransform("1-ideas", "card-created", { title: "Created edited" })(serverBoard);
+        serverBoard = buildPatchCardTransform("draft", "card-created", { title: "Created edited" })(serverBoard);
         return result;
       },
     });
@@ -362,40 +364,40 @@ describe("kanban store", () => {
       kind: "card:move",
       conflictKeys: conflictKeysForMove({
         cardId: "card-created",
-        fromColumnId: "1-ideas",
-        toColumnId: "8-done",
+        fromStatus: "draft",
+        toStatus: "done",
       }),
       apply: buildMoveCardTransform({
         cardId: "card-created",
-        fromColumnId: "1-ideas",
-        toColumnId: "8-done",
+        fromStatus: "draft",
+        toStatus: "done",
       }),
       runRemote: async () => {
         const result = await moveRemoteDeferred.promise;
         serverBoard = buildMoveCardTransform({
           cardId: "card-created",
-          fromColumnId: "1-ideas",
-          toColumnId: "8-done",
+          fromStatus: "draft",
+          toStatus: "done",
         })(serverBoard);
         return result;
       },
     });
 
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("8-done");
+    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
 
     createRemoteDeferred.resolve({ id: "card-created" });
     await createMutation;
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("8-done");
+    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
     expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created edited");
 
     updateRemoteDeferred.resolve({ ok: true });
     await updateMutation;
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("8-done");
+    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
     expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created edited");
 
     moveRemoteDeferred.resolve({ ok: true });
     await moveMutation;
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("8-done");
+    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
     expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created edited");
   });
 
@@ -411,7 +413,7 @@ describe("kanban store", () => {
     const mutation = store.runOptimisticMutation({
       kind: "card:delete",
       conflictKeys: conflictKeysForDelete("card-1"),
-      apply: buildDeleteCardTransform("1-ideas", "card-1"),
+      apply: buildDeleteCardTransform("draft", "card-1"),
       runRemote: async () => {
         throw new Error("delete failed");
       },
@@ -486,7 +488,7 @@ describe("kanban store", () => {
     const unsubscribe = store.subscribe(() => {});
     await waitForMicrotasks();
 
-    const queued = store.applyLocalPatch("1-ideas", "card-1", { title: "Queued title" });
+    const queued = store.applyLocalPatch("draft", "card-1", { title: "Queued title" });
     expect(queued).toBeTrue();
     expect(store.getSnapshot().board).toBe(null);
 
@@ -507,15 +509,15 @@ describe("kanban store", () => {
     const store = registry.getStore("default");
     await store.fetchBoard();
 
-    store.applyLocalPatch("1-ideas", "card-1", { title: "Local title" });
+    store.applyLocalPatch("draft", "card-1", { title: "Local title" });
     expect(store.getSnapshot().cardIndex.get("card-1")?.title).toBe("Local title");
 
-    serverBoard = buildPatchCardTransform("1-ideas", "card-1", { title: "Local title" })(serverBoard);
+    serverBoard = buildPatchCardTransform("draft", "card-1", { title: "Local title" })(serverBoard);
     await store.refreshBoard();
     expect(store.getSnapshot().cardIndex.get("card-1")?.title).toBe("Local title");
 
     // If local overlay was not collected, this server update would be masked.
-    serverBoard = buildPatchCardTransform("1-ideas", "card-1", { title: "Server next" })(serverBoard);
+    serverBoard = buildPatchCardTransform("draft", "card-1", { title: "Server next" })(serverBoard);
     await store.refreshBoard();
     expect(store.getSnapshot().cardIndex.get("card-1")?.title).toBe("Server next");
   });
@@ -538,16 +540,16 @@ describe("kanban store", () => {
 
     const createMutation = store.runOptimisticMutation({
       kind: "card:create",
-      conflictKeys: conflictKeysForCreate("1-ideas", optimisticCard.id),
-      apply: buildCreateCardTransform("1-ideas", optimisticCard, "bottom"),
+      conflictKeys: conflictKeysForCreate("draft", optimisticCard.id),
+      apply: buildCreateCardTransform("draft", optimisticCard, "bottom"),
       runRemote: async () => {
         const result = await createRemoteDeferred.promise;
-        serverBoard = buildCreateCardTransform("1-ideas", optimisticCard, "bottom")(serverBoard);
+        serverBoard = buildCreateCardTransform("draft", optimisticCard, "bottom")(serverBoard);
         return result;
       },
     });
 
-    store.applyLocalPatch("1-ideas", "card-pending", { title: "Edited while pending" });
+    store.applyLocalPatch("draft", "card-pending", { title: "Edited while pending" });
     expect(store.getSnapshot().cardIndex.get("card-pending")?.title).toBe("Edited while pending");
 
     // Re-fetch while create is still pending: patch must not be dropped.

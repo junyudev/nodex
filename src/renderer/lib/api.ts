@@ -57,7 +57,7 @@ async function httpInvoke(channel: string, ...args: unknown[]): Promise<unknown>
 
     // ── Cards ─────────────────────────────────────────────────────────
     case "card:create": {
-      const [projectId, columnId, input, sessionId, placement] = args as [
+      const [projectId, status, input, sessionId, placement] = args as [
         string,
         string,
         object,
@@ -67,12 +67,12 @@ async function httpInvoke(channel: string, ...args: unknown[]): Promise<unknown>
       const res = await fetch(toApiUrl(`/api/projects/${projectId}/board`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columnId, ...input, sessionId, placement }),
+        body: JSON.stringify({ status, ...input, sessionId, placement }),
       });
       return res.json();
     }
     case "card:update": {
-      const [projectId, columnId, cardId, updates, sessionId, expectedRevision] = args as [
+      const [projectId, status, cardId, updates, sessionId, expectedRevision] = args as [
         string,
         string,
         string,
@@ -83,7 +83,7 @@ async function httpInvoke(channel: string, ...args: unknown[]): Promise<unknown>
       const res = await fetch(toApiUrl(`/api/projects/${projectId}/card`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columnId, cardId, ...updates, sessionId, expectedRevision }),
+        body: JSON.stringify({ status, cardId, ...updates, sessionId, expectedRevision }),
       });
       if (!res.ok) {
         if (res.status === 404 || res.status === 409) {
@@ -96,26 +96,21 @@ async function httpInvoke(channel: string, ...args: unknown[]): Promise<unknown>
       return res.json();
     }
     case "card:get": {
-      const [projectId, cardId, columnId] = args as [string, string, string?];
+      const [projectId, cardId, status] = args as [string, string, string?];
       const params = new URLSearchParams({ cardId });
-      if (columnId) params.set("columnId", columnId);
+      if (status) params.set("status", status);
       const res = await fetch(toApiUrl(`/api/projects/${projectId}/card?${params.toString()}`));
       if (!res.ok) return null;
-      const data = await res.json();
-      const { columnId: resolvedColumnId, ...card } = data as Record<string, unknown>;
-      return {
-        card,
-        columnId: resolvedColumnId as string,
-      };
+      return res.json();
     }
     case "card:delete": {
-      const [projectId, columnId, cardId, sessionId] = args as [
+      const [projectId, status, cardId, sessionId] = args as [
         string,
         string,
         string,
         string?,
       ];
-      const params = new URLSearchParams({ columnId, cardId });
+      const params = new URLSearchParams({ status, cardId });
       if (sessionId) params.set("sessionId", sessionId);
       const res = await fetch(toApiUrl(`/api/projects/${projectId}/card?${params}`), { method: "DELETE" });
       const data = await res.json();

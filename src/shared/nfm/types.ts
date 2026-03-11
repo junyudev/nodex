@@ -199,8 +199,8 @@ export interface NfmCardToggle extends NfmBlockBase {
   meta: string;
   snapshot?: string;
   sourceProjectId?: string;
-  sourceColumnId?: string;
-  sourceColumnName?: string;
+  sourceStatus?: string;
+  sourceStatusName?: string;
   content: NfmInlineContent[];
 }
 

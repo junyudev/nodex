@@ -4,6 +4,8 @@ import { parseCardToggleSnapshot } from "./card-toggle-snapshot";
 
 const BASE_CARD = {
   id: "card-1",
+  status: "in_progress" as const,
+  archived: false,
   title: "Dragged card",
   description: "First line\n\tChild line",
   priority: "p1-high" as const,
@@ -25,15 +27,15 @@ describe("card drop toggle mapper", () => {
     const block = mapCardToDroppedCardToggleBlock(
       BASE_CARD,
       "default",
-      "6-in-progress",
+      "in_progress",
       "In Progress",
     );
 
     expect(block.type).toBe("cardToggle");
     expect(block.props.cardId).toBe("card-1");
     expect(block.props.sourceProjectId).toBe("default");
-    expect(block.props.sourceColumnId).toBe("6-in-progress");
-    expect(block.props.sourceColumnName).toBe("In Progress");
+    expect(block.props.sourceStatus).toBe("in_progress");
+    expect(block.props.sourceStatusName).toBe("In Progress");
     expect(typeof block.props.snapshot).toBe("string");
     expect(block.props.snapshot.length > 0).toBeTrue();
   });
@@ -42,7 +44,7 @@ describe("card drop toggle mapper", () => {
     const block = mapCardToDroppedCardToggleBlock(
       BASE_CARD,
       "default",
-      "6-in-progress",
+      "in_progress",
       "In Progress",
     );
 
@@ -54,7 +56,7 @@ describe("card drop toggle mapper", () => {
     const block = mapCardToDroppedCardToggleBlock(
       BASE_CARD,
       "default",
-      "6-in-progress",
+      "in_progress",
       "In Progress",
     );
     const parsed = parseCardToggleSnapshot(block.props.snapshot);

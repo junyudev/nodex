@@ -14,8 +14,8 @@ const DEFAULT_PROPERTY_ORDER: ToggleListPropertyKey[] = [
 function toSnapshotPayload(
   card: Card,
   projectId: string,
-  columnId: string,
-  columnName: string,
+  status: string,
+  statusName: string,
 ): string {
   return encodeCardToggleSnapshot({
     card: {
@@ -32,8 +32,8 @@ function toSnapshotPayload(
       agentBlocked: card.agentBlocked,
     },
     projectId,
-    columnId,
-    columnName,
+    status,
+    statusName,
     capturedAt: new Date().toISOString(),
   });
 }
@@ -68,8 +68,8 @@ export function mapCardToDroppedCardToggleBlock(
       meta,
       snapshot: toSnapshotPayload(card, projectId, columnId, columnName),
       sourceProjectId: projectId,
-      sourceColumnId: columnId,
-      sourceColumnName: columnName,
+      sourceStatus: columnId,
+      sourceStatusName: columnName,
     },
     content: card.title,
     children: descriptionBlocks,

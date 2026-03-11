@@ -132,9 +132,9 @@ export function CanvasView({ projectId, openCardStage, cardStageCardId, cardStag
   // Create a new card and place it on canvas
   const handleCreateAndPlace = useCallback(async () => {
     if (!excalidrawAPI) return;
-    const card = await createCard("1-ideas", { title: "New Card" });
+    const card = await createCard("draft", { title: "New Card" });
     if (!card) return;
-    await handlePlaceCard(card, "1-ideas");
+    await handlePlaceCard(card, "draft");
   }, [excalidrawAPI, createCard, handlePlaceCard]);
 
   // onChange handler: debounced save

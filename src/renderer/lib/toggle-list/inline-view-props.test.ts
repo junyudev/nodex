@@ -26,7 +26,7 @@ describe("toggle-list inline view props", () => {
           any: [
             {
               all: [
-                { field: "status", op: "in", values: ["3-backlog", "5-ready"] },
+                { field: "status", op: "in", values: ["backlog", "backlog"] },
                 { field: "priority", op: "in", values: ["p0-critical", "p2-medium"] },
               ],
             },

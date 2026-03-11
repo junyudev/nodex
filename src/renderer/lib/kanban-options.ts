@@ -1,16 +1,19 @@
-import { ARCHIVE_COLUMN_ID, ARCHIVE_COLUMN_NAME, type Priority } from "./types";
+import type { Priority } from "./types";
 import {
   TOGGLE_LIST_PRIORITY_ORDER,
   TOGGLE_LIST_STATUS_LABELS,
   TOGGLE_LIST_STATUS_ORDER,
 } from "./toggle-list/types";
 
+export const ARCHIVED_CARD_OPTION_ID = "archived";
+export const ARCHIVED_CARD_OPTION_NAME = "Archived";
+
 export const KANBAN_STATUS_OPTIONS = [
   ...TOGGLE_LIST_STATUS_ORDER.map((id) => ({
     id,
     name: TOGGLE_LIST_STATUS_LABELS[id],
   })),
-  { id: ARCHIVE_COLUMN_ID, name: ARCHIVE_COLUMN_NAME },
+  { id: ARCHIVED_CARD_OPTION_ID, name: ARCHIVED_CARD_OPTION_NAME },
 ] as const;
 
 export const KANBAN_STATUS_LABELS: Record<string, string> = KANBAN_STATUS_OPTIONS.reduce<Record<string, string>>(

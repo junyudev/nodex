@@ -155,11 +155,11 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
         if (block.sourceProjectId) {
           attrs.push(`project="${escapeXmlAttr(block.sourceProjectId)}"`);
         }
-        if (block.sourceColumnId) {
-          attrs.push(`column="${escapeXmlAttr(block.sourceColumnId)}"`);
+        if (block.sourceStatus) {
+          attrs.push(`status="${escapeXmlAttr(block.sourceStatus)}"`);
         }
-        if (block.sourceColumnName) {
-          attrs.push(`column-name="${escapeXmlAttr(block.sourceColumnName)}"`);
+        if (block.sourceStatusName) {
+          attrs.push(`status-name="${escapeXmlAttr(block.sourceStatusName)}"`);
         }
 
         lines.push(prefix + `<card-toggle ${attrs.join(" ")}>`);

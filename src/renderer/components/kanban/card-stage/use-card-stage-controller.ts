@@ -328,11 +328,11 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       if (result.status === "conflict") {
         setUpdateConflict({
           cardId: nextCardId,
-          columnId: result.columnId,
+          columnId: result.card.status,
           latestCard: result.card,
           attemptedUpdates: updates,
         });
-        setCurrentColumnId(result.columnId);
+        setCurrentColumnId(result.card.status);
         return result;
       }
       return result;
@@ -1014,7 +1014,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
     if (!card || nextColumnId === currentColumnId) return;
     const previousColumnId = currentColumnId;
     setCurrentColumnId(nextColumnId);
-    await onMove(previousColumnId, card.id, nextColumnId);
+    await onMove(previousColumnId as Card["status"], card.id, nextColumnId as Card["status"]);
     onColumnIdChange?.(nextColumnId);
   }, [card, currentColumnId, onMove, onColumnIdChange]);
 

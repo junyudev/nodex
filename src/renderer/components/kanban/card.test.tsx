@@ -71,6 +71,8 @@ describe("kanban card", () => {
       createElement(Card, {
         card: {
           id: "card-1",
+          status: "in_progress",
+          archived: false,
           title: "Task",
           description: "Body",
           priority: "p2-medium",
@@ -79,7 +81,7 @@ describe("kanban card", () => {
           created: new Date("2026-03-01T00:00:00.000Z"),
           order: 0,
         },
-        columnId: "6-in-progress",
+        columnId: "in_progress",
         onClick: () => undefined,
       }),
     );
@@ -95,6 +97,8 @@ describe("kanban card", () => {
       createElement(Card, {
         card: {
           id: "card-2",
+          status: "in_progress",
+          archived: false,
           title: "Task",
           description: "Body",
           priority: "p2-medium",
@@ -104,7 +108,7 @@ describe("kanban card", () => {
           created: new Date("2026-03-01T00:00:00.000Z"),
           order: 0,
         },
-        columnId: "6-in-progress",
+        columnId: "in_progress",
         onClick: () => undefined,
         onUpdateProperty: () => undefined,
       }),
@@ -122,6 +126,8 @@ describe("kanban card", () => {
       createElement(Card, {
         card: {
           id: "card-inline",
+          status: "in_progress",
+          archived: false,
           title: "Task",
           description: "Body",
           priority: "p2-medium",
@@ -132,7 +138,7 @@ describe("kanban card", () => {
           created: new Date("2026-03-01T00:00:00.000Z"),
           order: 0,
         },
-        columnId: "6-in-progress",
+        columnId: "in_progress",
         onClick: () => undefined,
         onUpdateProperty: () => undefined,
       }),
@@ -158,6 +164,8 @@ describe("kanban card", () => {
       createElement(Card, {
         card: {
           id: "card-3",
+          status: "in_progress",
+          archived: false,
           title: "Task",
           description: "",
           priority: "p2-medium",
@@ -166,10 +174,10 @@ describe("kanban card", () => {
           created: new Date("2026-03-01T00:00:00.000Z"),
           order: 0,
         },
-        columnId: "6-in-progress",
+        columnId: "in_progress",
         onClick: () => undefined,
         contextMenu: {
-          currentColumnId: "6-in-progress",
+          currentColumnId: "in_progress",
           currentProjectId: "default",
           currentProjectName: "Default",
           projects: [

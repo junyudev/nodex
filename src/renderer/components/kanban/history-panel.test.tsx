@@ -9,8 +9,8 @@ mock.module("@/lib/layout", () => ({
 
 mock.module("@/lib/kanban-options", () => ({
   KANBAN_STATUS_LABELS: {
-    "1-ideas": "Ideas",
-    "6-in-progress": "In progress",
+    draft: "Draft",
+    in_progress: "In progress",
   },
 }));
 
@@ -48,7 +48,8 @@ describe("history panel", () => {
       projectId: "default",
       operation: "update",
       cardId: "card-1",
-      columnId: "1-ideas",
+      status: "draft",
+      archived: false,
       timestamp: "2026-03-12T12:00:00.000Z",
       sessionId: null,
       groupId: null,

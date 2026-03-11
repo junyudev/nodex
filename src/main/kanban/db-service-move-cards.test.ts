@@ -48,16 +48,16 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
 describe("moveCards", () => {
   test("moves a non-contiguous selection as one block within the same column", async () => {
     const ran = await withTempDatabase(async () => {
-      await createCard("default", "6-in-progress", { title: "First" });
-      const second = await createCard("default", "6-in-progress", { title: "Second" });
-      await createCard("default", "6-in-progress", { title: "Third" });
-      const fourth = await createCard("default", "6-in-progress", { title: "Fourth" });
+      await createCard("default", "in_progress", { title: "First" });
+      const second = await createCard("default", "in_progress", { title: "Second" });
+      await createCard("default", "in_progress", { title: "Third" });
+      const fourth = await createCard("default", "in_progress", { title: "Fourth" });
 
       const result = await moveCards({
         projectId: "default",
         cardIds: [second.id, fourth.id],
-        fromColumnId: "6-in-progress",
-        toColumnId: "6-in-progress",
+        fromStatus: "in_progress",
+        toStatus: "in_progress",
         newOrder: 4,
         sessionId: "session-move-many-same-column",
       });
@@ -65,7 +65,7 @@ describe("moveCards", () => {
       expect(result).toBe("moved");
 
       const board = await getBoard("default");
-      const column = board.columns.find((entry) => entry.id === "6-in-progress");
+      const column = board.columns.find((entry) => entry.id === "in_progress");
       expect(column?.cards.map((card) => card.title).join(",")).toBe("First,Third,Second,Fourth");
       expect(column?.cards.map((card) => card.order).join(",")).toBe("0,1,2,3");
 
@@ -80,16 +80,16 @@ describe("moveCards", () => {
 
   test("undo restores original order for same-column grouped moves", async () => {
     const ran = await withTempDatabase(async () => {
-      const first = await createCard("default", "6-in-progress", { title: "First" });
-      await createCard("default", "6-in-progress", { title: "Second" });
-      const third = await createCard("default", "6-in-progress", { title: "Third" });
-      await createCard("default", "6-in-progress", { title: "Fourth" });
+      const first = await createCard("default", "in_progress", { title: "First" });
+      await createCard("default", "in_progress", { title: "Second" });
+      const third = await createCard("default", "in_progress", { title: "Third" });
+      await createCard("default", "in_progress", { title: "Fourth" });
 
       const result = await moveCards({
         projectId: "default",
         cardIds: [first.id, third.id],
-        fromColumnId: "6-in-progress",
-        toColumnId: "6-in-progress",
+        fromStatus: "in_progress",
+        toStatus: "in_progress",
         newOrder: 4,
         sessionId: "session-move-many-same-column-undo",
       });
@@ -100,7 +100,7 @@ describe("moveCards", () => {
       expect(undoResult.success).toBeTrue();
 
       const board = await getBoard("default");
-      const column = board.columns.find((entry) => entry.id === "6-in-progress");
+      const column = board.columns.find((entry) => entry.id === "in_progress");
       expect(column?.cards.map((card) => card.title).join(",")).toBe("First,Second,Third,Fourth");
       expect(column?.cards.map((card) => card.order).join(",")).toBe("0,1,2,3");
     });
@@ -110,15 +110,15 @@ describe("moveCards", () => {
 
   test("moves cards to another column and undoes the group in one step", async () => {
     const ran = await withTempDatabase(async () => {
-      const first = await createCard("default", "6-in-progress", { title: "First" });
-      const second = await createCard("default", "6-in-progress", { title: "Second" });
-      await createCard("default", "7-review", { title: "Existing review" });
+      const first = await createCard("default", "in_progress", { title: "First" });
+      const second = await createCard("default", "in_progress", { title: "Second" });
+      await createCard("default", "in_review", { title: "Existing review" });
 
       const result = await moveCards({
         projectId: "default",
         cardIds: [first.id, second.id],
-        fromColumnId: "6-in-progress",
-        toColumnId: "7-review",
+        fromStatus: "in_progress",
+        toStatus: "in_review",
         newOrder: 0,
         sessionId: "session-move-many-cross-column",
         groupId: "group-move-many-cross-column",
@@ -127,8 +127,8 @@ describe("moveCards", () => {
       expect(result).toBe("moved");
 
       let board = await getBoard("default");
-      let sourceColumn = board.columns.find((entry) => entry.id === "6-in-progress");
-      let targetColumn = board.columns.find((entry) => entry.id === "7-review");
+      let sourceColumn = board.columns.find((entry) => entry.id === "in_progress");
+      let targetColumn = board.columns.find((entry) => entry.id === "in_review");
 
       expect(sourceColumn?.cards.length).toBe(0);
       expect(targetColumn?.cards.map((card) => card.title).join(",")).toBe("First,Second,Existing review");
@@ -141,8 +141,8 @@ describe("moveCards", () => {
       expect(undoResult.success).toBeTrue();
 
       board = await getBoard("default");
-      sourceColumn = board.columns.find((entry) => entry.id === "6-in-progress");
-      targetColumn = board.columns.find((entry) => entry.id === "7-review");
+      sourceColumn = board.columns.find((entry) => entry.id === "in_progress");
+      targetColumn = board.columns.find((entry) => entry.id === "in_review");
 
       expect(sourceColumn?.cards.map((card) => card.title).join(",")).toBe("First,Second");
       expect(targetColumn?.cards.map((card) => card.title).join(",")).toBe("Existing review");
@@ -153,15 +153,15 @@ describe("moveCards", () => {
 
   test("moves a cross-column selection into one target column in board order", async () => {
     const ran = await withTempDatabase(async () => {
-      const inProgressFirst = await createCard("default", "6-in-progress", { title: "In Progress 1" });
-      await createCard("default", "6-in-progress", { title: "In Progress 2" });
-      const reviewFirst = await createCard("default", "7-review", { title: "Review 1" });
-      await createCard("default", "7-review", { title: "Review 2" });
+      const inProgressFirst = await createCard("default", "in_progress", { title: "In Progress 1" });
+      await createCard("default", "in_progress", { title: "In Progress 2" });
+      const reviewFirst = await createCard("default", "in_review", { title: "Review 1" });
+      await createCard("default", "in_review", { title: "Review 2" });
 
       const result = await moveCards({
         projectId: "default",
         cardIds: [reviewFirst.id, inProgressFirst.id],
-        toColumnId: "8-done",
+        toStatus: "done",
         newOrder: 0,
         sessionId: "session-move-many-multi-column",
       });
@@ -169,9 +169,9 @@ describe("moveCards", () => {
       expect(result).toBe("moved");
 
       const board = await getBoard("default");
-      const inProgressColumn = board.columns.find((entry) => entry.id === "6-in-progress");
-      const reviewColumn = board.columns.find((entry) => entry.id === "7-review");
-      const doneColumn = board.columns.find((entry) => entry.id === "8-done");
+      const inProgressColumn = board.columns.find((entry) => entry.id === "in_progress");
+      const reviewColumn = board.columns.find((entry) => entry.id === "in_review");
+      const doneColumn = board.columns.find((entry) => entry.id === "done");
 
       expect(inProgressColumn?.cards.map((card) => card.title).join(",")).toBe("In Progress 2");
       expect(reviewColumn?.cards.map((card) => card.title).join(",")).toBe("Review 2");

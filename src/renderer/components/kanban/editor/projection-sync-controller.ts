@@ -153,7 +153,7 @@ function isSameProjectedPatch(a: ProjectedCardPatch, b: ProjectedCardPatch): boo
 
   return a.cardId === b.cardId
     && a.sourceProjectId === b.sourceProjectId
-    && a.targetColumnId === b.targetColumnId;
+    && a.targetStatus === b.targetStatus;
 }
 
 function mergeProjectedPatchesIntoPending(
@@ -606,11 +606,11 @@ class ProjectionSyncController {
                 }
               }
 
-              if (!sendFailed && isProjectedCardMoveDirty(patch, card) && patch.targetColumnId) {
+              if (!sendFailed && isProjectedCardMoveDirty(patch, card) && patch.targetStatus) {
                 const moved = await owner.moveCard({
                   cardId: card.id,
-                  fromColumnId: card.columnId,
-                  toColumnId: patch.targetColumnId,
+                  fromStatus: card.columnId,
+                  toStatus: patch.targetStatus,
                 });
 
                 if (!moved) {

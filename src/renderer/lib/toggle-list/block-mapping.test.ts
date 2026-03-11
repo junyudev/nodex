@@ -10,6 +10,8 @@ import type { ToggleListCard } from "./types";
 function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
   return {
     id: "card-1",
+    status: "backlog",
+    archived: false,
     title: "Example card",
     description: "Line one\nLine two",
     priority: "p1-high",
@@ -18,8 +20,8 @@ function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
     agentBlocked: false,
     created: new Date("2026-02-10T00:00:00.000Z"),
     order: 0,
-    columnId: "5-ready",
-    columnName: "Ready",
+    columnId: "backlog",
+    columnName: "Backlog",
     boardIndex: 7,
     ...overrides,
   };

@@ -48,7 +48,7 @@ describe("card update revision conflict handling", () => {
       const projectId = "default";
       createProject({ id: projectId, name: "Default" });
 
-      const created = await createCard(projectId, "1-ideas", {
+      const created = await createCard(projectId, "draft", {
         title: "Original title",
         description: "",
         priority: "p2-medium",
@@ -57,7 +57,7 @@ describe("card update revision conflict handling", () => {
 
       const firstUpdate = await updateCard(
         projectId,
-        "1-ideas",
+        "draft",
         created.id,
         { title: "First writer" },
         undefined,
@@ -70,7 +70,7 @@ describe("card update revision conflict handling", () => {
 
       const staleUpdate = await updateCard(
         projectId,
-        "1-ideas",
+        "draft",
         created.id,
         { title: "Stale writer" },
         undefined,

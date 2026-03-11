@@ -317,7 +317,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Calendar event cards display a repeat indicator on occurrences derived from recurring cards, with a distinct icon for the first occurrence in each series.
 - Card Stage exposes repeat settings (frequency, interval, weekly weekdays, inclusive end date), reminder offsets, and schedule timezone.
 - Users can complete or skip a specific occurrence from Calendar quick actions and from Card Stage.
-- Completing an occurrence creates a new snapshot card in hidden status `n-archive`; archived events remain visible on Calendar with muted styling.
+- Completing an occurrence creates a new snapshot card with status `done` and `archived=true`; archived events remain visible on Calendar with muted styling.
 - Recurrence logs are not exposed in product UI or API.
 - Occurrence schedule edits support scope: `this`, `this-and-future` (series split), and `all`.
 - For recurring event drag/resize from Calendar, the app prompts with explicit scope choices before persisting. On the first occurrence in the current series, it shows `Only this occurrence` and `All occurrences`; on non-first occurrences, it shows `Only this occurrence` and `This and future`.
@@ -382,20 +382,17 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Tool-call transcript state is durably snapshotted in SQLite and merged with runtime reads so existing tool logs are preserved across thread tab switches and app restarts.
 - Browser/HTTP transport returns explicit unsupported errors for `codex:*` methods in this release.
 
-### Columns
+### Statuses
 
-| # | ID | Name | Purpose |
+| Order | ID | Name | Purpose |
 |---|-----|------|---------|
-| 1 | 1-ideas | Ideas | Raw task ideas, not yet refined |
-| 2 | 2-analyzing | Analyzing | Tasks being researched/scoped |
-| 3 | 3-backlog | Backlog | Refined tasks ready for planning |
-| 4 | 4-planning | Planning | Tasks with implementation plans |
-| 5 | 5-ready | Ready | Tasks ready for agent pickup |
-| 6 | 6-in-progress | In Progress | Currently being worked on |
-| 7 | 7-review | Review | Completed, awaiting review |
-| 8 | 8-done | Done | Finished tasks |
+| 1 | draft | Draft | Early ideas, rough notes, and planning-stage tasks |
+| 2 | backlog | Backlog | Refined tasks ready to queue up |
+| 3 | in_progress | In Progress | Currently being worked on |
+| 4 | in_review | In Review | Awaiting review or verification |
+| 5 | done | Done | Finished work |
 
-`n-archive` is an internal hidden status used for occurrence completion snapshots; it is not rendered as a Kanban column.
+`archived` is an orthogonal internal flag. Archived cards are not rendered in the Kanban board, sidebar status groups, or toggle-list defaults.
 
 ---
 
@@ -572,15 +569,15 @@ nodex/
 |--------|----------|-------------|
 | GET | `/api/projects/[projectId]/board` | Fetch all columns and cards |
 | POST | `/api/projects/[projectId]/board` | Create new card (request body capped at 2MB; oversized requests return 413) |
-| GET | `/api/projects/[projectId]/column` | Fetch single column (query: `?id=X`) |
-| GET | `/api/projects/[projectId]/card` | Fetch single card (query: `?cardId=Y` or `?columnId=X&cardId=Y`) |
-| PUT | `/api/projects/[projectId]/card` | Update card properties (`columnId` optional — server resolves; optional `expectedRevision` enables stale-write detection; stale writes return `409` with `{status:\"conflict\", card, columnId}`; request body capped at 2MB; oversized requests return 413) |
-| DELETE | `/api/projects/[projectId]/card` | Delete card (query: `?cardId=Y` or `?columnId=X&cardId=Y`, optional `&sessionId=Z`) |
+| GET | `/api/projects/[projectId]/column` | Fetch a single board status group (query: `?id=<status>`) |
+| GET | `/api/projects/[projectId]/card` | Fetch single card (query: `?cardId=Y` or `?status=X&cardId=Y`) |
+| PUT | `/api/projects/[projectId]/card` | Update card properties (`status` optional and server-resolved when omitted; optional `expectedRevision` enables stale-write detection; stale writes return `409` with `{status:\"conflict\", card}`; request body capped at 2MB; oversized requests return 413) |
+| DELETE | `/api/projects/[projectId]/card` | Delete card (query: `?cardId=Y` or `?status=X&cardId=Y`, optional `&sessionId=Z`) |
 | GET | `/api/projects/[projectId]/calendar/occurrences` | List calendar occurrences in a time window (`?start=ISO&end=ISO&search=...`) |
 | POST | `/api/projects/[projectId]/card-occurrence/complete` | Complete one occurrence (body: `{cardId, occurrenceStart, source, sessionId?}`) |
 | POST | `/api/projects/[projectId]/card-occurrence/skip` | Skip one occurrence (body: `{cardId, occurrenceStart, source, sessionId?}`) |
 | PUT | `/api/projects/[projectId]/card-occurrence` | Update occurrence timing with scope (body: `{cardId, occurrenceStart, scope, updates, sessionId?}`) |
-| PUT | `/api/projects/[projectId]/move` | Move card between columns (`fromColumnId` optional — server resolves; when provided, returns 409 if card not in expected column; supports optional `newOrder`; omit to append to end) |
+| PUT | `/api/projects/[projectId]/move` | Move card between statuses (`fromStatus` optional — server resolves; when provided, returns 409 if card not in expected status; supports optional `newOrder`; omit to append to end) |
 | POST | `/api/projects/[projectId]/card-import-block-drop` | Atomic block-drop import: source updates + target card creates in one grouped transaction |
 | GET | `/api/projects/[projectId]/events` | SSE stream for real-time updates |
 | GET | `/api/projects/[projectId]/history` | List recent history (query: `?limit=N&offset=N&sessionId=Z`) |
@@ -603,7 +600,7 @@ nodex/
 ### Database Schema
 
 ```sql
--- Schema v13
+-- Current schema (simplified excerpt)
 
 -- Projects table
 CREATE TABLE projects (
@@ -619,7 +616,8 @@ CREATE TABLE projects (
 CREATE TABLE cards (
   id TEXT PRIMARY KEY,              -- 7-char alphanumeric
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  column_id TEXT NOT NULL,          -- "1-ideas" through "8-done"
+  status TEXT NOT NULL,             -- draft | backlog | in_progress | in_review | done
+  archived INTEGER NOT NULL DEFAULT 0,
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   description_revision_id INTEGER,  -- latest materialized description revision
@@ -636,10 +634,10 @@ CREATE TABLE cards (
   run_in_worktree_path TEXT,
   run_in_environment_path TEXT,
   created TEXT NOT NULL,            -- ISO datetime
-  "order" INTEGER NOT NULL          -- position in column
+  "order" INTEGER NOT NULL          -- position within (project_id, archived, status)
 );
 
-CREATE INDEX idx_cards_project_column_order ON cards(project_id, column_id, "order");
+CREATE INDEX idx_cards_project_archived_status_order ON cards(project_id, archived, status, "order");
 
 CREATE TABLE description_blocks (
   hash TEXT PRIMARY KEY,
@@ -664,12 +662,15 @@ CREATE TABLE history (
   operation TEXT NOT NULL,          -- 'create', 'update', 'delete', 'move'
   card_id TEXT NOT NULL,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  column_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
   timestamp TEXT NOT NULL,          -- ISO 8601
   previous_values TEXT,             -- JSON: changed fields before
   new_values TEXT,                  -- JSON: changed fields after
-  from_column_id TEXT,              -- move only
-  to_column_id TEXT,                -- move only
+  from_status TEXT,                 -- move only
+  to_status TEXT,                   -- move only
+  from_archived INTEGER,            -- move only
+  to_archived INTEGER,              -- move only
   from_order INTEGER,               -- move only
   to_order INTEGER,                 -- move only
   card_snapshot TEXT,               -- JSON: full card for create/delete
@@ -815,7 +816,7 @@ Agent command options:
 
 CLI parsing is strict: unknown options and invalid enum/date values fail fast with actionable errors.
 
-Column shorthand: `5`, `ready`, or `5-ready` all resolve to `5-ready`.
+Status args accept canonical ids plus ergonomic separator aliases such as `in-progress` -> `in_progress` and `in-review` -> `in_review`.
 
 ### Backup Commands
 
@@ -831,8 +832,8 @@ nodex backups restore <backup-id> --yes --no-safety-backup
 Text fields (`--description`, `--agent-status`, `--title`) support reading from files or stdin:
 
 ```bash
-nodex add 3 "Task" -d @./plan.md        # Read from file
-cat spec.md | nodex add 3 "Task" -d @-  # Read from stdin
+nodex add backlog "Task" -d @./plan.md        # Read from file
+cat spec.md | nodex add backlog "Task" -d @-  # Read from stdin
 ```
 
 ---
@@ -935,11 +936,11 @@ Agents use the **`nodex` CLI** for all board operations. The CLI wraps the REST 
 ### How Agents Use the Board
 
 ```bash
-# 1. Read ready tasks (uses default project, or set --project)
-nodex ls 5
+# 1. Read backlog tasks (uses default project, or set --project)
+nodex ls backlog
 
 # 2. Claim a task atomically (fails if another agent already claimed it)
-nodex mv abc1234 5 6 --agent-status "Starting work..."
+nodex mv abc1234 backlog in-progress --agent-status "Starting work..."
 
 # 3. Update status while working
 nodex update abc1234 --agent-status "Running tests..."
@@ -948,11 +949,11 @@ nodex update abc1234 --agent-status "Running tests..."
 nodex update abc1234 --agent-blocked --agent-status "Blocked: Need API credentials"
 
 # 5. Complete task - move to review
-nodex mv abc1234 6 7 --agent-status "Ready for review"
+nodex mv abc1234 in-progress in-review --agent-status "Ready for review"
 
 # Working with a specific project
-nodex --project my-app ls 5
-nodex --project my-app add 5 "New feature"
+nodex --project my-app ls backlog
+nodex --project my-app add backlog "New feature"
 
 # Create a manual safety snapshot before risky changes
 nodex backups create --label "before release refactor"
@@ -969,12 +970,12 @@ nodex backups restore <backup-id> --yes
 | Create project | `nodex projects add <id> <name>` | POST `/api/projects` |
 | Rename project | `nodex projects mv <old> <new>` | PUT `/api/projects/[projectId]` |
 | Delete project | `nodex projects rm <id>` | DELETE `/api/projects/[projectId]` |
-| List cards | `nodex ls [column]` | GET `/api/projects/[projectId]/board` |
+| List cards | `nodex ls [status]` | GET `/api/projects/[projectId]/board` |
 | Get card | `nodex get <id>` | GET `/api/projects/[projectId]/card?cardId=Y` |
-| Create card | `nodex add <col> <title>` | POST `/api/projects/[projectId]/board` |
+| Create card | `nodex add <status> <title>` | POST `/api/projects/[projectId]/board` |
 | Update card | `nodex update <id> [opts]` | PUT `/api/projects/[projectId]/card` |
 | Delete card | `nodex rm <id>` | DELETE `/api/projects/[projectId]/card?cardId=Y` |
-| Move card | `nodex mv <id> <from> <to> [opts]` | PUT `/api/projects/[projectId]/move` (atomic: 409 if card not in `fromColumnId`) + optional PUT `/api/projects/[projectId]/card` (property updates) |
+| Move card | `nodex mv <id> <from> <to> [opts]` | PUT `/api/projects/[projectId]/move` (atomic: 409 if card not in `fromStatus`) + optional PUT `/api/projects/[projectId]/card` (property updates) |
 | History | `nodex history` | GET `/api/projects/[projectId]/history` |
 | Undo/Redo | `nodex undo` / `nodex redo` | POST `/api/projects/[projectId]/undo` / `redo` |
 | SQL query | `nodex query "<sql>"` | POST `/api/projects/[projectId]/query` |
@@ -983,27 +984,27 @@ nodex backups restore <backup-id> --yes
 | Create backup | `nodex backups create` | POST `/api/backups` |
 | Restore backup | `nodex backups restore <id> --yes` | POST `/api/backups/[backupId]/restore` |
 
-The server auto-resolves `columnId` for get/update/delete — agents only need the card ID. `mv` requires explicit `<from> <to>` columns for atomic claim semantics (409 if card already moved). Each CLI command issues a single HTTP request (no pre-lookup), eliminating TOCTOU races when multiple agents operate concurrently.
+The server auto-resolves `status` for get/update/delete, so agents only need the card ID. `mv` requires explicit `<from> <to>` statuses for atomic claim semantics (409 if the card already moved). Each CLI command issues a single HTTP request (no pre-lookup), eliminating TOCTOU races when multiple agents operate concurrently.
 
 ### Output Format
 
 All CLI output is **JSON Lines by default** (machine-readable, one object per line). Use `--json` for JSON array/object output, `--csv` for CSV, or `--table` for aligned plain-text tables.
 
 ```bash
-nodex ls 5                  # JSONL (one card object per line)
+nodex ls backlog            # JSONL (one card object per line)
 nodex get abc1234 --json    # JSON object
-nodex ls 5 --csv            # CSV table
-nodex ls 5 --table          # aligned plain-text table
-nodex ls 5 --full           # full card fields + truncated description
-nodex ls 5 --full --description-full  # full description
+nodex ls backlog --csv      # CSV table
+nodex ls backlog --table    # aligned plain-text table
+nodex ls backlog --full     # full card fields + truncated description
+nodex ls backlog --full --description-full  # full description
 nodex ls --offset 10 --limit 10      # paginate (skip 10, take 10)
 ```
 
 ### SQL Query Examples
 
 ```bash
-# Count cards by column
-nodex query "SELECT column_id, COUNT(*) as count FROM cards GROUP BY column_id"
+# Count cards by status
+nodex query "SELECT status, archived, COUNT(*) as count FROM cards GROUP BY status, archived"
 
 # Find high-priority blocked cards
 nodex query "SELECT * FROM cards WHERE priority IN (?, ?) AND agent_blocked = 1" p0-critical p1-high

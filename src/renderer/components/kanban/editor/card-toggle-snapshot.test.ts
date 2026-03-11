@@ -12,11 +12,11 @@ describe("card toggle snapshot helpers", () => {
     const meta = "[P2] [M] [In Progress] [infra]";
     const nextPriority = applyCardToggleMetaEdit(meta, "priority", "p0-critical");
     const nextEstimate = applyCardToggleMetaEdit(nextPriority, "estimate", "none");
-    const nextStatus = applyCardToggleMetaEdit(nextEstimate, "status", "5-ready");
+    const nextStatus = applyCardToggleMetaEdit(nextEstimate, "status", "backlog");
 
     expect(nextPriority).toBe("[P0] [M] [In Progress] [infra]");
     expect(nextEstimate).toBe("[P0] [-] [In Progress] [infra]");
-    expect(nextStatus).toBe("[P0] [-] [Ready] [infra]");
+    expect(nextStatus).toBe("[P0] [-] [Backlog] [infra]");
   });
 
   test("updateCardToggleSnapshotForMetaEdit mutates snapshot card fields", () => {
@@ -35,20 +35,20 @@ describe("card toggle snapshot helpers", () => {
         agentBlocked: false,
       },
       projectId: "default",
-      columnId: "6-in-progress",
-      columnName: "In Progress",
+      status: "in_progress",
+      statusName: "In Progress",
       capturedAt: "2026-02-12T00:00:00.000Z",
     });
 
     const withPriority = updateCardToggleSnapshotForMetaEdit(snapshot, "priority", "p1-high");
     const withEstimate = updateCardToggleSnapshotForMetaEdit(withPriority, "estimate", "none");
-    const withStatus = updateCardToggleSnapshotForMetaEdit(withEstimate, "status", "8-done");
+    const withStatus = updateCardToggleSnapshotForMetaEdit(withEstimate, "status", "done");
     const decoded = parseCardToggleSnapshot(withStatus);
 
     expect(decoded?.card?.priority).toBe("p1-high");
     expect(decoded?.card?.estimate).toBe(null);
-    expect(decoded?.columnId).toBe("8-done");
-    expect(decoded?.columnName).toBe("Done");
+    expect(decoded?.status).toBe("done");
+    expect(decoded?.statusName).toBe("Done");
   });
 
   test("cardInputFromCardToggleSnapshot extracts persisted card properties", () => {
@@ -67,8 +67,8 @@ describe("card toggle snapshot helpers", () => {
         agentBlocked: true,
       },
       projectId: "default",
-      columnId: "3-backlog",
-      columnName: "Backlog",
+      status: "backlog",
+      statusName: "Backlog",
       capturedAt: "2026-02-14T00:00:00.000Z",
     });
 

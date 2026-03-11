@@ -956,7 +956,7 @@ export function ToggleListCardEditor({
           break;
         case "status":
           if (moveCard && value !== card.columnId) {
-            await moveCard({ cardId, fromColumnId: card.columnId, toColumnId: value });
+            await moveCard({ cardId, fromStatus: card.columnId, toStatus: value as typeof card.columnId });
           }
           break;
       }

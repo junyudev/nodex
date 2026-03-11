@@ -27,10 +27,12 @@ function createSession(pointer: { x: number; y: number } | null): ExternalCardDr
       projectId: "default",
       cards: [
         {
-          columnId: "6-in-progress",
+          columnId: "in_progress",
           columnName: "In Progress",
           card: {
             id: "card-1",
+            status: "in_progress",
+            archived: false,
             title: "Title",
             description: "",
             priority: "p2-medium",
@@ -82,14 +84,14 @@ describe("board card-drop routing", () => {
       sourceCards: [
         {
           cardId: "source-1",
-          columnId: "6-in-progress",
+          status: "in_progress",
         },
       ],
       groupId: "group-1",
       targetUpdates: [
         {
           projectId: "default",
-          columnId: "6-in-progress",
+          status: "in_progress",
           cardId: "target-1",
           updates: { description: "Updated" },
         },
@@ -108,18 +110,18 @@ describe("board card-drop routing", () => {
       sourceCards: [
         {
           cardId: "source-1",
-          columnId: "6-in-progress",
+          status: "in_progress",
         },
         {
           cardId: "source-2",
-          columnId: "7-review",
+          status: "in_review",
         },
       ],
       groupId: "group-2",
       targetUpdates: [
         {
           projectId: "beta",
-          columnId: "6-in-progress",
+          status: "in_progress",
           cardId: "target-1",
           updates: { description: "Updated" },
         },
@@ -138,20 +140,20 @@ describe("board card-drop routing", () => {
       sourceCards: [
         {
           cardId: "source-1",
-          columnId: "6-in-progress",
+          status: "in_progress",
         },
       ],
       groupId: "group-3",
       targetUpdates: [
         {
           projectId: "default",
-          columnId: "6-in-progress",
+          status: "in_progress",
           cardId: "target-1",
           updates: { description: "One" },
         },
         {
           projectId: "other",
-          columnId: "6-in-progress",
+          status: "in_progress",
           cardId: "target-2",
           updates: { description: "Two" },
         },

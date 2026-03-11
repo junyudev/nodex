@@ -48,7 +48,7 @@ describe("card tag JSON resilience", () => {
     const ran = await withTempDatabase(async () => {
       const projectId = "default";
       createProject({ id: projectId, name: "Default" });
-      const created = await createCard(projectId, "1-ideas", {
+      const created = await createCard(projectId, "draft", {
         title: "Resilience card",
         tags: ["alpha"],
         description: "",
@@ -60,11 +60,11 @@ describe("card tag JSON resilience", () => {
         .run("{", created.id);
 
       const board = await getBoard(projectId);
-      const column = board.columns.find((entry) => entry.id === "1-ideas");
+      const column = board.columns.find((entry) => entry.id === "draft");
       expect(column !== undefined).toBeTrue();
       expect(JSON.stringify(column?.cards[0]?.tags ?? null)).toBe("[]");
 
-      const updated = await updateCard(projectId, "1-ideas", created.id, {
+      const updated = await updateCard(projectId, "draft", created.id, {
         title: "Updated title",
       });
       expect(updated.status).toBe("updated");

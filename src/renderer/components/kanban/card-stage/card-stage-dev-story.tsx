@@ -96,8 +96,8 @@ export function CardStageDevStoryPage({ onExit, renderPreview = true }: CardStag
     );
   }, [pushLog]);
 
-  const handleMove = useCallback(async (_fromColumnId: string, cardId: string, toColumnId: string) => {
-    pushLog(`Moved ${cardId} to ${toColumnId}.`);
+  const handleMove = useCallback(async (_fromStatus: string, cardId: string, toStatus: string) => {
+    pushLog(`Moved ${cardId} to ${toStatus}.`);
   }, [pushLog]);
 
   const threadCountLabel = linkedThreads.length === 1 ? "1 linked thread" : `${linkedThreads.length} linked threads`;

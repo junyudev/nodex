@@ -59,6 +59,7 @@ import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import type {
   Card as CardType,
+  CardStatus,
   CardCreatePlacement,
   CardDropMoveToEditorResult,
   CardInput,
@@ -325,7 +326,7 @@ export function KanbanBoard({
         projectId: string;
         cards: Array<{
           cardId: string;
-          columnId: string;
+          status: CardStatus;
         }>;
       },
       optimisticResult: Pick<CardDropApplyResult, "targetUpdates">,
@@ -381,7 +382,7 @@ export function KanbanBoard({
                 projectId: cardDragSession.payload.projectId,
                 cards: cardDragSession.payload.cards.map((entry) => ({
                   cardId: entry.card.id,
-                  columnId: entry.columnId,
+                  status: entry.columnId as CardStatus,
                 })),
               },
               optimisticResult,
@@ -407,8 +408,8 @@ export function KanbanBoard({
 
     if (!over || !active.data.current) return;
 
-    const activeData = active.data.current as { card: CardType; columnId: string };
-    const fromColumnId = activeData.columnId;
+    const activeData = active.data.current as { card: CardType; columnId: CardStatus };
+    const fromStatus = activeData.columnId;
     const cardId = activeData.card.id;
     const dragItems = activeDragItems.length > 0
       ? activeDragItems
@@ -420,19 +421,19 @@ export function KanbanBoard({
       }];
     const dragCardIds = dragItems.map((entry) => entry.card.id);
     const sharedSourceColumnId = dragItems.every((entry) => entry.columnId === dragItems[0]?.columnId)
-      ? dragItems[0]?.columnId
+      ? (dragItems[0]?.columnId as CardStatus | undefined)
       : undefined;
 
-    let toColumnId: string;
+    let toStatus: CardStatus;
     let newOrder: number;
 
     if (over.data.current?.column) {
-      toColumnId = over.data.current.column.id;
-      const targetColumn = board?.columns.find((c) => c.id === toColumnId);
+      toStatus = over.data.current.column.id as CardStatus;
+      const targetColumn = board?.columns.find((c) => c.id === toStatus);
       newOrder = targetColumn?.cards.length ?? 0;
     } else if (over.data.current?.card) {
-      toColumnId = over.data.current.columnId;
-      const targetColumn = board?.columns.find((c) => c.id === toColumnId);
+      toStatus = over.data.current.columnId as CardStatus;
+      const targetColumn = board?.columns.find((c) => c.id === toStatus);
       const overIndex = targetColumn?.cards.findIndex((c) => c.id === over.id) ?? 0;
       newOrder = overIndex;
     } else {
@@ -446,8 +447,8 @@ export function KanbanBoard({
     if (dragCardIds.length > 1) {
       const moved = await moveCards({
         cardIds: dragCardIds,
-        ...(sharedSourceColumnId ? { fromColumnId: sharedSourceColumnId } : {}),
-        toColumnId,
+        ...(sharedSourceColumnId ? { fromStatus: sharedSourceColumnId } : {}),
+        toStatus,
         newOrder,
       });
       if (!moved) return;
@@ -460,8 +461,8 @@ export function KanbanBoard({
 
     const moved = await moveCard({
       cardId,
-      fromColumnId,
-      toColumnId,
+      fromStatus,
+      toStatus,
       newOrder,
     });
     if (!moved) return;
@@ -568,7 +569,7 @@ export function KanbanBoard({
         );
 
         const result = await importBlockDrop({
-          targetColumnId: columnId,
+          targetStatus: columnId as CardType["status"],
           insertIndex,
           cards,
           sourceUpdates,
@@ -654,16 +655,16 @@ export function KanbanBoard({
   const handleMoveCardToProjectFromMenu = useCallback(
     async ({
       cardId,
-      sourceColumnId,
+      sourceStatus,
       targetProjectId,
-    }: {
-      cardId: string;
-      sourceColumnId: string;
-      targetProjectId: string;
-    }) => {
+      }: {
+        cardId: string;
+        sourceStatus: CardType["status"];
+        targetProjectId: string;
+      }) => {
       const moved = await moveCardToProject({
         cardId,
-        sourceColumnId,
+        sourceStatus,
         targetProjectId,
       });
       if (!moved) {

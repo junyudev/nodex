@@ -56,12 +56,15 @@ export interface HistoryEntry {
   projectId: string;
   operation: "create" | "update" | "delete" | "move";
   cardId: string;
-  columnId: string;
+  status: Card["status"];
+  archived: boolean;
   timestamp: string;
   previousValues: Record<string, unknown> | null;
   newValues: Record<string, unknown> | null;
-  fromColumnId: string | null;
-  toColumnId: string | null;
+  fromStatus: Card["status"] | null;
+  toStatus: Card["status"] | null;
+  fromArchived: boolean | null;
+  toArchived: boolean | null;
   fromOrder: number | null;
   toOrder: number | null;
   cardSnapshot: Card | null;
@@ -119,8 +122,10 @@ export interface HistoryPanelSnapshot {
 }
 
 export interface HistoryPanelMove {
-  fromColumnId: string | null;
-  toColumnId: string | null;
+  fromStatus: Card["status"] | null;
+  toStatus: Card["status"] | null;
+  fromArchived: boolean | null;
+  toArchived: boolean | null;
   fromOrder: number | null;
   toOrder: number | null;
 }
@@ -130,7 +135,8 @@ export interface HistoryPanelEntry {
   projectId: string;
   operation: "create" | "update" | "delete" | "move";
   cardId: string;
-  columnId: string;
+  status: Card["status"];
+  archived: boolean;
   timestamp: string;
   sessionId: string | null;
   groupId: string | null;
@@ -178,7 +184,7 @@ export interface QueryResult {
 export interface BoardChangeEvent {
   projectId: string;
   changeType: string;
-  columnId: string;
+  status: Card["status"];
   cardId?: string;
 }
 
@@ -197,13 +203,13 @@ export interface IpcApi {
   "projects:delete": { args: [projectId: string]; result: boolean };
   "board:get": { args: [projectId: string]; result: Board };
   "card:create": {
-    args: [projectId: string, columnId: string, input: CardCreateInput, sessionId?: string, placement?: CardCreatePlacement];
+    args: [projectId: string, status: Card["status"], input: CardCreateInput, sessionId?: string, placement?: CardCreatePlacement];
     result: Card;
   };
   "card:update": {
     args: [
       projectId: string,
-      columnId: string | undefined,
+      status: Card["status"] | undefined,
       cardId: string,
       updates: Partial<CardInput>,
       sessionId?: string,
@@ -212,11 +218,11 @@ export interface IpcApi {
     result: CardUpdateResult;
   };
   "card:get": {
-    args: [projectId: string, cardId: string, columnId?: string];
-    result: { card: Card; columnId: string } | null;
+    args: [projectId: string, cardId: string, status?: Card["status"]];
+    result: Card | null;
   };
   "card:delete": {
-    args: [projectId: string, columnId: string | undefined, cardId: string, sessionId?: string];
+    args: [projectId: string, status: Card["status"] | undefined, cardId: string, sessionId?: string];
     result: boolean;
   };
   "card:move": {

@@ -11,11 +11,13 @@ import {
 const board: Board = {
   columns: [
     {
-      id: "6-in-progress",
+      id: "in_progress",
       name: "In Progress",
       cards: [
         {
           id: "a",
+          status: "in_progress",
+          archived: false,
           title: "A",
           description: "",
           priority: "p2-medium",
@@ -26,6 +28,8 @@ const board: Board = {
         },
         {
           id: "b",
+          status: "in_progress",
+          archived: false,
           title: "B",
           description: "",
           priority: "p2-medium",
@@ -37,11 +41,13 @@ const board: Board = {
       ],
     },
     {
-      id: "7-review",
+      id: "in_review",
       name: "Review",
       cards: [
         {
           id: "c",
+          status: "in_review",
+          archived: false,
           title: "C",
           description: "",
           priority: "p2-medium",
@@ -52,6 +58,8 @@ const board: Board = {
         },
         {
           id: "d",
+          status: "in_review",
+          archived: false,
           title: "D",
           description: "",
           priority: "p2-medium",
@@ -112,7 +120,7 @@ describe("card selection", () => {
 
     const dragGroup = resolveDragGroup(board, selection, {
       card: board.columns[1]!.cards[0]!,
-      columnId: "7-review",
+      columnId: "in_review",
     });
 
     expect(dragGroup.map((entry) => entry.card.id).join(",")).toBe("a,c,d");
@@ -125,7 +133,7 @@ describe("card selection", () => {
 
     const dragGroup = resolveDragGroup(board, selection, {
       card: board.columns[1]!.cards[1]!,
-      columnId: "7-review",
+      columnId: "in_review",
     });
 
     expect(dragGroup.map((entry) => entry.card.id).join(",")).toBe("d");

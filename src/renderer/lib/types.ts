@@ -1,6 +1,7 @@
 export type {
   Priority,
   Estimate,
+  CardStatus,
   Card,
   CardRunInTarget,
   Column,
@@ -86,10 +87,6 @@ export type {
   WorkbenchResumeStageNavDirection,
   WorkbenchResumeView,
 } from "../../shared/workbench-resume";
-export {
-  ARCHIVE_COLUMN_ID,
-  ARCHIVE_COLUMN_NAME,
-} from "../../shared/types";
 
 import type { Estimate, CardUpdateResult } from "../../shared/types";
 

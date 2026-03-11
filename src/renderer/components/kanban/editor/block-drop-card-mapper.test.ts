@@ -288,8 +288,8 @@ describe("block drop card mapper", () => {
         agentBlocked: true,
       },
       projectId: "default",
-      columnId: "3-backlog",
-      columnName: "Backlog",
+      status: "backlog",
+      statusName: "Backlog",
       capturedAt: "2026-02-10T00:00:00.000Z",
     });
 

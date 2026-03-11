@@ -23,6 +23,7 @@ import {
 import { NfmFormattingToolbar } from "./nfm-formatting-toolbar";
 import { ChipPropertyEditor } from "./chip-property-editor";
 import { useEditorDragBehaviors } from "./use-editor-drag-behaviors";
+import type { Card } from "@/lib/types";
 import { useCardImportDropTarget } from "./use-card-import-drop-target";
 import { NfmSlashMenu } from "./nfm-slash-menu";
 import {
@@ -262,11 +263,11 @@ function collectInlineViewProjectedRows(
       || toStringProp(row.props, "cardId");
     if (!cardId) continue;
 
-    const sourceColumnId = toStatusId(toStringProp(row.props, "sourceColumnId"));
+    const sourceStatus = toStatusId(toStringProp(row.props, "sourceStatus"));
     rows.push({
       blockId: row.id,
       cardId,
-      ...(sourceColumnId ? { sourceColumnId } : {}),
+      ...(sourceStatus ? { sourceStatus } : {}),
     });
   }
 
@@ -1195,7 +1196,7 @@ export function NfmEditor({
   const handleAppendBlocksToCard = useCallback(
     async ({
       projectId: targetProjectId,
-      columnId: targetColumnId,
+      columnId: targetStatus,
       cardId: targetCardId,
     }: {
       projectId: string;
@@ -1213,7 +1214,7 @@ export function NfmEditor({
       if (!isBoard(boardResult)) {
         throw new Error("Unable to load destination card.");
       }
-      const targetColumn = boardResult.columns.find((column) => column.id === targetColumnId);
+      const targetColumn = boardResult.columns.find((column) => column.id === targetStatus);
       if (!targetColumn) {
         throw new Error("Destination column not found.");
       }
@@ -1246,7 +1247,7 @@ export function NfmEditor({
           "card:import-block-drop",
           targetProjectId,
           {
-            targetColumnId,
+            targetStatus,
             cards: [],
             sourceUpdates: [
               {
@@ -1257,7 +1258,7 @@ export function NfmEditor({
               },
               {
                 projectId: targetProjectId,
-                columnId: targetColumnId,
+                columnId: targetStatus,
                 cardId: targetCardId,
                 updates: { description: nextTargetDescription },
               },
@@ -1279,7 +1280,7 @@ export function NfmEditor({
   const handleSendBlocksToProject = useCallback(
     async ({
       projectId: targetProjectId,
-      columnId: targetColumnId,
+      columnId: targetStatus,
     }: {
       projectId: string;
       columnId: string;
@@ -1314,7 +1315,7 @@ export function NfmEditor({
           "card:import-block-drop",
           targetProjectId,
           {
-            targetColumnId,
+            targetStatus,
             cards,
             sourceUpdates: [
               {
@@ -1520,11 +1521,11 @@ export function NfmEditor({
             const result = await moveCardDropToEditor({
               sourceProjectId: dropSource.sourceProjectId,
               sourceCardId: dropSource.sourceCardId,
-              sourceColumnId: dropSource.sourceColumnId,
+              sourceStatus: dropSource.sourceStatus as Card["status"] | undefined,
               targetUpdates: [
                 {
                   projectId,
-                  columnId: sourceCardContext.columnId,
+                  status: sourceCardContext.columnId as Card["status"],
                   cardId: sourceCardContext.cardId,
                   updates: { description: nextDescription },
                 },
@@ -1607,7 +1608,7 @@ export function NfmEditor({
         const sourceUpdates: BlockDropImportSourceUpdate[] = [
           {
             projectId,
-            columnId: sourceCardContext.columnId,
+            status: sourceCardContext.columnId as Card["status"],
             cardId: sourceCardContext.cardId,
             updates: { description: nextDescription },
           },
@@ -1617,7 +1618,7 @@ export function NfmEditor({
           "card:import-block-drop",
           dropContext.sourceProjectId,
           {
-            targetColumnId: inferredDrop.targetColumnId,
+            targetStatus: inferredDrop.targetStatus,
             ...(inferredDrop.insertIndex !== undefined ? { insertIndex: inferredDrop.insertIndex } : {}),
             cards: inferredDrop.cards,
             sourceUpdates,

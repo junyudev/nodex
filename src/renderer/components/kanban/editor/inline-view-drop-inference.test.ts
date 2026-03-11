@@ -9,6 +9,8 @@ import {
 function makeCard(id: string, overrides: Partial<Card> = {}): Card {
   return {
     id,
+    status: "draft",
+    archived: false,
     title: `Card ${id}`,
     description: "",
     priority: "p2-medium",
@@ -24,7 +26,7 @@ function makeBoard(): Board {
   return {
     columns: [
       {
-        id: "1-ideas",
+        id: "draft",
         name: "Ideas",
         cards: [
           makeCard("ideas-1", { order: 0, priority: "p1-high", estimate: "s" }),
@@ -32,7 +34,7 @@ function makeBoard(): Board {
         ],
       },
       {
-        id: "3-backlog",
+        id: "backlog",
         name: "Backlog",
         cards: [
           makeCard("backlog-1", { order: 0, priority: "p3-low" }),
@@ -46,8 +48,8 @@ describe("inline view drop inference", () => {
   test("infers target column and insert index from pointed projected rows", () => {
     const settings = getDefaultToggleListSettings();
     const projectedRows: InlineViewProjectedRow[] = [
-      { blockId: "row-1", cardId: "ideas-1", sourceColumnId: "1-ideas" },
-      { blockId: "row-2", cardId: "ideas-2", sourceColumnId: "1-ideas" },
+      { blockId: "row-1", cardId: "ideas-1", sourceStatus: "draft" },
+      { blockId: "row-2", cardId: "ideas-2", sourceStatus: "draft" },
     ];
 
     const inferred = inferInlineViewDropImport({
@@ -58,7 +60,7 @@ describe("inline view drop inference", () => {
       cards: [{ title: "Dropped block" }],
     });
 
-    expect(inferred.targetColumnId).toBe("1-ideas");
+    expect(inferred.targetStatus).toBe("draft");
     expect(inferred.insertIndex).toBe(1);
   });
 
@@ -70,7 +72,7 @@ describe("inline view drop inference", () => {
         any: [
           {
             all: [
-              { field: "status", op: "in", values: ["3-backlog"] },
+              { field: "status", op: "in", values: ["backlog"] },
               { field: "priority", op: "in", values: ["p0-critical", "p1-high", "p2-medium", "p3-low", "p4-later"] },
             ],
           },
@@ -86,7 +88,7 @@ describe("inline view drop inference", () => {
       cards: [{ title: "Dropped block" }],
     });
 
-    expect(inferred.targetColumnId).toBe("3-backlog");
+    expect(inferred.targetStatus).toBe("backlog");
     expect(inferred.insertIndex).toBe(undefined);
   });
 
@@ -101,7 +103,7 @@ describe("inline view drop inference", () => {
     };
 
     const projectedRows: InlineViewProjectedRow[] = [
-      { blockId: "row-1", cardId: "ideas-2", sourceColumnId: "1-ideas" },
+      { blockId: "row-1", cardId: "ideas-2", sourceStatus: "draft" },
     ];
 
     const inferred = inferInlineViewDropImport({
