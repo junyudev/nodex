@@ -3,9 +3,15 @@ import { TAB_BAR_HEIGHT } from "@/lib/layout";
 import { KANBAN_STATUS_LABELS } from "@/lib/kanban-options";
 import { cn } from "@/lib/utils";
 import { invoke } from "@/lib/api";
-import type { HistoryEntry } from "../../../shared/ipc-api";
+import type {
+  HistoryPanelDescriptionDelta,
+  HistoryPanelDescriptionDeltaBlock,
+  HistoryPanelDescriptionSnapshot,
+  HistoryPanelDescriptionSnapshotBlock,
+  HistoryPanelEntry,
+} from "../../../shared/ipc-api";
 
-type HistoryOperationFilter = "all" | HistoryEntry["operation"];
+type HistoryOperationFilter = "all" | HistoryPanelEntry["operation"];
 
 const OPERATION_FILTERS: Array<{ value: HistoryOperationFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -34,24 +40,6 @@ const FIELD_LABELS: Record<string, string> = {
   created: "Created",
   order: "Order",
 };
-
-const FIELD_ORDER = [
-  "title",
-  "description",
-  "priority",
-  "estimate",
-  "tags",
-  "dueDate",
-  "scheduledStart",
-  "scheduledEnd",
-  "isAllDay",
-  "assignee",
-  "agentBlocked",
-  "agentStatus",
-  "order",
-  "created",
-  "id",
-];
 
 // Resize constants
 const PANEL_MIN_WIDTH = 640;
@@ -90,7 +78,7 @@ export function HistoryPanel({
   mode = "overlay",
   className,
 }: HistoryPanelProps) {
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [entries, setEntries] = useState<HistoryPanelEntry[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
   const [operationFilter, setOperationFilter] = useState<HistoryOperationFilter>("all");
   const [loading, setLoading] = useState(false);
@@ -115,8 +103,8 @@ export function HistoryPanel({
         "history:card",
         projectId,
         targetCardId
-      )) as { entries: HistoryEntry[] };
-      const nextEntries = data.entries || [];
+      )) as { entries: HistoryPanelEntry[] };
+      const nextEntries = (data.entries || []).map(normalizeHistoryPanelEntry);
       setEntries(nextEntries);
       setSelectedEntryId((current) => {
         if (!nextEntries.length) return null;
@@ -465,7 +453,7 @@ function HistoryEntryListItem({
   selected,
   onSelect,
 }: {
-  entry: HistoryEntry;
+  entry: HistoryPanelEntry;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -518,7 +506,7 @@ function HistoryEntryListItem({
   );
 }
 
-function HistoryEntryDetails({
+export function HistoryEntryDetails({
   entry,
   selectedIndex,
   totalCount,
@@ -531,7 +519,7 @@ function HistoryEntryDetails({
   onCancelConfirm,
   actionError,
 }: {
-  entry: HistoryEntry;
+  entry: HistoryPanelEntry;
   selectedIndex: number;
   totalCount: number;
   onNavigate: (direction: -1 | 1) => void;
@@ -697,10 +685,11 @@ function HistoryEntryDetails({
   );
 }
 
-function UpdateDetails({ entry }: { entry: HistoryEntry }) {
-  const changedFields = getChangedFieldKeys(entry);
+function UpdateDetails({ entry }: { entry: HistoryPanelEntry }) {
+  const fieldChanges = entry.fieldChanges ?? [];
+  const descriptionChange = entry.descriptionChange ?? null;
 
-  if (changedFields.length === 0) {
+  if (fieldChanges.length === 0 && !descriptionChange) {
     return (
       <div className="rounded-lg border border-(--border-primary) bg-(--background-secondary) p-3 text-sm text-(--foreground-tertiary)">
         No field-level diff was recorded for this update.
@@ -710,14 +699,17 @@ function UpdateDetails({ entry }: { entry: HistoryEntry }) {
 
   return (
     <div className="space-y-3">
-      {changedFields.map((field) => (
+      {descriptionChange && (
+        <DescriptionDeltaSection change={descriptionChange} />
+      )}
+      {fieldChanges.map((change) => (
         <article
-          key={field}
+          key={change.field}
           className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)"
         >
           <header className="border-b border-(--border-primary) px-3 py-2">
             <h5 className="text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
-              {formatFieldLabel(field)}
+              {formatFieldLabel(change.field)}
             </h5>
           </header>
           <div className="grid grid-cols-2">
@@ -725,13 +717,13 @@ function UpdateDetails({ entry }: { entry: HistoryEntry }) {
               <div className="mb-2 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
                 Before
               </div>
-              <HistoryValue value={entry.previousValues?.[field]} emptyText="Not set" />
+              <HistoryValue value={change.before} emptyText="Not set" />
             </div>
             <div className="p-3">
               <div className="mb-2 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
                 After
               </div>
-              <HistoryValue value={entry.newValues?.[field]} emptyText="Cleared" />
+              <HistoryValue value={change.after} emptyText="Cleared" />
             </div>
           </div>
         </article>
@@ -740,9 +732,9 @@ function UpdateDetails({ entry }: { entry: HistoryEntry }) {
   );
 }
 
-function MoveDetails({ entry }: { entry: HistoryEntry }) {
-  const fromColumn = getColumnLabel(entry.fromColumnId);
-  const toColumn = getColumnLabel(entry.toColumnId);
+function MoveDetails({ entry }: { entry: HistoryPanelEntry }) {
+  const fromColumn = getColumnLabel(entry.move?.fromColumnId ?? null);
+  const toColumn = getColumnLabel(entry.move?.toColumnId ?? null);
 
   return (
     <div className="rounded-lg border border-(--border-primary) bg-(--background-secondary)">
@@ -753,7 +745,7 @@ function MoveDetails({ entry }: { entry: HistoryEntry }) {
           </div>
           <div className="text-sm text-(--foreground-primary)">{fromColumn}</div>
           <div className="mt-1 text-xs text-(--foreground-tertiary)">
-            Position: {formatOrder(entry.fromOrder)}
+            Position: {formatOrder(entry.move?.fromOrder ?? null)}
           </div>
         </div>
         <div className="p-3">
@@ -762,7 +754,7 @@ function MoveDetails({ entry }: { entry: HistoryEntry }) {
           </div>
           <div className="text-sm text-(--foreground-primary)">{toColumn}</div>
           <div className="mt-1 text-xs text-(--foreground-tertiary)">
-            Position: {formatOrder(entry.toOrder)}
+            Position: {formatOrder(entry.move?.toOrder ?? null)}
           </div>
         </div>
       </div>
@@ -770,8 +762,8 @@ function MoveDetails({ entry }: { entry: HistoryEntry }) {
   );
 }
 
-function SnapshotDetails({ entry }: { entry: HistoryEntry }) {
-  const snapshot = entry.cardSnapshot as Record<string, unknown> | null;
+function SnapshotDetails({ entry }: { entry: HistoryPanelEntry }) {
+  const snapshot = entry.snapshot ?? null;
 
   if (!snapshot) {
     return (
@@ -781,25 +773,278 @@ function SnapshotDetails({ entry }: { entry: HistoryEntry }) {
     );
   }
 
-  const snapshotFields = FIELD_ORDER.filter((field) =>
-    Object.prototype.hasOwnProperty.call(snapshot, field)
+  return (
+    <div className="space-y-3">
+      {snapshot.description && (
+        <DescriptionSnapshotSection
+          label={entry.operation === "create" ? "Initial description" : "Deleted description"}
+          snapshot={snapshot.description}
+        />
+      )}
+      <div className="divide-y divide-(--border-primary) rounded-lg border border-(--border-primary) bg-(--background-secondary)">
+        {(snapshot.fields ?? []).map((field) => (
+          <div key={field.field} className="px-3 py-2">
+            <div className="mb-1 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
+              {formatFieldLabel(field.field)}
+            </div>
+            <HistoryValue value={field.value} emptyText="Not set" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
-  const extraSnapshotFields = Object.keys(snapshot)
-    .filter((field) => !snapshotFields.includes(field))
-    .sort();
-  const orderedSnapshotFields = [...snapshotFields, ...extraSnapshotFields];
+}
+
+function DescriptionDeltaSection({ change }: { change: HistoryPanelDescriptionDelta }) {
+  const counts = countBlockChanges(change.blocks);
+  const hasFullBeforeAfter = typeof change.beforeFullText === "string" && typeof change.afterFullText === "string";
 
   return (
-    <div className="divide-y divide-(--border-primary) rounded-lg border border-(--border-primary) bg-(--background-secondary)">
-      {orderedSnapshotFields.map((field) => (
-        <div key={field} className="px-3 py-2">
-          <div className="mb-1 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-            {formatFieldLabel(field)}
+    <article className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)">
+      <header className="border-b border-(--border-primary) px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h5 className="text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
+              Description delta
+            </h5>
+            <p className="mt-1 text-xs text-(--foreground-tertiary)">
+              Top-level NFM block operations derived from description revisions.
+            </p>
           </div>
-          <HistoryValue value={snapshot[field]} emptyText="Not set" />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <DescriptionMetric label="Before" value={`${change.beforeBlockCount} blocks`} />
+            <DescriptionMetric label="After" value={`${change.afterBlockCount} blocks`} />
+            {counts.replaced > 0 && (
+              <DescriptionMetric label="Replaced" value={String(counts.replaced)} />
+            )}
+            {counts.added > 0 && (
+              <DescriptionMetric label="Added" value={String(counts.added)} />
+            )}
+            {counts.removed > 0 && (
+              <DescriptionMetric label="Removed" value={String(counts.removed)} />
+            )}
+          </div>
         </div>
-      ))}
+      </header>
+
+      {change.blocks.length === 0 ? (
+        <div className="px-3 py-4 text-sm text-(--foreground-tertiary)">
+          No top-level block changes were recorded.
+        </div>
+      ) : (
+        <div className="space-y-3 p-3">
+          {change.blocks.map((block, index) => (
+            <DescriptionDeltaBlockCard key={`${block.changeType}-${index}`} block={block} />
+          ))}
+        </div>
+      )}
+
+      {hasFullBeforeAfter && (
+        <details className="border-t border-(--border-primary)">
+          <summary className="cursor-pointer px-3 py-2 text-xs text-(--foreground-secondary) select-none">
+            Show full description before/after
+          </summary>
+          <div className="grid grid-cols-1 divide-y divide-(--border-primary) md:grid-cols-2 md:divide-x md:divide-y-0">
+            <FullDescriptionPane
+              label="Before"
+              value={change.beforeFullText ?? ""}
+              emptyText="No previous description"
+            />
+            <FullDescriptionPane
+              label="After"
+              value={change.afterFullText ?? ""}
+              emptyText="No next description"
+            />
+          </div>
+        </details>
+      )}
+    </article>
+  );
+}
+
+function DescriptionSnapshotSection({
+  label,
+  snapshot,
+}: {
+  label: string;
+  snapshot: HistoryPanelDescriptionSnapshot;
+}) {
+  return (
+    <article className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)">
+      <header className="border-b border-(--border-primary) px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h5 className="text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
+            {label}
+          </h5>
+          <DescriptionMetric label="Snapshot" value={`${snapshot.blockCount} blocks`} />
+        </div>
+      </header>
+
+      {snapshot.blocks.length === 0 ? (
+        <div className="px-3 py-4 text-sm text-(--foreground-tertiary)">No description blocks.</div>
+      ) : (
+        <div className="space-y-3 p-3">
+          {snapshot.blocks.map((block) => (
+            <DescriptionSnapshotBlockCard key={block.ordinal} block={block} />
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function DescriptionDeltaBlockCard({
+  block,
+}: {
+  block: HistoryPanelDescriptionDeltaBlock;
+}) {
+  const beforeLabel = getBlockOrdinalLabel(block.beforeOrdinal);
+  const afterLabel = getBlockOrdinalLabel(block.afterOrdinal);
+
+  return (
+    <article className="overflow-hidden rounded-xl border border-(--border-primary) bg-[color-mix(in_srgb,var(--background-primary)_76%,transparent)]">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-(--border-primary) px-3 py-2">
+        <DescriptionChangeBadge value={block.changeType} />
+        <DescriptionMetric label="Type" value={formatBlockTypeLabel(block.blockType)} />
+        {beforeLabel && <DescriptionMetric label="Before" value={beforeLabel} />}
+        {afterLabel && <DescriptionMetric label="After" value={afterLabel} />}
+      </div>
+
+      {block.changeType === "replaced" ? (
+        <div className="grid grid-cols-1 divide-y divide-(--border-primary) md:grid-cols-2 md:divide-x md:divide-y-0">
+          <BlockPreviewPane label="Before" preview={block.beforePreview} nfm={block.beforeNfm} />
+          <BlockPreviewPane label="After" preview={block.afterPreview} nfm={block.afterNfm} />
+        </div>
+      ) : (
+        <div className="p-3">
+          <BlockPreviewPane
+            label={block.changeType === "added" ? "Added block" : "Removed block"}
+            preview={block.afterPreview ?? block.beforePreview}
+            nfm={block.afterNfm ?? block.beforeNfm}
+          />
+        </div>
+      )}
+    </article>
+  );
+}
+
+function DescriptionSnapshotBlockCard({
+  block,
+}: {
+  block: HistoryPanelDescriptionSnapshotBlock;
+}) {
+  return (
+    <article className="overflow-hidden rounded-xl border border-(--border-primary) bg-[color-mix(in_srgb,var(--background-primary)_76%,transparent)]">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-(--border-primary) px-3 py-2">
+        <DescriptionMetric label="Block" value={String(block.ordinal + 1)} />
+        <DescriptionMetric label="Type" value={formatBlockTypeLabel(block.blockType)} />
+      </div>
+      <div className="p-3">
+        <BlockPreviewPane label="Snapshot block" preview={block.preview} nfm={block.nfm} />
+      </div>
+    </article>
+  );
+}
+
+function BlockPreviewPane({
+  label,
+  preview,
+  nfm,
+}: {
+  label: string;
+  preview: string | null;
+  nfm: string | null;
+}) {
+  if (!preview) {
+    return (
+      <div>
+        <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
+          {label}
+        </div>
+        <span className="text-sm text-(--foreground-tertiary)">No block content</span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
+        {label}
+      </div>
+      <p className="text-sm/6 wrap-break-word text-(--foreground-secondary)">
+        {preview}
+      </p>
+      {nfm && (
+        <details className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--foreground-primary)_4%,transparent)]">
+          <summary className="cursor-pointer px-3 py-2 text-xs text-(--foreground-secondary) select-none">
+            Show block source
+          </summary>
+          <pre className="border-t border-(--border-primary) p-3 text-xs/5 wrap-break-word whitespace-pre-wrap text-(--foreground-secondary)">
+            {nfm}
+          </pre>
+        </details>
+      )}
     </div>
+  );
+}
+
+function FullDescriptionPane({
+  label,
+  value,
+  emptyText,
+}: {
+  label: string;
+  value: string;
+  emptyText: string;
+}) {
+  if (value.length === 0) {
+    return (
+      <div className="p-3">
+        <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
+          {label}
+        </div>
+        <span className="text-sm text-(--foreground-tertiary)">{emptyText}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-3">
+      <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
+        {label}
+      </div>
+      <pre className="text-xs/5 wrap-break-word whitespace-pre-wrap text-(--foreground-secondary)">
+        {value}
+      </pre>
+    </div>
+  );
+}
+
+function DescriptionMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-full bg-[color-mix(in_srgb,var(--foreground-primary)_6%,transparent)] px-2.5 py-1 text-[11px] text-(--foreground-tertiary)">
+      <span className="mr-1 text-[10px] uppercase tracking-wide">{label}</span>
+      <span className="text-(--foreground-secondary)">{value}</span>
+    </div>
+  );
+}
+
+function DescriptionChangeBadge({
+  value,
+}: {
+  value: HistoryPanelDescriptionDeltaBlock["changeType"];
+}) {
+  const label = value[0]?.toUpperCase() + value.slice(1);
+  const className = value === "added"
+    ? "bg-[color-mix(in_srgb,var(--accent-green)_18%,transparent)] text-(--accent-green)"
+    : value === "removed"
+      ? "bg-[color-mix(in_srgb,var(--priority-critical-text)_12%,transparent)] text-(--priority-critical-text)"
+      : "bg-[color-mix(in_srgb,var(--accent-blue)_16%,transparent)] text-(--accent-blue)";
+
+  return (
+    <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", className)}>
+      {label}
+    </span>
   );
 }
 
@@ -825,6 +1070,61 @@ function HistoryValue({ value, emptyText }: { value: unknown; emptyText: string 
   );
 }
 
+function normalizeHistoryPanelEntry(entry: HistoryPanelEntry): HistoryPanelEntry {
+  const raw = entry as HistoryPanelEntry & {
+    previousValues?: Record<string, unknown> | null;
+    newValues?: Record<string, unknown> | null;
+    cardSnapshot?: Record<string, unknown> | null;
+  };
+
+  const fieldChanges = Array.isArray(entry.fieldChanges)
+    ? entry.fieldChanges
+    : buildFallbackFieldChanges(raw.previousValues, raw.newValues);
+  const descriptionChange = entry.descriptionChange ?? null;
+  const snapshot = entry.snapshot ?? buildFallbackSnapshot(raw.cardSnapshot);
+
+  return {
+    ...entry,
+    summary: entry.summary ?? null,
+    fieldChanges,
+    move: entry.move ?? null,
+    descriptionChange,
+    snapshot,
+  };
+}
+
+function buildFallbackFieldChanges(
+  previousValues: Record<string, unknown> | null | undefined,
+  newValues: Record<string, unknown> | null | undefined,
+) {
+  const previous = previousValues ?? {};
+  const next = newValues ?? {};
+  const keys = [...new Set([...Object.keys(previous), ...Object.keys(next)])]
+    .filter((field) => field !== "description")
+    .sort((left, right) => left.localeCompare(right));
+
+  return keys.map((field) => ({
+    field,
+    before: previous[field],
+    after: next[field],
+  }));
+}
+
+function buildFallbackSnapshot(
+  snapshot: Record<string, unknown> | null | undefined,
+) {
+  if (!snapshot) return null;
+
+  const fields = Object.entries(snapshot)
+    .filter(([field]) => field !== "description")
+    .map(([field, value]) => ({ field, value }));
+
+  return {
+    fields,
+    description: null,
+  };
+}
+
 // --- Action helpers ---
 
 function getRevertLabel(op: string): string {
@@ -837,10 +1137,10 @@ function getRevertLabel(op: string): string {
   }
 }
 
-function getRevertConfirmMessage(entry: HistoryEntry): string {
+function getRevertConfirmMessage(entry: HistoryPanelEntry): string {
   switch (entry.operation) {
     case "update": return "Revert this update? The changed fields will be restored to their previous values.";
-    case "move": return `Revert this move? The card will be moved back to ${getColumnLabel(entry.fromColumnId)}.`;
+    case "move": return `Revert this move? The card will be moved back to ${getColumnLabel(entry.move?.fromColumnId ?? null)}.`;
     case "create": return "This will delete the card. This action creates a history entry and can be reversed.";
     case "delete": return "Restore this deleted card? It will be re-created from the saved snapshot.";
     default: return "Are you sure?";
@@ -895,47 +1195,26 @@ function getOperationIcon(op: string) {
   }
 }
 
-function getEntrySummary(entry: HistoryEntry): string | null {
-  if (entry.operation === "update") {
-    const fields = getChangedFieldKeys(entry);
-    if (fields.length === 0) return "Updated card";
-    if (fields.length === 1) return `Changed ${formatFieldLabel(fields[0]).toLowerCase()}`;
-    return `Changed ${fields.length} fields`;
-  }
-
+function getEntrySummary(entry: HistoryPanelEntry): string | null {
   if (entry.operation === "move") {
-    return `${getColumnLabel(entry.fromColumnId)} \u2192 ${getColumnLabel(entry.toColumnId)}`;
+    return `${getColumnLabel(entry.move?.fromColumnId ?? null)} \u2192 ${getColumnLabel(entry.move?.toColumnId ?? null)}`;
   }
 
-  if (entry.operation === "create") {
-    return "Card created";
+  const fieldChanges = entry.fieldChanges ?? [];
+  if (entry.operation === "update" && fieldChanges.length === 1 && !entry.descriptionChange) {
+    return `Changed ${formatFieldLabel(fieldChanges[0]?.field ?? "field").toLowerCase()}`;
   }
 
-  if (entry.operation === "delete") {
-    return "Card deleted";
-  }
-
-  return null;
-}
-
-function getChangedFieldKeys(entry: HistoryEntry): string[] {
-  const previousKeys = Object.keys(entry.previousValues ?? {});
-  const newKeys = Object.keys(entry.newValues ?? {});
-  const merged = new Set([...previousKeys, ...newKeys]);
-
-  return [...merged].sort((a, b) => {
-    const aIndex = FIELD_ORDER.indexOf(a);
-    const bIndex = FIELD_ORDER.indexOf(b);
-    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
-    if (aIndex === -1) return 1;
-    if (bIndex === -1) return -1;
-    return aIndex - bIndex;
-  });
+  return entry.summary;
 }
 
 function formatFieldLabel(field: string): string {
   if (FIELD_LABELS[field]) return FIELD_LABELS[field];
   return field.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
+}
+
+function formatBlockTypeLabel(blockType: string): string {
+  return blockType.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
 }
 
 function getColumnLabel(columnId: string | null): string {
@@ -1034,4 +1313,21 @@ function formatMaybeDate(value: string): string | null {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function countBlockChanges(
+  blocks: HistoryPanelDescriptionDelta["blocks"],
+): Record<"added" | "removed" | "replaced", number> {
+  return blocks.reduce(
+    (counts, block) => {
+      counts[block.changeType] += 1;
+      return counts;
+    },
+    { added: 0, removed: 0, replaced: 0 },
+  );
+}
+
+function getBlockOrdinalLabel(ordinal: number | null): string | null {
+  if (ordinal === null || ordinal < 0) return null;
+  return `#${ordinal + 1}`;
 }

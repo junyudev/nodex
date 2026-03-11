@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import Database from "better-sqlite3";
 import { parseNfm } from "../../shared/nfm";
 import {
+  buildDescriptionDeltaView,
+  buildDescriptionSnapshotView,
   createInitialDescriptionRevision,
   createNextDescriptionRevision,
   garbageCollectDescriptionRevisions,
@@ -112,6 +114,51 @@ describe("description revision service", () => {
         .get(revisionId) as { kind: string } | undefined;
       expect(latestRevision?.kind).toBe("snapshot");
       expect(reconstructDescription(database, revisionId)).toBe(description);
+
+      database.close();
+    } catch (error) {
+      if (isUnsupportedSqliteError(error)) {
+        expect(true).toBeTrue();
+        return;
+      }
+      throw error;
+    }
+  });
+
+  test("builds block-level delta and snapshot views for panel consumers", () => {
+    try {
+      const database = createDescriptionRevisionTestDb();
+      const createdAt = "2026-03-11T00:00:00.000Z";
+      const previousRevisionId = createInitialDescriptionRevision(
+        database,
+        "card-1",
+        "# Heading\n\nAlpha paragraph",
+        createdAt,
+      );
+      const nextRevisionId = createNextDescriptionRevision(
+        database,
+        "card-1",
+        previousRevisionId,
+        "# Heading\n\nBeta paragraph\n\nGamma paragraph",
+        "2026-03-11T00:01:00.000Z",
+      );
+
+      const delta = buildDescriptionDeltaView(database, previousRevisionId, nextRevisionId);
+      expect(delta?.beforeBlockCount).toBe(2);
+      expect(delta?.afterBlockCount).toBe(3);
+      expect(delta?.beforeFullText).toBe("# Heading\n\nAlpha paragraph");
+      expect(delta?.afterFullText).toBe("# Heading\n\nBeta paragraph\n\nGamma paragraph");
+      expect(delta?.blocks.length).toBe(2);
+      expect(delta?.blocks[0]?.changeType).toBe("replaced");
+      expect(delta?.blocks[0]?.beforePreview).toBe("Alpha paragraph");
+      expect(delta?.blocks[0]?.afterPreview).toBe("Beta paragraph");
+      expect(delta?.blocks[1]?.changeType).toBe("added");
+      expect(delta?.blocks[1]?.afterPreview).toBe("Gamma paragraph");
+
+      const snapshot = buildDescriptionSnapshotView(database, nextRevisionId);
+      expect(snapshot?.blockCount).toBe(3);
+      expect(snapshot?.blocks[0]?.blockType).toBe("heading");
+      expect(snapshot?.blocks[1]?.preview).toBe("Beta paragraph");
 
       database.close();
     } catch (error) {

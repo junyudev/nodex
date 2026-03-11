@@ -214,20 +214,29 @@ These flows all operate through revision ids internally.
 Rules:
 - if the target state changes description text, a new revision may be created
 - if the operation is replaying or restoring an existing historical state, the relevant stored revision id is reused
-- history returned to the renderer is always hydrated back into the old `HistoryEntry` shape with full `previousValues.description`, `newValues.description`, and `cardSnapshot.description`
+- generic history consumers can still hydrate full descriptions when needed
+- the card history overlay does not do that anymore; it reads a panel-specific display model derived from revision ids and block blobs
 
-The renderer does not need to know that descriptions are stored separately from `history`.
+The renderer no longer has to pretend description revisions are ordinary field-level before/after strings.
 
-## Hydration Contract
+## UI Contract
 
-The public IPC/API shape of `HistoryEntry` is unchanged.
+There are now two read shapes:
 
-When reading history:
-- if `previous_description_revision_id` is present, `previousValues.description` is reconstructed and injected
-- if `new_description_revision_id` is present, `newValues.description` is reconstructed and injected
-- if `snapshot_description_revision_id` is present, `cardSnapshot.description` is reconstructed and injected
+1. Internal/generic history reads may still hydrate the old `HistoryEntry` shape when full reconstruction is required for restore/revert-oriented flows.
+2. `history:card` returns a panel-specific display model for the card history overlay.
 
-This preserves existing history-panel behavior and existing restore/revert consumers.
+The panel model includes:
+- metadata for the history row (`id`, `operation`, timestamps, undo state)
+- non-description field changes as explicit `fieldChanges`
+- description updates as block-level delta entries with `added` / `removed` / `replaced` operations
+- a default-collapsed full `before` / `after` description view for update entries
+- create/delete description snapshots as ordered top-level block cards
+
+For the panel model:
+- `previous_description_revision_id` and `new_description_revision_id` are interpreted into top-level block change cards
+- `snapshot_description_revision_id` is interpreted into ordered snapshot block cards
+- full description strings are not reconstructed by default for UI display
 
 ## Shared NFM Core
 

@@ -9,6 +9,7 @@ import {
   createProject,
   getBoard,
   getCardHistory,
+  getCardHistoryPanelEntries,
   getRecentHistory,
   initializeDatabase,
   redoLatest,
@@ -121,6 +122,42 @@ describe("history description revisions", () => {
       `).get(created.id) as { description_revision_id: number | null } | undefined;
       expect(cardRow?.description_revision_id).not.toBeNull();
       database.close();
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
+
+  test("builds panel entries with block-level description deltas instead of hydrated full texts", async () => {
+    const ran = await withTempDatabase(async () => {
+      const projectId = "history-panel-project";
+      createProject({ id: projectId, name: "History panel" });
+
+      const created = await createCard(projectId, "1-ideas", {
+        title: "Panel card",
+        description: "# Heading\n\nAlpha",
+      });
+
+      const updated = await updateCard(projectId, "1-ideas", created.id, {
+        description: "# Heading\n\nBeta\n\nGamma",
+        tags: ["delta"],
+      });
+      expect(updated.status).toBe("updated");
+
+      const entries = getCardHistoryPanelEntries(projectId, created.id);
+      expect(entries.length).toBe(2);
+      expect(entries[0]?.operation).toBe("update");
+      expect(entries[0]?.descriptionChange?.beforeBlockCount).toBe(2);
+      expect(entries[0]?.descriptionChange?.afterBlockCount).toBe(3);
+      expect(entries[0]?.descriptionChange?.beforeFullText).toBe("# Heading\n\nAlpha");
+      expect(entries[0]?.descriptionChange?.afterFullText).toBe("# Heading\n\nBeta\n\nGamma");
+      expect(entries[0]?.descriptionChange?.blocks.length).toBe(2);
+      expect(entries[0]?.descriptionChange?.blocks[0]?.changeType).toBe("replaced");
+      expect(entries[0]?.descriptionChange?.blocks[0]?.beforePreview).toBe("Alpha");
+      expect(entries[0]?.descriptionChange?.blocks[0]?.afterPreview).toBe("Beta");
+      expect(entries[0]?.fieldChanges.length).toBe(1);
+      expect(entries[0]?.fieldChanges[0]?.field).toBe("tags");
+      expect(entries[1]?.snapshot?.description?.blockCount).toBe(2);
+      expect(entries[1]?.snapshot?.description?.blocks[1]?.preview).toBe("Alpha");
     });
 
     if (!ran) expect(true).toBeTrue();

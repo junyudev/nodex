@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
-import { parseNfm, serializeNfm } from "../../shared/nfm";
+import { extractPlainText, parseNfm, serializeNfm } from "../../shared/nfm";
 
 interface DescriptionRevisionRow {
   id: number;
@@ -21,6 +21,37 @@ export interface DescriptionDeltaOp {
   startOrdinal: number;
   deleteCount: number;
   insertedHashes: string[];
+}
+
+export interface DescriptionSnapshotBlockView {
+  ordinal: number;
+  blockType: string;
+  preview: string;
+  nfm: string;
+}
+
+export interface DescriptionSnapshotView {
+  blockCount: number;
+  blocks: DescriptionSnapshotBlockView[];
+}
+
+export interface DescriptionDeltaBlockView {
+  changeType: "added" | "removed" | "replaced";
+  blockType: string;
+  beforeOrdinal: number | null;
+  afterOrdinal: number | null;
+  beforePreview: string | null;
+  afterPreview: string | null;
+  beforeNfm: string | null;
+  afterNfm: string | null;
+}
+
+export interface DescriptionDeltaView {
+  beforeBlockCount: number;
+  afterBlockCount: number;
+  beforeFullText: string | null;
+  afterFullText: string | null;
+  blocks: DescriptionDeltaBlockView[];
 }
 
 const SNAPSHOT_INTERVAL = 20;
@@ -91,6 +122,52 @@ export function reconstructDescription(
   const byHash = new Map(rows.map((row) => [row.hash, row.content]));
   const blocks = hashes.map((hash) => byHash.get(hash) ?? "");
   return blocks.join("\n");
+}
+
+export function buildDescriptionSnapshotView(
+  database: Database.Database,
+  revisionId: number | null,
+): DescriptionSnapshotView | null {
+  if (!revisionId) return null;
+
+  const hashes = reconstructRevisionHashes(database, revisionId);
+  const blocks = readBlocksByHashes(database, hashes);
+
+  return {
+    blockCount: hashes.length,
+    blocks: hashes.map((hash, ordinal) => toSnapshotBlockView(ordinal, blocks.get(hash) ?? "")),
+  };
+}
+
+export function buildDescriptionDeltaView(
+  database: Database.Database,
+  previousRevisionId: number | null,
+  nextRevisionId: number | null,
+): DescriptionDeltaView | null {
+  if (!previousRevisionId && !nextRevisionId) return null;
+
+  const previousHashes = previousRevisionId
+    ? reconstructRevisionHashes(database, previousRevisionId)
+    : [];
+  const nextHashes = nextRevisionId
+    ? reconstructRevisionHashes(database, nextRevisionId)
+    : [];
+
+  const allHashes = [...new Set([...previousHashes, ...nextHashes])];
+  const blocks = readBlocksByHashes(database, allHashes);
+  const changes = describeBlockChanges(previousHashes, nextHashes, blocks);
+
+  return {
+    beforeBlockCount: previousHashes.length,
+    afterBlockCount: nextHashes.length,
+    beforeFullText: previousRevisionId
+      ? reconstructDescription(database, previousRevisionId)
+      : "",
+    afterFullText: nextRevisionId
+      ? reconstructDescription(database, nextRevisionId)
+      : "",
+    blocks: changes,
+  };
 }
 
 export function collectReachableRevisionIds(database: Database.Database): Set<number> {
@@ -245,6 +322,22 @@ function reconstructRevisionHashes(
   return hashes;
 }
 
+function readBlocksByHashes(
+  database: Database.Database,
+  hashes: string[],
+): Map<string, string> {
+  if (hashes.length === 0) return new Map();
+
+  const placeholders = hashes.map(() => "?").join(", ");
+  const rows = database.prepare(`
+    SELECT hash, content
+    FROM description_blocks
+    WHERE hash IN (${placeholders})
+  `).all(...hashes) as DescriptionBlockRow[];
+
+  return new Map(rows.map((row) => [row.hash, row.content]));
+}
+
 function readRevision(
   database: Database.Database,
   revisionId: number,
@@ -372,6 +465,121 @@ function applyDescriptionDeltaOps(
     next.splice(op.startOrdinal, op.deleteCount, ...op.insertedHashes);
   }
   return next;
+}
+
+function describeBlockChanges(
+  previousHashes: string[],
+  nextHashes: string[],
+  blocksByHash: Map<string, string>,
+): DescriptionDeltaBlockView[] {
+  const lcs = longestCommonSubsequence(previousHashes, nextHashes);
+  const changes: DescriptionDeltaBlockView[] = [];
+  let prevIndex = 0;
+  let nextIndex = 0;
+
+  for (const common of [...lcs, "__END__"]) {
+    const prevBoundary = common === "__END__"
+      ? previousHashes.length
+      : previousHashes.indexOf(common, prevIndex);
+    const nextBoundary = common === "__END__"
+      ? nextHashes.length
+      : nextHashes.indexOf(common, nextIndex);
+
+    const removedHashes = previousHashes.slice(prevIndex, prevBoundary);
+    const insertedHashes = nextHashes.slice(nextIndex, nextBoundary);
+    const pairCount = Math.min(removedHashes.length, insertedHashes.length);
+
+    for (let index = 0; index < pairCount; index += 1) {
+      changes.push(
+        toDeltaBlockView(
+          "replaced",
+          prevIndex + index,
+          nextIndex + index,
+          blocksByHash.get(removedHashes[index]) ?? "",
+          blocksByHash.get(insertedHashes[index]) ?? "",
+        ),
+      );
+    }
+
+    for (let index = pairCount; index < removedHashes.length; index += 1) {
+      changes.push(
+        toDeltaBlockView(
+          "removed",
+          prevIndex + index,
+          null,
+          blocksByHash.get(removedHashes[index]) ?? "",
+          null,
+        ),
+      );
+    }
+
+    for (let index = pairCount; index < insertedHashes.length; index += 1) {
+      changes.push(
+        toDeltaBlockView(
+          "added",
+          null,
+          nextIndex + index,
+          null,
+          blocksByHash.get(insertedHashes[index]) ?? "",
+        ),
+      );
+    }
+
+    if (common === "__END__") continue;
+    prevIndex = prevBoundary + 1;
+    nextIndex = nextBoundary + 1;
+  }
+
+  return changes;
+}
+
+function toSnapshotBlockView(
+  ordinal: number,
+  nfm: string,
+): DescriptionSnapshotBlockView {
+  const block = parseNfm(nfm)[0];
+  return {
+    ordinal,
+    blockType: block?.type ?? "paragraph",
+    preview: buildBlockPreview(nfm),
+    nfm,
+  };
+}
+
+function toDeltaBlockView(
+  changeType: DescriptionDeltaBlockView["changeType"],
+  beforeOrdinal: number | null,
+  afterOrdinal: number | null,
+  beforeNfm: string | null,
+  afterNfm: string | null,
+): DescriptionDeltaBlockView {
+  const beforeBlock = beforeNfm ? parseNfm(beforeNfm)[0] : null;
+  const afterBlock = afterNfm ? parseNfm(afterNfm)[0] : null;
+  return {
+    changeType,
+    blockType: afterBlock?.type ?? beforeBlock?.type ?? "paragraph",
+    beforeOrdinal,
+    afterOrdinal,
+    beforePreview: beforeNfm ? buildBlockPreview(beforeNfm) : null,
+    afterPreview: afterNfm ? buildBlockPreview(afterNfm) : null,
+    beforeNfm,
+    afterNfm,
+  };
+}
+
+function buildBlockPreview(nfm: string): string {
+  const preview = extractPlainText(nfm, 180);
+  if (preview.length > 0) return preview;
+
+  const block = parseNfm(nfm)[0];
+  if (!block) return "Empty block";
+  return formatBlockTypeLabel(block.type);
+}
+
+function formatBlockTypeLabel(blockType: string): string {
+  return blockType
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (char) => char.toUpperCase());
 }
 
 function safeParseHashes(raw: string | null): string[] {

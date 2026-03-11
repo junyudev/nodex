@@ -153,7 +153,7 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions = {}): v
   });
 
   registerHandle("history:card", (_, projectId: string, cardId: string) => {
-    const entries = dbService.getCardHistory(projectId, cardId);
+    const entries = dbService.getCardHistoryPanelEntries(projectId, cardId);
     return { entries };
   });
 

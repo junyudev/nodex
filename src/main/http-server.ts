@@ -967,7 +967,7 @@ app.get("/api/projects/:projectId/history/card", (c) => {
   const projectId = c.req.param("projectId");
   const cardId = c.req.query("cardId");
   if (!cardId) return c.json({ error: "Missing cardId" }, 400);
-  const entries = dbService.getCardHistory(projectId, cardId);
+  const entries = dbService.getCardHistoryPanelEntries(projectId, cardId);
   return c.json({ entries });
 });
 

@@ -1,6 +1,13 @@
 import Database from "better-sqlite3";
 import type { Card } from "../../shared/types";
-import type { HistoryEntry as PublicHistoryEntry } from "../../shared/ipc-api";
+import type {
+  HistoryEntry as PublicHistoryEntry,
+  HistoryPanelDescriptionDelta,
+  HistoryPanelEntry as PublicHistoryPanelEntry,
+  HistoryPanelFieldChange,
+  HistoryPanelSnapshot,
+  HistoryPanelSnapshotField,
+} from "../../shared/ipc-api";
 import { getDb } from "./db-service";
 import { dbNotifier } from "./db-notifier";
 import { getHistoryRetention } from "./config";
@@ -15,6 +22,25 @@ interface HistoryEntry extends PublicHistoryEntry {
 }
 
 export type StoredHistoryEntry = PublicHistoryEntry;
+export type StoredHistoryPanelEntry = PublicHistoryPanelEntry;
+
+const FIELD_ORDER = [
+  "title",
+  "description",
+  "priority",
+  "estimate",
+  "tags",
+  "dueDate",
+  "scheduledStart",
+  "scheduledEnd",
+  "isAllDay",
+  "assignee",
+  "agentBlocked",
+  "agentStatus",
+  "order",
+  "created",
+  "id",
+];
 
 interface DbHistoryRow {
   id: number;
@@ -231,6 +257,181 @@ function toPublicHistoryEntry(entry: HistoryEntry): StoredHistoryEntry {
   };
 }
 
+function toHistoryPanelEntry(
+  database: Database.Database,
+  row: DbHistoryRow,
+): StoredHistoryPanelEntry {
+  const previousValues = parseHistoryValues(row.previous_values);
+  const newValues = parseHistoryValues(row.new_values);
+  const snapshotValues = parseHistoryValues(row.card_snapshot);
+  const fieldChanges = buildFieldChanges(previousValues, newValues);
+  const snapshot = buildSnapshot(database, snapshotValues, row.snapshot_description_revision_id);
+  const descriptionChange = descriptionRevisionService.buildDescriptionDeltaView(
+    database,
+    row.previous_description_revision_id,
+    row.new_description_revision_id,
+  );
+
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    operation: row.operation as HistoryOperation,
+    cardId: row.card_id,
+    columnId: row.column_id,
+    timestamp: row.timestamp,
+    sessionId: row.session_id,
+    groupId: row.group_id,
+    isUndone: row.is_undone === 1,
+    undoOf: row.undo_of,
+    summary: describePanelEntry(
+      row.operation as HistoryOperation,
+      fieldChanges,
+      descriptionChange,
+      row.from_column_id,
+      row.to_column_id,
+      snapshot,
+    ),
+    fieldChanges,
+    move: row.operation === "move"
+      ? {
+          fromColumnId: row.from_column_id,
+          toColumnId: row.to_column_id,
+          fromOrder: row.from_order,
+          toOrder: row.to_order,
+        }
+      : null,
+    descriptionChange,
+    snapshot,
+  };
+}
+
+function parseHistoryValues(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  return JSON.parse(raw) as Record<string, unknown>;
+}
+
+function buildFieldChanges(
+  previousValues: Record<string, unknown> | null,
+  newValues: Record<string, unknown> | null,
+): HistoryPanelFieldChange[] {
+  const previousKeys = Object.keys(previousValues ?? {});
+  const newKeys = Object.keys(newValues ?? {});
+  const merged = new Set([...previousKeys, ...newKeys]);
+
+  return [...merged]
+    .sort(compareFieldKeys)
+    .map((field) => ({
+      field,
+      before: previousValues?.[field],
+      after: newValues?.[field],
+    }));
+}
+
+function buildSnapshot(
+  database: Database.Database,
+  snapshotValues: Record<string, unknown> | null,
+  snapshotDescriptionRevisionId: number | null,
+): HistoryPanelSnapshot | null {
+  if (!snapshotValues && snapshotDescriptionRevisionId === null) return null;
+
+  const orderedFields = snapshotValues
+    ? Object.keys(snapshotValues).sort(compareFieldKeys)
+    : [];
+
+  const fields: HistoryPanelSnapshotField[] = orderedFields.map((field) => ({
+    field,
+    value: snapshotValues?.[field],
+  }));
+
+  return {
+    fields,
+    description: descriptionRevisionService.buildDescriptionSnapshotView(
+      database,
+      snapshotDescriptionRevisionId,
+    ),
+  };
+}
+
+function compareFieldKeys(left: string, right: string): number {
+  const leftIndex = FIELD_ORDER.indexOf(left);
+  const rightIndex = FIELD_ORDER.indexOf(right);
+  if (leftIndex === -1 && rightIndex === -1) return left.localeCompare(right);
+  if (leftIndex === -1) return 1;
+  if (rightIndex === -1) return -1;
+  return leftIndex - rightIndex;
+}
+
+function describePanelEntry(
+  operation: HistoryOperation,
+  fieldChanges: HistoryPanelFieldChange[],
+  descriptionChange: HistoryPanelDescriptionDelta | null,
+  fromColumnId: string | null,
+  toColumnId: string | null,
+  snapshot: HistoryPanelSnapshot | null,
+): string | null {
+  if (operation === "update") {
+    if (descriptionChange && fieldChanges.length === 0) {
+      return `Description: ${describeBlockChangeSummary(descriptionChange)}`;
+    }
+
+    if (descriptionChange) {
+      return `Description + ${fieldChanges.length} field${fieldChanges.length > 1 ? "s" : ""}`;
+    }
+
+    if (fieldChanges.length === 1) {
+      return `Changed ${fieldChanges[0]?.field ?? "field"}`;
+    }
+
+    if (fieldChanges.length > 1) {
+      return `Changed ${fieldChanges.length} fields`;
+    }
+
+    return "Updated card";
+  }
+
+  if (operation === "move") {
+    return `${fromColumnId ?? "Unknown"} -> ${toColumnId ?? "Unknown"}`;
+  }
+
+  if (operation === "create") {
+    if (snapshot?.description) {
+      return `${snapshot.description.blockCount} description block${snapshot.description.blockCount === 1 ? "" : "s"}`;
+    }
+    return "Card created";
+  }
+
+  if (operation === "delete") {
+    if (snapshot?.description) {
+      return `${snapshot.description.blockCount} description block${snapshot.description.blockCount === 1 ? "" : "s"} removed`;
+    }
+    return "Card deleted";
+  }
+
+  return null;
+}
+
+function describeBlockChangeSummary(change: HistoryPanelDescriptionDelta): string {
+  const counts = countDescriptionChangeKinds(change.blocks);
+  const parts: string[] = [];
+  if (counts.replaced > 0) parts.push(`${counts.replaced} replaced`);
+  if (counts.added > 0) parts.push(`${counts.added} added`);
+  if (counts.removed > 0) parts.push(`${counts.removed} removed`);
+  if (parts.length === 0) return "No block changes";
+  return parts.join(", ");
+}
+
+function countDescriptionChangeKinds(
+  blocks: HistoryPanelDescriptionDelta["blocks"],
+): Record<"added" | "removed" | "replaced", number> {
+  return blocks.reduce(
+    (counts, block) => {
+      counts[block.changeType] += 1;
+      return counts;
+    },
+    { added: 0, removed: 0, replaced: 0 },
+  );
+}
+
 // === Recording Functions ===
 
 export function recordCreate(
@@ -401,6 +602,20 @@ export function getCardHistory(projectId: string, cardId: string): StoredHistory
   `);
   const rows = stmt.all(projectId, cardId) as DbHistoryRow[];
   return rows.map((row) => toPublicHistoryEntry(rowToHistoryEntry(database, row)));
+}
+
+export function getCardHistoryPanelEntries(
+  projectId: string,
+  cardId: string,
+): StoredHistoryPanelEntry[] {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT * FROM history
+    WHERE project_id = ? AND card_id = ?
+    ORDER BY timestamp DESC, id DESC
+  `);
+  const rows = stmt.all(projectId, cardId) as DbHistoryRow[];
+  return rows.map((row) => toHistoryPanelEntry(database, row));
 }
 
 function getHistoryEntry(historyId: number): HistoryEntry | null {

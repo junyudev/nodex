@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Expanded local asset handling beyond images so pasted attachments can resolve previews and metadata through the shared `nodex://assets/...` pipeline.
 - Refined the titlebar sliding-window pane controls so they flank the minimap, `+` grows to the right before falling back left, and `-` always removes the right-most visible pane.
 - Reworked card-description history storage so repeated large description edits now write compact revision deltas and checkpoints instead of duplicating full description blobs in every history row.
+- Reworked the card history overlay so description edits now render as block-level revision deltas and snapshots by default, with an optional collapsed full before/after view when you need the entire document context.
 
 ### Fixed
 - Fixed BlockNote drag-handle delete getting the side menu stuck at a stale position after removing a block.

@@ -69,6 +69,78 @@ export interface HistoryEntry {
   undoOf: number | null;
 }
 
+export interface HistoryPanelFieldChange {
+  field: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface HistoryPanelSnapshotField {
+  field: string;
+  value: unknown;
+}
+
+export interface HistoryPanelDescriptionDeltaBlock {
+  changeType: "added" | "removed" | "replaced";
+  blockType: string;
+  beforeOrdinal: number | null;
+  afterOrdinal: number | null;
+  beforePreview: string | null;
+  afterPreview: string | null;
+  beforeNfm: string | null;
+  afterNfm: string | null;
+}
+
+export interface HistoryPanelDescriptionSnapshotBlock {
+  ordinal: number;
+  blockType: string;
+  preview: string;
+  nfm: string;
+}
+
+export interface HistoryPanelDescriptionDelta {
+  beforeBlockCount: number;
+  afterBlockCount: number;
+  beforeFullText: string | null;
+  afterFullText: string | null;
+  blocks: HistoryPanelDescriptionDeltaBlock[];
+}
+
+export interface HistoryPanelDescriptionSnapshot {
+  blockCount: number;
+  blocks: HistoryPanelDescriptionSnapshotBlock[];
+}
+
+export interface HistoryPanelSnapshot {
+  fields: HistoryPanelSnapshotField[];
+  description: HistoryPanelDescriptionSnapshot | null;
+}
+
+export interface HistoryPanelMove {
+  fromColumnId: string | null;
+  toColumnId: string | null;
+  fromOrder: number | null;
+  toOrder: number | null;
+}
+
+export interface HistoryPanelEntry {
+  id: number;
+  projectId: string;
+  operation: "create" | "update" | "delete" | "move";
+  cardId: string;
+  columnId: string;
+  timestamp: string;
+  sessionId: string | null;
+  groupId: string | null;
+  isUndone: boolean;
+  undoOf: number | null;
+  summary: string | null;
+  fieldChanges: HistoryPanelFieldChange[];
+  move: HistoryPanelMove | null;
+  descriptionChange: HistoryPanelDescriptionDelta | null;
+  snapshot: HistoryPanelSnapshot | null;
+}
+
 export interface UndoRedoState {
   canUndo: boolean;
   canRedo: boolean;
@@ -187,7 +259,7 @@ export interface IpcApi {
   };
   "history:card": {
     args: [projectId: string, cardId: string];
-    result: { entries: HistoryEntry[] };
+    result: { entries: HistoryPanelEntry[] };
   };
   "history:undo": {
     args: [projectId: string, sessionId?: string];

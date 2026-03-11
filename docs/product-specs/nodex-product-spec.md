@@ -263,10 +263,14 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Operations tracked: create, update, delete, move
 - Grouped undo/redo is supported via `history.group_id` so one undo can revert a multi-step atomic action (for example: block-drop import creates + source updates)
 - Non-description fields use delta storage (only changed fields stored, not full snapshots)
-- Card descriptions are stored outside `history` in a revision chain keyed by `cards.description_revision_id`; history rows only store description revision pointers and are hydrated back into full before/after text for the UI
+- Card descriptions are stored outside `history` in a revision chain keyed by `cards.description_revision_id`; history rows only store description revision pointers
 - Description revisions use top-level NFM block hashing plus ordered splice deltas, with periodic snapshot revisions to cap reconstruction work
 - Schema v21 migration is destructive for pre-v21 history rows: cards are preserved, legacy history is dropped, and fresh description revisions are seeded from current card descriptions
 - History panel is card-scoped (opened as an overlay from Card Stage) and shows a per-card edit timeline with timestamps, plus selectable detail panes for field diffs and snapshots
+- The card history overlay reads a panel-specific display model from `history:card` instead of reusing the old generic `HistoryEntry` payload
+- Description changes in the history panel render as top-level NFM block operations (`added`, `removed`, `replaced`) with per-block previews and optional raw block source, not hydrated whole-document before/after blobs
+- Each description-delta entry also includes a default-collapsed full before/after section so users can inspect the entire description state when the block summary is not enough
+- Create/delete entries show description snapshots as ordered top-level block cards with previews and expandable block source
 - History panel is resizable (640–1400px, default 960px) with width persisted in localStorage
 - Detailed storage and migration rules for revision-based description history: [Description History Revisions](./description-history-revisions.md)
 - **Revert single change**: Undo a specific history entry (update, move, create, or delete) — creates a new forward history entry so the revert is itself visible and reversible
