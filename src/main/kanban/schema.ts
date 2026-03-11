@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getDatabasePath } from "./config";
 import type { DatabaseMigrationProgress } from "../../shared/app-startup";
+import { seedCardDescriptionRevisions } from "./description-revision-service";
 
 export const COLUMNS = [
   { id: "1-ideas", name: "Ideas" },
@@ -15,7 +16,7 @@ export const COLUMNS = [
   { id: "8-done", name: "Done" },
 ];
 
-export const CURRENT_SCHEMA_VERSION = 20;
+export const CURRENT_SCHEMA_VERSION = 21;
 
 const RESETTABLE_TABLES = [
   "canvas",
@@ -62,6 +63,7 @@ function createLatestSchema(db: Database.Database): void {
       column_id TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
+      description_revision_id INTEGER,
       priority TEXT NOT NULL DEFAULT 'p2-medium',
       estimate TEXT,
       tags TEXT NOT NULL DEFAULT '[]',
@@ -90,6 +92,26 @@ function createLatestSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_cards_project_column ON cards(project_id, column_id);
     CREATE INDEX IF NOT EXISTS idx_cards_project_column_order ON cards(project_id, column_id, "order");
     CREATE INDEX IF NOT EXISTS idx_cards_schedule ON cards(project_id, scheduled_start, scheduled_end);
+
+    CREATE TABLE IF NOT EXISTS description_blocks (
+      hash TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS description_revisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id TEXT NOT NULL,
+      parent_revision_id INTEGER,
+      kind TEXT NOT NULL,
+      block_hashes_json TEXT,
+      ops_json TEXT,
+      created_at TEXT NOT NULL,
+      CHECK (kind IN ('snapshot', 'delta'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_description_revisions_card_created
+      ON description_revisions(card_id, created_at, id);
 
     CREATE TABLE IF NOT EXISTS codex_card_threads (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,6 +156,9 @@ function createLatestSchema(db: Database.Database): void {
       from_order INTEGER,
       to_order INTEGER,
       card_snapshot TEXT,
+      previous_description_revision_id INTEGER,
+      new_description_revision_id INTEGER,
+      snapshot_description_revision_id INTEGER,
       session_id TEXT,
       group_id TEXT,
       is_undone INTEGER NOT NULL DEFAULT 0,
@@ -208,7 +233,31 @@ function resetDatabaseToLatestSchema(db: Database.Database): void {
     for (const tableName of RESETTABLE_TABLES) {
       db.exec(`DROP TABLE IF EXISTS ${tableName}`);
     }
+    db.exec("DROP TABLE IF EXISTS description_revisions");
+    db.exec("DROP TABLE IF EXISTS description_blocks");
+    db.pragma("auto_vacuum = INCREMENTAL");
     createLatestSchema(db);
+    setUserVersion(db, CURRENT_SCHEMA_VERSION);
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+function migrateV20ToV21(db: Database.Database): void {
+  db.exec("PRAGMA foreign_keys = OFF");
+  try {
+    const cardColumns = db.prepare("PRAGMA table_info(cards)").all() as Array<{ name: string }>;
+    if (!cardColumns.some((column) => column.name === "description_revision_id")) {
+      db.exec("ALTER TABLE cards ADD COLUMN description_revision_id INTEGER");
+    }
+
+    db.exec("DROP TABLE IF EXISTS description_revisions");
+    db.exec("DROP TABLE IF EXISTS description_blocks");
+    db.exec("DROP TABLE IF EXISTS history");
+    createLatestSchema(db);
+    seedCardDescriptionRevisions(db);
+    db.pragma("auto_vacuum = INCREMENTAL");
+    db.exec("VACUUM");
     setUserVersion(db, CURRENT_SCHEMA_VERSION);
   } finally {
     db.exec("PRAGMA foreign_keys = ON");
@@ -247,6 +296,8 @@ export function ensureDatabase(options: EnsureDatabaseOptions = {}): void {
 
     if (currentVersion === 0) {
       resetDatabaseToLatestSchema(db);
+    } else if (currentVersion === 20) {
+      migrateV20ToV21(db);
     } else if (currentVersion !== CURRENT_SCHEMA_VERSION) {
       throw new Error(
         `Unsupported Nodex database schema version ${currentVersion}. Expected ${CURRENT_SCHEMA_VERSION}. Delete or recreate the local database if you want a fresh start.`,

@@ -9,8 +9,10 @@
 ## Data Durability Model
 - SQLite runs in WAL mode (`db-service.ts`) for resilient write/read behavior.
 - SQLite schema version state is tracked in `PRAGMA user_version`.
+- SQLite file reclamation runs with `PRAGMA auto_vacuum = INCREMENTAL`; startup migration applies `VACUUM` when switching to that mode, and history pruning opportunistically runs `PRAGMA incremental_vacuum`.
 - Card and history writes are wrapped in transactions for atomicity.
 - Project deletion cascades card/history rows to prevent orphaned state.
+- Card descriptions remain materialized on `cards.description`, while historical description changes are stored in `description_revisions` / `description_blocks` and referenced from history rows via revision ids.
 - Codex thread-card metadata persists in `codex_card_threads` (project/card/thread ownership, cached status, archive state).
 - Codex turn/item transcript snapshots persist in `codex_thread_snapshots` and are merged with runtime reads to prevent sparse-read log loss on tab switches and restarts.
 - Project rename updates linked Codex rows transactionally with project metadata updates.
@@ -38,7 +40,8 @@
 - Oversized card payloads return HTTP `413` before DB work.
 - Invalid inputs fail at validation boundary with actionable errors.
 - Not-found resources return `404` from API routes.
-- Older explicit SQLite schema versions fail fast during startup with an unsupported-version error instead of attempting in-app migrations.
+- Supported schema migrations can be destructive when explicitly documented: schema v21 drops pre-v21 history rows, preserves cards/projects, and reseeds description revisions from the current card descriptions.
+- Older explicit SQLite schema versions still fail fast during startup with an unsupported-version error instead of attempting in-app migrations.
 - Stale card writes with `expectedRevision` return typed conflict payloads (`status: "conflict"`; HTTP `409`) and do not apply partial updates.
 - Backup restore failures surface explicit error responses.
 - Reminder delivery is at-least-once at scheduler level, then effectively exactly-once per `(project_id, card_id, occurrence_start, offset)` via receipt uniqueness.
@@ -55,3 +58,4 @@
 - Before release: run `bun run typecheck`, `bun run lint`, `bun test`.
 - Before risky migrations/refactors: create a labeled manual backup.
 - Keep retention settings in sync with local storage constraints.
+- After large history-prune events, expect incremental vacuum to reclaim free pages gradually rather than in one blocking rewrite.

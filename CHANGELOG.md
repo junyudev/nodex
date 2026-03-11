@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Expanded local asset handling beyond images so pasted attachments can resolve previews and metadata through the shared `nodex://assets/...` pipeline.
 - Refined the titlebar sliding-window pane controls so they flank the minimap, `+` grows to the right before falling back left, and `-` always removes the right-most visible pane.
+- Reworked card-description history storage so repeated large description edits now write compact revision deltas and checkpoints instead of duplicating full description blobs in every history row.
 
 ### Fixed
 - Fixed BlockNote drag-handle delete getting the side menu stuck at a stale position after removing a block.
@@ -17,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Fixed sidebar status-group collapse and `Show more` state resetting after reload; both now persist per project.
 - Fixed default plain-text code blocks exporting as ` ```text`; they now serialize with bare triple-backtick fences unless you choose a real language.
 - Fixed copying text from inside an NFM code block so plain-text clipboard output no longer adds surrounding triple backticks.
+- Fixed local database growth from repeated large description edits by dropping legacy inline history during the schema v21 migration, seeding fresh description revisions from current cards, and enabling incremental SQLite auto-vacuum.
 
 ## [0.1.0] - 2026-03-10
 

@@ -142,7 +142,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 #### 4. SQLite Database Storage
 - Single `kanban.db` file in kanban directory
 - Atomic transactions for data integrity
-- Schema v18 with projects/cards/history/canvas, Codex card-thread linking metadata, card run-target fields, and per-card optimistic-concurrency revisions
+- Schema v21 with projects/cards/history/canvas, Codex card-thread linking metadata, card run-target fields, per-card optimistic-concurrency revisions, and description revision storage
 
 #### 5. Card Properties
 
@@ -262,7 +262,10 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Keyboard shortcuts: `Cmd+Z` (undo), `Cmd+Shift+Z` (redo) — see `docs/KEYBOARD_SHORTCUTS.md` for full reference
 - Operations tracked: create, update, delete, move
 - Grouped undo/redo is supported via `history.group_id` so one undo can revert a multi-step atomic action (for example: block-drop import creates + source updates)
-- Delta storage (only changed fields stored, not full snapshots)
+- Non-description fields use delta storage (only changed fields stored, not full snapshots)
+- Card descriptions are stored outside `history` in a revision chain keyed by `cards.description_revision_id`; history rows only store description revision pointers and are hydrated back into full before/after text for the UI
+- Description revisions use top-level NFM block hashing plus ordered splice deltas, with periodic snapshot revisions to cap reconstruction work
+- Schema v21 migration is destructive for pre-v21 history rows: cards are preserved, legacy history is dropped, and fresh description revisions are seeded from current card descriptions
 - History panel is card-scoped (opened as an overlay from Card Stage) and shows a per-card edit timeline with timestamps, plus selectable detail panes for field diffs and snapshots
 - History panel is resizable (640–1400px, default 960px) with width persisted in localStorage
 - **Revert single change**: Undo a specific history entry (update, move, create, or delete) — creates a new forward history entry so the revert is itself visible and reversible
@@ -613,6 +616,7 @@ CREATE TABLE cards (
   column_id TEXT NOT NULL,          -- "1-ideas" through "8-done"
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  description_revision_id INTEGER,  -- latest materialized description revision
   priority TEXT NOT NULL DEFAULT 'p2-medium',
   estimate TEXT,                    -- nullable: xs, s, m, l, xl
   tags TEXT NOT NULL DEFAULT '[]',  -- JSON array
@@ -631,6 +635,23 @@ CREATE TABLE cards (
 
 CREATE INDEX idx_cards_project_column_order ON cards(project_id, column_id, "order");
 
+CREATE TABLE description_blocks (
+  hash TEXT PRIMARY KEY,
+  content TEXT NOT NULL,            -- canonical serialized top-level NFM block
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE description_revisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id TEXT NOT NULL,
+  parent_revision_id INTEGER,
+  kind TEXT NOT NULL,               -- 'snapshot' | 'delta'
+  block_hashes_json TEXT,           -- snapshot only
+  ops_json TEXT,                    -- delta only
+  created_at TEXT NOT NULL,
+  CHECK (kind IN ('snapshot', 'delta'))
+);
+
 -- History table
 CREATE TABLE history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -646,6 +667,9 @@ CREATE TABLE history (
   from_order INTEGER,               -- move only
   to_order INTEGER,                 -- move only
   card_snapshot TEXT,               -- JSON: full card for create/delete
+  previous_description_revision_id INTEGER,
+  new_description_revision_id INTEGER,
+  snapshot_description_revision_id INTEGER,
   session_id TEXT,                  -- browser session UUID
   group_id TEXT,                    -- grouped action UUID
   is_undone INTEGER NOT NULL DEFAULT 0,

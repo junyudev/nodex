@@ -1,30 +1,20 @@
 import Database from "better-sqlite3";
 import type { Card } from "../../shared/types";
+import type { HistoryEntry as PublicHistoryEntry } from "../../shared/ipc-api";
 import { getDb } from "./db-service";
 import { dbNotifier } from "./db-notifier";
 import { getHistoryRetention } from "./config";
+import * as descriptionRevisionService from "./description-revision-service";
 
 export type HistoryOperation = "create" | "update" | "delete" | "move";
 
-export interface HistoryEntry {
-  id: number;
-  projectId: string;
-  operation: HistoryOperation;
-  cardId: string;
-  columnId: string;
-  timestamp: string;
-  previousValues: Record<string, unknown> | null;
-  newValues: Record<string, unknown> | null;
-  fromColumnId: string | null;
-  toColumnId: string | null;
-  fromOrder: number | null;
-  toOrder: number | null;
-  cardSnapshot: Card | null;
-  sessionId: string | null;
-  groupId: string | null;
-  isUndone: boolean;
-  undoOf: number | null;
+interface HistoryEntry extends PublicHistoryEntry {
+  previousDescriptionRevisionId: number | null;
+  newDescriptionRevisionId: number | null;
+  snapshotDescriptionRevisionId: number | null;
 }
+
+export type StoredHistoryEntry = PublicHistoryEntry;
 
 interface DbHistoryRow {
   id: number;
@@ -40,6 +30,9 @@ interface DbHistoryRow {
   from_order: number | null;
   to_order: number | null;
   card_snapshot: string | null;
+  previous_description_revision_id: number | null;
+  new_description_revision_id: number | null;
+  snapshot_description_revision_id: number | null;
   session_id: string | null;
   group_id: string | null;
   is_undone: number;
@@ -52,6 +45,7 @@ interface DbCard {
   column_id: string;
   title: string;
   description: string;
+  description_revision_id: number | null;
   priority: string;
   estimate: string | null;
   tags: string;
@@ -140,7 +134,39 @@ function toRunInTargetDbValue(value: Card["runInTarget"]): string {
   return "local_project";
 }
 
-function rowToHistoryEntry(row: DbHistoryRow): HistoryEntry {
+function rowToHistoryEntry(database: Database.Database, row: DbHistoryRow): HistoryEntry {
+  const previousValues = row.previous_values
+    ? JSON.parse(row.previous_values) as Record<string, unknown>
+    : null;
+  const newValues = row.new_values
+    ? JSON.parse(row.new_values) as Record<string, unknown>
+    : null;
+  if (previousValues && row.previous_description_revision_id !== null) {
+    previousValues.description = descriptionRevisionService.reconstructDescription(
+      database,
+      row.previous_description_revision_id,
+    );
+  }
+  if (newValues && row.new_description_revision_id !== null) {
+    newValues.description = descriptionRevisionService.reconstructDescription(
+      database,
+      row.new_description_revision_id,
+    );
+  }
+
+  const cardSnapshot = row.card_snapshot
+    ? ({
+        revision: 1,
+        ...(JSON.parse(row.card_snapshot) as Record<string, unknown>),
+        description: row.snapshot_description_revision_id !== null
+          ? descriptionRevisionService.reconstructDescription(
+            database,
+            row.snapshot_description_revision_id,
+          )
+          : "",
+      } as Card)
+    : null;
+
   return {
     id: row.id,
     projectId: row.project_id,
@@ -148,18 +174,16 @@ function rowToHistoryEntry(row: DbHistoryRow): HistoryEntry {
     cardId: row.card_id,
     columnId: row.column_id,
     timestamp: row.timestamp,
-    previousValues: row.previous_values ? JSON.parse(row.previous_values) : null,
-    newValues: row.new_values ? JSON.parse(row.new_values) : null,
+    previousValues,
+    newValues,
     fromColumnId: row.from_column_id,
     toColumnId: row.to_column_id,
     fromOrder: row.from_order,
     toOrder: row.to_order,
-    cardSnapshot: row.card_snapshot
-      ? ({
-          revision: 1,
-          ...(JSON.parse(row.card_snapshot) as Record<string, unknown>),
-        } as Card)
-      : null,
+    cardSnapshot,
+    previousDescriptionRevisionId: row.previous_description_revision_id,
+    newDescriptionRevisionId: row.new_description_revision_id,
+    snapshotDescriptionRevisionId: row.snapshot_description_revision_id,
     sessionId: row.session_id,
     groupId: row.group_id,
     isUndone: row.is_undone === 1,
@@ -168,13 +192,43 @@ function rowToHistoryEntry(row: DbHistoryRow): HistoryEntry {
 }
 
 function cardToSnapshot(card: Card): string {
+  const rest = { ...card };
+  delete (rest as Partial<Card>).description;
   return JSON.stringify({
-    ...card,
-    dueDate: card.dueDate?.toISOString(),
-    scheduledStart: card.scheduledStart?.toISOString(),
-    scheduledEnd: card.scheduledEnd?.toISOString(),
-    created: card.created.toISOString(),
+    ...rest,
+    dueDate: rest.dueDate?.toISOString(),
+    scheduledStart: rest.scheduledStart?.toISOString(),
+    scheduledEnd: rest.scheduledEnd?.toISOString(),
+    created: rest.created.toISOString(),
   });
+}
+
+function stripDescription<T extends Record<string, unknown>>(value: T): Record<string, unknown> {
+  const rest = { ...value };
+  delete rest.description;
+  return rest;
+}
+
+function toPublicHistoryEntry(entry: HistoryEntry): StoredHistoryEntry {
+  return {
+    id: entry.id,
+    projectId: entry.projectId,
+    operation: entry.operation,
+    cardId: entry.cardId,
+    columnId: entry.columnId,
+    timestamp: entry.timestamp,
+    previousValues: entry.previousValues,
+    newValues: entry.newValues,
+    fromColumnId: entry.fromColumnId,
+    toColumnId: entry.toColumnId,
+    fromOrder: entry.fromOrder,
+    toOrder: entry.toOrder,
+    cardSnapshot: entry.cardSnapshot,
+    sessionId: entry.sessionId,
+    groupId: entry.groupId,
+    isUndone: entry.isUndone,
+    undoOf: entry.undoOf,
+  };
 }
 
 // === Recording Functions ===
@@ -183,6 +237,7 @@ export function recordCreate(
   card: Card,
   projectId: string,
   columnId: string,
+  snapshotDescriptionRevisionId: number | null,
   sessionId?: string,
   groupId?: string,
 ): number {
@@ -190,18 +245,21 @@ export function recordCreate(
   const stmt = database.prepare(`
     INSERT INTO history (
       project_id, operation, card_id, column_id, timestamp,
-      new_values, card_snapshot, session_id, group_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      new_values, card_snapshot, new_description_revision_id, snapshot_description_revision_id, session_id, group_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  const newValues = stripDescription(card as unknown as Record<string, unknown>);
   const result = stmt.run(
     projectId,
     "create",
     card.id,
     columnId,
     new Date().toISOString(),
+    JSON.stringify(newValues),
     cardToSnapshot(card),
-    cardToSnapshot(card),
+    snapshotDescriptionRevisionId,
+    snapshotDescriptionRevisionId,
     sessionId || null,
     groupId || null,
   );
@@ -216,6 +274,8 @@ export function recordUpdate(
   columnId: string,
   previousValues: Partial<Card>,
   newValues: Partial<Card>,
+  previousDescriptionRevisionId: number | null,
+  newDescriptionRevisionId: number | null,
   sessionId?: string,
   groupId?: string,
 ): number {
@@ -223,18 +283,22 @@ export function recordUpdate(
   const stmt = database.prepare(`
     INSERT INTO history (
       project_id, operation, card_id, column_id, timestamp,
-      previous_values, new_values, session_id, group_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      previous_values, new_values, previous_description_revision_id, new_description_revision_id, session_id, group_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  const storedPreviousValues = stripDescription(previousValues as Record<string, unknown>);
+  const storedNewValues = stripDescription(newValues as Record<string, unknown>);
   const result = stmt.run(
     projectId,
     "update",
     cardId,
     columnId,
     new Date().toISOString(),
-    JSON.stringify(previousValues),
-    JSON.stringify(newValues),
+    JSON.stringify(storedPreviousValues),
+    JSON.stringify(storedNewValues),
+    previousDescriptionRevisionId,
+    newDescriptionRevisionId,
     sessionId || null,
     groupId || null,
   );
@@ -247,6 +311,7 @@ export function recordDelete(
   card: Card,
   projectId: string,
   columnId: string,
+  snapshotDescriptionRevisionId: number | null,
   sessionId?: string,
   groupId?: string,
 ): number {
@@ -254,18 +319,21 @@ export function recordDelete(
   const stmt = database.prepare(`
     INSERT INTO history (
       project_id, operation, card_id, column_id, timestamp,
-      previous_values, card_snapshot, session_id, group_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      previous_values, card_snapshot, previous_description_revision_id, snapshot_description_revision_id, session_id, group_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  const previousValues = stripDescription(card as unknown as Record<string, unknown>);
   const result = stmt.run(
     projectId,
     "delete",
     card.id,
     columnId,
     new Date().toISOString(),
+    JSON.stringify(previousValues),
     cardToSnapshot(card),
-    cardToSnapshot(card),
+    snapshotDescriptionRevisionId,
+    snapshotDescriptionRevisionId,
     sessionId || null,
     groupId || null,
   );
@@ -312,7 +380,7 @@ export function recordMove(
 
 // === Query Functions ===
 
-export function getRecentHistory(projectId: string, limit = 50, offset = 0): HistoryEntry[] {
+export function getRecentHistory(projectId: string, limit = 50, offset = 0): StoredHistoryEntry[] {
   const database = getDb();
   const stmt = database.prepare(`
     SELECT * FROM history
@@ -321,10 +389,10 @@ export function getRecentHistory(projectId: string, limit = 50, offset = 0): His
     LIMIT ? OFFSET ?
   `);
   const rows = stmt.all(projectId, limit, offset) as DbHistoryRow[];
-  return rows.map(rowToHistoryEntry);
+  return rows.map((row) => toPublicHistoryEntry(rowToHistoryEntry(database, row)));
 }
 
-export function getCardHistory(projectId: string, cardId: string): HistoryEntry[] {
+export function getCardHistory(projectId: string, cardId: string): StoredHistoryEntry[] {
   const database = getDb();
   const stmt = database.prepare(`
     SELECT * FROM history
@@ -332,14 +400,14 @@ export function getCardHistory(projectId: string, cardId: string): HistoryEntry[
     ORDER BY timestamp DESC, id DESC
   `);
   const rows = stmt.all(projectId, cardId) as DbHistoryRow[];
-  return rows.map(rowToHistoryEntry);
+  return rows.map((row) => toPublicHistoryEntry(rowToHistoryEntry(database, row)));
 }
 
-export function getHistoryEntry(historyId: number): HistoryEntry | null {
+function getHistoryEntry(historyId: number): HistoryEntry | null {
   const database = getDb();
   const stmt = database.prepare("SELECT * FROM history WHERE id = ?");
   const row = stmt.get(historyId) as DbHistoryRow | undefined;
-  return row ? rowToHistoryEntry(row) : null;
+  return row ? rowToHistoryEntry(database, row) : null;
 }
 
 // === Undo/Redo Target Selection ===
@@ -355,7 +423,7 @@ export function getUndoTarget(projectId: string, sessionId?: string): HistoryEnt
       LIMIT 1
     `);
     const row = stmt.get(projectId, sessionId) as DbHistoryRow | undefined;
-    return row ? rowToHistoryEntry(row) : null;
+    return row ? rowToHistoryEntry(database, row) : null;
   }
 
   const stmt = database.prepare(`
@@ -365,7 +433,7 @@ export function getUndoTarget(projectId: string, sessionId?: string): HistoryEnt
     LIMIT 1
   `);
   const row = stmt.get(projectId) as DbHistoryRow | undefined;
-  return row ? rowToHistoryEntry(row) : null;
+  return row ? rowToHistoryEntry(database, row) : null;
 }
 
 export function getRedoTarget(projectId: string, sessionId?: string): HistoryEntry | null {
@@ -379,7 +447,7 @@ export function getRedoTarget(projectId: string, sessionId?: string): HistoryEnt
       LIMIT 1
     `);
     const row = stmt.get(projectId, sessionId) as DbHistoryRow | undefined;
-    return row ? rowToHistoryEntry(row) : null;
+    return row ? rowToHistoryEntry(database, row) : null;
   }
 
   const stmt = database.prepare(`
@@ -389,7 +457,7 @@ export function getRedoTarget(projectId: string, sessionId?: string): HistoryEnt
     LIMIT 1
   `);
   const row = stmt.get(projectId) as DbHistoryRow | undefined;
-  return row ? rowToHistoryEntry(row) : null;
+  return row ? rowToHistoryEntry(database, row) : null;
 }
 
 // === Undo/Redo Execution ===
@@ -534,7 +602,7 @@ function getGroupEntries(
     `
   ).all(entry.projectId, entry.groupId, isUndone) as DbHistoryRow[];
 
-  return rows.map(rowToHistoryEntry);
+  return rows.map((row) => rowToHistoryEntry(database, row));
 }
 
 function notifyEntries(
@@ -589,6 +657,10 @@ function undoUpdate(database: Database.Database, entry: HistoryEntry): void {
     fields.push("description = ?");
     values.push(prev.description);
   }
+  if (entry.previousDescriptionRevisionId !== null) {
+    fields.push("description_revision_id = ?");
+    values.push(entry.previousDescriptionRevisionId);
+  }
   if (prev.priority !== undefined) {
     fields.push("priority = ?");
     values.push(prev.priority);
@@ -612,6 +684,10 @@ function undoUpdate(database: Database.Database, entry: HistoryEntry): void {
   if (prev.scheduledEnd !== undefined) {
     fields.push("scheduled_end = ?");
     values.push(toIsoStringOrNull(prev.scheduledEnd));
+  }
+  if (prev.isAllDay !== undefined) {
+    fields.push("is_all_day = ?");
+    values.push(prev.isAllDay ? 1 : 0);
   }
   if (prev.recurrence !== undefined) {
     fields.push("recurrence_json = ?");
@@ -685,10 +761,10 @@ function undoDelete(database: Database.Database, entry: HistoryEntry): void {
   database
     .prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, priority, estimate,
-        tags, due_date, scheduled_start, scheduled_end, recurrence_json, reminders_json, schedule_timezone,
+        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+        tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       snapshot.id,
@@ -696,12 +772,14 @@ function undoDelete(database: Database.Database, entry: HistoryEntry): void {
       entry.columnId,
       snapshot.title,
       snapshot.description,
+      entry.snapshotDescriptionRevisionId,
       snapshot.priority,
       snapshot.estimate || null,
       JSON.stringify(snapshot.tags),
       toDateOnlyString(dueDate),
       toIsoStringOrNull(scheduledStart),
       toIsoStringOrNull(scheduledEnd),
+      snapshot.isAllDay ? 1 : 0,
       snapshot.recurrence ? JSON.stringify(snapshot.recurrence) : null,
       JSON.stringify(snapshot.reminders ?? []),
       snapshot.scheduleTimezone || null,
@@ -799,10 +877,10 @@ function redoCreate(database: Database.Database, entry: HistoryEntry): void {
   database
     .prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, priority, estimate,
-        tags, due_date, scheduled_start, scheduled_end, recurrence_json, reminders_json, schedule_timezone,
+        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+        tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
       snapshot.id,
@@ -810,12 +888,14 @@ function redoCreate(database: Database.Database, entry: HistoryEntry): void {
       entry.columnId,
       snapshot.title,
       snapshot.description,
+      entry.snapshotDescriptionRevisionId,
       snapshot.priority,
       snapshot.estimate || null,
       JSON.stringify(snapshot.tags),
       toDateOnlyString(dueDate),
       toIsoStringOrNull(scheduledStart),
       toIsoStringOrNull(scheduledEnd),
+      snapshot.isAllDay ? 1 : 0,
       snapshot.recurrence ? JSON.stringify(snapshot.recurrence) : null,
       JSON.stringify(snapshot.reminders ?? []),
       snapshot.scheduleTimezone || null,
@@ -847,6 +927,10 @@ function redoUpdate(database: Database.Database, entry: HistoryEntry): void {
     fields.push("description = ?");
     values.push(newVals.description);
   }
+  if (entry.newDescriptionRevisionId !== null) {
+    fields.push("description_revision_id = ?");
+    values.push(entry.newDescriptionRevisionId);
+  }
   if (newVals.priority !== undefined) {
     fields.push("priority = ?");
     values.push(newVals.priority);
@@ -870,6 +954,10 @@ function redoUpdate(database: Database.Database, entry: HistoryEntry): void {
   if (newVals.scheduledEnd !== undefined) {
     fields.push("scheduled_end = ?");
     values.push(toIsoStringOrNull(newVals.scheduledEnd));
+  }
+  if (newVals.isAllDay !== undefined) {
+    fields.push("is_all_day = ?");
+    values.push(newVals.isAllDay ? 1 : 0);
   }
   if (newVals.recurrence !== undefined) {
     fields.push("recurrence_json = ?");
@@ -1018,7 +1106,7 @@ export function reconstructCardStateAtEntry(
     )
     .all(projectId, cardId) as DbHistoryRow[];
 
-  const entries = rows.map(rowToHistoryEntry);
+  const entries = rows.map((row) => rowToHistoryEntry(database, row));
 
   // Find creation entry for the initial snapshot
   const createEntry = entries.find((e) => e.operation === "create");
@@ -1095,6 +1183,10 @@ export function revertEntry(
 
           if (prev.title !== undefined) { fields.push("title = ?"); values.push(prev.title); }
           if (prev.description !== undefined) { fields.push("description = ?"); values.push(prev.description); }
+          if (entry.previousDescriptionRevisionId !== null) {
+            fields.push("description_revision_id = ?");
+            values.push(entry.previousDescriptionRevisionId);
+          }
           if (prev.priority !== undefined) { fields.push("priority = ?"); values.push(prev.priority); }
           if (prev.estimate !== undefined) { fields.push("estimate = ?"); values.push(prev.estimate || null); }
           if (prev.tags !== undefined) { fields.push("tags = ?"); values.push(JSON.stringify(prev.tags)); }
@@ -1109,6 +1201,10 @@ export function revertEntry(
           if (prev.scheduledEnd !== undefined) {
             fields.push("scheduled_end = ?");
             values.push(toIsoStringOrNull(prev.scheduledEnd));
+          }
+          if (prev.isAllDay !== undefined) {
+            fields.push("is_all_day = ?");
+            values.push(prev.isAllDay ? 1 : 0);
           }
           if (prev.recurrence !== undefined) {
             fields.push("recurrence_json = ?");
@@ -1136,13 +1232,29 @@ export function revertEntry(
             database.prepare(`UPDATE cards SET ${fields.join(", ")} WHERE id = ?`).run(...values);
           }
 
+          const storedRevertedPreviousValues = stripDescription(
+            (entry.newValues ?? {}) as Record<string, unknown>,
+          );
+          const storedRevertedNewValues = stripDescription(
+            (entry.previousValues ?? {}) as Record<string, unknown>,
+          );
           // Record reverse update history
           database.prepare(`
-            INSERT INTO history (project_id, operation, card_id, column_id, timestamp, previous_values, new_values, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO history (
+              project_id, operation, card_id, column_id, timestamp,
+              previous_values, new_values, previous_description_revision_id, new_description_revision_id, session_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            projectId, "update", entry.cardId, entry.columnId, new Date().toISOString(),
-            JSON.stringify(entry.newValues), JSON.stringify(entry.previousValues),
+            projectId,
+            "update",
+            entry.cardId,
+            entry.columnId,
+            new Date().toISOString(),
+            JSON.stringify(storedRevertedPreviousValues),
+            JSON.stringify(storedRevertedNewValues),
+            entry.newDescriptionRevisionId,
+            entry.previousDescriptionRevisionId,
             sessionId || null
           );
           break;
@@ -1188,7 +1300,9 @@ export function revertEntry(
           const card = database.prepare("SELECT * FROM cards WHERE id = ?").get(entry.cardId) as DbCard | undefined;
           if (!card) throw new Error("Card no longer exists");
 
-          const cardSnapshot = cardToSnapshot(dbCardToCard(card));
+          const currentCard = dbCardToCard(card);
+          const cardSnapshot = cardToSnapshot(currentCard);
+          const previousValues = stripDescription(currentCard as unknown as Record<string, unknown>);
           const order = card.order;
 
           database.prepare("DELETE FROM cards WHERE id = ?").run(entry.cardId);
@@ -1198,11 +1312,22 @@ export function revertEntry(
 
           // Record delete history
           database.prepare(`
-            INSERT INTO history (project_id, operation, card_id, column_id, timestamp, previous_values, card_snapshot, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO history (
+              project_id, operation, card_id, column_id, timestamp,
+              previous_values, card_snapshot, previous_description_revision_id, snapshot_description_revision_id, session_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            projectId, "delete", entry.cardId, card.column_id, new Date().toISOString(),
-            cardSnapshot, cardSnapshot, sessionId || null
+            projectId,
+            "delete",
+            entry.cardId,
+            card.column_id,
+            new Date().toISOString(),
+            JSON.stringify(previousValues),
+            cardSnapshot,
+            card.description_revision_id,
+            card.description_revision_id,
+            sessionId || null
           );
           break;
         }
@@ -1224,16 +1349,18 @@ export function revertEntry(
           const created = snapshot.created;
 
           database.prepare(`
-            INSERT INTO cards (id, project_id, column_id, title, description, priority, estimate,
-              tags, due_date, scheduled_start, scheduled_end, recurrence_json, reminders_json, schedule_timezone,
+            INSERT INTO cards (id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+              tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
               assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order")
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             snapshot.id, projectId, entry.columnId, snapshot.title, snapshot.description,
+            entry.snapshotDescriptionRevisionId,
             snapshot.priority, snapshot.estimate || null, JSON.stringify(snapshot.tags),
             toDateOnlyString(dueDate),
             toIsoStringOrNull(scheduledStart),
             toIsoStringOrNull(scheduledEnd),
+            snapshot.isAllDay ? 1 : 0,
             snapshot.recurrence ? JSON.stringify(snapshot.recurrence) : null,
             JSON.stringify(snapshot.reminders ?? []),
             snapshot.scheduleTimezone || null,
@@ -1248,12 +1375,24 @@ export function revertEntry(
 
           // Record create history
           const newCardSnapshot = cardToSnapshot({ ...snapshot, order } as Card);
+          const createdNewValues = stripDescription({ ...snapshot, order } as Record<string, unknown>);
           database.prepare(`
-            INSERT INTO history (project_id, operation, card_id, column_id, timestamp, new_values, card_snapshot, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO history (
+              project_id, operation, card_id, column_id, timestamp,
+              new_values, card_snapshot, new_description_revision_id, snapshot_description_revision_id, session_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            projectId, "create", entry.cardId, entry.columnId, new Date().toISOString(),
-            newCardSnapshot, newCardSnapshot, sessionId || null
+            projectId,
+            "create",
+            entry.cardId,
+            entry.columnId,
+            new Date().toISOString(),
+            JSON.stringify(createdNewValues),
+            newCardSnapshot,
+            entry.snapshotDescriptionRevisionId,
+            entry.snapshotDescriptionRevisionId,
+            sessionId || null
           );
           break;
         }
@@ -1297,10 +1436,12 @@ export function restoreToEntry(
         const values: (string | number | null)[] = [];
         const previousValues: Record<string, unknown> = {};
         const newValues: Record<string, unknown> = {};
+        let previousDescriptionRevisionId: number | null = null;
+        let newDescriptionRevisionId: number | null = null;
+        const targetDescription = typeof state.description === "string" ? state.description : "";
 
         const fieldMappings: Array<{ key: string; dbCol: string; current: unknown; serialize?: (v: unknown) => string | number | null }> = [
           { key: "title", dbCol: "title", current: card.title },
-          { key: "description", dbCol: "description", current: card.description },
           { key: "priority", dbCol: "priority", current: card.priority },
           { key: "estimate", dbCol: "estimate", current: card.estimate },
           { key: "tags", dbCol: "tags", current: JSON.parse(card.tags), serialize: (v) => JSON.stringify(v) },
@@ -1313,6 +1454,7 @@ export function restoreToEntry(
           { key: "scheduledEnd", dbCol: "scheduled_end", current: card.scheduled_end, serialize: (v) => {
             return toIsoStringOrNull(v);
           }},
+          { key: "isAllDay", dbCol: "is_all_day", current: card.is_all_day === 1, serialize: (v) => v ? 1 : 0 },
           { key: "recurrence", dbCol: "recurrence_json", current: card.recurrence_json ? JSON.parse(card.recurrence_json) : null, serialize: (v) => {
             if (!v) return null;
             return JSON.stringify(v);
@@ -1375,6 +1517,30 @@ export function restoreToEntry(
           }
         }
 
+        if (card.description !== targetDescription) {
+          previousDescriptionRevisionId = card.description_revision_id;
+          newDescriptionRevisionId = card.description_revision_id
+            ? descriptionRevisionService.createNextDescriptionRevision(
+              database,
+              cardId,
+              card.description_revision_id,
+              targetDescription,
+              new Date().toISOString(),
+            )
+            : descriptionRevisionService.createInitialDescriptionRevision(
+              database,
+              cardId,
+              targetDescription,
+              new Date().toISOString(),
+            );
+          previousValues.description = card.description;
+          newValues.description = targetDescription;
+          fields.push("description = ?");
+          values.push(targetDescription);
+          fields.push("description_revision_id = ?");
+          values.push(newDescriptionRevisionId);
+        }
+
         // Handle column change
         if (currentColumnId !== targetColumnId) {
           const currentOrder = card.order;
@@ -1409,11 +1575,21 @@ export function restoreToEntry(
           database.prepare(`UPDATE cards SET ${fields.join(", ")} WHERE id = ?`).run(...values);
 
           database.prepare(`
-            INSERT INTO history (project_id, operation, card_id, column_id, timestamp, previous_values, new_values, session_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO history (
+              project_id, operation, card_id, column_id, timestamp,
+              previous_values, new_values, previous_description_revision_id, new_description_revision_id, session_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
-            projectId, "update", cardId, targetColumnId, new Date().toISOString(),
-            JSON.stringify(previousValues), JSON.stringify(newValues),
+            projectId,
+            "update",
+            cardId,
+            targetColumnId,
+            new Date().toISOString(),
+            JSON.stringify(stripDescription(previousValues)),
+            JSON.stringify(stripDescription(newValues)),
+            previousDescriptionRevisionId,
+            newDescriptionRevisionId,
             sessionId || null
           );
         }
@@ -1428,20 +1604,28 @@ export function restoreToEntry(
         const scheduledStart = state.scheduledStart;
         const scheduledEnd = state.scheduledEnd;
         const created = state.created;
+        const restoredDescription = typeof state.description === "string" ? state.description : "";
+        const restoredDescriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
+          database,
+          cardId,
+          restoredDescription,
+          typeof created === "string" ? created : (created as Date).toISOString(),
+        );
 
         database.prepare(`
-          INSERT INTO cards (id, project_id, column_id, title, description, priority, estimate,
-            tags, due_date, scheduled_start, scheduled_end, recurrence_json, reminders_json, schedule_timezone,
+          INSERT INTO cards (id, project_id, column_id, title, description, description_revision_id, priority, estimate,
+            tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
             assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order")
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           cardId, projectId, targetColumnId,
-          state.title as string, (state.description as string) ?? "",
+          state.title as string, restoredDescription, restoredDescriptionRevisionId,
           (state.priority as string) ?? "p2-medium", (state.estimate as string) || null,
           JSON.stringify(state.tags ?? []),
           toDateOnlyString(dueDate),
           toIsoStringOrNull(scheduledStart),
           toIsoStringOrNull(scheduledEnd),
+          state.isAllDay ? 1 : 0,
           state.recurrence ? JSON.stringify(state.recurrence) : null,
           JSON.stringify((state.reminders as unknown[]) ?? []),
           (state.scheduleTimezone as string) || null,
@@ -1458,11 +1642,12 @@ export function restoreToEntry(
 
         // Record create
         const restoredCard = {
-          id: cardId, title: state.title, description: state.description ?? "",
+          id: cardId, title: state.title, description: restoredDescription,
           priority: state.priority ?? "p2-medium", estimate: state.estimate || null,
           tags: state.tags ?? [], dueDate: state.dueDate ?? null,
           scheduledStart: parseHistoryDate(state.scheduledStart),
           scheduledEnd: parseHistoryDate(state.scheduledEnd),
+          isAllDay: Boolean(state.isAllDay),
           recurrence: state.recurrence ?? null,
           reminders: state.reminders ?? [],
           scheduleTimezone: state.scheduleTimezone ?? null,
@@ -1475,13 +1660,25 @@ export function restoreToEntry(
           runInEnvironmentPath: (state.runInEnvironmentPath as string) || null,
           order,
         };
-        const snap = JSON.stringify(restoredCard);
+        const restoredCardValues = stripDescription(restoredCard as Record<string, unknown>);
+        const snap = JSON.stringify(restoredCardValues);
         database.prepare(`
-          INSERT INTO history (project_id, operation, card_id, column_id, timestamp, new_values, card_snapshot, session_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO history (
+            project_id, operation, card_id, column_id, timestamp,
+            new_values, card_snapshot, new_description_revision_id, snapshot_description_revision_id, session_id
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          projectId, "create", cardId, targetColumnId, new Date().toISOString(),
-          snap, snap, sessionId || null
+          projectId,
+          "create",
+          cardId,
+          targetColumnId,
+          new Date().toISOString(),
+          JSON.stringify(restoredCardValues),
+          snap,
+          restoredDescriptionRevisionId,
+          restoredDescriptionRevisionId,
+          sessionId || null
         );
       }
     })();
@@ -1583,17 +1780,19 @@ function describeGroupedOperation(entry: HistoryEntry): string | null {
 
 export function clearRedoStack(projectId: string, sessionId?: string): void {
   const database = getDb();
-
-  if (sessionId) {
-    database
+  const changes = sessionId
+    ? database
       .prepare(
         `DELETE FROM history WHERE project_id = ? AND session_id = ? AND is_undone = 1 AND undo_of IS NULL`
       )
-      .run(projectId, sessionId);
-  } else {
-    database
+      .run(projectId, sessionId).changes
+    : database
       .prepare(`DELETE FROM history WHERE project_id = ? AND is_undone = 1 AND undo_of IS NULL`)
-      .run(projectId);
+      .run(projectId).changes;
+
+  if (changes > 0) {
+    descriptionRevisionService.garbageCollectDescriptionRevisions(database);
+    database.pragma("incremental_vacuum");
   }
 }
 
@@ -1604,9 +1803,14 @@ export function pruneHistory(projectId: string, retentionCount: number): number 
     .prepare(`SELECT id FROM history WHERE project_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?`)
     .get(projectId, retentionCount) as { id: number } | undefined;
   if (!cutoffRow) return 0;
-  return database
+  const changes = database
     .prepare(`DELETE FROM history WHERE project_id = ? AND id < ?`)
     .run(projectId, cutoffRow.id).changes;
+  if (changes > 0) {
+    descriptionRevisionService.garbageCollectDescriptionRevisions(database);
+    database.pragma("incremental_vacuum");
+  }
+  return changes;
 }
 
 function afterRecord(projectId: string): void {

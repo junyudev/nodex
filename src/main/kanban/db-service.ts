@@ -34,6 +34,7 @@ import { getDatabasePath, getKanbanDir } from "./config";
 import { dbNotifier } from "./db-notifier";
 import { ensureDatabase, COLUMNS, type EnsureDatabaseOptions } from "./schema";
 import * as historyService from "./history-service";
+import * as descriptionRevisionService from "./description-revision-service";
 import { assertValidCardInput } from "./card-input-validation";
 import {
   expandCardOccurrences,
@@ -49,6 +50,7 @@ interface DbCard {
   column_id: string;
   title: string;
   description: string;
+  description_revision_id: number | null;
   priority: string;
   estimate: string | null;
   tags: string;
@@ -247,6 +249,7 @@ interface CardUpdateMutation {
   values: (string | number | null)[];
   previousValues: Partial<Card>;
   newValues: Partial<Card>;
+  descriptionChanged: boolean;
 }
 
 function buildCardUpdateMutation(
@@ -257,6 +260,7 @@ function buildCardUpdateMutation(
   const newValues: Partial<Card> = {};
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
+  let descriptionChanged = false;
 
   if (updates.title !== undefined) {
     fields.push("title = ?");
@@ -267,8 +271,7 @@ function buildCardUpdateMutation(
   if (updates.description !== undefined) {
     fields.push("description = ?");
     values.push(updates.description);
-    previousValues.description = existing.description;
-    newValues.description = updates.description;
+    descriptionChanged = true;
   }
   if (updates.priority !== undefined) {
     fields.push("priority = ?");
@@ -379,7 +382,7 @@ function buildCardUpdateMutation(
     newValues.runInEnvironmentPath = updates.runInEnvironmentPath?.trim() || undefined;
   }
 
-  return { fields, values, previousValues, newValues };
+  return { fields, values, previousValues, newValues, descriptionChanged };
 }
 
 // === Project CRUD ===
@@ -542,19 +545,26 @@ export async function createCard(
         .get(projectId, columnId) as { maxOrder: number | null } | undefined;
       return (maxOrderRow?.maxOrder ?? -1) + 1;
     })();
+    const descriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
+      database,
+      id,
+      input.description || "",
+      nowIso,
+    );
 
     database.prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, priority, estimate,
+        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       projectId,
       columnId,
       input.title,
       input.description || "",
+      descriptionRevisionId,
       input.priority || "p2-medium",
       input.estimate || null,
       JSON.stringify(input.tags || []),
@@ -605,7 +615,13 @@ export async function createCard(
     };
 
     historyService.clearRedoStack(projectId, sessionId);
-    historyService.recordCreate(result, projectId, columnId, sessionId);
+    historyService.recordCreate(
+      result,
+      projectId,
+      columnId,
+      descriptionRevisionId,
+      sessionId,
+    );
 
     return result;
   })();
@@ -657,18 +673,49 @@ export async function updateCard(
       values,
       previousValues,
       newValues,
+      descriptionChanged,
     } = buildCardUpdateMutation(existing, updates);
 
     let didMutate = false;
     if (fields.length > 0) {
       didMutate = true;
+      let previousDescriptionRevisionId: number | null = null;
+      let newDescriptionRevisionId: number | null = null;
+      if (descriptionChanged) {
+        previousDescriptionRevisionId = existing.description_revision_id;
+        newDescriptionRevisionId = existing.description_revision_id
+          ? descriptionRevisionService.createNextDescriptionRevision(
+            database,
+            cardId,
+            existing.description_revision_id,
+            updates.description ?? "",
+            new Date().toISOString(),
+          )
+          : descriptionRevisionService.createInitialDescriptionRevision(
+            database,
+            cardId,
+            updates.description ?? "",
+            new Date().toISOString(),
+          );
+        fields.push("description_revision_id = ?");
+        values.push(newDescriptionRevisionId);
+      }
       values.push(cardId);
       database.prepare(
         `UPDATE cards SET ${fields.join(", ")}, revision = revision + 1 WHERE id = ?`
       ).run(...values);
 
       historyService.clearRedoStack(projectId, sessionId);
-      historyService.recordUpdate(cardId, projectId, resolvedColumnId, previousValues, newValues, sessionId);
+      historyService.recordUpdate(
+        cardId,
+        projectId,
+        resolvedColumnId,
+        previousValues,
+        newValues,
+        previousDescriptionRevisionId,
+        newDescriptionRevisionId,
+        sessionId,
+      );
     }
 
     const updated = database
@@ -727,7 +774,13 @@ export async function deleteCard(
       .run(projectId, resolvedColumnId, cardRow.order);
 
     historyService.clearRedoStack(projectId, sessionId);
-    historyService.recordDelete(card, projectId, resolvedColumnId, sessionId);
+    historyService.recordDelete(
+      card,
+      projectId,
+      resolvedColumnId,
+      cardRow.description_revision_id,
+      sessionId,
+    );
 
     return resolvedColumnId;
   })();
@@ -1238,6 +1291,28 @@ export async function importBlockDropAsCards(
       const mutation = buildCardUpdateMutation(existing, sourceUpdate.updates);
       if (mutation.fields.length === 0) continue;
 
+      let previousDescriptionRevisionId: number | null = null;
+      let newDescriptionRevisionId: number | null = null;
+      if (mutation.descriptionChanged) {
+        previousDescriptionRevisionId = existing.description_revision_id;
+        newDescriptionRevisionId = existing.description_revision_id
+          ? descriptionRevisionService.createNextDescriptionRevision(
+            database,
+            sourceUpdate.cardId,
+            existing.description_revision_id,
+            sourceUpdate.updates.description ?? "",
+            nowIso,
+          )
+          : descriptionRevisionService.createInitialDescriptionRevision(
+            database,
+            sourceUpdate.cardId,
+            sourceUpdate.updates.description ?? "",
+            nowIso,
+          );
+        mutation.fields.push("description_revision_id = ?");
+        mutation.values.push(newDescriptionRevisionId);
+      }
+
       mutation.values.push(sourceUpdate.cardId);
       database
         .prepare(`UPDATE cards SET ${mutation.fields.join(", ")} WHERE id = ?`)
@@ -1249,6 +1324,8 @@ export async function importBlockDropAsCards(
         resolvedColumnId,
         mutation.previousValues,
         mutation.newValues,
+        previousDescriptionRevisionId,
+        newDescriptionRevisionId,
         sessionId,
         groupId,
       );
@@ -1280,19 +1357,26 @@ export async function importBlockDropAsCards(
         assertCardIdAvailable(database, requestedId);
       }
       const order = insertIndex + offset;
+      const descriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
+        database,
+        id,
+        cardInput.description || "",
+        nowIso,
+      );
 
       database.prepare(`
         INSERT INTO cards (
-          id, project_id, column_id, title, description, priority, estimate,
+          id, project_id, column_id, title, description, description_revision_id, priority, estimate,
           tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
           assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         projectId,
         input.targetColumnId,
         cardInput.title,
         cardInput.description || "",
+        descriptionRevisionId,
         cardInput.priority || "p2-medium",
         cardInput.estimate || null,
         JSON.stringify(cardInput.tags || []),
@@ -1346,6 +1430,7 @@ export async function importBlockDropAsCards(
         createdCard,
         projectId,
         input.targetColumnId,
+        descriptionRevisionId,
         sessionId,
         groupId,
       );
@@ -1410,6 +1495,7 @@ export async function moveCardDropToEditor(
 
   const database = getDb();
   const groupId = input.groupId || randomUUID();
+  const nowIso = new Date().toISOString();
   const appliedTargetUpdates: AppliedTargetDescriptionUpdate[] = [];
   let sourceColumnId = "";
 
@@ -1472,6 +1558,28 @@ export async function moveCardDropToEditor(
       const mutation = buildCardUpdateMutation(existingTarget, targetUpdate.updates);
       if (mutation.fields.length === 0) continue;
 
+      let previousDescriptionRevisionId: number | null = null;
+      let newDescriptionRevisionId: number | null = null;
+      if (mutation.descriptionChanged) {
+        previousDescriptionRevisionId = existingTarget.description_revision_id;
+        newDescriptionRevisionId = existingTarget.description_revision_id
+          ? descriptionRevisionService.createNextDescriptionRevision(
+            database,
+            targetUpdate.cardId,
+            existingTarget.description_revision_id,
+            targetUpdate.updates.description ?? "",
+            nowIso,
+          )
+          : descriptionRevisionService.createInitialDescriptionRevision(
+            database,
+            targetUpdate.cardId,
+            targetUpdate.updates.description ?? "",
+            nowIso,
+          );
+        mutation.fields.push("description_revision_id = ?");
+        mutation.values.push(newDescriptionRevisionId);
+      }
+
       mutation.values.push(targetUpdate.cardId);
       database
         .prepare(`UPDATE cards SET ${mutation.fields.join(", ")} WHERE id = ?`)
@@ -1483,6 +1591,8 @@ export async function moveCardDropToEditor(
         resolvedTargetColumnId,
         mutation.previousValues,
         mutation.newValues,
+        previousDescriptionRevisionId,
+        newDescriptionRevisionId,
         sessionId,
         groupId,
       );
@@ -1521,6 +1631,7 @@ export async function moveCardDropToEditor(
         rowToCard(row),
         sourceProjectId,
         row.column_id,
+        row.description_revision_id,
         sessionId,
         groupId,
       );
@@ -1837,19 +1948,26 @@ export async function completeCardOccurrence(
       .prepare('SELECT MAX("order") as maxOrder FROM cards WHERE project_id = ? AND column_id = ?')
       .get(projectId, ARCHIVE_COLUMN_ID) as { maxOrder: number | null } | undefined;
     const archiveOrder = (maxArchiveOrderRow?.maxOrder ?? -1) + 1;
+    const archiveDescriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
+      database,
+      archiveCardId,
+      target.card.description,
+      nowIso,
+    );
 
     database.prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, priority, estimate,
+        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       archiveCardId,
       projectId,
       ARCHIVE_COLUMN_ID,
       target.card.title,
       target.card.description,
+      archiveDescriptionRevisionId,
       target.card.priority,
       target.card.estimate ?? null,
       JSON.stringify(target.card.tags),
@@ -1887,6 +2005,7 @@ export async function completeCardOccurrence(
       },
       projectId,
       ARCHIVE_COLUMN_ID,
+      archiveDescriptionRevisionId,
       sessionId,
       groupId,
     );
@@ -1944,6 +2063,8 @@ export async function completeCardOccurrence(
         scheduledStart: nextScheduledStart ?? undefined,
         scheduledEnd: nextScheduledEnd ?? undefined,
       },
+      null,
+      null,
       sessionId,
       groupId,
     );
@@ -2078,6 +2199,12 @@ export async function updateCardOccurrence(
       : (input.updates.scheduleTimezone ?? undefined);
 
     database.transaction(() => {
+      const detachedDescriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
+        database,
+        detachedCardId,
+        card.description,
+        nowIso,
+      );
       database.prepare(
         `UPDATE cards SET "order" = "order" + 1
          WHERE project_id = ? AND column_id = ? AND "order" > ?`
@@ -2085,16 +2212,17 @@ export async function updateCardOccurrence(
 
       database.prepare(`
         INSERT INTO cards (
-          id, project_id, column_id, title, description, priority, estimate,
+          id, project_id, column_id, title, description, description_revision_id, priority, estimate,
           tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
           assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         detachedCardId,
         projectId,
         target.columnId,
         card.title,
         card.description,
+        detachedDescriptionRevisionId,
         card.priority,
         card.estimate ?? null,
         JSON.stringify(card.tags),
@@ -2204,6 +2332,7 @@ export async function updateCardOccurrence(
   const nextRecurrence = input.updates.recurrence === undefined
     ? (shiftedFutureRecurrence ?? oldRecurrence)
     : (input.updates.recurrence ?? undefined);
+  const nowIso = new Date().toISOString();
 
   database.transaction(() => {
     database.prepare(`
@@ -2227,6 +2356,8 @@ export async function updateCardOccurrence(
       {
         recurrence: endedRecurrence,
       },
+      null,
+      null,
       sessionId,
       groupId,
     );
@@ -2235,19 +2366,26 @@ export async function updateCardOccurrence(
       `UPDATE cards SET "order" = "order" + 1
        WHERE project_id = ? AND column_id = ? AND "order" > ?`
     ).run(projectId, target.columnId, existing.order);
+    const nextDescriptionRevisionId = descriptionRevisionService.createInitialDescriptionRevision(
+      database,
+      nextCardId,
+      oldCard.description,
+      nowIso,
+    );
 
     database.prepare(`
       INSERT INTO cards (
-        id, project_id, column_id, title, description, priority, estimate,
+        id, project_id, column_id, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       nextCardId,
       projectId,
       target.columnId,
       oldCard.title,
       oldCard.description,
+      nextDescriptionRevisionId,
       oldCard.priority,
       oldCard.estimate ?? null,
       JSON.stringify(oldCard.tags),
@@ -2287,6 +2425,7 @@ export async function updateCardOccurrence(
       createdCard,
       projectId,
       target.columnId,
+      nextDescriptionRevisionId,
       sessionId,
       groupId,
     );

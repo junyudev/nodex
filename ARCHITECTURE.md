@@ -10,6 +10,7 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `ipc-api.ts`: typed IPC channel surface between preload/renderer/main.
 - `card-limits.ts`: centralized payload and field size constraints.
 - `assets.ts`: stable `nodex://assets/` URI helpers.
+- `nfm/*`: shared Notion-flavored Markdown parser/serializer core used by both main-process storage logic and renderer editor adapters.
 
 ### Main Process and Data Layer (`src/main`)
 - `index.ts`: application bootstrap (startup-init gating, DB init with migration progress fanout, HTTP server start, multi-window registry, profile-scoped single-instance lock, notifier fanout).
@@ -18,7 +19,8 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `ipc-handlers.ts`: mirrors core operations through IPC, including asset-path resolution and clipboard paste inspection for desktop-only file/folder paste flows.
 - `clipboard-paste-inspector.ts`: best-effort Electron clipboard inspection for pasted absolute file/folder paths across supported native formats.
 - `kanban/db-service.ts`: SQLite CRUD, move logic, project lifecycle, atomic block-drop import (`sourceUpdates + card creates`), and atomic card-to-editor move drop (`target updates + source delete`) grouped in one transaction.
-- `kanban/history-service.ts`: undo/redo and change history records, including grouped undo/redo via `history.group_id`.
+- `kanban/history-service.ts`: undo/redo and change history records, including grouped undo/redo via `history.group_id` and description hydration from revision ids.
+- `kanban/description-revision-service.ts`: top-level NFM block hashing, revision delta/snapshot storage, description reconstruction, and revision/blob garbage collection.
 - `kanban/recurrence-service.ts`: recurrence expansion, exception application, and next-occurrence computation.
 - `kanban/reminder-service.ts`: runtime reminder scheduler, startup/resume catch-up, receipts, and snoozes.
 - `kanban/backup-service.ts`: whole-store backup/restore and scheduler.
@@ -54,7 +56,7 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `lib/use-terminal.ts`: ghostty-web terminal lifecycle hook with cached instances, fit/resize handling, IPC wiring, and theme sync.
 - `lib/use-codex.ts`, `lib/codex-store.ts`: Codex Threads state, event reduction, approval/user-input queues, and API actions.
 - `lib/codex-collaboration-mode-settings.ts`: local per-context collaboration mode persistence (`thread:*`, `draft:*`) with draft->thread handoff after thread creation.
-- `lib/nfm/*`: Notion-flavored Markdown parser/serializer and BlockNote adapter.
+- `lib/nfm/*`: renderer wrappers over the shared NFM core plus the BlockNote adapter and clipboard/read-only helpers.
 - `lib/toggle-list/*`: rule engine and mapping logic for toggle-list views.
 
 ## Data and Event Flow
