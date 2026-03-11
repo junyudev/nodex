@@ -1,13 +1,13 @@
 import { parsePatchFiles } from "@pierre/diffs";
 import { FileDiff, PatchDiff, type FileDiffMetadata } from "@pierre/diffs/react";
 import { useMemo } from "react";
-import { useTheme } from "../../../../lib/use-theme";
-import type { CodexItemView } from "../../../../lib/types";
 import {
   NODEX_DIFF_HOST_CLASS,
   getNodexDiffHostStyle,
   getNodexDiffOptions,
-} from "./diff-presentation";
+} from "../../../../lib/diff-presentation";
+import { useTheme } from "../../../../lib/use-theme";
+import type { CodexItemView } from "../../../../lib/types";
 import { InlineToolToggle, ToolErrorDetail } from "./tool-primitives";
 
 interface DiffSummary {

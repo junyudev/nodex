@@ -22,6 +22,24 @@ mock.module("@/lib/api", () => ({
   invoke: async () => ({ entries: [] }),
 }));
 
+mock.module("@/lib/use-theme", () => ({
+  useTheme: () => ({ resolved: "light" as const }),
+}));
+
+mock.module("@pierre/diffs/react", () => ({
+  FileDiff: ({ className }: { className?: string }) => createElement("div", { className, "data-file-diff": "true" }),
+  MultiFileDiff: ({
+    oldFile,
+    newFile,
+    className,
+  }: {
+    oldFile: { contents: string };
+    newFile: { contents: string };
+    className?: string;
+  }) => createElement("div", { className, "data-diff": "true" }, `${oldFile.contents} => ${newFile.contents}`),
+  PatchDiff: ({ className }: { className?: string }) => createElement("div", { className, "data-patch-diff": "true" }),
+}));
+
 describe("history panel", () => {
   test("renders block-level description deltas in the details view", async () => {
     const { HistoryEntryDetails } = await import("./history-panel");
@@ -92,11 +110,27 @@ describe("history panel", () => {
       }),
     );
 
-    expect(markup.includes("Description delta")).toBe(true);
+    expect(markup.includes("Description")).toBe(true);
     expect(markup.includes("Alpha paragraph")).toBe(true);
     expect(markup.includes("Gamma paragraph")).toBe(true);
-    expect(markup.includes("Show block source")).toBe(true);
-    expect(markup.includes("Show full description before/after")).toBe(true);
+    expect(markup.includes("Source")).toBe(true);
+    expect(markup.includes("Full description diff")).toBe(true);
     expect(markup.includes("Tags")).toBe(true);
+  });
+
+  test("renders the shared diff viewer when the full description diff is expanded", async () => {
+    const { DescriptionFullDiffDisclosure } = await import("./history-panel");
+
+    const markup = renderToStaticMarkup(
+      createElement(DescriptionFullDiffDisclosure, {
+        beforeText: "Alpha paragraph",
+        afterText: "Beta paragraph",
+        defaultOpen: true,
+      }),
+    );
+
+    expect(markup.includes("data-diff=\"true\"")).toBe(true);
+    expect(markup.includes("Alpha paragraph =&gt; Beta paragraph")).toBe(true);
+    expect(markup.includes("nodex-inline-diff")).toBe(true);
   });
 });

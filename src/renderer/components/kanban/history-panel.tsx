@@ -1,6 +1,13 @@
+import { MultiFileDiff } from "@pierre/diffs/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  NODEX_DIFF_HOST_CLASS,
+  getNodexDiffHostStyle,
+  getNodexDiffOptions,
+} from "../../lib/diff-presentation";
 import { TAB_BAR_HEIGHT } from "@/lib/layout";
 import { KANBAN_STATUS_LABELS } from "@/lib/kanban-options";
+import { useTheme } from "@/lib/use-theme";
 import { cn } from "@/lib/utils";
 import { invoke } from "@/lib/api";
 import type {
@@ -288,8 +295,8 @@ export function HistoryPanel({
       ref={panelRef}
       className={cn(
         "relative h-full",
-        "bg-(--background-primary)",
-        "border-l border-(--border-primary)",
+        "bg-(--background)",
+        "border-l border-[0.5px] border-(--border)",
         "shadow-lg",
         "flex flex-col",
         mode === "overlay" && "animate-in duration-200 slide-in-from-right",
@@ -308,22 +315,22 @@ export function HistoryPanel({
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-(--border-primary) px-4 py-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-(--foreground-primary)">
-            Edit History
+      <div className="flex items-center justify-between border-b border-[0.5px] border-(--border) px-4 py-2.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="text-sm font-medium text-(--foreground)">
+            History
           </h3>
-          <p className="mt-0.5 text-xs text-(--foreground-tertiary)">
-            {filteredEntries.length} of {entries.length} entries
-          </p>
+          <span className="text-xs text-(--foreground-tertiary)">
+            {filteredEntries.length}/{entries.length}
+          </span>
         </div>
         <button
           onClick={onClose}
           className={cn(
             "flex h-7 w-7 items-center justify-center",
             "text-(--foreground-tertiary)",
-            "hover:bg-(--background-secondary) hover:text-(--foreground-secondary)",
-            "rounded-md transition-colors"
+            "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground-secondary)",
+            "rounded-md"
           )}
           aria-label="Close history panel"
         >
@@ -354,21 +361,21 @@ export function HistoryPanel({
           <div className="flex h-full min-h-0 flex-row">
             <aside
               className={cn(
-                "min-h-0 w-80 border-r border-(--border-primary)",
+                "min-h-0 w-72 border-r border-[0.5px] border-(--border)",
                 "flex flex-col"
               )}
             >
-              <div className="border-b border-(--border-primary) p-3">
-                <div className="flex flex-wrap gap-1.5">
+              <div className="px-2 pt-2 pb-1">
+                <div className="flex flex-wrap gap-1">
                   {OPERATION_FILTERS.map((filter) => (
                     <button
                       key={filter.value}
                       onClick={() => setOperationFilter(filter.value)}
                       className={cn(
-                        "rounded-md px-2 py-1 text-xs transition-colors",
+                        "rounded-md px-2 py-0.5 text-xs",
                         operationFilter === filter.value
-                          ? "bg-(--accent-blue) text-white"
-                          : "bg-(--background-secondary) text-(--foreground-secondary) hover:bg-(--background-tertiary)"
+                          ? "bg-[color-mix(in_srgb,var(--accent-blue)_16%,transparent)] text-(--accent-blue)"
+                          : "text-(--foreground-tertiary) hover:text-(--foreground-secondary)"
                       )}
                     >
                       {filter.label}
@@ -378,7 +385,7 @@ export function HistoryPanel({
               </div>
 
               <div
-                className="flex-1 space-y-2 overflow-y-auto p-3"
+                className="flex-1 overflow-y-auto px-1.5 py-1"
                 onKeyDown={handleListKeyDown}
               >
                 {filteredEntries.length === 0 ? (
@@ -398,7 +405,7 @@ export function HistoryPanel({
               </div>
             </aside>
 
-            <section className="min-h-0 flex-1 overflow-y-auto p-4">
+            <section className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               {selectedEntry ? (
                 <HistoryEntryDetails
                   entry={selectedEntry}
@@ -434,7 +441,7 @@ export function HistoryPanel({
       className={cn(
         "fixed inset-0 z-50",
         "flex items-center justify-end",
-        "bg-black/20 backdrop-blur-sm"
+        "bg-black/40"
       )}
       style={{ top: TAB_BAR_HEIGHT }}
       onClick={(e) => {
@@ -463,43 +470,37 @@ function HistoryEntryListItem({
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full rounded-lg border p-3 text-left transition-colors",
+        "w-full rounded-md px-2.5 py-2 text-left",
         selected
-          ? "border-(--accent-blue) bg-[color-mix(in_srgb,var(--accent-blue)_12%,transparent)]"
-          : "border-(--border-primary) bg-(--background-secondary) hover:bg-(--background-tertiary)",
-        entry.isUndone && "opacity-60"
+          ? "bg-[color-mix(in_srgb,var(--accent-blue)_10%,transparent)]"
+          : "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]",
+        entry.isUndone && "opacity-50"
       )}
       aria-current={selected ? "true" : undefined}
     >
-      <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-full",
-            "bg-(--background-tertiary)",
-            "text-(--foreground-secondary)"
-          )}
-        >
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 text-(--foreground-tertiary)">
           {getOperationIcon(entry.operation)}
-        </div>
+        </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-(--foreground-primary)">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm text-(--foreground)">
               {getOperationLabel(entry.operation)}
             </span>
             {entry.isUndone && (
-              <span className="rounded-sm bg-(--background-tertiary) px-1.5 py-0.5 text-xs text-(--foreground-tertiary)">
-                Undone
+              <span className="text-[10px] uppercase tracking-wide text-(--foreground-tertiary)">
+                undone
               </span>
             )}
+            <span className="ml-auto shrink-0 text-xs text-(--foreground-tertiary)">
+              {formatRelativeTimestamp(entry.timestamp)}
+            </span>
           </div>
           {summary && (
-            <div className="mt-0.5 text-xs text-(--foreground-tertiary)">
+            <div className="mt-0.5 truncate text-xs text-(--foreground-tertiary)">
               {summary}
             </div>
           )}
-          <div className="mt-1 text-xs text-(--foreground-tertiary)">
-            {formatRelativeTimestamp(entry.timestamp)}
-          </div>
         </div>
       </div>
     </button>
@@ -537,39 +538,37 @@ export function HistoryEntryDetails({
   const isConfirmingThis = confirmingAction?.entryId === entry.id;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-(--background-secondary) text-(--foreground-secondary)">
+          <div className="flex items-center gap-1.5">
+            <span className="shrink-0 text-(--foreground-secondary)">
               {getOperationIcon(entry.operation)}
             </span>
-            <h4 className="text-base font-medium text-(--foreground-primary)">
+            <h4 className="text-sm font-medium text-(--foreground)">
               {getOperationLabel(entry.operation)}
             </h4>
             {entry.isUndone && (
-              <span className="rounded-sm bg-(--background-tertiary) px-1.5 py-0.5 text-xs text-(--foreground-tertiary)">
-                Undone
+              <span className="text-[10px] uppercase tracking-wide text-(--foreground-tertiary)">
+                undone
               </span>
             )}
           </div>
-          <div className="mt-2 text-xs text-(--foreground-tertiary)">
-            <span>{formatRelativeTimestamp(entry.timestamp)}</span>
-            <span className="mx-1.5">&bull;</span>
-            <span>{formatAbsoluteTimestamp(entry.timestamp)}</span>
+          <div className="mt-1 text-xs text-(--foreground-tertiary)">
+            {formatAbsoluteTimestamp(entry.timestamp)}
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             type="button"
             onClick={() => onNavigate(-1)}
             disabled={!canGoPrev}
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
+              "flex h-6 w-6 items-center justify-center rounded-md",
               canGoPrev
-                ? "border-(--border-primary) text-(--foreground-secondary) hover:bg-(--background-secondary)"
-                : "cursor-not-allowed border-(--border-primary) text-(--foreground-disabled)"
+                ? "text-(--foreground-secondary) hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]"
+                : "cursor-not-allowed text-(--foreground-disabled)"
             )}
             aria-label="Previous history entry"
           >
@@ -582,10 +581,10 @@ export function HistoryEntryDetails({
             onClick={() => onNavigate(1)}
             disabled={!canGoNext}
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-md border transition-colors",
+              "flex h-6 w-6 items-center justify-center rounded-md",
               canGoNext
-                ? "border-(--border-primary) text-(--foreground-secondary) hover:bg-(--background-secondary)"
-                : "cursor-not-allowed border-(--border-primary) text-(--foreground-disabled)"
+                ? "text-(--foreground-secondary) hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]"
+                : "cursor-not-allowed text-(--foreground-disabled)"
             )}
             aria-label="Next history entry"
           >
@@ -596,9 +595,9 @@ export function HistoryEntryDetails({
         </div>
       </div>
 
-      {/* Action bar */}
+      {/* Actions */}
       {isActionable && (
-        <div className="rounded-lg border border-(--border-primary) bg-(--background-secondary) p-3">
+        <div>
           {isConfirmingThis ? (
             <div className="space-y-2">
               <p className="text-xs text-(--foreground-secondary)">
@@ -621,7 +620,7 @@ export function HistoryEntryDetails({
                     }
                   }}
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    "rounded-md px-2.5 py-1 text-xs font-medium",
                     entry.operation === "create" && confirmingAction.type === "revert"
                       ? "bg-(--priority-critical-bg) text-(--priority-critical-text) hover:opacity-90"
                       : "bg-(--accent-blue) text-white hover:opacity-90",
@@ -634,21 +633,21 @@ export function HistoryEntryDetails({
                   type="button"
                   onClick={onCancelConfirm}
                   disabled={actionInFlight !== null}
-                  className="rounded-md px-3 py-1.5 text-xs text-(--foreground-secondary) transition-colors hover:bg-(--background-tertiary)"
+                  className="rounded-md px-2.5 py-1 text-xs text-(--foreground-secondary) hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]"
                 >
                   Cancel
                 </button>
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => onRequestConfirm({ type: "revert", entryId: entry.id })}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  "border border-(--border-primary)",
-                  "text-(--foreground-secondary) hover:bg-(--background-tertiary)"
+                  "rounded-md px-2.5 py-1 text-xs font-medium",
+                  "bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]",
+                  "text-(--foreground-secondary) hover:bg-[color-mix(in_srgb,var(--foreground)_10%,transparent)]"
                 )}
               >
                 {getRevertLabel(entry.operation)}
@@ -657,9 +656,9 @@ export function HistoryEntryDetails({
                 type="button"
                 onClick={() => onRequestConfirm({ type: "restore", entryId: entry.id })}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-                  "border border-(--border-primary)",
-                  "text-(--foreground-secondary) hover:bg-(--background-tertiary)"
+                  "rounded-md px-2.5 py-1 text-xs font-medium",
+                  "bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]",
+                  "text-(--foreground-secondary) hover:bg-[color-mix(in_srgb,var(--foreground)_10%,transparent)]"
                 )}
               >
                 Restore to this point
@@ -673,11 +672,11 @@ export function HistoryEntryDetails({
       {entry.operation === "move" && <MoveDetails entry={entry} />}
       {(entry.operation === "create" || entry.operation === "delete") && <SnapshotDetails entry={entry} />}
 
-      <details className="rounded-lg border border-(--border-primary) bg-(--background-secondary)">
-        <summary className="cursor-pointer px-3 py-2 text-xs text-(--foreground-secondary) select-none">
-          Raw history payload
+      <details className="rounded-md bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]">
+        <summary className="cursor-pointer px-3 py-1.5 text-xs text-(--foreground-tertiary) select-none">
+          Raw payload
         </summary>
-        <pre className="overflow-x-auto border-t border-(--border-primary) p-3 text-xs wrap-break-word whitespace-pre-wrap text-(--foreground-secondary)">
+        <pre className="overflow-x-auto px-3 pb-2 text-xs wrap-break-word whitespace-pre-wrap text-(--foreground-tertiary)">
           {JSON.stringify(entry, null, 2)}
         </pre>
       </details>
@@ -691,7 +690,7 @@ function UpdateDetails({ entry }: { entry: HistoryPanelEntry }) {
 
   if (fieldChanges.length === 0 && !descriptionChange) {
     return (
-      <div className="rounded-lg border border-(--border-primary) bg-(--background-secondary) p-3 text-sm text-(--foreground-tertiary)">
+      <div className="py-2 text-xs text-(--foreground-tertiary)">
         No field-level diff was recorded for this update.
       </div>
     );
@@ -702,32 +701,21 @@ function UpdateDetails({ entry }: { entry: HistoryPanelEntry }) {
       {descriptionChange && (
         <DescriptionDeltaSection change={descriptionChange} />
       )}
-      {fieldChanges.map((change) => (
-        <article
-          key={change.field}
-          className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)"
-        >
-          <header className="border-b border-(--border-primary) px-3 py-2">
-            <h5 className="text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
-              {formatFieldLabel(change.field)}
-            </h5>
-          </header>
-          <div className="grid grid-cols-2">
-            <div className="border-r border-(--border-primary) p-3">
-              <div className="mb-2 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-                Before
+      {fieldChanges.length > 0 && (
+        <div className="divide-y divide-[0.5px] divide-(--border) rounded-lg bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]">
+          {fieldChanges.map((change) => (
+            <div key={change.field} className="px-3 py-2.5">
+              <div className="mb-1.5 text-xs font-medium text-(--foreground-secondary)">
+                {formatFieldLabel(change.field)}
               </div>
-              <HistoryValue value={change.before} emptyText="Not set" />
-            </div>
-            <div className="p-3">
-              <div className="mb-2 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-                After
+              <div className="grid grid-cols-2 gap-4">
+                <DiffValue sign="−" value={change.before} emptyText="Not set" />
+                <DiffValue sign="+" value={change.after} emptyText="Cleared" />
               </div>
-              <HistoryValue value={change.after} emptyText="Cleared" />
             </div>
-          </div>
-        </article>
-      ))}
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -737,26 +725,14 @@ function MoveDetails({ entry }: { entry: HistoryPanelEntry }) {
   const toColumn = getColumnLabel(entry.move?.toColumnId ?? null);
 
   return (
-    <div className="rounded-lg border border-(--border-primary) bg-(--background-secondary)">
-      <div className="grid grid-cols-2">
-        <div className="border-r border-(--border-primary) p-3">
-          <div className="mb-2 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-            From
-          </div>
-          <div className="text-sm text-(--foreground-primary)">{fromColumn}</div>
-          <div className="mt-1 text-xs text-(--foreground-tertiary)">
-            Position: {formatOrder(entry.move?.fromOrder ?? null)}
-          </div>
-        </div>
-        <div className="p-3">
-          <div className="mb-2 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-            To
-          </div>
-          <div className="text-sm text-(--foreground-primary)">{toColumn}</div>
-          <div className="mt-1 text-xs text-(--foreground-tertiary)">
-            Position: {formatOrder(entry.move?.toOrder ?? null)}
-          </div>
-        </div>
+    <div className="grid grid-cols-2 gap-4 rounded-lg bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)] px-3 py-2.5">
+      <div>
+        <div className="mb-1 text-[11px] text-(--foreground-tertiary)">From</div>
+        <div className="text-sm text-(--foreground)">{fromColumn}</div>
+      </div>
+      <div>
+        <div className="mb-1 text-[11px] text-(--foreground-tertiary)">To</div>
+        <div className="text-sm text-(--foreground)">{toColumn}</div>
       </div>
     </div>
   );
@@ -767,7 +743,7 @@ function SnapshotDetails({ entry }: { entry: HistoryPanelEntry }) {
 
   if (!snapshot) {
     return (
-      <div className="rounded-lg border border-(--border-primary) bg-(--background-secondary) p-3 text-sm text-(--foreground-tertiary)">
+      <div className="py-2 text-xs text-(--foreground-tertiary)">
         Snapshot data is unavailable for this entry.
       </div>
     );
@@ -781,39 +757,42 @@ function SnapshotDetails({ entry }: { entry: HistoryPanelEntry }) {
           snapshot={snapshot.description}
         />
       )}
-      <div className="divide-y divide-(--border-primary) rounded-lg border border-(--border-primary) bg-(--background-secondary)">
-        {(snapshot.fields ?? []).map((field) => (
-          <div key={field.field} className="px-3 py-2">
-            <div className="mb-1 text-xs font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-              {formatFieldLabel(field.field)}
+      {(snapshot.fields ?? []).length > 0 && (
+        <div className="divide-y divide-[0.5px] divide-(--border) rounded-lg bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]">
+          {(snapshot.fields ?? []).map((field) => (
+            <div key={field.field} className="px-3 py-2">
+              <div className="mb-1 text-xs font-medium text-(--foreground-tertiary)">
+                {formatFieldLabel(field.field)}
+              </div>
+              <HistoryValue value={field.value} emptyText="Not set" />
             </div>
-            <HistoryValue value={field.value} emptyText="Not set" />
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function DescriptionDeltaSection({ change }: { change: HistoryPanelDescriptionDelta }) {
+export function DescriptionDeltaSection({
+  change,
+  defaultFullDiffOpen = false,
+}: {
+  change: HistoryPanelDescriptionDelta;
+  defaultFullDiffOpen?: boolean;
+}) {
   const counts = countBlockChanges(change.blocks);
   const hasFullBeforeAfter = typeof change.beforeFullText === "string" && typeof change.afterFullText === "string";
 
   return (
-    <article className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)">
-      <header className="border-b border-(--border-primary) px-3 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h5 className="text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
-              Description delta
-            </h5>
-            <p className="mt-1 text-xs text-(--foreground-tertiary)">
-              Top-level NFM block operations derived from description revisions.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <DescriptionMetric label="Before" value={`${change.beforeBlockCount} blocks`} />
-            <DescriptionMetric label="After" value={`${change.afterBlockCount} blocks`} />
+    <article className="overflow-hidden rounded-lg bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]">
+      <header className="px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h5 className="text-xs font-medium text-(--foreground-secondary)">
+            Description
+          </h5>
+          <div className="flex flex-wrap items-center gap-1">
+            <DescriptionMetric label="Before" value={`${change.beforeBlockCount}`} />
+            <DescriptionMetric label="After" value={`${change.afterBlockCount}`} />
             {counts.replaced > 0 && (
               <DescriptionMetric label="Replaced" value={String(counts.replaced)} />
             )}
@@ -828,11 +807,11 @@ function DescriptionDeltaSection({ change }: { change: HistoryPanelDescriptionDe
       </header>
 
       {change.blocks.length === 0 ? (
-        <div className="px-3 py-4 text-sm text-(--foreground-tertiary)">
+        <div className="px-3 pb-2 text-xs text-(--foreground-tertiary)">
           No top-level block changes were recorded.
         </div>
       ) : (
-        <div className="space-y-3 p-3">
+        <div className="space-y-1.5 px-3 pb-3">
           {change.blocks.map((block, index) => (
             <DescriptionDeltaBlockCard key={`${block.changeType}-${index}`} block={block} />
           ))}
@@ -840,25 +819,64 @@ function DescriptionDeltaSection({ change }: { change: HistoryPanelDescriptionDe
       )}
 
       {hasFullBeforeAfter && (
-        <details className="border-t border-(--border-primary)">
-          <summary className="cursor-pointer px-3 py-2 text-xs text-(--foreground-secondary) select-none">
-            Show full description before/after
-          </summary>
-          <div className="grid grid-cols-1 divide-y divide-(--border-primary) md:grid-cols-2 md:divide-x md:divide-y-0">
-            <FullDescriptionPane
-              label="Before"
-              value={change.beforeFullText ?? ""}
-              emptyText="No previous description"
-            />
-            <FullDescriptionPane
-              label="After"
-              value={change.afterFullText ?? ""}
-              emptyText="No next description"
-            />
-          </div>
-        </details>
+        <DescriptionFullDiffDisclosure
+          beforeText={change.beforeFullText ?? ""}
+          afterText={change.afterFullText ?? ""}
+          defaultOpen={defaultFullDiffOpen}
+        />
       )}
     </article>
+  );
+}
+
+export function DescriptionFullDiffDisclosure({
+  beforeText,
+  afterText,
+  defaultOpen = false,
+}: {
+  beforeText: string;
+  afterText: string;
+  defaultOpen?: boolean;
+}) {
+  const { resolved } = useTheme();
+  const [isExpanded, setIsExpanded] = useState(defaultOpen);
+  const diffOptions = useMemo(() => getNodexDiffOptions(resolved, true), [resolved]);
+  const diffHostStyle = useMemo(() => getNodexDiffHostStyle(resolved), [resolved]);
+  const oldFile = useMemo(
+    () => ({
+      name: "description.md",
+      contents: beforeText,
+    }),
+    [beforeText],
+  );
+  const newFile = useMemo(
+    () => ({
+      name: "description.md",
+      contents: afterText,
+    }),
+    [afterText],
+  );
+
+  return (
+    <details
+      open={isExpanded}
+      onToggle={(event) => setIsExpanded(event.currentTarget.open)}
+    >
+      <summary className="cursor-pointer px-3 py-1.5 text-xs text-(--foreground-tertiary) select-none">
+        Full description diff
+      </summary>
+      {isExpanded ? (
+        <div className="px-3 pb-3">
+          <MultiFileDiff
+            oldFile={oldFile}
+            newFile={newFile}
+            className={`${NODEX_DIFF_HOST_CLASS} max-h-[26rem] overflow-y-auto rounded-md border border-[0.5px] border-(--border)`}
+            style={diffHostStyle}
+            options={diffOptions}
+          />
+        </div>
+      ) : null}
+    </details>
   );
 }
 
@@ -870,20 +888,20 @@ function DescriptionSnapshotSection({
   snapshot: HistoryPanelDescriptionSnapshot;
 }) {
   return (
-    <article className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)">
-      <header className="border-b border-(--border-primary) px-3 py-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h5 className="text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
+    <article className="overflow-hidden rounded-lg bg-[color-mix(in_srgb,var(--foreground)_3%,transparent)]">
+      <header className="px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h5 className="text-xs font-medium text-(--foreground-secondary)">
             {label}
           </h5>
-          <DescriptionMetric label="Snapshot" value={`${snapshot.blockCount} blocks`} />
+          <DescriptionMetric label="Blocks" value={`${snapshot.blockCount}`} />
         </div>
       </header>
 
       {snapshot.blocks.length === 0 ? (
-        <div className="px-3 py-4 text-sm text-(--foreground-tertiary)">No description blocks.</div>
+        <div className="px-3 pb-2 text-xs text-(--foreground-tertiary)">No description blocks.</div>
       ) : (
-        <div className="space-y-3 p-3">
+        <div className="space-y-1.5 px-3 pb-3">
           {snapshot.blocks.map((block) => (
             <DescriptionSnapshotBlockCard key={block.ordinal} block={block} />
           ))}
@@ -902,23 +920,22 @@ function DescriptionDeltaBlockCard({
   const afterLabel = getBlockOrdinalLabel(block.afterOrdinal);
 
   return (
-    <article className="overflow-hidden rounded-xl border border-(--border-primary) bg-[color-mix(in_srgb,var(--background-primary)_76%,transparent)]">
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-(--border-primary) px-3 py-2">
+    <article className="overflow-hidden rounded-md bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)]">
+      <div className="flex flex-wrap items-center gap-1 px-2.5 py-1.5">
         <DescriptionChangeBadge value={block.changeType} />
-        <DescriptionMetric label="Type" value={formatBlockTypeLabel(block.blockType)} />
-        {beforeLabel && <DescriptionMetric label="Before" value={beforeLabel} />}
-        {afterLabel && <DescriptionMetric label="After" value={afterLabel} />}
+        <span className="text-[11px] text-(--foreground-tertiary)">{formatBlockTypeLabel(block.blockType)}</span>
+        {beforeLabel && <span className="text-[11px] text-(--foreground-tertiary)">#{beforeLabel}</span>}
+        {afterLabel && <span className="text-[11px] text-(--foreground-tertiary)">&rarr; #{afterLabel}</span>}
       </div>
 
       {block.changeType === "replaced" ? (
-        <div className="grid grid-cols-1 divide-y divide-(--border-primary) md:grid-cols-2 md:divide-x md:divide-y-0">
-          <BlockPreviewPane label="Before" preview={block.beforePreview} nfm={block.beforeNfm} />
-          <BlockPreviewPane label="After" preview={block.afterPreview} nfm={block.afterNfm} />
+        <div className="grid grid-cols-2 gap-3 px-2.5 pb-2">
+          <BlockPreviewPane sign="−" preview={block.beforePreview} nfm={block.beforeNfm} />
+          <BlockPreviewPane sign="+" preview={block.afterPreview} nfm={block.afterNfm} />
         </div>
       ) : (
-        <div className="p-3">
+        <div className="px-2.5 pb-2">
           <BlockPreviewPane
-            label={block.changeType === "added" ? "Added block" : "Removed block"}
             preview={block.afterPreview ?? block.beforePreview}
             nfm={block.afterNfm ?? block.beforeNfm}
           />
@@ -934,33 +951,31 @@ function DescriptionSnapshotBlockCard({
   block: HistoryPanelDescriptionSnapshotBlock;
 }) {
   return (
-    <article className="overflow-hidden rounded-xl border border-(--border-primary) bg-[color-mix(in_srgb,var(--background-primary)_76%,transparent)]">
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-(--border-primary) px-3 py-2">
-        <DescriptionMetric label="Block" value={String(block.ordinal + 1)} />
-        <DescriptionMetric label="Type" value={formatBlockTypeLabel(block.blockType)} />
+    <article className="overflow-hidden rounded-md bg-[color-mix(in_srgb,var(--foreground)_4%,transparent)]">
+      <div className="flex flex-wrap items-center gap-1 px-2.5 py-1.5">
+        <span className="text-[11px] text-(--foreground-tertiary)">#{block.ordinal + 1}</span>
+        <span className="text-[11px] text-(--foreground-tertiary)">{formatBlockTypeLabel(block.blockType)}</span>
       </div>
-      <div className="p-3">
-        <BlockPreviewPane label="Snapshot block" preview={block.preview} nfm={block.nfm} />
+      <div className="px-2.5 pb-2">
+        <BlockPreviewPane preview={block.preview} nfm={block.nfm} />
       </div>
     </article>
   );
 }
 
 function BlockPreviewPane({
-  label,
+  sign,
   preview,
   nfm,
 }: {
-  label: string;
+  sign?: "−" | "+";
   preview: string | null;
   nfm: string | null;
 }) {
   if (!preview) {
     return (
-      <div>
-        <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-          {label}
-        </div>
+      <div className="flex gap-1.5">
+        {sign && <DiffSign sign={sign} />}
         <span className="text-sm text-(--foreground-tertiary)">No block content</span>
       </div>
     );
@@ -968,18 +983,16 @@ function BlockPreviewPane({
 
   return (
     <div>
-      <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-        {label}
-      </div>
-      <p className="text-sm/6 wrap-break-word text-(--foreground-secondary)">
-        {preview}
+      <p className="flex gap-1.5 text-sm/6 wrap-break-word text-(--foreground-secondary)">
+        {sign && <DiffSign sign={sign} />}
+        <span>{preview}</span>
       </p>
       {nfm && (
-        <details className="mt-3 rounded-lg bg-[color-mix(in_srgb,var(--foreground-primary)_4%,transparent)]">
-          <summary className="cursor-pointer px-3 py-2 text-xs text-(--foreground-secondary) select-none">
-            Show block source
+        <details className="mt-2">
+          <summary className="cursor-pointer text-[11px] text-(--foreground-tertiary) select-none">
+            Source
           </summary>
-          <pre className="border-t border-(--border-primary) p-3 text-xs/5 wrap-break-word whitespace-pre-wrap text-(--foreground-secondary)">
+          <pre className="mt-1 text-xs/5 wrap-break-word whitespace-pre-wrap text-(--foreground-tertiary)">
             {nfm}
           </pre>
         </details>
@@ -988,43 +1001,33 @@ function BlockPreviewPane({
   );
 }
 
-function FullDescriptionPane({
-  label,
-  value,
-  emptyText,
-}: {
-  label: string;
-  value: string;
-  emptyText: string;
-}) {
-  if (value.length === 0) {
-    return (
-      <div className="p-3">
-        <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-          {label}
-        </div>
-        <span className="text-sm text-(--foreground-tertiary)">{emptyText}</span>
-      </div>
-    );
-  }
-
+function DescriptionMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="p-3">
-      <div className="mb-2 text-[11px] font-medium tracking-wide text-(--foreground-tertiary) uppercase">
-        {label}
-      </div>
-      <pre className="text-xs/5 wrap-break-word whitespace-pre-wrap text-(--foreground-secondary)">
-        {value}
-      </pre>
-    </div>
+    <span className="text-[11px] text-(--foreground-tertiary)">
+      <span className="mr-0.5">{label}</span>
+      <span className="text-(--foreground-secondary)">{value}</span>
+    </span>
   );
 }
 
-function DescriptionMetric({ label, value }: { label: string; value: string }) {
+function DiffSign({ sign }: { sign: "−" | "+" }) {
   return (
-    <div className="rounded-full bg-[color-mix(in_srgb,var(--foreground-primary)_6%,transparent)] px-2.5 py-1 text-[11px] text-(--foreground-tertiary)">
-      <span className="mr-1 text-[10px] uppercase tracking-wide">{label}</span>
-      <span className="text-(--foreground-secondary)">{value}</span>
+    <span
+      className={cn(
+        "shrink-0 text-xs font-medium leading-6",
+        sign === "−" ? "text-(--priority-critical-text)" : "text-(--green-text)",
+      )}
+    >
+      {sign}
+    </span>
+  );
+}
+
+function DiffValue({ sign, value, emptyText }: { sign: "−" | "+"; value: unknown; emptyText: string }) {
+  return (
+    <div className="flex gap-1.5">
+      <DiffSign sign={sign} />
+      <HistoryValue value={value} emptyText={emptyText} />
     </div>
   );
 }
@@ -1036,13 +1039,13 @@ function DescriptionChangeBadge({
 }) {
   const label = value[0]?.toUpperCase() + value.slice(1);
   const className = value === "added"
-    ? "bg-[color-mix(in_srgb,var(--accent-green)_18%,transparent)] text-(--accent-green)"
+    ? "bg-(--green-bg) text-(--green-text)"
     : value === "removed"
       ? "bg-[color-mix(in_srgb,var(--priority-critical-text)_12%,transparent)] text-(--priority-critical-text)"
       : "bg-[color-mix(in_srgb,var(--accent-blue)_16%,transparent)] text-(--accent-blue)";
 
   return (
-    <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium", className)}>
+    <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", className)}>
       {label}
     </span>
   );
@@ -1064,7 +1067,7 @@ function HistoryValue({ value, emptyText }: { value: unknown; emptyText: string 
   }
 
   return (
-    <span className="text-sm wrap-break-word text-(--foreground-primary)">
+    <span className="text-sm wrap-break-word text-(--foreground)">
       {normalized.text}
     </span>
   );
@@ -1220,11 +1223,6 @@ function formatBlockTypeLabel(blockType: string): string {
 function getColumnLabel(columnId: string | null): string {
   if (!columnId) return "Unknown column";
   return COLUMN_LABELS[columnId] ?? columnId;
-}
-
-function formatOrder(order: number | null): string {
-  if (order === null || order < 0) return "Unknown";
-  return String(order + 1);
 }
 
 function formatRelativeTimestamp(ts: string): string {

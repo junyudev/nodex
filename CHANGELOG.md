@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - Expanded local asset handling beyond images so pasted attachments can resolve previews and metadata through the shared `nodex://assets/...` pipeline.
 - Refined the titlebar sliding-window pane controls so they flank the minimap, `+` grows to the right before falling back left, and `-` always removes the right-most visible pane.
 - Reworked card-description history storage so repeated large description edits now write compact revision deltas and checkpoints instead of duplicating full description blobs in every history row.
-- Reworked the card history overlay so description edits now render as block-level revision deltas and snapshots by default, with an optional collapsed full before/after view when you need the entire document context.
+- Reworked the card history overlay so description edits now render as block-level revision deltas and snapshots by default, with an optional collapsed full diff viewer when you need the entire document context.
 - Added a Backups settings control for per-project history retention so you can configure how many history rows are kept before pruning.
 
 ### Fixed

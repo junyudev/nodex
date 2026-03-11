@@ -52,8 +52,8 @@ export function UndoToast({ action, description, onDismiss }: UndoToastProps) {
       className={cn(
         "fixed bottom-6 left-1/2 z-50 -translate-x-1/2",
         "rounded-lg px-4 py-2.5 shadow-lg",
-        "border border-(--border-primary) bg-(--background-primary)",
-        "text-sm text-(--foreground-primary)",
+        "border border-(--border) bg-(--background)",
+        "text-sm text-(--foreground)",
         "animate-in duration-200 fade-in slide-in-from-bottom-2"
       )}
     >

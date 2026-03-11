@@ -37,7 +37,7 @@
 - Reuse semantic chip/badge patterns for priority/estimate/status.
 - Avoid duplicating visual rules across board and toggle-list surfaces.
 - Keep selector dropdown content on the shared tokenized menu chrome in `src/renderer/components/ui/selector-menu-chrome.ts`; let trigger styling stay local to each surface.
-- Theme `@pierre/diffs` instances through host `style` plus `options.unsafeCSS`; prefer renderer-local helpers for shadow-DOM diff styling instead of broad global selectors.
+- Theme `@pierre/diffs` instances through host `style` plus `options.unsafeCSS`; use the shared renderer helper in `src/renderer/lib/diff-presentation.ts` instead of per-surface shadow-DOM CSS or broad global selectors.
 
 ## Frontend Testing
 - Run targeted tests while iterating: `bun test src/renderer/...`

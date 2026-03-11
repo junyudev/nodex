@@ -269,7 +269,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - History panel is card-scoped (opened as an overlay from Card Stage) and shows a per-card edit timeline with timestamps, plus selectable detail panes for field diffs and snapshots
 - The card history overlay reads a panel-specific display model from `history:card` instead of reusing the old generic `HistoryEntry` payload
 - Description changes in the history panel render as top-level NFM block operations (`added`, `removed`, `replaced`) with per-block previews and optional raw block source, not hydrated whole-document before/after blobs
-- Each description-delta entry also includes a default-collapsed full before/after section so users can inspect the entire description state when the block summary is not enough
+- Each description-delta entry also includes a default-collapsed full diff viewer so users can inspect the entire description state when the block summary is not enough
 - Create/delete entries show description snapshots as ordered top-level block cards with previews and expandable block source
 - History retention is configurable from Settings -> Backups; the value is per-project row count, and `0` disables pruning
 - History panel is resizable (640–1400px, default 960px) with width persisted in localStorage
