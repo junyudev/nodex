@@ -11,6 +11,7 @@ import {
   type CalendarOccurrence,
   type Card as CardType,
 } from "@/lib/types";
+import { resolveOccurrenceMutationStatus } from "@/lib/calendar-occurrence-status";
 import {
   ARCHIVED_CARD_OPTION_ID,
   ARCHIVED_CARD_OPTION_NAME,
@@ -301,7 +302,7 @@ export function CalendarView({
         return;
       }
 
-      const loaded = await getCard(masterCardId, card.columnId);
+      const loaded = await getCard(masterCardId, card.status);
       if (loaded) {
         openCardStage(projectId, loaded.id, loaded.title);
         return;
@@ -418,6 +419,7 @@ export function CalendarView({
 
       const sourceOccurrenceId = `${cardId}:${occurrenceStart.toISOString()}`;
       const source = scheduledCardsRef.current.find((event) => event.id === sourceOccurrenceId);
+      const mutationStatus = resolveOccurrenceMutationStatus(columnId, source);
       const overlayId = `${cardId}:${scheduledStart.toISOString()}`;
       setOccurrenceOverlayById((current) => {
         const next = new Map(current);
@@ -439,7 +441,7 @@ export function CalendarView({
         return next;
       });
 
-      const updated = await updateCard(columnId, cardId, scheduleUpdates);
+      const updated = await updateCard(mutationStatus, cardId, scheduleUpdates);
       if (updated.status === "updated") return;
       setOccurrenceOverlayById((current) => {
         const next = new Map(current);

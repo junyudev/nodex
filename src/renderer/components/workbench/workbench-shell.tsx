@@ -25,6 +25,7 @@ import { StageMinimap } from "./stage-minimap";
 import { StageRail, type StageRailStage } from "./stage-rail";
 import { StageTabStrip } from "./stage-tab-strip";
 import { StageThreads } from "./stage-threads";
+import { resolveThreadCardStatus } from "./stage-threads/thread-card-fetch";
 import { StageFilesPlaceholder } from "./stage-files-placeholder";
 import { HistoryPanel } from "@/components/kanban/history-panel";
 import { CardStage } from "@/components/kanban/card-stage";
@@ -1231,8 +1232,7 @@ export function WorkbenchShell({
     void invoke("card:get", activeThreadProjectId, activeThreadCardId)
       .then((result) => {
         if (cancelled) return;
-        const cardResult = result as { card: Card; columnId: string } | null;
-        setActiveThreadCardColumnId(cardResult?.columnId ?? null);
+        setActiveThreadCardColumnId(resolveThreadCardStatus(result));
       })
       .catch(() => {
         if (cancelled) return;

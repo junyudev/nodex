@@ -61,6 +61,7 @@ import {
 } from "./stage-threads-auth-controls";
 import { shouldRefreshAccountOnConnectionTooltipOpen } from "./stage-threads-account-tooltip-refresh";
 import { CardInfoHoverCard } from "./stage-threads-card-info-hover-card";
+import { resolveThreadCardResult } from "./thread-card-fetch";
 import {
   ContextWindowIndicator,
   resolvePromptTextareaMaxHeightPx,
@@ -383,9 +384,8 @@ export function StageThreads({
 
     void invoke("card:get", projectId, cardId, activeThreadCardColumnId ?? undefined)
       .then((result) => {
-        if (cancelled || !result || typeof result !== "object" || !("card" in result)) return;
-
-        const card = (result as { card?: Card }).card;
+        if (cancelled) return;
+        const card = resolveThreadCardResult(result);
         if (!card) return;
         setOpenCardData(card);
       })

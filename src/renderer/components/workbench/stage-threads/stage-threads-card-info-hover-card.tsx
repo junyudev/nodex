@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { HoverCard as HoverCardPrimitive } from "radix-ui";
 import { columnStyles } from "@/components/kanban/column";
-import { resolveKanbanPriorityOption } from "../../../lib/kanban-options";
+import {
+  KANBAN_STATUS_LABELS,
+  resolveKanbanPriorityOption,
+} from "../../../lib/kanban-options";
 import { cn } from "../../../lib/utils";
 import type { Card } from "../../../lib/types";
 
@@ -14,8 +17,7 @@ const ESTIMATE_LABEL: Record<string, string> = {
 };
 
 function formatColumnName(columnId: string): string {
-  const name = columnId.replace(/^\d+-/, "");
-  return name.charAt(0).toUpperCase() + name.slice(1).replace(/-/g, " ");
+  return KANBAN_STATUS_LABELS[columnId] ?? columnId.replace(/_/g, " ").replace(/^\w/, (char) => char.toUpperCase());
 }
 
 export function CardInfoHoverCard({
