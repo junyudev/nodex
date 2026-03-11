@@ -377,6 +377,7 @@ The serializer keeps the editor's structural markers:
 - toggles keep `▶ ` or `▼ `
 - blockquotes keep `> `
 - code blocks keep fenced code syntax
+- code blocks omit the `text` info string when no explicit language was chosen, so default plain-text fences export without a language label
 - dividers keep `---`
 - custom tag-style blocks stay tag-style (`<callout>`, `<image>`, `<toggle-list-inline-view />`, `<card-ref />`, `<card-toggle>`, etc.)
 

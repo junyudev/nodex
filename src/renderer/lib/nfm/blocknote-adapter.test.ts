@@ -214,6 +214,26 @@ describe("blocknote adapter", () => {
     expect(blocks[0].color).toBe(undefined);
   });
 
+  test("blockNoteToNfm strips the default text code-block language", () => {
+    const blocks = blockNoteToNfm(
+      asDoc([
+        {
+          type: "codeBlock",
+          props: { language: "text" },
+          content: [{ type: "text", text: "plain text", styles: {} }],
+          children: [],
+        },
+      ]),
+    );
+
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].type).toBe("codeBlock");
+    if (blocks[0].type !== "codeBlock") return;
+
+    expect(blocks[0].language).toBe("");
+    expect(serializeNfm(blocks)).toBe("```\nplain text\n```");
+  });
+
   test("parse toggle heading level 1", () => {
     const blocks = parseNfm("▶# Toggle Heading 1");
     expect(blocks.length).toBe(1);

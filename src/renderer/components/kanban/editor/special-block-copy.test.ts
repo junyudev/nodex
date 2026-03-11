@@ -200,6 +200,31 @@ describe("special block copy", () => {
     expect(nextPayload.structuredText).toBe("Parent line\n\tChild line");
   });
 
+  test("createStructuredPlainTextPayload omits the default text code-block label", () => {
+    const payload = {
+      clipboardHTML: "<div>clipboard</div>",
+      externalHTML: "<div>external</div>",
+      markdown: "fallback",
+    };
+
+    const nextPayload = createStructuredPlainTextPayload(payload, {
+      getSelection: () => ({
+        blocks: [
+          {
+            id: "code-1",
+            type: "codeBlock",
+            props: { language: "text" },
+            content: [{ type: "text", text: "plain text", styles: {} }],
+            children: [],
+          },
+        ],
+      }),
+      getParentBlock: () => undefined,
+    });
+
+    expect(nextPayload.structuredText).toBe("```\nplain text\n```");
+  });
+
   test("resolveNormalizedSelectionBlocks downgrades only the first cut wrapper block to paragraph", () => {
     const child = {
       id: "child-1",

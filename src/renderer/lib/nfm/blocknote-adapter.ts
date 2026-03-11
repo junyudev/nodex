@@ -272,6 +272,14 @@ export function blockNoteToNfm(blocks: BNBlock[]): NfmBlock[] {
   return blocks.map(bnBlockToNfm).filter((b): b is NfmBlock => b !== null);
 }
 
+function normalizeCodeBlockLanguage(language: unknown): string {
+  if (typeof language !== "string") return "";
+
+  const normalizedLanguage = language.trim();
+  if (normalizedLanguage === "text") return "";
+
+  return normalizedLanguage;
+}
 
 function bnBlockToNfm(block: BNBlock): NfmBlock | null {
   const children = block.children
@@ -351,7 +359,7 @@ function bnBlockToNfm(block: BNBlock): NfmBlock | null {
       const code = extractCodeText(block.content);
       return {
         type: "codeBlock",
-        language: block.props?.language ?? "",
+        language: normalizeCodeBlockLanguage(block.props?.language),
         code,
         children,
       };
