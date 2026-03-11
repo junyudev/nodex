@@ -403,7 +403,7 @@ describe("special block copy", () => {
     expect(value).toBe("111\n\t222\n333");
   });
 
-  test("resolveStructuredPlainTextForSelection uses the structured serializer for partial inline code-block selection", () => {
+  test("resolveStructuredPlainTextForSelection uses literal text for text selections inside a code block", () => {
     const schema = new Schema({
       nodes: {
         doc: { content: "paragraph+" },
@@ -438,7 +438,7 @@ describe("special block copy", () => {
       "fallback",
     );
 
-    expect(value).toBe("```\nline-1\nline-2\n\nline-4\n```");
+    expect(value).toBe(code);
   });
 
   test("resolveStructuredPlainTextForSelection falls back to external HTML parse when selection snapshot serialization throws", () => {
@@ -799,6 +799,49 @@ describe("special block copy", () => {
     expect(payload.structuredText).toBe("asd\n- lollo");
     expect(payload.clipboardHTML).toBe("<full>asd\n- lollo</full>");
     expect(payload.externalHTML).toBe("<external>asd\n- lollo</external>");
+  });
+
+  test("createCopiedSelectionPayloadFromSelection keeps text selections inside a code block unfenced", () => {
+    const schema = new Schema({
+      nodes: {
+        doc: { content: "paragraph+" },
+        paragraph: { content: "text*" },
+        text: {},
+      },
+    });
+    const code = "line-1\nline-2\n\nline-4";
+    const fullText = `${code}x`;
+    const doc = schema.node("doc", undefined, [
+      schema.node("paragraph", undefined, schema.text(fullText)),
+    ]);
+    const selection = TextSelection.create(doc, 1, 1 + code.length);
+
+    const payload = createCopiedSelectionPayloadFromSelection({
+      prosemirrorView: { state: { selection, doc } },
+      getSelectionCutBlocks: () => ({
+        blocks: [
+          {
+            id: "code-1",
+            type: "codeBlock",
+            props: { language: "ts" },
+            content: [{ type: "text", text: code, styles: {} }],
+            children: [],
+          },
+        ],
+        blockCutAtStart: "code-1",
+        blockCutAtEnd: "code-1",
+      }),
+      blocksToFullHTML: (blocks) => {
+        return `<full>${renderVisibleSelectionText(blocks as TestSelectionBlock[])}</full>`;
+      },
+      blocksToHTMLLossy: (blocks) => {
+        return `<external>${renderVisibleSelectionText(blocks as TestSelectionBlock[])}</external>`;
+      },
+    });
+
+    expect(payload.structuredText).toBe(code);
+    expect(payload.clipboardHTML).toBe("<full>line-1\nline-2\n\nline-4</full>");
+    expect(payload.externalHTML).toBe("<external>line-1\nline-2\n\nline-4</external>");
   });
 
   test("createCopiedSelectionPayloadFromSelection preserves top-level to child to top-level partial selections", () => {

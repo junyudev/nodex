@@ -1,6 +1,7 @@
 import { invoke } from "../../../lib/api";
 import { parseAssetSource } from "../../../../shared/assets";
 import { blockNoteToNfm, serializeClipboardText } from "../../../lib/nfm";
+import { TextSelection } from "@tiptap/pm/state";
 
 const NODEX_ASSET_SOURCE_PATTERN = /nodex:\/\/assets\/[A-Za-z0-9._%-]+/g;
 const NFM_IMAGE_LINE_PATTERN = /^([ \t]*)<image(?:\s+([^>]*))?>([\s\S]*?)<\/image>$/;
@@ -26,6 +27,8 @@ interface ClipboardWriteOptions {
 
 interface SelectionBlockLike {
   id: string;
+  type?: string;
+  content?: unknown[];
   children?: SelectionBlockLike[];
   [key: string]: unknown;
 }
@@ -530,6 +533,46 @@ function serializeSelectionToStructuredPlainText(
   return serializeClipboardText(blockNoteToNfm(selectedBlocks));
 }
 
+function extractInlineSelectionText(content: unknown[] | undefined): string {
+  if (!Array.isArray(content) || content.length === 0) return "";
+
+  return content
+    .map((item) => {
+      if (!isRecord(item)) return "";
+      if (item.type === "linebreak") return "\n";
+      return typeof item.text === "string" ? item.text : "";
+    })
+    .join("");
+}
+
+function getProsemirrorSelectionText(editor: SelectionEditorLike): string {
+  const selection = editor.prosemirrorView?.state?.selection;
+  const doc = editor.prosemirrorView?.state?.doc;
+  if (!(selection instanceof TextSelection) || selection.empty) return "";
+  if (typeof doc?.textBetween !== "function") return "";
+  return doc.textBetween(selection.from, selection.to, "\n");
+}
+
+function resolveLiteralTextSelectionInsideCodeBlock(
+  editor: SelectionEditorLike,
+  selectionBlocks: SelectionBlockLike[],
+): string | null {
+  const selection = editor.prosemirrorView?.state?.selection;
+  if (!(selection instanceof TextSelection) || selection.empty) return null;
+  if (selectionBlocks.length !== 1) return null;
+
+  const [selectedBlock] = selectionBlocks;
+  if (selectedBlock?.type !== "codeBlock") return null;
+
+  const literalSelectionText = extractInlineSelectionText(selectedBlock.content);
+  if (literalSelectionText.length > 0) return literalSelectionText;
+
+  const fallbackSelectionText = getProsemirrorSelectionText(editor);
+  if (fallbackSelectionText.length > 0) return fallbackSelectionText;
+
+  return "";
+}
+
 export function resolveNormalizedSelectionBlocks(
   editor: SelectionEditorLike,
 ): SelectionBlockLike[] {
@@ -609,6 +652,9 @@ export function resolveStructuredPlainTextForSelection(
   clipboardHTML?: string,
 ): string {
   const selectionBlocks = resolveNormalizedSelectionBlocks(editor);
+  const literalCodeSelection = resolveLiteralTextSelectionInsideCodeBlock(editor, selectionBlocks);
+  if (literalCodeSelection !== null) return literalCodeSelection;
+
   if (selectionBlocks.length === 0) {
     const structuredFromHtml = resolveStructuredPlainTextFromHtmlPayloads(
       editor,
@@ -654,10 +700,15 @@ export function createCopiedSelectionPayloadFromSelection(
   try {
     const normalizedBlocks = resolveNormalizedSelectionBlocks(editor);
     if (normalizedBlocks.length > 0 && canSerializeSelectionHtml(editor)) {
+      const literalCodeSelection = resolveLiteralTextSelectionInsideCodeBlock(
+        editor,
+        normalizedBlocks,
+      );
       return {
         clipboardHTML: editor.blocksToFullHTML(normalizedBlocks),
         externalHTML: editor.blocksToHTMLLossy(normalizedBlocks),
-        structuredText: serializeSelectionToStructuredPlainText(normalizedBlocks),
+        structuredText: literalCodeSelection
+          ?? serializeSelectionToStructuredPlainText(normalizedBlocks),
       };
     }
   } catch {
