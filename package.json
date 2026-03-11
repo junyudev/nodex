@@ -1,6 +1,6 @@
 {
   "name": "nodex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SQLite-based kanban board for managing coding agents",
   "private": false,
   "main": "out/main/index.js",
