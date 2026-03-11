@@ -279,6 +279,10 @@ export interface BackupSettingsEnvOverrides {
   retentionCount: boolean;
 }
 
+export interface HistorySettingsEnvOverrides {
+  retentionCount: boolean;
+}
+
 export interface ManagedWorktreeRecord {
   threadId: string;
   projectId: string;
@@ -307,6 +311,15 @@ export interface BackupSettings {
 export interface UpdateBackupSettingsInput {
   autoEnabled: boolean;
   intervalHours: number;
+  retentionCount: number;
+}
+
+export interface HistorySettings {
+  retentionCount: number;
+  envOverrides: HistorySettingsEnvOverrides;
+}
+
+export interface UpdateHistorySettingsInput {
   retentionCount: number;
 }
 

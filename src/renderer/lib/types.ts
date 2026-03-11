@@ -64,6 +64,8 @@ export type {
   BackupRecord,
   BackupSettings,
   BackupSettingsEnvOverrides,
+  HistorySettings,
+  HistorySettingsEnvOverrides,
   ThreadNotificationSettings,
   CreateBackupInput,
   RestoreBackupInput,
@@ -72,6 +74,7 @@ export type {
   WorktreeEnvironmentOption,
   WorktreeStartMode,
   UpdateBackupSettingsInput,
+  UpdateHistorySettingsInput,
   UpdateThreadNotificationSettingsInput,
   UploadedResourceAsset,
 } from "../../shared/types";

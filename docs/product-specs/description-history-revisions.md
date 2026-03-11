@@ -285,6 +285,8 @@ Versions older than the supported migration path still fail fast as unsupported,
 
 The existing count-based history retention policy remains the only retention knob.
 
+Users can configure it in Settings -> Backups as `History retention`.
+
 When history pruning removes old rows:
 - old history rows are deleted first
 - reachable description revisions are recomputed from:

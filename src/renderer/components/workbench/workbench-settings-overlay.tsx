@@ -68,6 +68,7 @@ import { useTheme } from "../../lib/use-theme";
 import type {
   BackupRecord,
   BackupSettings,
+  HistorySettings,
   ManagedWorktreeRecord,
   ThreadNotificationSettings,
   WorktreeStartMode,
@@ -1152,6 +1153,7 @@ function formatBackupTimestamp(value: string): string {
 
 function BackupSettingsControl({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<BackupSettings | null>(null);
+  const [historySettings, setHistorySettings] = useState<HistorySettings | null>(null);
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [createSafetyBackup, setCreateSafetyBackup] = useState(true);
   const [confirmRestoreId, setConfirmRestoreId] = useState<string | null>(null);
@@ -1213,6 +1215,44 @@ function BackupSettingsControl({ open }: { open: boolean }) {
       }
     },
   });
+  const historyForm = useForm({
+    defaultValues: {
+      retentionCount: "1000",
+    },
+    onSubmit: async ({ value }) => {
+      if (!historySettings) return;
+
+      const parsedRetention = Number.parseInt(value.retentionCount.trim(), 10);
+      if (
+        !historySettings.envOverrides.retentionCount &&
+        (!Number.isInteger(parsedRetention) || parsedRetention < 0)
+      ) {
+        setError("History retention must be an integer >= 0.");
+        return;
+      }
+
+      setBusyAction("save");
+      setError(null);
+      setStatus(null);
+
+      try {
+        const updated = (await invoke("settings:history:update", {
+          retentionCount: historySettings.envOverrides.retentionCount
+            ? historySettings.retentionCount
+            : parsedRetention,
+        })) as HistorySettings;
+        setHistorySettings(updated);
+        historyForm.reset({
+          retentionCount: String(updated.retentionCount),
+        });
+        setStatus("History retention saved.");
+      } catch (err) {
+        setError(resolveFormErrorMessage(err) ?? "Could not save history retention.");
+      } finally {
+        setBusyAction(null);
+      }
+    },
+  });
   const snapshotForm = useForm({
     defaultValues: {
       label: "",
@@ -1236,6 +1276,7 @@ function BackupSettingsControl({ open }: { open: boolean }) {
     },
   });
   const scheduleValues = useStore(scheduleForm.store, (state) => state.values);
+  const historyValues = useStore(historyForm.store, (state) => state.values);
   const snapshotValues = useStore(snapshotForm.store, (state) => state.values);
 
   const loadBackupSettings = useCallback(async () => {
@@ -1253,20 +1294,28 @@ function BackupSettingsControl({ open }: { open: boolean }) {
     setBackups(list);
   }, []);
 
+  const loadHistorySettings = useCallback(async () => {
+    const data = (await invoke("settings:history:get")) as HistorySettings;
+    setHistorySettings(data);
+    historyForm.reset({
+      retentionCount: String(data.retentionCount),
+    });
+  }, [historyForm]);
+
   const refresh = useCallback(async () => {
     setBusyAction("refresh");
     setError(null);
     setStatus(null);
 
     try {
-      await Promise.all([loadBackupSettings(), loadBackups()]);
+      await Promise.all([loadBackupSettings(), loadHistorySettings(), loadBackups()]);
       setConfirmRestoreId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load backups.");
     } finally {
       setBusyAction(null);
     }
-  }, [loadBackupSettings, loadBackups]);
+  }, [loadBackupSettings, loadBackups, loadHistorySettings]);
 
   useEffect(() => {
     if (!open) return;
@@ -1279,7 +1328,7 @@ function BackupSettingsControl({ open }: { open: boolean }) {
     setError(null);
     setConfirmRestoreId(null);
     snapshotForm.reset();
-  }, [open, snapshotForm]);
+  }, [historyForm, open, snapshotForm]);
 
   const handleRestoreBackup = useCallback(
     async (backupId: string) => {
@@ -1315,6 +1364,7 @@ function BackupSettingsControl({ open }: { open: boolean }) {
     settings?.envOverrides.autoEnabled ||
     settings?.envOverrides.intervalHours ||
     settings?.envOverrides.retentionCount;
+  const hasHistoryEnvOverride = historySettings?.envOverrides.retentionCount;
 
   return (
     <div className="flex flex-col gap-3">
@@ -1390,6 +1440,48 @@ function BackupSettingsControl({ open }: { open: boolean }) {
               Save schedule
             </button>
           </div>
+        </div>
+      </div>
+
+      <div
+        className={cn(
+          "flex flex-col rounded-lg border-[calc(var(--spacing)*0.125)]",
+          "border-(--border) bg-foreground-2",
+          "divide-y-[calc(var(--spacing)*0.125)] divide-(--border)",
+        )}
+      >
+        <SettingRow
+          label="History retention"
+          description="Per-project history rows kept before pruning. Use 0 for unlimited."
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={0}
+              value={historyValues.retentionCount}
+              disabled={Boolean(historySettings?.envOverrides.retentionCount)}
+              onChange={(event) => historyForm.setFieldValue("retentionCount", event.target.value)}
+              className="h-7 w-20 rounded-lg border border-(--border) bg-foreground-5 px-2 text-right text-sm outline-none focus-visible:ring-2 focus-visible:ring-(--accent-blue)/30"
+            />
+            <span className="text-sm text-(--foreground-secondary)">rows</span>
+          </div>
+        </SettingRow>
+        <div className="flex items-center justify-between gap-3 p-3">
+          <div className="text-sm text-(--foreground-secondary)">
+            {hasHistoryEnvOverride ? "Value locked by env var." : "Applied on future writes."}
+          </div>
+          <button
+            type="button"
+            onClick={() => void historyForm.handleSubmit()}
+            disabled={busyAction !== null}
+            className={cn(
+              "h-7 rounded-lg bg-(--accent-blue) px-2.5 text-sm text-white transition-colors",
+              "hover:bg-(--accent-blue-hover)",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          >
+            Apply
+          </button>
         </div>
       </div>
 

@@ -4,8 +4,10 @@ import { homedir } from "os";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import type {
   BackupSettings,
+  HistorySettings,
   ThreadNotificationSettings,
   UpdateBackupSettingsInput,
+  UpdateHistorySettingsInput,
   UpdateThreadNotificationSettingsInput,
 } from "../../shared/types";
 
@@ -261,6 +263,47 @@ export function updateBackupSettings(input: UpdateBackupSettingsInput): BackupSe
   return getBackupSettings();
 }
 
+export function getHistorySettings(): HistorySettings {
+  const fromToml =
+    typeof serverToml.history_retention === "number"
+      ? Math.max(0, serverToml.history_retention)
+      : 1000;
+  const envOverrides = {
+    retentionCount: process.env.KANBAN_HISTORY_RETENTION !== undefined,
+  };
+
+  return {
+    retentionCount: envOverrides.retentionCount
+      ? parseIntegerEnv(process.env.KANBAN_HISTORY_RETENTION, fromToml, 0)
+      : fromToml,
+    envOverrides,
+  };
+}
+
+export function updateHistorySettings(input: UpdateHistorySettingsInput): HistorySettings {
+  const nextSettings = {
+    retentionCount: normalizeIntegerInput(input.retentionCount, 0, "retentionCount"),
+  };
+
+  const userConfigPath = getUserConfigPath();
+  const nextToml = readTomlConfig(userConfigPath);
+  const nextServer = {
+    ...(nextToml.server ?? {}),
+    history_retention: nextSettings.retentionCount,
+  };
+
+  nextToml.server = nextServer;
+
+  const configDirectory = path.dirname(userConfigPath);
+  mkdirSync(configDirectory, { recursive: true });
+  writeFileSync(userConfigPath, stringifyToml(nextToml as Record<string, unknown>), "utf8");
+
+  userServerToml = loadUserServerTomlConfig();
+  serverToml = loadServerTomlConfig();
+
+  return getHistorySettings();
+}
+
 export function getThreadNotificationSettings(): ThreadNotificationSettings {
   return threadNotificationSettingsFromConfig(userServerToml);
 }
@@ -312,11 +355,5 @@ export function getBackupRetention(): number {
 }
 
 export function getHistoryRetention(): number {
-  if (process.env.KANBAN_HISTORY_RETENTION !== undefined) {
-    return parseIntegerEnv(process.env.KANBAN_HISTORY_RETENTION, 1000, 0);
-  }
-  if (typeof serverToml.history_retention === "number") {
-    return Math.max(0, serverToml.history_retention);
-  }
-  return 1000;
+  return getHistorySettings().retentionCount;
 }

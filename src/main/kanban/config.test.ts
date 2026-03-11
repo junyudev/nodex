@@ -9,6 +9,7 @@ const ORIGINAL_BACKUP_ENV = {
   autoEnabled: process.env.KANBAN_BACKUP_AUTO_ENABLED,
   intervalHours: process.env.KANBAN_BACKUP_INTERVAL_HOURS,
   retention: process.env.KANBAN_BACKUP_RETENTION,
+  historyRetention: process.env.KANBAN_HISTORY_RETENTION,
 };
 
 async function importConfigModule() {
@@ -20,6 +21,7 @@ function clearBackupEnv(): void {
   delete process.env.KANBAN_BACKUP_AUTO_ENABLED;
   delete process.env.KANBAN_BACKUP_INTERVAL_HOURS;
   delete process.env.KANBAN_BACKUP_RETENTION;
+  delete process.env.KANBAN_HISTORY_RETENTION;
 }
 
 function restoreProcessState(): void {
@@ -45,6 +47,11 @@ function restoreProcessState(): void {
     delete process.env.KANBAN_BACKUP_RETENTION;
   } else {
     process.env.KANBAN_BACKUP_RETENTION = ORIGINAL_BACKUP_ENV.retention;
+  }
+  if (ORIGINAL_BACKUP_ENV.historyRetention === undefined) {
+    delete process.env.KANBAN_HISTORY_RETENTION;
+  } else {
+    process.env.KANBAN_HISTORY_RETENTION = ORIGINAL_BACKUP_ENV.historyRetention;
   }
 }
 
@@ -169,6 +176,46 @@ describe("thread notification settings config", () => {
 
       const reloaded = await importConfigModule();
       expect(reloaded.getThreadNotificationSettings().threadCompletionEnabled).toBeFalse();
+    });
+  });
+});
+
+describe("history settings config", () => {
+  test("persists updated history retention to user config", async () => {
+    await withTempConfigFixture(async ({ tempHome }) => {
+      const config = await importConfigModule();
+      const updated = config.updateHistorySettings({
+        retentionCount: 250,
+      });
+
+      expect(updated.retentionCount).toBe(250);
+      expect(updated.envOverrides.retentionCount).toBeFalse();
+
+      const configPath = path.join(tempHome, ".nodex", "config.toml");
+      const written = fs.readFileSync(configPath, "utf8");
+      expect(written.includes("history_retention = 250")).toBeTrue();
+
+      const reloaded = await importConfigModule();
+      expect(reloaded.getHistorySettings().retentionCount).toBe(250);
+      expect(reloaded.getHistoryRetention()).toBe(250);
+    });
+  });
+
+  test("reports history retention env override while still persisting user value", async () => {
+    await withTempConfigFixture(async ({ tempHome }) => {
+      process.env.KANBAN_HISTORY_RETENTION = "5";
+
+      const config = await importConfigModule();
+      const updated = config.updateHistorySettings({
+        retentionCount: 250,
+      });
+
+      expect(updated.retentionCount).toBe(5);
+      expect(updated.envOverrides.retentionCount).toBeTrue();
+
+      const configPath = path.join(tempHome, ".nodex", "config.toml");
+      const written = fs.readFileSync(configPath, "utf8");
+      expect(written.includes("history_retention = 250")).toBeTrue();
     });
   });
 });

@@ -350,6 +350,19 @@ async function httpInvoke(channel: string, ...args: unknown[]): Promise<unknown>
       });
       return res.json();
     }
+    case "settings:history:get": {
+      const res = await fetch(toApiUrl("/api/settings/history"));
+      return res.json();
+    }
+    case "settings:history:update": {
+      const [input] = args as [{ retentionCount: number }];
+      const res = await fetch(toApiUrl("/api/settings/history"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      return res.json();
+    }
     case "settings:thread-notifications:get": {
       const res = await fetch(toApiUrl("/api/settings/thread-notifications"));
       return res.json();

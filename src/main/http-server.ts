@@ -8,8 +8,10 @@ import * as backupService from "./kanban/backup-service";
 import * as canvasService from "./kanban/canvas-service";
 import {
   getBackupSettings,
+  getHistorySettings,
   getThreadNotificationSettings,
   updateBackupSettings,
+  updateHistorySettings,
   updateThreadNotificationSettings,
 } from "./kanban/config";
 import { dbNotifier } from "./kanban/db-notifier";
@@ -200,6 +202,23 @@ app.put("/api/settings/backup", async (c) => {
       enabled: settings.autoEnabled,
       intervalHours: settings.intervalHours,
       retentionCount: settings.retentionCount,
+    });
+    return c.json(settings);
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 400);
+  }
+});
+
+app.get("/api/settings/history", (c) => {
+  return c.json(getHistorySettings());
+});
+
+app.put("/api/settings/history", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+
+  try {
+    const settings = updateHistorySettings({
+      retentionCount: body.retentionCount,
     });
     return c.json(settings);
   } catch (error) {

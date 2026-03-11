@@ -6,8 +6,10 @@ import * as canvasService from "./kanban/canvas-service";
 import * as ptyManager from "./pty-manager";
 import {
   getBackupSettings,
+  getHistorySettings,
   getThreadNotificationSettings,
   updateBackupSettings,
+  updateHistorySettings,
   updateThreadNotificationSettings,
 } from "./kanban/config";
 import { resolveAssetPath } from "./kanban/asset-service";
@@ -206,6 +208,12 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions = {}): v
     });
     return settings;
   });
+
+  registerHandle("settings:history:get", () => getHistorySettings());
+
+  registerHandle("settings:history:update", (_, input) =>
+    updateHistorySettings(input)
+  );
 
   registerHandle("settings:thread-notifications:get", () => getThreadNotificationSettings());
 

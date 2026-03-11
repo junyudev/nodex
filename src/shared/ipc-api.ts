@@ -1,6 +1,7 @@
 import type {
   BackupRecord,
   BackupSettings,
+  HistorySettings,
   Board,
   CodexAccountSnapshot,
   CodexApprovalDecision,
@@ -41,6 +42,7 @@ import type {
   RestoreBackupResult,
   ThreadNotificationSettings,
   UpdateBackupSettingsInput,
+  UpdateHistorySettingsInput,
   UpdateThreadNotificationSettingsInput,
 } from "./types";
 import type { WorkbenchResumeSnapshot } from "./workbench-resume";
@@ -284,6 +286,8 @@ export interface IpcApi {
   "backup:restore": { args: [input: RestoreBackupInput]; result: RestoreBackupResult };
   "settings:backup:get": { args: []; result: BackupSettings };
   "settings:backup:update": { args: [input: UpdateBackupSettingsInput]; result: BackupSettings };
+  "settings:history:get": { args: []; result: HistorySettings };
+  "settings:history:update": { args: [input: UpdateHistorySettingsInput]; result: HistorySettings };
   "settings:thread-notifications:get": { args: []; result: ThreadNotificationSettings };
   "settings:thread-notifications:update": {
     args: [input: UpdateThreadNotificationSettingsInput];
