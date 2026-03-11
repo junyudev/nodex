@@ -13,16 +13,12 @@ export const KANBAN_STATUS_OPTIONS = [
     id,
     name: TOGGLE_LIST_STATUS_LABELS[id],
   })),
-  { id: ARCHIVED_CARD_OPTION_ID, name: ARCHIVED_CARD_OPTION_NAME },
 ] as const;
 
-export const KANBAN_STATUS_LABELS: Record<string, string> = KANBAN_STATUS_OPTIONS.reduce<Record<string, string>>(
-  (labels, option) => {
-    labels[option.id] = option.name;
-    return labels;
-  },
-  {},
-);
+export const KANBAN_STATUS_LABELS: Record<string, string> = {
+  ...TOGGLE_LIST_STATUS_LABELS,
+  [ARCHIVED_CARD_OPTION_ID]: ARCHIVED_CARD_OPTION_NAME,
+};
 
 const PRIORITY_PRIMARY_LABELS: Record<Priority, string> = {
   "p0-critical": "P0 - Critical",
