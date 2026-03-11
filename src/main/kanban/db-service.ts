@@ -54,7 +54,7 @@ interface DbCard {
   title: string;
   description: string;
   description_revision_id: number | null;
-  priority: string;
+  priority: string | null;
   estimate: string | null;
   tags: string;
   due_date: string | null;
@@ -168,7 +168,7 @@ function rowToCard(row: DbCard): Card {
     archived: row.archived === 1,
     title: row.title,
     description: row.description,
-    priority: row.priority as Card["priority"],
+    priority: row.priority as Card["priority"] | undefined,
     estimate: row.estimate as Card["estimate"] | undefined,
     tags: parseTags(row.tags),
     dueDate: row.due_date ? new Date(row.due_date) : undefined,
@@ -273,17 +273,21 @@ function rowToProject(row: DbProject): Project {
 interface CardUpdateMutation {
   fields: string[];
   values: (string | number | null)[];
-  previousValues: Partial<Card>;
-  newValues: Partial<Card>;
+  previousValues: CardHistoryValues;
+  newValues: CardHistoryValues;
   descriptionChanged: boolean;
 }
+
+type CardHistoryValues = Omit<Partial<Card>, "priority"> & {
+  priority?: Card["priority"] | null;
+};
 
 function buildCardUpdateMutation(
   existing: DbCard,
   updates: Partial<CardInput>,
 ): CardUpdateMutation {
-  const previousValues: Partial<Card> = {};
-  const newValues: Partial<Card> = {};
+  const previousValues: CardHistoryValues = {};
+  const newValues: CardHistoryValues = {};
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
   let descriptionChanged = false;
@@ -301,9 +305,9 @@ function buildCardUpdateMutation(
   }
   if (updates.priority !== undefined) {
     fields.push("priority = ?");
-    values.push(updates.priority);
-    previousValues.priority = existing.priority as Card["priority"];
-    newValues.priority = updates.priority;
+    values.push(updates.priority ?? null);
+    previousValues.priority = existing.priority as Card["priority"] | undefined;
+    newValues.priority = updates.priority ?? null;
   }
   if (updates.estimate !== undefined) {
     fields.push("estimate = ?");
@@ -583,7 +587,7 @@ export async function createCard(
         id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       projectId,
@@ -592,7 +596,7 @@ export async function createCard(
       input.title,
       input.description || "",
       descriptionRevisionId,
-      input.priority || "p2-medium",
+      input.priority ?? null,
       input.estimate || null,
       JSON.stringify(input.tags || []),
       input.dueDate?.toISOString().split("T")[0] || null,
@@ -620,7 +624,7 @@ export async function createCard(
       archived: false,
       title: input.title,
       description: input.description || "",
-      priority: input.priority || "p2-medium",
+      priority: input.priority ?? undefined,
       estimate: input.estimate ?? undefined,
       tags: input.tags || [],
       dueDate: input.dueDate ?? undefined,
@@ -1393,7 +1397,7 @@ export async function importBlockDropAsCards(
           id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
           tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
           assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         id,
         projectId,
@@ -1402,7 +1406,7 @@ export async function importBlockDropAsCards(
         cardInput.title,
         cardInput.description || "",
         descriptionRevisionId,
-        cardInput.priority || "p2-medium",
+        cardInput.priority ?? null,
         cardInput.estimate || null,
         JSON.stringify(cardInput.tags || []),
         cardInput.dueDate?.toISOString().split("T")[0] || null,
@@ -1430,7 +1434,7 @@ export async function importBlockDropAsCards(
         archived: false,
         title: cardInput.title,
         description: cardInput.description || "",
-        priority: cardInput.priority || "p2-medium",
+        priority: cardInput.priority ?? undefined,
         estimate: cardInput.estimate ?? undefined,
         tags: cardInput.tags || [],
         dueDate: cardInput.dueDate ?? undefined,
@@ -1839,7 +1843,7 @@ function cardSearchText(card: Card): string {
   return [
     card.title,
     card.description,
-    card.priority,
+    card.priority ?? "",
     card.estimate ?? "",
     card.assignee ?? "",
     card.agentStatus ?? "",
@@ -1985,7 +1989,7 @@ export async function completeCardOccurrence(
         id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       archiveCardId,
       projectId,
@@ -2243,7 +2247,7 @@ export async function updateCardOccurrence(
           id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
           tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
           assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         detachedCardId,
         projectId,
@@ -2252,7 +2256,7 @@ export async function updateCardOccurrence(
         card.title,
         card.description,
         detachedDescriptionRevisionId,
-        card.priority,
+        card.priority ?? null,
         card.estimate ?? null,
         JSON.stringify(card.tags),
         card.dueDate?.toISOString().split("T")[0] ?? null,
@@ -2407,7 +2411,7 @@ export async function updateCardOccurrence(
         id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
         tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
         assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order"
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       nextCardId,
       projectId,

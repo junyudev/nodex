@@ -36,6 +36,14 @@ describe("card input validation", () => {
     ).toBe(null);
   });
 
+  test("accepts clearing priority with null", () => {
+    expect(
+      runValidation(() =>
+        assertValidCardInput({ priority: null }, "update"),
+      ),
+    ).toBe(null);
+  });
+
   test("rejects create payload with missing title", () => {
     expect(
       runValidation(() => assertValidCardInput({ description: "x" }, "create")),

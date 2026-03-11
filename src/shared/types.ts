@@ -76,7 +76,7 @@ export interface Card {
   archived: boolean;
   title: string;
   description: string;
-  priority: Priority;
+  priority?: Priority;
   estimate?: Estimate;
   tags: string[];
   dueDate?: Date;
@@ -113,7 +113,7 @@ export interface CardInput {
   status?: CardStatus;
   title: string;
   description?: string;
-  priority?: Priority;
+  priority?: Priority | null;
   estimate?: Estimate | null;
   tags?: string[];
   dueDate?: Date | null;

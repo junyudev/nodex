@@ -21,7 +21,7 @@ function toSnapshotPayload(
     card: {
       title: card.title,
       description: card.description,
-      priority: card.priority,
+      priority: card.priority ?? null,
       estimate: card.estimate ?? null,
       tags: card.tags,
       dueDate: card.dueDate?.toISOString(),

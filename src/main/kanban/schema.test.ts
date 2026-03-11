@@ -33,11 +33,18 @@ describe("schema initialization", () => {
         | undefined;
       expect(version?.user_version).toBe(CURRENT_SCHEMA_VERSION);
 
-      const cardColumns = db.prepare("PRAGMA table_info(cards)").all() as Array<{ name: string }>;
+      const cardColumns = db.prepare("PRAGMA table_info(cards)").all() as Array<{
+        name: string;
+        notnull: number;
+        dflt_value: string | null;
+      }>;
       const cardColumnNames = cardColumns.map((column) => column.name);
       expect(cardColumnNames.includes("revision")).toBeTrue();
       expect(cardColumnNames.includes("run_in_environment_path")).toBeTrue();
       expect(cardColumnNames.includes("description_revision_id")).toBeTrue();
+      const priorityColumn = cardColumns.find((column) => column.name === "priority");
+      expect(priorityColumn?.notnull).toBe(0);
+      expect(priorityColumn?.dflt_value ?? null).toBe(null);
 
       const historyColumns = db.prepare("PRAGMA table_info(history)").all() as Array<{ name: string }>;
       const historyColumnNames = historyColumns.map((column) => column.name);
@@ -495,6 +502,19 @@ describe("schema initialization", () => {
       await initializeDatabase();
 
       const migratedDb = new Database(dbPath, { readonly: true });
+      const version = migratedDb.prepare("PRAGMA user_version").get() as
+        | { user_version: number }
+        | undefined;
+      expect(version?.user_version).toBe(CURRENT_SCHEMA_VERSION);
+
+      const priorityColumn = (migratedDb.prepare("PRAGMA table_info(cards)").all() as Array<{
+        name: string;
+        notnull: number;
+        dflt_value: string | null;
+      }>).find((column) => column.name === "priority");
+      expect(priorityColumn?.notnull).toBe(0);
+      expect(priorityColumn?.dflt_value ?? null).toBe(null);
+
       const descriptionRow = migratedDb.prepare("SELECT description FROM cards WHERE id = ?").get("legacy-card") as
         | { description: string }
         | undefined;
@@ -515,6 +535,260 @@ describe("schema initialization", () => {
       expect(historyRow?.previous_values?.includes('"status":"backlog"')).toBeTrue();
       expect(historyRow?.new_values?.includes('"status":"in_review"')).toBeTrue();
       expect(historyRow?.card_snapshot?.includes('"statusName":"Backlog"')).toBeTrue();
+      migratedDb.close();
+    } catch (error) {
+      if (isUnsupportedSqliteError(error)) {
+        initializationRan = false;
+      } else {
+        throw error;
+      }
+    } finally {
+      closeDatabase();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      delete process.env.KANBAN_DIR;
+    }
+
+    if (!initializationRan) {
+      expect(true).toBeTrue();
+    }
+  });
+
+  test("migrates schema version 23 to nullable priority without rewriting existing values", async () => {
+    closeDatabase();
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-schema-v23-priority-"));
+    process.env.KANBAN_DIR = tempDir;
+
+    let initializationRan = true;
+    try {
+      const dbPath = getDatabasePath();
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      const db = new Database(dbPath);
+      db.exec(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          icon TEXT NOT NULL DEFAULT '',
+          workspace_path TEXT,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE cards (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          description_revision_id INTEGER,
+          priority TEXT NOT NULL DEFAULT 'p2-medium',
+          estimate TEXT,
+          tags TEXT NOT NULL DEFAULT '[]',
+          due_date TEXT,
+          assignee TEXT,
+          agent_blocked INTEGER NOT NULL DEFAULT 0,
+          agent_status TEXT,
+          run_in_target TEXT NOT NULL DEFAULT 'local_project',
+          run_in_local_path TEXT,
+          run_in_base_branch TEXT,
+          run_in_worktree_path TEXT,
+          run_in_environment_path TEXT,
+          revision INTEGER NOT NULL DEFAULT 1,
+          scheduled_start TEXT,
+          scheduled_end TEXT,
+          is_all_day INTEGER NOT NULL DEFAULT 0,
+          recurrence_json TEXT,
+          reminders_json TEXT NOT NULL DEFAULT '[]',
+          schedule_timezone TEXT,
+          created TEXT NOT NULL,
+          "order" INTEGER NOT NULL,
+          CHECK (status IN ('draft', 'backlog', 'in_progress', 'in_review', 'done')),
+          CHECK (priority IN ('p0-critical', 'p1-high', 'p2-medium', 'p3-low', 'p4-later')),
+          CHECK (estimate IS NULL OR estimate IN ('xs', 's', 'm', 'l', 'xl'))
+        );
+
+        CREATE TABLE description_blocks (
+          hash TEXT PRIMARY KEY,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE description_revisions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          card_id TEXT NOT NULL,
+          parent_revision_id INTEGER,
+          kind TEXT NOT NULL,
+          block_hashes_json TEXT,
+          ops_json TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE codex_card_threads (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          thread_id TEXT NOT NULL UNIQUE,
+          thread_name TEXT,
+          thread_preview TEXT NOT NULL DEFAULT '',
+          model_provider TEXT NOT NULL DEFAULT '',
+          cwd TEXT,
+          status_type TEXT NOT NULL DEFAULT 'notLoaded',
+          status_active_flags_json TEXT NOT NULL DEFAULT '[]',
+          archived INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          linked_at TEXT NOT NULL
+        );
+
+        CREATE TABLE codex_thread_snapshots (
+          thread_id TEXT PRIMARY KEY REFERENCES codex_card_threads(thread_id) ON DELETE CASCADE,
+          turns_json TEXT NOT NULL DEFAULT '[]',
+          items_json TEXT NOT NULL DEFAULT '[]',
+          updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          operation TEXT NOT NULL,
+          card_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          timestamp TEXT NOT NULL,
+          previous_values TEXT,
+          new_values TEXT,
+          from_status TEXT,
+          to_status TEXT,
+          from_archived INTEGER,
+          to_archived INTEGER,
+          from_order INTEGER,
+          to_order INTEGER,
+          card_snapshot TEXT,
+          previous_description_revision_id INTEGER,
+          new_description_revision_id INTEGER,
+          snapshot_description_revision_id INTEGER,
+          session_id TEXT,
+          group_id TEXT,
+          is_undone INTEGER NOT NULL DEFAULT 0,
+          undo_of INTEGER
+        );
+
+        CREATE TABLE recurrence_exceptions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          exception_type TEXT NOT NULL,
+          override_start TEXT,
+          override_end TEXT,
+          override_reminders_json TEXT,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE reminder_receipts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          reminder_offset_minutes INTEGER NOT NULL,
+          delivered_at TEXT NOT NULL
+        );
+
+        CREATE TABLE reminder_snoozes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          due_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          consumed_at TEXT
+        );
+
+        CREATE TABLE recurrence_occurrence_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          action TEXT NOT NULL,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE canvas (
+          project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+          elements TEXT NOT NULL DEFAULT '[]',
+          app_state TEXT NOT NULL DEFAULT '{}',
+          files TEXT NOT NULL DEFAULT '{}',
+          updated TEXT NOT NULL
+        );
+
+        PRAGMA user_version = 23;
+      `);
+
+      db.prepare(`
+        INSERT INTO projects (id, name, description, icon, workspace_path, created)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run("default", "Default", "", "", null, "2026-03-12T00:00:00.000Z");
+
+      db.prepare(`
+        INSERT INTO cards (
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+          tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+          run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+          scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "card-p2",
+        "default",
+        "backlog",
+        0,
+        "Keeps medium",
+        "",
+        null,
+        "p2-medium",
+        null,
+        "[]",
+        null,
+        null,
+        0,
+        null,
+        "local_project",
+        null,
+        null,
+        null,
+        null,
+        1,
+        null,
+        null,
+        0,
+        null,
+        "[]",
+        null,
+        "2026-03-12T00:00:00.000Z",
+        0,
+      );
+      db.close();
+
+      await initializeDatabase();
+
+      const migratedDb = new Database(dbPath, { readonly: true });
+      const version = migratedDb.prepare("PRAGMA user_version").get() as
+        | { user_version: number }
+        | undefined;
+      expect(version?.user_version).toBe(CURRENT_SCHEMA_VERSION);
+
+      const priorityColumn = (migratedDb.prepare("PRAGMA table_info(cards)").all() as Array<{
+        name: string;
+        notnull: number;
+        dflt_value: string | null;
+      }>).find((column) => column.name === "priority");
+      expect(priorityColumn?.notnull).toBe(0);
+      expect(priorityColumn?.dflt_value ?? null).toBe(null);
+
+      const preserved = migratedDb.prepare("SELECT priority FROM cards WHERE id = ?").get("card-p2") as
+        | { priority: string | null }
+        | undefined;
+      expect(preserved?.priority).toBe("p2-medium");
       migratedDb.close();
     } catch (error) {
       if (isUnsupportedSqliteError(error)) {

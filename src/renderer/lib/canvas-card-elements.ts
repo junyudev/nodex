@@ -23,6 +23,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   "p3-low": "#e9ecef",
   "p4-later": "#f1f3f5",
 };
+const DEFAULT_CARD_COLOR = "#f8f9fa";
 
 /** Build an ExcalidrawElementSkeleton representing a card on the canvas. */
 export function createCardElement(
@@ -31,7 +32,7 @@ export function createCardElement(
   position: { x: number; y: number },
 ) {
   const label = card.title.length > 60 ? `${card.title.slice(0, 57)}...` : card.title;
-  const bg = PRIORITY_COLORS[card.priority] ?? PRIORITY_COLORS["p2-medium"];
+  const bg = card.priority ? (PRIORITY_COLORS[card.priority] ?? DEFAULT_CARD_COLOR) : DEFAULT_CARD_COLOR;
 
   return {
     type: "rectangle" as const,
@@ -104,7 +105,9 @@ export function updateCardElements(
       entry.card.title.length > 60
         ? `${entry.card.title.slice(0, 57)}...`
         : entry.card.title;
-    const expectedBg = PRIORITY_COLORS[entry.card.priority] ?? PRIORITY_COLORS["p2-medium"];
+    const expectedBg = entry.card.priority
+      ? (PRIORITY_COLORS[entry.card.priority] ?? DEFAULT_CARD_COLOR)
+      : DEFAULT_CARD_COLOR;
 
     const currentLabel = (el.label as { text?: string } | undefined)?.text;
     const currentBg = el.backgroundColor as string | undefined;

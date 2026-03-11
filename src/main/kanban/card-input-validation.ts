@@ -109,7 +109,7 @@ function assertOptionalBoolean(fieldName: string, value: unknown): void {
 }
 
 function assertOptionalPriority(value: unknown): void {
-  if (value === undefined) return;
+  if (value === undefined || value === null) return;
   if (typeof value !== "string") {
     throw new Error("Invalid priority value");
   }

@@ -68,6 +68,9 @@ function matchesClause(
     return clause.values.includes(card.columnId);
   }
   if (clause.field === "priority") {
+    if (!card.priority) {
+      return TOGGLE_LIST_PRIORITY_ORDER.every((priority) => clause.values.includes(priority));
+    }
     return clause.values.includes(card.priority);
   }
 
@@ -130,6 +133,9 @@ function compareByField(
     case "status":
       return ((statusRank.get(left.columnId) ?? 0) - (statusRank.get(right.columnId) ?? 0)) * sign;
     case "priority":
+      if (!left.priority && !right.priority) return 0;
+      if (!left.priority) return 1;
+      if (!right.priority) return -1;
       return ((priorityRank.get(left.priority) ?? 0) - (priorityRank.get(right.priority) ?? 0)) * sign;
     case "estimate": {
       const leftRank = estimateRank.get(left.estimate ?? "") ?? Number.POSITIVE_INFINITY;

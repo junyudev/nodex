@@ -33,7 +33,7 @@ interface UseCardStageControllerResult {
   projectWorkspacePath?: string | null;
   title: string;
   description: string;
-  priority: Priority;
+  priority?: Priority;
   estimate: string;
   dueDate: string;
   tagInput: string;
@@ -107,7 +107,7 @@ interface UseCardStageControllerResult {
   handleTitleBlur: () => void;
   handleDescriptionChange: (value: string) => void;
   handleDescriptionBlur: () => void;
-  handlePriorityChange: (next: Priority) => void;
+  handlePriorityChange: (next: Priority | null) => void;
   handleEstimateChange: (next: string) => void;
   handleDueDateChange: (next: string) => void;
   handleClearDueDate: () => void;
@@ -144,6 +144,19 @@ interface CardStageUpdateConflictState {
   columnId: string;
   latestCard: Card;
   attemptedUpdates: Partial<CardInput>;
+}
+
+function toPriorityUpdate(
+  nextPriority: Priority | undefined,
+  currentPriority: Priority | undefined,
+): Partial<CardInput> {
+  if (nextPriority === currentPriority) {
+    return {};
+  }
+
+  return {
+    priority: nextPriority ?? null,
+  };
 }
 
 function parseRunInEnvironmentOptions(value: unknown): WorktreeEnvironmentOption[] {
@@ -213,7 +226,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState(card?.description ?? "");
-  const [priority, setPriority] = useState<Priority>("p2-medium");
+  const [priority, setPriority] = useState<Priority | undefined>(undefined);
   const [estimate, setEstimate] = useState<string>("none");
   const [dueDate, setDueDate] = useState("");
   const [tagInput, setTagInput] = useState("");
@@ -264,7 +277,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
   const formStateRef = useRef({
     title: "",
     description: "",
-    priority: "p2-medium" as Priority,
+    priority: undefined as Priority | undefined,
     estimate: "none",
     dueDate: "",
     tags: [] as string[],
@@ -481,7 +494,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
         void runUpdate(prevCard.columnId, targetCard.id, {
           title: state.title,
           description: state.description,
-          priority: state.priority,
+          ...toPriorityUpdate(state.priority, targetCard.priority),
           estimate: state.estimate === "none" ? null : (state.estimate as Estimate),
           dueDate: state.dueDate ? new Date(state.dueDate) : undefined,
           tags: state.tags,
@@ -753,7 +766,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       await runUpdate(columnId, card.id, {
         title,
         description,
-        priority,
+        ...toPriorityUpdate(priority, card.priority),
         estimate: estimate === "none" ? null : (estimate as Estimate),
         dueDate: dueDate ? new Date(dueDate) : undefined,
         tags,
@@ -984,9 +997,10 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
     await invoke("shell:open-file-link", { path: environmentsPath }, "fileManager");
   }, [projectWorkspacePath]);
 
-  const handlePriorityChange = useCallback((next: Priority) => {
-    setPriority(next);
-    saveProperty({ priority: next });
+  const handlePriorityChange = useCallback((next: Priority | null) => {
+    const nextPriority = next ?? undefined;
+    setPriority(nextPriority);
+    saveProperty({ priority: nextPriority ?? null });
   }, [saveProperty]);
 
   const handleEstimateChange = useCallback((next: string) => {
@@ -1039,7 +1053,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       const next: Partial<CardInput> = { ...base };
       if (Object.hasOwn(base, "title")) next.title = title;
       if (Object.hasOwn(base, "description")) next.description = description;
-      if (Object.hasOwn(base, "priority")) next.priority = priority;
+      if (Object.hasOwn(base, "priority")) next.priority = priority ?? null;
       if (Object.hasOwn(base, "estimate")) {
         next.estimate = estimate === "none" ? null : (estimate as Estimate);
       }

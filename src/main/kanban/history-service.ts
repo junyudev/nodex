@@ -96,7 +96,7 @@ interface DbCard {
   title: string;
   description: string;
   description_revision_id: number | null;
-  priority: string;
+  priority: string | null;
   estimate: string | null;
   tags: string;
   due_date: string | null;
@@ -133,7 +133,7 @@ function dbCardToCard(row: DbCard): Card {
     archived: row.archived === 1,
     title: row.title,
     description: row.description,
-    priority: row.priority as Card["priority"],
+    priority: row.priority as Card["priority"] | undefined,
     estimate: (row.estimate as Card["estimate"]) || undefined,
     tags: JSON.parse(row.tags) as string[],
     dueDate: row.due_date ? new Date(row.due_date) : undefined,
@@ -509,8 +509,8 @@ export function recordUpdate(
   cardId: string,
   projectId: string,
   columnId: Card["status"],
-  previousValues: Partial<Card>,
-  newValues: Partial<Card>,
+  previousValues: Omit<Partial<Card>, "priority"> & { priority?: Card["priority"] | null },
+  newValues: Omit<Partial<Card>, "priority"> & { priority?: Card["priority"] | null },
   previousDescriptionRevisionId: number | null,
   newDescriptionRevisionId: number | null,
   sessionId?: string,
@@ -1612,11 +1612,11 @@ export function revertEntry(
             INSERT INTO cards (id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
               tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
               assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order")
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             snapshot.id, projectId, entry.columnId, entry.archived ? 1 : 0, snapshot.title, snapshot.description,
             entry.snapshotDescriptionRevisionId,
-            snapshot.priority, snapshot.estimate || null, JSON.stringify(snapshot.tags),
+            snapshot.priority ?? null, snapshot.estimate || null, JSON.stringify(snapshot.tags),
             toDateOnlyString(dueDate),
             toIsoStringOrNull(scheduledStart),
             toIsoStringOrNull(scheduledEnd),
@@ -1744,6 +1744,7 @@ export function restoreToEntry(
         ];
 
         const optionalFields = new Set([
+          "priority",
           "estimate",
           "dueDate",
           "scheduledStart",
@@ -1878,11 +1879,11 @@ export function restoreToEntry(
           INSERT INTO cards (id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
             tags, due_date, scheduled_start, scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone,
             assignee, agent_blocked, agent_status, run_in_target, run_in_local_path, run_in_base_branch, run_in_worktree_path, run_in_environment_path, created, "order")
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           cardId, projectId, targetStatus, 0,
           state.title as string, restoredDescription, restoredDescriptionRevisionId,
-          (state.priority as string) ?? "p2-medium", (state.estimate as string) || null,
+          (state.priority as string | null | undefined) ?? null, (state.estimate as string) || null,
           JSON.stringify(state.tags ?? []),
           toDateOnlyString(dueDate),
           toIsoStringOrNull(scheduledStart),
@@ -1907,7 +1908,7 @@ export function restoreToEntry(
           status: targetStatus,
           archived: false,
           id: cardId, title: state.title, description: restoredDescription,
-          priority: state.priority ?? "p2-medium", estimate: state.estimate || null,
+          priority: state.priority ?? undefined, estimate: state.estimate || null,
           tags: state.tags ?? [], dueDate: state.dueDate ?? null,
           scheduledStart: parseHistoryDate(state.scheduledStart),
           scheduledEnd: parseHistoryDate(state.scheduledEnd),

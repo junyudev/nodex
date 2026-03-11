@@ -28,7 +28,7 @@ function normalizePatch(updates: Partial<CardInput>): Partial<Card> {
 
   if ("title" in updates) normalized.title = updates.title ?? "";
   if ("description" in updates) normalized.description = updates.description ?? "";
-  if ("priority" in updates && updates.priority !== undefined) normalized.priority = updates.priority;
+  if ("priority" in updates) normalized.priority = updates.priority ?? undefined;
   if ("estimate" in updates) normalized.estimate = updates.estimate ?? undefined;
   if ("tags" in updates && Array.isArray(updates.tags)) normalized.tags = updates.tags;
   if ("dueDate" in updates) normalized.dueDate = updates.dueDate ?? undefined;
@@ -176,7 +176,7 @@ export function createOptimisticCard(input: CardCreateInput): Card {
     archived: false,
     title: input.title,
     description: input.description ?? "",
-    priority: input.priority ?? "p2-medium",
+    priority: input.priority ?? undefined,
     estimate: input.estimate ?? undefined,
     tags: input.tags ?? [],
     dueDate: input.dueDate ?? undefined,

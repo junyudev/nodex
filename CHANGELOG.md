@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Simplified the card workflow to five canonical statuses (`draft`, `backlog`, `in_progress`, `in_review`, `done`) plus an internal `archived` flag, and updated recurring completion snapshots to archive `done` cards instead of using a hidden archive column.
 
 ### Fixed
+- Fixed cards defaulting to `P2` priority; priority is now empty by default and can be cleared back to empty across the card editor, inline creator, and compact card surfaces.
 
 ## [0.1.1] - 2026-03-12
 

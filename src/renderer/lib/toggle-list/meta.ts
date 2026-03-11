@@ -30,7 +30,7 @@ function formatPropertyTokens(
 ): string[] {
   switch (property) {
     case "priority":
-      return [`[${priorityTokens[card.priority]}]`];
+      return card.priority ? [`[${priorityTokens[card.priority]}]`] : [];
     case "estimate":
       if (card.estimate) return [`[${card.estimate.toUpperCase()}]`];
       return showEmptyEstimate ? ["[-]"] : [];

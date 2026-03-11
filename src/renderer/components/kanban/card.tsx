@@ -3,7 +3,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { resolveKanbanPriorityOption } from "../../lib/kanban-options";
 import { estimateStyles } from "@/lib/types";
-import type { Card as CardType } from "@/lib/types";
+import type { Card as CardType, Priority } from "@/lib/types";
 import { useCardPropertyPosition } from "@/lib/use-card-property-position";
 import { useActiveTerminals } from "@/lib/terminal-sessions";
 import { useTheme } from "@/lib/use-theme";
@@ -43,7 +43,7 @@ interface CardProps {
   };
 }
 
-const PRIORITY_TOKEN_BY_VALUE: Record<CardType["priority"], string> = {
+const PRIORITY_TOKEN_BY_VALUE: Record<Priority, string> = {
   "p0-critical": "P0",
   "p1-high": "P1",
   "p2-medium": "P2",
@@ -75,7 +75,7 @@ function CardPropertyBadges({
   onChipPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }) {
   const priorityOption = resolveKanbanPriorityOption(card.priority);
-  const priorityLabel = priorityOption.label.split(" - ")[0] ?? priorityOption.label;
+  const priorityLabel = priorityOption?.label.split(" - ")[0] ?? priorityOption?.label;
   const estimateToken = card.estimate ? card.estimate.toUpperCase() : "-";
   const chipsAreEditable = typeof onOpenPropertyEditor === "function";
   const assigneeClassName = layout === "inline"
@@ -132,7 +132,7 @@ function CardPropertyBadges({
         className,
       )}
     >
-      {renderEditableChip(
+      {priorityOption && card.priority && priorityLabel ? renderEditableChip(
         "priority",
         PRIORITY_TOKEN_BY_VALUE[card.priority],
         priorityLabel,
@@ -140,7 +140,7 @@ function CardPropertyBadges({
           "inline-flex h-4.5 items-center rounded-sm px-1.5 text-xs/snug-plus",
           priorityOption.className,
         ),
-      )}
+      ) : null}
 
       {card.estimate && (
         renderEditableChip(

@@ -31,7 +31,7 @@ interface CardToggleSnapshotPayload {
   card?: {
     title?: string;
     description?: string;
-    priority?: Priority;
+    priority?: Priority | null;
     estimate?: Estimate | null;
     tags?: string[];
     dueDate?: string;
@@ -49,6 +49,7 @@ interface CardToggleSnapshotPayload {
 
 interface CardToggleMetaOverrides {
   priority?: Priority;
+  hasPriority: boolean;
   estimate?: Estimate | null;
   hasEstimate: boolean;
   statusId?: ToggleListStatusId;
@@ -91,6 +92,7 @@ function toMetaToken(
   value: string,
 ): string | null {
   if (propertyType === "priority") {
+    if (value === "none") return null;
     return PRIORITY_TO_TOKEN[value as Priority] ?? null;
   }
 
@@ -111,11 +113,15 @@ export function applyCardToggleMetaEdit(
   propertyType: EditableCardToggleProperty,
   value: string,
 ): string {
-  const nextToken = toMetaToken(propertyType, value);
-  if (!nextToken) return meta;
-
   const tokens = parseMetaTokens(meta);
   const existingIndex = tokens.findIndex((token) => classifyMetaToken(token) === propertyType);
+  const nextToken = toMetaToken(propertyType, value);
+  if (!nextToken) {
+    if (existingIndex < 0) return meta;
+    tokens.splice(existingIndex, 1);
+    return serializeMetaTokens(tokens);
+  }
+
   if (existingIndex >= 0) {
     tokens[existingIndex] = nextToken;
     return serializeMetaTokens(tokens);
@@ -128,6 +134,7 @@ export function applyCardToggleMetaEdit(
 
 export function parseCardToggleMetaOverrides(meta: string): CardToggleMetaOverrides {
   const overrides: CardToggleMetaOverrides = {
+    hasPriority: false,
     hasEstimate: false,
     tags: [],
   };
@@ -135,6 +142,7 @@ export function parseCardToggleMetaOverrides(meta: string): CardToggleMetaOverri
   for (const token of parseMetaTokens(meta)) {
     const propertyType = classifyMetaToken(token);
     if (propertyType === "priority") {
+      overrides.hasPriority = true;
       const priority = tokenToPriorityValue(token);
       if (priority) {
         overrides.priority = priority;
@@ -200,6 +208,10 @@ export function updateCardToggleSnapshotForMetaEdit(
   if (!parsed.card || typeof parsed.card !== "object") return snapshot;
 
   if (propertyType === "priority") {
+    if (value === "none") {
+      parsed.card.priority = null;
+      return encodeCardToggleSnapshot(parsed);
+    }
     const priority = value as Priority;
     if (!(priority in PRIORITY_TO_TOKEN)) return snapshot;
     parsed.card.priority = priority;
@@ -249,8 +261,12 @@ export function cardInputFromCardToggleSnapshot(
   const result: Partial<CardInput> = {};
   const card = parsed.card;
 
-  if (typeof card.priority === "string" && card.priority in PRIORITY_TO_TOKEN) {
-    result.priority = card.priority;
+  if (Object.prototype.hasOwnProperty.call(card, "priority")) {
+    if (card.priority === null) {
+      result.priority = null;
+    } else if (typeof card.priority === "string" && card.priority in PRIORITY_TO_TOKEN) {
+      result.priority = card.priority;
+    }
   }
 
   if (

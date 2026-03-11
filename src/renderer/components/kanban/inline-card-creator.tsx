@@ -41,7 +41,7 @@ export function InlineCardCreator({ onSave, onCancel }: InlineCardCreatorProps) 
         await onSave({
           title: value.title.trim(),
           description: "",
-          priority: value.priority || "p2-medium",
+          priority: value.priority ?? undefined,
           estimate: value.estimate || undefined,
           tags: [],
           agentStatus: value.agentStatus || undefined,
@@ -225,6 +225,7 @@ export function InlineCardCreator({ onSave, onCancel }: InlineCardCreatorProps) 
 
 function PriorityBadge({ priority, onClear }: { priority: Priority; onClear: () => void }) {
   const priorityOption = resolveKanbanPriorityOption(priority);
+  if (!priorityOption) return null;
   const priorityLabel = priorityOption.label.split(" - ")[0] ?? priorityOption.label;
   return (
     <button

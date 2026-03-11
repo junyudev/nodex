@@ -331,7 +331,6 @@ export function CalendarView({
             columnName: "Draft",
             title,
             description: "",
-            priority: "p2-medium",
             tags: [],
             agentBlocked: false,
             created: new Date(),

@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Repeat2Icon } from "lucide-react";
 import { formatTimeRange } from "@/lib/calendar-utils";
+import { resolveKanbanPriorityOption } from "@/lib/kanban-options";
 import { estimateStyles } from "@/lib/types";
 import type { Priority, Estimate } from "@/lib/types";
 import { extractPlainText } from "@/lib/nfm/extract-text";
@@ -23,7 +24,7 @@ interface CalendarEventBlockProps {
   isInteracting: boolean;
   interactive?: boolean;
   // Card detail props
-  priority: Priority;
+  priority?: Priority;
   estimate?: Estimate;
   tags: string[];
   assignee?: string;
@@ -48,22 +49,6 @@ interface CalendarEventBlockProps {
   onPointerCancel: (event: React.PointerEvent<HTMLDivElement>) => void;
   onLostPointerCapture: (event: React.PointerEvent<HTMLDivElement>) => void;
 }
-
-const priorityLabel: Record<Priority, string> = {
-  "p0-critical": "P0",
-  "p1-high": "P1",
-  "p2-medium": "P2",
-  "p3-low": "P3",
-  "p4-later": "P4",
-};
-
-const priorityClass: Record<Priority, string> = {
-  "p0-critical": "bg-[var(--priority-critical-bg)] text-[var(--priority-critical-text)]",
-  "p1-high": "bg-[var(--priority-high-bg)] text-[var(--priority-high-text)]",
-  "p2-medium": "bg-[var(--priority-medium-bg)] text-[var(--priority-medium-text)]",
-  "p3-low": "bg-[var(--priority-low-bg)] text-[var(--priority-low-text)]",
-  "p4-later": "bg-[var(--priority-later-bg)] text-[var(--priority-later-text)]",
-};
 
 const BADGE = "inline-flex items-center h-[calc(var(--spacing)*3.5)] text-xs px-[calc(var(--spacing)*1)] rounded-sm leading-none shrink-0";
 const RECURRING_BADGE_BASE = cn(BADGE, "gap-0.5");
@@ -151,6 +136,8 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
 
   const timeRange = formatTimeRange(scheduledStart, scheduledEnd);
   const descriptionText = description ? extractPlainText(description, 80) : undefined;
+  const priorityOption = resolveKanbanPriorityOption(priority);
+  const priorityLabel = priorityOption?.shortLabel ?? null;
   const isSourceGhost = dragVisual === "source-ghost";
   const isOverlayGhost = dragVisual === "overlay-ghost";
   const recurringIndicatorVariant = resolveRecurringIndicatorVariant(isRecurring, visibleDurationMinutes);
@@ -315,9 +302,11 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
               <span className="truncate text-xs/tight text-(--foreground-tertiary)">
                 {timeRange}
               </span>
-              <span className={cn(BADGE, priorityClass[priority])}>
-                {priorityLabel[priority]}
-              </span>
+              {priorityOption && priorityLabel ? (
+                <span className={cn(BADGE, priorityOption.className)}>
+                  {priorityLabel}
+                </span>
+              ) : null}
             </div>
           ) : (
             <>
@@ -340,9 +329,11 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
 
               {/* Tier 3+: badges row */}
               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-0.75">
-                <span className={cn(BADGE, priorityClass[priority])}>
-                  {priorityLabel[priority]}
-                </span>
+                {priorityOption && priorityLabel ? (
+                  <span className={cn(BADGE, priorityOption.className)}>
+                    {priorityLabel}
+                  </span>
+                ) : null}
                 {estimate && (
                   <span className={cn(BADGE, estimateStyles[estimate].className)}>
                     {estimateStyles[estimate].label}

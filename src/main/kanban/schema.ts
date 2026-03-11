@@ -15,7 +15,7 @@ import { escapeXmlAttr, getXmlAttr } from "../../shared/nfm/xml-attributes";
 
 export const COLUMNS = CARD_STATUS_COLUMNS;
 
-export const CURRENT_SCHEMA_VERSION = 23;
+export const CURRENT_SCHEMA_VERSION = 24;
 
 const RESETTABLE_TABLES = [
   "canvas",
@@ -64,7 +64,7 @@ function createLatestSchema(db: Database.Database): void {
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       description_revision_id INTEGER,
-      priority TEXT NOT NULL DEFAULT 'p2-medium',
+      priority TEXT,
       estimate TEXT,
       tags TEXT NOT NULL DEFAULT '[]',
       due_date TEXT,
@@ -86,7 +86,7 @@ function createLatestSchema(db: Database.Database): void {
       created TEXT NOT NULL,
       "order" INTEGER NOT NULL,
       CHECK (status IN ('draft', 'backlog', 'in_progress', 'in_review', 'done')),
-      CHECK (priority IN ('p0-critical', 'p1-high', 'p2-medium', 'p3-low', 'p4-later')),
+      CHECK (priority IS NULL OR priority IN ('p0-critical', 'p1-high', 'p2-medium', 'p3-low', 'p4-later')),
       CHECK (estimate IS NULL OR estimate IN ('xs', 's', 'm', 'l', 'xl'))
     );
 
@@ -241,7 +241,7 @@ interface LegacyCardRow {
   title: string;
   description: string;
   description_revision_id: number | null;
-  priority: string;
+  priority: string | null;
   estimate: string | null;
   tags: string;
   due_date: string | null;
@@ -773,7 +773,72 @@ function migrateV22ToV23(db: Database.Database): void {
     }
   }
 
-  setUserVersion(db, CURRENT_SCHEMA_VERSION);
+  setUserVersion(db, 23);
+}
+
+function createCardsV24Table(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE cards_v24 (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,
+      archived INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      description_revision_id INTEGER,
+      priority TEXT,
+      estimate TEXT,
+      tags TEXT NOT NULL DEFAULT '[]',
+      due_date TEXT,
+      assignee TEXT,
+      agent_blocked INTEGER NOT NULL DEFAULT 0,
+      agent_status TEXT,
+      run_in_target TEXT NOT NULL DEFAULT 'local_project',
+      run_in_local_path TEXT,
+      run_in_base_branch TEXT,
+      run_in_worktree_path TEXT,
+      run_in_environment_path TEXT,
+      revision INTEGER NOT NULL DEFAULT 1,
+      scheduled_start TEXT,
+      scheduled_end TEXT,
+      is_all_day INTEGER NOT NULL DEFAULT 0,
+      recurrence_json TEXT,
+      reminders_json TEXT NOT NULL DEFAULT '[]',
+      schedule_timezone TEXT,
+      created TEXT NOT NULL,
+      "order" INTEGER NOT NULL,
+      CHECK (status IN ('draft', 'backlog', 'in_progress', 'in_review', 'done')),
+      CHECK (priority IS NULL OR priority IN ('p0-critical', 'p1-high', 'p2-medium', 'p3-low', 'p4-later')),
+      CHECK (estimate IS NULL OR estimate IN ('xs', 's', 'm', 'l', 'xl'))
+    );
+  `);
+}
+
+function migrateV23ToV24(db: Database.Database): void {
+  db.exec("PRAGMA foreign_keys = OFF");
+  try {
+    createCardsV24Table(db);
+    db.exec(`
+      INSERT INTO cards_v24 (
+        id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+        tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+        run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+        scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+      )
+      SELECT
+        id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+        tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+        run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+        scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+      FROM cards
+    `);
+    db.exec("DROP TABLE cards");
+    db.exec("ALTER TABLE cards_v24 RENAME TO cards");
+    createLatestSchema(db);
+    setUserVersion(db, CURRENT_SCHEMA_VERSION);
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
+  }
 }
 
 function resetDatabaseToLatestSchema(db: Database.Database): void {
@@ -850,8 +915,12 @@ export function ensureDatabase(options: EnsureDatabaseOptions = {}): void {
     } else if (currentVersion === 21) {
       migrateV21ToV22(db);
       migrateV22ToV23(db);
+      migrateV23ToV24(db);
     } else if (currentVersion === 22) {
       migrateV22ToV23(db);
+      migrateV23ToV24(db);
+    } else if (currentVersion === 23) {
+      migrateV23ToV24(db);
     } else if (currentVersion !== CURRENT_SCHEMA_VERSION) {
       throw new Error(
         `Unsupported Nodex database schema version ${currentVersion}. Expected ${CURRENT_SCHEMA_VERSION}. Delete or recreate the local database if you want a fresh start.`,

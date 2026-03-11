@@ -9,7 +9,12 @@ import { cn } from "@/lib/utils";
 import { estimateOptions, estimateStyles, type Estimate, type Priority } from "@/lib/types";
 import { columnStyles } from "@/components/kanban/column";
 import { CalendarIcon, PriorityIcon, StatusIcon } from "@/components/shared/property-icons";
-import { KANBAN_PRIORITY_OPTIONS, KANBAN_STATUS_OPTIONS } from "@/lib/kanban-options";
+import {
+  EMPTY_PRIORITY_OPTION_VALUE,
+  KANBAN_PRIORITY_SELECT_OPTIONS,
+  KANBAN_STATUS_OPTIONS,
+  resolveKanbanPriorityOption,
+} from "@/lib/kanban-options";
 import {
   cardStagePropertyEmptyValue,
   cardStagePropertyEmptyValueInteractive,
@@ -20,7 +25,7 @@ import {
 } from "./property-value-styles";
 
 interface CardStageInlinePropertyStripProps {
-  priority: Priority;
+  priority?: Priority;
   estimate: string;
   dueDate: string;
   currentColumnId: string;
@@ -30,7 +35,7 @@ interface CardStageInlinePropertyStripProps {
     badgeText: string;
     accentColor: string;
   };
-  onPriorityChange: (next: Priority) => void;
+  onPriorityChange: (next: Priority | null) => void;
   onEstimateChange: (next: string) => void;
   onDueDateChange: (next: string) => void;
   onClearDueDate: () => void;
@@ -92,34 +97,48 @@ export function CardStageInlinePropertyStrip({
         </div>
 
         <div className="flex h-7.5 items-center px-1.5">
-          <Select value={priority} onValueChange={(value) => onPriorityChange(value as Priority)}>
+          <Select
+            value={priority ?? EMPTY_PRIORITY_OPTION_VALUE}
+            onValueChange={(value) => onPriorityChange(
+              value === EMPTY_PRIORITY_OPTION_VALUE ? null : (value as Priority),
+            )}
+          >
             <SelectTrigger
               className={cn(
                 cardStagePropertyTriggerChrome,
                 cardStagePropertyValueHoverSurface,
                 "gap-1 px-0",
+                !priority && "text-(--foreground-tertiary) hover:text-(--foreground-secondary)",
               )}
             >
-              <span
-                className={cn(
-                  "inline-flex h-5 items-center rounded-sm px-1.5 text-sm",
-                  KANBAN_PRIORITY_OPTIONS.find((option) => option.value === priority)?.className,
-                )}
-              >
-                {KANBAN_PRIORITY_OPTIONS.find((option) => option.value === priority)?.shortLabel}
-              </span>
+              {resolveKanbanPriorityOption(priority) ? (
+                <span
+                  className={cn(
+                    "inline-flex h-5 items-center rounded-sm px-1.5 text-sm",
+                    resolveKanbanPriorityOption(priority)?.className,
+                  )}
+                >
+                  {resolveKanbanPriorityOption(priority)?.shortLabel}
+                </span>
+              ) : (
+                <span className={cardStagePropertyEmptyValue}>Empty</span>
+              )}
             </SelectTrigger>
             <SelectContent sideOffset={4}>
-              {KANBAN_PRIORITY_OPTIONS.map((option) => (
+              {KANBAN_PRIORITY_SELECT_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  <span
-                    className={cn(
-                      "inline-flex h-5 items-center rounded-sm px-1.5 text-sm",
-                      option.className,
-                    )}
-                  >
-                    {option.label}
-                  </span>
+                  {option.value === EMPTY_PRIORITY_OPTION_VALUE ? (
+                    <span className="text-sm text-(--foreground-tertiary)">{option.label}</span>
+                  ) : (
+                    <span
+                      className={cn(
+                        "inline-flex h-5 items-center rounded-sm px-1.5 text-sm",
+                        option.className,
+                      )}
+                    >
+                      {option.label}
+                    </span>
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>

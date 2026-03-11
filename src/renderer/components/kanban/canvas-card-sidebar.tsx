@@ -121,14 +121,16 @@ export function CanvasCardSidebar({
                         {card.title}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1">
-                        <span
-                          className={cn(
-                            "rounded-sm px-1 text-xs font-medium",
-                            PRIORITY_CLASSES[card.priority] ?? PRIORITY_CLASSES["p2-medium"],
-                          )}
-                        >
-                          {PRIORITY_LABELS[card.priority] ?? "P2"}
-                        </span>
+                        {card.priority ? (
+                          <span
+                            className={cn(
+                              "rounded-sm px-1 text-xs font-medium",
+                              PRIORITY_CLASSES[card.priority],
+                            )}
+                          >
+                            {PRIORITY_LABELS[card.priority]}
+                          </span>
+                        ) : null}
                         <span className="truncate text-xs text-gray-400">
                           {columnName}
                         </span>

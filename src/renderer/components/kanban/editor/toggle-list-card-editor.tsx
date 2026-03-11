@@ -947,7 +947,9 @@ export function ToggleListCardEditor({
 
       switch (propertyType) {
         case "priority":
-          await updateCard(card.columnId, cardId, { priority: value as Priority });
+          await updateCard(card.columnId, cardId, {
+            priority: value === "none" ? null : (value as Priority),
+          });
           break;
         case "estimate":
           await updateCard(card.columnId, cardId, {

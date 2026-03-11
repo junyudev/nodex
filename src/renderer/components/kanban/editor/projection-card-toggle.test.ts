@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ToggleListCard } from "../../../lib/toggle-list/types";
 import {
+  applyCardToggleMetaEdit,
+  updateCardToggleSnapshotForMetaEdit,
+} from "./card-toggle-snapshot";
+import {
   PROJECTION_OWNER_PROP,
   PROJECTION_CARD_ID_PROP,
   PROJECTION_SOURCE_PROJECT_PROP,
@@ -169,6 +173,37 @@ describe("projection card toggle helpers", () => {
     expect(patches[0]?.updates.priority).toBe("p1-high");
     expect(patches[0]?.updates.estimate).toBe("m");
     expect(patches[0]?.targetStatus).toBe(undefined);
+  });
+
+  test("collectProjectedCardPatchesForOwner preserves cleared priority as null", () => {
+    const projected = buildProjectedCardToggleBlock({
+      ownerBlockId: "embed-1",
+      projectionKind: "toggleListInlineView",
+      sourceProjectId: "default",
+      card: makeCard({
+        id: "abc",
+        priority: "p1-high",
+      }),
+      propertyOrder: ["priority", "estimate", "status", "tags"],
+      hiddenProperties: [],
+    }) as {
+      props?: Record<string, unknown>;
+    };
+
+    if (!projected.props) {
+      expect("missing-props").toBe("present");
+      return;
+    }
+
+    const currentMeta = typeof projected.props.meta === "string" ? projected.props.meta : "";
+    const currentSnapshot = typeof projected.props.snapshot === "string" ? projected.props.snapshot : "";
+    projected.props.meta = applyCardToggleMetaEdit(currentMeta, "priority", "none");
+    projected.props.snapshot = updateCardToggleSnapshotForMetaEdit(currentSnapshot, "priority", "none");
+
+    const patches = collectProjectedCardPatchesForOwner([projected], "embed-1");
+    expect(patches.length).toBe(1);
+    expect(Object.prototype.hasOwnProperty.call(patches[0]?.updates ?? {}, "priority")).toBeTrue();
+    expect(patches[0]?.updates.priority === null).toBeTrue();
   });
 
   test("collectProjectedCardPatchesForOwner strips nested projected rows from description", () => {

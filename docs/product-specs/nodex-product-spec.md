@@ -151,7 +151,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 | `id` | string | Yes | 7-character alphanumeric ID |
 | `title` | string | Yes | Task name (max 512 chars) |
 | `description` | string | No | [Notion-flavored Markdown (NFM)](../references/notion-flavored-markdown-spec.md) details (default: ""), including `<image ...>` blocks and inline `<attachment kind="text|file|folder" mode="materialized|link" ... />` chips with local or managed asset URIs (max 1,000,000 chars) |
-| `priority` | enum | No | p0-critical, p1-high, p2-medium, p3-low, p4-later (default: p2-medium) |
+| `priority` | enum | No | Optional priority tier: p0-critical, p1-high, p2-medium, p3-low, p4-later |
 | `estimate` | enum | No | xs, s, m, l, xl |
 | `tags` | string[] | No | Custom labels (default: [], max 64 tags, each max 64 chars) |
 | `dueDate` | date | No | Task deadline (YYYY-MM-DD format) |
@@ -176,7 +176,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 #### 6. Inline Card Creator
 - Notion-style inline form in each column
 - Cards created via the inline creator are inserted at the top of the current column
-- Quick-add with priority, estimate, tags
+- Quick-add with optional priority, estimate, tags
 - Enter to save, Escape to cancel
 - Priority/estimate dropdowns use Radix Select popper positioning for reliable rendering with custom trigger chips
 - Click-outside save/cancel logic ignores portaled select menus so property selection does not dismiss the creator
@@ -187,6 +187,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Auto-save on close (1s debounce + immediate save on blur)
 - Card Stage visibility context is global: switching spaces/projects and views keeps the current Card Stage state/card until explicitly closed
 - Card Stage draft fields survive view/space switching because local patch/update/move operations keep the active card snapshot in sync
+- Card Stage priority uses an explicit empty state by default; empty priority renders as a subdued placeholder in selectors and is omitted from dense card badges.
 - Card Stage Properties includes schedule editing with an `All-day` mode toggle.
 - Card Stage Properties includes a `Run in` selector for new thread execution target: `Local project` (with optional folder override picker), `New worktree` (base-branch selector + environment selector for `.codex/environments/*.toml`), and `Cloud` (mock/unavailable).
 - Timed mode uses start/end `datetime-local` inputs with quick actions (`Set schedule`, `Now + 1h`, `Clear`) and automatic end-after-start guardrails.
@@ -621,7 +622,7 @@ CREATE TABLE cards (
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   description_revision_id INTEGER,  -- latest materialized description revision
-  priority TEXT NOT NULL DEFAULT 'p2-medium',
+  priority TEXT,                    -- nullable priority tier
   estimate TEXT,                    -- nullable: xs, s, m, l, xl
   tags TEXT NOT NULL DEFAULT '[]',  -- JSON array
   due_date TEXT,                    -- YYYY-MM-DD

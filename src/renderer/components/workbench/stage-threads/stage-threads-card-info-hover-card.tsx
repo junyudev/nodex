@@ -33,7 +33,7 @@ export function CardInfoHoverCard({
 
   const tone = columnId ? columnStyles[columnId] : null;
   const priorityOption = resolveKanbanPriorityOption(card.priority);
-  const priorityLabel = priorityOption.label.replace(" - ", " ");
+  const priorityLabel = priorityOption?.label.replace(" - ", " ") ?? null;
   const descriptionPreview = card.description?.trim()
     ? card.description.slice(0, 140) + (card.description.length > 140 ? "..." : "")
     : null;
@@ -85,12 +85,14 @@ export function CardInfoHoverCard({
               )}
 
               {/* Priority */}
-              <span className={cn(
-                "inline-flex h-5 items-center rounded-full px-2 text-[11px] font-medium",
-                priorityOption.className,
-              )}>
-                {priorityLabel}
-              </span>
+              {priorityOption && priorityLabel ? (
+                <span className={cn(
+                  "inline-flex h-5 items-center rounded-full px-2 text-[11px] font-medium",
+                  priorityOption.className,
+                )}>
+                  {priorityLabel}
+                </span>
+              ) : null}
 
               {/* Estimate */}
               {card.estimate && (

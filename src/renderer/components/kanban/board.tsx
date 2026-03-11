@@ -691,11 +691,11 @@ export function KanbanBoard({
       }
 
       if (property === "priority") {
-        if (card.priority === value) {
+        if ((card.priority ?? "none") === value) {
           return;
         }
         await updateCard(columnId, cardId, {
-          priority: value as CardType["priority"],
+          priority: value === "none" ? null : (value as CardType["priority"]),
         });
         return;
       }

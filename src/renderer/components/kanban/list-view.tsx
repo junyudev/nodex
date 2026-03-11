@@ -153,7 +153,7 @@ export function ListView({ projectId, searchQuery, openCardStage, cardStageCardI
           cmp = a.columnId.localeCompare(b.columnId);
           break;
         case "priority":
-          cmp = a.priority.localeCompare(b.priority);
+          cmp = (a.priority ?? "").localeCompare(b.priority ?? "");
           break;
         case "estimate":
           cmp = (a.estimate || "").localeCompare(b.estimate || "");
@@ -419,14 +419,20 @@ export function ListView({ projectId, searchQuery, openCardStage, cardStageCardI
 
                   {/* Priority */}
                   <td className="border-r border-(--table-border) px-2 py-1 whitespace-nowrap">
-                    <span
-                      className={cn(
-                        "inline-flex h-5 items-center rounded-sm px-1.5 text-sm/5",
-                        priorityOption.className
-                      )}
-                    >
-                      {priorityOption.label}
-                    </span>
+                    {priorityOption ? (
+                      <span
+                        className={cn(
+                          "inline-flex h-5 items-center rounded-sm px-1.5 text-sm/5",
+                          priorityOption.className
+                        )}
+                      >
+                        {priorityOption.label}
+                      </span>
+                    ) : (
+                      <span className="text-sm text-(--foreground-tertiary)">
+                        —
+                      </span>
+                    )}
                   </td>
 
                   {/* Estimate */}

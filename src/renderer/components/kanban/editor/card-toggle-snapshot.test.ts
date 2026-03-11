@@ -51,6 +51,23 @@ describe("card toggle snapshot helpers", () => {
     expect(decoded?.statusName).toBe("Done");
   });
 
+  test("clearing priority preserves an explicit null in the snapshot", () => {
+    const snapshot = encodeCardToggleSnapshot({
+      card: {
+        title: "Card",
+        priority: "p2-medium",
+      },
+    });
+
+    const cleared = updateCardToggleSnapshotForMetaEdit(snapshot, "priority", "none");
+    const decoded = parseCardToggleSnapshot(cleared);
+    const input = cardInputFromCardToggleSnapshot(cleared);
+
+    expect(Object.prototype.hasOwnProperty.call(decoded?.card ?? {}, "priority")).toBeTrue();
+    expect(decoded?.card?.priority === null).toBeTrue();
+    expect(input.priority === null).toBeTrue();
+  });
+
   test("cardInputFromCardToggleSnapshot extracts persisted card properties", () => {
     const snapshot = encodeCardToggleSnapshot({
       card: {

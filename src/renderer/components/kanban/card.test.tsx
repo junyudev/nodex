@@ -193,4 +193,30 @@ describe("kanban card", () => {
 
     expect(markup.includes('data-card-context-menu-trigger="true"')).toBe(true);
   });
+
+  test("omits the priority chip when the card has no priority", async () => {
+    mockCardPropertyPosition = "inline";
+    const { Card } = await import("./card");
+
+    const markup = renderToStaticMarkup(
+      createElement(Card, {
+        card: {
+          id: "card-no-priority",
+          status: "in_progress",
+          archived: false,
+          title: "Task",
+          description: "",
+          tags: [],
+          agentBlocked: false,
+          created: new Date("2026-03-01T00:00:00.000Z"),
+          order: 0,
+        },
+        columnId: "in_progress",
+        onClick: () => undefined,
+        onUpdateProperty: () => undefined,
+      }),
+    );
+
+    expect(markup.includes('aria-label="Edit priority"')).toBe(false);
+  });
 });

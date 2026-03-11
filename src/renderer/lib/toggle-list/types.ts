@@ -113,7 +113,6 @@ export const DEFAULT_TOGGLE_LIST_SETTINGS: ToggleListSettings = {
         {
           all: [
             { field: "status", op: "in", values: [...TOGGLE_LIST_STATUS_ORDER] },
-            { field: "priority", op: "in", values: [...TOGGLE_LIST_PRIORITY_ORDER] },
           ],
         },
       ],

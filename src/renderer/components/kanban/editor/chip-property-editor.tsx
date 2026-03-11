@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
-import { KANBAN_PRIORITY_OPTIONS } from "@/lib/kanban-options";
+import { EMPTY_PRIORITY_OPTION_VALUE, KANBAN_PRIORITY_SELECT_OPTIONS } from "@/lib/kanban-options";
 import { estimateOptions, estimateStyles } from "@/lib/types";
 import {
   SELECTOR_MENU_CONTENT_CLASS_NAME,
@@ -182,7 +182,7 @@ interface MenuItemData {
 function getItemsForType(propertyType: string): MenuItemData[] {
   switch (propertyType) {
     case "priority":
-      return KANBAN_PRIORITY_OPTIONS.map((opt) => ({
+      return KANBAN_PRIORITY_SELECT_OPTIONS.map((opt) => ({
         value: opt.value,
         label: opt.label,
         className: opt.className,
@@ -210,7 +210,7 @@ function getItemsForType(propertyType: string): MenuItemData[] {
 function resolveCurrentValue(propertyType: string, token: string): string {
   switch (propertyType) {
     case "priority":
-      return tokenToPriorityValue(token) ?? "";
+      return tokenToPriorityValue(token) ?? EMPTY_PRIORITY_OPTION_VALUE;
     case "estimate":
       return tokenToEstimateValue(token) ?? "none";
     case "status":
@@ -222,6 +222,9 @@ function resolveCurrentValue(propertyType: string, token: string): string {
 
 function renderItemContent(propertyType: string, item: MenuItemData) {
   if (propertyType === "priority" && item.className) {
+    if (item.value === EMPTY_PRIORITY_OPTION_VALUE) {
+      return <span className="text-base text-(--foreground-tertiary)">{item.label}</span>;
+    }
     return (
       <span className={cn("inline-flex h-5 items-center rounded-sm px-1.5 text-base/5 font-medium", item.className)}>
         {item.label}

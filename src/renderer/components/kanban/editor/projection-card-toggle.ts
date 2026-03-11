@@ -11,7 +11,11 @@ import type {
 import {
   TOGGLE_LIST_STATUS_ORDER,
 } from "../../../lib/toggle-list/types";
-import { parseCardToggleMetaOverrides } from "./card-toggle-snapshot";
+import {
+  cardInputFromCardToggleSnapshot,
+  encodeCardToggleSnapshot,
+  parseCardToggleMetaOverrides,
+} from "./card-toggle-snapshot";
 
 export const PROJECTION_OWNER_PROP = "projectionOwnerId";
 export const PROJECTION_KIND_PROP = "projectionKind";
@@ -79,6 +83,30 @@ function cloneWithChildren(block: BlockLike, children: unknown[]): unknown {
     ...block,
     children,
   };
+}
+
+function toProjectedSnapshotPayload(
+  sourceProjectId: string,
+  card: ToggleListCard,
+): string {
+  return encodeCardToggleSnapshot({
+    card: {
+      title: card.title,
+      description: card.description,
+      priority: card.priority ?? null,
+      estimate: card.estimate ?? null,
+      tags: card.tags,
+      dueDate: card.dueDate?.toISOString(),
+      scheduledStart: card.scheduledStart?.toISOString(),
+      scheduledEnd: card.scheduledEnd?.toISOString(),
+      isAllDay: card.isAllDay,
+      assignee: card.assignee,
+      agentBlocked: card.agentBlocked,
+    },
+    projectId: sourceProjectId,
+    status: card.columnId,
+    statusName: card.columnName,
+  });
 }
 
 function isToggleListStatusId(value: string): value is ToggleListStatusId {
@@ -238,6 +266,7 @@ export function buildProjectedCardToggleBlock(
     id: makeProjectedCardToggleBlockId(ownerBlockId, sourceProjectId, card.id),
     props: {
       ...baseProps,
+      snapshot: toProjectedSnapshotPayload(sourceProjectId, card),
       sourceProjectId,
       sourceStatus: card.columnId,
       sourceStatusName: card.columnName,
@@ -277,8 +306,14 @@ export function pickProjectedCardFieldUpdates(
     updates.description = nextUpdates.description;
   }
 
-  if (typeof nextUpdates.priority === "string" && nextUpdates.priority !== card.priority) {
-    updates.priority = nextUpdates.priority;
+  if (hasOwn(nextUpdates, "priority")) {
+    const nextPriority = typeof nextUpdates.priority === "string"
+      ? nextUpdates.priority
+      : null;
+    const currentPriority = card.priority ?? null;
+    if (nextPriority !== currentPriority) {
+      updates.priority = nextPriority;
+    }
   }
 
   if (hasOwn(nextUpdates, "estimate")) {
@@ -339,12 +374,19 @@ export function collectProjectedCardPatchesForOwner(
     const patch = blockToCardPatch(patchBlock, editorElement);
     if (!patch) continue;
     const meta = toStringProp(block.props, "meta");
+    const snapshot = toStringProp(block.props, "snapshot");
     const metaOverrides = parseCardToggleMetaOverrides(meta);
+    const snapshotDefaults = cardInputFromCardToggleSnapshot(snapshot);
 
     const updates: Partial<CardInput> = {
       title: patch.title,
       description: patch.description,
-      ...(metaOverrides.priority ? { priority: metaOverrides.priority } : {}),
+      ...(hasOwn(snapshotDefaults, "priority")
+        ? { priority: snapshotDefaults.priority ?? null }
+        : {}),
+      ...(metaOverrides.hasPriority
+        ? { priority: metaOverrides.priority ?? null }
+        : {}),
       ...(metaOverrides.hasEstimate
         ? { estimate: metaOverrides.estimate ?? null }
         : {}),
