@@ -268,6 +268,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Schema v21 migration is destructive for pre-v21 history rows: cards are preserved, legacy history is dropped, and fresh description revisions are seeded from current card descriptions
 - History panel is card-scoped (opened as an overlay from Card Stage) and shows a per-card edit timeline with timestamps, plus selectable detail panes for field diffs and snapshots
 - History panel is resizable (640–1400px, default 960px) with width persisted in localStorage
+- Detailed storage and migration rules for revision-based description history: [Description History Revisions](./description-history-revisions.md)
 - **Revert single change**: Undo a specific history entry (update, move, create, or delete) — creates a new forward history entry so the revert is itself visible and reversible
 - **Restore to point**: Time-travel a card to any historical state by reconstructing from creation snapshot + forward deltas; applies field updates and column moves as needed
 - Action buttons shown in entry detail view with inline confirmation flow; disabled for undo meta-entries
@@ -1141,26 +1142,6 @@ nodex query "SELECT * FROM cards WHERE title LIKE ?" "%bug%"
 - **Custom parser/serializer**: Pure functions in `src/renderer/lib/nfm/`, independent of editor library
 - **Three-layer architecture**: NFM string ↔ NfmBlock tree ↔ BlockNote blocks — clean separation of concerns
 - **Read-only renderer**: Card previews use `NfmRenderer` (lightweight, no editor overhead)
-
----
-
-## Future Features
-
-### Phase 2: Agent Triggers (Planned)
-- Auto-trigger Claude Code when card moves to specific column
-- Webhook support for external integrations
-- Custom column actions
-
-### Phase 3: Enhanced UI
-- Filtering by priority, tags, assignee
-- Search across all cards
-- Archive view for done cards
-- Dark mode improvements
-
-### Phase 4: Multi-Agent Support
-- Agent assignment and load balancing
-- Parallel task execution
-- Dependency tracking between cards
 
 ---
 
