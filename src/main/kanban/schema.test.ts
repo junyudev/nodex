@@ -3,9 +3,15 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isUuidV7 } from "../../shared/card-id";
+import {
+  createInitialDescriptionRevision,
+  createNextDescriptionRevision,
+  reconstructDescription,
+} from "./description-revision-service";
 import { closeDatabase, initializeDatabase } from "./db-service";
 import { getDatabasePath } from "./config";
-import { CURRENT_SCHEMA_VERSION } from "./schema";
+import { CURRENT_SCHEMA_VERSION, getSchemaMigrationTargets } from "./schema";
 
 function isUnsupportedSqliteError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -17,6 +23,14 @@ function encodeBase64Utf8(value: string): string {
 }
 
 describe("schema initialization", () => {
+  test("plans the full migration chain for schema version 20", () => {
+    expect(JSON.stringify(getSchemaMigrationTargets(20))).toBe("[21,22,23,24,25]");
+  });
+
+  test("plans only the v25 step for schema version 24", () => {
+    expect(JSON.stringify(getSchemaMigrationTargets(24))).toBe("[25]");
+  });
+
   test("initializes the latest schema from a fresh database", async () => {
     closeDatabase();
 
@@ -50,6 +64,21 @@ describe("schema initialization", () => {
       const historyColumnNames = historyColumns.map((column) => column.name);
       expect(historyColumnNames.includes("previous_description_revision_id")).toBeTrue();
       expect(historyColumnNames.includes("snapshot_description_revision_id")).toBeTrue();
+
+      const codexThreadColumns = db.prepare("PRAGMA table_info(codex_card_threads)").all() as Array<{
+        name: string;
+        pk: number;
+      }>;
+      const codexThreadColumnNames = codexThreadColumns.map((column) => column.name);
+      expect(codexThreadColumnNames.includes("id")).toBeFalse();
+      expect(codexThreadColumns.find((column) => column.name === "thread_id")?.pk).toBe(1);
+
+      const codexTableSql = db.prepare(`
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'codex_card_threads'
+      `).get() as { sql: string } | undefined;
+      expect((codexTableSql?.sql ?? "").includes("WITHOUT ROWID")).toBeTrue();
 
       const autoVacuum = db.prepare("PRAGMA auto_vacuum").get() as
         | { auto_vacuum: number }
@@ -260,11 +289,11 @@ describe("schema initialization", () => {
       const migratedCard = migratedDb.prepare(`
         SELECT id, description, description_revision_id
         FROM cards
-        WHERE id = ?
-      `).get("legacy-card") as
+        WHERE title = ?
+      `).get("Legacy card") as
         | { id: string; description: string; description_revision_id: number | null }
         | undefined;
-      expect(migratedCard?.id).toBe("legacy-card");
+      expect(isUuidV7(migratedCard?.id ?? "")).toBeTrue();
       expect(migratedCard?.description).toBe("Legacy description");
       expect(migratedCard?.description_revision_id).not.toBeNull();
 
@@ -515,16 +544,22 @@ describe("schema initialization", () => {
       expect(priorityColumn?.notnull).toBe(0);
       expect(priorityColumn?.dflt_value ?? null).toBe(null);
 
-      const descriptionRow = migratedDb.prepare("SELECT description FROM cards WHERE id = ?").get("legacy-card") as
-        | { description: string }
+      const descriptionRow = migratedDb.prepare("SELECT id, description FROM cards WHERE title = ?").get("Legacy card") as
+        | { id: string; description: string }
         | undefined;
-      const blockRow = migratedDb.prepare("SELECT content FROM description_blocks WHERE hash = ?").get("legacy-block") as
+      const blockRow = migratedDb.prepare(`
+        SELECT content
+        FROM description_blocks
+        WHERE content LIKE '%status="in_review"%'
+        LIMIT 1
+      `).get() as
         | { content: string }
         | undefined;
       const historyRow = migratedDb.prepare("SELECT previous_values, new_values, card_snapshot FROM history WHERE id = 1").get() as
         | { previous_values: string | null; new_values: string | null; card_snapshot: string | null }
         | undefined;
 
+      expect(isUuidV7(descriptionRow?.id ?? "")).toBeTrue();
       expect(descriptionRow?.description.includes('status="backlog"')).toBeTrue();
       expect(descriptionRow?.description.includes('status-name="Backlog"')).toBeTrue();
       expect(descriptionRow?.description.includes('column="5-ready"')).toBeFalse();
@@ -785,10 +820,588 @@ describe("schema initialization", () => {
       expect(priorityColumn?.notnull).toBe(0);
       expect(priorityColumn?.dflt_value ?? null).toBe(null);
 
-      const preserved = migratedDb.prepare("SELECT priority FROM cards WHERE id = ?").get("card-p2") as
-        | { priority: string | null }
+      const preserved = migratedDb.prepare("SELECT id, priority FROM cards WHERE title = ?").get("Keeps medium") as
+        | { id: string; priority: string | null }
         | undefined;
+      expect(isUuidV7(preserved?.id ?? "")).toBeTrue();
       expect(preserved?.priority).toBe("p2-medium");
+      migratedDb.close();
+    } catch (error) {
+      if (isUnsupportedSqliteError(error)) {
+        initializationRan = false;
+      } else {
+        throw error;
+      }
+    } finally {
+      closeDatabase();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      delete process.env.KANBAN_DIR;
+    }
+
+    if (!initializationRan) {
+      expect(true).toBeTrue();
+    }
+  });
+
+  test("migrates schema version 24 card ids to UUID-v7 and rebuilds dependent rows", async () => {
+    closeDatabase();
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-schema-v24-"));
+    process.env.KANBAN_DIR = tempDir;
+
+    let initializationRan = true;
+    try {
+      const dbPath = getDatabasePath();
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      const db = new Database(dbPath);
+      db.exec(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          icon TEXT NOT NULL DEFAULT '',
+          workspace_path TEXT,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE cards (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          description_revision_id INTEGER,
+          priority TEXT,
+          estimate TEXT,
+          tags TEXT NOT NULL DEFAULT '[]',
+          due_date TEXT,
+          assignee TEXT,
+          agent_blocked INTEGER NOT NULL DEFAULT 0,
+          agent_status TEXT,
+          run_in_target TEXT NOT NULL DEFAULT 'local_project',
+          run_in_local_path TEXT,
+          run_in_base_branch TEXT,
+          run_in_worktree_path TEXT,
+          run_in_environment_path TEXT,
+          revision INTEGER NOT NULL DEFAULT 1,
+          scheduled_start TEXT,
+          scheduled_end TEXT,
+          is_all_day INTEGER NOT NULL DEFAULT 0,
+          recurrence_json TEXT,
+          reminders_json TEXT NOT NULL DEFAULT '[]',
+          schedule_timezone TEXT,
+          created TEXT NOT NULL,
+          "order" INTEGER NOT NULL,
+          CHECK (status IN ('draft', 'backlog', 'in_progress', 'in_review', 'done')),
+          CHECK (priority IS NULL OR priority IN ('p0-critical', 'p1-high', 'p2-medium', 'p3-low', 'p4-later')),
+          CHECK (estimate IS NULL OR estimate IN ('xs', 's', 'm', 'l', 'xl'))
+        );
+
+        CREATE TABLE description_blocks (
+          hash TEXT PRIMARY KEY,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE description_revisions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          card_id TEXT NOT NULL,
+          parent_revision_id INTEGER,
+          kind TEXT NOT NULL,
+          block_hashes_json TEXT,
+          ops_json TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE codex_card_threads (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          thread_id TEXT NOT NULL UNIQUE,
+          thread_name TEXT,
+          thread_preview TEXT NOT NULL DEFAULT '',
+          model_provider TEXT NOT NULL DEFAULT '',
+          cwd TEXT,
+          status_type TEXT NOT NULL DEFAULT 'notLoaded',
+          status_active_flags_json TEXT NOT NULL DEFAULT '[]',
+          archived INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          linked_at TEXT NOT NULL
+        );
+
+        CREATE TABLE codex_thread_snapshots (
+          thread_id TEXT PRIMARY KEY REFERENCES codex_card_threads(thread_id) ON DELETE CASCADE,
+          turns_json TEXT NOT NULL DEFAULT '[]',
+          items_json TEXT NOT NULL DEFAULT '[]',
+          updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          operation TEXT NOT NULL,
+          card_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          timestamp TEXT NOT NULL,
+          previous_values TEXT,
+          new_values TEXT,
+          from_status TEXT,
+          to_status TEXT,
+          from_archived INTEGER,
+          to_archived INTEGER,
+          from_order INTEGER,
+          to_order INTEGER,
+          card_snapshot TEXT,
+          previous_description_revision_id INTEGER,
+          new_description_revision_id INTEGER,
+          snapshot_description_revision_id INTEGER,
+          session_id TEXT,
+          group_id TEXT,
+          is_undone INTEGER NOT NULL DEFAULT 0,
+          undo_of INTEGER
+        );
+
+        CREATE TABLE recurrence_exceptions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          exception_type TEXT NOT NULL,
+          override_start TEXT,
+          override_end TEXT,
+          override_reminders_json TEXT,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE reminder_receipts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          reminder_offset_minutes INTEGER NOT NULL,
+          delivered_at TEXT NOT NULL
+        );
+
+        CREATE TABLE reminder_snoozes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          due_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          consumed_at TEXT
+        );
+
+        CREATE TABLE recurrence_occurrence_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          occurrence_start TEXT NOT NULL,
+          action TEXT NOT NULL,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE canvas (
+          project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+          elements TEXT NOT NULL DEFAULT '[]',
+          app_state TEXT NOT NULL DEFAULT '{}',
+          files TEXT NOT NULL DEFAULT '{}',
+          updated TEXT NOT NULL
+        );
+
+        PRAGMA user_version = 24;
+      `);
+
+      db.prepare(`
+        INSERT INTO projects (id, name, description, icon, workspace_path, created)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run("default", "Default", "", "", null, "2026-03-12T00:00:00.000Z");
+      db.prepare(`
+        INSERT INTO projects (id, name, description, icon, workspace_path, created)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run("ops", "Ops", "", "", null, "2026-03-12T00:00:00.000Z");
+
+      const currentHostDescription = [
+        `<card-ref project="ops" card="legacy-remote" />`,
+        `<card-toggle card="legacy-local" meta="[Backlog]">`,
+        "\tLocal title",
+        "</card-toggle>",
+      ].join("\n");
+
+      db.prepare(`
+        INSERT INTO cards (
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+          tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+          run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+          scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "legacy-host",
+        "default",
+        "backlog",
+        0,
+        "Host card",
+        currentHostDescription,
+        null,
+        "p2-medium",
+        null,
+        "[]",
+        null,
+        null,
+        0,
+        null,
+        "local_project",
+        null,
+        null,
+        null,
+        null,
+        1,
+        null,
+        null,
+        0,
+        null,
+        "[]",
+        null,
+        "2026-03-12T00:00:00.000Z",
+        0,
+      );
+      db.prepare(`
+        INSERT INTO cards (
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+          tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+          run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+          scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "legacy-local",
+        "default",
+        "draft",
+        0,
+        "Local target",
+        "",
+        null,
+        null,
+        null,
+        "[]",
+        null,
+        null,
+        0,
+        null,
+        "local_project",
+        null,
+        null,
+        null,
+        null,
+        1,
+        null,
+        null,
+        0,
+        null,
+        "[]",
+        null,
+        "2026-03-12T00:00:01.000Z",
+        0,
+      );
+      db.prepare(`
+        INSERT INTO cards (
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+          tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+          run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+          scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "legacy-remote",
+        "ops",
+        "in_review",
+        0,
+        "Remote target",
+        "",
+        null,
+        null,
+        null,
+        "[]",
+        null,
+        null,
+        0,
+        null,
+        "local_project",
+        null,
+        null,
+        null,
+        null,
+        1,
+        null,
+        null,
+        0,
+        null,
+        "[]",
+        null,
+        "2026-03-12T00:00:02.000Z",
+        0,
+      );
+
+      const initialHostDescription = `<card-ref project="ops" card="legacy-remote" />`;
+      const hostRevision1 = createInitialDescriptionRevision(
+        db,
+        "legacy-host",
+        initialHostDescription,
+        "2026-03-12T00:01:00.000Z",
+      );
+      const hostRevision2 = createNextDescriptionRevision(
+        db,
+        "legacy-host",
+        hostRevision1,
+        currentHostDescription,
+        "2026-03-12T00:02:00.000Z",
+      );
+      db.prepare("UPDATE cards SET description_revision_id = ? WHERE id = ?").run(hostRevision2, "legacy-host");
+
+      db.prepare(`
+        INSERT INTO history (
+          id, project_id, operation, card_id, status, archived, timestamp, previous_values, new_values,
+          from_status, to_status, from_archived, to_archived, from_order, to_order, card_snapshot,
+          previous_description_revision_id, new_description_revision_id, snapshot_description_revision_id,
+          session_id, group_id, is_undone, undo_of
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        1,
+        "default",
+        "update",
+        "legacy-host",
+        "backlog",
+        0,
+        "2026-03-12T00:03:00.000Z",
+        JSON.stringify({ id: "legacy-host", description: initialHostDescription }),
+        JSON.stringify({ id: "legacy-host", description: currentHostDescription }),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        JSON.stringify({ id: "legacy-host", title: "Host card", description: currentHostDescription }),
+        hostRevision1,
+        hostRevision2,
+        hostRevision2,
+        "session-v24",
+        "group-v24",
+        0,
+        null,
+      );
+
+      db.prepare(`
+        INSERT INTO codex_card_threads (
+          project_id, card_id, thread_id, thread_name, thread_preview, model_provider, cwd,
+          status_type, status_active_flags_json, archived, created_at, updated_at, linked_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "default",
+        "legacy-host",
+        "thread-host",
+        "Host thread",
+        "preview",
+        "openai",
+        "/tmp/nodex",
+        "notLoaded",
+        "[]",
+        0,
+        1_762_236_100_000,
+        1_762_236_200_000,
+        "2026-03-12T00:03:30.000Z",
+      );
+      db.prepare(`
+        INSERT INTO codex_thread_snapshots (thread_id, turns_json, items_json, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run("thread-host", "[]", "[\"item\"]", 1_762_236_200_000);
+
+      db.prepare(`
+        INSERT INTO recurrence_exceptions (
+          id, project_id, card_id, occurrence_start, exception_type, override_start, override_end,
+          override_reminders_json, created
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        1,
+        "default",
+        "legacy-host",
+        "2026-03-14T09:00:00.000Z",
+        "skip",
+        null,
+        null,
+        null,
+        "2026-03-12T00:04:00.000Z",
+      );
+      db.prepare(`
+        INSERT INTO reminder_receipts (
+          id, project_id, card_id, occurrence_start, reminder_offset_minutes, delivered_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        1,
+        "default",
+        "legacy-host",
+        "2026-03-14T09:00:00.000Z",
+        15,
+        "2026-03-14T08:45:00.000Z",
+      );
+      db.prepare(`
+        INSERT INTO reminder_snoozes (
+          id, project_id, card_id, occurrence_start, due_at, created_at, consumed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        1,
+        "default",
+        "legacy-host",
+        "2026-03-14T09:00:00.000Z",
+        "2026-03-14T08:50:00.000Z",
+        "2026-03-14T08:46:00.000Z",
+        null,
+      );
+      db.prepare(`
+        INSERT INTO recurrence_occurrence_log (project_id, card_id, occurrence_start, action, created)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        "default",
+        "legacy-host",
+        "2026-03-14T09:00:00.000Z",
+        "completed",
+        "2026-03-14T09:05:00.000Z",
+      );
+      db.close();
+
+      const progressValues: number[] = [];
+      await initializeDatabase({
+        onMigrationProgress: (progress) => {
+          if (progress.type === "InProgress") {
+            progressValues.push(progress.value);
+          }
+        },
+      });
+
+      const migratedDb = new Database(dbPath, { readonly: true });
+      const version = migratedDb.prepare("PRAGMA user_version").get() as
+        | { user_version: number }
+        | undefined;
+      expect(version?.user_version).toBe(CURRENT_SCHEMA_VERSION);
+
+      expect(progressValues.length > 0).toBeTrue();
+      expect(progressValues[0] >= 1).toBeTrue();
+      expect(progressValues[progressValues.length - 1] >= 99).toBeTrue();
+
+      const cards = migratedDb.prepare(`
+        SELECT id, project_id, title, description, description_revision_id
+        FROM cards
+        ORDER BY created ASC
+      `).all() as Array<{
+        id: string;
+        project_id: string;
+        title: string;
+        description: string;
+        description_revision_id: number | null;
+      }>;
+      expect(cards.length).toBe(3);
+      expect(cards.every((card) => isUuidV7(card.id))).toBeTrue();
+
+      const hostCard = cards.find((card) => card.title === "Host card");
+      const localCard = cards.find((card) => card.title === "Local target");
+      const remoteCard = cards.find((card) => card.title === "Remote target");
+      expect(hostCard !== undefined).toBeTrue();
+      expect(localCard !== undefined).toBeTrue();
+      expect(remoteCard !== undefined).toBeTrue();
+
+      expect(hostCard?.description.includes(`card="${remoteCard?.id}"`)).toBeTrue();
+      expect(hostCard?.description.includes(`card="${localCard?.id}"`)).toBeTrue();
+      expect(hostCard?.description.includes("legacy-remote")).toBeFalse();
+      expect(hostCard?.description.includes("legacy-local")).toBeFalse();
+      expect(hostCard?.description_revision_id).not.toBeNull();
+
+      const rebuiltDescription = reconstructDescription(migratedDb, hostCard?.description_revision_id ?? null);
+      expect(rebuiltDescription.includes(`card="${remoteCard?.id}"`)).toBeTrue();
+      expect(rebuiltDescription.includes(`card="${localCard?.id}"`)).toBeTrue();
+
+      const historyRow = migratedDb.prepare(`
+        SELECT card_id, previous_values, new_values, card_snapshot,
+               previous_description_revision_id, new_description_revision_id, snapshot_description_revision_id
+        FROM history
+        WHERE id = 1
+      `).get() as
+        | {
+            card_id: string;
+            previous_values: string | null;
+            new_values: string | null;
+            card_snapshot: string | null;
+            previous_description_revision_id: number | null;
+            new_description_revision_id: number | null;
+            snapshot_description_revision_id: number | null;
+          }
+        | undefined;
+      expect(historyRow?.card_id).toBe(hostCard?.id);
+      expect(historyRow?.previous_values?.includes(`"id":"${hostCard?.id}"`)).toBeTrue();
+      expect(historyRow?.new_values?.includes(`"id":"${hostCard?.id}"`)).toBeTrue();
+      expect(historyRow?.card_snapshot?.includes(`"id":"${hostCard?.id}"`)).toBeTrue();
+      expect(historyRow?.previous_description_revision_id).not.toBeNull();
+      expect(historyRow?.new_description_revision_id).not.toBeNull();
+      expect(historyRow?.snapshot_description_revision_id).not.toBeNull();
+
+      const codexRow = migratedDb.prepare(`
+        SELECT card_id
+        FROM codex_card_threads
+        WHERE thread_id = ?
+      `).get("thread-host") as
+        | { card_id: string }
+        | undefined;
+      expect(codexRow?.card_id).toBe(hostCard?.id);
+
+      const threadColumns = migratedDb.prepare("PRAGMA table_info(codex_card_threads)").all() as Array<{
+        name: string;
+      }>;
+      expect(threadColumns.some((column) => column.name === "id")).toBeFalse();
+
+      const snapshotRow = migratedDb.prepare(`
+        SELECT thread_id, items_json
+        FROM codex_thread_snapshots
+        WHERE thread_id = ?
+      `).get("thread-host") as
+        | { thread_id: string; items_json: string }
+        | undefined;
+      expect(snapshotRow?.thread_id).toBe("thread-host");
+      expect(snapshotRow?.items_json).toBe("[\"item\"]");
+
+      const recurrenceRow = migratedDb.prepare(`
+        SELECT card_id
+        FROM recurrence_exceptions
+        WHERE id = 1
+      `).get() as
+        | { card_id: string }
+        | undefined;
+      const receiptRow = migratedDb.prepare(`
+        SELECT card_id
+        FROM reminder_receipts
+        WHERE id = 1
+      `).get() as
+        | { card_id: string }
+        | undefined;
+      const snoozeRow = migratedDb.prepare(`
+        SELECT card_id
+        FROM reminder_snoozes
+        WHERE id = 1
+      `).get() as
+        | { card_id: string }
+        | undefined;
+      expect(recurrenceRow?.card_id).toBe(hostCard?.id);
+      expect(receiptRow?.card_id).toBe(hostCard?.id);
+      expect(snoozeRow?.card_id).toBe(hostCard?.id);
+
+      const droppedOccurrenceLog = migratedDb.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'recurrence_occurrence_log'
+      `).get() as
+        | { name: string }
+        | undefined;
+      expect(droppedOccurrenceLog === undefined).toBeTrue();
+
       migratedDb.close();
     } catch (error) {
       if (isUnsupportedSqliteError(error)) {

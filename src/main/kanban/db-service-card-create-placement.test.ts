@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isUuidV7 } from "../../shared/card-id";
 import {
   closeDatabase,
   createCard,
   createProject,
+  getProject,
   getBoard,
   initializeDatabase,
   redoLatest,
@@ -32,7 +34,9 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
     }
     throw error;
   }
-  createProject({ id: "default", name: "Default" });
+  if (!getProject("default")) {
+    createProject({ id: "default", name: "Default" });
+  }
 
   try {
     await run();
@@ -91,6 +95,48 @@ describe("createCard placement", () => {
       column = board.columns.find((entry) => entry.id === "in_progress");
       expect(column?.cards.map((card) => card.title).join(",")).toBe("Top,First,Second");
       expect(column?.cards.map((card) => card.order).join(",")).toBe("0,1,2");
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
+
+  test("generates canonical UUID-v7 ids by default", async () => {
+    const ran = await withTempDatabase(async () => {
+      const card = await createCard("default", "in_progress", { title: "Generated id" });
+      expect(isUuidV7(card.id)).toBeTrue();
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
+
+  test("preserves a caller-provided UUID-v7 id", async () => {
+    const ran = await withTempDatabase(async () => {
+      const requestedId = "018f0f85-6d56-7000-8000-000000000123";
+      const card = await createCard("default", "in_progress", {
+        id: requestedId,
+        title: "Requested id",
+      });
+
+      expect(card.id).toBe(requestedId);
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
+
+  test("rejects non-UUID-v7 create ids", async () => {
+    const ran = await withTempDatabase(async () => {
+      let message = "";
+
+      try {
+        await createCard("default", "in_progress", {
+          id: "legacy-card",
+          title: "Invalid id",
+        });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).toBe("Invalid card id: expected canonical lowercase UUID-v7");
     });
 
     if (!ran) expect(true).toBeTrue();

@@ -41,6 +41,7 @@
 - Invalid inputs fail at validation boundary with actionable errors.
 - Not-found resources return `404` from API routes.
 - Supported schema migrations can be destructive when explicitly documented: schema v21 drops pre-v21 history rows, preserves cards/projects, and reseeds description revisions from the current card descriptions.
+- Schema v25 performs a one-time startup rewrite of all legacy card ids to canonical lowercase UUID-v7, rebuilds description revision storage, rewrites embedded card references/history payloads, drops the dead `recurrence_occurrence_log` table, and aborts startup if `PRAGMA foreign_key_check` finds any unmapped dependency.
 - Older explicit SQLite schema versions still fail fast during startup with an unsupported-version error instead of attempting in-app migrations.
 - Stale card writes with `expectedRevision` return typed conflict payloads (`status: "conflict"`; HTTP `409`) and do not apply partial updates.
 - Backup restore failures surface explicit error responses.

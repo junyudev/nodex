@@ -16,6 +16,7 @@ import {
   conflictKeysForPatch,
   createOptimisticCard,
 } from "./kanban-optimistic-ops";
+import { createUuidV7 } from "../../shared/card-id";
 import type {
   BlockDropImportInput,
   BlockDropImportResult,
@@ -54,11 +55,11 @@ function toErrorMessage(value: unknown): string {
   return "Unknown error";
 }
 
-function ensureCreateInputClientId(input: CardCreateInput): CardCreateInput {
-  if (input.clientId && input.clientId.trim().length > 0) return input;
+function ensureCreateInputId(input: CardCreateInput): CardCreateInput {
+  if (input.id && input.id.trim().length > 0) return input;
   return {
     ...input,
-    clientId: `card:${crypto.randomUUID()}`,
+    id: createUuidV7(),
   };
 }
 
@@ -97,7 +98,7 @@ export function useKanban(options: UseKanbanOptions) {
       input: CardCreateInput,
       placement: CardCreatePlacement = "bottom",
     ): Promise<Card | null> => {
-      const createInput = ensureCreateInputClientId(input);
+      const createInput = ensureCreateInputId(input);
       const optimisticCard = createOptimisticCard(createInput);
       const outcome = await store.runOptimisticMutation<Card>({
         kind: "card:create",
@@ -291,11 +292,11 @@ export function useKanban(options: UseKanbanOptions) {
 
   const importBlockDrop = useCallback(
     async (input: BlockDropImportInput): Promise<BlockDropImportResult | null> => {
-      const cardsWithClientId = input.cards.map((card) => ensureCreateInputClientId(card));
-      const optimisticCards = cardsWithClientId.map((card) => createOptimisticCard(card));
+      const cardsWithId = input.cards.map((card) => ensureCreateInputId(card));
+      const optimisticCards = cardsWithId.map((card) => createOptimisticCard(card));
       const optimisticInput: BlockDropImportInput = {
         ...input,
-        cards: cardsWithClientId,
+        cards: cardsWithId,
       };
 
       const outcome = await store.runOptimisticMutation<BlockDropImportResult>({

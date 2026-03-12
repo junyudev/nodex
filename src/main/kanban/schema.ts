@@ -4,6 +4,7 @@ import * as path from "path";
 import { getDatabasePath } from "./config";
 import type { DatabaseMigrationProgress } from "../../shared/app-startup";
 import { seedCardDescriptionRevisions } from "./description-revision-service";
+import { migrateV24ToV25 } from "./schema-v25";
 import {
   CARD_STATUS_COLUMNS,
   CARD_STATUS_LABELS,
@@ -15,7 +16,7 @@ import { escapeXmlAttr, getXmlAttr } from "../../shared/nfm/xml-attributes";
 
 export const COLUMNS = CARD_STATUS_COLUMNS;
 
-export const CURRENT_SCHEMA_VERSION = 24;
+export const CURRENT_SCHEMA_VERSION = 25;
 
 const RESETTABLE_TABLES = [
   "canvas",
@@ -32,6 +33,25 @@ const RESETTABLE_TABLES = [
 
 export interface EnsureDatabaseOptions {
   onMigrationProgress?: (progress: DatabaseMigrationProgress) => void;
+}
+
+export function getSchemaMigrationTargets(currentVersion: number): number[] | null {
+  switch (currentVersion) {
+    case CURRENT_SCHEMA_VERSION:
+      return [];
+    case 24:
+      return [25];
+    case 23:
+      return [24, 25];
+    case 22:
+      return [23, 24, 25];
+    case 21:
+      return [22, 23, 24, 25];
+    case 20:
+      return [21, 22, 23, 24, 25];
+    default:
+      return null;
+  }
 }
 
 function getUserVersion(db: Database.Database): number {
@@ -115,10 +135,9 @@ function createLatestSchema(db: Database.Database): void {
       ON description_revisions(card_id, created_at, id);
 
     CREATE TABLE IF NOT EXISTS codex_card_threads (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      thread_id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-      thread_id TEXT NOT NULL UNIQUE,
       thread_name TEXT,
       thread_preview TEXT NOT NULL DEFAULT '',
       model_provider TEXT NOT NULL DEFAULT '',
@@ -129,7 +148,7 @@ function createLatestSchema(db: Database.Database): void {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       linked_at TEXT NOT NULL
-    );
+    ) WITHOUT ROWID;
 
     CREATE INDEX IF NOT EXISTS idx_codex_card_threads_project_card_updated
       ON codex_card_threads(project_id, card_id, updated_at DESC);
@@ -231,6 +250,30 @@ function createLatestSchema(db: Database.Database): void {
       files TEXT NOT NULL DEFAULT '{}',
       updated TEXT NOT NULL
     );
+  `);
+}
+
+function createDescriptionRevisionTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS description_blocks (
+      hash TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS description_revisions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id TEXT NOT NULL,
+      parent_revision_id INTEGER,
+      kind TEXT NOT NULL,
+      block_hashes_json TEXT,
+      ops_json TEXT,
+      created_at TEXT NOT NULL,
+      CHECK (kind IN ('snapshot', 'delta'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_description_revisions_card_created
+      ON description_revisions(card_id, created_at, id);
   `);
 }
 
@@ -835,7 +878,7 @@ function migrateV23ToV24(db: Database.Database): void {
     db.exec("DROP TABLE cards");
     db.exec("ALTER TABLE cards_v24 RENAME TO cards");
     createLatestSchema(db);
-    setUserVersion(db, CURRENT_SCHEMA_VERSION);
+    setUserVersion(db, 24);
   } finally {
     db.exec("PRAGMA foreign_keys = ON");
   }
@@ -867,12 +910,12 @@ function migrateV20ToV21(db: Database.Database): void {
 
     db.exec("DROP TABLE IF EXISTS description_revisions");
     db.exec("DROP TABLE IF EXISTS description_blocks");
-    db.exec("DROP TABLE IF EXISTS history");
-    createLatestSchema(db);
+    db.exec("DELETE FROM history");
+    createDescriptionRevisionTables(db);
     seedCardDescriptionRevisions(db);
     db.pragma("auto_vacuum = INCREMENTAL");
     db.exec("VACUUM");
-    setUserVersion(db, CURRENT_SCHEMA_VERSION);
+    setUserVersion(db, 21);
   } finally {
     db.exec("PRAGMA foreign_keys = ON");
   }
@@ -893,7 +936,6 @@ function seedDefaultProjectIfMissing(db: Database.Database): void {
 }
 
 export function ensureDatabase(options: EnsureDatabaseOptions = {}): void {
-  void options;
   const dbPath = getDatabasePath();
   const dir = path.dirname(dbPath);
 
@@ -907,24 +949,44 @@ export function ensureDatabase(options: EnsureDatabaseOptions = {}): void {
 
   try {
     const currentVersion = getUserVersion(db);
+    let migratedToV25 = false;
 
     if (currentVersion === 0) {
       resetDatabaseToLatestSchema(db);
-    } else if (currentVersion === 20) {
-      migrateV20ToV21(db);
-    } else if (currentVersion === 21) {
-      migrateV21ToV22(db);
-      migrateV22ToV23(db);
-      migrateV23ToV24(db);
-    } else if (currentVersion === 22) {
-      migrateV22ToV23(db);
-      migrateV23ToV24(db);
-    } else if (currentVersion === 23) {
-      migrateV23ToV24(db);
-    } else if (currentVersion !== CURRENT_SCHEMA_VERSION) {
-      throw new Error(
-        `Unsupported Nodex database schema version ${currentVersion}. Expected ${CURRENT_SCHEMA_VERSION}. Delete or recreate the local database if you want a fresh start.`,
-      );
+    } else {
+      const migrationTargets = getSchemaMigrationTargets(currentVersion);
+      if (!migrationTargets) {
+        throw new Error(
+          `Unsupported Nodex database schema version ${currentVersion}. Expected ${CURRENT_SCHEMA_VERSION}. Delete or recreate the local database if you want a fresh start.`,
+        );
+      }
+
+      for (const targetVersion of migrationTargets) {
+        switch (targetVersion) {
+          case 21:
+            migrateV20ToV21(db);
+            break;
+          case 22:
+            migrateV21ToV22(db);
+            break;
+          case 23:
+            migrateV22ToV23(db);
+            break;
+          case 24:
+            migrateV23ToV24(db);
+            break;
+          case 25:
+            migrateV24ToV25(db, options.onMigrationProgress);
+            migratedToV25 = true;
+            break;
+          default:
+            throw new Error(`Unsupported schema migration target ${targetVersion}`);
+        }
+      }
+    }
+
+    if (migratedToV25) {
+      setUserVersion(db, CURRENT_SCHEMA_VERSION);
     }
 
     seedDefaultProjectIfMissing(db);

@@ -142,13 +142,13 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 #### 4. SQLite Database Storage
 - Single `kanban.db` file in kanban directory
 - Atomic transactions for data integrity
-- Schema v21 with projects/cards/history/canvas, Codex card-thread linking metadata, card run-target fields, per-card optimistic-concurrency revisions, and description revision storage
+- Schema v25 with UUID-v7 card ids, description revision storage, Codex thread-link metadata keyed by `thread_id`, recurring reminder state, and project-scoped realtime/history state
 
 #### 5. Card Properties
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
-| `id` | string | Yes | 7-character alphanumeric ID |
+| `id` | string | Yes | Canonical lowercase UUID-v7 |
 | `title` | string | Yes | Task name (max 512 chars) |
 | `description` | string | No | [Notion-flavored Markdown (NFM)](../references/notion-flavored-markdown-spec.md) details (default: ""), including `<image ...>` blocks and inline `<attachment kind="text|file|folder" mode="materialized|link" ... />` chips with local or managed asset URIs (max 1,000,000 chars) |
 | `priority` | enum | No | Optional priority tier: p0-critical, p1-high, p2-medium, p3-low, p4-later |
@@ -571,7 +571,7 @@ nodex/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/projects/[projectId]/board` | Fetch all columns and cards |
-| POST | `/api/projects/[projectId]/board` | Create new card (request body capped at 2MB; oversized requests return 413) |
+| POST | `/api/projects/[projectId]/board` | Create new card (request body capped at 2MB; oversized requests return 413; optional `id` must already be a canonical lowercase UUID-v7 or the server generates one) |
 | GET | `/api/projects/[projectId]/column` | Fetch a single board status group (query: `?id=<status>`) |
 | GET | `/api/projects/[projectId]/card` | Fetch single card (query: `?cardId=Y` or `?status=X&cardId=Y`) |
 | PUT | `/api/projects/[projectId]/card` | Update card properties (`status` optional and server-resolved when omitted; optional `expectedRevision` enables stale-write detection; stale writes return `409` with `{status:\"conflict\", card}`; request body capped at 2MB; oversized requests return 413) |
@@ -617,7 +617,7 @@ CREATE TABLE projects (
 
 -- Cards table
 CREATE TABLE cards (
-  id TEXT PRIMARY KEY,              -- 7-char alphanumeric
+  id TEXT PRIMARY KEY,              -- canonical lowercase UUID-v7
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   status TEXT NOT NULL,             -- draft | backlog | in_progress | in_review | done
   archived INTEGER NOT NULL DEFAULT 0,
@@ -695,10 +695,9 @@ CREATE INDEX idx_history_group ON history(project_id, group_id);
 
 -- Codex card-thread links
 CREATE TABLE codex_card_threads (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-  thread_id TEXT NOT NULL UNIQUE,
   thread_name TEXT,
   thread_preview TEXT NOT NULL DEFAULT '',
   model_provider TEXT NOT NULL DEFAULT '',
@@ -709,7 +708,7 @@ CREATE TABLE codex_card_threads (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   linked_at TEXT NOT NULL
-);
+) WITHOUT ROWID;
 
 CREATE INDEX idx_codex_card_threads_project_card_updated
   ON codex_card_threads(project_id, card_id, updated_at DESC);

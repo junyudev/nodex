@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { assertUuidV7, createUuidV7 } from "../../shared/card-id";
 import {
   type BlockDropImportInput,
   type BlockDropImportResult,
@@ -122,21 +123,11 @@ export function closeDatabase(): void {
   db = null;
 }
 
-function generateId(): string {
-  return Math.random().toString(36).substring(2, 9);
-}
-
-function normalizeClientId(value: string | undefined): string | null {
+function normalizeCardIdInput(value: string | undefined): string | null {
   if (!value) return null;
   const normalized = value.trim();
   if (!normalized) return null;
-  if (normalized.length > 128) {
-    throw new Error("clientId exceeds 128 characters");
-  }
-  if (/\s/.test(normalized)) {
-    throw new Error("clientId cannot contain whitespace");
-  }
-  return normalized;
+  return assertUuidV7(normalized);
 }
 
 function assertCardIdAvailable(database: Database.Database, id: string): void {
@@ -549,8 +540,8 @@ export async function createCard(
   assertValidCardInput(input, "create");
 
   const database = getDb();
-  const requestedId = normalizeClientId(input.clientId);
-  const id = requestedId ?? generateId();
+  const requestedId = normalizeCardIdInput(input.id);
+  const id = requestedId ?? createUuidV7();
   const now = new Date();
   const nowIso = now.toISOString();
 
@@ -1379,8 +1370,8 @@ export async function importBlockDropAsCards(
       .run(input.cards.length, projectId, input.targetStatus, insertIndex);
 
     for (const [offset, cardInput] of input.cards.entries()) {
-      const requestedId = normalizeClientId(cardInput.clientId);
-      const id = requestedId ?? generateId();
+      const requestedId = normalizeCardIdInput(cardInput.id);
+      const id = requestedId ?? createUuidV7();
       if (requestedId) {
         assertCardIdAvailable(database, requestedId);
       }
@@ -1970,7 +1961,7 @@ export async function completeCardOccurrence(
   const groupId = resolveGroupId();
   const now = new Date();
   const nowIso = now.toISOString();
-  const archiveCardId = generateId();
+  const archiveCardId = createUuidV7();
 
   database.transaction(() => {
     const maxArchiveOrderRow = database
@@ -2223,7 +2214,7 @@ export async function updateCardOccurrence(
     if (!existing) return { success: false, error: "Card no longer exists" };
 
     const timing = normalizeOccurrenceTiming(card, input.occurrenceStart, input.updates);
-    const detachedCardId = generateId();
+    const detachedCardId = createUuidV7();
     const nowIso = new Date().toISOString();
     const detachedReminders = input.updates.reminders ?? card.reminders;
     const detachedTimezone = input.updates.scheduleTimezone === undefined
@@ -2350,7 +2341,7 @@ export async function updateCardOccurrence(
   };
 
   const splitTiming = normalizeOccurrenceTiming(oldCard, input.occurrenceStart, input.updates);
-  const nextCardId = generateId();
+  const nextCardId = createUuidV7();
   const groupId = resolveGroupId();
   const nextReminders = input.updates.reminders ?? oldCard.reminders;
   const nextTimezone = input.updates.scheduleTimezone === undefined

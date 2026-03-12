@@ -134,7 +134,7 @@ export interface CardInput {
 }
 
 export interface CardCreateInput extends CardInput {
-  clientId?: string;
+  id?: string;
 }
 
 export type CardUpdateResult =

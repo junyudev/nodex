@@ -171,7 +171,7 @@ export function buildPatchCardTransform(
 
 export function createOptimisticCard(input: CardCreateInput): Card {
   return {
-    id: input.clientId ?? `optimistic:${crypto.randomUUID()}`,
+    id: input.id ?? `optimistic:${crypto.randomUUID()}`,
     status: input.status ?? DEFAULT_CARD_STATUS,
     archived: false,
     title: input.title,

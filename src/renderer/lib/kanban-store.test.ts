@@ -319,7 +319,7 @@ describe("kanban store", () => {
   test("create -> edit -> move remains stable across acknowledgements", async () => {
     const createInput: CardCreateInput = {
       title: "Created",
-      clientId: "card-created",
+      id: "018f0f85-6d56-7000-8000-000000000000",
     };
     let serverBoard = createBoard();
 
@@ -346,36 +346,36 @@ describe("kanban store", () => {
         return result;
       },
     });
-    expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.title).toBe("Created");
 
     const updateMutation = store.runOptimisticMutation({
       kind: "card:update",
-      conflictKeys: conflictKeysForPatch("card-created", { title: "Created edited" }),
-      apply: buildPatchCardTransform("draft", "card-created", { title: "Created edited" }),
+      conflictKeys: conflictKeysForPatch("018f0f85-6d56-7000-8000-000000000000", { title: "Created edited" }),
+      apply: buildPatchCardTransform("draft", "018f0f85-6d56-7000-8000-000000000000", { title: "Created edited" }),
       runRemote: async () => {
         const result = await updateRemoteDeferred.promise;
-        serverBoard = buildPatchCardTransform("draft", "card-created", { title: "Created edited" })(serverBoard);
+        serverBoard = buildPatchCardTransform("draft", "018f0f85-6d56-7000-8000-000000000000", { title: "Created edited" })(serverBoard);
         return result;
       },
     });
-    expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created edited");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.title).toBe("Created edited");
 
     const moveMutation = store.runOptimisticMutation({
       kind: "card:move",
       conflictKeys: conflictKeysForMove({
-        cardId: "card-created",
+        cardId: "018f0f85-6d56-7000-8000-000000000000",
         fromStatus: "draft",
         toStatus: "done",
       }),
       apply: buildMoveCardTransform({
-        cardId: "card-created",
+        cardId: "018f0f85-6d56-7000-8000-000000000000",
         fromStatus: "draft",
         toStatus: "done",
       }),
       runRemote: async () => {
         const result = await moveRemoteDeferred.promise;
         serverBoard = buildMoveCardTransform({
-          cardId: "card-created",
+          cardId: "018f0f85-6d56-7000-8000-000000000000",
           fromStatus: "draft",
           toStatus: "done",
         })(serverBoard);
@@ -383,22 +383,22 @@ describe("kanban store", () => {
       },
     });
 
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.columnId).toBe("done");
 
-    createRemoteDeferred.resolve({ id: "card-created" });
+    createRemoteDeferred.resolve({ id: "018f0f85-6d56-7000-8000-000000000000" });
     await createMutation;
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
-    expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created edited");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.columnId).toBe("done");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.title).toBe("Created edited");
 
     updateRemoteDeferred.resolve({ ok: true });
     await updateMutation;
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
-    expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created edited");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.columnId).toBe("done");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.title).toBe("Created edited");
 
     moveRemoteDeferred.resolve({ ok: true });
     await moveMutation;
-    expect(store.getSnapshot().cardIndex.get("card-created")?.columnId).toBe("done");
-    expect(store.getSnapshot().cardIndex.get("card-created")?.title).toBe("Created edited");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.columnId).toBe("done");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000000")?.title).toBe("Created edited");
   });
 
   test("failed delete rolls back automatically", async () => {
@@ -527,7 +527,7 @@ describe("kanban store", () => {
     const createRemoteDeferred = createDeferred<{ id: string }>();
     const createInput: CardCreateInput = {
       title: "Created",
-      clientId: "card-pending",
+      id: "018f0f85-6d56-7000-8000-000000000001",
     };
     const optimisticCard = createOptimisticCard(createInput);
 
@@ -549,15 +549,15 @@ describe("kanban store", () => {
       },
     });
 
-    store.applyLocalPatch("draft", "card-pending", { title: "Edited while pending" });
-    expect(store.getSnapshot().cardIndex.get("card-pending")?.title).toBe("Edited while pending");
+    store.applyLocalPatch("draft", "018f0f85-6d56-7000-8000-000000000001", { title: "Edited while pending" });
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000001")?.title).toBe("Edited while pending");
 
     // Re-fetch while create is still pending: patch must not be dropped.
     await store.refreshBoard();
-    expect(store.getSnapshot().cardIndex.get("card-pending")?.title).toBe("Edited while pending");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000001")?.title).toBe("Edited while pending");
 
-    createRemoteDeferred.resolve({ id: "card-pending" });
+    createRemoteDeferred.resolve({ id: "018f0f85-6d56-7000-8000-000000000001" });
     await createMutation;
-    expect(store.getSnapshot().cardIndex.get("card-pending")?.title).toBe("Edited while pending");
+    expect(store.getSnapshot().cardIndex.get("018f0f85-6d56-7000-8000-000000000001")?.title).toBe("Edited while pending");
   });
 });

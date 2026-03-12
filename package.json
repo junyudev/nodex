@@ -63,7 +63,8 @@
     "smol-toml": "^1.4.2",
     "streamdown": "2.0.0-canary.2",
     "tailwind-merge": "^3.5.0",
-    "tldts": "^7.0.25"
+    "tldts": "^7.0.25",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@tailwindcss/node": "^4.2.1",

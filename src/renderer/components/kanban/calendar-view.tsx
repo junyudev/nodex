@@ -16,6 +16,7 @@ import {
   ARCHIVED_CARD_OPTION_ID,
   ARCHIVED_CARD_OPTION_NAME,
 } from "@/lib/kanban-options";
+import { createUuidV7 } from "../../../shared/card-id";
 
 interface CalendarViewProps {
   projectId: string;
@@ -315,15 +316,15 @@ export function CalendarView({
 
   const handleCreateCard = useCallback(
     async (title: string, start: Date, end: Date) => {
-      const clientId = `card:${crypto.randomUUID()}`;
-      const optimisticEventId = `${clientId}:${start.toISOString()}`;
+      const cardId = createUuidV7();
+      const optimisticEventId = `${cardId}:${start.toISOString()}`;
       setOccurrenceOverlayById((current) => {
         const next = new Map(current);
         next.set(optimisticEventId, {
           kind: "upsert",
           event: {
             id: optimisticEventId,
-            cardId: clientId,
+            cardId,
             status: "draft",
             archived: false,
             statusName: "Draft",
@@ -345,7 +346,7 @@ export function CalendarView({
         return next;
       });
       const created = await createCard("draft", {
-        clientId,
+        id: cardId,
         title,
         scheduledStart: start,
         scheduledEnd: end,

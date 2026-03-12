@@ -13,7 +13,6 @@ import type {
 import { getDb } from "../kanban/db-service";
 
 interface DbCodexCardThread {
-  id: number;
   project_id: string;
   card_id: string;
   thread_id: string;
