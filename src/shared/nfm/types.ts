@@ -108,6 +108,7 @@ export type NfmBlockType =
   | "callout"
   | "image"
   | "toggleListInlineView"
+  | "threadSection"
   | "cardToggle"
   | "cardRef"
   | "divider"
@@ -187,6 +188,12 @@ export interface NfmToggleListInlineView extends NfmBlockBase {
   showEmptyEstimate?: boolean;
 }
 
+export interface NfmThreadSection extends NfmBlockBase {
+  type: "threadSection";
+  label?: string;
+  threadId?: string;
+}
+
 export interface NfmCardRef extends NfmBlockBase {
   type: "cardRef";
   sourceProjectId: string;
@@ -224,6 +231,7 @@ export type NfmBlock =
   | NfmCallout
   | NfmImage
   | NfmToggleListInlineView
+  | NfmThreadSection
   | NfmCardToggle
   | NfmCardRef
   | NfmDivider

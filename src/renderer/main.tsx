@@ -11,6 +11,7 @@ import { PasteResourceSettingsProvider } from "./lib/use-paste-resource-settings
 import { CardStageCollapsedPropertiesProvider } from "./lib/use-card-stage-collapsed-properties";
 import { SansFontSizeProvider } from "./lib/use-sans-font-size";
 import { SpellcheckProvider } from "./lib/use-spellcheck";
+import { ThreadSectionSendSettingsProvider } from "./lib/use-thread-section-send-settings";
 import { ThemeProvider } from "./lib/use-theme";
 import "./globals.css";
 
@@ -34,14 +35,16 @@ createRoot(document.getElementById("root")!).render(
             <NfmAutolinkSettingsProvider>
               <PasteResourceSettingsProvider>
                 <SpellcheckProvider>
-                  <CardStageCollapsedPropertiesProvider>
-                    <CardPropertyPositionProvider>
-                      <TooltipProvider>
-                        <App />
-                        {process.env.NODE_ENV === "development" && <Agentation />}
-                      </TooltipProvider>
-                    </CardPropertyPositionProvider>
-                  </CardStageCollapsedPropertiesProvider>
+                  <ThreadSectionSendSettingsProvider>
+                    <CardStageCollapsedPropertiesProvider>
+                      <CardPropertyPositionProvider>
+                        <TooltipProvider>
+                          <App />
+                          {process.env.NODE_ENV === "development" && <Agentation />}
+                        </TooltipProvider>
+                      </CardPropertyPositionProvider>
+                    </CardStageCollapsedPropertiesProvider>
+                  </ThreadSectionSendSettingsProvider>
                 </SpellcheckProvider>
               </PasteResourceSettingsProvider>
             </NfmAutolinkSettingsProvider>

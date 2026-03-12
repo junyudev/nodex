@@ -19,6 +19,7 @@ import {
   rewriteCopiedSelectionAssetSourcesSync,
   type SelectionEditorLike,
 } from "./special-block-copy";
+import { createEmptyThreadSectionBlock } from "./thread-section";
 
 const toggleInputRule = createExtension({
   key: "toggle-input-rule",
@@ -39,6 +40,20 @@ const quoteInputRule = createExtension({
       find: /^\|\s$/,
       replace() {
         return { type: "quote", props: {} };
+      },
+    },
+  ],
+});
+
+export const THREAD_SECTION_SHORTCUT_PATTERN = /^---$/;
+
+export const threadSectionInputRule = createExtension({
+  key: "thread-section-input-rule",
+  inputRules: [
+    {
+      find: THREAD_SECTION_SHORTCUT_PATTERN,
+      replace() {
+        return createEmptyThreadSectionBlock();
       },
     },
   ],
@@ -308,7 +323,11 @@ const childGroupBackspaceExt = createExtension({
   },
 });
 
-export const NFM_DISABLED_EXTENSIONS = ["quote-block-shortcuts", "heading-shortcuts"] as const;
+export const NFM_DISABLED_EXTENSIONS = [
+  "quote-block-shortcuts",
+  "heading-shortcuts",
+  "divider-block-shortcuts",
+] as const;
 
 export type NfmPasteHandler = (context: {
   event: ClipboardEvent;
@@ -326,6 +345,7 @@ export function createNfmEditorExtensions() {
     headingToggleAware,
     toggleInputRule,
     quoteInputRule,
+    threadSectionInputRule,
     toggleShortcut,
     selectBlockShortcut,
     selectedImageBlockDecorationsExtension(),

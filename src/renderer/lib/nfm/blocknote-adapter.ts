@@ -160,6 +160,16 @@ function nfmBlockToBN(
         children: [],
       };
 
+    case "threadSection":
+      return {
+        type: "threadSection",
+        props: {
+          label: block.label ?? "",
+          threadId: block.threadId ?? "",
+        },
+        children,
+      };
+
     case "cardRef":
       return {
         type: "cardRef",
@@ -417,6 +427,18 @@ function bnBlockToNfm(block: BNBlock): NfmBlock | null {
         sourceProjectId,
         cardId,
         children: [],
+      };
+    }
+
+    case "threadSection": {
+      const label = normalizeString(block.props?.label);
+      const threadId = normalizeString(block.props?.threadId);
+
+      return {
+        type: "threadSection",
+        ...(label !== undefined && label.length > 0 ? { label } : {}),
+        ...(threadId !== undefined && threadId.length > 0 ? { threadId } : {}),
+        children,
       };
     }
 

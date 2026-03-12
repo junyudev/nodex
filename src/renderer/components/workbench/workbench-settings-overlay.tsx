@@ -60,6 +60,7 @@ import {
   MIN_TEXT_PROMPT_CHAR_THRESHOLD,
 } from "../../lib/paste-resource-settings";
 import { usePasteResourceSettings } from "../../lib/use-paste-resource-settings";
+import { useThreadSectionSendSettings } from "../../lib/use-thread-section-send-settings";
 import type { StageRailLayoutMode } from "../../lib/stage-rail-layout-mode";
 import { useSansFontSize } from "../../lib/use-sans-font-size";
 import type { ThreadPromptSubmitShortcut } from "../../lib/thread-panel-prompt-submit-shortcut";
@@ -548,6 +549,17 @@ function PasteResourceDescriptionSoftLimitSettingControl() {
       max={MAX_DESCRIPTION_SOFT_LIMIT}
       onChange={(value) => updateSettings({ descriptionSoftLimit: value })}
       ariaLabel="Paste resource description soft limit"
+    />
+  );
+}
+
+function ThreadSectionSendConfirmationSettingControl() {
+  const { settings, updateSettings } = useThreadSectionSendSettings();
+
+  return (
+    <TogglePill
+      value={settings.confirmBeforeSend}
+      onChange={(value) => updateSettings({ confirmBeforeSend: value })}
     />
   );
 }
@@ -1928,6 +1940,12 @@ export function SettingsOverlay({
                       value={hideThinkingWhenDone}
                       onChange={onHideThinkingWhenDoneChange}
                     />
+                  </SettingRow>
+                  <SettingRow
+                    label="Confirm thread section send"
+                    description="Show a preview dialog before sending a notebook section, with an option to stop asking later."
+                  >
+                    <ThreadSectionSendConfirmationSettingControl />
                   </SettingRow>
                   <SettingRow
                     label="Thread send shortcut"

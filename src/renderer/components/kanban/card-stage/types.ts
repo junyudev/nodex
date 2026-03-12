@@ -1,10 +1,19 @@
 import type { MutableRefObject } from "react";
-import type { Card, CardInput, CardUpdateMutationResult } from "@/lib/types";
+import type {
+  Card,
+  CardInput,
+  CardUpdateMutationResult,
+  CodexThreadSummary,
+} from "@/lib/types";
 
 export interface CardStageLinkedThread {
   threadId: string;
   title: string;
   preview?: string;
+  statusType: CodexThreadSummary["statusType"];
+  statusActiveFlags: CodexThreadSummary["statusActiveFlags"];
+  archived: boolean;
+  updatedAt: number;
 }
 
 export interface CardStageSessionSnapshot {
@@ -45,6 +54,16 @@ export interface CardStageProps {
   linkedCodexThreads?: CardStageLinkedThread[];
   onOpenCodexThread?: (threadId: string) => Promise<void>;
   onOpenNewCodexThread?: () => void;
+  onStartThreadSection?: (input: {
+    projectId: string;
+    cardId: string;
+    prompt: string;
+  }) => Promise<{ threadId: string }>;
+  onSendThreadSectionPrompt?: (input: {
+    projectId: string;
+    threadId: string;
+    prompt: string;
+  }) => Promise<void>;
   terminalPanelActive?: boolean;
   historyPanelActive?: boolean;
 }

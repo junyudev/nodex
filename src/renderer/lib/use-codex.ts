@@ -272,6 +272,24 @@ export function useCodex(activeProjectId: string) {
     }
   }, [readThread]);
 
+  const sendPromptToThread = useCallback(async (
+    threadId: string,
+    prompt: string,
+    opts?: { projectId?: string; collaborationMode?: CodexCollaborationModeKind },
+  ) => {
+    const detail = state.threadDetailsById[threadId] ?? await readThread(threadId, true);
+    const activeTurn = detail?.turns
+      ?.filter((turn) => turn.status === "inProgress")
+      .slice(-1)[0];
+
+    if (activeTurn) {
+      await steerTurn(threadId, activeTurn.turnId, prompt);
+      return;
+    }
+
+    await startTurn(threadId, prompt, opts);
+  }, [readThread, startTurn, state.threadDetailsById, steerTurn]);
+
   const interruptTurn = useCallback(async (threadId: string, turnId?: string) => {
     return (await invoke("codex:turn:interrupt", threadId, turnId)) as boolean;
   }, []);
@@ -475,6 +493,7 @@ export function useCodex(activeProjectId: string) {
     archiveThread,
     unarchiveThread,
     startTurn,
+    sendPromptToThread,
     steerTurn,
     interruptTurn,
     respondApproval,

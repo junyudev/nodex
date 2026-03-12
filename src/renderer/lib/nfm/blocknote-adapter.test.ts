@@ -754,6 +754,87 @@ describe("blocknote adapter", () => {
     expect(blocks[0].cardId).toBe("");
   });
 
+  test("serialize and parse thread-section round-trip", () => {
+    const nfm = '<thread-section label="Investigate parser" thread="thr_123" />';
+    const blocks = parseNfm(nfm);
+    const serialized = serializeNfm(blocks);
+    expect(serialized).toBe(nfm);
+  });
+
+  test("thread-section NFM → BN maps custom props", () => {
+    const blocks = parseNfm(
+      '<thread-section label="Investigate parser" thread="thr_123" />',
+    );
+    const bnBlocks = nfmToBlockNote(blocks);
+
+    expect(bnBlocks.length).toBe(1);
+    expect(bnBlocks[0].type).toBe("threadSection");
+    expect(bnBlocks[0].props.label).toBe("Investigate parser");
+    expect(bnBlocks[0].props.threadId).toBe("thr_123");
+  });
+
+  test("thread-section BN → NFM maps custom props", () => {
+    const blocks = blockNoteToNfm(
+      asDoc([
+        {
+          type: "threadSection",
+          props: {
+            label: "Investigate parser",
+            threadId: "thr_123",
+          },
+          content: undefined,
+          children: [],
+        },
+      ]),
+    );
+
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].type).toBe("threadSection");
+    if (blocks[0].type !== "threadSection") return;
+    expect(blocks[0].label).toBe("Investigate parser");
+    expect(blocks[0].threadId).toBe("thr_123");
+  });
+
+  test("thread-section NFM → BN preserves nested children", () => {
+    const blocks = parseNfm(`<thread-section label="Investigate parser" thread="thr_123" />
+\tChild note`);
+    const bnBlocks = nfmToBlockNote(blocks);
+
+    expect(bnBlocks.length).toBe(1);
+    expect(bnBlocks[0].type).toBe("threadSection");
+    expect(bnBlocks[0].children.length).toBe(1);
+    expect(extractText(bnBlocks[0].children[0]?.content)).toBe("Child note");
+  });
+
+  test("thread-section BN → NFM preserves nested children", () => {
+    const blocks = blockNoteToNfm(
+      asDoc([
+        {
+          type: "threadSection",
+          props: {
+            label: "Investigate parser",
+            threadId: "thr_123",
+          },
+          content: undefined,
+          children: [
+            {
+              type: "paragraph",
+              props: {},
+              content: [{ type: "text", text: "Child note", styles: {} }],
+              children: [],
+            },
+          ],
+        },
+      ]),
+    );
+
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].type).toBe("threadSection");
+    if (blocks[0].type !== "threadSection") return;
+    expect(blocks[0].children.length).toBe(1);
+    expect(serializeNfm(blocks)).toBe(`<thread-section label="Investigate parser" thread="thr_123" />\n\tChild note`);
+  });
+
   test("childless blocks are normalized by hoisting nested children", () => {
     const blocks = parseNfm(`<toggle-list-inline-view project="default" />
 \tNested paragraph

@@ -6,6 +6,7 @@ import type {
   NfmInlineContent,
   NfmCallout,
   NfmImage,
+  NfmThreadSection,
   NfmToggleListInlineView,
 } from "./types";
 import { NFM_COLORS } from "./types";
@@ -119,6 +120,15 @@ export function parseNfm(input: string): NfmBlock[] {
       const inlineView = parseToggleListInlineView(content.trim());
       if (inlineView) {
         addBlock(inlineView, indent);
+        i++;
+        continue;
+      }
+    }
+
+    if (content.trimStart().startsWith("<thread-section")) {
+      const threadSection = parseThreadSection(content.trim());
+      if (threadSection) {
+        addBlock(threadSection, indent);
         i++;
         continue;
       }
@@ -495,6 +505,22 @@ function parseCardRef(line: string): NfmCardRef | null {
     type: "cardRef",
     sourceProjectId,
     cardId,
+    children: [],
+  };
+}
+
+function parseThreadSection(line: string): NfmThreadSection | null {
+  const match = line.match(/^<thread-section(?:\s+([^>]*))?\s*\/>$/);
+  if (!match) return null;
+
+  const attrString = match[1] ?? "";
+  const label = getXmlAttr(attrString, "label") ?? "";
+  const threadId = getXmlAttr(attrString, "thread") ?? "";
+
+  return {
+    type: "threadSection",
+    ...(label.length > 0 ? { label } : {}),
+    ...(threadId.length > 0 ? { threadId } : {}),
     children: [],
   };
 }

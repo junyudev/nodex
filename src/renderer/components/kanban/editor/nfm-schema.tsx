@@ -11,6 +11,7 @@ import { createCalloutBlock } from "./callout-block";
 import { createCardToggleBlockSpec } from "./card-toggle-block";
 import { createCardRefBlockSpec } from "./card-ref-block";
 import { imageBlockSpec } from "./image-block";
+import { createThreadSectionBlockSpec } from "./thread-section-block";
 import { createToggleListInlineViewBlockSpec } from "./toggle-list-inline-view-block";
 
 export const nfmSchema = BlockNoteSchema.create({
@@ -26,6 +27,7 @@ export const nfmSchema = BlockNoteSchema.create({
     divider: defaultBlockSpecs.divider,
     image: imageBlockSpec,
     callout: createCalloutBlock(),
+    threadSection: createThreadSectionBlockSpec(),
     cardToggle: createCardToggleBlockSpec(),
     toggleListInlineView: createToggleListInlineViewBlockSpec(),
     cardRef: createCardRefBlockSpec(),

@@ -410,6 +410,7 @@ export function WorkbenchShell({
     readThread: readCodexThread,
     startThreadForCard,
     startTurn,
+    sendPromptToThread,
     steerTurn,
     interruptTurn,
     respondApproval,
@@ -1133,6 +1134,10 @@ export function WorkbenchShell({
         threadId: thread.threadId,
         title: thread.threadName?.trim() || thread.threadPreview || thread.threadId,
         preview: thread.threadPreview,
+        statusType: thread.statusType,
+        statusActiveFlags: thread.statusActiveFlags,
+        archived: thread.archived,
+        updatedAt: thread.updatedAt,
       }));
   }, [activeCardStageCardId, codexThreads]);
 
@@ -1394,6 +1399,25 @@ export function WorkbenchShell({
                 setThreadsProjectId(cardStageState.projectId);
                 setActiveThreadsTab(cardStageState.projectId, NEW_THREAD_STAGE_TAB_ID);
                 handleStageRailFocus("threads");
+              }}
+              onStartThreadSection={async ({ projectId, cardId, prompt }) => {
+                const detail = await startThreadForCard({
+                  projectId,
+                  cardId,
+                  prompt,
+                  collaborationMode: selectedCollaborationMode,
+                  worktreeStartMode,
+                  worktreeBranchPrefix: worktreeAutoBranchPrefix,
+                });
+                await loadCodexThreads(projectId);
+                return { threadId: detail.threadId };
+              }}
+              onSendThreadSectionPrompt={async ({ projectId, threadId, prompt }) => {
+                await sendPromptToThread(threadId, prompt, {
+                  projectId,
+                  collaborationMode: selectedCollaborationMode,
+                });
+                await loadCodexThreads(projectId);
               }}
               terminalPanelActive={
                 terminalPanelOpen &&

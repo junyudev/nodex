@@ -7,4 +7,5 @@
 | nfm-editor-autolink-behavior.md | Active | 2026-03-10 | Detailed autolink behavior for typing and paste in the NFM editor, including settings, strict bare-domain rules, and separator-aware path protection |
 | nfm-editor-attachment-chip-behavior.md | Active | 2026-03-11 | Detailed oversized-text and native file/folder paste behavior for inline attachment chips, including prompting, NFM syntax, previews, and clipboard/plain-text rules |
 | nfm-editor-copy-behavior.md | Active | 2026-03-08 | Detailed clipboard behavior for standard copy/cut and image copy inside the NFM editor |
+| nfm-editor-thread-section-behavior.md | Active | 2026-03-12 | Detailed notebook-style `threadSection` syntax, section-boundary rules, send behavior, and sticky thread binding inside the NFM editor |
 | workbench-shell.md | Active | 2026-03-02 | Workbench stage shell layout, thread rendering model, and navigation behavior |

@@ -6,9 +6,10 @@ import {
   useBlockNoteEditor,
   type DefaultReactSuggestionItem,
 } from "@blocknote/react";
-import { Link2, ListTree } from "lucide-react";
+import { Link2, ListTree, SendHorizontal } from "lucide-react";
 import { getDefaultToggleListInlineViewProps } from "@/lib/toggle-list/inline-view-props";
 import { useAllBoards } from "@/lib/use-all-boards";
+import { createEmptyThreadSectionBlock } from "./thread-section";
 
 interface NfmSlashMenuProps {
   projectId: string;
@@ -58,7 +59,19 @@ export function NfmSlashMenu({ projectId }: NfmSlashMenuProps) {
         },
       };
 
-      return filterSuggestionItems([...defaults, toggleListItem, cardRefItem], query);
+      const threadSectionItem = {
+        key: "thread_section",
+        title: "Thread Section",
+        subtext: "Insert a runnable notebook-style prompt boundary",
+        aliases: ["thread", "section", "prompt section", "cell"],
+        group: "Other",
+        icon: <SendHorizontal size={18} />,
+        onItemClick: () => {
+          insertBlock(editor, createEmptyThreadSectionBlock() as unknown as Record<string, unknown>);
+        },
+      };
+
+      return filterSuggestionItems([...defaults, toggleListItem, cardRefItem, threadSectionItem], query);
     },
     [editor, projectId],
   );

@@ -147,6 +147,10 @@ export function buildCardStageStoryThreads(
       ? "Polish card stage thread affordances"
       : `Card stage iteration ${String(index + 1).padStart(2, "0")}`,
     preview: buildThreadPreview(index, controls.previewMode),
+    statusType: index === 0 ? "active" : "idle",
+    statusActiveFlags: [],
+    archived: false,
+    updatedAt: Date.now() - (index + 1) * 60_000,
   }));
 }
 

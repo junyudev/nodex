@@ -21,6 +21,7 @@ export interface NfmDragHandleMenuComponentProps {
 interface NfmDragHandleMenuProps extends NfmDragHandleMenuComponentProps {
   canSendBlocks: boolean;
   onSendBlocks: (mode: SendBlocksMode, fallbackBlockId: string) => void;
+  onConvertDividerToThreadSection: (blockId: string) => void;
 }
 
 function NfmRemoveBlockItem({
@@ -84,6 +85,7 @@ export function NfmDefaultDragHandleMenu(
 export function NfmDragHandleMenu({
   canSendBlocks,
   onSendBlocks,
+  onConvertDividerToThreadSection,
   releaseSideMenuFreeze,
 }: NfmDragHandleMenuProps) {
   const components = useComponentsContext();
@@ -93,9 +95,21 @@ export function NfmDragHandleMenu({
 
   const currentBlockId = block?.id;
   const showSendBlocks = canSendBlocks && typeof currentBlockId === "string" && currentBlockId.length > 0;
+  const showConvertDivider = block?.type === "divider" && typeof currentBlockId === "string" && currentBlockId.length > 0;
 
   return (
     <DragHandleMenu>
+      {showConvertDivider && components && (
+        <>
+          <components.Generic.Menu.Item
+            className="bn-menu-item"
+            onClick={() => onConvertDividerToThreadSection(currentBlockId)}
+          >
+            Convert to thread section
+          </components.Generic.Menu.Item>
+          <components.Generic.Menu.Divider />
+        </>
+      )}
       {showSendBlocks && components && (
         <>
           <components.Generic.Menu.Root position="right" sub={true}>

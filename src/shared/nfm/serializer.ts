@@ -98,6 +98,18 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
         lines.push(prefix + `<toggle-list-inline-view ${attrs.join(" ")} />`);
         break;
       }
+      case "threadSection": {
+        const attrs: string[] = [];
+        if (block.label && block.label.length > 0) {
+          attrs.push(`label="${escapeXmlAttr(block.label)}"`);
+        }
+        if (block.threadId && block.threadId.length > 0) {
+          attrs.push(`thread="${escapeXmlAttr(block.threadId)}"`);
+        }
+        const attrSuffix = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+        lines.push(prefix + `<thread-section${attrSuffix} />`);
+        break;
+      }
       case "cardRef": {
         const attrs = [
           `project="${escapeXmlAttr(block.sourceProjectId)}"`,

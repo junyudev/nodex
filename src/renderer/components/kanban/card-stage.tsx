@@ -116,6 +116,10 @@ export function CardStage(props: CardStageProps) {
                   cardId: controller.card.id,
                   columnId: controller.currentColumnId,
                 }}
+                linkedCodexThreads={props.linkedCodexThreads}
+                onOpenCodexThread={props.onOpenCodexThread}
+                onStartThreadSection={props.onStartThreadSection}
+                onSendThreadSectionPrompt={props.onSendThreadSectionPrompt}
                 placeholder="Add a description..."
               />
             </div>
