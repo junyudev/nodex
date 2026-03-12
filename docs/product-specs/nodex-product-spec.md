@@ -110,7 +110,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Block->card import supports strict smart shorthand parsing for non-`cardToggle` blocks (`0..4`, optional estimate `XS/S/M/L/XL`, optional `(tag)`), applying parsed values to `priority`, `estimate`, and `tags`
 - Visual card previews with priority badges
 - Kanban card property chips (priority/estimate/tags/assignee) render inline with the card title by default, and Settings can move them above the title or below the body
-- Right-clicking a Kanban card opens a Radix context menu with a searchable action list; `Copy link` copies an `nodex://card/<card-id>` deeplink to the target card, `Delete` removes the card, and clicking `Move to` advances the same menu into a searchable in-place project picker that moves the card into the same workflow column in the selected project
+- Right-clicking a Kanban card opens a Radix context menu with a searchable action list; `Copy link` copies an `nodex://cards/<card-id>` deeplink to the target card, `Delete` removes the card, and clicking `Move to` advances the same menu into a searchable in-place project picker that moves the card into the same workflow column in the selected project
 - Real-time updates when data changes
 - Card updates include revision-based stale-write detection: stale edits return typed `conflict` results instead of silent last-write-wins
 - Card Stage surfaces conflicts inline with explicit recovery actions: `Reload Latest` (drop local draft fields) and `Overwrite Mine` (retry on newest revision)

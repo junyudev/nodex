@@ -5,6 +5,7 @@ import { getDatabasePath } from "./config";
 import type { DatabaseMigrationProgress } from "../../shared/app-startup";
 import { seedCardDescriptionRevisions } from "./description-revision-service";
 import { migrateV24ToV25 } from "./schema-v25";
+import { migrateV25ToV26 } from "./schema-v26";
 import {
   CARD_STATUS_COLUMNS,
   CARD_STATUS_LABELS,
@@ -16,7 +17,7 @@ import { escapeXmlAttr, getXmlAttr } from "../../shared/nfm/xml-attributes";
 
 export const COLUMNS = CARD_STATUS_COLUMNS;
 
-export const CURRENT_SCHEMA_VERSION = 25;
+export const CURRENT_SCHEMA_VERSION = 26;
 
 const RESETTABLE_TABLES = [
   "canvas",
@@ -39,16 +40,18 @@ export function getSchemaMigrationTargets(currentVersion: number): number[] | nu
   switch (currentVersion) {
     case CURRENT_SCHEMA_VERSION:
       return [];
+    case 25:
+      return [26];
     case 24:
-      return [25];
+      return [25, 26];
     case 23:
-      return [24, 25];
+      return [24, 25, 26];
     case 22:
-      return [23, 24, 25];
+      return [23, 24, 25, 26];
     case 21:
-      return [22, 23, 24, 25];
+      return [22, 23, 24, 25, 26];
     case 20:
-      return [21, 22, 23, 24, 25];
+      return [21, 22, 23, 24, 25, 26];
     default:
       return null;
   }
@@ -978,6 +981,9 @@ export function ensureDatabase(options: EnsureDatabaseOptions = {}): void {
           case 25:
             migrateV24ToV25(db, options.onMigrationProgress);
             migratedToV25 = true;
+            break;
+          case 26:
+            migrateV25ToV26(db);
             break;
           default:
             throw new Error(`Unsupported schema migration target ${targetVersion}`);

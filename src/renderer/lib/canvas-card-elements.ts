@@ -1,4 +1,5 @@
 import type { Card, Board } from "./types";
+import { buildCardDeepLink } from "./card-deeplink";
 
 /** Marker stored in Excalidraw element customData to identify Nodex cards. */
 const CARD_ELEMENT_TYPE = "nodex-card";
@@ -45,7 +46,7 @@ export function createCardElement(
     strokeColor: "#868e96",
     strokeWidth: 1,
     roundness: { type: 3 },
-    link: `nodex:card/${card.id}`,
+    link: buildCardDeepLink({ cardId: card.id }),
     label: {
       text: label,
       fontSize: 14,

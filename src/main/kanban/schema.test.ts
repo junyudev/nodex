@@ -22,13 +22,21 @@ function encodeBase64Utf8(value: string): string {
   return Buffer.from(value, "utf8").toString("base64");
 }
 
+function decodeBase64Utf8(value: string): string {
+  return Buffer.from(value, "base64").toString("utf8");
+}
+
 describe("schema initialization", () => {
   test("plans the full migration chain for schema version 20", () => {
-    expect(JSON.stringify(getSchemaMigrationTargets(20))).toBe("[21,22,23,24,25]");
+    expect(JSON.stringify(getSchemaMigrationTargets(20))).toBe("[21,22,23,24,25,26]");
   });
 
-  test("plans only the v25 step for schema version 24", () => {
-    expect(JSON.stringify(getSchemaMigrationTargets(24))).toBe("[25]");
+  test("plans the v25 and v26 steps for schema version 24", () => {
+    expect(JSON.stringify(getSchemaMigrationTargets(24))).toBe("[25,26]");
+  });
+
+  test("plans only the v26 step for schema version 25", () => {
+    expect(JSON.stringify(getSchemaMigrationTargets(25))).toBe("[26]");
   });
 
   test("initializes the latest schema from a fresh database", async () => {
@@ -1401,6 +1409,362 @@ describe("schema initialization", () => {
         | { name: string }
         | undefined;
       expect(droppedOccurrenceLog === undefined).toBeTrue();
+
+      migratedDb.close();
+    } catch (error) {
+      if (isUnsupportedSqliteError(error)) {
+        initializationRan = false;
+      } else {
+        throw error;
+      }
+    } finally {
+      closeDatabase();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      delete process.env.KANBAN_DIR;
+    }
+
+    if (!initializationRan) {
+      expect(true).toBeTrue();
+    }
+  });
+
+  test("migrates schema version 25 deeplinks to the canonical cards path", async () => {
+    closeDatabase();
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-schema-v25-deeplink-"));
+    process.env.KANBAN_DIR = tempDir;
+
+    let initializationRan = true;
+    try {
+      const dbPath = getDatabasePath();
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      const db = new Database(dbPath);
+      db.exec(`
+        CREATE TABLE projects (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          icon TEXT NOT NULL DEFAULT '',
+          workspace_path TEXT,
+          created TEXT NOT NULL
+        );
+
+        CREATE TABLE cards (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          description_revision_id INTEGER,
+          priority TEXT,
+          estimate TEXT,
+          tags TEXT NOT NULL DEFAULT '[]',
+          due_date TEXT,
+          assignee TEXT,
+          agent_blocked INTEGER NOT NULL DEFAULT 0,
+          agent_status TEXT,
+          run_in_target TEXT NOT NULL DEFAULT 'local_project',
+          run_in_local_path TEXT,
+          run_in_base_branch TEXT,
+          run_in_worktree_path TEXT,
+          run_in_environment_path TEXT,
+          revision INTEGER NOT NULL DEFAULT 1,
+          scheduled_start TEXT,
+          scheduled_end TEXT,
+          is_all_day INTEGER NOT NULL DEFAULT 0,
+          recurrence_json TEXT,
+          reminders_json TEXT NOT NULL DEFAULT '[]',
+          schedule_timezone TEXT,
+          created TEXT NOT NULL,
+          "order" INTEGER NOT NULL
+        );
+
+        CREATE TABLE description_blocks (
+          hash TEXT PRIMARY KEY,
+          content TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          operation TEXT NOT NULL,
+          card_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          archived INTEGER NOT NULL DEFAULT 0,
+          timestamp TEXT NOT NULL,
+          previous_values TEXT,
+          new_values TEXT,
+          from_status TEXT,
+          to_status TEXT,
+          from_archived INTEGER,
+          to_archived INTEGER,
+          from_order INTEGER,
+          to_order INTEGER,
+          card_snapshot TEXT,
+          previous_description_revision_id INTEGER,
+          new_description_revision_id INTEGER,
+          snapshot_description_revision_id INTEGER,
+          session_id TEXT,
+          group_id TEXT,
+          is_undone INTEGER NOT NULL DEFAULT 0,
+          undo_of INTEGER
+        );
+
+        CREATE TABLE codex_card_threads (
+          thread_id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+          thread_name TEXT,
+          thread_preview TEXT NOT NULL DEFAULT '',
+          model_provider TEXT NOT NULL DEFAULT '',
+          cwd TEXT,
+          status_type TEXT NOT NULL DEFAULT 'notLoaded',
+          status_active_flags_json TEXT NOT NULL DEFAULT '[]',
+          archived INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          linked_at TEXT NOT NULL
+        ) WITHOUT ROWID;
+
+        CREATE TABLE codex_thread_snapshots (
+          thread_id TEXT PRIMARY KEY REFERENCES codex_card_threads(thread_id) ON DELETE CASCADE,
+          turns_json TEXT NOT NULL DEFAULT '[]',
+          items_json TEXT NOT NULL DEFAULT '[]',
+          updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE canvas (
+          project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+          elements TEXT NOT NULL DEFAULT '[]',
+          app_state TEXT NOT NULL DEFAULT '{}',
+          files TEXT NOT NULL DEFAULT '{}',
+          updated TEXT NOT NULL
+        );
+
+        PRAGMA user_version = 25;
+      `);
+
+      db.prepare(`
+        INSERT INTO projects (id, name, description, icon, workspace_path, created)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        "default",
+        "Default",
+        "Pinned nodex://card/project-card",
+        "",
+        null,
+        "2026-03-13T00:00:00.000Z",
+      );
+
+      const embeddedSnapshot = encodeBase64Utf8(JSON.stringify({
+        description: "Embedded nodex://card/card-embedded",
+        links: ["nodex:card/card-embedded-2"],
+      }));
+      const cardDescription = [
+        "Top level nodex://card/card-raw",
+        `<card-toggle card="card-1" meta="[Backlog]" snapshot="${embeddedSnapshot}">`,
+        "\tChild block",
+        "</card-toggle>",
+      ].join("\n");
+
+      db.prepare(`
+        INSERT INTO cards (
+          id, project_id, status, archived, title, description, description_revision_id, priority, estimate,
+          tags, due_date, assignee, agent_blocked, agent_status, run_in_target, run_in_local_path,
+          run_in_base_branch, run_in_worktree_path, run_in_environment_path, revision, scheduled_start,
+          scheduled_end, is_all_day, recurrence_json, reminders_json, schedule_timezone, created, "order"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "card-1",
+        "default",
+        "backlog",
+        0,
+        "Title nodex://card/card-title",
+        cardDescription,
+        null,
+        null,
+        null,
+        "[]",
+        null,
+        null,
+        0,
+        null,
+        "local_project",
+        null,
+        null,
+        null,
+        null,
+        1,
+        null,
+        null,
+        0,
+        null,
+        "[]",
+        null,
+        "2026-03-13T00:00:00.000Z",
+        0,
+      );
+
+      db.prepare(`
+        INSERT INTO description_blocks (hash, content, created_at)
+        VALUES (?, ?, ?)
+      `).run(
+        "block-1",
+        "Block nodex:///card/block-card",
+        "2026-03-13T00:00:00.000Z",
+      );
+
+      db.prepare(`
+        INSERT INTO history (
+          id, project_id, operation, card_id, status, archived, timestamp, previous_values, new_values,
+          from_status, to_status, from_archived, to_archived, from_order, to_order, card_snapshot,
+          previous_description_revision_id, new_description_revision_id, snapshot_description_revision_id,
+          session_id, group_id, is_undone, undo_of
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        1,
+        "default",
+        "update",
+        "card-1",
+        "backlog",
+        0,
+        "2026-03-13T00:01:00.000Z",
+        JSON.stringify({ before: "nodex://card/history-before" }),
+        JSON.stringify({ after: "nodex:card/history-after" }),
+        "backlog",
+        "backlog",
+        0,
+        0,
+        0,
+        0,
+        JSON.stringify({ card: { link: "nodex:///card/history-snapshot" } }),
+        null,
+        null,
+        null,
+        null,
+        null,
+        0,
+        null,
+      );
+
+      db.prepare(`
+        INSERT INTO codex_card_threads (
+          thread_id, project_id, card_id, thread_name, thread_preview, model_provider, cwd,
+          status_type, status_active_flags_json, archived, created_at, updated_at, linked_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        "thread-1",
+        "default",
+        "card-1",
+        "Thread nodex://card/thread-name",
+        "Preview nodex:///card/thread-preview",
+        "openai",
+        null,
+        "notLoaded",
+        "[]",
+        0,
+        1,
+        1,
+        "2026-03-13T00:02:00.000Z",
+      );
+
+      db.prepare(`
+        INSERT INTO codex_thread_snapshots (thread_id, turns_json, items_json, updated_at)
+        VALUES (?, ?, ?, ?)
+      `).run(
+        "thread-1",
+        JSON.stringify([{ markdown: "nodex://card/turn-link" }]),
+        JSON.stringify([{ text: "nodex:card/item-link" }]),
+        1,
+      );
+
+      db.prepare(`
+        INSERT INTO canvas (project_id, elements, app_state, files, updated)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        "default",
+        JSON.stringify([{ link: "nodex:card/canvas-card" }]),
+        JSON.stringify({ lastLink: "nodex://card/canvas-state" }),
+        JSON.stringify({ one: { note: "nodex:///card/canvas-file" } }),
+        "2026-03-13T00:03:00.000Z",
+      );
+
+      db.close();
+
+      await initializeDatabase();
+
+      const migratedDb = new Database(dbPath, { readonly: true });
+      const version = migratedDb.prepare("PRAGMA user_version").get() as
+        | { user_version: number }
+        | undefined;
+      expect(version?.user_version).toBe(CURRENT_SCHEMA_VERSION);
+
+      const projectRow = migratedDb.prepare("SELECT description FROM projects WHERE id = ?").get("default") as
+        | { description: string }
+        | undefined;
+      expect(projectRow?.description.includes("nodex://cards/project-card")).toBeTrue();
+
+      const cardRow = migratedDb.prepare("SELECT title, description FROM cards WHERE id = ?").get("card-1") as
+        | { title: string; description: string }
+        | undefined;
+      expect(cardRow?.title.includes("nodex://cards/card-title")).toBeTrue();
+      expect(cardRow?.description.includes("nodex://cards/card-raw")).toBeTrue();
+      expect(cardRow?.description.includes("nodex://card/")).toBeFalse();
+
+      const snapshotMatch = cardRow?.description.match(/snapshot=\"([^\"]+)\"/);
+      const decodedSnapshot = snapshotMatch ? decodeBase64Utf8(snapshotMatch[1]) : "";
+      expect(decodedSnapshot.includes("nodex://cards/card-embedded")).toBeTrue();
+      expect(decodedSnapshot.includes("nodex://cards/card-embedded-2")).toBeTrue();
+      expect(decodedSnapshot.includes("nodex://card/")).toBeFalse();
+
+      const blockRow = migratedDb.prepare("SELECT content FROM description_blocks WHERE hash = ?").get("block-1") as
+        | { content: string }
+        | undefined;
+      expect(blockRow?.content.includes("nodex://cards/block-card")).toBeTrue();
+
+      const historyRow = migratedDb.prepare(`
+        SELECT previous_values, new_values, card_snapshot
+        FROM history
+        WHERE id = 1
+      `).get() as
+        | { previous_values: string | null; new_values: string | null; card_snapshot: string | null }
+        | undefined;
+      expect(historyRow?.previous_values?.includes("nodex://cards/history-before")).toBeTrue();
+      expect(historyRow?.new_values?.includes("nodex://cards/history-after")).toBeTrue();
+      expect(historyRow?.card_snapshot?.includes("nodex://cards/history-snapshot")).toBeTrue();
+
+      const codexRow = migratedDb.prepare(`
+        SELECT thread_name, thread_preview
+        FROM codex_card_threads
+        WHERE thread_id = ?
+      `).get("thread-1") as
+        | { thread_name: string | null; thread_preview: string }
+        | undefined;
+      expect((codexRow?.thread_name ?? "").includes("nodex://cards/thread-name")).toBeTrue();
+      expect(codexRow?.thread_preview.includes("nodex://cards/thread-preview")).toBeTrue();
+
+      const snapshotRow = migratedDb.prepare(`
+        SELECT turns_json, items_json
+        FROM codex_thread_snapshots
+        WHERE thread_id = ?
+      `).get("thread-1") as
+        | { turns_json: string; items_json: string }
+        | undefined;
+      expect(snapshotRow?.turns_json.includes("nodex://cards/turn-link")).toBeTrue();
+      expect(snapshotRow?.items_json.includes("nodex://cards/item-link")).toBeTrue();
+
+      const canvasRow = migratedDb.prepare(`
+        SELECT elements, app_state, files
+        FROM canvas
+        WHERE project_id = ?
+      `).get("default") as
+        | { elements: string; app_state: string; files: string }
+        | undefined;
+      expect(canvasRow?.elements.includes("nodex://cards/canvas-card")).toBeTrue();
+      expect(canvasRow?.app_state.includes("nodex://cards/canvas-state")).toBeTrue();
+      expect(canvasRow?.files.includes("nodex://cards/canvas-file")).toBeTrue();
 
       migratedDb.close();
     } catch (error) {
