@@ -1,0 +1,115 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: Version bump strategy
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - custom
+      custom_version:
+        description: Explicit semver version to use when release-type is custom
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      git_ref: ${{ steps.release_version.outputs.git_ref }}
+      version: ${{ steps.release_version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        run: bun test
+
+      - name: Resolve version bump
+        id: bump
+        shell: bash
+        run: |
+          release_type="${{ inputs.release_type }}"
+          custom_version="${{ inputs.custom_version }}"
+
+          case "${release_type}" in
+            patch|minor|major)
+              echo "value=${release_type}" >> "${GITHUB_OUTPUT}"
+              ;;
+            custom)
+              if [[ -z "${custom_version}" ]]; then
+                echo "custom-version is required when release-type is custom." >&2
+                exit 1
+              fi
+
+              echo "value=${custom_version}" >> "${GITHUB_OUTPUT}"
+              ;;
+            *)
+              echo "Unsupported release type: ${release_type}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Bump package version with Bun
+        run: bun pm version "${{ steps.bump.outputs.value }}" --no-git-tag-version
+
+      - name: Resolve release version
+        id: release_version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "git_ref=v${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update CHANGELOG and generate release notes
+        run: |
+          bun run release:prepare -- \
+            --release-notes-output "${RUNNER_TEMP}/release-notes.md" \
+            --commit-message-output "${RUNNER_TEMP}/release-commit-message.txt"
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit, tag, and push release
+        shell: bash
+        run: |
+          version="${{ steps.release_version.outputs.version }}"
+          tag_name="v${version}"
+
+          git add package.json CHANGELOG.md
+          git commit -F "${RUNNER_TEMP}/release-commit-message.txt"
+          git tag -a "${tag_name}" -F "${RUNNER_TEMP}/release-commit-message.txt"
+          git push origin HEAD
+          git push origin "${tag_name}"
+
+  publish:
+    needs: prepare
+    uses: ./.github/workflows/release.yml
+    with:
+      git_ref: ${{ needs.prepare.outputs.git_ref }}
+    secrets: inherit

@@ -919,16 +919,28 @@ bun run start            # electron out/main/index.js
 ### Packaging & Release
 ```bash
 bun run package          # Build + create macOS DMG + ZIP in dist/
-bun run release          # Build + publish DMG/ZIP to GitHub Releases
+bun run release          # Legacy local publish path via electron-builder
 ```
 
 To release a new version:
 ```bash
-# 1. Bump version in package.json
-# 2. Tag and push
-git tag v0.2.0
-git push --tags
-# 3. GitHub Actions builds, signs, and publishes to GitHub Releases
+# 1. Update CHANGELOG.md under ## [Unreleased]
+# 2. Run the GitHub Actions "Prepare Release" workflow
+# 3. Choose patch/minor/major or provide a custom version
+# 4. The workflow runs typecheck/lint/tests, bumps package.json with Bun,
+#    rolls Unreleased into a dated release section, commits, tags, pushes,
+#    builds the app, and publishes the GitHub Release with the same notes
+```
+
+Manual fallback:
+```bash
+# One command locally:
+bun run release:cut:patch   # or: bun run release:cut:minor / bun run release:cut:major
+```
+
+For an explicit version, keep using Bun directly:
+```bash
+bun run release:cut -- 0.2.3
 ```
 
 For code signing and notarization, set these env vars (or GitHub Secrets):

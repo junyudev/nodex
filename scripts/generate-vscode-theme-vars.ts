@@ -1,11 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildVscodeTokenCss,
   parseVscodeTokenKeys,
 } from "../src/renderer/lib/vscode-theme-vars";
 
-const REPO_ROOT = resolve(import.meta.dir, "..");
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(scriptDir, "..");
 const KEYS_FILE = resolve(REPO_ROOT, "scripts/vscode-theme-color-keys.txt");
 const OUTPUT_FILE = resolve(REPO_ROOT, "src/renderer/styles/vscode-theme-vars.css");
 

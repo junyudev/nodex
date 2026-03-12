@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_call:
+    inputs:
+      git_ref:
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -11,8 +16,14 @@ permissions:
 jobs:
   build-macos:
     runs-on: macos-latest
+    env:
+      RELEASE_GIT_REF: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
+      RELEASE_NOTES_PATH: ${{ runner.temp }}/release-notes.md
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_GIT_REF }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -24,16 +35,41 @@ jobs:
       - name: Build app
         run: bun run build
 
-      - name: Package & publish
-        run: bun run electron-builder --mac --publish always
+      - name: Package app
+        run: bun run electron-builder --mac --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Uncomment after adding Apple Developer secrets:
           # CSC_LINK: ${{ secrets.CSC_LINK }}
           # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           # APPLE_ID: ${{ secrets.APPLE_ID }}
           # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          release_ref="${RELEASE_GIT_REF}"
+          if [[ "${release_ref}" == refs/tags/* ]]; then
+            echo "tag=${release_ref#refs/tags/}" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "tag=${release_ref}" >> "${GITHUB_OUTPUT}"
+
+      - name: Extract release notes from CHANGELOG
+        run: bun run release:notes -- --release-notes-output "${RELEASE_NOTES_PATH}"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
+          draft: false
+          files: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
+          tag_name: ${{ steps.release_tag.outputs.tag }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
