@@ -17,9 +17,9 @@ All notable changes to this project will be documented in this file.
 - Changed card deeplinks to the canonical `nodex://cards/<card-id>` schema and removed the startup rewrite pass for older deeplink variants.
 - Moved DB view switching out of the sidebar and into a sticky View-stage toolbar with Notion-like tabs and inline search chrome that now stays pinned above every board, table, canvas, and calendar surface.
 - Changed the toggle-list Rules panel so a top-right `Raw` toggle swaps the visual rules editor with the raw JSON editor directly.
+- Priority is now empty by default and can be cleared back to empty across the card editor, inline creator, and compact card surfaces.
 
 ### Fixed
-- Fixed cards defaulting to `P2` priority; priority is now empty by default and can be cleared back to empty across the card editor, inline creator, and compact card surfaces.
 
 ## [0.1.1] - 2026-03-12
 
