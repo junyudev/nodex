@@ -7,10 +7,8 @@ import { resolveCardDropTargetAtPointer } from "./editor/card-drop-target-regist
 import type { ExternalCardDragSession } from "./editor/external-card-drag-session";
 
 export function resolveExternalCardDropTarget(
-  isSearchActive: boolean,
   session: ExternalCardDragSession | null,
 ) {
-  if (isSearchActive) return null;
   if (!session?.pointer) return null;
   return resolveCardDropTargetAtPointer(session.pointer, session.payload);
 }

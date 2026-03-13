@@ -57,13 +57,13 @@ describe("board card-drop routing", () => {
       applyDrop: () => null,
     });
 
-    const target = resolveExternalCardDropTarget(false, createSession({ x: 10, y: 10 }));
+    const target = resolveExternalCardDropTarget(createSession({ x: 10, y: 10 }));
     unregister();
 
     expect(target?.id).toBe("target-1");
   });
 
-  test("search-active mode blocks editor drop routing", () => {
+  test("allows editor drop routing while a filtered board search is active", () => {
     const element = createTargetElement();
     const unregister = registerCardDropTarget({
       id: "target-2",
@@ -72,10 +72,10 @@ describe("board card-drop routing", () => {
       applyDrop: () => null,
     });
 
-    const target = resolveExternalCardDropTarget(true, createSession({ x: 10, y: 10 }));
+    const target = resolveExternalCardDropTarget(createSession({ x: 10, y: 10 }));
     unregister();
 
-    expect(target === null).toBeTrue();
+    expect(target?.id).toBe("target-2");
   });
 
   test("buildExternalCardDropMoveRequest keeps same-project drop payload local", () => {

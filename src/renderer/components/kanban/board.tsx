@@ -72,6 +72,7 @@ import {
   resolveExternalCardDropTarget,
 } from "./board-drop-routing";
 import { resolveDragOverlayGeometry } from "./drag-overlay-geometry";
+import { resolveFilteredDropOrder } from "./filtered-drag-order";
 
 // Custom collision detection: prioritize pointerWithin for columns, fall back to rectIntersection
 const customCollisionDetection: CollisionDetection = (args) => {
@@ -211,10 +212,13 @@ export function KanbanBoard({
 
   useEffect(() => {
     setCardSelection((current) => {
-      const normalized = normalizeCardSelection(current, board);
+      const normalized = normalizeCardSelection(
+        current,
+        isSearchActive ? filteredBoard : board,
+      );
       return hasSameCardSelection(current, normalized) ? current : normalized;
     });
-  }, [board]);
+  }, [board, filteredBoard, isSearchActive]);
 
   const currentProjectName = useMemo(
     () => projects.find((project) => project.id === projectId)?.name ?? projectId,
@@ -244,11 +248,10 @@ export function KanbanBoard({
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    if (isSearchActive) return;
     const { active } = event;
     const data = active.data.current as { card: CardType; columnId: string };
     const dragItems = resolveDragGroup(
-      board,
+      isSearchActive ? filteredBoard : board,
       cardSelection,
       {
         card: data.card,
@@ -273,7 +276,6 @@ export function KanbanBoard({
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    if (isSearchActive) return;
     const { over } = event;
     if (!over) {
       setDropIndicator(null);
@@ -289,7 +291,7 @@ export function KanbanBoard({
         return;
       }
       const columnId = over.data.current.columnId as string;
-      const column = board?.columns.find((c) => c.id === columnId);
+      const column = filteredBoard?.columns.find((c) => c.id === columnId);
       const overIndex = column?.cards.findIndex((c) => c.id === over.id) ?? 0;
       setDropIndicator({ columnId, index: overIndex });
     } else {
@@ -298,8 +300,6 @@ export function KanbanBoard({
   };
 
   const handleDragMove = (event: DragMoveEvent) => {
-    if (isSearchActive) return;
-
     const session = getActiveExternalCardDragSession();
     if (!session) return;
 
@@ -375,7 +375,7 @@ export function KanbanBoard({
     clearCardDropTargetHover();
 
     if (cardDragSession) {
-      const target = resolveExternalCardDropTarget(isSearchActive, cardDragSession);
+      const target = resolveExternalCardDropTarget(cardDragSession);
       if (target && cardDragSession.pointer) {
         const optimisticResult = target.applyDrop(
           cardDragSession.payload,
@@ -410,8 +410,6 @@ export function KanbanBoard({
     endExternalCardDragSession(externalCardDragSessionIdRef.current);
     externalCardDragSessionIdRef.current = undefined;
 
-    if (isSearchActive) return;
-
     if (!over || !active.data.current) return;
 
     const activeData = active.data.current as { card: CardType; columnId: CardStatus };
@@ -431,17 +429,16 @@ export function KanbanBoard({
       : undefined;
 
     let toStatus: CardStatus;
-    let newOrder: number;
+    let targetVisibleIndex: number;
 
     if (over.data.current?.column) {
       toStatus = over.data.current.column.id as CardStatus;
-      const targetColumn = board?.columns.find((c) => c.id === toStatus);
-      newOrder = targetColumn?.cards.length ?? 0;
+      const targetColumn = filteredBoard?.columns.find((c) => c.id === toStatus);
+      targetVisibleIndex = targetColumn?.cards.length ?? 0;
     } else if (over.data.current?.card) {
       toStatus = over.data.current.columnId as CardStatus;
-      const targetColumn = board?.columns.find((c) => c.id === toStatus);
-      const overIndex = targetColumn?.cards.findIndex((c) => c.id === over.id) ?? 0;
-      newOrder = overIndex;
+      const targetColumn = filteredBoard?.columns.find((c) => c.id === toStatus);
+      targetVisibleIndex = targetColumn?.cards.findIndex((c) => c.id === over.id) ?? 0;
     } else {
       return;
     }
@@ -449,6 +446,16 @@ export function KanbanBoard({
     if (over.data.current?.card && dragCardIds.includes(String(over.id))) {
       return;
     }
+
+    const newOrder = isSearchActive
+      ? resolveFilteredDropOrder({
+        board,
+        visibleBoard: filteredBoard,
+        draggedCardIds: dragCardIds,
+        targetColumnId: toStatus,
+        targetVisibleIndex,
+      })
+      : targetVisibleIndex;
 
     if (dragCardIds.length > 1) {
       const moved = await moveCards({
@@ -781,7 +788,6 @@ export function KanbanBoard({
                 onNativeDragOver={handleNativeDragOver}
                 onNativeDragLeave={handleNativeDragLeave}
                 onNativeDrop={handleNativeDrop}
-                dragDisabled={isSearchActive}
                 dropIndicatorIndex={
                   dropIndicator?.columnId === column.id
                     ? dropIndicator.index
