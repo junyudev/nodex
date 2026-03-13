@@ -80,21 +80,3 @@ export function writeCollaborationModeForContextKey(
   writeStoredMap(current);
   return nextMode;
 }
-
-export function migrateDraftCollaborationModeToThread(input: {
-  projectId: string;
-  cardId: string;
-  threadId: string;
-}): CodexCollaborationModeKind {
-  const draftKey = getDraftCollaborationModeStorageKey(input.projectId, input.cardId);
-  const threadKey = getThreadCollaborationModeStorageKey(input.threadId);
-  const current = readStoredMap();
-  const mode = isCollaborationMode(current[draftKey])
-    ? current[draftKey]
-    : DEFAULT_CODEX_COLLABORATION_MODE;
-
-  current[threadKey] = mode;
-  delete current[draftKey];
-  writeStoredMap(current);
-  return mode;
-}

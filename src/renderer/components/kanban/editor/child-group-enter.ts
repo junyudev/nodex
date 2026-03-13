@@ -6,8 +6,7 @@
  *   - Enter in the middle/end of an inline parent with children splits trailing
  *     parent text into a new first child.
  * - Toggle-specific fallback:
- *   - Preserve legacy behaviour for expanded toggles with no children:
- *     Enter at end of non-empty header creates first child.
+ *   - Enter at end of a non-empty expanded toggle header creates its first child.
  */
 
 interface BlockCursor {
@@ -187,7 +186,3 @@ export function handleChildGroupEmptyEnter(
 
   return true;
 }
-
-// Backwards-compatible export while downstream call-sites migrate naming.
-export const handleToggleChildEmptyEnter = handleChildGroupEmptyEnter;
-export type EditorForToggleEnter = EditorForChildGroupEnter;

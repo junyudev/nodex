@@ -24,7 +24,7 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `kanban/recurrence-service.ts`: recurrence expansion, exception application, and next-occurrence computation.
 - `kanban/reminder-service.ts`: runtime reminder scheduler, startup/resume catch-up, receipts, and snoozes.
 - `kanban/backup-service.ts`: whole-store backup/restore and scheduler.
-- `kanban/schema.ts`: latest-schema bootstrap and targeted schema migrations.
+- `kanban/schema.ts`: latest-schema bootstrap and the future-ready schema version/migration framework.
 - `kanban/card-input-validation.ts`: shared write validation used by all mutation paths.
 - `logging/logger.ts`: structured backend logger with child scopes, sensitive-field redaction, bounded payload serialization, and profile-scoped JSONL file persistence under `${KANBAN_DIR}/logs`.
 - `workbench-resume-state.ts`: profile-scoped persisted last-window snapshot store under Electron `userData`, plus restore-eligible window gating for app reopen.

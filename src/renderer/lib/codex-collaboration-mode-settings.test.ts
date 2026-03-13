@@ -3,7 +3,6 @@ import {
   DEFAULT_CODEX_COLLABORATION_MODE,
   getDraftCollaborationModeStorageKey,
   getThreadCollaborationModeStorageKey,
-  migrateDraftCollaborationModeToThread,
   readCollaborationModeForContextKey,
   writeCollaborationModeForContextKey,
 } from "./codex-collaboration-mode-settings";
@@ -70,31 +69,4 @@ describe("codex collaboration mode settings", () => {
     }
   });
 
-  test("migrates draft mode to thread mode and removes draft key", () => {
-    const storageGlobal = globalThis as unknown as { localStorage?: typeof mockStorage };
-    const previousLocalStorage = storageGlobal.localStorage;
-    storageGlobal.localStorage = mockStorage;
-    mockStorage.clear();
-
-    try {
-      const projectId = "project-2";
-      const cardId = "card-2";
-      const threadId = "thr-3";
-      const draftKey = getDraftCollaborationModeStorageKey(projectId, cardId);
-      const threadKey = getThreadCollaborationModeStorageKey(threadId);
-
-      writeCollaborationModeForContextKey(draftKey, "plan");
-      const migrated = migrateDraftCollaborationModeToThread({ projectId, cardId, threadId });
-
-      expect(migrated).toBe("plan");
-      expect(readCollaborationModeForContextKey(threadKey)).toBe("plan");
-      expect(readCollaborationModeForContextKey(draftKey)).toBe(DEFAULT_CODEX_COLLABORATION_MODE);
-    } finally {
-      if (previousLocalStorage) {
-        storageGlobal.localStorage = previousLocalStorage;
-      } else {
-        delete storageGlobal.localStorage;
-      }
-    }
-  });
 });

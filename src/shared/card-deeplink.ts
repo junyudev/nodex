@@ -2,13 +2,6 @@ export const NODEX_DEEPLINK_PROTOCOL = "nodex:";
 export const NODEX_CARD_DEEPLINK_KIND = "cards";
 
 const NODEX_CARD_DEEPLINK_PREFIX = `${NODEX_DEEPLINK_PROTOCOL}//${NODEX_CARD_DEEPLINK_KIND}/`;
-const LEGACY_CARD_DEEPLINK_PREFIXES = [
-  "nodex://card/",
-  "nodex:///card/",
-  "nodex:card/",
-  "nodex:///cards/",
-  "nodex:cards/",
-] as const;
 
 export interface CardDeepLinkTarget {
   cardId: string;
@@ -29,14 +22,6 @@ function decodePathSegment(value: string): string | null {
 
 export function buildCardDeepLink(target: CardDeepLinkTarget): string {
   return `${NODEX_CARD_DEEPLINK_PREFIX}${encodeURIComponent(target.cardId)}`;
-}
-
-export function rewriteCardDeepLinksInText(value: string): string {
-  let rewritten = value;
-  for (const legacyPrefix of LEGACY_CARD_DEEPLINK_PREFIXES) {
-    rewritten = rewritten.replaceAll(legacyPrefix, NODEX_CARD_DEEPLINK_PREFIX);
-  }
-  return rewritten;
 }
 
 export function parseCardDeepLink(value: string): CardDeepLinkTarget | null {

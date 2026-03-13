@@ -24,7 +24,7 @@
 
 ## Sync and Event Delivery
 - Electron path: DB change notifier -> main-process fanout to all open windows -> IPC event -> hook refresh.
-- Electron startup path: renderer blocks behind a preload-driven bootstrap screen until main-process initialization resolves; supported SQLite migrations stream determinate progress updates over IPC so users are not left on a blank window.
+- Electron startup path: renderer blocks behind a preload-driven bootstrap screen until main-process initialization resolves; the migration-progress IPC path remains available for future supported SQLite migrations so users are not left on a blank window.
 - Electron single-instance lock scope is profile-aware: main process sets `userData`/`sessionData` under resolved `KANBAN_DIR` before calling `requestSingleInstanceLock`, so independently configured installs can run concurrently.
 - Browser path: DB change notifier -> SSE stream -> hook refresh.
 - Renderer applies short mutation cooldown to reduce stale refresh races.
@@ -40,9 +40,7 @@
 - Oversized card payloads return HTTP `413` before DB work.
 - Invalid inputs fail at validation boundary with actionable errors.
 - Not-found resources return `404` from API routes.
-- Supported schema migrations can be destructive when explicitly documented: schema v21 drops pre-v21 history rows, preserves cards/projects, and reseeds description revisions from the current card descriptions.
-- Schema v25 performs a one-time startup rewrite of all legacy card ids to canonical lowercase UUID-v7, rebuilds description revision storage, rewrites embedded card references/history payloads, drops the dead `recurrence_occurrence_log` table, and aborts startup if `PRAGMA foreign_key_check` finds any unmapped dependency.
-- Older explicit SQLite schema versions still fail fast during startup with an unsupported-version error instead of attempting in-app migrations.
+- Current builds expect the latest SQLite schema; explicit older schema versions fail fast during startup with an unsupported-version error instead of attempting in-app migrations.
 - Stale card writes with `expectedRevision` return typed conflict payloads (`status: "conflict"`; HTTP `409`) and do not apply partial updates.
 - Backup restore failures surface explicit error responses.
 - Reminder delivery is at-least-once at scheduler level, then effectively exactly-once per `(project_id, card_id, occurrence_start, offset)` via receipt uniqueness.

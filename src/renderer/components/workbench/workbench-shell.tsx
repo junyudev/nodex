@@ -62,7 +62,6 @@ import {
   DEFAULT_CODEX_COLLABORATION_MODE,
   getDraftCollaborationModeStorageKey,
   getThreadCollaborationModeStorageKey,
-  migrateDraftCollaborationModeToThread,
   readCollaborationModeForContextKey,
   writeCollaborationModeForContextKey,
 } from "@/lib/codex-collaboration-mode-settings";
@@ -1511,12 +1510,11 @@ export function WorkbenchShell({
               worktreeStartMode,
               worktreeBranchPrefix: worktreeAutoBranchPrefix,
             });
-            const migratedMode = migrateDraftCollaborationModeToThread({
-              projectId: input.projectId,
-              cardId: input.cardId,
-              threadId: detail.threadId,
-            });
-            setSelectedCollaborationMode(migratedMode);
+            const nextMode = writeCollaborationModeForContextKey(
+              getThreadCollaborationModeStorageKey(detail.threadId),
+              selectedCollaborationMode,
+            );
+            setSelectedCollaborationMode(nextMode);
             await loadCodexThreads(input.projectId);
             setThreadsProjectId(input.projectId);
             setActiveThreadsTab(input.projectId, detail.threadId);

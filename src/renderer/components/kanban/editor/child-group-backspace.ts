@@ -94,7 +94,3 @@ export function handleChildGroupBackspace(
 
   return true;
 }
-
-// Backwards-compatible export while downstream call-sites migrate naming.
-export const handleToggleChildBackspace = handleChildGroupBackspace;
-export type EditorForToggleBackspace = EditorForChildGroupBackspace;

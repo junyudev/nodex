@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildCardDeepLink,
   parseCardDeepLink,
-  rewriteCardDeepLinksInText,
 } from "./card-deeplink";
 
 describe("card deeplink", () => {
@@ -24,18 +23,6 @@ describe("card deeplink", () => {
 
   test("returns null for legacy singular deeplinks", () => {
     expect(parseCardDeepLink("nodex://card/card-42")).toBe(null);
-  });
-
-  test("rewrites legacy deeplinks to the canonical cards schema", () => {
-    const rewritten = rewriteCardDeepLinksInText([
-      "nodex://card/card-1",
-      "nodex:///card/card-2",
-      "nodex:card/card-3",
-    ].join("\n"));
-
-    expect(rewritten.includes("nodex://cards/card-1")).toBeTrue();
-    expect(rewritten.includes("nodex://cards/card-2")).toBeTrue();
-    expect(rewritten.includes("nodex://cards/card-3")).toBeTrue();
   });
 
   test("returns null for unsupported deeplinks", () => {

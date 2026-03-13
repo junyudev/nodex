@@ -1,19 +1,19 @@
 # Description History Revisions
 
 Status: Active
-Last Updated: 2026-03-11
+Last Updated: 2026-03-13
 
 This document is the detailed source of truth for Nodex's revision-based storage for card description history.
 
-It is intentionally narrower than the main product spec. It explains how description history is stored, hydrated, migrated, pruned, and reclaimed on disk.
+It is intentionally narrower than the main product spec. It explains how description history is stored, hydrated, pruned, and reclaimed on disk.
 
 ## Purpose
 
 This feature exists to stop repeated edits to large NFM descriptions from exploding SQLite storage.
 
-Before schema v21, `history.previous_values`, `history.new_values`, and `history.card_snapshot` could each inline full `description` strings. Repeated edits to one large card could therefore duplicate large text blobs many times and push the SQLite file to grow rapidly.
+Before the current revision-based schema, `history.previous_values`, `history.new_values`, and `history.card_snapshot` could each inline full `description` strings. Repeated edits to one large card could therefore duplicate large text blobs many times and push the SQLite file to grow rapidly.
 
-Schema v21 replaces that model with:
+The current schema replaces that model with:
 - `cards.description` as the latest fully materialized description
 - `cards.description_revision_id` as the authoritative pointer to the latest revision
 - `description_revisions` as the revision log
@@ -26,7 +26,6 @@ Included:
 - SQLite schema for description revisions
 - revision encoding and reconstruction model
 - history write behavior for create/update/delete/revert/restore/undo/redo
-- destructive migration behavior for pre-v21 history
 - pruning, revision garbage collection, and incremental vacuum behavior
 - shared NFM parser/serializer extraction needed by the storage layer
 
@@ -254,30 +253,11 @@ This ensures:
 - identical block hashing across main and renderer
 - fewer parser drift bugs
 
-## Migration Behavior
+## Version Compatibility
 
-### Version Boundary
+Current builds only support the latest SQLite schema at startup.
 
-This feature ships in schema v21.
-
-### v20 -> v21 Migration
-
-The migration is intentionally destructive for history compatibility.
-
-Behavior:
-- existing projects and cards are preserved
-- all old `history` rows are dropped
-- `description_revisions` and `description_blocks` are recreated from scratch
-- each existing card gets a fresh initial snapshot revision seeded from its current `cards.description`
-- `cards.description_revision_id` is backfilled from that seeded revision
-
-This is acceptable because Nodex currently has no production user data requirement for legacy history preservation.
-
-### Unsupported Older Versions
-
-Only supported migrations are run in app startup.
-
-Versions older than the supported migration path still fail fast as unsupported, per the general reliability model.
+Older local databases fail fast as unsupported instead of being rewritten in-app.
 
 ## Pruning And Garbage Collection
 
@@ -359,7 +339,7 @@ These invariants should always hold:
 
 - Nested edits rewrite the containing top-level block blob.
 - Revision reconstruction still requires walking a chain, though snapshots bound the cost.
-- Because old history is dropped at v21 migration, there is no legacy compatibility path for pre-v21 history inspection.
+- There is no in-app compatibility path for historical pre-revision history formats.
 - `cards.description` is still fully materialized, so the latest card state itself is not compressed in-row; only the history path is compacted.
 
 ## Testing Requirements
@@ -371,7 +351,7 @@ Coverage for this feature should include:
 - exact reconstruction from snapshot + delta chains
 - hydrated history reads exposing full descriptions
 - undo/redo/revert/restore correctness for description changes
-- destructive v20 -> v21 migration behavior
+- startup version-guard behavior for unsupported older schemas
 - GC of unreachable revisions and orphaned block blobs
 
 ## Related Documents

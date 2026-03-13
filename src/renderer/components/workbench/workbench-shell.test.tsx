@@ -163,7 +163,6 @@ mock.module("@/lib/codex-collaboration-mode-settings", () => ({
   DEFAULT_CODEX_COLLABORATION_MODE: "default" as const,
   getDraftCollaborationModeStorageKey: (projectId: string, cardId: string) => `draft:${projectId}:${cardId}`,
   getThreadCollaborationModeStorageKey: (threadId: string) => `thread:${threadId}`,
-  migrateDraftCollaborationModeToThread: () => "default" as const,
   readCollaborationModeForContextKey: () => "default" as const,
   writeCollaborationModeForContextKey: (_contextKey: string, mode: "default" | "plan") => mode,
 }));

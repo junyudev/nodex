@@ -87,7 +87,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Diff stage is an interactive placeholder in this release
 - Create/delete projects via switcher dropdown or CLI
 - Default project "default" seeded on first boot
-- In Electron, startup opens into a blocking bootstrap surface until local initialization completes; when a supported SQLite schema migration is running, that surface shows determinate migration progress and migration-specific status copy
+- In Electron, startup opens into a blocking bootstrap surface until local initialization completes; if a future supported SQLite schema migration is running, that surface shows determinate migration progress and migration-specific status copy
 - Project ID: lowercase alphanumeric with hyphens (e.g., `my-project`)
 - Project icon: optional per-project emoji persisted in SQLite; when empty, UI shows a project-colored dot
 - Project workspace path: optional filesystem path persisted per project and used as Codex thread `cwd`
@@ -142,7 +142,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 #### 4. SQLite Database Storage
 - Single `kanban.db` file in kanban directory
 - Atomic transactions for data integrity
-- Schema v25 with UUID-v7 card ids, description revision storage, Codex thread-link metadata keyed by `thread_id`, recurring reminder state, and project-scoped realtime/history state
+- Schema v26 with UUID-v7 card ids, description revision storage, Codex thread-link metadata keyed by `thread_id`, recurring reminder state, and project-scoped realtime/history state
 
 #### 5. Card Properties
 
@@ -268,7 +268,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Non-description fields use delta storage (only changed fields stored, not full snapshots)
 - Card descriptions are stored outside `history` in a revision chain keyed by `cards.description_revision_id`; history rows only store description revision pointers
 - Description revisions use top-level NFM block hashing plus ordered splice deltas, with periodic snapshot revisions to cap reconstruction work
-- Schema v21 migration is destructive for pre-v21 history rows: cards are preserved, legacy history is dropped, and fresh description revisions are seeded from current card descriptions
+- Current builds do not support opening older pre-revision SQLite schemas in-app; recreate the local database if you need a fresh store on a newer build
 - History panel is card-scoped (opened as an overlay from Card Stage) and shows a per-card edit timeline with timestamps, plus selectable detail panes for field diffs and snapshots
 - The card history overlay reads a panel-specific display model from `history:card` instead of reusing the old generic `HistoryEntry` payload
 - Description changes in the history panel render as top-level NFM block operations (`added`, `removed`, `replaced`) with per-block previews and optional raw block source, not hydrated whole-document before/after blobs
