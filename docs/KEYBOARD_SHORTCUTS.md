@@ -16,6 +16,8 @@ All keyboard shortcuts in Nodex. Platform modifier: **⌘ (Cmd)** on Mac, **Ctrl
 | `⌘/Ctrl+Shift+P` | Open project/space picker | Opens space manager popover, including while focus is inside the NFM editor |
 | `⌘/Ctrl+K` | Open command palette | Global launcher for cards and commands; works from editable surfaces too |
 | `⌘/Ctrl+P` | Open command palette | Alias for the same global launcher |
+| `⌘/Ctrl+[` | Go back | Restores the previous durable workbench context; works from editable surfaces too |
+| `⌘/Ctrl+]` | Go forward | Restores the next durable workbench context; works from editable surfaces too |
 | `⌘/Ctrl+,` | Toggle settings overlay | Opens/closes the full-page settings overlay |
 | `⌘/Ctrl+J` | Toggle bottom terminal panel | Global toggle, including when focus is in editor inputs |
 | `⌘/Ctrl+N` | Open new app window | Electron desktop only (`window:new` IPC); ignored in browser runtime |

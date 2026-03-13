@@ -42,6 +42,7 @@ function makeCommand(overrides: Partial<CommandPaletteCommand> = {}): CommandPal
     keywords: overrides.keywords ?? ["settings", "preferences"],
     shortcut: overrides.shortcut,
     active: overrides.active ?? false,
+    disabled: overrides.disabled ?? false,
     priority: overrides.priority ?? 100,
   };
 }
@@ -138,5 +139,21 @@ describe("filterCommandPaletteItems", () => {
 
     expect(result.commands[0]?.id).toBe("terminal");
     expect(result.cards[0]?.card.id).toBe("beta");
+  });
+
+  test("preserves disabled back and forward commands", () => {
+    const result = filterCommandPaletteItems({
+      query: "go",
+      commands: [
+        makeCommand({ id: "go-back", title: "Go back", keywords: ["back"], disabled: true, priority: 500 }),
+        makeCommand({ id: "go-forward", title: "Go forward", keywords: ["forward"], disabled: false, priority: 490 }),
+      ],
+      cards: [],
+    });
+
+    expect(result.commands.length).toBe(2);
+    expect(result.commands[0]?.id).toBe("go-back");
+    expect(result.commands[0]?.disabled).toBeTrue();
+    expect(result.commands[1]?.id).toBe("go-forward");
   });
 });

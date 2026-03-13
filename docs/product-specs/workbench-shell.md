@@ -54,6 +54,10 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 ## Focus and Navigation
 - Focusing a stage scrolls only as needed so the focused stage is fully visible.
 - Sliding-window focus uses nearest-window behavior: changing focus shifts the visible window only as much as needed to include the target stage.
+- The shell keeps a window-local back/forward history for durable workbench context: DB project, active DB view, focused stage/direction, open card + card tab selection, active thread tab/project, and active file tab.
+- Transient overlays do not enter navigation history: command palette, task search, settings, hover sidebar, terminal open/height, and raw search query text.
+- `Cmd/Ctrl+[` navigates back and `Cmd/Ctrl+]` navigates forward through that history, including when focus is inside editable surfaces.
+- The command palette always exposes `Go back` and `Go forward`; when no history exists in that direction, those commands stay visible but disabled.
 - `Ctrl+Tab` / `Ctrl+Shift+Tab` still cycle stage focus order.
 - `Shift + mouse wheel` is reserved for native horizontal panel scrolling and does not step focus.
 - Full rail: dragging either left or right border of a stage panel resizes only that panel width (neighbor widths do not change).
@@ -76,12 +80,14 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 - Thread background sync is preserved when changing the selected thread tab; active-thread detail refresh runs independently of the currently selected tab.
 - Bottom terminal panel persists open/closed + panel height globally.
 - Terminal tabs persist mixed `project`/`card` mode state.
+- Back/forward history is persisted only for the current window session and is not included in cold-launch resume snapshots.
 - Codex permission mode preference (`sandbox`/`full-access`/`custom`) is persisted in renderer localStorage per project and mirrored to main process.
 - In Threads stage, the permission selector defaults to `Custom (config.toml)` when no project-specific preference has been set yet.
 - The Threads permission menu shows hover tooltips for each mode; the `Custom (config.toml)` tooltip reflects the parsed effective `sandbox_mode` and `approval_policy` from the resolved Codex config file when available.
 
 ## Keyboard Model
 - `Ctrl+Tab` / `Ctrl+Shift+Tab`: next/previous stage.
+- `Cmd/Ctrl+[` / `Cmd/Ctrl+]`: back/forward durable workbench navigation.
 - `Cmd/Ctrl+1..4`: jump to stage index.
 - `Cmd/Ctrl+Alt+1..9`: jump to project index.
 - `Cmd/Ctrl+Alt+1..9` updates DB datasource project only.

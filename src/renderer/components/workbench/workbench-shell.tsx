@@ -166,8 +166,6 @@ interface WorkbenchShellProps {
     titleSnapshot?: string,
   ) => void;
   setDbProject: (projectId: string) => void;
-  setThreadsProjectId: (projectId: string) => void;
-  setView: (projectId: string, view: WorkbenchView) => void;
   setSearchQuery: (projectId: string, value: string) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarWidth: (width: number) => void;
@@ -177,22 +175,15 @@ interface WorkbenchShellProps {
     itemLimit: SidebarSectionItemLimit,
   ) => void;
   moveSidebarTopLevelSectionBy: (sectionId: SidebarTopLevelSectionId, direction: -1 | 1) => void;
-  setFocusedStage: (
-    projectId: string,
-    stageId: StageId,
-    directionOverride?: StageNavDirection,
-  ) => void;
   setSidebarStageExpanded: (projectId: string, stageId: SidebarGroupId, expanded: boolean) => void;
   isSidebarStageExpanded: (projectId: string, stageId: SidebarGroupId) => boolean;
   setSidebarSectionExpanded: (projectId: string, sectionId: string, expanded: boolean) => void;
   isSidebarSectionExpanded: (projectId: string, sectionId: string) => boolean;
   setSidebarSectionShowAll: (projectId: string, sectionId: string, showAll: boolean) => void;
   isSidebarSectionShowAll: (projectId: string, sectionId: string) => boolean;
-  setActiveCardsTab: (projectId: string, tabId: string) => void;
   setActiveThreadsTab: (projectId: string, tabId: string) => void;
   setThreadsTabs: (projectId: string, tabs: ThreadsStageTab[]) => void;
   setActiveTerminalTab: (projectId: string, tabId: string) => void;
-  setActiveFilesTab: (projectId: string, tabId: string) => void;
   setStagePanelWidths: (projectId: string, widths: StagePanelWidths) => void;
   stepSlidingWindowPaneCount: (action: "decrease" | "increase") => void;
   setTerminalPanelOpen: (projectId: string, open: boolean) => void;
@@ -200,7 +191,6 @@ interface WorkbenchShellProps {
   openProjectTerminalTab: (projectId: string) => string;
   openCardTerminalTab: (projectId: string, sessionRefId: string, cardId: string, title: string) => string;
   closeTerminalTab: (projectId: string, tabId: string) => void;
-  selectRecentCardSession: (sessionId: string) => void;
   closeRecentCardSession: (sessionId: string) => void;
   closeCardStage: () => void;
   onLeaveCardStageCard: (snapshot: CardStageSessionSnapshot) => void;
@@ -225,6 +215,16 @@ interface WorkbenchShellProps {
     icon?: string,
     workspacePath?: string | null,
   ) => Promise<Project | null>;
+  navigateToStage: (projectId: string, stageId: StageId, fallbackDirection?: StageNavDirection) => void;
+  navigateToDbView: (projectId: string, view: WorkbenchView) => void;
+  navigateToRecentSession: (sessionId: string) => void | Promise<void>;
+  navigateToCardsTab: (projectId: string, tabId: string, activeSessionId: string | null) => void;
+  navigateToThreadTab: (projectId: string, tabId: string, focusStage?: boolean) => void;
+  navigateToFilesTab: (projectId: string, tabId: string) => void;
+  canNavigateBack: boolean;
+  canNavigateForward: boolean;
+  onNavigateBack: () => void;
+  onNavigateForward: () => void;
 }
 
 const DB_VIEW_TABS: Array<{ id: WorkbenchView; label: string }> = [
@@ -321,26 +321,21 @@ export function WorkbenchShell({
   onReminderHandled,
   openCardStage,
   setDbProject,
-  setThreadsProjectId,
-  setView,
   setSearchQuery,
   setSidebarCollapsed,
   setSidebarWidth,
   setSidebarTopLevelSectionVisible,
   setSidebarTopLevelSectionItemLimit,
   moveSidebarTopLevelSectionBy,
-  setFocusedStage,
   setSidebarStageExpanded,
   isSidebarStageExpanded,
   setSidebarSectionExpanded,
   isSidebarSectionExpanded,
   setSidebarSectionShowAll,
   isSidebarSectionShowAll,
-  setActiveCardsTab,
   setActiveThreadsTab,
   setThreadsTabs,
   setActiveTerminalTab,
-  setActiveFilesTab,
   setStagePanelWidths,
   stepSlidingWindowPaneCount,
   setTerminalPanelOpen,
@@ -348,7 +343,6 @@ export function WorkbenchShell({
   openProjectTerminalTab,
   openCardTerminalTab,
   closeTerminalTab,
-  selectRecentCardSession,
   closeRecentCardSession,
   closeCardStage,
   onLeaveCardStageCard,
@@ -361,6 +355,16 @@ export function WorkbenchShell({
   onCreateProject,
   onDeleteProject,
   onRenameProject,
+  navigateToStage,
+  navigateToDbView,
+  navigateToRecentSession,
+  navigateToCardsTab,
+  navigateToThreadTab,
+  navigateToFilesTab,
+  canNavigateBack,
+  canNavigateForward,
+  onNavigateBack,
+  onNavigateForward,
 }: WorkbenchShellProps) {
   const isMac = typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
   const canRequestNewWindow = typeof window !== "undefined" && Boolean(window.api);
@@ -596,17 +600,6 @@ export function WorkbenchShell({
     [sidebarVisibleStageSet],
   );
 
-  const ensureCardsStageVisibleInSlidingWindow = useCallback(() => {
-    if (stageRailLayoutMode !== "sliding-window") return;
-    if (slidingWindowVisibleStages.includes("cards")) return;
-    setFocusedStage(dbProjectId, "cards");
-  }, [
-    dbProjectId,
-    slidingWindowVisibleStages,
-    setFocusedStage,
-    stageRailLayoutMode,
-  ]);
-
   const handleOpenCardStageFromView = useCallback(
     (
       projectId: string,
@@ -614,14 +607,13 @@ export function WorkbenchShell({
       titleSnapshot?: string,
     ) => {
       openCardStage(projectId, cardId, titleSnapshot);
-      ensureCardsStageVisibleInSlidingWindow();
     },
-    [ensureCardsStageVisibleInSlidingWindow, openCardStage],
+    [openCardStage],
   );
 
   const handleStageRailFocus = useCallback((stageId: StageId) => {
     if (stageRailLayoutMode !== "sliding-window") {
-      setFocusedStage(dbProjectId, stageId);
+      navigateToStage(dbProjectId, stageId);
       return;
     }
 
@@ -631,19 +623,19 @@ export function WorkbenchShell({
       slidingWindowPaneCount,
       stageNavDirection,
     );
-    setFocusedStage(dbProjectId, stageId, direction);
+    navigateToStage(dbProjectId, stageId, direction);
   }, [
     dbProjectId,
+    navigateToStage,
     slidingWindowVisibleStages,
     slidingWindowPaneCount,
-    setFocusedStage,
     stageNavDirection,
     stageRailLayoutMode,
   ]);
 
   const handleCommandPaletteSetView = useCallback((view: WorkbenchView) => {
-    setView(dbProjectId, view);
-  }, [dbProjectId, setView]);
+    navigateToDbView(dbProjectId, view);
+  }, [dbProjectId, navigateToDbView]);
 
   const handleCommandPaletteToggleTerminal = useCallback(() => {
     setTerminalPanelOpen(dbProjectId, !terminalPanelOpen);
@@ -925,10 +917,7 @@ export function WorkbenchShell({
     label: tab.label,
     icon: DB_VIEW_ICONS[tab.id],
     active: activeView === tab.id,
-    onSelect: () => {
-      setView(dbProjectId, tab.id);
-      handleStageRailFocus("db");
-    },
+    onSelect: () => navigateToDbView(dbProjectId, tab.id),
   }));
 
   const cardsSidebarSections = useMemo<StageSidebarSection[]>(() => {
@@ -951,7 +940,6 @@ export function WorkbenchShell({
             && activeCardStageCardId === card.id,
           onSelect: () => {
             openCardStage(dbProjectId, card.id, card.title);
-            handleStageRailFocus("cards");
           },
         })),
       }];
@@ -963,7 +951,6 @@ export function WorkbenchShell({
     activeProjectBoard,
     cardStageState.projectId,
     dbProjectId,
-    handleStageRailFocus,
     isSidebarStageVisible,
     openCardStage,
   ]);
@@ -980,17 +967,15 @@ export function WorkbenchShell({
         closable: true,
         onClose: () => closeRecentCardSession(session.id),
         onSelect: () => {
-          selectRecentCardSession(session.id);
-          handleStageRailFocus("cards");
+          void navigateToRecentSession(session.id);
         },
       })),
     }];
   }, [
     activeCardsSessionId,
     closeRecentCardSession,
-    selectRecentCardSession,
-    handleStageRailFocus,
     isSidebarStageVisible,
+    navigateToRecentSession,
     recentCardSessions,
   ]);
 
@@ -1008,10 +993,7 @@ export function WorkbenchShell({
       icon: isRunningThread ? RunningThreadSpinnerIcon : undefined,
       updatedAtMs: summary?.updatedAt,
       active: isSidebarStageVisible("threads") && tab.id === resolvedActiveThreadsTabId,
-      onSelect: () => {
-        setActiveThreadsTab(summary?.projectId ?? threadsProjectId, tab.id);
-        handleStageRailFocus("threads");
-      },
+      onSelect: () => navigateToThreadTab(summary?.projectId ?? threadsProjectId, tab.id),
     };
   });
 
@@ -1019,10 +1001,7 @@ export function WorkbenchShell({
     id: tab.id,
     label: tab.title,
     active: isSidebarStageVisible("files") && tab.id === activeFilesTabId,
-    onSelect: () => {
-      setActiveFilesTab(dbProjectId, tab.id);
-      handleStageRailFocus("files");
-    },
+    onSelect: () => navigateToFilesTab(dbProjectId, tab.id),
   }));
 
   const dbStageGroup: StageSidebarGroup = {
@@ -1272,9 +1251,8 @@ export function WorkbenchShell({
 
   const handleOpenCardFromThread = useCallback(async (cardId: string) => {
     const projectId = activeThreadDetail?.projectId ?? threadsProjectId;
-    openCardStage(projectId, cardId);
-    handleStageRailFocus("cards");
-  }, [activeThreadDetail?.projectId, handleStageRailFocus, openCardStage, threadsProjectId]);
+    await openCardStage(projectId, cardId);
+  }, [activeThreadDetail?.projectId, openCardStage, threadsProjectId]);
 
   const stages: StageRailStage[] = [
     {
@@ -1403,7 +1381,7 @@ export function WorkbenchShell({
               onCompleteOccurrence={handleCardStageCompleteOccurrence}
               onSkipOccurrence={handleCardStageSkipOccurrence}
               onOpenHistoryPanel={() => {
-                setActiveCardsTab(dbProjectId, "history");
+                navigateToCardsTab(dbProjectId, "history", null);
               }}
               onOpenTerminalPanel={() => {
                 const sessionRefId = currentCardStageSession?.id ?? activeRecentSessionId ?? `ephemeral:${activeCardStageCard.id}`;
@@ -1412,14 +1390,10 @@ export function WorkbenchShell({
               }}
               linkedCodexThreads={linkedThreadsForCardStageCard}
               onOpenCodexThread={async (threadId) => {
-                setThreadsProjectId(cardStageState.projectId);
-                setActiveThreadsTab(cardStageState.projectId, threadId);
-                handleStageRailFocus("threads");
+                navigateToThreadTab(cardStageState.projectId, threadId);
               }}
               onOpenNewCodexThread={() => {
-                setThreadsProjectId(cardStageState.projectId);
-                setActiveThreadsTab(cardStageState.projectId, NEW_THREAD_STAGE_TAB_ID);
-                handleStageRailFocus("threads");
+                navigateToThreadTab(cardStageState.projectId, NEW_THREAD_STAGE_TAB_ID);
               }}
               onStartThreadSection={async ({ projectId, cardId, prompt }) => {
                 const detail = await startThreadForCard({
@@ -1466,9 +1440,10 @@ export function WorkbenchShell({
                   currentCardStageSession?.projectId === cardStageState.projectId
                     ? currentCardStageSession?.id
                     : activeCardsSessionId;
-                setActiveCardsTab(
+                navigateToCardsTab(
                   dbProjectId,
                   fallbackSessionId ? `session:${fallbackSessionId}` : "",
+                  fallbackSessionId ?? null,
                 );
               }}
             />
@@ -1538,13 +1513,7 @@ export function WorkbenchShell({
             );
             setSelectedCollaborationMode(nextMode);
             await loadCodexThreads(input.projectId);
-            setThreadsProjectId(input.projectId);
-            setActiveThreadsTab(input.projectId, detail.threadId);
-            if (input.projectId !== threadsProjectId) {
-              setFocusedStage(dbProjectId, "threads");
-              return;
-            }
-            handleStageRailFocus("threads");
+            navigateToThreadTab(input.projectId, detail.threadId);
           }}
           onSendPrompt={async (prompt, opts) => {
             if (!activeThreadTab || activeThreadTab.id === NEW_THREAD_STAGE_TAB_ID) return;
@@ -1574,9 +1543,9 @@ export function WorkbenchShell({
           onResolvePlanImplementationRequest={(threadId, turnId) => {
             resolvePlanImplementation(threadId, turnId);
           }}
-          onOpenCard={(cardId) => {
-            void handleOpenCardFromThread(cardId);
-          }}
+        onOpenCard={(cardId) => {
+          void handleOpenCardFromThread(cardId);
+        }}
         />
       ),
     },
@@ -1635,6 +1604,10 @@ export function WorkbenchShell({
         onOpenCard={openCardStage}
         onFocusStage={handleStageRailFocus}
         onSetView={handleCommandPaletteSetView}
+        canGoBack={canNavigateBack}
+        canGoForward={canNavigateForward}
+        onGoBack={onNavigateBack}
+        onGoForward={onNavigateForward}
         onOpenProjectPicker={() => {
           onRequestProjectPickerOpen();
         }}

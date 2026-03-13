@@ -1,5 +1,7 @@
 import { useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
+  ArrowLeft,
+  ArrowRight,
   CalendarDays,
   FileText,
   FolderSearch2,
@@ -37,6 +39,10 @@ interface CommandPaletteProps {
   onOpenTaskSearch: () => void;
   onToggleTerminal: () => void;
   onOpenSettings: () => void;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onGoBack: () => void;
+  onGoForward: () => void;
   onRequestNewWindow?: () => void;
 }
 
@@ -125,11 +131,33 @@ function buildCommands(input: {
   activeProjectName: string;
   activeView: WorkbenchView;
   focusedStage: StageId;
+  canGoBack: boolean;
+  canGoForward: boolean;
   canOpenNewWindow: boolean;
   isMac: boolean;
 }): CommandPaletteCommand[] {
-  const { activeProjectName, activeView, focusedStage, canOpenNewWindow, isMac } = input;
+  const { activeProjectName, activeView, focusedStage, canGoBack, canGoForward, canOpenNewWindow, isMac } = input;
   const commands: CommandPaletteCommand[] = [
+    {
+      kind: "command",
+      id: "go-back",
+      title: "Go back",
+      subtitle: "Return to the previous workbench context",
+      keywords: ["back", "previous", "history", "navigation"],
+      shortcut: createShortcutLabel("Cmd+[", isMac),
+      disabled: !canGoBack,
+      priority: 500,
+    },
+    {
+      kind: "command",
+      id: "go-forward",
+      title: "Go forward",
+      subtitle: "Move to the next workbench context",
+      keywords: ["forward", "next", "history", "navigation"],
+      shortcut: createShortcutLabel("Cmd+]", isMac),
+      disabled: !canGoForward,
+      priority: 490,
+    },
     {
       kind: "command",
       id: "open-project-picker",
@@ -273,6 +301,8 @@ function buildCommands(input: {
 
 function getCommandGlyph(id: string) {
   if (id === "open-project-picker") return FolderSearch2;
+  if (id === "go-back") return ArrowLeft;
+  if (id === "go-forward") return ArrowRight;
   if (id === "search-current-project") return Search;
   if (id === "toggle-terminal") return PanelBottom;
   if (id === "open-settings") return Settings2;
@@ -384,9 +414,12 @@ function PaletteSection({
               aria-selected={selected}
               onMouseMove={() => onSelectIndex(index)}
               onClick={() => onExecute(item)}
+              disabled={item.kind === "command" && item.disabled}
               className={cn(
                 "flex min-h-[calc(var(--spacing)*6)] w-full cursor-interaction rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-left text-sm text-token-foreground opacity-75 outline-none",
-                selected ? "bg-token-list-hover-background opacity-100" : "hover:bg-token-list-hover-background hover:opacity-100",
+                item.kind === "command" && item.disabled
+                  ? "cursor-not-allowed opacity-40 hover:bg-transparent hover:opacity-40"
+                  : selected ? "bg-token-list-hover-background opacity-100" : "hover:bg-token-list-hover-background hover:opacity-100",
               )}
             >
               {item.kind === "command" ? (
@@ -418,6 +451,10 @@ export function CommandPalette({
   onOpenTaskSearch,
   onToggleTerminal,
   onOpenSettings,
+  canGoBack,
+  canGoForward,
+  onGoBack,
+  onGoForward,
   onRequestNewWindow,
 }: CommandPaletteProps) {
   const isMac = isMacPlatform();
@@ -438,10 +475,12 @@ export function CommandPalette({
       activeProjectName,
       activeView,
       focusedStage,
+      canGoBack,
+      canGoForward,
       canOpenNewWindow: Boolean(onRequestNewWindow),
       isMac,
     }),
-    [activeProjectName, activeView, focusedStage, isMac, onRequestNewWindow],
+    [activeProjectName, activeView, canGoBack, canGoForward, focusedStage, isMac, onRequestNewWindow],
   );
   const results = useMemo(
     () => filterCommandPaletteItems({
@@ -506,10 +545,21 @@ export function CommandPalette({
 
     if (item.kind === "card") {
       onOpenCard(item.projectId, item.card.id, item.card.title);
-      onFocusStage("cards");
       return;
     }
 
+    if (item.disabled) {
+      return;
+    }
+
+    if (item.id === "go-back") {
+      onGoBack();
+      return;
+    }
+    if (item.id === "go-forward") {
+      onGoForward();
+      return;
+    }
     if (item.id === "open-project-picker") {
       onOpenProjectPicker();
       return;
@@ -532,27 +582,22 @@ export function CommandPalette({
     }
     if (item.id === "view-kanban") {
       onSetView("kanban");
-      onFocusStage("db");
       return;
     }
     if (item.id === "view-list") {
       onSetView("list");
-      onFocusStage("db");
       return;
     }
     if (item.id === "view-toggle-list") {
       onSetView("toggle-list");
-      onFocusStage("db");
       return;
     }
     if (item.id === "view-canvas") {
       onSetView("canvas");
-      onFocusStage("db");
       return;
     }
     if (item.id === "view-calendar") {
       onSetView("calendar");
-      onFocusStage("db");
       return;
     }
     if (item.id === "focus-views-stage") {
@@ -571,17 +616,26 @@ export function CommandPalette({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    const moveSelection = (direction: -1 | 1) => {
+      if (flatItems.length === 0) return;
+      for (let step = 1; step <= flatItems.length; step += 1) {
+        const nextIndex = (selectedIndex + direction * step + flatItems.length) % flatItems.length;
+        const nextItem = flatItems[nextIndex];
+        if (nextItem?.kind === "command" && nextItem.disabled) continue;
+        setSelectedIndex(nextIndex);
+        return;
+      }
+    };
+
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (flatItems.length === 0) return;
-      setSelectedIndex((current) => (current + 1) % flatItems.length);
+      moveSelection(1);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      if (flatItems.length === 0) return;
-      setSelectedIndex((current) => (current - 1 + flatItems.length) % flatItems.length);
+      moveSelection(-1);
       return;
     }
 

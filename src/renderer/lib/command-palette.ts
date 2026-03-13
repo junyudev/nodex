@@ -9,6 +9,7 @@ export interface CommandPaletteCommand {
   keywords: string[];
   shortcut?: string;
   active?: boolean;
+  disabled?: boolean;
   priority: number;
 }
 

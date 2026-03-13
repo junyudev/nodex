@@ -446,6 +446,16 @@ async function renderShell(
     onCreateProject: async () => null,
     onDeleteProject: async () => false,
     onRenameProject: async () => null,
+    navigateToStage: () => undefined,
+    navigateToDbView: () => undefined,
+    navigateToRecentSession: () => undefined,
+    navigateToCardsTab: () => undefined,
+    navigateToThreadTab: () => undefined,
+    navigateToFilesTab: () => undefined,
+    canNavigateBack: false,
+    canNavigateForward: false,
+    onNavigateBack: () => undefined,
+    onNavigateForward: () => undefined,
     ...overrides,
   };
 
@@ -877,20 +887,13 @@ describe("WorkbenchShell", () => {
   });
 
   test("opens current-project status cards through the existing card-stage flow", async () => {
-    resolveSlidingWindowFocusIntentCalls = [];
-    resolveSlidingWindowFocusIntentReturn = { direction: "left" };
     const openCardStageCalls: Array<unknown[]> = [];
-    const setFocusedStageCalls: Array<unknown[]> = [];
     const openCardStage = (...args: unknown[]) => {
       openCardStageCalls.push(args);
-    };
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
       openCardStage,
-      setFocusedStage,
       focusedStage: "db",
       cardsTabs: [{ id: "history", kind: "history", title: "History" }],
       activeCardsTabId: "history",
@@ -911,10 +914,6 @@ describe("WorkbenchShell", () => {
     expect(openCardStageCalls[0]?.[0]).toBe("default");
     expect(openCardStageCalls[0]?.[1]).toBe("card-1");
     expect(openCardStageCalls[0]?.[2]).toBe("Card 1");
-    expect(
-      setFocusedStageCalls.some((call) => call[0] === "default" && call[1] === "cards" && call[2] === "left"),
-    ).toBeTrue();
-    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(1);
   });
 
   test("keeps grouped current-project cards independent from the active search query", async () => {
@@ -1089,20 +1088,13 @@ describe("WorkbenchShell", () => {
   });
 
   test("uses nearest sliding-window focus intent when selecting thread from sidebar", async () => {
-    resolveSlidingWindowFocusIntentCalls = [];
-    resolveSlidingWindowFocusIntentReturn = { direction: "left" };
-    const setFocusedStageCalls: Array<unknown[]> = [];
-    const setActiveThreadsTabCalls: Array<unknown[]> = [];
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
-    };
-    const setActiveThreadsTab = (...args: unknown[]) => {
-      setActiveThreadsTabCalls.push(args);
+    const navigateToThreadTabCalls: Array<unknown[]> = [];
+    const navigateToThreadTab = (...args: unknown[]) => {
+      navigateToThreadTabCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
-      setFocusedStage,
-      setActiveThreadsTab,
+      navigateToThreadTab,
       activeThreadsTabId: "thread:new",
     }, [
       {
@@ -1122,31 +1114,19 @@ describe("WorkbenchShell", () => {
 
     threadItem?.onSelect?.();
 
-    expect(setActiveThreadsTabCalls.length).toBe(1);
-    expect(setActiveThreadsTabCalls[0]?.[0]).toBe("default");
-    expect(setActiveThreadsTabCalls[0]?.[1]).toBe("thr-1");
-    expect(setFocusedStageCalls.length).toBe(1);
-    expect(setFocusedStageCalls[0]?.[0]).toBe("default");
-    expect(setFocusedStageCalls[0]?.[1]).toBe("threads");
-    expect(setFocusedStageCalls[0]?.[2]).toBe("left");
-    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(1);
+    expect(navigateToThreadTabCalls.length).toBe(1);
+    expect(navigateToThreadTabCalls[0]?.[0]).toBe("default");
+    expect(navigateToThreadTabCalls[0]?.[1]).toBe("thr-1");
   });
 
   test("uses nearest sliding-window focus intent when opening a linked thread from Card Stage", async () => {
-    resolveSlidingWindowFocusIntentCalls = [];
-    resolveSlidingWindowFocusIntentReturn = { direction: "left" };
-    const setFocusedStageCalls: Array<unknown[]> = [];
-    const setActiveThreadsTabCalls: Array<unknown[]> = [];
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
-    };
-    const setActiveThreadsTab = (...args: unknown[]) => {
-      setActiveThreadsTabCalls.push(args);
+    const navigateToThreadTabCalls: Array<unknown[]> = [];
+    const navigateToThreadTab = (...args: unknown[]) => {
+      navigateToThreadTabCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
-      setFocusedStage,
-      setActiveThreadsTab,
+      navigateToThreadTab,
       cardsTabs: [{ id: "session:s-1", kind: "session", title: "Card 1", sessionId: "s-1" }],
       activeCardsTabId: "session:s-1",
       cardStageState: {
@@ -1162,41 +1142,36 @@ describe("WorkbenchShell", () => {
 
     await onOpenCodexThread?.("thr-1");
 
-    expect(setActiveThreadsTabCalls.length).toBe(1);
-    expect(setActiveThreadsTabCalls[0]?.[0]).toBe("default");
-    expect(setActiveThreadsTabCalls[0]?.[1]).toBe("thr-1");
-    expect(setFocusedStageCalls.length).toBe(1);
-    expect(setFocusedStageCalls[0]?.[0]).toBe("default");
-    expect(setFocusedStageCalls[0]?.[1]).toBe("threads");
-    expect(setFocusedStageCalls[0]?.[2]).toBe("left");
-    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(1);
+    expect(navigateToThreadTabCalls.length).toBe(1);
+    expect(navigateToThreadTabCalls[0]?.[0]).toBe("default");
+    expect(navigateToThreadTabCalls[0]?.[1]).toBe("thr-1");
   });
 
   test("uses nearest sliding-window focus intent for db/cards/files sidebar interactions", async () => {
     resolveSlidingWindowFocusIntentCalls = [];
     resolveSlidingWindowFocusIntentReturn = { direction: "left" };
-    const setFocusedStageCalls: Array<unknown[]> = [];
-    const setViewCalls: Array<unknown[]> = [];
+    const navigateToStageCalls: Array<unknown[]> = [];
+    const navigateToDbViewCalls: Array<unknown[]> = [];
     const openCardStageCalls: Array<unknown[]> = [];
-    const setActiveFilesTabCalls: Array<unknown[]> = [];
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
+    const navigateToFilesTabCalls: Array<unknown[]> = [];
+    const navigateToStage = (...args: unknown[]) => {
+      navigateToStageCalls.push(args);
     };
-    const setView = (...args: unknown[]) => {
-      setViewCalls.push(args);
+    const navigateToDbView = (...args: unknown[]) => {
+      navigateToDbViewCalls.push(args);
     };
     const openCardStage = (...args: unknown[]) => {
       openCardStageCalls.push(args);
     };
-    const setActiveFilesTab = (...args: unknown[]) => {
-      setActiveFilesTabCalls.push(args);
+    const navigateToFilesTab = (...args: unknown[]) => {
+      navigateToFilesTabCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
-      setFocusedStage,
-      setView,
+      navigateToStage,
+      navigateToDbView,
       openCardStage,
-      setActiveFilesTab,
+      navigateToFilesTab,
       cardsTabs: [{ id: "history", kind: "history", title: "History" }],
       filesTabs: [{ id: "diff", title: "Diff" }],
     });
@@ -1221,37 +1196,22 @@ describe("WorkbenchShell", () => {
     cardsGroup?.onFocus?.();
     filesGroup?.onFocus?.();
 
-    expect(setViewCalls.length).toBe(1);
+    expect(navigateToDbViewCalls.length).toBe(1);
     expect(openCardStageCalls.length).toBe(1);
-    expect(setActiveFilesTabCalls.length).toBe(1);
+    expect(navigateToFilesTabCalls.length).toBe(1);
     expect(openCardStageCalls[0]?.[0]).toBe("default");
     expect(openCardStageCalls[0]?.[1]).toBe("card-1");
-    expect(
-      setFocusedStageCalls.some((call) => call[0] === "default" && call[1] === "db" && call[2] === "left"),
-    ).toBeTrue();
-    expect(
-      setFocusedStageCalls.some((call) => call[0] === "default" && call[1] === "cards" && call[2] === "left"),
-    ).toBeTrue();
-    expect(
-      setFocusedStageCalls.some((call) => call[0] === "default" && call[1] === "files" && call[2] === "left"),
-    ).toBeTrue();
-    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(6);
+    expect(navigateToStageCalls.length).toBe(3);
+    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(3);
   });
 
   test("uses nearest sliding-window focus intent when opening a card from thread", async () => {
-    resolveSlidingWindowFocusIntentCalls = [];
-    resolveSlidingWindowFocusIntentReturn = { direction: "left" };
-    const setFocusedStageCalls: Array<unknown[]> = [];
     const openCardStageCalls: Array<unknown[]> = [];
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
-    };
     const openCardStage = (...args: unknown[]) => {
       openCardStageCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
-      setFocusedStage,
       openCardStage,
       focusedStage: "threads",
       stageNavDirection: "right",
@@ -1275,31 +1235,16 @@ describe("WorkbenchShell", () => {
 
     expect(invokeCalls.length).toBe(0);
     expect(openCardStageCalls.length).toBe(1);
-    expect(setFocusedStageCalls.length).toBe(1);
-    expect(setFocusedStageCalls[0]?.[0]).toBe("default");
-    expect(setFocusedStageCalls[0]?.[1]).toBe("cards");
-    expect(setFocusedStageCalls[0]?.[2]).toBe("left");
-    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(1);
   });
 
   test("shows global recent cards in sidebar and preserves sliding-window focus intent", async () => {
-    resolveSlidingWindowFocusIntentCalls = [];
-    resolveSlidingWindowFocusIntentReturn = { direction: "left" };
-    const setFocusedStageCalls: Array<unknown[]> = [];
-    const setActiveCardsTabCalls: Array<unknown[]> = [];
-    const selectRecentCardSessionCalls: Array<unknown[]> = [];
-    const setActiveThreadsTabCalls: Array<unknown[]> = [];
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
+    const navigateToRecentSessionCalls: Array<unknown[]> = [];
+    const navigateToThreadTabCalls: Array<unknown[]> = [];
+    const navigateToRecentSession = (...args: unknown[]) => {
+      navigateToRecentSessionCalls.push(args);
     };
-    const setActiveCardsTab = (...args: unknown[]) => {
-      setActiveCardsTabCalls.push(args);
-    };
-    const selectRecentCardSession = (...args: unknown[]) => {
-      selectRecentCardSessionCalls.push(args);
-    };
-    const setActiveThreadsTab = (...args: unknown[]) => {
-      setActiveThreadsTabCalls.push(args);
+    const navigateToThreadTab = (...args: unknown[]) => {
+      navigateToThreadTabCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
@@ -1325,10 +1270,8 @@ describe("WorkbenchShell", () => {
           lastOpenedAt: "2026-02-26T12:00:00.000Z",
         },
       ],
-      setFocusedStage,
-      setActiveCardsTab,
-      selectRecentCardSession,
-      setActiveThreadsTab,
+      navigateToRecentSession,
+      navigateToThreadTab,
       focusedStage: "cards",
       cardsTabs: [{ id: "history", kind: "history", title: "History" }],
       activeCardsTabId: "history",
@@ -1355,36 +1298,21 @@ describe("WorkbenchShell", () => {
     cardsSession?.onSelect?.();
     threadEntry?.onSelect?.();
 
-    expect(setActiveCardsTabCalls.length).toBe(0);
-    expect(selectRecentCardSessionCalls.length).toBe(1);
-    expect(selectRecentCardSessionCalls[0]?.[0]).toBe("s-1");
-    expect(setActiveThreadsTabCalls.length).toBe(1);
-    expect(setActiveThreadsTabCalls[0]?.[0]).toBe("default");
-    expect(setActiveThreadsTabCalls[0]?.[1]).toBe("thr-1");
-    expect(
-      setFocusedStageCalls.some((call) => call[0] === "default" && call[1] === "cards" && call[2] === "left"),
-    ).toBeTrue();
-    expect(
-      setFocusedStageCalls.some((call) => call[0] === "default" && call[1] === "threads" && call[2] === "left"),
-    ).toBeTrue();
-    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(2);
+    expect(navigateToRecentSessionCalls.length).toBe(1);
+    expect(navigateToRecentSessionCalls[0]?.[0]).toBe("s-1");
+    expect(navigateToThreadTabCalls.length).toBe(1);
+    expect(navigateToThreadTabCalls[0]?.[0]).toBe("default");
+    expect(navigateToThreadTabCalls[0]?.[1]).toBe("thr-1");
   });
 
   test("uses nearest sliding-window focus intent when starting a thread for active project", async () => {
-    resolveSlidingWindowFocusIntentCalls = [];
-    resolveSlidingWindowFocusIntentReturn = { direction: "left" };
-    const setFocusedStageCalls: Array<unknown[]> = [];
-    const setActiveThreadsTabCalls: Array<unknown[]> = [];
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
-    };
-    const setActiveThreadsTab = (...args: unknown[]) => {
-      setActiveThreadsTabCalls.push(args);
+    const navigateToThreadTabCalls: Array<unknown[]> = [];
+    const navigateToThreadTab = (...args: unknown[]) => {
+      navigateToThreadTabCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
-      setFocusedStage,
-      setActiveThreadsTab,
+      navigateToThreadTab,
       dbProjectId: "default",
       focusedStage: "threads",
       stageNavDirection: "right",
@@ -1407,14 +1335,9 @@ describe("WorkbenchShell", () => {
       threadName: "Test Thread",
     });
 
-    expect(setActiveThreadsTabCalls.length).toBe(1);
-    expect(setActiveThreadsTabCalls[0]?.[0]).toBe("default");
-    expect(setActiveThreadsTabCalls[0]?.[1]).toBe("t-1");
-    expect(setFocusedStageCalls.length).toBe(1);
-    expect(setFocusedStageCalls[0]?.[0]).toBe("default");
-    expect(setFocusedStageCalls[0]?.[1]).toBe("threads");
-    expect(setFocusedStageCalls[0]?.[2]).toBe("left");
-    expect(resolveSlidingWindowFocusIntentCalls.length).toBe(1);
+    expect(navigateToThreadTabCalls.length).toBe(1);
+    expect(navigateToThreadTabCalls[0]?.[0]).toBe("default");
+    expect(navigateToThreadTabCalls[0]?.[1]).toBe("t-1");
   });
 
   test("starts thread without requesting manual card-stage sync", async () => {
@@ -1449,18 +1372,13 @@ describe("WorkbenchShell", () => {
   });
 
   test("focuses cards stage when opening a card from view and cards are not visible", async () => {
-    const setFocusedStageCalls: Array<unknown[]> = [];
     const openCardStageCalls: Array<unknown[]> = [];
-    const setFocusedStage = (...args: unknown[]) => {
-      setFocusedStageCalls.push(args);
-    };
     const openCardStage = (...args: unknown[]) => {
       openCardStageCalls.push(args);
     };
 
     await renderShell(false, "sliding-window", {
       openCardStage,
-      setFocusedStage,
       focusedStage: "db",
       stageNavDirection: "right",
       slidingWindowPaneCount: 2,
@@ -1490,9 +1408,6 @@ describe("WorkbenchShell", () => {
     );
 
     expect(openCardStageCalls.length).toBe(1);
-    expect(setFocusedStageCalls.length).toBe(1);
-    expect(setFocusedStageCalls[0]?.[0]).toBe("default");
-    expect(setFocusedStageCalls[0]?.[1]).toBe("cards");
   });
 
   test("does not refocus stage when cards are already visible in right pane", async () => {

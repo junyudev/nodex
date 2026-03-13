@@ -246,6 +246,54 @@ describe("handleWorkbenchShortcut", () => {
     expect(called).toBeTrue();
   });
 
+  test("Cmd+[ navigates back even inside inputs", () => {
+    let called = false;
+    const handled = handleWorkbenchShortcut(
+      {
+        key: "[",
+        code: "BracketLeft",
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: false,
+        altKey: false,
+        target: makeInputTarget(),
+      },
+      makeActions({
+        navigateBack: () => {
+          called = true;
+        },
+      }),
+      true,
+    );
+
+    expect(handled).toBeTrue();
+    expect(called).toBeTrue();
+  });
+
+  test("Ctrl+] navigates forward on non-mac platforms", () => {
+    let called = false;
+    const handled = handleWorkbenchShortcut(
+      {
+        key: "]",
+        code: "BracketRight",
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        target: null,
+      },
+      makeActions({
+        navigateForward: () => {
+          called = true;
+        },
+      }),
+      false,
+    );
+
+    expect(handled).toBeTrue();
+    expect(called).toBeTrue();
+  });
+
   test("Cmd+comma toggles settings globally", () => {
     let called = false;
     const actions = makeActions({

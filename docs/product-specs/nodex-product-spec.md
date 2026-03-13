@@ -54,9 +54,12 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Sidebar project switcher selects the DB-stage datasource only; it does not reset Card/Thread/Terminal stage contexts
 - Task search query is persisted per project and restored on space switching; search input lives in the View stage toolbar
 - `Cmd/Ctrl+K` and `Cmd/Ctrl+P` open a global command palette that can switch directly to cards across projects or run shell commands such as opening settings, task search, project picker, terminal, stage focus, and view switches
+- `Cmd/Ctrl+[` and `Cmd/Ctrl+]` navigate backward/forward through durable workbench context (active DB project/view, focused stage, selected card session or history tab, selected thread tab, selected diff tab) without including transient overlays such as settings, command palette, task search, or terminal chrome
+- The command palette always includes `Go back` and `Go forward` commands with matching keyboard hints; those commands are shown disabled when there is no history in that direction
 - Desktop supports multi-window in a single app process (`Cmd/Ctrl+N`): each window keeps independent navigation/session state while all windows share the same SQLite data and realtime board-change fanout
 - When Nodex opens a window from zero open windows (cold launch, macOS re-activate after all windows were closed), it restores the last focused window's DB view, open card/history session, selected thread tab, and `Recents` list
 - Windows opened while another window is already open still start with a fresh workbench session; restart restore does not clone the current window into every new window
+- Back/forward navigation history is window-session-local and is restored only from that window's session storage; it is not part of the cold-launch resume snapshot saved when all windows close
 - Desktop single-instance behavior is scoped per resolved server profile (`KANBAN_DIR`/`config.toml` dir). Different profile dirs can run at the same time (for example packaged release + dev build), while each profile still enforces one process with many windows.
 - Card Stage open/close + selected card state is global across spaces/projects and rendered in the Card stage
 - Clicking a card from the View stage in sliding-window mode ensures the Card stage is visible in the current window (`View -> Card`) by refocusing when needed

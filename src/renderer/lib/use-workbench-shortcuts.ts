@@ -14,6 +14,8 @@ export interface WorkbenchShortcutActions {
   onRequestProjectPicker?: () => void;
   onRequestTaskSearch?: (projectId: string) => void;
   onRequestSettingsToggle?: () => void;
+  navigateBack?: () => void;
+  navigateForward?: () => void;
 }
 
 const EDITOR_SURFACE_SELECTOR = ".nfm-editor, .bn-editor, .bn-container";
@@ -43,7 +45,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 export function handleWorkbenchShortcut(
-  e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey" | "target">,
+  e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey" | "target"> & { code?: string },
   actions: WorkbenchShortcutActions,
   isMac: boolean,
 ): boolean {
@@ -62,6 +64,18 @@ export function handleWorkbenchShortcut(
 
   if (modifier && !e.altKey && !e.shiftKey && (e.key === "k" || e.key === "K" || e.key === "p" || e.key === "P")) {
     actions.onRequestCommandPalette?.();
+    return true;
+  }
+
+  const isBackShortcut = e.code === "BracketLeft" || e.key === "[";
+  const isForwardShortcut = e.code === "BracketRight" || e.key === "]";
+  if (modifier && !e.altKey && !e.shiftKey && isBackShortcut) {
+    actions.navigateBack?.();
+    return true;
+  }
+
+  if (modifier && !e.altKey && !e.shiftKey && isForwardShortcut) {
+    actions.navigateForward?.();
     return true;
   }
 
