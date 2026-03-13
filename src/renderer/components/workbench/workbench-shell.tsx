@@ -6,12 +6,11 @@ import {
   LayoutGrid,
   List,
   PenLine,
-  Search,
   SquareKanban,
-  X,
 } from "lucide-react";
 import { CardIcon } from "./card-icon";
 import { CommandPalette } from "./command-palette";
+import { DbViewToolbar } from "./db-view-toolbar";
 import { ThreadsIcon } from "./threads-icon";
 import { ToggleListIcon } from "./toggle-list-icon";
 import { MainViewHost } from "./main-view-host";
@@ -229,8 +228,8 @@ interface WorkbenchShellProps {
 
 const DB_VIEW_TABS: Array<{ id: WorkbenchView; label: string }> = [
   { id: "kanban", label: "Board" },
-  { id: "list", label: "List" },
-  { id: "toggle-list", label: "Toggle List" },
+  { id: "list", label: "Table" },
+  { id: "toggle-list", label: "List" },
   { id: "canvas", label: "Canvas" },
   { id: "calendar", label: "Calendar" },
 ];
@@ -1261,84 +1260,18 @@ export function WorkbenchShell({
       icon: STAGE_ICONS.db,
       hideHeader: true,
       content: (
-        <div className="relative h-full min-h-0 bg-(--background)">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-30 px-3">
-            <div className="sticky top-2 flex justify-center">
-              {taskSearchOpen ? (
-                <div className="pointer-events-auto relative w-full max-w-2xl overflow-hidden rounded-xl border border-(--border) bg-(--background-secondary) shadow-[0_18px_48px_rgba(0,0,0,0.35)]">
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(39,131,222,0.2),rgba(39,131,222,0)_58%)]"
-                  />
-                  <div className="relative flex items-center gap-2 border-b border-(--border) px-3 py-2.5">
-                    <div className="relative flex-1">
-                      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-(--foreground-tertiary)" />
-                      <input
-                        ref={taskSearchInputRef}
-                        type="text"
-                        value={activeSearchQuery}
-                        onChange={(event) => setSearchQuery(dbProjectId, event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Escape") return;
-                          event.preventDefault();
-                          closeTaskSearch();
-                        }}
-                        placeholder="Search tasks, tags, assignees..."
-                        aria-label="Search tasks"
-                        className={cn(
-                          "h-10 w-full rounded-md border border-(--border) bg-(--background) pr-20 pl-10 text-sm text-(--foreground) transition outline-none",
-                          "placeholder:text-(--foreground-tertiary)",
-                          "focus:border-(--accent-blue) focus:ring-2 focus:ring-[rgba(39,131,222,0.28)]",
-                        )}
-                      />
-                      <div className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-md border border-(--border) bg-(--background-secondary) px-1.5 py-0.5 text-xs font-medium tracking-caps text-(--foreground-secondary)">
-                        {isMac ? "⌘F" : "Ctrl+F"}
-                      </div>
-                    </div>
-                    {activeSearchQuery.trim().length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchQuery(dbProjectId, "");
-                          openTaskSearch(true);
-                        }}
-                        className="inline-flex h-8 items-center rounded-md border border-(--border) bg-(--background) px-2.5 text-xs text-(--foreground-secondary) transition hover:text-(--foreground)"
-                      >
-                        Clear
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={closeTaskSearch}
-                      aria-label="Close task search"
-                      className="inline-flex size-8 items-center justify-center rounded-md border border-(--border) bg-(--background) text-(--foreground-secondary) transition hover:text-(--foreground)"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  </div>
-                  <div className="relative flex items-center justify-between px-3 py-2 text-xs text-(--foreground-secondary)">
-                    <span>Token-based matching across title, description, tags, and assignee.</span>
-                    <span className="rounded-md border border-(--border) bg-(--background) px-1.5 py-0.5 tracking-caps uppercase">
-                      Esc to close
-                    </span>
-                  </div>
-                </div>
-              ) : activeSearchQuery.trim().length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => openTaskSearch(true)}
-                  className="pointer-events-auto inline-flex max-w-[72%] items-center gap-2 rounded-full border border-(--border) bg-(--background-secondary) px-3 py-1.5 text-xs text-(--foreground-secondary) shadow-overlay-2xl transition hover:text-(--foreground)"
-                  title={`Task search (${isMac ? "⌘F" : "Ctrl+F"})`}
-                >
-                  <Search className="size-3.5 shrink-0" />
-                  <span className="truncate">
-                    Filtering by: <span className="text-(--foreground)">{activeSearchQuery}</span>
-                  </span>
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <div className={cn("h-full min-h-0 overflow-hidden", taskSearchOpen && "pt-16")}>
+        <div className="flex h-full min-h-0 flex-col bg-(--background)">
+          <DbViewToolbar
+            items={dbSidebarItems}
+            activeSearchQuery={activeSearchQuery}
+            taskSearchOpen={taskSearchOpen}
+            searchShortcutLabel={isMac ? "⌘F" : "Ctrl+F"}
+            taskSearchInputRef={taskSearchInputRef}
+            onSearchQueryChange={(value) => setSearchQuery(dbProjectId, value)}
+            onOpenTaskSearch={openTaskSearch}
+            onCloseTaskSearch={closeTaskSearch}
+          />
+          <div className="min-h-0 flex-1 overflow-hidden">
             <MainViewHost
               projectId={dbProjectId}
               projects={projects}
@@ -1543,9 +1476,9 @@ export function WorkbenchShell({
           onResolvePlanImplementationRequest={(threadId, turnId) => {
             resolvePlanImplementation(threadId, turnId);
           }}
-        onOpenCard={(cardId) => {
-          void handleOpenCardFromThread(cardId);
-        }}
+          onOpenCard={(cardId) => {
+            void handleOpenCardFromThread(cardId);
+          }}
         />
       ),
     },

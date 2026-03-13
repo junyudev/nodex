@@ -50,9 +50,10 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Sliding-window mode includes resizable separators between adjacent panes; separator drag updates pane widths in real time and persists per-stage widths globally
 - Sliding-window mode auto-caps effective visible panes by available width while preserving requested pane count
 - Workbench top toolbar includes sidebar collapse plus sliding-window pane-count controls flanking the minimap; `-` sits to the left of the minimap and always removes the current right-most pane, while `+` sits to the right and tries to append the next pane on the right before falling back to prepending the left pane at the right edge
+- The View stage has its own sticky top toolbar; it keeps the DB view selector pinned above board, list, toggle-list, canvas, and calendar content, and task search expands inline inside the toolbar's trailing action cluster
 - URL sync: `/?project=<id>`, persisted to localStorage
 - Sidebar project switcher selects the DB-stage datasource only; it does not reset Card/Thread/Terminal stage contexts
-- Task search query is persisted per project and restored on space switching; search input lives in the View stage toolbar
+- Task search query is persisted per project and restored on space switching; search lives in the sticky View-stage toolbar alongside the DB view selector
 - `Cmd/Ctrl+K` and `Cmd/Ctrl+P` open a global command palette that can switch directly to cards across projects or run shell commands such as opening settings, task search, project picker, terminal, stage focus, and view switches
 - `Cmd/Ctrl+[` and `Cmd/Ctrl+]` navigate backward/forward through durable workbench context (active DB project/view, focused stage, selected card session or history tab, selected thread tab, selected diff tab) without including transient overlays such as settings, command palette, task search, or terminal chrome
 - The command palette always includes `Go back` and `Go forward` commands with matching keyboard hints; those commands are shown disabled when there is no history in that direction

@@ -468,7 +468,17 @@ async function renderShell(
 describe("WorkbenchShell", () => {
   test("does not render inline task search input by default", async () => {
     const markup = await renderShell(false);
-    expect(markup.includes("Search tasks")).toBeFalse();
+    expect(markup.includes("aria-hidden=\"true\"")).toBeTrue();
+  });
+
+  test("renders database view controls in the top toolbar", async () => {
+    const markup = await renderShell(false, "sliding-window", { activeView: "calendar" });
+
+    expect(markup.includes("aria-label=\"Database views\"")).toBeTrue();
+    expect(markup.includes("Board")).toBeTrue();
+    expect(markup.includes("aria-label=\"Table\"")).toBeTrue();
+    expect(markup.includes("Calendar")).toBeTrue();
+    expect((markup.match(/data-tab-label-visible=\"true\"/g) ?? []).length).toBe(1);
   });
 
   test("places pane controls on either side of the minimap", async () => {
@@ -560,9 +570,9 @@ describe("WorkbenchShell", () => {
     expect(historyPanelProps?.open).toBeTrue();
   });
 
-  test("shows active task filter pill when search query exists", async () => {
+  test("keeps the inline toolbar search field visible when search query exists", async () => {
     const markup = await renderShell(false, "sliding-window", { activeSearchQuery: "bugfix" });
-    expect(markup.includes("Filtering by:")).toBeTrue();
+    expect(markup.includes("Type to search...")).toBeTrue();
     expect(markup.includes("bugfix")).toBeTrue();
   });
 

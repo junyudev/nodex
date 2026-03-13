@@ -216,11 +216,6 @@ export function KanbanBoard({
     });
   }, [board]);
 
-  const matchCount = useMemo(() => {
-    if (!filteredBoard) return 0;
-    return filteredBoard.columns.reduce((acc, column) => acc + column.cards.length, 0);
-  }, [filteredBoard]);
-
   const currentProjectName = useMemo(
     () => projects.find((project) => project.id === projectId)?.name ?? projectId,
     [projectId, projects],
@@ -675,11 +670,11 @@ export function KanbanBoard({
       cardId,
       sourceStatus,
       targetProjectId,
-      }: {
-        cardId: string;
-        sourceStatus: CardType["status"];
-        targetProjectId: string;
-      }) => {
+    }: {
+      cardId: string;
+      sourceStatus: CardType["status"];
+      targetProjectId: string;
+    }) => {
       const moved = await moveCardToProject({
         cardId,
         sourceStatus,
@@ -758,13 +753,6 @@ export function KanbanBoard({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {isSearchActive && (
-        <div className="px-4 pb-1.5 text-base text-(--foreground-secondary)">
-          {matchCount > 0
-            ? `${matchCount} matching ${matchCount === 1 ? "task" : "tasks"}`
-            : "No matching tasks"}
-        </div>
-      )}
       <KanbanBoardScrollContainer>
         <DndContext
           sensors={sensors}

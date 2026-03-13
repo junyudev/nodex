@@ -6,7 +6,8 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 
 ## Layout
 - Left sidebar: global stage map (`View`, `Card`, `Thread`, `Diff`) and bottom project switcher.
-- The sidebar header includes a compact DB-view selector: the selected view expands into an icon-and-label pill while the other DB views stay icon-only buttons in the same row.
+- The DB stage owns a sticky top toolbar across all board/list/toggle-list/canvas/calendar views.
+- The sticky DB toolbar contains the view selector as a horizontal top-edge tab strip plus a Notion-like trailing action cluster; task search expands inline inside that right-side cluster.
 - The `Cards` sidebar stage group contains current DB-project cards grouped by non-empty status plus a `Recent` subsection for persisted cross-project card sessions.
 - When collapsed, the sidebar can be temporarily revealed by hovering the left window edge; it floats above the stage rail instead of reflowing it.
 - Top toolbar actions: sidebar collapse/expand and sliding-window pane-count decrease/increase.
@@ -23,7 +24,7 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 - Stage order: `View -> Card -> Thread -> Diff`.
 
 ## Stage Semantics
-- View: existing board/list/toggle-list/canvas/calendar host with search toolbar.
+- View: existing board/list/toggle-list/canvas/calendar host with one shared sticky toolbar for view switching and task search.
 - Card: Card Stage editor session tabs; history opens as a card-specific overlay from Card Stage, and the sidebar mirrors card navigation with collapsible current DB-project status groups plus a `Recent` session subsection. Status groups start collapsed by default, and a collapsed status group may still keep its active card row visible under the header.
 - Thread: Codex app-server-backed thread workspace with account/auth controls, a permission mode selector, streaming turn/item feed, reverse navigation to owning card, and stage-local project context (`threadsProjectId`).
 - Diff: interactive mock placeholder for diff previews.

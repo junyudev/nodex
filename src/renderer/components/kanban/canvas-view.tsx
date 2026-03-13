@@ -176,7 +176,7 @@ export function CanvasView({ projectId, openCardStage, cardStageCardId, cardStag
   }
 
   return (
-    <div style={{ height: "calc(100vh - 140px)", width: "100%" }}>
+    <div className="h-full min-h-0 w-full">
       <Suspense
         fallback={
           <div className="flex h-full flex-1 items-center justify-center">

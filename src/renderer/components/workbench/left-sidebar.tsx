@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type ComponentType } from "react";
 import {
   Collapsible as CollapsiblePrimitive,
   DropdownMenu as DropdownMenuPrimitive,
-  Tabs as TabsPrimitive,
 } from "radix-ui";
 import { cn } from "@/lib/utils";
 import { invoke } from "@/lib/api";
@@ -104,86 +103,6 @@ const SIDEBAR_ELAPSED_REFRESH_MS = 30_000;
 
 function isFiniteTimestamp(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
-}
-
-function SidebarDbViewSelector({
-  activeGroup,
-  items,
-}: {
-  activeGroup: boolean;
-  items: StageSidebarItem[];
-}) {
-  const activeItem = items.find((item) => item.active) ?? items[0] ?? null;
-  if (!activeItem) return null;
-
-  return (
-    <TabsPrimitive.Root
-      value={activeItem.id}
-      onValueChange={(value) => {
-        const nextItem = items.find((item) => item.id === value);
-        nextItem?.onSelect();
-      }}
-    >
-      <TabsPrimitive.List
-        aria-label="Database views"
-        className="hide-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto pr-px"
-      >
-        {items.map((item) => {
-          const isActive = item.id === activeItem.id;
-          const Icon = item.icon;
-
-          return (
-            <TabsPrimitive.Trigger
-              key={item.id}
-              value={item.id}
-              aria-label={item.label}
-              title={item.label}
-              className={cn(
-                "group/view inline-flex h-8 shrink-0 items-center justify-center rounded-full",
-                "text-[13px] font-medium leading-none whitespace-nowrap",
-                "outline-none focus-visible:ring-2 focus-visible:ring-(--sidebar-ring)/45",
-                "data-[state=active]:px-3 data-[state=inactive]:w-8",
-                activeGroup
-                  ? [
-                    "data-[state=active]:bg-[color-mix(in_srgb,var(--sidebar-foreground)_12%,transparent)]",
-                    "data-[state=active]:text-(--sidebar-foreground)",
-                  ]
-                  : [
-                    "data-[state=active]:bg-[color-mix(in_srgb,var(--sidebar-foreground)_9%,transparent)]",
-                    "data-[state=active]:text-(--sidebar-foreground)",
-                  ],
-                "data-[state=inactive]:text-(--sidebar-foreground-secondary)",
-                "data-[state=inactive]:hover:bg-[color-mix(in_srgb,var(--sidebar-foreground)_7%,transparent)]",
-                "data-[state=inactive]:hover:text-(--sidebar-foreground)",
-              )}
-            >
-              {Icon ? (
-                <Icon
-                  className={cn(
-                    "size-4 shrink-0",
-                    isActive
-                      ? "text-current"
-                      : "text-[color-mix(in_srgb,var(--sidebar-foreground)_72%,transparent)] group-hover/view:text-current",
-                  )}
-                />
-              ) : null}
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "grid min-w-0 overflow-hidden",
-                  isActive ? "grid-cols-[1fr]" : "grid-cols-[0fr]",
-                )}
-              >
-                <span className="min-w-0 overflow-hidden">
-                  <span className="block pl-1.5 text-left">{item.label}</span>
-                </span>
-              </span>
-            </TabsPrimitive.Trigger>
-          );
-        })}
-      </TabsPrimitive.List>
-    </TabsPrimitive.Root>
-  );
 }
 
 const SIDEBAR_ACTION_MENU_CONTENT_CLASS = cn(
@@ -389,10 +308,6 @@ export function LeftSidebar({
   const activeWorkspacePath = activeProject?.workspacePath?.trim() ?? "";
   const activeWorkspacePathLabel = activeWorkspacePath || "Set workspace path";
   const activeWorkspacePathTitle = activeWorkspacePath || "Set workspace path for Codex threads";
-  const dbViewGroup = useMemo(
-    () => stageGroups.find((group) => group.id === "db") ?? null,
-    [stageGroups],
-  );
   const visibleStageGroups = useMemo(
     () => stageGroups.filter((group) => group.id !== "db"),
     [stageGroups],
@@ -510,11 +425,6 @@ export function LeftSidebar({
             {activeWorkspacePathLabel}
           </span>
         </button>
-        {dbViewGroup?.items && dbViewGroup.items.length > 0 ? (
-          <div className="mt-2.5 -mx-(--sidebar-row-padding-x)">
-            <SidebarDbViewSelector activeGroup={dbViewGroup.active} items={dbViewGroup.items} />
-          </div>
-        ) : null}
       </header>
 
       {/* Stage groups */}
