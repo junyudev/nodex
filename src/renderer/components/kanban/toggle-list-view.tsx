@@ -127,7 +127,7 @@ export function ToggleListView({ projectId, searchQuery }: ToggleListViewProps) 
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 text-base font-semibold text-(--foreground) transition-colors duration-100 hover:text-(--foreground-secondary)"
+                className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 text-base font-semibold text-(--foreground) hover:text-(--foreground-secondary)"
                 onClick={() => setRulesExpanded((prev) => !prev)}
                 aria-expanded={rulesExpanded}
                 aria-label={rulesExpanded ? "Collapse rules" : "Expand rules"}
@@ -145,7 +145,7 @@ export function ToggleListView({ projectId, searchQuery }: ToggleListViewProps) 
 
             <button
               type="button"
-              className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-(--foreground-tertiary) transition-colors duration-100 hover:text-(--foreground-secondary)"
+              className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-(--foreground-tertiary) hover:text-(--foreground-secondary)"
               onClick={reset}
             >
               <RotateCcw className="size-3" />

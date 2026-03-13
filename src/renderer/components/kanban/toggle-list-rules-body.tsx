@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronRight, Eye, EyeOff, Plus, RotateCcw, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Plus, RotateCcw, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -51,16 +51,16 @@ const ROW_LABEL =
   "text-xs text-[var(--foreground-secondary)] w-[calc(var(--spacing)*18)] shrink-0 select-none";
 
 const CHIP_BASE =
-  "h-[calc(var(--spacing)*6)] rounded-md bg-[var(--background-secondary)] text-[var(--foreground-secondary)] px-2 text-xs font-medium cursor-pointer transition-all duration-100 ease-out hover:text-[var(--foreground)] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background-secondary))]";
+  "h-[calc(var(--spacing)*6)] rounded-md bg-[var(--background-secondary)] text-[var(--foreground-secondary)] px-2 text-xs font-medium cursor-pointer hover:text-[var(--foreground)] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,var(--background-secondary))]";
 
 const CHIP_ACTIVE =
   "bg-[color-mix(in_srgb,var(--accent-blue)_18%,var(--background))] text-[var(--accent-blue)] font-semibold hover:bg-[color-mix(in_srgb,var(--accent-blue)_24%,var(--background))] hover:text-[var(--accent-blue)]";
 
 const ICON_BTN =
-  "h-5 w-5 rounded bg-transparent text-[var(--foreground-tertiary)] inline-flex items-center justify-center cursor-pointer transition-all duration-100 ease-out hover:not-disabled:text-[var(--foreground)] hover:not-disabled:bg-[var(--background-secondary)] disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] focus-visible:outline-offset-1";
+  "h-5 w-5 rounded bg-transparent text-[var(--foreground-tertiary)] inline-flex items-center justify-center cursor-pointer hover:not-disabled:text-[var(--foreground)] hover:not-disabled:bg-[var(--background-secondary)] disabled:opacity-30 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] focus-visible:outline-offset-1";
 
 const GHOST_BTN =
-  "inline-flex items-center gap-1 text-xs font-medium text-[var(--foreground-tertiary)] cursor-pointer transition-colors duration-100 hover:text-[var(--foreground-secondary)]";
+  "inline-flex items-center gap-1 text-xs font-medium text-[var(--foreground-tertiary)] cursor-pointer hover:text-[var(--foreground-secondary)]";
 
 /** Shared overrides to make Radix selects match the compact chip aesthetic.
  *  `h-[calc(var(--spacing)*6)]!` forces height past the base `data-[size=default]:h-9`. */
@@ -75,7 +75,7 @@ const TAG_MODE_SELECT =
 
 /* NOTE: The checkbox ::after pseudo-element (rotated checkmark via border-width trick) remains in CSS. */
 const CHECKBOX =
-  "appearance-none w-3.5 h-3.5 border border-[var(--border)] rounded-sm bg-[var(--background)] cursor-pointer relative transition-all duration-100 ease-out shrink-0 hover:border-[var(--border-strong)] checked:bg-[var(--accent-blue)] checked:border-[var(--accent-blue)] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] focus-visible:outline-offset-2";
+  "appearance-none w-3.5 h-3.5 border border-[var(--border)] rounded-sm bg-[var(--background)] cursor-pointer relative shrink-0 hover:border-[var(--border-strong)] checked:bg-[var(--accent-blue)] checked:border-[var(--accent-blue)] focus-visible:outline-2 focus-visible:outline-[var(--accent-blue)] focus-visible:outline-offset-2";
 
 const SUMMARY_BADGE_PRIMARY =
   "bg-[color-mix(in_srgb,var(--accent-blue)_12%,var(--background))] text-[var(--accent-blue)] border-[color-mix(in_srgb,var(--accent-blue)_20%,transparent)]";
@@ -165,7 +165,7 @@ export function ToggleListRulesBody({
 }: ToggleListRulesBodyProps) {
   const [dslText, setDslText] = useState(() => formatRulesV2AsJsonLogic(settings.rulesV2));
   const [dslError, setDslError] = useState<string | null>(null);
-  const [dslOpen, setDslOpen] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     setDslText(formatRulesV2AsJsonLogic(settings.rulesV2));
@@ -196,88 +196,99 @@ export function ToggleListRulesBody({
   const sectionGap = compact ? "gap-1.5" : "gap-2";
 
   return (
-    <div className="flex animate-in flex-col duration-200 fade-in-0 slide-in-from-top-1">
-      {/* ── Filters ── */}
-      <FilterSection
-        compact={compact}
-        sectionPy={sectionPy}
-        sectionGap={sectionGap}
-        settings={settings}
-        availableTags={availableTags}
-        updateRulesV2={updateRulesV2}
-      />
-
-      {/* ── Sort ── */}
-      <SortSection
-        compact={compact}
-        sectionPy={sectionPy}
-        sectionGap={sectionGap}
-        settings={settings}
-        updateRulesV2={updateRulesV2}
-      />
-
-      {/* ── Properties & Display ── */}
-      <PropertiesSection
-        compact={compact}
-        sectionPy={sectionPy}
-        settings={settings}
-        updateSettings={updateSettings}
-        showHostCardToggle={showHostCardToggle}
-      />
-
-      {/* ── Json disclosure ── */}
-      <div className={cn("border-t border-(--border)/40", sectionPy)}>
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            className={cn(GHOST_BTN, "gap-1")}
-            onClick={() => setDslOpen((prev) => !prev)}
+    <div className="flex flex-col">
+      <div className="mt-1 flex items-center justify-end">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showRaw}
+          className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-(--foreground-secondary) focus-visible:rounded-full focus-visible:ring-2 focus-visible:ring-(--accent-blue)/50 focus-visible:outline-none"
+          onClick={() => setShowRaw((prev) => !prev)}
+        >
+          <span>Raw</span>
+          <span
+            className={cn(
+              "relative inline-flex h-5 w-8 shrink-0 items-center rounded-full transition-colors duration-200 ease-out",
+              showRaw ? "bg-(--accent-blue)" : "bg-foreground-10",
+            )}
           >
-            <ChevronRight className={cn("size-3 transition-transform duration-150", dslOpen && `rotate-90`)} />
-            Json
-          </button>
+            <span
+              className={cn(
+                "size-4 rounded-full border border-white bg-white shadow-sm transition-transform duration-200 ease-out",
+                showRaw ? "translate-x-3.25" : "translate-x-0.75",
+              )}
+            />
+          </span>
+        </button>
+      </div>
 
-          {dslOpen && (
-            <div className="flex animate-in items-center gap-1 duration-100 fade-in-0">
-              <button
-                type="button"
-                className={cn(GHOST_BTN)}
-                onClick={() => {
-                  setDslError(null);
-                  setDslText(formatRulesV2AsJsonLogic(settings.rulesV2));
-                }}
-              >
-                <RotateCcw className="size-3" />
-                Sync
-              </button>
-              <button
-                type="button"
-                className={cn(GHOST_BTN, "text-(--accent-blue) hover:text-(--accent-blue)")}
-                onClick={applyDslText}
-              >
-                Apply
-              </button>
-            </div>
-          )}
+      {!showRaw ? (
+        <div className="flex flex-col">
+          <FilterSection
+            compact={compact}
+            sectionPy={sectionPy}
+            sectionGap={sectionGap}
+            settings={settings}
+            availableTags={availableTags}
+            updateRulesV2={updateRulesV2}
+          />
+          <SortSection
+            compact={compact}
+            sectionPy={sectionPy}
+            sectionGap={sectionGap}
+            settings={settings}
+            updateRulesV2={updateRulesV2}
+          />
+          <PropertiesSection
+            compact={compact}
+            sectionPy={sectionPy}
+            settings={settings}
+            updateSettings={updateSettings}
+            showHostCardToggle={showHostCardToggle}
+          />
         </div>
-
-        {dslOpen && (
-          <div className="slide-in-from-top-0.5 mt-1.5 flex animate-in flex-col gap-1.5 duration-150 fade-in-0">
+      ) : (
+        <div className={cn("flex flex-col border-t border-(--border)/40", sectionPy)}>
+          <div className="flex flex-col gap-1.5">
             <textarea
               value={dslText}
               onChange={(event) => {
                 if (dslError) setDslError(null);
                 setDslText(event.target.value);
               }}
-              className="min-h-28 w-full rounded-md border border-(--border)/60 bg-(--background) p-2 font-mono text-xs/relaxed text-(--foreground) transition-colors duration-100 focus:border-(--accent-blue)/50 focus:outline-none"
+              className="min-h-80 w-full rounded-md border-[0.5px] border-(--border)/50 bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))] p-2 font-mono text-xs/relaxed text-(--foreground) focus:border-(--accent-blue)/40 focus:outline-none"
               spellCheck={false}
             />
-            {dslError && (
-              <div className="text-xs text-(--destructive)">{dslError}</div>
-            )}
+            <div className="flex items-center justify-between">
+              {dslError ? (
+                <span className="truncate text-xs text-(--destructive)">{dslError}</span>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={cn(GHOST_BTN)}
+                  onClick={() => {
+                    setDslError(null);
+                    setDslText(formatRulesV2AsJsonLogic(settings.rulesV2));
+                  }}
+                >
+                  <RotateCcw className="size-3 shrink-0" />
+                  Revert
+                </button>
+                <button
+                  type="button"
+                  className={cn(GHOST_BTN, "text-(--accent-blue) hover:text-(--accent-blue)")}
+                  onClick={applyDslText}
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -520,7 +531,7 @@ function PropertiesSection({
             const hidden = settings.hiddenProperties.includes(property);
             return (
               <div key={property} className="group flex h-6 items-center gap-1">
-                <span className={cn("w-18 shrink-0 truncate text-xs font-medium transition-colors duration-100", hidden ? `text-(--foreground-tertiary)` : "text-(--foreground-secondary)")}>
+                <span className={cn("w-18 shrink-0 truncate text-xs font-medium", hidden ? "text-(--foreground-tertiary)" : "text-(--foreground-secondary)")}>
                   {formatPropertyName(property)}
                 </span>
                 <button
