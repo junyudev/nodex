@@ -92,17 +92,23 @@ function inferPriorityDefault(
   input: CardInput,
   referenceCard: CardWithColumn | undefined,
   settings: ToggleListSettings,
-): Priority | undefined {
-  if (input.priority) return input.priority;
-
-  const rankIncludesPriority = toggleListSortIncludesField(settings.rulesV2, "priority");
-  if (rankIncludesPriority && referenceCard?.priority) {
-    return referenceCard.priority;
+): Priority | null | undefined {
+  if (Object.prototype.hasOwnProperty.call(input, "priority")) {
+    return input.priority;
   }
 
-  const priorities = deriveToggleListFilterRule(settings.rulesV2).priorities;
+  const rankIncludesPriority = toggleListSortIncludesField(settings.rulesV2, "priority");
+  if (rankIncludesPriority && referenceCard) {
+    return referenceCard.priority ?? null;
+  }
+
+  const filterRule = deriveToggleListFilterRule(settings.rulesV2);
+  const priorities = filterRule.priorities;
   if (priorities.length === 1) {
     return priorities[0];
+  }
+  if (priorities.length === 0 && filterRule.includeEmptyPriority) {
+    return null;
   }
 
   return undefined;
@@ -155,7 +161,7 @@ export function inferInlineViewDropImport(
 
     return {
       ...card,
-      ...(priority ? { priority } : {}),
+      ...(priority !== undefined ? { priority } : {}),
       ...(estimate !== undefined ? { estimate } : {}),
     };
   });

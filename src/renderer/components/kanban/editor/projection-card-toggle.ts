@@ -56,6 +56,7 @@ export interface ProjectedCardToggleBuildOptions {
   propertyOrder: ToggleListPropertyKey[];
   hiddenProperties: ToggleListPropertyKey[];
   showEmptyEstimate?: boolean;
+  showEmptyPriority?: boolean;
 }
 
 let projectionMutationDepth = 0;
@@ -246,6 +247,7 @@ export function buildProjectedCardToggleBlock(
     propertyOrder,
     hiddenProperties,
     showEmptyEstimate = false,
+    showEmptyPriority = false,
   } = options;
 
   const base = cardToToggleBlock(
@@ -254,7 +256,7 @@ export function buildProjectedCardToggleBlock(
     propertyOrder,
     hiddenProperties,
     undefined,
-    showEmptyEstimate,
+    { showEmptyEstimate, showEmptyPriority },
   ) as RecordLike;
 
   const baseProps = isRecord(base.props)

@@ -215,6 +215,56 @@ describe("toggle-list rules", () => {
     expect(filtered.map((card) => card.id).join(",")).toBe("no-priority,has-priority");
   });
 
+  test("explicit empty-priority selection can exclude empty cards", () => {
+    const cards = [
+      makeCard({ id: "no-priority", priority: undefined }),
+      makeCard({ id: "has-priority", priority: "p1-high", boardIndex: 1 }),
+    ];
+
+    const filtered = filterCards(cards, makeSettings({
+      mode: "advanced",
+      includeHostCard: false,
+      filter: {
+        any: [
+          {
+            all: [
+              { field: "status", op: "in", values: ["backlog"] },
+              { field: "priority", op: "in", values: ["p1-high"], includeEmpty: false },
+            ],
+          },
+        ],
+      },
+      sort: [{ field: "board-order", direction: "asc" }],
+    }), "");
+
+    expect(filtered.map((card) => card.id).join(",")).toBe("has-priority");
+  });
+
+  test("explicit empty-priority selection can match empty cards only", () => {
+    const cards = [
+      makeCard({ id: "no-priority", priority: undefined }),
+      makeCard({ id: "has-priority", priority: "p1-high", boardIndex: 1 }),
+    ];
+
+    const filtered = filterCards(cards, makeSettings({
+      mode: "advanced",
+      includeHostCard: false,
+      filter: {
+        any: [
+          {
+            all: [
+              { field: "status", op: "in", values: ["backlog"] },
+              { field: "priority", op: "in", values: [], includeEmpty: true },
+            ],
+          },
+        ],
+      },
+      sort: [{ field: "board-order", direction: "asc" }],
+    }), "");
+
+    expect(filtered.map((card) => card.id).join(",")).toBe("no-priority");
+  });
+
   test("filterCards supports OR groups and tag exclusion in canonical rulesV2", () => {
     const cards = [
       makeCard({

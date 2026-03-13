@@ -8,6 +8,9 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 - Left sidebar: global stage map (`View`, `Card`, `Thread`, `Diff`) and bottom project switcher.
 - The DB stage owns a sticky top toolbar across all board/list/toggle-list/canvas/calendar views.
 - The sticky DB toolbar contains the view selector as a horizontal top-edge tab strip plus a Notion-like trailing action cluster; task search expands inline inside that right-side cluster.
+- The primary DB views keep a consistent inner gutter under that toolbar: kanban, toggle-list, list, calendar, and canvas all inset their content away from the stage edge instead of running flush to the shell chrome.
+- For `kanban`, `list`, and `toggle-list`, that trailing cluster also owns shared view-local `Filter` and `Sort` popovers plus a `Display` popover for per-view property layout controls; kanban uses it for board-card property visibility/order and optional empty `priority` / `estimate` placeholders, while toggle-list uses it for row-property visibility/order and the same empty-value placeholders, rendered as matching neutral `-` chips. In kanban, those empty chips stay clickable and open the same inline property picker as filled chips.
+- When a supported view has active filter/sort rules, the toolbar can render a compact bottom band with pills for the active filter clauses plus a leading sort chip; a single sort shows the field name with direction, multiple sorts collapse to an `n sorts` chip, and a thin separator divides sort from filter pills.
 - The `Cards` sidebar stage group contains current DB-project cards grouped by non-empty status plus a `Recent` subsection for persisted cross-project card sessions.
 - When collapsed, the sidebar can be temporarily revealed by hovering the left window edge; it floats above the stage rail instead of reflowing it.
 - Top toolbar actions: sidebar collapse/expand and sliding-window pane-count decrease/increase.
@@ -24,7 +27,7 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 - Stage order: `View -> Card -> Thread -> Diff`.
 
 ## Stage Semantics
-- View: existing board/list/toggle-list/canvas/calendar host with one shared sticky toolbar for view switching and task search.
+- View: existing board/list/toggle-list/canvas/calendar host with one shared sticky toolbar for view switching, task search, and supported view-local filter/sort controls.
 - Card: Card Stage editor session tabs; history opens as a card-specific overlay from Card Stage, and the sidebar mirrors card navigation with collapsible current DB-project status groups plus a `Recent` session subsection. Status groups start collapsed by default, and a collapsed status group may still keep its active card row visible under the header.
 - Thread: Codex app-server-backed thread workspace with account/auth controls, a permission mode selector, streaming turn/item feed, reverse navigation to owning card, and stage-local project context (`threadsProjectId`).
 - Diff: interactive mock placeholder for diff previews.
@@ -79,6 +82,8 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 - The Cards sidebar's grouped current-project rows are derived from the shared `useKanban` board snapshot for `dbProjectId`; they do not create separate persisted tab state.
 - Thread stage tabs always include a persistent `New thread` tab, plus linked Codex thread tabs derived from persisted metadata in SQLite (`codex_card_threads`) and refreshed from runtime events.
 - Thread background sync is preserved when changing the selected thread tab; active-thread detail refresh runs independently of the currently selected tab.
+- DB view filter/sort prefs are persisted per project and per supported view (`kanban`, `list`, `toggle-list`) in renderer localStorage; calendar and canvas do not participate.
+- Toggle-list display prefs (property order, hidden properties, empty-estimate display) persist alongside the supported DB view prefs instead of a standalone toggle-list storage silo.
 - Bottom terminal panel persists open/closed + panel height globally.
 - Terminal tabs persist mixed `project`/`card` mode state.
 - Back/forward history is persisted only for the current window session and is not included in cold-launch resume snapshots.

@@ -1,8 +1,10 @@
-import { forwardRef, memo, useCallback, useMemo, useState } from "react";
+import { Fragment, forwardRef, memo, useCallback, useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CardPropertyPosition } from "@/lib/card-property-position";
+import type { DbViewDisplayPrefs, DbViewDisplayPropertyKey } from "../../lib/db-view-prefs";
 import { resolveKanbanPriorityOption } from "../../lib/kanban-options";
+import { EMPTY_DISPLAY_VALUE_TOKEN, getMetaChipClassName } from "../../lib/toggle-list/meta-chips";
 import { estimateStyles } from "@/lib/types";
 import type { Card as CardType, Priority } from "@/lib/types";
 import { useCardPropertyPosition } from "@/lib/use-card-property-position";
@@ -17,6 +19,17 @@ import { shouldFreezeSameColumnPreview } from "./sortable-preview-mode";
 
 type CardEditableProperty = "priority" | "estimate";
 type CardPropertyBadgeLayout = "stacked" | "inline";
+type KanbanCardDisplayProperty = Extract<DbViewDisplayPropertyKey, "priority" | "estimate" | "tags" | "assignee">;
+
+const DEFAULT_KANBAN_CARD_DISPLAY_ORDER: KanbanCardDisplayProperty[] = [
+  "priority",
+  "estimate",
+  "tags",
+  "assignee",
+];
+const TAG_CHIP_CLASS_NAME =
+  "inline-flex h-4.5 items-center rounded-sm bg-(--gray-bg) px-1.5 text-xs/snug-plus text-(--foreground-secondary)";
+const EMPTY_VALUE_CHIP_CLASS_NAME = getMetaChipClassName(EMPTY_DISPLAY_VALUE_TOKEN);
 
 export interface CardPropertyUpdateInput {
   cardId: string;
@@ -28,6 +41,7 @@ export interface CardPropertyUpdateInput {
 interface CardProps {
   card: CardType;
   columnId: string;
+  displayPrefs?: DbViewDisplayPrefs;
   dragDisabled?: boolean;
   isFocused?: boolean;
   isSelected?: boolean;
@@ -48,6 +62,7 @@ interface CardProps {
 interface CardBodyProps {
   card: CardType;
   columnId: string;
+  displayPrefs?: DbViewDisplayPrefs;
   hasTerminal: boolean;
   position: CardPropertyPosition;
   activeProperty: CardEditableProperty | null;
@@ -70,6 +85,7 @@ const PRIORITY_TOKEN_BY_VALUE: Record<Priority, string> = {
 function CardPropertyBadges({
   card,
   columnId,
+  displayPrefs,
   hasTerminal,
   layout = "stacked",
   className,
@@ -79,6 +95,7 @@ function CardPropertyBadges({
 }: {
   card: CardType;
   columnId: string;
+  displayPrefs?: DbViewDisplayPrefs;
   hasTerminal: boolean;
   layout?: CardPropertyBadgeLayout;
   className?: string;
@@ -98,6 +115,20 @@ function CardPropertyBadges({
     ? "text-xs text-(--foreground-tertiary)"
     : "ml-auto text-xs text-(--foreground-tertiary)";
   const Container = layout === "inline" ? "span" : "div";
+  const propertyOrder = (displayPrefs?.propertyOrder ?? DEFAULT_KANBAN_CARD_DISPLAY_ORDER)
+    .filter(
+      (property): property is KanbanCardDisplayProperty =>
+        DEFAULT_KANBAN_CARD_DISPLAY_ORDER.includes(property as KanbanCardDisplayProperty),
+    );
+  const hiddenProperties = new Set(
+    (displayPrefs?.hiddenProperties ?? [])
+      .filter(
+        (property): property is KanbanCardDisplayProperty =>
+          DEFAULT_KANBAN_CARD_DISPLAY_ORDER.includes(property as KanbanCardDisplayProperty),
+      ),
+  );
+  const showEmptyEstimate = displayPrefs?.showEmptyEstimate ?? false;
+  const showEmptyPriority = displayPrefs?.showEmptyPriority ?? false;
 
   const renderEditableChip = (
     property: CardEditableProperty,
@@ -139,6 +170,76 @@ function CardPropertyBadges({
     );
   };
 
+  const renderTagChip = (label: string) => (
+    <span className={TAG_CHIP_CLASS_NAME}>
+      {label}
+    </span>
+  );
+
+  const renderEmptyValueChip = (property: CardEditableProperty) =>
+    renderEditableChip(
+      property,
+      EMPTY_DISPLAY_VALUE_TOKEN,
+      EMPTY_DISPLAY_VALUE_TOKEN,
+      EMPTY_VALUE_CHIP_CLASS_NAME,
+    );
+
+  const renderProperty = (property: KanbanCardDisplayProperty) => {
+    if (hiddenProperties.has(property)) return null;
+
+    if (property === "priority") {
+      if (!priorityOption || !card.priority || !priorityLabel) {
+        if (!showEmptyPriority) return null;
+        return renderEmptyValueChip("priority");
+      }
+      return renderEditableChip(
+        "priority",
+        PRIORITY_TOKEN_BY_VALUE[card.priority],
+        priorityLabel,
+        cn(
+          "inline-flex h-4.5 items-center rounded-sm px-1.5 text-xs/snug-plus",
+          priorityOption.className,
+        ),
+      );
+    }
+
+    if (property === "estimate") {
+      if (!card.estimate) {
+        if (!showEmptyEstimate) return null;
+        return renderEmptyValueChip("estimate");
+      }
+      return renderEditableChip(
+        "estimate",
+        estimateToken,
+        estimateStyles[card.estimate].label,
+        cn(
+          "inline-flex h-4.5 items-center rounded-sm px-1.5 text-xs/snug-plus",
+          estimateStyles[card.estimate].className,
+        ),
+      );
+    }
+
+    if (property === "tags") {
+      if (card.tags.length === 0) return null;
+      return card.tags.map((tag) => (
+        <Fragment key={tag}>
+          {renderTagChip(tag)}
+        </Fragment>
+      ));
+    }
+
+    if (property === "assignee") {
+      if (!card.assignee) return null;
+      return (
+        <span className={assigneeClassName}>
+          @{card.assignee}
+        </span>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <Container
       className={cn(
@@ -148,46 +249,15 @@ function CardPropertyBadges({
         className,
       )}
     >
-      {priorityOption && card.priority && priorityLabel ? renderEditableChip(
-        "priority",
-        PRIORITY_TOKEN_BY_VALUE[card.priority],
-        priorityLabel,
-        cn(
-          "inline-flex h-4.5 items-center rounded-sm px-1.5 text-xs/snug-plus",
-          priorityOption.className,
-        ),
-      ) : null}
-
-      {card.estimate && (
-        renderEditableChip(
-          "estimate",
-          estimateToken,
-          estimateStyles[card.estimate].label,
-          cn(
-            "inline-flex h-4.5 items-center rounded-sm px-1.5 text-xs/snug-plus",
-            estimateStyles[card.estimate].className,
-          ),
-        )
-      )}
-
-      {card.tags.map((tag) => (
-        <span
-          key={tag}
-          className="inline-flex h-4.5 items-center rounded-sm bg-(--gray-bg) px-1.5 text-xs/snug-plus text-(--foreground-secondary)"
-        >
-          {tag}
-        </span>
+      {propertyOrder.map((property) => (
+        <Fragment key={property}>
+          {renderProperty(property)}
+        </Fragment>
       ))}
 
       {hasTerminal && (
         <span className="inline-flex h-4.5 items-center rounded-sm bg-(--foreground)/6 px-1.25 font-mono text-xs/4.5 tracking-tight text-(--foreground-secondary)">
           $<span className="ml-px h-2.75 w-1.25 animate-[terminal-blink_1s_step-end_infinite] bg-current" />
-        </span>
-      )}
-
-      {card.assignee && (
-        <span className={assigneeClassName}>
-          @{card.assignee}
         </span>
       )}
     </Container>
@@ -197,6 +267,7 @@ function CardPropertyBadges({
 const CardBody = memo(function CardBody({
   card,
   columnId,
+  displayPrefs,
   hasTerminal,
   position,
   activeProperty,
@@ -216,6 +287,7 @@ const CardBody = memo(function CardBody({
         <CardPropertyBadges
           card={card}
           columnId={columnId}
+          displayPrefs={displayPrefs}
           hasTerminal={hasTerminal}
           layout="stacked"
           className="mx-1.5 pt-2 pb-1"
@@ -231,6 +303,7 @@ const CardBody = memo(function CardBody({
             <CardPropertyBadges
               card={card}
               columnId={columnId}
+              displayPrefs={displayPrefs}
               hasTerminal={hasTerminal}
               layout="inline"
               activeProperty={activeProperty}
@@ -262,6 +335,7 @@ const CardBody = memo(function CardBody({
         <CardPropertyBadges
           card={card}
           columnId={columnId}
+          displayPrefs={displayPrefs}
           hasTerminal={hasTerminal}
           layout="stacked"
           className="mx-1.5 pb-2"
@@ -277,6 +351,7 @@ const CardBody = memo(function CardBody({
 interface CardSurfaceProps extends React.HTMLAttributes<HTMLDivElement> {
   card: CardType;
   columnId: string;
+  displayPrefs?: DbViewDisplayPrefs;
   dragDisabled?: boolean;
   showStaticDragGhost?: boolean;
   fixedWidth?: number;
@@ -298,6 +373,7 @@ interface CardSurfaceProps extends React.HTMLAttributes<HTMLDivElement> {
 const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(function CardSurface({
   card,
   columnId,
+  displayPrefs,
   dragDisabled = false,
   showStaticDragGhost = false,
   fixedWidth,
@@ -359,6 +435,7 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(function CardSu
       <CardBody
         card={card}
         columnId={columnId}
+        displayPrefs={displayPrefs}
         hasTerminal={hasTerminal}
         position={position}
         activeProperty={activeProperty}
@@ -372,10 +449,11 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(function CardSu
 export function CardPreview({
   card,
   columnId,
+  displayPrefs,
   isSelected = false,
   fixedWidth,
   fixedHeight,
-}: Pick<CardProps, "card" | "columnId" | "isSelected"> & {
+}: Pick<CardProps, "card" | "columnId" | "displayPrefs" | "isSelected"> & {
   fixedWidth?: number;
   fixedHeight?: number;
 }) {
@@ -387,6 +465,7 @@ export function CardPreview({
     <CardSurface
       card={card}
       columnId={columnId}
+      displayPrefs={displayPrefs}
       dragDisabled
       isSelected={isSelected}
       fixedWidth={fixedWidth}
@@ -401,6 +480,7 @@ export function CardPreview({
 export function Card({
   card,
   columnId,
+  displayPrefs,
   dragDisabled = false,
   isFocused,
   isSelected = false,
@@ -499,6 +579,7 @@ export function Card({
     <CardSurface
       card={card}
       columnId={columnId}
+      displayPrefs={displayPrefs}
       dragDisabled={dragDisabled}
       showStaticDragGhost={showStaticDragGhost}
       isDragging={isDragging}

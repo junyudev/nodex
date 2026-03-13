@@ -95,6 +95,9 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
         if (block.showEmptyEstimate !== undefined) {
           attrs.push(`show-empty-estimate="${block.showEmptyEstimate ? "true" : "false"}"`);
         }
+        if (block.showEmptyPriority !== undefined) {
+          attrs.push(`show-empty-priority="${block.showEmptyPriority ? "true" : "false"}"`);
+        }
         lines.push(prefix + `<toggle-list-inline-view ${attrs.join(" ")} />`);
         break;
       }

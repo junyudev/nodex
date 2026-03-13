@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Popover as PopoverPrimitive } from "radix-ui";
-import { ChevronDownIcon } from "@/components/shared/icons";
-import { SELECTOR_MENU_CONTENT_CLASS_NAME } from "@/components/ui/selector-menu-chrome";
-import { cn } from "@/lib/utils";
+import { ChevronDownIcon } from "../../shared/icons";
+import { SELECTOR_MENU_CONTENT_CLASS_NAME } from "../../ui/selector-menu-chrome";
+import { cn } from "../../../lib/utils";
 export {
   SELECTOR_MENU_CONTENT_CLASS_NAME,
   SELECTOR_MENU_DIVIDER_CLASS_NAME,
@@ -11,7 +11,7 @@ export {
   SELECTOR_MENU_LIST_CLASS_NAME,
   SELECTOR_MENU_PANEL_CLASS_NAME,
   SELECTOR_MENU_TITLE_CLASS_NAME,
-} from "@/components/ui/selector-menu-chrome";
+} from "../../ui/selector-menu-chrome";
 
 interface SelectorPopoverTriggerProps {
   ariaLabel: string;

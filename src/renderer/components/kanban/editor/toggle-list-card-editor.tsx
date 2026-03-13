@@ -88,6 +88,7 @@ interface ToggleListCardEditorProps {
   updateCard: (columnId: string, cardId: string, updates: Partial<CardInput>) => Promise<unknown>;
   moveCard?: (input: MoveCardInput) => Promise<boolean>;
   showEmptyEstimate?: boolean;
+  showEmptyPriority?: boolean;
   className?: string;
   placeholder?: string;
   boundaryRegistryId?: string;
@@ -210,6 +211,7 @@ export function ToggleListCardEditor({
   updateCard,
   moveCard,
   showEmptyEstimate = false,
+  showEmptyPriority = false,
   className,
   placeholder = "Toggle list row title",
   boundaryRegistryId,
@@ -239,12 +241,12 @@ export function ToggleListCardEditor({
           propertyOrder,
           hiddenProperties,
           toggleStates,
-          showEmptyEstimate,
+          { showEmptyEstimate, showEmptyPriority },
         ),
       );
       return { blocks, toggleStates };
     },
-    [cards, hiddenProperties, projectId, propertyOrder, showEmptyEstimate],
+    [cards, hiddenProperties, projectId, propertyOrder, showEmptyEstimate, showEmptyPriority],
   );
 
   const uploadFile = useCallback(
@@ -605,7 +607,7 @@ export function ToggleListCardEditor({
       dirtyCardIdsRef.current,
       inFlightCardIdsRef.current,
       containerRef.current ?? undefined,
-      showEmptyEstimate,
+      { showEmptyEstimate, showEmptyPriority },
     );
     if (updates.length === 0) return;
 
@@ -635,6 +637,7 @@ export function ToggleListCardEditor({
     removeToggleStateEntries,
     replaceToggleStateEntries,
     showEmptyEstimate,
+    showEmptyPriority,
   ]);
 
   useEffect(() => {

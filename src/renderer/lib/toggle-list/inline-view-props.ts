@@ -17,6 +17,7 @@ export interface ToggleListInlineViewProps {
   propertyOrderCsv: string;
   hiddenPropertiesCsv: string;
   showEmptyEstimate: "true" | "false";
+  showEmptyPriority: "true" | "false";
 }
 
 export function getDefaultToggleListInlineViewProps(
@@ -29,6 +30,7 @@ export function getDefaultToggleListInlineViewProps(
     propertyOrderCsv: settings.propertyOrder.join(","),
     hiddenPropertiesCsv: settings.hiddenProperties.join(","),
     showEmptyEstimate: settings.showEmptyEstimate ? "true" : "false",
+    showEmptyPriority: settings.showEmptyPriority ? "true" : "false",
   };
 }
 
@@ -50,6 +52,7 @@ export function parseToggleListInlineViewSettings(
     propertyOrder,
     hiddenProperties,
     showEmptyEstimate: props.showEmptyEstimate === "true",
+    showEmptyPriority: props.showEmptyPriority === "true",
   };
 }
 
@@ -67,6 +70,7 @@ export function mergeToggleListInlineViewProps(
     propertyOrderCsv: serializeCsvList(settings.propertyOrder),
     hiddenPropertiesCsv: serializeCsvList(settings.hiddenProperties),
     showEmptyEstimate: settings.showEmptyEstimate ? "true" : "false",
+    showEmptyPriority: settings.showEmptyPriority ? "true" : "false",
   };
 }
 
@@ -84,6 +88,9 @@ function sanitizeInlineProps(
     showEmptyEstimate: prev.showEmptyEstimate === "true" || prev.showEmptyEstimate === "false"
       ? prev.showEmptyEstimate
       : defaults.showEmptyEstimate,
+    showEmptyPriority: prev.showEmptyPriority === "true" || prev.showEmptyPriority === "false"
+      ? prev.showEmptyPriority
+      : defaults.showEmptyPriority,
   };
 }
 

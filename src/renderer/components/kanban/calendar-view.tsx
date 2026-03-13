@@ -568,7 +568,7 @@ export function CalendarView({
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col"
+      className="flex h-full min-h-0 flex-col px-4 pb-4"
       onWheel={handleCalendarWheel}
       {...{ [CALENDAR_SHIFT_WHEEL_SCOPE_ATTR]: CALENDAR_SHIFT_WHEEL_SCOPE_VALUE }}
     >

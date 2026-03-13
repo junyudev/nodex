@@ -76,6 +76,9 @@ function toInlineProps(value: unknown, fallbackProjectId = "default"): ToggleLis
     showEmptyEstimate: value.showEmptyEstimate === "true" || value.showEmptyEstimate === "false"
       ? value.showEmptyEstimate
       : defaults.showEmptyEstimate,
+    showEmptyPriority: value.showEmptyPriority === "true" || value.showEmptyPriority === "false"
+      ? value.showEmptyPriority
+      : defaults.showEmptyPriority,
   };
 }
 
@@ -173,6 +176,7 @@ export const createToggleListInlineViewBlockSpec = createReactBlockSpec(
       propertyOrderCsv: { default: "priority,estimate,status" },
       hiddenPropertiesCsv: { default: "" },
       showEmptyEstimate: { default: "false" },
+      showEmptyPriority: { default: "false" },
     },
     content: "none" as const,
   },
@@ -294,6 +298,7 @@ export const createToggleListInlineViewBlockSpec = createReactBlockSpec(
         propertyOrder: settings.propertyOrder,
         hiddenProperties: settings.hiddenProperties,
         showEmptyEstimate: settings.showEmptyEstimate,
+        showEmptyPriority: settings.showEmptyPriority,
         editor,
         enabled: !isRecursive,
         updateCard,

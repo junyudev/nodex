@@ -21,6 +21,14 @@ import {
   type SidebarTopLevelSectionId,
   type SidebarTopLevelSectionsPrefs,
 } from "./sidebar-section-prefs";
+import {
+  cloneDbViewPrefs,
+  getDefaultDbViewPrefs,
+  normalizeDbViewPrefs,
+  type DbViewPrefs,
+  type SupportedDbView,
+  viewSupportsDbViewPrefs,
+} from "./db-view-prefs";
 
 export type WorkbenchView = "kanban" | "list" | "toggle-list" | "canvas" | "calendar";
 export type StageId = "db" | "cards" | "threads" | "files";
@@ -101,6 +109,7 @@ interface WorkbenchPrefs {
   threadsProjectId?: string;
   viewsByProject: Record<string, WorkbenchView>;
   searchByProject: Record<string, string>;
+  dbViewPrefsByProject?: Record<string, Partial<Record<SupportedDbView, DbViewPrefs>>>;
   spaceOrder: string[];
   activeRecentSessionId: string | null;
   focusedStage?: StageId;
@@ -132,6 +141,7 @@ interface WorkbenchState {
   threadsProjectId: string;
   viewsByProject: Record<string, WorkbenchView>;
   searchByProject: Record<string, string>;
+  dbViewPrefsByProject: Record<string, Partial<Record<SupportedDbView, DbViewPrefs>>>;
   spaceOrder: string[];
   sidebar: SidebarPrefs;
   dock: DockPrefs;
@@ -223,6 +233,30 @@ function normalizeSearchMap(value: unknown): Record<string, string> {
     acc[projectId] = search;
     return acc;
   }, {});
+}
+
+function normalizeDbViewPrefsMap(value: unknown): Record<string, Partial<Record<SupportedDbView, DbViewPrefs>>> {
+  if (typeof value !== "object" || value === null) return {};
+
+  return Object.entries(value).reduce<Record<string, Partial<Record<SupportedDbView, DbViewPrefs>>>>(
+    (acc, [projectId, projectPrefs]) => {
+      if (typeof projectId !== "string" || projectId.length === 0) return acc;
+      if (typeof projectPrefs !== "object" || projectPrefs === null) return acc;
+
+      const nextPrefs = Object.entries(projectPrefs).reduce<Partial<Record<SupportedDbView, DbViewPrefs>>>(
+        (viewAcc, [view, prefs]) => {
+          if (view !== "kanban" && view !== "list" && view !== "toggle-list") return viewAcc;
+          viewAcc[view] = normalizeDbViewPrefs(view, prefs);
+          return viewAcc;
+        },
+        {},
+      );
+
+      acc[projectId] = nextPrefs;
+      return acc;
+    },
+    {},
+  );
 }
 
 function normalizeSpaceOrder(value: unknown): string[] {
@@ -600,6 +634,7 @@ function loadInitialState(options: LoadInitialStateOptions = {}): WorkbenchState
       ? normalizeViewMap(resumeSnapshot.viewsByProject)
       : normalizeViewMap(persistedWorkbench?.viewsByProject),
     searchByProject: normalizeSearchMap(persistedWorkbench?.searchByProject),
+    dbViewPrefsByProject: normalizeDbViewPrefsMap(persistedWorkbench?.dbViewPrefsByProject),
     spaceOrder: normalizeSpaceOrder(persistedWorkbench?.spaceOrder),
     sidebar: {
       collapsed: Boolean(persistedSidebar?.collapsed),
@@ -956,6 +991,7 @@ export function useWorkbenchState(
 
       const viewsByProject = { ...prev.viewsByProject };
       const searchByProject = { ...prev.searchByProject };
+      const dbViewPrefsByProject = { ...prev.dbViewPrefsByProject };
       const projectIds = new Set(projects.map((project) => project.id));
 
       Object.keys(viewsByProject).forEach((projectId) => {
@@ -966,6 +1002,10 @@ export function useWorkbenchState(
       Object.keys(searchByProject).forEach((projectId) => {
         if (projectIds.has(projectId)) return;
         delete searchByProject[projectId];
+      });
+      Object.keys(dbViewPrefsByProject).forEach((projectId) => {
+        if (projectIds.has(projectId)) return;
+        delete dbViewPrefsByProject[projectId];
       });
 
       projects.forEach((project) => {
@@ -1067,6 +1107,7 @@ export function useWorkbenchState(
         threadsProjectId,
         viewsByProject,
         searchByProject,
+        dbViewPrefsByProject,
         recentCardSessions,
         activeRecentSessionId,
         focusedStage,
@@ -1129,6 +1170,9 @@ export function useWorkbenchState(
 
   const activeView = state.viewsByProject[state.dbProjectId] ?? "kanban";
   const activeSearchQuery = state.searchByProject[state.dbProjectId] ?? "";
+  const activeDbViewPrefs = viewSupportsDbViewPrefs(activeView)
+    ? state.dbViewPrefsByProject[state.dbProjectId]?.[activeView] ?? getDefaultDbViewPrefs(activeView)
+    : null;
   const focusedStage = state.focusedStage;
   const stageNavDirection = state.stageNavDirection;
 
@@ -1189,6 +1233,29 @@ export function useWorkbenchState(
         searchByProject: {
           ...prev.searchByProject,
           [projectId]: query,
+        },
+      };
+    });
+  }, []);
+
+  const setDbViewPrefs = useCallback((
+    projectId: string,
+    view: SupportedDbView,
+    update: (prev: DbViewPrefs) => DbViewPrefs,
+  ) => {
+    setState((prev) => {
+      const current = prev.dbViewPrefsByProject[projectId]?.[view] ?? getDefaultDbViewPrefs(view);
+      const nextPrefs = normalizeDbViewPrefs(view, update(cloneDbViewPrefs(current)));
+      if (JSON.stringify(current) === JSON.stringify(nextPrefs)) return prev;
+
+      return {
+        ...prev,
+        dbViewPrefsByProject: {
+          ...prev.dbViewPrefsByProject,
+          [projectId]: {
+            ...prev.dbViewPrefsByProject[projectId],
+            [view]: nextPrefs,
+          },
         },
       };
     });
@@ -1844,8 +1911,10 @@ export function useWorkbenchState(
     spaces,
     activeView,
     activeSearchQuery,
+    activeDbViewPrefs,
     viewsByProject: state.viewsByProject,
     searchByProject: state.searchByProject,
+    dbViewPrefsByProject: state.dbViewPrefsByProject,
     sidebar: state.sidebar,
     dock: state.dock,
     recentCardSessions: state.recentCardSessions,
@@ -1870,6 +1939,7 @@ export function useWorkbenchState(
     setThreadsProjectId,
     setView,
     setSearchQuery,
+    setDbViewPrefs,
     setSidebarCollapsed,
     setSidebarWidth,
     setSidebarTopLevelSectionVisible,
@@ -1923,6 +1993,7 @@ export const workbenchTestHelpers = {
   isWorkbenchView,
   normalizeViewMap,
   normalizeSearchMap,
+  normalizeDbViewPrefsMap,
   normalizeSpaceOrder,
   normalizeRecentSessions,
   findRecentCardSession,

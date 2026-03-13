@@ -465,6 +465,7 @@ function parseToggleListInlineView(line: string): NfmToggleListInlineView | null
   const hiddenProperties = parseCsvAttr(getXmlAttr(attrString, "hidden-properties"))
     .filter(isToggleListPropertyKey);
   const showEmptyEstimate = getXmlAttr(attrString, "show-empty-estimate");
+  const showEmptyPriority = getXmlAttr(attrString, "show-empty-priority");
 
   return {
     type: "toggleListInlineView",
@@ -474,6 +475,9 @@ function parseToggleListInlineView(line: string): NfmToggleListInlineView | null
     ...(hiddenProperties.length > 0 ? { hiddenProperties } : {}),
     ...(showEmptyEstimate === "true" || showEmptyEstimate === "false"
       ? { showEmptyEstimate: showEmptyEstimate === "true" }
+      : {}),
+    ...(showEmptyPriority === "true" || showEmptyPriority === "false"
+      ? { showEmptyPriority: showEmptyPriority === "true" }
       : {}),
     children: [],
   };

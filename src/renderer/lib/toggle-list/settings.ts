@@ -23,6 +23,7 @@ import {
 const DEFAULT_FILTER_RULE: ToggleListFilterRule = {
   statuses: [...TOGGLE_LIST_STATUS_ORDER],
   priorities: [...TOGGLE_LIST_PRIORITY_ORDER],
+  includeEmptyPriority: true,
   tags: [],
   tagMode: "any",
   includeHostCard: false,
@@ -39,6 +40,7 @@ export function getDefaultToggleListSettings(): ToggleListSettings {
     propertyOrder: [...DEFAULT_TOGGLE_LIST_SETTINGS.propertyOrder],
     hiddenProperties: [...DEFAULT_TOGGLE_LIST_SETTINGS.hiddenProperties],
     showEmptyEstimate: DEFAULT_TOGGLE_LIST_SETTINGS.showEmptyEstimate,
+    showEmptyPriority: DEFAULT_TOGGLE_LIST_SETTINGS.showEmptyPriority,
   };
 }
 
@@ -60,6 +62,9 @@ export function normalizeToggleListSettings(value: unknown): ToggleListSettings 
     showEmptyEstimate: typeof value.showEmptyEstimate === "boolean"
       ? value.showEmptyEstimate
       : fallback.showEmptyEstimate,
+    showEmptyPriority: typeof value.showEmptyPriority === "boolean"
+      ? value.showEmptyPriority
+      : fallback.showEmptyPriority,
   };
 }
 
@@ -126,6 +131,15 @@ export function toggleShowEmptyEstimate(
   };
 }
 
+export function toggleShowEmptyPriority(
+  settings: ToggleListSettings,
+): ToggleListSettings {
+  return {
+    ...settings,
+    showEmptyPriority: !settings.showEmptyPriority,
+  };
+}
+
 export function normalizeToggleListRulesV2(
   value: unknown,
   fallback: ToggleListRulesV2 = DEFAULT_TOGGLE_LIST_SETTINGS.rulesV2,
@@ -170,6 +184,7 @@ export function deriveToggleListFilterRule(
   return {
     statuses: statuses.found ? statuses.values : [...fallback.statuses],
     priorities: priorities.found ? priorities.values : [...fallback.priorities],
+    includeEmptyPriority: priorities.found ? priorities.includeEmpty : fallback.includeEmptyPriority,
     tags: tagClause?.values ?? [...fallback.tags],
     tagMode: tagClause
       ? tagClause.op === "hasAny"
@@ -288,7 +303,12 @@ function cloneClause(clause: ToggleListClause): ToggleListClause {
     return { field: "status", op: "in", values: [...clause.values] };
   }
   if (clause.field === "priority") {
-    return { field: "priority", op: "in", values: [...clause.values] };
+    return {
+      field: "priority",
+      op: "in",
+      values: [...clause.values],
+      ...(clause.includeEmpty !== undefined ? { includeEmpty: clause.includeEmpty } : {}),
+    };
   }
   return { field: "tags", op: clause.op, values: [...clause.values] };
 }
@@ -308,7 +328,13 @@ function normalizeClause(value: unknown): ToggleListClause | null {
     return { field: "status", op: "in", values: normalizeStatusList(value.values) };
   }
   if (value.field === "priority" && value.op === "in") {
-    return { field: "priority", op: "in", values: normalizePriorityList(value.values) };
+    const values = normalizePriorityList(value.values);
+    return {
+      field: "priority",
+      op: "in",
+      values,
+      includeEmpty: normalizePriorityClauseIncludeEmpty(value.includeEmpty, values),
+    };
   }
   if (
     value.field === "tags"
@@ -364,6 +390,14 @@ function normalizePriorityList(value: unknown): Priority[] {
   );
 }
 
+function normalizePriorityClauseIncludeEmpty(
+  value: unknown,
+  priorities: Priority[],
+): boolean {
+  if (typeof value === "boolean") return value;
+  return priorities.length === TOGGLE_LIST_PRIORITY_ORDER.length;
+}
+
 function normalizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(
@@ -377,13 +411,21 @@ function collectClauseUnion<T extends string>(
   filter: ToggleListFilterSpec,
   field: "status" | "priority",
   guard: (value: string) => value is T,
-): { values: T[]; found: boolean } {
+): { values: T[]; found: boolean; includeEmpty: boolean } {
   const values: T[] = [];
   let found = false;
+  let includeEmpty = false;
   for (const group of filter.any) {
     for (const clause of group.all) {
       if (clause.field !== field) continue;
       found = true;
+      if (
+        field === "priority"
+        && clause.field === "priority"
+        && (clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length)
+      ) {
+        includeEmpty = true;
+      }
       for (const value of clause.values) {
         if (!guard(value)) continue;
         if (values.includes(value)) continue;
@@ -391,7 +433,7 @@ function collectClauseUnion<T extends string>(
       }
     }
   }
-  return { values, found };
+  return { values, found, includeEmpty };
 }
 
 function resolveProjectableTagClause(

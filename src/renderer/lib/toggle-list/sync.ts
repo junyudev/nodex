@@ -3,7 +3,7 @@ import {
   blockToCardPatch,
   toTextContent,
 } from "./block-mapping";
-import { formatMeta } from "./meta";
+import { formatMeta, type FormatMetaOptions } from "./meta";
 import type { ToggleListCard, ToggleListPropertyKey } from "./types";
 
 export interface OutboundCardPatch {
@@ -70,7 +70,7 @@ export function buildInboundUpdates(
   dirtyCardIds: ReadonlySet<string>,
   inFlightCardIds: ReadonlySet<string>,
   editorElement?: HTMLElement,
-  showEmptyEstimate = false,
+  showEmptyOptions: FormatMetaOptions = {},
 ): InboundBlockUpdate[] {
   const updates: InboundBlockUpdate[] = [];
 
@@ -85,7 +85,7 @@ export function buildInboundUpdates(
 
     const update: InboundBlockUpdate["update"] = {};
     let toggleStates: Map<string, boolean> | undefined;
-    const meta = formatMeta(card, propertyOrder, hiddenProperties, showEmptyEstimate);
+    const meta = formatMeta(card, propertyOrder, hiddenProperties, showEmptyOptions);
 
     if (!isRecord(block.props) || block.props.meta !== meta || block.props.cardId !== card.id) {
       update.props = { cardId: card.id, meta };

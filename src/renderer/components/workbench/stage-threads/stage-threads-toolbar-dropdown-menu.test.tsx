@@ -11,7 +11,7 @@ describe("stage threads toolbar dropdown menu source", () => {
     expect(chromeSource.includes("ring-token-border")).toBeTrue();
     expect(chromeSource.includes("px-[var(--padding-row-x)]")).toBeTrue();
     expect(chromeSource.includes("hover:bg-token-list-hover-background")).toBeTrue();
-    expect(primitivesSource.includes("@/components/ui/selector-menu-chrome")).toBeTrue();
+    expect(primitivesSource.includes("selector-menu-chrome")).toBeTrue();
     expect(toolbarSource.includes("selectedItemDataAttribute")).toBeTrue();
   });
 

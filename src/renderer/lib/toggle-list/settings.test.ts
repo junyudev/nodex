@@ -64,9 +64,32 @@ describe("toggle-list settings rules v2", () => {
     expect(next.rulesV2.includeHostCard).toBeTrue();
     expect(JSON.stringify(derivedFilter.statuses)).toBe(JSON.stringify(["draft", "backlog"]));
     expect(JSON.stringify(derivedFilter.priorities)).toBe(JSON.stringify(["p0-critical", "p1-high"]));
+    expect(derivedFilter.includeEmptyPriority).toBeFalse();
     expect(JSON.stringify(derivedFilter.tags)).toBe(JSON.stringify(["blocked"]));
     expect(derivedFilter.tagMode).toBe("none");
     expect(resolveToggleListPrimarySort(next.rulesV2).field).toBe("status");
     expect(resolveToggleListSecondarySort(next.rulesV2).field).toBe("priority");
+  });
+
+  test("normalizes legacy all-priority clauses to include empty priority", () => {
+    const normalized = normalizeToggleListSettings({
+      rulesV2: {
+        mode: "advanced",
+        includeHostCard: false,
+        filter: {
+          any: [
+            {
+              all: [
+                { field: "priority", op: "in", values: ["p0-critical", "p1-high", "p2-medium", "p3-low", "p4-later"] },
+              ],
+            },
+          ],
+        },
+        sort: [{ field: "board-order", direction: "asc" }],
+      },
+    });
+
+    const clause = normalized.rulesV2.filter.any[0]?.all[0];
+    expect(clause && "includeEmpty" in clause ? clause.includeEmpty : false).toBeTrue();
   });
 });

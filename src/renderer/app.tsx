@@ -68,6 +68,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     spaces,
     activeView,
     activeSearchQuery,
+    activeDbViewPrefs,
     viewsByProject,
     searchByProject,
     sidebar,
@@ -91,6 +92,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     setThreadsProjectId: setThreadsProjectIdState,
     setView: setWorkbenchView,
     setSearchQuery,
+    setDbViewPrefs,
     setSidebarCollapsed,
     setSidebarWidth,
     setSidebarTopLevelSectionVisible,
@@ -877,6 +879,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       threadsProjectId={threadsProjectId}
       activeView={resolvedView}
       activeSearchQuery={resolvedSearchQuery}
+      activeDbViewPrefs={activeDbViewPrefs}
       spaces={spaces}
       recentCardSessions={recentCardSessions}
       activeRecentSessionId={activeRecentSessionId}
@@ -906,6 +909,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       openCardStage={navigateToCard}
       setDbProject={navigateToProject}
       setSearchQuery={setSearchQuery}
+      setDbViewPrefs={setDbViewPrefs}
       setSidebarCollapsed={setSidebarCollapsed}
       setSidebarWidth={setSidebarWidth}
       setSidebarTopLevelSectionVisible={setSidebarTopLevelSectionVisible}

@@ -3,6 +3,7 @@ import { KanbanBoard } from "@/components/kanban/board";
 import { ListView } from "@/components/kanban/list-view";
 import { ToggleListView } from "@/components/kanban/toggle-list-view";
 import { CanvasView } from "@/components/kanban/canvas-view";
+import type { DbViewPrefs } from "../../lib/db-view-prefs";
 import type { Project } from "@/lib/types";
 import type { WorkbenchView } from "@/lib/use-workbench-state";
 
@@ -11,6 +12,8 @@ interface MainViewHostProps {
   projects: Project[];
   view: WorkbenchView;
   searchQuery: string;
+  dbViewPrefs: DbViewPrefs | null;
+  onUpdateDbViewPrefs: ((update: (prev: DbViewPrefs) => DbViewPrefs) => void) | null;
   cardStageCardId?: string;
   cardStageCloseRef: React.RefObject<(() => Promise<void>) | null>;
   pendingReminderOpen?: {
@@ -35,6 +38,8 @@ export function MainViewHost({
   projects,
   view,
   searchQuery,
+  dbViewPrefs,
+  onUpdateDbViewPrefs,
   cardStageCardId,
   cardStageCloseRef,
   pendingReminderOpen,
@@ -47,6 +52,7 @@ export function MainViewHost({
         projectId={projectId}
         projects={projects}
         searchQuery={searchQuery}
+        dbViewPrefs={dbViewPrefs}
         openCardStage={openCardStage}
         cardStageCardId={cardStageCardId}
         cardStageCloseRef={cardStageCloseRef}
@@ -59,6 +65,8 @@ export function MainViewHost({
       <ListView
         projectId={projectId}
         searchQuery={searchQuery}
+        dbViewPrefs={dbViewPrefs}
+        onUpdateDbViewPrefs={onUpdateDbViewPrefs}
         openCardStage={openCardStage}
         cardStageCardId={cardStageCardId}
         cardStageCloseRef={cardStageCloseRef}
@@ -91,5 +99,11 @@ export function MainViewHost({
     );
   }
 
-  return <ToggleListView projectId={projectId} searchQuery={searchQuery} />;
+  return (
+    <ToggleListView
+      projectId={projectId}
+      searchQuery={searchQuery}
+      dbViewPrefs={dbViewPrefs}
+    />
+  );
 }

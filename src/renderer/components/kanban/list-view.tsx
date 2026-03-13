@@ -1,5 +1,12 @@
 import { useState, useMemo, useCallback, useRef, useEffect, useDeferredValue } from "react";
 import { useKanban } from "@/lib/use-kanban";
+import {
+  getDefaultDbViewPrefs,
+  filterDbViewCards,
+  sortDbViewCards,
+  type DbViewCardRecord,
+  type DbViewPrefs,
+} from "../../lib/db-view-prefs";
 import { resolveKanbanPriorityOption } from "../../lib/kanban-options";
 import { columnStyles } from "./column";
 import { estimateStyles } from "@/lib/types";
@@ -21,6 +28,7 @@ import type { ReactNode } from "react";
 interface CardWithColumn extends Card {
   columnId: string;
   columnName: string;
+  boardIndex: number;
 }
 
 type SortField = "tags" | "title" | "status" | "priority" | "estimate" | "assignee" | "created";
@@ -80,6 +88,8 @@ function formatRelativeDate(date: Date): string {
 interface ListViewProps {
   projectId: string;
   searchQuery: string;
+  dbViewPrefs: DbViewPrefs | null;
+  onUpdateDbViewPrefs: ((update: (prev: DbViewPrefs) => DbViewPrefs) => void) | null;
   openCardStage: (
     projectId: string,
     cardId: string,
@@ -89,17 +99,21 @@ interface ListViewProps {
   cardStageCloseRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 }
 
-export function ListView({ projectId, searchQuery, openCardStage, cardStageCardId, cardStageCloseRef }: ListViewProps) {
+export function ListView({
+  projectId,
+  searchQuery,
+  dbViewPrefs,
+  onUpdateDbViewPrefs,
+  openCardStage,
+  cardStageCardId,
+  cardStageCloseRef,
+}: ListViewProps) {
   const {
     board,
     loading,
     error,
   } = useKanban({ projectId });
   const deferredSearchQuery = useDeferredValue(searchQuery);
-
-  // Sorting state
-  const [sortField, setSortField] = useState<SortField>("created");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
   // Column widths state (index 0 is title which uses flex)
   const [columnWidths, setColumnWidths] = useState<number[]>(
@@ -112,16 +126,19 @@ export function ListView({ projectId, searchQuery, openCardStage, cardStageCardI
   const resizeStartWidth = useRef(0);
 
   // Flatten all cards with column info
-  const cardsWithColumn = useMemo(() => {
+  const cardsWithColumn = useMemo<DbViewCardRecord[]>(() => {
     if (!board) return [];
-    return board.columns.flatMap((col) =>
-      col.cards.map((card) => ({
+    return board.columns.flatMap((col, columnIndex) =>
+      col.cards.map((card, cardIndex) => ({
         ...card,
         columnId: col.id,
         columnName: col.name,
+        boardIndex: columnIndex * 100_000 + cardIndex,
       }))
     );
   }, [board]);
+
+  const viewPrefs = dbViewPrefs ?? getDefaultDbViewPrefs("list");
 
   const searchTokens = useMemo(
     () => tokenizeSearchQuery(deferredSearchQuery),
@@ -129,54 +146,36 @@ export function ListView({ projectId, searchQuery, openCardStage, cardStageCardI
   );
 
   const filteredCards = useMemo(() => {
-    if (searchTokens.length === 0) return cardsWithColumn;
-    return cardsWithColumn.filter((card) =>
+    const filteredByRules = filterDbViewCards(cardsWithColumn, viewPrefs.rules);
+    if (searchTokens.length === 0) return filteredByRules;
+    return filteredByRules.filter((card) =>
       matchesSearchTokens(
         `${buildCardSearchText(card)} ${card.columnName.toLowerCase()}`,
         searchTokens
       )
     );
-  }, [cardsWithColumn, searchTokens]);
+  }, [cardsWithColumn, searchTokens, viewPrefs.rules]);
 
-  // Sort cards
   const sortedCards = useMemo(() => {
-    return [...filteredCards].sort((a, b) => {
-      let cmp = 0;
-      switch (sortField) {
-        case "tags":
-          cmp = a.tags.join(",").localeCompare(b.tags.join(","));
-          break;
-        case "title":
-          cmp = a.title.localeCompare(b.title);
-          break;
-        case "status":
-          cmp = a.columnId.localeCompare(b.columnId);
-          break;
-        case "priority":
-          cmp = (a.priority ?? "").localeCompare(b.priority ?? "");
-          break;
-        case "estimate":
-          cmp = (a.estimate || "").localeCompare(b.estimate || "");
-          break;
-        case "assignee":
-          cmp = (a.assignee || "").localeCompare(b.assignee || "");
-          break;
-        case "created":
-          cmp = new Date(a.created).getTime() - new Date(b.created).getTime();
-          break;
-      }
-      return sortDirection === "asc" ? cmp : -cmp;
-    });
-  }, [filteredCards, sortField, sortDirection]);
+    return sortDbViewCards(filteredCards, viewPrefs.rules);
+  }, [filteredCards, viewPrefs.rules]);
 
-  // Handle column header click for sorting
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortDirection("asc");
-    }
+    if (!onUpdateDbViewPrefs) return;
+    onUpdateDbViewPrefs((prev) => {
+      const primarySort = prev.rules.sort[0];
+      const nextDirection: SortDirection =
+        primarySort?.field === field && primarySort.direction === "asc" ? "desc" : "asc";
+      const remainingSorts = prev.rules.sort.filter((entry) => entry.field !== field);
+      return {
+        ...prev,
+        summaryExpanded: true,
+        rules: {
+          ...prev.rules,
+          sort: [{ field, direction: nextDirection }, ...remainingSorts],
+        },
+      };
+    });
   };
 
   // Handle row click to open/toggle CardStage
@@ -242,8 +241,9 @@ export function ListView({ projectId, searchQuery, openCardStage, cardStageCardI
 
   // Render sort indicator inline
   const renderSortIndicator = (field: SortField) => {
-    if (sortField !== field) return null;
-    return sortDirection === "asc" ? (
+    const primarySort = viewPrefs.rules.sort[0];
+    if (primarySort?.field !== field) return null;
+    return primarySort.direction === "asc" ? (
       <ChevronUp className="ml-1 inline h-3 w-3" />
     ) : (
       <ChevronDown className="ml-1 inline h-3 w-3" />
@@ -298,7 +298,7 @@ export function ListView({ projectId, searchQuery, openCardStage, cardStageCardI
 
   return (
     <>
-      <div className="h-full overflow-auto">
+      <div className="h-full overflow-auto px-4 pb-4">
         <table className="w-full table-fixed border-collapse">
           <colgroup>
             {COLUMNS.map((col, i) => (

@@ -31,6 +31,17 @@ describe("native drop index", () => {
     expect(index).toBe(1);
   });
 
+  test("returns the next insertion index when the pointer is in the visual gap between cards", () => {
+    const index = computeNativeDropIndex(
+      [
+        { top: 100, bottom: 140 },
+        { top: 150, bottom: 190 },
+      ],
+      145,
+    );
+    expect(index).toBe(1);
+  });
+
   test("returns end insertion index when pointer is below all cards", () => {
     const index = computeNativeDropIndex(
       [

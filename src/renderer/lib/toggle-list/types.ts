@@ -59,6 +59,8 @@ export const TOGGLE_LIST_PRIORITY_CHIP_LABELS: Record<Priority, string> = {
   "p4-later": "P4",
 };
 
+export const TOGGLE_LIST_EMPTY_PRIORITY_LABEL = "-";
+
 export type ToggleListTagFilterMode = "any" | "all" | "none";
 
 export const TOGGLE_LIST_TAG_FILTER_MODES: ToggleListTagFilterMode[] = ["any", "all", "none"];
@@ -72,6 +74,7 @@ export const TOGGLE_LIST_TAG_FILTER_MODE_LABELS: Record<ToggleListTagFilterMode,
 export interface ToggleListFilterRule {
   statuses: ToggleListStatusId[];
   priorities: Priority[];
+  includeEmptyPriority: boolean;
   tags: string[];
   tagMode: ToggleListTagFilterMode;
   includeHostCard: boolean;
@@ -79,7 +82,7 @@ export interface ToggleListFilterRule {
 
 export type ToggleListClause =
   | { field: "status"; op: "in"; values: ToggleListStatusId[] }
-  | { field: "priority"; op: "in"; values: Priority[] }
+  | { field: "priority"; op: "in"; values: Priority[]; includeEmpty?: boolean }
   | { field: "tags"; op: "hasAny" | "hasAll" | "hasNone"; values: string[] };
 
 export interface ToggleListFilterGroup {
@@ -102,6 +105,7 @@ export interface ToggleListSettings {
   propertyOrder: ToggleListPropertyKey[];
   hiddenProperties: ToggleListPropertyKey[];
   showEmptyEstimate: boolean;
+  showEmptyPriority: boolean;
 }
 
 export const DEFAULT_TOGGLE_LIST_SETTINGS: ToggleListSettings = {
@@ -113,6 +117,7 @@ export const DEFAULT_TOGGLE_LIST_SETTINGS: ToggleListSettings = {
         {
           all: [
             { field: "status", op: "in", values: [...TOGGLE_LIST_STATUS_ORDER] },
+            { field: "priority", op: "in", values: [...TOGGLE_LIST_PRIORITY_ORDER], includeEmpty: true },
           ],
         },
       ],
@@ -125,6 +130,7 @@ export const DEFAULT_TOGGLE_LIST_SETTINGS: ToggleListSettings = {
   propertyOrder: [...TOGGLE_LIST_PROPERTY_KEYS],
   hiddenProperties: [],
   showEmptyEstimate: false,
+  showEmptyPriority: false,
 };
 
 export function formatPropertyName(property: ToggleListPropertyKey): string {

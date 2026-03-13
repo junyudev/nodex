@@ -5,7 +5,7 @@ import {
   parseNfm,
   serializeNfm,
 } from "../nfm";
-import { formatMeta } from "./meta";
+import { formatMeta, type FormatMetaOptions } from "./meta";
 import type { ToggleListCard, ToggleListPropertyKey } from "./types";
 
 export interface ToggleListCardPatch {
@@ -24,14 +24,14 @@ export function cardToToggleBlock(
   propertyOrder: ToggleListPropertyKey[],
   hiddenProperties: ToggleListPropertyKey[],
   toggleStates?: Map<string, boolean>,
-  showEmptyEstimate = false,
+  showEmptyOptions: FormatMetaOptions = {},
 ) {
   return {
     id: makeCardToggleBlockId(projectId, card.id),
     type: "cardToggle" as const,
     props: {
       cardId: card.id,
-      meta: formatMeta(card, propertyOrder, hiddenProperties, showEmptyEstimate),
+      meta: formatMeta(card, propertyOrder, hiddenProperties, showEmptyOptions),
     },
     content: toTextContent(card.title),
     children: nfmToBlockNote(parseNfm(card.description ?? ""), toggleStates),

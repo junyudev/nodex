@@ -117,4 +117,32 @@ describe("inline view drop inference", () => {
     expect(inferred.cards[0]?.priority).toBe("p1-high");
     expect(inferred.cards[0]?.estimate).toBe("m");
   });
+
+  test("infers null priority when the filter only allows empty priority", () => {
+    const settings = getDefaultToggleListSettings();
+    settings.rulesV2 = {
+      ...settings.rulesV2,
+      filter: {
+        any: [
+          {
+            all: [
+              { field: "status", op: "in", values: ["draft"] },
+              { field: "priority", op: "in", values: [], includeEmpty: true },
+            ],
+          },
+        ],
+      },
+    };
+
+    const inferred = inferInlineViewDropImport({
+      settings,
+      projectedRows: [],
+      insertRowIndex: 0,
+      board: makeBoard(),
+      cards: [{ title: "Dropped block" }],
+    });
+
+    expect("priority" in (inferred.cards[0] ?? {})).toBeTrue();
+    expect(inferred.cards[0]?.priority ?? null).toBe(null);
+  });
 });

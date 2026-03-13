@@ -47,6 +47,7 @@ interface UseProjectedCardEmbedSyncOptions {
   propertyOrder: ToggleListPropertyKey[];
   hiddenProperties: ToggleListPropertyKey[];
   showEmptyEstimate?: boolean;
+  showEmptyPriority?: boolean;
   editor: unknown;
   enabled?: boolean;
   updateCard: (
@@ -166,6 +167,7 @@ export function useProjectedCardEmbedSync({
   propertyOrder,
   hiddenProperties,
   showEmptyEstimate = false,
+  showEmptyPriority = false,
   editor,
   enabled = true,
   updateCard,
@@ -186,6 +188,7 @@ export function useProjectedCardEmbedSync({
       propertyOrder,
       hiddenProperties,
       showEmptyEstimate,
+      showEmptyPriority,
     })),
     [
       cards,
@@ -194,6 +197,7 @@ export function useProjectedCardEmbedSync({
       projectionKind,
       propertyOrder,
       showEmptyEstimate,
+      showEmptyPriority,
       sourceProjectId,
     ],
   );

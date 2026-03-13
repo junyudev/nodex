@@ -5,6 +5,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Card, type CardPropertyUpdateInput } from "./card";
+import type { DbViewDisplayPrefs } from "../../lib/db-view-prefs";
 import { DropIndicator } from "./drop-indicator";
 import { InlineCardCreator } from "./inline-card-creator";
 import type { Card as CardType, CardCreatePlacement, Column as ColumnType, CardInput } from "@/lib/types";
@@ -15,6 +16,7 @@ interface ColumnProps {
   projectId: string;
   projectName: string;
   column: ColumnType;
+  displayPrefs?: DbViewDisplayPrefs;
   onAddCard: (columnId: CardType["status"], input: CardInput, placement?: CardCreatePlacement) => Promise<void>;
   onEditCard: (columnId: CardType["status"], card: CardType, event: React.MouseEvent<HTMLDivElement>) => void;
   onUpdateCardProperty: (input: CardPropertyUpdateInput) => Promise<void>;
@@ -98,6 +100,7 @@ export const Column = memo(function Column({
   projectId,
   projectName,
   column,
+  displayPrefs,
   onAddCard,
   onEditCard,
   onUpdateCardProperty,
@@ -143,6 +146,7 @@ export const Column = memo(function Column({
   return (
     <div
       ref={setNodeRef}
+      data-kanban-column-id={column.id}
       onDragOver={(event) => onNativeDragOver?.(column.id, event)}
       onDragLeave={(event) => onNativeDragLeave?.(column.id, event)}
       onDrop={(event) => onNativeDrop?.(column.id, event)}
@@ -283,6 +287,7 @@ export const Column = memo(function Column({
                       <Card
                         card={card}
                         columnId={column.id}
+                        displayPrefs={displayPrefs}
                         dragDisabled={dragDisabled}
                         isFocused={card.id === focusedCardId}
                         isSelected={selectedCardIds.has(card.id)}

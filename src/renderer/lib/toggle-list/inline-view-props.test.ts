@@ -48,6 +48,7 @@ describe("toggle-list inline view props", () => {
     expect(settings.rulesV2.sort[0]?.direction).toBe("desc");
     expect(settings.rulesV2.sort[1]?.field).toBe("created");
     expect(settings.rulesV2.sort[1]?.direction).toBe("asc");
+    expect(settings.rulesV2.filter.any[0]?.all[1] && "includeEmpty" in settings.rulesV2.filter.any[0]!.all[1] ? settings.rulesV2.filter.any[0]!.all[1].includeEmpty : true).toBeFalse();
     expect(JSON.stringify(settings.propertyOrder)).toBe(JSON.stringify(["status", "priority", "estimate", "tags"]));
     expect(JSON.stringify(settings.hiddenProperties)).toBe(JSON.stringify(["estimate"]));
     expect(settings.showEmptyEstimate).toBeTrue();

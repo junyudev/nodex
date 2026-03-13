@@ -50,7 +50,8 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Sliding-window mode includes resizable separators between adjacent panes; separator drag updates pane widths in real time and persists per-stage widths globally
 - Sliding-window mode auto-caps effective visible panes by available width while preserving requested pane count
 - Workbench top toolbar includes sidebar collapse plus sliding-window pane-count controls flanking the minimap; `-` sits to the left of the minimap and always removes the current right-most pane, while `+` sits to the right and tries to append the next pane on the right before falling back to prepending the left pane at the right edge
-- The View stage has its own sticky top toolbar; it keeps the DB view selector pinned above board, list, toggle-list, canvas, and calendar content, and task search expands inline inside the toolbar's trailing action cluster
+- The View stage has its own sticky top toolbar; it keeps the DB view selector pinned above board, list, toggle-list, canvas, and calendar content, task search expands inline inside the toolbar's trailing action cluster, and `kanban` / `list` / `toggle-list` expose shared view-local filter and sort popovers there
+- The main DB views keep a consistent inner gutter under the sticky View-stage toolbar so list, calendar, and canvas align with the existing board/toggle-list spacing instead of sitting flush against the stage edge
 - URL sync: `/?project=<id>`, persisted to localStorage
 - Sidebar project switcher selects the DB-stage datasource only; it does not reset Card/Thread/Terminal stage contexts
 - Task search query is persisted per project and restored on space switching; search lives in the sticky View-stage toolbar alongside the DB view selector
@@ -114,14 +115,14 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Block-drop card creation uses pointer-based insertion (top/middle/bottom) with a visible drop indicator
 - Block->card import supports strict smart shorthand parsing for non-`cardToggle` blocks (`0..4`, optional estimate `XS/S/M/L/XL`, optional `(tag)`), applying parsed values to `priority`, `estimate`, and `tags`
 - Visual card previews with priority badges
-- Kanban card reorder keeps a non-layout-shifting insertion indicator; the source card stays as a static ghost in place while dragging, same-column reorders do not live-shift sibling cards, columns do not tint as separate previews, and the drag overlay is geometry-matched to the source card so it starts aligned with the cursor
+- Kanban card reorder keeps a non-layout-shifting insertion indicator; the source card stays as a static ghost in place while dragging, same-column reorders do not live-shift sibling cards, columns do not tint as separate previews, the drag overlay is geometry-matched to the source card so it starts aligned with the cursor, and dropping on the visual gap between cards still inserts into that gap instead of falling through to column-end append
 - Kanban card property chips (priority/estimate/tags/assignee) render inline with the card title by default, and Settings can move them above the title or below the body
 - Right-clicking a Kanban card opens a Radix context menu with a searchable action list; `Copy link` copies an `nodex://cards/<card-id>` deeplink to the target card, `Delete` removes the card, and clicking `Move to` advances the same menu into a searchable in-place project picker that moves the card into the same workflow column in the selected project
 - Real-time updates when data changes
 - Card updates include revision-based stale-write detection: stale edits return typed `conflict` results instead of silent last-write-wins
 - Card Stage surfaces conflicts inline with explicit recovery actions: `Reload Latest` (drop local draft fields) and `Overwrite Mine` (retry on newest revision)
 - Header task search supports token-contains matching across title/description/tags/assignee/agent status/id in Kanban, All Tasks, and Toggle List views
-- While a search filter is active in Kanban view, drag-and-drop is disabled to avoid ambiguous reorder semantics on filtered subsets (including native block-drop import)
+- While a search filter, toolbar filter, or non-default toolbar sort is active in Kanban view, drag-and-drop is disabled to avoid ambiguous reorder semantics on filtered/sorted subsets (including native block-drop import)
 
 #### 3. Toggle-List View
 - Third project page tab (`Toggle List`) renders cards as top-level toggle rows in a specialized BlockNote editor
@@ -131,11 +132,15 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Projection sync for inline embeds is shared per editor instance (one listener set + owner registry) instead of per-embed listeners, so typing latency remains stable with many embeds open
 - Board state sync is shared per project (`useKanban` store-backed): one realtime subscription/fetch pipeline fans out to all consumers and exposes O(1) `cardIndex` lookup
 - Card description toggles in Toggle List + inline toggle-list embeds honor NFM `▼` (expanded) / `▶` (collapsed) prefixes on load, and toggle-click changes are persisted back to card descriptions (and synced across views)
-- Rule controls above the editor:
-  - Single advanced rules surface: grouped filter logic (`OR` across groups, `AND` within group) with status/priority/tag clauses, ordered sort stack editing, and JSONLogic import/export interop
-  - property controls: reorder + hide/show for `priority`, `estimate`, `status`
-- Rules editing panel is foldable/collapsible so users can keep a compact reading-focused layout
-- Folded/expanded state of the rules panel is persisted per project in renderer localStorage
+- View-toolbar filter/sort controls:
+  - `kanban`, `list`, and top-level `toggle-list` share one view-local filter model with grouped logic (`OR` across groups, `AND` within group) and status/priority/tag clauses
+  - Priority clauses can explicitly include or exclude empty priority values via the `-` filter chip instead of treating empties as an implicit side effect of selecting all concrete priorities
+  - Each supported view has its own persisted sort stack; list-header sort clicks write through to the same shared toolbar sort state
+  - When active, filter/sort rules surface as compact pills in a collapsible bottom band inside the toolbar; the sort side uses one leading chip (`Field` with direction for a single sort, `n sorts` for multiple) separated from filter chips by a thin divider
+- View-stage display controls move into the toolbar `Display` popover:
+  - `kanban`: reorder + hide/show board-card properties for `priority`, `estimate`, `tags`, `assignee`
+  - `toggle-list`: reorder + hide/show row properties for `priority`, `estimate`, `status`, `tags`
+  - `kanban` and `toggle-list` can also show empty `priority` / `estimate` values as neutral `-` chips, using the same styling in both views; kanban keeps those empty chips editable through the same inline property menu used by filled chips
 - Row properties render as Notion-like chips (priority/estimate/status) matching existing board/card-stage visual language
 - Toggle-list editor surface reuses the same `nfm-editor` styling layer used by Card Stage for consistent typography/spacing/toggle visuals
 - Bi-directional sync:
@@ -143,7 +148,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
   - board updates from Kanban/List/card-stage refresh toggle rows
   - projected-row edits apply local optimistic card patches before remote persistence so board/list views reflect changes immediately
 - Structural guard blocks manual insert/delete/reorder/type-change of top-level card rows; structure is rule-driven
-- Toggle-list settings persist per project in renderer localStorage (`nodex-toggle-list-settings-v1`)
+- Supported DB view filter/sort/display settings persist per project and per view in renderer localStorage
 
 #### 4. SQLite Database Storage
 - Single `kanban.db` file in kanban directory
@@ -252,7 +257,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - `toggleListInlineView` top-right action bar includes a dedicated drag handle button that drags the embed owner block directly
 - `cardRef` owner dragging is available from the left BlockNote side-menu drag handle; when hovering projected rows/descendants, the handle targets the owning `cardRef` block (not the projected child row)
 - Inline block actions support source-project selection and foldable advanced rules editing (single dense control surface), with rules-panel expanded state persisted in localStorage (not in NFM block props)
-- Inline toggle-list rules persist canonically as `rulesV2` (base64url JSON); old status/priority/tag/rank attrs are ignored.
+- Inline toggle-list rules persist canonically as `rulesV2` (base64url JSON); old status/priority/tag/rank attrs are ignored, and explicit empty-priority filters serialize in canonical `rulesV2` rather than depending on legacy “all priorities” behavior.
 - `toggleListInlineView` excludes the current host document card by default when source project matches the host; users can include it from Rules (`Include current host card`)
 - Inline card rows are projected directly into the host NFM editor tree as child `cardToggle` rows; drag handles and block DnD operate on one editor surface (no nested side-menu conflict)
 - `cardRef` / `toggleListInlineView` are childless embed blocks at persistence boundaries: parser/adapter/serializer normalize away direct children so NFM always stores them as self-contained tags (`toggleListInlineView` persists `rules-v2="..."` when explicit rules are present, otherwise current defaults apply in-memory).

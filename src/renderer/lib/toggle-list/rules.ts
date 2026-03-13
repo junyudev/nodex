@@ -68,9 +68,8 @@ function matchesClause(
     return clause.values.includes(card.columnId);
   }
   if (clause.field === "priority") {
-    if (!card.priority) {
-      return TOGGLE_LIST_PRIORITY_ORDER.every((priority) => clause.values.includes(priority));
-    }
+    const includeEmpty = clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length;
+    if (!card.priority) return includeEmpty;
     return clause.values.includes(card.priority);
   }
 

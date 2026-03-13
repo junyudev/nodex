@@ -216,6 +216,7 @@ export const createCardRefBlockSpec = createReactBlockSpec(
         propertyOrder: ALL_PROPERTIES,
         hiddenProperties: NO_HIDDEN,
         showEmptyEstimate: false,
+        showEmptyPriority: false,
         editor,
         enabled: Boolean(cardId) && !isRecursive,
         updateCard,

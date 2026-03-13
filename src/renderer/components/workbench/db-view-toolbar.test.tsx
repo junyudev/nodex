@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement, createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CalendarDays, List, SquareKanban } from "lucide-react";
+import { CalendarDays, SquareKanban, Table2 } from "lucide-react";
 
 mock.module("@/lib/utils", () => ({
   cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
@@ -26,13 +26,13 @@ const ITEMS: DbViewToolbarItem[] = [
   {
     id: "list",
     label: "Table",
-    icon: List,
+    icon: Table2,
     onSelect: () => undefined,
   },
   {
     id: "toggle-list",
     label: "Table",
-    icon: List,
+    icon: Table2,
     onSelect: () => undefined,
   },
   {
@@ -42,6 +42,19 @@ const ITEMS: DbViewToolbarItem[] = [
     onSelect: () => undefined,
   },
 ];
+
+const BASE_PROPS = {
+  items: ITEMS,
+  searchShortcutLabel: "Ctrl+F",
+  taskSearchInputRef: createRef<HTMLInputElement>(),
+  rulesView: null,
+  dbViewPrefs: null,
+  availableTags: [],
+  onUpdateDbViewPrefs: null,
+  onSearchQueryChange: () => undefined,
+  onOpenTaskSearch: () => undefined,
+  onCloseTaskSearch: () => undefined,
+};
 
 describe("DbViewToolbar", () => {
   test("clear action always closes the inline search and clears active queries", async () => {
@@ -60,14 +73,9 @@ describe("DbViewToolbar", () => {
     const { DB_VIEW_TOOLBAR_TEST_ID, DbViewToolbar } = await import("./db-view-toolbar");
     const markup = renderToStaticMarkup(
       createElement(DbViewToolbar, {
-        items: ITEMS,
+        ...BASE_PROPS,
         activeSearchQuery: "",
         taskSearchOpen: false,
-        searchShortcutLabel: "Ctrl+F",
-        taskSearchInputRef: createRef<HTMLInputElement>(),
-        onSearchQueryChange: () => undefined,
-        onOpenTaskSearch: () => undefined,
-        onCloseTaskSearch: () => undefined,
       }),
     );
 
@@ -85,14 +93,9 @@ describe("DbViewToolbar", () => {
     const { DbViewToolbar } = await import("./db-view-toolbar");
     const openMarkup = renderToStaticMarkup(
       createElement(DbViewToolbar, {
-        items: ITEMS,
+        ...BASE_PROPS,
         activeSearchQuery: "bugfix",
         taskSearchOpen: true,
-        searchShortcutLabel: "Ctrl+F",
-        taskSearchInputRef: createRef<HTMLInputElement>(),
-        onSearchQueryChange: () => undefined,
-        onOpenTaskSearch: () => undefined,
-        onCloseTaskSearch: () => undefined,
       }),
     );
 
@@ -103,19 +106,101 @@ describe("DbViewToolbar", () => {
 
     const filteredMarkup = renderToStaticMarkup(
       createElement(DbViewToolbar, {
-        items: ITEMS,
+        ...BASE_PROPS,
         activeSearchQuery: "bugfix",
         taskSearchOpen: false,
-        searchShortcutLabel: "Ctrl+F",
-        taskSearchInputRef: createRef<HTMLInputElement>(),
-        onSearchQueryChange: () => undefined,
-        onOpenTaskSearch: () => undefined,
-        onCloseTaskSearch: () => undefined,
       }),
     );
 
     expect(filteredMarkup.includes("aria-hidden=\"false\"")).toBeTrue();
     expect(filteredMarkup.includes("Type to search...")).toBeTrue();
     expect(filteredMarkup.includes("bugfix")).toBeTrue();
+  });
+
+  test("renders the active rules summary row for supported views", async () => {
+    const { DbViewToolbar } = await import("./db-view-toolbar");
+    const { getDefaultDbViewPrefs } = await import("../../lib/db-view-prefs");
+    const prefs = getDefaultDbViewPrefs("kanban");
+    prefs.rules.filter.any[0]!.all[0] = {
+      field: "status",
+      op: "in",
+      values: ["backlog", "in_progress"],
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(DbViewToolbar, {
+        ...BASE_PROPS,
+        activeSearchQuery: "",
+        taskSearchOpen: false,
+        rulesView: "kanban",
+        dbViewPrefs: prefs,
+        onUpdateDbViewPrefs: () => undefined,
+      }),
+    );
+
+    expect(markup.includes("Board Order")).toBeTrue();
+    expect(markup.includes("Status")).toBeTrue();
+    expect(markup.includes("Status:</span>")).toBeTrue();
+    expect(markup.includes("Backlog, In Progress")).toBeTrue();
+    expect(markup.includes("Ascending")).toBeFalse();
+  });
+
+  test("collapses multiple active sorts into a single count chip", async () => {
+    const { DbViewToolbar } = await import("./db-view-toolbar");
+    const { getDefaultDbViewPrefs } = await import("../../lib/db-view-prefs");
+    const prefs = getDefaultDbViewPrefs("toggle-list");
+    prefs.rules.sort = [
+      { field: "priority", direction: "asc" },
+      { field: "estimate", direction: "desc" },
+    ];
+    prefs.rules.filter.any[0]!.all[1] = {
+      field: "priority",
+      op: "in",
+      values: ["p0-critical", "p1-high"],
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(DbViewToolbar, {
+        ...BASE_PROPS,
+        activeSearchQuery: "",
+        taskSearchOpen: false,
+        rulesView: "toggle-list",
+        dbViewPrefs: prefs,
+        onUpdateDbViewPrefs: () => undefined,
+      }),
+    );
+
+    expect(markup.includes("2 sorts")).toBeTrue();
+    expect(markup.includes("Priority")).toBeTrue();
+    expect(markup.includes("Priority:</span>")).toBeTrue();
+    expect(markup.includes("P0, P1")).toBeTrue();
+    expect(markup.includes("Ascending")).toBeFalse();
+    expect(markup.includes("Descending")).toBeFalse();
+  });
+
+  test("renders empty priority in the summary row when selected explicitly", async () => {
+    const { DbViewToolbar } = await import("./db-view-toolbar");
+    const { getDefaultDbViewPrefs } = await import("../../lib/db-view-prefs");
+    const prefs = getDefaultDbViewPrefs("toggle-list");
+    prefs.rules.filter.any[0]!.all[1] = {
+      field: "priority",
+      op: "in",
+      values: ["p0-critical"],
+      includeEmpty: true,
+    };
+
+    const markup = renderToStaticMarkup(
+      createElement(DbViewToolbar, {
+        ...BASE_PROPS,
+        activeSearchQuery: "",
+        taskSearchOpen: false,
+        rulesView: "toggle-list",
+        dbViewPrefs: prefs,
+        onUpdateDbViewPrefs: () => undefined,
+      }),
+    );
+
+    expect(markup.includes("Priority:</span>")).toBeTrue();
+    expect(markup.includes("P0, -")).toBeTrue();
   });
 });

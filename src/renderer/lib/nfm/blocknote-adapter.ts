@@ -156,6 +156,7 @@ function nfmBlockToBN(
           propertyOrderCsv: (block.propertyOrder ?? ["priority", "estimate", "status", "tags"]).join(","),
           hiddenPropertiesCsv: (block.hiddenProperties ?? []).join(","),
           showEmptyEstimate: block.showEmptyEstimate === true ? "true" : "false",
+          showEmptyPriority: block.showEmptyPriority === true ? "true" : "false",
         },
         children: [],
       };
@@ -406,6 +407,7 @@ function bnBlockToNfm(block: BNBlock): NfmBlock | null {
       const propertyOrder = parseCsvString(block.props?.propertyOrderCsv).filter(isToggleListPropertyKey);
       const hiddenProperties = parseCsvString(block.props?.hiddenPropertiesCsv).filter(isToggleListPropertyKey);
       const showEmptyEstimate = normalizeBooleanString(block.props?.showEmptyEstimate);
+      const showEmptyPriority = normalizeBooleanString(block.props?.showEmptyPriority);
 
       return {
         type: "toggleListInlineView",
@@ -414,6 +416,7 @@ function bnBlockToNfm(block: BNBlock): NfmBlock | null {
         ...(propertyOrder.length > 0 ? { propertyOrder } : {}),
         ...(hiddenProperties.length > 0 ? { hiddenProperties } : {}),
         ...(showEmptyEstimate !== undefined ? { showEmptyEstimate } : {}),
+        ...(showEmptyPriority !== undefined ? { showEmptyPriority } : {}),
         children: [],
       };
     }

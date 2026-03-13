@@ -1,14 +1,28 @@
+import { forwardRef, useState, type ButtonHTMLAttributes, type ComponentType, type RefObject } from "react";
 import {
   ArrowUpDown,
   ListFilter,
   Search,
   SlidersHorizontal,
   XCircle,
-  Zap,
 } from "lucide-react";
 import { Tabs as TabsPrimitive } from "radix-ui";
-import type { ComponentType, RefObject } from "react";
+import {
+  getAvailableSortFields,
+  hasActiveDbViewFilters,
+  hasActiveDbViewRules,
+  hasActiveDbViewSorts,
+  viewSupportsDbViewDisplay,
+  type DbViewPrefs,
+  type SupportedDbView,
+} from "../../lib/db-view-prefs";
 import { cn } from "@/lib/utils";
+import {
+  DbViewFilterPopover,
+  DbViewDisplayPopover,
+  DbViewRulesSummaryRow,
+  DbViewSortPopover,
+} from "./db-view-toolbar-rules";
 
 export const DB_VIEW_TOOLBAR_TEST_ID = "db-view-toolbar";
 
@@ -26,6 +40,10 @@ interface DbViewToolbarProps {
   taskSearchOpen: boolean;
   searchShortcutLabel: string;
   taskSearchInputRef: RefObject<HTMLInputElement | null>;
+  rulesView: SupportedDbView | null;
+  dbViewPrefs: DbViewPrefs | null;
+  availableTags: string[];
+  onUpdateDbViewPrefs: ((update: (prev: DbViewPrefs) => DbViewPrefs) => void) | null;
   onSearchQueryChange: (value: string) => void;
   onOpenTaskSearch: (selectQuery?: boolean) => void;
   onCloseTaskSearch: () => void;
@@ -48,27 +66,49 @@ export function resolveDbViewToolbarClearAction(hasActiveSearchQuery: boolean): 
   };
 }
 
-function ToolbarMockIconButton({
-  icon: Icon,
-  active = false,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  active?: boolean;
-}) {
+const ToolbarIconButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & {
+    icon: ComponentType<{ className?: string }>;
+    active?: boolean;
+    ariaLabel: string;
+    title: string;
+  }
+>(function ToolbarIconButton(
+  {
+    icon: Icon,
+    active = false,
+    disabled = false,
+    className,
+    ariaLabel,
+    title,
+    type = "button",
+    ...props
+  },
+  ref,
+) {
   return (
-    <div
-      aria-hidden="true"
+    <button
+      {...props}
+      ref={ref}
+      type={type}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={title}
       className={cn(
         "inline-flex size-7 items-center justify-center rounded-md",
+        "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]",
         active
           ? "text-(--accent-blue)"
-          : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)]",
+          : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] hover:text-(--foreground)",
+        disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
+        className,
       )}
     >
       <Icon className="size-4" />
-    </div>
+    </button>
   );
-}
+});
 
 export function DbViewToolbar({
   items,
@@ -76,15 +116,108 @@ export function DbViewToolbar({
   taskSearchOpen,
   searchShortcutLabel,
   taskSearchInputRef,
+  rulesView,
+  dbViewPrefs,
+  availableTags,
+  onUpdateDbViewPrefs,
   onSearchQueryChange,
   onOpenTaskSearch,
   onCloseTaskSearch,
 }: DbViewToolbarProps) {
   const activeItem = items.find((item) => item.active) ?? items[0] ?? null;
+  const [openPanel, setOpenPanel] = useState<"filter" | "sort" | "display" | null>(null);
   if (!activeItem) return null;
 
   const hasActiveSearchQuery = activeSearchQuery.trim().length > 0;
   const showSearchField = taskSearchOpen || hasActiveSearchQuery;
+  const filterActive = rulesView && dbViewPrefs ? hasActiveDbViewFilters(rulesView, dbViewPrefs.rules) : false;
+  const sortActive = rulesView && dbViewPrefs ? hasActiveDbViewSorts(rulesView, dbViewPrefs.rules) : false;
+  const summaryVisible = Boolean(
+    rulesView
+    && dbViewPrefs
+    && dbViewPrefs.summaryExpanded
+    && hasActiveDbViewRules(rulesView, dbViewPrefs.rules),
+  );
+
+  const toggleRulePanel = (panel: "filter" | "sort" | "display") => {
+    if (!rulesView || !dbViewPrefs || !onUpdateDbViewPrefs) return;
+    setOpenPanel((current) => {
+      const nextOpen = current === panel ? null : panel;
+      if (current === panel && panel !== "display" && summaryVisible) {
+        onUpdateDbViewPrefs((prev) => ({ ...prev, summaryExpanded: false }));
+      }
+      if (current !== panel && !dbViewPrefs.summaryExpanded && hasActiveDbViewRules(rulesView, dbViewPrefs.rules)) {
+        onUpdateDbViewPrefs((prev) => ({ ...prev, summaryExpanded: true }));
+      }
+      return nextOpen;
+    });
+  };
+
+  const rulesButtons = rulesView && dbViewPrefs && onUpdateDbViewPrefs ? (
+    <>
+      <DbViewFilterPopover
+        open={openPanel === "filter"}
+        onOpenChange={(open) => setOpenPanel(open ? "filter" : null)}
+        prefs={dbViewPrefs}
+        availableTags={availableTags}
+        onChange={onUpdateDbViewPrefs}
+      >
+        <ToolbarIconButton
+          icon={ListFilter}
+          active={filterActive}
+          ariaLabel="Filter"
+          title="Filter"
+          onClick={() => toggleRulePanel("filter")}
+        />
+      </DbViewFilterPopover>
+      <DbViewSortPopover
+        open={openPanel === "sort"}
+        onOpenChange={(open) => setOpenPanel(open ? "sort" : null)}
+        view={rulesView}
+        prefs={dbViewPrefs}
+        availableSortFields={getAvailableSortFields(rulesView)}
+        onChange={onUpdateDbViewPrefs}
+      >
+        <ToolbarIconButton
+          icon={ArrowUpDown}
+          active={sortActive}
+          ariaLabel="Sort"
+          title="Sort"
+          onClick={() => toggleRulePanel("sort")}
+        />
+      </DbViewSortPopover>
+      {viewSupportsDbViewDisplay(rulesView) ? (
+        <DbViewDisplayPopover
+          open={openPanel === "display"}
+          onOpenChange={(open) => setOpenPanel(open ? "display" : null)}
+          view={rulesView}
+          prefs={dbViewPrefs}
+          onChange={onUpdateDbViewPrefs}
+        >
+          <ToolbarIconButton
+            icon={SlidersHorizontal}
+            active={openPanel === "display"}
+            ariaLabel="Display"
+            title="Display"
+            onClick={() => toggleRulePanel("display")}
+          />
+        </DbViewDisplayPopover>
+      ) : (
+        <ToolbarIconButton
+          icon={SlidersHorizontal}
+          ariaLabel="Display"
+          title="Display"
+          disabled
+        />
+      )}
+    </>
+  ) : (
+    <>
+      <ToolbarIconButton icon={ListFilter} ariaLabel="Filter" title="Filter" disabled />
+      <ToolbarIconButton icon={ArrowUpDown} ariaLabel="Sort" title="Sort" disabled />
+      <ToolbarIconButton icon={SlidersHorizontal} ariaLabel="Display" title="Display" disabled />
+    </>
+  );
 
   return (
     <header
@@ -153,10 +286,8 @@ export function DbViewToolbar({
             </TabsPrimitive.List>
           </TabsPrimitive.Root>
 
-          <div className="ml-auto flex h-full items-center justify-end">
-            <ToolbarMockIconButton icon={ListFilter} />
-            <ToolbarMockIconButton icon={ArrowUpDown} active />
-            <ToolbarMockIconButton icon={Zap} />
+          <div className="ml-auto flex h-full items-center justify-end gap-0.5">
+            {rulesButtons}
 
             <div className="flex items-center">
               <button
@@ -222,12 +353,18 @@ export function DbViewToolbar({
                 </div>
               </div>
             </div>
-
-            <div className="flex items-center">
-              <ToolbarMockIconButton icon={SlidersHorizontal} />
-            </div>
           </div>
         </div>
+        {rulesView && dbViewPrefs && summaryVisible ? (
+          <div className="py-2 border-t border-token-border">
+            <DbViewRulesSummaryRow
+              view={rulesView}
+              prefs={dbViewPrefs}
+              onOpenFilter={() => setOpenPanel("filter")}
+              onOpenSort={() => setOpenPanel("sort")}
+            />
+          </div>
+        ) : null}
       </div>
     </header>
   );

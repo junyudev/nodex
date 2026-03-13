@@ -176,7 +176,7 @@ export function CanvasView({ projectId, openCardStage, cardStageCardId, cardStag
   }
 
   return (
-    <div className="h-full min-h-0 w-full">
+    <div className="h-full min-h-0 w-full px-4 pb-4">
       <Suspense
         fallback={
           <div className="flex h-full flex-1 items-center justify-center">
@@ -184,35 +184,37 @@ export function CanvasView({ projectId, openCardStage, cardStageCardId, cardStag
           </div>
         }
       >
-        <ExcalidrawLazy
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          initialData={{
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            elements: initialData.elements as any,
-            appState: {
-              ...initialData.appState,
-              theme: themeResolved,
-            },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            files: initialData.files as any,
-          }}
-          theme={themeResolved}
-          onChange={handleChange}
-          onLinkOpen={handleLinkOpen}
-          renderTopRightUI={renderTopRightUI}
-          UIOptions={{
-            canvasActions: {
-              loadScene: false,
-            },
-          }}
-        >
-          <CanvasCardSidebar
-            board={board}
-            placedCardIds={placedCardIds}
-            onPlaceCard={handlePlaceCard}
-            onCreateAndPlace={handleCreateAndPlace}
-          />
-        </ExcalidrawLazy>
+        <div className="h-full min-h-0 overflow-hidden rounded-lg border border-(--border)">
+          <ExcalidrawLazy
+            excalidrawAPI={(api) => setExcalidrawAPI(api)}
+            initialData={{
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              elements: initialData.elements as any,
+              appState: {
+                ...initialData.appState,
+                theme: themeResolved,
+              },
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              files: initialData.files as any,
+            }}
+            theme={themeResolved}
+            onChange={handleChange}
+            onLinkOpen={handleLinkOpen}
+            renderTopRightUI={renderTopRightUI}
+            UIOptions={{
+              canvasActions: {
+                loadScene: false,
+              },
+            }}
+          >
+            <CanvasCardSidebar
+              board={board}
+              placedCardIds={placedCardIds}
+              onPlaceCard={handlePlaceCard}
+              onCreateAndPlace={handleCreateAndPlace}
+            />
+          </ExcalidrawLazy>
+        </div>
       </Suspense>
     </div>
   );

@@ -48,7 +48,7 @@ export function CalendarToolbar({
     "h-7 px-2.5 text-base font-medium rounded-md transition-colors";
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2">
+    <div className="flex items-center gap-2 px-0 py-2">
       <h2 className="mr-2 text-sm font-semibold text-(--foreground) select-none">
         {formatDateRange(visibleDays)}
       </h2>

@@ -2,6 +2,7 @@ import type { Estimate, Priority } from "../../../shared/types";
 import type { ToggleListStatusId } from "./types";
 
 export type MetaChipPropertyType = "priority" | "estimate" | "status" | "tag";
+export const EMPTY_DISPLAY_VALUE_TOKEN = "-";
 
 const META_TOKEN_REGEX = /\[([^\]]+)\]/g;
 
@@ -21,7 +22,7 @@ const ESTIMATE_CHIP_CLASS_BY_TOKEN: Record<string, string> = {
   M: `${CHIP_BASE} bg-[var(--yellow-bg)] text-[var(--yellow-text)]`,
   L: `${CHIP_BASE} bg-[var(--orange-bg)] text-[var(--orange-text)]`,
   XL: `${CHIP_BASE} bg-[var(--red-bg)] text-[var(--red-text)]`,
-  "-": `${CHIP_BASE} bg-[var(--gray-bg)] text-[var(--foreground-tertiary)]`,
+  [EMPTY_DISPLAY_VALUE_TOKEN]: `${CHIP_BASE} bg-[var(--gray-bg)] text-[var(--foreground-tertiary)]`,
 };
 
 /** Status chips get a dot element prepended in card-toggle-block.tsx — no ::before needed. */

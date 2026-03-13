@@ -6,11 +6,11 @@ import {
   FileText,
   FolderSearch2,
   LayoutGrid,
-  List,
   PanelBottom,
   Search,
   Settings2,
   SquareKanban,
+  Table2,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { filterCommandPaletteItems, type CommandPaletteCard, type CommandPaletteCommand } from "@/lib/command-palette";
@@ -307,7 +307,7 @@ function getCommandGlyph(id: string) {
   if (id === "toggle-terminal") return PanelBottom;
   if (id === "open-settings") return Settings2;
   if (id === "view-kanban") return SquareKanban;
-  if (id === "view-list") return List;
+  if (id === "view-list") return Table2;
   if (id === "view-toggle-list") return ToggleListIcon;
   if (id === "view-canvas") return LayoutGrid;
   if (id === "view-calendar") return CalendarDays;

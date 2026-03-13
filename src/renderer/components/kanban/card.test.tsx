@@ -156,6 +156,85 @@ describe("kanban card", () => {
     expect(priorityIndex < titleIndex).toBe(true);
   });
 
+  test("respects kanban display prefs for property order and visibility", async () => {
+    mockCardPropertyPosition = "inline";
+    const { Card } = await import("./card");
+
+    const markup = renderToStaticMarkup(
+      createElement(Card, {
+        card: {
+          id: "card-display",
+          status: "in_progress",
+          archived: false,
+          title: "Task",
+          description: "Body",
+          priority: "p2-medium",
+          estimate: "m",
+          tags: ["UI"],
+          assignee: "alex",
+          agentBlocked: false,
+          created: new Date("2026-03-01T00:00:00.000Z"),
+          order: 0,
+        },
+        columnId: "in_progress",
+        displayPrefs: {
+          propertyOrder: ["assignee", "tags", "estimate", "priority"],
+          hiddenProperties: ["priority"],
+          showEmptyEstimate: false,
+          showEmptyPriority: false,
+        },
+        onClick: () => undefined,
+        onUpdateProperty: () => undefined,
+      }),
+    );
+
+    const headingStart = markup.indexOf("<h3");
+    const headingEnd = markup.indexOf("</h3>");
+    const headingMarkup = markup.slice(headingStart, headingEnd);
+    const assigneeIndex = headingMarkup.indexOf("@alex");
+    const tagIndex = headingMarkup.indexOf("UI");
+
+    expect(headingMarkup.includes("@alex")).toBe(true);
+    expect(headingMarkup.includes("UI")).toBe(true);
+    expect(headingMarkup.includes('aria-label="Edit estimate"')).toBe(true);
+    expect(headingMarkup.includes('aria-label="Edit priority"')).toBe(false);
+    expect(assigneeIndex < tagIndex).toBe(true);
+  });
+
+  test("shows editable empty kanban priority and estimate placeholders when display prefs enable them", async () => {
+    mockCardPropertyPosition = "inline";
+    const { Card } = await import("./card");
+
+    const markup = renderToStaticMarkup(
+      createElement(Card, {
+        card: {
+          id: "card-empty-display",
+          status: "in_progress",
+          archived: false,
+          title: "Task",
+          description: "",
+          tags: [],
+          agentBlocked: false,
+          created: new Date("2026-03-01T00:00:00.000Z"),
+          order: 0,
+        },
+        columnId: "in_progress",
+        displayPrefs: {
+          propertyOrder: ["priority", "estimate", "tags", "assignee"],
+          hiddenProperties: [],
+          showEmptyEstimate: true,
+          showEmptyPriority: true,
+        },
+        onClick: () => undefined,
+        onUpdateProperty: () => undefined,
+      }),
+    );
+
+    expect((markup.match(/>-\<\/button>/g) ?? []).length).toBe(2);
+    expect(markup.includes('aria-label="Edit priority"')).toBe(true);
+    expect(markup.includes('aria-label="Edit estimate"')).toBe(true);
+  });
+
   test("marks the card surface as a context-menu trigger when card actions are enabled", async () => {
     mockCardPropertyPosition = "inline";
     const { Card } = await import("./card");

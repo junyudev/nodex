@@ -1,62 +1,53 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { ChevronDown, RotateCcw } from "lucide-react";
+import { useDeferredValue, useMemo } from "react";
+import {
+  filterDbViewCards,
+  getAvailableDisplayProperties,
+  getDefaultDbViewPrefs,
+  sortDbViewCards,
+  type DbViewPrefs,
+  type DbViewCardRecord,
+} from "../../lib/db-view-prefs";
+import { buildCardSearchText, matchesSearchTokens, tokenizeSearchQuery } from "@/lib/card-search";
 import { useKanban } from "@/lib/use-kanban";
-import { useToggleListSettings } from "@/lib/use-toggle-list-settings";
-import { filterCards, rankCards } from "@/lib/toggle-list/rules";
-import { type ToggleListStatusId } from "@/lib/toggle-list/types";
-import { cn } from "@/lib/utils";
+import { TOGGLE_LIST_PROPERTY_KEYS, type ToggleListPropertyKey, type ToggleListStatusId } from "@/lib/toggle-list/types";
 import { ToggleListCardEditor } from "./editor/toggle-list-card-editor";
 import { toggleListSchema } from "./editor/toggle-list-schema";
-import { ToggleListSummaryBadges, ToggleListRulesBody } from "./toggle-list-rules-body";
 import { ToggleListScrollContainer } from "./view-scroll-containers";
 
 interface ToggleListViewProps {
   projectId: string;
   searchQuery: string;
+  dbViewPrefs: DbViewPrefs | null;
 }
 
-const RULES_PANEL_STORAGE_KEY = "nodex-toggle-list-rules-panel-v1";
-
-function readRulesPanelExpanded(projectId: string): boolean {
-  try {
-    const raw = localStorage.getItem(RULES_PANEL_STORAGE_KEY);
-    if (!raw) return true;
-    const parsed = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return true;
-    const value = parsed[projectId];
-    return typeof value === "boolean" ? value : true;
-  } catch {
-    return true;
-  }
-}
-
-function writeRulesPanelExpanded(projectId: string, expanded: boolean): void {
-  try {
-    const raw = localStorage.getItem(RULES_PANEL_STORAGE_KEY);
-    const parsedRaw = raw !== null ? JSON.parse(raw) : {};
-    const parsed =
-      typeof parsedRaw === "object" && parsedRaw !== null
-        ? (parsedRaw as Record<string, unknown>)
-        : {};
-    localStorage.setItem(
-      RULES_PANEL_STORAGE_KEY,
-      JSON.stringify({
-        ...parsed,
-        [projectId]: expanded,
-      }),
-    );
-  } catch {
-    // localStorage may be unavailable
-  }
-}
-
-export function ToggleListView({ projectId, searchQuery }: ToggleListViewProps) {
-  const [rulesExpanded, setRulesExpanded] = useState(() => readRulesPanelExpanded(projectId));
+export function ToggleListView({ projectId, searchQuery, dbViewPrefs }: ToggleListViewProps) {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const { board, loading, error, updateCard, moveCard } = useKanban({ projectId });
-  const { settings, update, reset } = useToggleListSettings(projectId);
+  const viewPrefs = dbViewPrefs ?? getDefaultDbViewPrefs("toggle-list");
+  const displayProperties = useMemo(
+    () =>
+      getAvailableDisplayProperties("toggle-list").filter(
+        (property): property is ToggleListPropertyKey =>
+          TOGGLE_LIST_PROPERTY_KEYS.includes(property as ToggleListPropertyKey),
+      ),
+    [],
+  );
+  const propertyOrder = useMemo(
+    () =>
+      viewPrefs.display.propertyOrder.filter(
+        (property): property is ToggleListPropertyKey => displayProperties.includes(property as ToggleListPropertyKey),
+      ),
+    [displayProperties, viewPrefs.display.propertyOrder],
+  );
+  const hiddenProperties = useMemo(
+    () =>
+      viewPrefs.display.hiddenProperties.filter(
+        (property): property is ToggleListPropertyKey => displayProperties.includes(property as ToggleListPropertyKey),
+      ),
+    [displayProperties, viewPrefs.display.hiddenProperties],
+  );
 
-  const cards = useMemo(() => {
+  const cards = useMemo<DbViewCardRecord[]>(() => {
     if (!board) return [];
 
     return board.columns.flatMap((column, columnIndex) =>
@@ -69,33 +60,23 @@ export function ToggleListView({ projectId, searchQuery }: ToggleListViewProps) 
     );
   }, [board]);
 
-  const availableTags = useMemo(() => {
-    if (!board) return [];
-    const uniqueTags = new Set(
-      board.columns.flatMap((column) =>
-        column.cards.flatMap((card) => card.tags),
-      ),
-    );
-    return Array.from(uniqueTags).sort();
-  }, [board]);
-
   const filteredCards = useMemo(
-    () => filterCards(cards, settings, deferredSearchQuery),
-    [cards, deferredSearchQuery, settings],
+    () => {
+      const filteredByRules = filterDbViewCards(cards, viewPrefs.rules);
+      const searchTokens = tokenizeSearchQuery(deferredSearchQuery);
+      if (searchTokens.length === 0) return filteredByRules;
+      return filteredByRules.filter((card) => {
+        const searchable = `${buildCardSearchText(card)} ${card.columnName.toLowerCase()}`;
+        return matchesSearchTokens(searchable, searchTokens);
+      });
+    },
+    [cards, deferredSearchQuery, viewPrefs.rules],
   );
 
   const visibleCards = useMemo(
-    () => rankCards(filteredCards, settings),
-    [filteredCards, settings],
+    () => sortDbViewCards(filteredCards, viewPrefs.rules),
+    [filteredCards, viewPrefs.rules],
   );
-
-  useEffect(() => {
-    setRulesExpanded(readRulesPanelExpanded(projectId));
-  }, [projectId]);
-
-  useEffect(() => {
-    writeRulesPanelExpanded(projectId, rulesExpanded);
-  }, [projectId, rulesExpanded]);
 
   if (loading) {
     return (
@@ -121,55 +102,16 @@ export function ToggleListView({ projectId, searchQuery }: ToggleListViewProps) 
 
   return (
     <ToggleListScrollContainer>
-      <div className="px-4 pt-2 pb-5">
-        <section className="mb-3 flex flex-col rounded-lg border border-(--border)/50 bg-(--background) px-3 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="inline-flex cursor-pointer items-center gap-1.5 border-none bg-transparent p-0 text-base font-semibold text-(--foreground) hover:text-(--foreground-secondary)"
-                onClick={() => setRulesExpanded((prev) => !prev)}
-                aria-expanded={rulesExpanded}
-                aria-label={rulesExpanded ? "Collapse rules" : "Expand rules"}
-              >
-                <ChevronDown
-                  className={cn(
-                    "size-3.5 transition-transform duration-150",
-                    !rulesExpanded && "-rotate-90",
-                  )}
-                />
-                Rules
-              </button>
-              <ToggleListSummaryBadges settings={settings} visibleCount={visibleCards.length} />
-            </div>
-
-            <button
-              type="button"
-              className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-(--foreground-tertiary) hover:text-(--foreground-secondary)"
-              onClick={reset}
-            >
-              <RotateCcw className="size-3" />
-              Reset
-            </button>
-          </div>
-
-          {rulesExpanded && (
-            <ToggleListRulesBody
-              settings={settings}
-              availableTags={availableTags}
-              updateSettings={update}
-            />
-          )}
-        </section>
-
+      <div className="px-4">
         <section className="nodex-toggle-list-editor-shell rounded-lg border border-(--border) bg-(--card) px-3.5 pt-3 pb-4">
           <ToggleListCardEditor
             schema={toggleListSchema}
             projectId={projectId}
             cards={visibleCards}
-            propertyOrder={settings.propertyOrder}
-            hiddenProperties={settings.hiddenProperties}
-            showEmptyEstimate={settings.showEmptyEstimate}
+            propertyOrder={propertyOrder}
+            hiddenProperties={hiddenProperties}
+            showEmptyEstimate={viewPrefs.display.showEmptyEstimate}
+            showEmptyPriority={viewPrefs.display.showEmptyPriority}
             updateCard={updateCard}
             moveCard={moveCard}
             className="nodex-toggle-list-editor min-h-80"

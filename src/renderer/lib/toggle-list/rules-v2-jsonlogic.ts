@@ -97,7 +97,22 @@ function clauseToLogic(clause: ToggleListClause): JsonLogicValue {
     return { in: [{ var: "status" }, clause.values] };
   }
   if (clause.field === "priority") {
-    return { in: [{ var: "priority" }, clause.values] };
+    const expressions: JsonLogicValue[] = [];
+
+    if (clause.values.length > 0) {
+      expressions.push({ in: [{ var: "priority" }, clause.values] });
+    }
+    if (clause.includeEmpty) {
+      expressions.push({ missing: ["priority"] });
+    }
+
+    if (expressions.length === 0) {
+      return { in: [{ var: "priority" }, []] };
+    }
+    if (expressions.length === 1) {
+      return expressions[0];
+    }
+    return { or: expressions };
   }
 
   const anyExpression = tagsAnyToLogic(clause.values);
@@ -164,8 +179,8 @@ function parseClause(value: unknown): ToggleListClause | null {
 
   const status = parseStatusInClause(value);
   if (status) return { field: "status", op: "in", values: status };
-  const priority = parsePriorityInClause(value);
-  if (priority) return { field: "priority", op: "in", values: priority };
+  const priority = parsePriorityClause(value);
+  if (priority) return priority;
 
   const tagAny = parseTagAnyExpression(value);
   if (tagAny) return { field: "tags", op: "hasAny", values: tagAny };
@@ -196,18 +211,74 @@ function parseStatusInClause(
   );
 }
 
+function parsePriorityClause(
+  value: Record<string, unknown>,
+): Extract<ToggleListClause, { field: "priority" }> | null {
+  const direct = parsePriorityInClause(value);
+  if (direct) return direct;
+  if (isPriorityEmptyExpression(value)) {
+    return { field: "priority", op: "in", values: [], includeEmpty: true };
+  }
+  if (!Array.isArray(value.or) || value.or.length === 0) return null;
+
+  const priorities: Array<(typeof TOGGLE_LIST_PRIORITY_ORDER)[number]> = [];
+  let includeEmpty = false;
+
+  for (const entry of value.or) {
+    if (isPriorityEmptyExpression(entry)) {
+      includeEmpty = true;
+      continue;
+    }
+
+    if (!isRecord(entry)) return null;
+    const clause = parsePriorityInClause(entry);
+    if (!clause) return null;
+    for (const priority of clause.values) {
+      if (!priorities.includes(priority)) {
+        priorities.push(priority);
+      }
+    }
+    includeEmpty = includeEmpty || clause.includeEmpty === true;
+  }
+
+  return { field: "priority", op: "in", values: priorities, includeEmpty };
+}
+
 function parsePriorityInClause(
   value: Record<string, unknown>,
-): Array<(typeof TOGGLE_LIST_PRIORITY_ORDER)[number]> | null {
+): Extract<ToggleListClause, { field: "priority" }> | null {
   const operation = value.in;
   if (!Array.isArray(operation) || operation.length !== 2) return null;
   const [left, right] = operation;
   if (!isVarRef(left, "priority")) return null;
   if (!Array.isArray(right)) return null;
 
-  return right.filter((item): item is (typeof TOGGLE_LIST_PRIORITY_ORDER)[number] =>
+  const values = right.filter((item): item is (typeof TOGGLE_LIST_PRIORITY_ORDER)[number] =>
     typeof item === "string" && TOGGLE_LIST_PRIORITY_ORDER.includes(item as (typeof TOGGLE_LIST_PRIORITY_ORDER)[number]),
   );
+  return { field: "priority", op: "in", values, includeEmpty: false };
+}
+
+function isPriorityEmptyExpression(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+
+  if (Array.isArray(value.missing) && value.missing.length === 1 && value.missing[0] === "priority") {
+    return true;
+  }
+
+  return isNullEqualityVarRef(value, "priority");
+}
+
+function isNullEqualityVarRef(
+  value: Record<string, unknown>,
+  key: string,
+): boolean {
+  return ["==", "==="].some((operator) => {
+    const expression = value[operator];
+    if (!Array.isArray(expression) || expression.length !== 2) return false;
+    const [left, right] = expression;
+    return (isVarRef(left, key) && right === null) || (isVarRef(right, key) && left === null);
+  });
 }
 
 function parseTagAnyExpression(value: unknown): string[] | null {

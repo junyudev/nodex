@@ -10,8 +10,8 @@ import {
   SELECTOR_MENU_SELECT_CONTENT_CLASS_NAME,
   SELECTOR_MENU_SELECT_VIEWPORT_CLASS_NAME,
   SELECTOR_MENU_SEPARATOR_CLASS_NAME,
-} from "@/components/ui/selector-menu-chrome"
-import { cn } from "@/lib/utils"
+} from "./selector-menu-chrome"
+import { cn } from "../../lib/utils"
 
 function Select({
   ...props

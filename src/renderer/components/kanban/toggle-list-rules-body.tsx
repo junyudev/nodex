@@ -16,9 +16,11 @@ import {
   setToggleListRulesV2,
   toggleIncludeHostCard,
   toggleShowEmptyEstimate,
+  toggleShowEmptyPriority,
   toggleToggleListHiddenProperty,
 } from "@/lib/toggle-list/settings";
 import {
+  TOGGLE_LIST_EMPTY_PRIORITY_LABEL,
   formatPropertyName,
   TOGGLE_LIST_PRIORITY_CHIP_LABELS,
   TOGGLE_LIST_PRIORITY_ORDER,
@@ -98,6 +100,8 @@ export function ToggleListSummaryBadges({
   const primarySort = resolveToggleListPrimarySort(settings.rulesV2);
   const primaryField = primarySort.field;
   const primaryDirection = primarySort.direction;
+  const selectedPriorityCount = filter.priorities.length + (filter.includeEmptyPriority ? 1 : 0);
+  const totalPriorityCount = TOGGLE_LIST_PRIORITY_ORDER.length + 1;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -114,14 +118,14 @@ export function ToggleListSummaryBadges({
           {filter.statuses.length}/{TOGGLE_LIST_STATUS_ORDER.length} statuses
         </span>
       )}
-      {filter.priorities.length < TOGGLE_LIST_PRIORITY_ORDER.length && (
+      {selectedPriorityCount < totalPriorityCount && (
         <span
           className={cn(
             BADGE_BASE,
             "border-(--border) bg-(--background-secondary) text-(--foreground-secondary)",
           )}
         >
-          {filter.priorities.length}/{TOGGLE_LIST_PRIORITY_ORDER.length} priorities
+          {selectedPriorityCount}/{totalPriorityCount} priorities
         </span>
       )}
       {filter.tags.length > 0 && (
@@ -529,6 +533,14 @@ function PropertiesSection({
         <div className="flex min-w-45 flex-col gap-1">
           {settings.propertyOrder.map((property, index) => {
             const hidden = settings.hiddenProperties.includes(property);
+            const showEmpty =
+              property === "estimate" ? settings.showEmptyEstimate
+                : property === "priority" ? settings.showEmptyPriority
+                  : null;
+            const onToggleShowEmpty =
+              property === "estimate" ? () => updateSettings((prev) => toggleShowEmptyEstimate(prev))
+                : property === "priority" ? () => updateSettings((prev) => toggleShowEmptyPriority(prev))
+                  : null;
             return (
               <div key={property} className="group flex h-6 items-center gap-1">
                 <span className={cn("w-18 shrink-0 truncate text-xs font-medium", hidden ? "text-(--foreground-tertiary)" : "text-(--foreground-secondary)")}>
@@ -560,14 +572,29 @@ function PropertiesSection({
                 >
                   <ArrowDown className="size-3" />
                 </button>
+                {showEmpty !== null && onToggleShowEmpty && (
+                  <button
+                    type="button"
+                    className={cn(
+                      "ml-0.5 inline-flex h-5 items-center rounded-md px-1 font-mono text-[10px] leading-none",
+                      showEmpty
+                        ? "bg-(--foreground-secondary)/8 text-(--foreground-secondary)"
+                        : "text-(--foreground-tertiary) hover:bg-(--foreground-secondary)/5 hover:text-(--foreground-secondary)",
+                    )}
+                    onClick={onToggleShowEmpty}
+                    title={showEmpty ? "Hide placeholder when empty" : "Show placeholder when empty"}
+                  >
+                    [-]
+                  </button>
+                )}
               </div>
             );
           })}
         </div>
 
         {/* Display toggles */}
-        <div className={cn("flex flex-col gap-1.5", !compact && "pt-0.5")}>
-          {showHostCardToggle && (
+        {showHostCardToggle && (
+          <div className={cn("flex flex-col gap-1.5", !compact && "pt-0.5")}>
             <label className="flex cursor-pointer items-center gap-1.5 text-xs text-(--foreground-secondary) select-none">
               <input
                 type="checkbox"
@@ -577,17 +604,8 @@ function PropertiesSection({
               />
               Include host card
             </label>
-          )}
-          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-(--foreground-secondary) select-none">
-            <input
-              type="checkbox"
-              checked={settings.showEmptyEstimate}
-              onChange={() => updateSettings((prev) => toggleShowEmptyEstimate(prev))}
-              className={cn(CHECKBOX, "nodex-toggle-list-checkbox")}
-            />
-            Show empty estimate as &ndash;
-          </label>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -616,6 +634,7 @@ function GroupEditor({
 }) {
   const statusValues = getStatusValues(group);
   const priorityValues = getPriorityValues(group);
+  const priorityIncludesEmpty = getPriorityIncludesEmpty(group);
   const tagClause = getTagClause(group);
   const tagValues = tagClause?.values ?? [];
   const tagMode: ToggleListTagFilterMode = tagClause
@@ -639,7 +658,21 @@ function GroupEditor({
     const next = exists
       ? priorityValues.filter((item) => item !== priority)
       : [...priorityValues, priority];
-    onChange(upsertClause(group, { field: "priority", op: "in", values: next }));
+    onChange(upsertClause(group, {
+      field: "priority",
+      op: "in",
+      values: next,
+      includeEmpty: priorityIncludesEmpty,
+    }));
+  };
+
+  const toggleEmptyPriority = () => {
+    onChange(upsertClause(group, {
+      field: "priority",
+      op: "in",
+      values: priorityValues,
+      includeEmpty: !priorityIncludesEmpty,
+    }));
   };
 
   const toggleTag = (tag: string) => {
@@ -710,6 +743,16 @@ function GroupEditor({
               {TOGGLE_LIST_PRIORITY_CHIP_LABELS[priority]}
             </button>
           ))}
+          <button
+            key={`p-${groupIndex}-empty`}
+            type="button"
+            onClick={toggleEmptyPriority}
+            className={cn(CHIP_BASE, priorityIncludesEmpty && CHIP_ACTIVE)}
+            title="Empty priority"
+            aria-label="Empty priority"
+          >
+            {TOGGLE_LIST_EMPTY_PRIORITY_LABEL}
+          </button>
         </div>
       </div>
 
@@ -762,7 +805,7 @@ function createDefaultGroup(): ToggleListFilterGroup {
   return {
     all: [
       { field: "status", op: "in", values: [...TOGGLE_LIST_STATUS_ORDER] },
-      { field: "priority", op: "in", values: [...TOGGLE_LIST_PRIORITY_ORDER] },
+      { field: "priority", op: "in", values: [...TOGGLE_LIST_PRIORITY_ORDER], includeEmpty: true },
     ],
   };
 }
@@ -779,6 +822,14 @@ function getPriorityValues(group: ToggleListFilterGroup): typeof TOGGLE_LIST_PRI
     candidate.field === "priority",
   );
   return clause ? clause.values : [...TOGGLE_LIST_PRIORITY_ORDER];
+}
+
+function getPriorityIncludesEmpty(group: ToggleListFilterGroup): boolean {
+  const clause = group.all.find((candidate): candidate is Extract<ToggleListClause, { field: "priority" }> =>
+    candidate.field === "priority",
+  );
+  if (!clause) return true;
+  return clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length;
 }
 
 function getTagClause(

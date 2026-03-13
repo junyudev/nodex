@@ -12,14 +12,14 @@ describe("toggle-list rules v2 jsonlogic interop", () => {
           {
             all: [
               { field: "status", op: "in", values: ["draft"] },
-              { field: "priority", op: "in", values: ["p0-critical"] },
+              { field: "priority", op: "in", values: ["p0-critical"], includeEmpty: true },
               { field: "tags", op: "hasNone", values: ["sidebar"] },
             ],
           },
           {
             all: [
               { field: "status", op: "in", values: ["backlog"] },
-              { field: "priority", op: "in", values: ["p0-critical", "p1-high"] },
+              { field: "priority", op: "in", values: ["p0-critical", "p1-high"], includeEmpty: false },
             ],
           },
         ],
@@ -89,5 +89,48 @@ describe("toggle-list rules v2 jsonlogic interop", () => {
       values: ["api", "infra"],
     }));
     expect(parsed.rules?.includeHostCard).toBeFalse();
+  });
+
+  test("parses explicit empty-priority jsonlogic conditions", () => {
+    const parsed = parseRulesV2FromJsonLogic(JSON.stringify({
+      mode: "advanced",
+      includeHostCard: false,
+      filter: {
+        or: [
+          {
+            and: [
+              { in: [{ var: "status" }, ["draft"]] },
+              { missing: ["priority"] },
+            ],
+          },
+          {
+            and: [
+              { in: [{ var: "status" }, ["backlog"]] },
+              {
+                or: [
+                  { in: [{ var: "priority" }, ["p0-critical"] ] },
+                  { missing: ["priority"] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      sort: [{ field: "status", direction: "asc" }],
+    }));
+
+    expect(parsed.error).toBe(null);
+    expect(JSON.stringify(parsed.rules?.filter.any[0]?.all[1])).toBe(JSON.stringify({
+      field: "priority",
+      op: "in",
+      values: [],
+      includeEmpty: true,
+    }));
+    expect(JSON.stringify(parsed.rules?.filter.any[1]?.all[1])).toBe(JSON.stringify({
+      field: "priority",
+      op: "in",
+      values: ["p0-critical"],
+      includeEmpty: true,
+    }));
   });
 });

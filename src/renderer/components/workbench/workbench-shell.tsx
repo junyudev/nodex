@@ -4,13 +4,18 @@ import {
   ChevronDown,
   FileText,
   LayoutGrid,
-  List,
   PenLine,
   SquareKanban,
+  Table2,
 } from "lucide-react";
 import { CardIcon } from "./card-icon";
 import { CommandPalette } from "./command-palette";
 import { DbViewToolbar } from "./db-view-toolbar";
+import {
+  type DbViewPrefs,
+  type SupportedDbView,
+  viewSupportsDbViewPrefs,
+} from "../../lib/db-view-prefs";
 import { ThreadsIcon } from "./threads-icon";
 import { ToggleListIcon } from "./toggle-list-icon";
 import { MainViewHost } from "./main-view-host";
@@ -120,6 +125,7 @@ interface WorkbenchShellProps {
   threadsProjectId: string;
   activeView: WorkbenchView;
   activeSearchQuery: string;
+  activeDbViewPrefs: DbViewPrefs | null;
   spaces: SpaceRef[];
   recentCardSessions: RecentCardSession[];
   activeRecentSessionId: string | null;
@@ -166,6 +172,11 @@ interface WorkbenchShellProps {
   ) => void;
   setDbProject: (projectId: string) => void;
   setSearchQuery: (projectId: string, value: string) => void;
+  setDbViewPrefs: (
+    projectId: string,
+    view: SupportedDbView,
+    update: (prev: DbViewPrefs) => DbViewPrefs,
+  ) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarWidth: (width: number) => void;
   setSidebarTopLevelSectionVisible: (sectionId: SidebarTopLevelSectionId, visible: boolean) => void;
@@ -236,7 +247,7 @@ const DB_VIEW_TABS: Array<{ id: WorkbenchView; label: string }> = [
 
 const DB_VIEW_ICONS: Record<WorkbenchView, StageSidebarItem["icon"]> = {
   kanban: SquareKanban,
-  list: List,
+  list: Table2,
   "toggle-list": ToggleListIcon,
   canvas: PenLine,
   calendar: CalendarDays,
@@ -293,6 +304,7 @@ export function WorkbenchShell({
   threadsProjectId,
   activeView,
   activeSearchQuery,
+  activeDbViewPrefs,
   spaces,
   recentCardSessions,
   activeRecentSessionId,
@@ -321,6 +333,7 @@ export function WorkbenchShell({
   openCardStage,
   setDbProject,
   setSearchQuery,
+  setDbViewPrefs,
   setSidebarCollapsed,
   setSidebarWidth,
   setSidebarTopLevelSectionVisible,
@@ -458,6 +471,16 @@ export function WorkbenchShell({
     projectId: dbProjectId,
   });
   const [mutationErrorToast, setMutationErrorToast] = useState<string | null>(null);
+  const activeDbRulesView = viewSupportsDbViewPrefs(activeView) ? activeView : null;
+  const activeProjectTags = useMemo(() => {
+    if (!activeProjectBoard) return [];
+    return Array.from(
+      new Set(activeProjectBoard.columns.flatMap((column) => column.cards.flatMap((card) => card.tags))),
+    ).sort((left, right) => left.localeCompare(right));
+  }, [activeProjectBoard]);
+  const updateActiveDbViewPrefs = activeDbRulesView
+    ? (update: (prev: DbViewPrefs) => DbViewPrefs) => setDbViewPrefs(dbProjectId, activeDbRulesView, update)
+    : null;
 
   const setNextPanelPeekPx = useCallback((value: number) => {
     const normalized = writeNextPanelPeekPx(value);
@@ -1267,6 +1290,10 @@ export function WorkbenchShell({
             taskSearchOpen={taskSearchOpen}
             searchShortcutLabel={isMac ? "⌘F" : "Ctrl+F"}
             taskSearchInputRef={taskSearchInputRef}
+            rulesView={activeDbRulesView}
+            dbViewPrefs={activeDbViewPrefs}
+            availableTags={activeProjectTags}
+            onUpdateDbViewPrefs={updateActiveDbViewPrefs}
             onSearchQueryChange={(value) => setSearchQuery(dbProjectId, value)}
             onOpenTaskSearch={openTaskSearch}
             onCloseTaskSearch={closeTaskSearch}
@@ -1277,6 +1304,8 @@ export function WorkbenchShell({
               projects={projects}
               view={activeView}
               searchQuery={activeSearchQuery}
+              dbViewPrefs={activeDbViewPrefs}
+              onUpdateDbViewPrefs={updateActiveDbViewPrefs}
               cardStageCardId={cardStageCardId}
               cardStageCloseRef={cardStageCloseRef}
               pendingReminderOpen={pendingReminderOpen}

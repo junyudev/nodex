@@ -186,6 +186,7 @@ export interface NfmToggleListInlineView extends NfmBlockBase {
   propertyOrder?: Array<"priority" | "estimate" | "status" | "tags">;
   hiddenProperties?: Array<"priority" | "estimate" | "status" | "tags">;
   showEmptyEstimate?: boolean;
+  showEmptyPriority?: boolean;
 }
 
 export interface NfmThreadSection extends NfmBlockBase {

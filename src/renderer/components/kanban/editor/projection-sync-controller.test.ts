@@ -287,6 +287,7 @@ function buildOwnerInput(
       propertyOrder: ["priority", "estimate", "status", "tags"],
       hiddenProperties: [],
       showEmptyEstimate: false,
+      showEmptyPriority: false,
     }),
   ];
 

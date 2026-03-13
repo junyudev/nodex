@@ -33,6 +33,10 @@ import {
   resolveTopLevelDraggedBlocks,
 } from "./editor/block-drop-card-mapper";
 import {
+  resolveColumnDropIndex,
+  resolveDragPointer,
+} from "./drag-pointer";
+import {
   type CardDropApplyResult,
   clearCardDropTargetHover,
   updateCardDropTargetHover,
@@ -58,6 +62,15 @@ import { useKanban } from "@/lib/use-kanban";
 import { useHistory } from "@/lib/use-history";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
 import { writeTextToClipboard } from "@/lib/clipboard";
+import {
+  filterDbViewCards,
+  getDefaultDbViewPrefs,
+  hasActiveDbViewFilters,
+  hasActiveDbViewSorts,
+  sortDbViewCards,
+  type DbViewCardRecord,
+  type DbViewPrefs,
+} from "../../lib/db-view-prefs";
 import type {
   Card as CardType,
   CardStatus,
@@ -102,6 +115,7 @@ interface KanbanBoardProps {
   projectId: string;
   projects: Project[];
   searchQuery: string;
+  dbViewPrefs: DbViewPrefs | null;
   openCardStage: (
     projectId: string,
     cardId: string,
@@ -115,6 +129,7 @@ export function KanbanBoard({
   projectId,
   projects,
   searchQuery,
+  dbViewPrefs,
   openCardStage,
   cardStageCardId,
   cardStageCloseRef,
@@ -192,33 +207,50 @@ export function KanbanBoard({
     () => tokenizeSearchQuery(deferredSearchQuery),
     [deferredSearchQuery]
   );
-
-  const isSearchActive = searchTokens.length > 0;
+  const viewPrefs = dbViewPrefs ?? getDefaultDbViewPrefs("kanban");
+  const hasSearchFilter = searchTokens.length > 0;
+  const hasRuleFiltering = hasActiveDbViewFilters("kanban", viewPrefs.rules);
+  const hasNonDefaultSort = hasActiveDbViewSorts("kanban", viewPrefs.rules);
+  const dragDisabled = hasSearchFilter || hasRuleFiltering || hasNonDefaultSort;
 
   const filteredBoard = useMemo(() => {
     if (!board) return null;
-    if (!isSearchActive) return board;
 
     return {
       ...board,
-      columns: board.columns.map((column) => ({
-        ...column,
-        cards: column.cards.filter((card) =>
-          matchesSearchTokens(buildCardSearchText(card), searchTokens)
-        ),
-      })),
+      columns: board.columns.map((column, columnIndex) => {
+        const columnCards = column.cards.map<DbViewCardRecord>((card, cardIndex) => ({
+          ...card,
+          columnId: column.id,
+          columnName: column.name,
+          boardIndex: columnIndex * 100_000 + cardIndex,
+        }));
+        const filteredByRules = filterDbViewCards(columnCards, viewPrefs.rules);
+        const filteredBySearch = hasSearchFilter
+          ? filteredByRules.filter((card) =>
+            matchesSearchTokens(
+              `${buildCardSearchText(card)} ${card.columnName.toLowerCase()}`,
+              searchTokens,
+            ))
+          : filteredByRules;
+
+        return {
+          ...column,
+          cards: sortDbViewCards(filteredBySearch, viewPrefs.rules),
+        };
+      }),
     };
-  }, [board, isSearchActive, searchTokens]);
+  }, [board, hasSearchFilter, searchTokens, viewPrefs.rules]);
 
   useEffect(() => {
     setCardSelection((current) => {
       const normalized = normalizeCardSelection(
         current,
-        isSearchActive ? filteredBoard : board,
+        filteredBoard ?? board,
       );
       return hasSameCardSelection(current, normalized) ? current : normalized;
     });
-  }, [board, filteredBoard, isSearchActive]);
+  }, [board, filteredBoard]);
 
   const currentProjectName = useMemo(
     () => projects.find((project) => project.id === projectId)?.name ?? projectId,
@@ -247,11 +279,27 @@ export function KanbanBoard({
     })
   );
 
+  const resolveColumnSurface = useCallback((columnId: string): HTMLElement | null => {
+    if (typeof document === "undefined") return null;
+
+    return document.querySelector<HTMLElement>(`[data-kanban-column-id="${columnId}"]`);
+  }, []);
+
+  const resolveColumnInsertionIndex = useCallback((
+    columnId: string,
+    fallbackIndex: number,
+    event: DragOverEvent | DragEndEvent,
+  ): number => resolveColumnDropIndex({
+    surface: resolveColumnSurface(columnId),
+    fallbackIndex,
+    event,
+  }), [resolveColumnSurface]);
+
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     const data = active.data.current as { card: CardType; columnId: string };
     const dragItems = resolveDragGroup(
-      isSearchActive ? filteredBoard : board,
+      filteredBoard ?? board,
       cardSelection,
       {
         card: data.card,
@@ -284,7 +332,10 @@ export function KanbanBoard({
 
     if (over.data.current?.column) {
       const col = over.data.current.column as { id: string; cards: unknown[] };
-      setDropIndicator({ columnId: col.id, index: col.cards.length });
+      setDropIndicator({
+        columnId: col.id,
+        index: resolveColumnInsertionIndex(col.id, col.cards.length, event),
+      });
     } else if (over.data.current?.card) {
       if (activeDrag && activeDrag.items.length > 1 && selectedCardIds.has(String(over.id))) {
         setDropIndicator(null);
@@ -303,15 +354,8 @@ export function KanbanBoard({
     const session = getActiveExternalCardDragSession();
     if (!session) return;
 
-    const translatedRect = event.active.rect.current.translated
-      ?? event.active.rect.current.initial;
-    if (!translatedRect) return;
-
-    const pointer = {
-      x: translatedRect.left + translatedRect.width / 2,
-      y: translatedRect.top + translatedRect.height / 2,
-    };
-
+    const pointer = resolveDragPointer(event);
+    if (!pointer) return;
     updateExternalCardDragPointer(externalCardDragSessionIdRef.current, pointer);
     updateCardDropTargetHover(pointer, session.payload);
   };
@@ -434,7 +478,12 @@ export function KanbanBoard({
     if (over.data.current?.column) {
       toStatus = over.data.current.column.id as CardStatus;
       const targetColumn = filteredBoard?.columns.find((c) => c.id === toStatus);
-      targetVisibleIndex = targetColumn?.cards.length ?? 0;
+      const fallbackIndex = targetColumn?.cards.length ?? 0;
+      targetVisibleIndex = resolveColumnInsertionIndex(
+        toStatus,
+        fallbackIndex,
+        event,
+      );
     } else if (over.data.current?.card) {
       toStatus = over.data.current.columnId as CardStatus;
       const targetColumn = filteredBoard?.columns.find((c) => c.id === toStatus);
@@ -447,7 +496,7 @@ export function KanbanBoard({
       return;
     }
 
-    const newOrder = isSearchActive
+    const newOrder = dragDisabled
       ? resolveFilteredDropOrder({
         board,
         visibleBoard: filteredBoard,
@@ -493,7 +542,7 @@ export function KanbanBoard({
 
   const handleNativeDragOver = useCallback(
     (columnId: string, event: React.DragEvent<HTMLDivElement>) => {
-      if (isSearchActive) {
+      if (dragDisabled) {
         setDropIndicator(null);
         return;
       }
@@ -523,7 +572,7 @@ export function KanbanBoard({
       );
       setDropIndicator({ columnId, index });
     },
-    [isSearchActive],
+    [dragDisabled],
   );
 
   const handleNativeDragLeave = useCallback(
@@ -545,7 +594,7 @@ export function KanbanBoard({
     async (columnId: string, event: React.DragEvent<HTMLDivElement>) => {
       setDropIndicator(null);
 
-      if (isSearchActive) return;
+      if (dragDisabled) return;
 
       const session = getActiveExternalEditorDragSession();
       if (!session) return;
@@ -599,7 +648,7 @@ export function KanbanBoard({
         releaseOptimisticMutation?.();
       }
     },
-    [importBlockDrop, isSearchActive],
+    [dragDisabled, importBlockDrop],
   );
 
   const handleEditCard = useCallback(async (
@@ -607,7 +656,7 @@ export function KanbanBoard({
     card: CardType,
     event: React.MouseEvent<HTMLDivElement>,
   ) => {
-    if (!isSearchActive && event.shiftKey) {
+    if (!dragDisabled && event.shiftKey) {
       event.preventDefault();
       setCardSelection((current) => toggleCardSelection(current, card.id));
       return;
@@ -625,7 +674,7 @@ export function KanbanBoard({
   }, [
     cardStageCardId,
     cardStageCloseRef,
-    isSearchActive,
+    dragDisabled,
     openCardStage,
     projectId,
     selectedCardIds.size,
@@ -764,11 +813,11 @@ export function KanbanBoard({
         <DndContext
           sensors={sensors}
           collisionDetection={customCollisionDetection}
-          onDragStart={handleDragStart}
-          onDragMove={handleDragMove}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
+          onDragStart={dragDisabled ? undefined : handleDragStart}
+          onDragMove={dragDisabled ? undefined : handleDragMove}
+          onDragOver={dragDisabled ? undefined : handleDragOver}
+          onDragEnd={dragDisabled ? undefined : handleDragEnd}
+          onDragCancel={dragDisabled ? undefined : handleDragCancel}
         >
           {/* Board container - Notion-style scroll with sticky headers */}
           <div className="flex w-max min-w-full px-4">
@@ -778,6 +827,7 @@ export function KanbanBoard({
                 projectName={currentProjectName}
                 key={column.id}
                 column={column}
+                displayPrefs={viewPrefs.display}
                 onAddCard={handleAddCard}
                 onEditCard={handleEditCard}
                 onUpdateCardProperty={handleUpdateCardProperty}
@@ -788,6 +838,7 @@ export function KanbanBoard({
                 onNativeDragOver={handleNativeDragOver}
                 onNativeDragLeave={handleNativeDragLeave}
                 onNativeDrop={handleNativeDrop}
+                dragDisabled={dragDisabled}
                 dropIndicatorIndex={
                   dropIndicator?.columnId === column.id
                     ? dropIndicator.index
@@ -809,6 +860,7 @@ export function KanbanBoard({
                     <CardPreview
                       card={activeDrag.items[0]!.card}
                       columnId={activeDrag.items[0]!.columnId}
+                      displayPrefs={viewPrefs.display}
                       isSelected={activeDrag.items.length > 1}
                       fixedWidth={activeDragGeometry?.width}
                       fixedHeight={activeDragGeometry?.height}
