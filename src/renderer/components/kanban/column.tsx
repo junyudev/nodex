@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -94,7 +94,7 @@ export const columnStyles: Record<string, { dotColor: string; headerBg: string; 
   },
 };
 
-export function Column({
+export const Column = memo(function Column({
   projectId,
   projectName,
   column,
@@ -117,11 +117,15 @@ export function Column({
   const [showCreator, setShowCreator] = useState(false);
   const isEmpty = column.cards.length === 0 && !showCreator;
 
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef } = useDroppable({
     id: column.id,
     data: { column },
     disabled: dragDisabled,
   });
+  const sortableCardIds = useMemo(
+    () => column.cards.map((card) => card.id),
+    [column.cards],
+  );
 
   const styles = columnStyles[column.id] || {
     dotColor: "bg-[var(--foreground-tertiary)]",
@@ -164,7 +168,6 @@ export function Column({
                 className={cn(
                   "flex flex-col items-center rounded-t-lg pt-3 pb-2",
                   styles.headerBg,
-                  isOver && styles.dropBg,
                 )}
               >
                 <span className={cn("mb-2 h-2 w-2 shrink-0 rounded-full", styles.dotColor)} />
@@ -185,7 +188,6 @@ export function Column({
               className={cn(
                 "flex-1 rounded-b-lg",
                 styles.headerBg,
-                isOver && styles.dropBg,
               )}
             />
           </div>
@@ -255,11 +257,10 @@ export function Column({
               className={cn(
                 "flex-1 px-2 pt-0.75 pb-2",
                 "transition-colors duration-150",
-                isOver && styles.dropBg
               )}
             >
               <SortableContext
-                items={column.cards.map((c) => c.id)}
+                items={sortableCardIds}
                 strategy={verticalListSortingStrategy}
                 disabled={dragDisabled}
               >
@@ -271,8 +272,14 @@ export function Column({
                     />
                   )}
                   {column.cards.map((card, i) => (
-                    <div key={card.id} data-kanban-card-id={card.id}>
-                      {dropIndicatorIndex === i && <DropIndicator />}
+                    <div
+                      key={card.id}
+                      data-kanban-card-id={card.id}
+                      className="relative"
+                    >
+                      {dropIndicatorIndex === i ? (
+                        <DropIndicator className="absolute inset-x-0 top-0 -translate-y-1/2" />
+                      ) : null}
                       <Card
                         card={card}
                         columnId={column.id}
@@ -304,7 +311,11 @@ export function Column({
                       />
                     </div>
                   ))}
-                  {dropIndicatorIndex === column.cards.length && <DropIndicator />}
+                  {dropIndicatorIndex === column.cards.length ? (
+                    <div className="-mt-2 relative h-0">
+                      <DropIndicator className="absolute inset-x-0 top-0" />
+                    </div>
+                  ) : null}
                 </div>
               </SortableContext>
 
@@ -334,4 +345,6 @@ export function Column({
       )}
     </div>
   );
-}
+});
+
+Column.displayName = "Column";

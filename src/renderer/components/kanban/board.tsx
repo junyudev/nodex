@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useDeferredValue, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -16,7 +17,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { Column } from "./column";
-import { Card, type CardPropertyUpdateInput } from "./card";
+import { CardPreview, type CardPropertyUpdateInput } from "./card";
 import {
   emptyCardSelection,
   normalizeCardSelection,
@@ -70,6 +71,7 @@ import {
   buildExternalCardDropMoveRequest,
   resolveExternalCardDropTarget,
 } from "./board-drop-routing";
+import { resolveDragOverlayGeometry } from "./drag-overlay-geometry";
 
 // Custom collision detection: prioritize pointerWithin for columns, fall back to rectIntersection
 const customCollisionDetection: CollisionDetection = (args) => {
@@ -172,6 +174,10 @@ export function KanbanBoard({
   const [activeDrag, setActiveDrag] = useState<{
     items: ExternalCardDragItem[];
   } | null>(null);
+  const [activeDragGeometry, setActiveDragGeometry] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const externalCardDragSessionIdRef = useRef<string | undefined>(undefined);
 
   const [dropIndicator, setDropIndicator] = useState<{
@@ -262,6 +268,9 @@ export function KanbanBoard({
     });
 
     clearCardDropTargetHover();
+    setActiveDragGeometry(
+      resolveDragOverlayGeometry(active.rect.current.initial),
+    );
     setActiveDrag({ items: dragItems });
     if (!selectedCardIds.has(data.card.id)) {
       setCardSelection(emptyCardSelection());
@@ -314,6 +323,7 @@ export function KanbanBoard({
 
   const handleDragCancel = () => {
     setActiveDrag(null);
+    setActiveDragGeometry(null);
     setDropIndicator(null);
     clearCardDropTargetHover();
     endExternalCardDragSession(externalCardDragSessionIdRef.current);
@@ -365,6 +375,7 @@ export function KanbanBoard({
     const cardDragSession = getActiveExternalCardDragSession();
     const activeDragItems = activeDrag?.items ?? [];
     setActiveDrag(null);
+    setActiveDragGeometry(null);
     setDropIndicator(null);
     clearCardDropTargetHover();
 
@@ -470,13 +481,13 @@ export function KanbanBoard({
     setCardSelection(emptyCardSelection());
   };
 
-  const handleAddCard = async (
+  const handleAddCard = useCallback(async (
     columnId: string,
     input: CardInput,
     placement: CardCreatePlacement = "bottom",
   ) => {
     await createCard(columnId, input, placement);
-  };
+  }, [createCard]);
 
   const handleNativeDragOver = useCallback(
     (columnId: string, event: React.DragEvent<HTMLDivElement>) => {
@@ -589,7 +600,7 @@ export function KanbanBoard({
     [importBlockDrop, isSearchActive],
   );
 
-  const handleEditCard = async (
+  const handleEditCard = useCallback(async (
     columnId: string,
     card: CardType,
     event: React.MouseEvent<HTMLDivElement>,
@@ -609,7 +620,14 @@ export function KanbanBoard({
       return;
     }
     openCardStage(projectId, card.id, card.title);
-  };
+  }, [
+    cardStageCardId,
+    cardStageCloseRef,
+    isSearchActive,
+    openCardStage,
+    projectId,
+    selectedCardIds.size,
+  ]);
 
   const handleCardMenuOpen = useCallback((cardId: string) => {
     setCardSelection({
@@ -789,23 +807,29 @@ export function KanbanBoard({
           </div>
 
           {/* Drag overlay - shows card being dragged */}
-          <DragOverlay>
-            {activeDrag && (
-              <div className="relative rotate-3 opacity-90">
-                <Card
-                  card={activeDrag.items[0]!.card}
-                  columnId={activeDrag.items[0]!.columnId}
-                  isSelected={activeDrag.items.length > 1}
-                  onClick={() => { }}
-                />
-                {activeDrag.items.length > 1 && (
-                  <div className="absolute -top-1.5 -right-1.5 rounded-full bg-(--foreground) px-1.75 py-0.75 text-sm font-medium text-(--background) shadow-lg">
-                    {activeDrag.items.length}
+          {typeof document !== "undefined"
+            ? createPortal(
+              <DragOverlay>
+                {activeDrag ? (
+                  <div className="relative opacity-90">
+                    <CardPreview
+                      card={activeDrag.items[0]!.card}
+                      columnId={activeDrag.items[0]!.columnId}
+                      isSelected={activeDrag.items.length > 1}
+                      fixedWidth={activeDragGeometry?.width}
+                      fixedHeight={activeDragGeometry?.height}
+                    />
+                    {activeDrag.items.length > 1 ? (
+                      <div className="absolute -top-1.5 -right-1.5 rounded-full bg-(--foreground) px-1.75 py-0.75 text-sm font-medium text-(--background) shadow-lg">
+                        {activeDrag.items.length}
+                      </div>
+                    ) : null}
                   </div>
-                )}
-              </div>
-            )}
-          </DragOverlay>
+                ) : null}
+              </DragOverlay>,
+              document.body,
+            )
+            : null}
         </DndContext>
       </KanbanBoardScrollContainer>
 

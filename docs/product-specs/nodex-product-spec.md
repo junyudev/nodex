@@ -113,6 +113,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Block-drop card creation uses pointer-based insertion (top/middle/bottom) with a visible drop indicator
 - Block->card import supports strict smart shorthand parsing for non-`cardToggle` blocks (`0..4`, optional estimate `XS/S/M/L/XL`, optional `(tag)`), applying parsed values to `priority`, `estimate`, and `tags`
 - Visual card previews with priority badges
+- Kanban card reorder keeps a non-layout-shifting insertion indicator; the source card stays as a static ghost in place while dragging, same-column reorders do not live-shift sibling cards, columns do not tint as separate previews, and the drag overlay is geometry-matched to the source card so it starts aligned with the cursor
 - Kanban card property chips (priority/estimate/tags/assignee) render inline with the card title by default, and Settings can move them above the title or below the body
 - Right-clicking a Kanban card opens a Radix context menu with a searchable action list; `Copy link` copies an `nodex://cards/<card-id>` deeplink to the target card, `Delete` removes the card, and clicking `Move to` advances the same menu into a searchable in-place project picker that moves the card into the same workflow column in the selected project
 - Real-time updates when data changes

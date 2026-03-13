@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { forwardRef, memo, useCallback, useMemo, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { CardPropertyPosition } from "@/lib/card-property-position";
 import { resolveKanbanPriorityOption } from "../../lib/kanban-options";
 import { estimateStyles } from "@/lib/types";
 import type { Card as CardType, Priority } from "@/lib/types";
@@ -12,6 +13,7 @@ import { extractPlainText } from "@/lib/nfm/extract-text";
 import { ChipPropertyEditor } from "./editor/chip-property-editor";
 import { CardContextMenu } from "./card-context-menu";
 import type { CardContextMenuProjectSummary } from "./card-context-menu-model";
+import { shouldFreezeSameColumnPreview } from "./sortable-preview-mode";
 
 type CardEditableProperty = "priority" | "estimate";
 type CardPropertyBadgeLayout = "stacked" | "inline";
@@ -41,6 +43,20 @@ interface CardProps {
     onCopyLink: (input: { cardId: string; projectId: string }) => Promise<void> | void;
     onMenuOpen?: () => void;
   };
+}
+
+interface CardBodyProps {
+  card: CardType;
+  columnId: string;
+  hasTerminal: boolean;
+  position: CardPropertyPosition;
+  activeProperty: CardEditableProperty | null;
+  onOpenPropertyEditor?: (
+    property: CardEditableProperty,
+    currentToken: string,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => void;
+  onChipPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
 }
 
 const PRIORITY_TOKEN_BY_VALUE: Record<Priority, string> = {
@@ -178,6 +194,210 @@ function CardPropertyBadges({
   );
 }
 
+const CardBody = memo(function CardBody({
+  card,
+  columnId,
+  hasTerminal,
+  position,
+  activeProperty,
+  onOpenPropertyEditor,
+  onChipPointerDown,
+}: CardBodyProps) {
+  const propertiesAtTop = position === "top";
+  const propertiesInline = position === "inline";
+  const plainDescription = useMemo(
+    () => (card.description ? extractPlainText(card.description, 120) : null),
+    [card.description],
+  );
+
+  return (
+    <>
+      {propertiesAtTop ? (
+        <CardPropertyBadges
+          card={card}
+          columnId={columnId}
+          hasTerminal={hasTerminal}
+          layout="stacked"
+          className="mx-1.5 pt-2 pb-1"
+          activeProperty={activeProperty}
+          onOpenPropertyEditor={onOpenPropertyEditor}
+          onChipPointerDown={onChipPointerDown}
+        />
+      ) : null}
+
+      <div className={cn("px-2 pb-1", propertiesAtTop ? "pt-0" : "pt-2")}>
+        {propertiesInline ? (
+          <h3 className="text-base/normal font-medium wrap-break-word text-(--foreground)">
+            <CardPropertyBadges
+              card={card}
+              columnId={columnId}
+              hasTerminal={hasTerminal}
+              layout="inline"
+              activeProperty={activeProperty}
+              onOpenPropertyEditor={onOpenPropertyEditor}
+              onChipPointerDown={onChipPointerDown}
+            />
+            <span className="align-middle">{card.title}</span>
+          </h3>
+        ) : (
+          <h3 className="text-base/normal font-medium wrap-break-word text-(--foreground)">
+            {card.title}
+          </h3>
+        )}
+      </div>
+
+      {card.agentStatus ? (
+        <p className="truncate px-2.5 pb-1 font-mono text-sm/normal text-(--blue-text)">
+          {card.agentStatus}
+        </p>
+      ) : null}
+
+      {plainDescription ? (
+        <p className="line-clamp-2 px-2 pb-1 text-xs/normal wrap-break-word text-(--foreground-secondary)">
+          {plainDescription}
+        </p>
+      ) : null}
+
+      {position === "bottom" ? (
+        <CardPropertyBadges
+          card={card}
+          columnId={columnId}
+          hasTerminal={hasTerminal}
+          layout="stacked"
+          className="mx-1.5 pb-2"
+          activeProperty={activeProperty}
+          onOpenPropertyEditor={onOpenPropertyEditor}
+          onChipPointerDown={onChipPointerDown}
+        />
+      ) : null}
+    </>
+  );
+});
+
+interface CardSurfaceProps extends React.HTMLAttributes<HTMLDivElement> {
+  card: CardType;
+  columnId: string;
+  dragDisabled?: boolean;
+  showStaticDragGhost?: boolean;
+  fixedWidth?: number;
+  fixedHeight?: number;
+  isDragging?: boolean;
+  isFocused?: boolean;
+  isSelected?: boolean;
+  hasTerminal: boolean;
+  position: CardPropertyPosition;
+  activeProperty: CardEditableProperty | null;
+  onOpenPropertyEditor?: (
+    property: CardEditableProperty,
+    currentToken: string,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => void;
+  onChipPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void;
+}
+
+const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(function CardSurface({
+  card,
+  columnId,
+  dragDisabled = false,
+  showStaticDragGhost = false,
+  fixedWidth,
+  fixedHeight,
+  isDragging = false,
+  isFocused,
+  isSelected = false,
+  hasTerminal,
+  position,
+  activeProperty,
+  onOpenPropertyEditor,
+  onChipPointerDown,
+  className,
+  style,
+  ...domProps
+}: CardSurfaceProps, ref) {
+  const { resolved } = useTheme();
+  const isDark = resolved === "dark";
+  const ringShadow = card.agentBlocked
+    ? "0 0 0 1.5px var(--destructive)"
+    : isSelected
+      ? "0 0 0 1.5px color-mix(in srgb, var(--accent-blue) 72%, transparent)"
+      : isFocused
+        ? "0 0 0 1.5px color-mix(in srgb, var(--accent-blue) 50%, transparent)"
+        : null;
+
+  const baseShadow = isDragging
+    ? isDark
+      ? "0 8px 16px rgba(0,0,0,0.3)"
+      : "0 8px 16px rgba(25,25,25,0.08)"
+    : isDark
+      ? "0 4px 12px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1), 0 0 0 1px color-mix(in srgb, var(--column-accent, rgba(255,255,255,0.07)) 20%, transparent)"
+      : "0 4px 12px rgba(25,25,25,0.027), 0 1px 2px rgba(25,25,25,0.02), 0 0 0 1px color-mix(in srgb, var(--column-accent, rgba(42,28,0,0.07)) 15%, transparent)";
+
+  const mergedStyle: React.CSSProperties = {
+    ...style,
+    width: fixedWidth,
+    minHeight: fixedHeight,
+    boxShadow: ringShadow
+      ? `${baseShadow}, ${ringShadow}`
+      : baseShadow,
+  };
+
+  return (
+    <div
+      ref={ref}
+      style={mergedStyle}
+      {...domProps}
+      className={cn(
+        "min-h-10 overflow-hidden rounded-lg bg-(--card) select-none",
+        dragDisabled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        "hover:bg-[color-mix(in_srgb,var(--column-accent,#888)_8%,var(--card))]",
+        showStaticDragGhost && "opacity-35",
+        isDragging && !showStaticDragGhost && "opacity-50",
+        isSelected && "bg-[color-mix(in_srgb,var(--accent-blue)_6%,var(--card))]",
+        className,
+      )}
+    >
+      <CardBody
+        card={card}
+        columnId={columnId}
+        hasTerminal={hasTerminal}
+        position={position}
+        activeProperty={activeProperty}
+        onOpenPropertyEditor={onOpenPropertyEditor}
+        onChipPointerDown={onChipPointerDown}
+      />
+    </div>
+  );
+});
+
+export function CardPreview({
+  card,
+  columnId,
+  isSelected = false,
+  fixedWidth,
+  fixedHeight,
+}: Pick<CardProps, "card" | "columnId" | "isSelected"> & {
+  fixedWidth?: number;
+  fixedHeight?: number;
+}) {
+  const { position } = useCardPropertyPosition();
+  const activeTerminals = useActiveTerminals();
+  const hasTerminal = activeTerminals.has(card.id);
+
+  return (
+    <CardSurface
+      card={card}
+      columnId={columnId}
+      dragDisabled
+      isSelected={isSelected}
+      fixedWidth={fixedWidth}
+      fixedHeight={fixedHeight}
+      hasTerminal={hasTerminal}
+      position={position}
+      activeProperty={null}
+    />
+  );
+}
+
 export function Card({
   card,
   columnId,
@@ -188,9 +408,7 @@ export function Card({
   onUpdateProperty,
   contextMenu,
 }: CardProps) {
-  const { resolved } = useTheme();
   const { position } = useCardPropertyPosition();
-  const isDark = resolved === "dark";
   const activeTerminals = useActiveTerminals();
   const hasTerminal = activeTerminals.has(card.id);
   const [activeChipEdit, setActiveChipEdit] = useState<{
@@ -199,8 +417,11 @@ export function Card({
     anchorRect: DOMRect;
   } | null>(null);
   const {
+    active,
     attributes,
+    isSorting,
     listeners,
+    over,
     setNodeRef,
     transform,
     transition,
@@ -210,33 +431,22 @@ export function Card({
     data: { card, columnId },
     disabled: dragDisabled,
   });
-
-  const ringShadow = card.agentBlocked
-    ? '0 0 0 1.5px var(--destructive)'
-    : isSelected
-      ? '0 0 0 1.5px color-mix(in srgb, var(--accent-blue) 72%, transparent)'
-      : isFocused
-        ? '0 0 0 1.5px color-mix(in srgb, var(--accent-blue) 50%, transparent)'
-        : null;
-
-  const baseShadow = isDragging
-    ? isDark
-      ? '0 8px 16px rgba(0,0,0,0.3)'
-      : '0 8px 16px rgba(25,25,25,0.08)'
-    : isDark
-      ? '0 4px 12px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1), 0 0 0 1px color-mix(in srgb, var(--column-accent, rgba(255,255,255,0.07)) 20%, transparent)'
-      : '0 4px 12px rgba(25,25,25,0.027), 0 1px 2px rgba(25,25,25,0.02), 0 0 0 1px color-mix(in srgb, var(--column-accent, rgba(42,28,0,0.07)) 15%, transparent)';
+  const freezeSameColumnPreview = shouldFreezeSameColumnPreview({
+    columnId,
+    active,
+    over,
+    isSorting,
+  });
+  const showStaticDragGhost = isDragging;
 
   const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    boxShadow: ringShadow
-      ? `${baseShadow}, ${ringShadow}`
-      : baseShadow,
+    transform: showStaticDragGhost || freezeSameColumnPreview
+      ? undefined
+      : CSS.Transform.toString(transform),
+    transition: showStaticDragGhost || freezeSameColumnPreview
+      ? undefined
+      : transition,
   };
-  const propertiesAtTop = position === "top";
-  const propertiesInline = position === "inline";
-
   const handleChipPointerDown = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -286,87 +496,26 @@ export function Card({
   );
 
   const surface = (
-    <div
+    <CardSurface
+      card={card}
+      columnId={columnId}
+      dragDisabled={dragDisabled}
+      showStaticDragGhost={showStaticDragGhost}
+      isDragging={isDragging}
+      isFocused={isFocused}
+      isSelected={isSelected}
+      hasTerminal={hasTerminal}
+      position={position}
+      activeProperty={activeChipEdit?.property ?? null}
+      onClick={onClick}
+      onOpenPropertyEditor={onUpdateProperty ? handleOpenPropertyEditor : undefined}
+      onChipPointerDown={onUpdateProperty ? handleChipPointerDown : undefined}
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
-      onClick={onClick}
-      data-card-context-menu-trigger={contextMenu ? "true" : undefined}
-      className={cn(
-        // Base - Notion exact: border-radius:10px, min-height:40px
-        "min-h-10 overflow-hidden rounded-lg bg-(--card) select-none",
-        // Cursor
-        dragDisabled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
-        // Hover - tinted with column accent color
-        "hover:bg-[color-mix(in_srgb,var(--column-accent,#888)_8%,var(--card))]",
-        // Dragging state
-        isDragging && "rotate-2 opacity-50",
-        isSelected && "bg-[color-mix(in_srgb,var(--accent-blue)_6%,var(--card))]"
-      )}
-    >
-      {propertiesAtTop && (
-        <CardPropertyBadges
-          card={card}
-          columnId={columnId}
-          hasTerminal={hasTerminal}
-          layout="stacked"
-          className="mx-1.5 pt-2 pb-1"
-          activeProperty={activeChipEdit?.property ?? null}
-          onOpenPropertyEditor={onUpdateProperty ? handleOpenPropertyEditor : undefined}
-          onChipPointerDown={onUpdateProperty ? handleChipPointerDown : undefined}
-        />
-      )}
-
-      {/* Title area - Notion: padding-inline:10px, padding-top:8px, padding-bottom:6px */}
-      <div className={cn("px-2 pb-1", propertiesAtTop ? "pt-0" : "pt-2")}>
-        {propertiesInline ? (
-          <h3 className="text-base/normal font-medium wrap-break-word text-(--foreground)">
-            <CardPropertyBadges
-              card={card}
-              columnId={columnId}
-              hasTerminal={hasTerminal}
-              layout="inline"
-              activeProperty={activeChipEdit?.property ?? null}
-              onOpenPropertyEditor={onUpdateProperty ? handleOpenPropertyEditor : undefined}
-              onChipPointerDown={onUpdateProperty ? handleChipPointerDown : undefined}
-            />
-            <span className="align-middle">{card.title}</span>
-          </h3>
-        ) : (
-          <h3 className="text-base/normal font-medium wrap-break-word text-(--foreground)">
-            {card.title}
-          </h3>
-        )}
-      </div>
-
-      {/* Agent Status - 12px, monospace, blue accent */}
-      {card.agentStatus && (
-        <p className="truncate px-2.5 pb-1 font-mono text-sm/normal text-(--blue-text)">
-          {card.agentStatus}
-        </p>
-      )}
-
-      {/* Description - 12px, secondary color */}
-      {card.description && (
-        <p className="line-clamp-2 px-2 pb-1 text-xs/normal wrap-break-word text-(--foreground-secondary)">
-          {extractPlainText(card.description, 120)}
-        </p>
-      )}
-
-      {position === "bottom" && (
-        <CardPropertyBadges
-          card={card}
-          columnId={columnId}
-          hasTerminal={hasTerminal}
-          layout="stacked"
-          className="mx-1.5 pb-2"
-          activeProperty={activeChipEdit?.property ?? null}
-          onOpenPropertyEditor={onUpdateProperty ? handleOpenPropertyEditor : undefined}
-          onChipPointerDown={onUpdateProperty ? handleChipPointerDown : undefined}
-        />
-      )}
-    </div>
+      {...(contextMenu ? { "data-card-context-menu-trigger": "true" } : {})}
+    />
   );
 
   return (
