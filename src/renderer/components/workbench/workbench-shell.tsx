@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { CardIcon } from "./card-icon";
+import { CommandPalette } from "./command-palette";
 import { ThreadsIcon } from "./threads-icon";
 import { ToggleListIcon } from "./toggle-list-icon";
 import { MainViewHost } from "./main-view-host";
@@ -204,8 +205,10 @@ interface WorkbenchShellProps {
   closeCardStage: () => void;
   onLeaveCardStageCard: (snapshot: CardStageSessionSnapshot) => void;
   cardStageSessionSnapshotRef?: React.MutableRefObject<CardStageSessionSnapshot | null>;
+  onRequestProjectPickerOpen: () => void;
   projectPickerOpenTick: number;
   taskSearchOpenTick: number;
+  commandPaletteOpenTick: number;
   settingsToggleTick: number;
   onCreateProject: (
     id: string,
@@ -350,15 +353,19 @@ export function WorkbenchShell({
   closeCardStage,
   onLeaveCardStageCard,
   cardStageSessionSnapshotRef,
+  onRequestProjectPickerOpen,
   projectPickerOpenTick,
   taskSearchOpenTick,
+  commandPaletteOpenTick,
   settingsToggleTick,
   onCreateProject,
   onDeleteProject,
   onRenameProject,
 }: WorkbenchShellProps) {
   const isMac = typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
+  const canRequestNewWindow = typeof window !== "undefined" && Boolean(window.api);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(() => !sidebar.collapsed);
   const [hoverSidebarOpen, setHoverSidebarOpen] = useState(false);
   const sidebarHideTimeoutRef = useRef<number | null>(null);
@@ -393,6 +400,7 @@ export function WorkbenchShell({
   const [taskSearchOpen, setTaskSearchOpen] = useState(false);
   const taskSearchInputRef = useRef<HTMLInputElement>(null);
   const previousTaskSearchOpenTickRef = useRef(taskSearchOpenTick);
+  const previousCommandPaletteOpenTickRef = useRef(commandPaletteOpenTick);
   const previousSettingsToggleTickRef = useRef(settingsToggleTick);
   const {
     state: codexState,
@@ -561,6 +569,12 @@ export function WorkbenchShell({
   }, [openTaskSearch, taskSearchOpenTick]);
 
   useEffect(() => {
+    if (previousCommandPaletteOpenTickRef.current === commandPaletteOpenTick) return;
+    previousCommandPaletteOpenTickRef.current = commandPaletteOpenTick;
+    setCommandPaletteOpen(true);
+  }, [commandPaletteOpenTick]);
+
+  useEffect(() => {
     if (previousSettingsToggleTickRef.current === settingsToggleTick) return;
     previousSettingsToggleTickRef.current = settingsToggleTick;
     setSettingsOpen((open) => !open);
@@ -626,6 +640,14 @@ export function WorkbenchShell({
     stageNavDirection,
     stageRailLayoutMode,
   ]);
+
+  const handleCommandPaletteSetView = useCallback((view: WorkbenchView) => {
+    setView(dbProjectId, view);
+  }, [dbProjectId, setView]);
+
+  const handleCommandPaletteToggleTerminal = useCallback(() => {
+    setTerminalPanelOpen(dbProjectId, !terminalPanelOpen);
+  }, [dbProjectId, setTerminalPanelOpen, terminalPanelOpen]);
 
   const clearSidebarHideTimeout = useCallback(() => {
     if (sidebarHideTimeoutRef.current === null) return;
@@ -1601,6 +1623,32 @@ export function WorkbenchShell({
 
   return (
     <div className="relative flex h-screen">
+      <CommandPalette
+        open={commandPaletteOpen}
+        openTriggerTick={commandPaletteOpenTick}
+        projects={projects}
+        activeProjectId={dbProjectId}
+        activeView={activeView}
+        focusedStage={focusedStage}
+        recentCardSessions={recentCardSessions}
+        onOpenChange={setCommandPaletteOpen}
+        onOpenCard={openCardStage}
+        onFocusStage={handleStageRailFocus}
+        onSetView={handleCommandPaletteSetView}
+        onOpenProjectPicker={() => {
+          onRequestProjectPickerOpen();
+        }}
+        onOpenTaskSearch={() => {
+          openTaskSearch(true);
+        }}
+        onToggleTerminal={handleCommandPaletteToggleTerminal}
+        onOpenSettings={() => {
+          setSettingsOpen(true);
+        }}
+        onRequestNewWindow={canRequestNewWindow ? () => {
+          void invoke("window:new");
+        } : undefined}
+      />
       {sidebar.collapsed ? (
         <div
           aria-hidden

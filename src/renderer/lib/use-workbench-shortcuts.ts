@@ -10,6 +10,7 @@ export interface WorkbenchShortcutActions {
   switchToProjectIndex: (index: number) => void;
   toggleTerminalPanel: (projectId: string) => void;
   onRequestNewWindow?: () => void;
+  onRequestCommandPalette?: () => void;
   onRequestProjectPicker?: () => void;
   onRequestTaskSearch?: (projectId: string) => void;
   onRequestSettingsToggle?: () => void;
@@ -56,6 +57,11 @@ export function handleWorkbenchShortcut(
 
   if (modifier && !e.altKey && !e.shiftKey && (e.key === "n" || e.key === "N")) {
     actions.onRequestNewWindow?.();
+    return true;
+  }
+
+  if (modifier && !e.altKey && !e.shiftKey && (e.key === "k" || e.key === "K" || e.key === "p" || e.key === "P")) {
+    actions.onRequestCommandPalette?.();
     return true;
   }
 

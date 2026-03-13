@@ -53,6 +53,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - URL sync: `/?project=<id>`, persisted to localStorage
 - Sidebar project switcher selects the DB-stage datasource only; it does not reset Card/Thread/Terminal stage contexts
 - Task search query is persisted per project and restored on space switching; search input lives in the View stage toolbar
+- `Cmd/Ctrl+K` and `Cmd/Ctrl+P` open a global command palette that can switch directly to cards across projects or run shell commands such as opening settings, task search, project picker, terminal, stage focus, and view switches
 - Desktop supports multi-window in a single app process (`Cmd/Ctrl+N`): each window keeps independent navigation/session state while all windows share the same SQLite data and realtime board-change fanout
 - When Nodex opens a window from zero open windows (cold launch, macOS re-activate after all windows were closed), it restores the last focused window's DB view, open card/history session, selected thread tab, and `Recents` list
 - Windows opened while another window is already open still start with a fresh workbench session; restart restore does not clone the current window into every new window

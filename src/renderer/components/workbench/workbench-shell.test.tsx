@@ -49,6 +49,13 @@ mock.module("./card-icon", () => ({
   CardIcon: ({ className }: { className?: string }) => createElement("span", { className }, "C"),
 }));
 
+mock.module("./command-palette", () => ({
+  CommandPalette: (props: Record<string, unknown>) => {
+    (globalThis as { __lastCommandPaletteProps?: Record<string, unknown> }).__lastCommandPaletteProps = props;
+    return createElement("div", { "data-command-palette": String(Boolean(props.open)) });
+  },
+}));
+
 mock.module("./main-view-host", () => ({
   MainViewHost: (props: Record<string, unknown>) => {
     (globalThis as { __lastMainViewHostProps?: Record<string, unknown> }).__lastMainViewHostProps = props;
@@ -331,6 +338,7 @@ async function renderShell(
   useCodexOverrides?: Record<string, unknown>,
 ): Promise<string> {
   (globalThis as { __lastSettingsOverlayProps?: Record<string, unknown> }).__lastSettingsOverlayProps = undefined;
+  (globalThis as { __lastCommandPaletteProps?: Record<string, unknown> }).__lastCommandPaletteProps = undefined;
   (globalThis as { __lastLeftSidebarProps?: Record<string, unknown> }).__lastLeftSidebarProps = undefined;
   (globalThis as { __lastMainViewHostProps?: Record<string, unknown> }).__lastMainViewHostProps = undefined;
   (globalThis as { __lastHistoryPanelProps?: Record<string, unknown> }).__lastHistoryPanelProps = undefined;
@@ -430,8 +438,10 @@ async function renderShell(
     closeCardStage: () => undefined,
     onLeaveCardStageCard: () => undefined,
     cardStageSessionSnapshotRef: { current: null },
+    onRequestProjectPickerOpen: () => undefined,
     projectPickerOpenTick: 0,
     taskSearchOpenTick: 0,
+    commandPaletteOpenTick: 0,
     settingsToggleTick: 0,
     onCreateProject: async () => null,
     onDeleteProject: async () => false,

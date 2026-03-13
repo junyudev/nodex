@@ -120,6 +120,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
   });
   const [projectPickerOpenTick, setProjectPickerOpenTick] = useState(0);
   const [taskSearchOpenTick, setTaskSearchOpenTick] = useState(0);
+  const [commandPaletteOpenTick, setCommandPaletteOpenTick] = useState(0);
   const [settingsToggleTick, setSettingsToggleTick] = useState(0);
 
   const setStageRailLayoutMode = useCallback((value: StageRailLayoutMode) => {
@@ -549,6 +550,10 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     setSettingsToggleTick((tick) => tick + 1);
   }, []);
 
+  const handleOpenCommandPalette = useCallback(() => {
+    setCommandPaletteOpenTick((tick) => tick + 1);
+  }, []);
+
   useWorkbenchShortcuts({
     spaces,
     dbProjectId: resolvedDbProjectId,
@@ -560,6 +565,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     onRequestNewWindow: () => {
       void invoke("window:new");
     },
+    onRequestCommandPalette: handleOpenCommandPalette,
     onRequestProjectPicker: handleOpenProjectPicker,
     onRequestTaskSearch: handleOpenTaskSearch,
     onRequestSettingsToggle: handleToggleSettings,
@@ -686,8 +692,10 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       closeCardStage={closeCardStage}
       onLeaveCardStageCard={recordCardLeave}
       cardStageSessionSnapshotRef={cardStageSessionSnapshotRef}
+      onRequestProjectPickerOpen={handleOpenProjectPicker}
       projectPickerOpenTick={projectPickerOpenTick}
       taskSearchOpenTick={taskSearchOpenTick}
+      commandPaletteOpenTick={commandPaletteOpenTick}
       settingsToggleTick={settingsToggleTick}
       onCreateProject={handleCreateProject}
       onDeleteProject={handleDeleteProject}

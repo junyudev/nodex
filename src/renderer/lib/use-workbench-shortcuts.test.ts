@@ -26,6 +26,7 @@ function makeActions(overrides: Partial<WorkbenchShortcutActions> = {}): Workben
     switchToStageIndex: () => {},
     switchToProjectIndex: () => {},
     toggleTerminalPanel: () => {},
+    onRequestCommandPalette: () => {},
     onRequestProjectPicker: () => {},
     onRequestTaskSearch: () => {},
     onRequestSettingsToggle: () => {},
@@ -181,6 +182,56 @@ describe("handleWorkbenchShortcut", () => {
     const handled = handleWorkbenchShortcut(
       {
         key: "n",
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: false,
+        altKey: false,
+        target: null,
+      },
+      actions,
+      true,
+    );
+
+    expect(handled).toBeTrue();
+    expect(called).toBeTrue();
+  });
+
+  test("Cmd+K opens the command palette even inside inputs", () => {
+    let called = false;
+    const actions = makeActions({
+      onRequestCommandPalette: () => {
+        called = true;
+      },
+    });
+
+    const handled = handleWorkbenchShortcut(
+      {
+        key: "k",
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: false,
+        altKey: false,
+        target: makeInputTarget(),
+      },
+      actions,
+      true,
+    );
+
+    expect(handled).toBeTrue();
+    expect(called).toBeTrue();
+  });
+
+  test("Cmd+P also opens the command palette", () => {
+    let called = false;
+    const actions = makeActions({
+      onRequestCommandPalette: () => {
+        called = true;
+      },
+    });
+
+    const handled = handleWorkbenchShortcut(
+      {
+        key: "P",
         ctrlKey: false,
         metaKey: true,
         shiftKey: false,
