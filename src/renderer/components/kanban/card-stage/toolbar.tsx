@@ -13,6 +13,12 @@ interface CardStageToolbarProps {
   onOpenHistoryPanel?: () => void;
 }
 
+const cardStageToolbarButtonChrome =
+  "inline-flex size-7 items-center justify-center rounded-md";
+
+const cardStageToolbarButtonHover =
+  "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]";
+
 export function CardStageToolbar({
   saving,
   historyPanelActive,
@@ -32,10 +38,9 @@ export function CardStageToolbar({
             type="button"
             onClick={onClose}
             className={cn(
-              "flex h-6 w-6 items-center justify-center",
+              cardStageToolbarButtonChrome,
               "text-(--foreground-secondary)",
-              "hover:bg-(--background-tertiary)",
-              "rounded-sm transition-colors duration-100",
+              cardStageToolbarButtonHover,
             )}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -48,10 +53,10 @@ export function CardStageToolbar({
           <button
             type="button"
             className={cn(
-              "flex h-6 w-6 items-center justify-center",
+              cardStageToolbarButtonChrome,
               "text-(--foreground-tertiary)",
-              "hover:bg-(--background-tertiary) hover:text-(--foreground-secondary)",
-              "rounded-sm transition-colors duration-100",
+              cardStageToolbarButtonHover,
+              "hover:text-(--foreground-secondary)",
             )}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -81,11 +86,12 @@ export function CardStageToolbar({
             aria-pressed={showRawContent}
             aria-label="Show raw"
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-sm transition-colors duration-100",
+              cardStageToolbarButtonChrome,
               showRawContent
                 ? "bg-(--background-tertiary) text-(--foreground)"
                 : "text-(--foreground-secondary)",
-              "hover:bg-(--background-tertiary) hover:text-(--foreground)",
+              cardStageToolbarButtonHover,
+              "hover:text-(--foreground)",
             )}
           >
             <RawContentIcon />
@@ -99,11 +105,12 @@ export function CardStageToolbar({
             aria-pressed={!limitMainContentWidth}
             aria-label="Full width"
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-sm transition-colors duration-100",
+              cardStageToolbarButtonChrome,
               !limitMainContentWidth
                 ? "bg-(--background-tertiary) text-(--foreground)"
                 : "text-(--foreground-tertiary)",
-              "hover:bg-(--background-tertiary) hover:text-(--foreground-secondary)",
+              cardStageToolbarButtonHover,
+              "hover:text-(--foreground-secondary)",
             )}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -123,11 +130,12 @@ export function CardStageToolbar({
             type="button"
             onClick={onOpenHistoryPanel}
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-sm transition-colors duration-100",
+              cardStageToolbarButtonChrome,
               historyPanelActive
                 ? "bg-(--background-tertiary) text-(--foreground)"
                 : "text-(--foreground-tertiary)",
-              "hover:bg-(--background-tertiary) hover:text-(--foreground-secondary)",
+              cardStageToolbarButtonHover,
+              "hover:text-(--foreground-secondary)",
             )}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -146,9 +154,10 @@ export function CardStageToolbar({
             type="button"
             onClick={onDelete}
             className={cn(
-              "flex h-7 w-7 items-center justify-center rounded-sm transition-colors duration-100",
+              cardStageToolbarButtonChrome,
               "text-(--foreground-tertiary)",
-              "hover:bg-(--red-bg) hover:text-(--destructive)",
+              cardStageToolbarButtonHover,
+              "hover:text-(--destructive)",
             )}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
