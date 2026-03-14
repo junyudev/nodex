@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { Project } from "@/lib/types";
+import { resetCardDraftStoreForTest, setCardDraftOverlay } from "../../lib/card-draft-store";
 
 let resolveSlidingWindowFocusIntentReturn: { direction: "left" | "right" } = {
   direction: "right",
@@ -573,6 +574,31 @@ describe("WorkbenchShell", () => {
     expect(historyPanelProps?.projectId).toBe("ops");
     expect(historyPanelProps?.cardId).toBe("card-ops-1");
     expect(historyPanelProps?.open).toBeTrue();
+  });
+
+  test("passes the persisted card into card stage even when a draft overlay exists", async () => {
+    resetCardDraftStoreForTest();
+    setCardDraftOverlay("default", "card-1", {
+      title: "Draft title",
+      description: "Draft description",
+    });
+
+    await renderShell(false, "sliding-window", {
+      activeCardsTabId: "session:s-1",
+      cardsTabs: [{ id: "session:s-1", kind: "session", title: "Card 1", sessionId: "s-1" }],
+      cardStageState: {
+        open: true,
+        projectId: "default",
+        cardId: "card-1",
+      },
+    });
+
+    const cardStageProps = (globalThis as { __lastCardStageProps?: Record<string, unknown> }).__lastCardStageProps;
+    const card = cardStageProps?.card as { title?: string; description?: string } | undefined;
+    expect(card?.title).toBe("Card 1");
+    expect(card?.description).toBe("");
+
+    resetCardDraftStoreForTest();
   });
 
   test("keeps the inline toolbar search field visible when search query exists", async () => {

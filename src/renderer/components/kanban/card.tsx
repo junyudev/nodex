@@ -11,6 +11,7 @@ import { useCardPropertyPosition } from "@/lib/use-card-property-position";
 import { useActiveTerminals } from "@/lib/terminal-sessions";
 import { useTheme } from "@/lib/use-theme";
 import { cn } from "@/lib/utils";
+import { mergeCardDraftOverlay, useCardDraftOverlay } from "../../lib/card-draft-store";
 import { extractPlainText } from "@/lib/nfm/extract-text";
 import { ChipPropertyEditor } from "./editor/chip-property-editor";
 import { CardContextMenu } from "./card-context-menu";
@@ -39,6 +40,7 @@ export interface CardPropertyUpdateInput {
 }
 
 interface CardProps {
+  projectId?: string;
   card: CardType;
   columnId: string;
   displayPrefs?: DbViewDisplayPrefs;
@@ -348,7 +350,44 @@ const CardBody = memo(function CardBody({
   );
 });
 
+interface ResolvedCardBodyProps extends Omit<CardBodyProps, "card"> {
+  projectId?: string;
+  card: CardType;
+}
+
+const ResolvedCardBody = memo(function ResolvedCardBody({
+  projectId,
+  card,
+  columnId,
+  displayPrefs,
+  hasTerminal,
+  position,
+  activeProperty,
+  onOpenPropertyEditor,
+  onChipPointerDown,
+}: ResolvedCardBodyProps) {
+  const draftOverlay = useCardDraftOverlay(projectId, card.id);
+  const resolvedCard = useMemo(
+    () => mergeCardDraftOverlay(card, draftOverlay) ?? card,
+    [card, draftOverlay],
+  );
+
+  return (
+    <CardBody
+      card={resolvedCard}
+      columnId={columnId}
+      displayPrefs={displayPrefs}
+      hasTerminal={hasTerminal}
+      position={position}
+      activeProperty={activeProperty}
+      onOpenPropertyEditor={onOpenPropertyEditor}
+      onChipPointerDown={onChipPointerDown}
+    />
+  );
+});
+
 interface CardSurfaceProps extends React.HTMLAttributes<HTMLDivElement> {
+  projectId?: string;
   card: CardType;
   columnId: string;
   displayPrefs?: DbViewDisplayPrefs;
@@ -371,6 +410,7 @@ interface CardSurfaceProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(function CardSurface({
+  projectId,
   card,
   columnId,
   displayPrefs,
@@ -432,7 +472,8 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(function CardSu
         className,
       )}
     >
-      <CardBody
+      <ResolvedCardBody
+        projectId={projectId}
         card={card}
         columnId={columnId}
         displayPrefs={displayPrefs}
@@ -447,13 +488,14 @@ const CardSurface = forwardRef<HTMLDivElement, CardSurfaceProps>(function CardSu
 });
 
 export function CardPreview({
+  projectId,
   card,
   columnId,
   displayPrefs,
   isSelected = false,
   fixedWidth,
   fixedHeight,
-}: Pick<CardProps, "card" | "columnId" | "displayPrefs" | "isSelected"> & {
+}: Pick<CardProps, "projectId" | "card" | "columnId" | "displayPrefs" | "isSelected"> & {
   fixedWidth?: number;
   fixedHeight?: number;
 }) {
@@ -463,6 +505,7 @@ export function CardPreview({
 
   return (
     <CardSurface
+      projectId={projectId}
       card={card}
       columnId={columnId}
       displayPrefs={displayPrefs}
@@ -478,6 +521,7 @@ export function CardPreview({
 }
 
 export function Card({
+  projectId,
   card,
   columnId,
   displayPrefs,
@@ -577,6 +621,7 @@ export function Card({
 
   const surface = (
     <CardSurface
+      projectId={projectId}
       card={card}
       columnId={columnId}
       displayPrefs={displayPrefs}

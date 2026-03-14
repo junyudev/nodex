@@ -858,6 +858,7 @@ export function KanbanBoard({
                 {activeDrag ? (
                   <div className="relative opacity-90">
                     <CardPreview
+                      projectId={projectId}
                       card={activeDrag.items[0]!.card}
                       columnId={activeDrag.items[0]!.columnId}
                       displayPrefs={viewPrefs.display}

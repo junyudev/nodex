@@ -24,7 +24,14 @@ import type {
 import { useScheduleState } from "@/lib/use-schedule-state";
 import { useCardStageCollapsedProperties } from "@/lib/use-card-stage-collapsed-properties";
 import { KANBAN_STATUS_OPTIONS } from "@/lib/kanban-options";
-import { shouldPublishCardStagePatch } from "./card-stage-draft-sync";
+import {
+  clearCardDraftOverlay,
+  setCardDraftOverlay,
+} from "../../../lib/card-draft-store";
+import {
+  buildCardStageDraftOverlay,
+  shouldPublishCardStagePatch,
+} from "./card-stage-draft-sync";
 import { normalizeRunInTarget, resolveDefaultRunInBaseBranch } from "./options";
 import type { CardStageProps, CardStageSessionSnapshot } from "./types";
 
@@ -397,6 +404,27 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       agentBlocked,
     };
   }, [title, description, priority, estimate, dueDate, tags, assignee, agentStatus, agentBlocked]);
+
+  useEffect(() => {
+    if (!card) return;
+
+    return () => {
+      clearCardDraftOverlay(projectId, card.id);
+    };
+  }, [projectId, card?.id]);
+
+  useEffect(() => {
+    if (!card) return;
+
+    const overlay = buildCardStageDraftOverlay(card, {
+      title,
+      description,
+      assignee,
+      agentStatus,
+    });
+
+    setCardDraftOverlay(projectId, card.id, overlay);
+  }, [agentStatus, assignee, card, description, projectId, title]);
 
   useEffect(() => {
     const cardId = card?.id ?? null;

@@ -235,6 +235,7 @@ export const Column = memo(function Column({
                         <DropIndicator className="absolute inset-x-0 top-0 -translate-y-1/2" />
                       ) : null}
                       <Card
+                        projectId={projectId}
                         card={card}
                         columnId={column.id}
                         displayPrefs={displayPrefs}

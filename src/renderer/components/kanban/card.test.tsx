@@ -1,17 +1,23 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { resetCardDraftStoreForTest, setCardDraftOverlay } from "../../lib/card-draft-store";
 import type { CardPropertyPosition } from "@/lib/card-property-position";
 
+let lastUseSortableInput: Record<string, unknown> | null = null;
+
 mock.module("@dnd-kit/sortable", () => ({
-  useSortable: () => ({
+  useSortable: (input: Record<string, unknown>) => {
+    lastUseSortableInput = input;
+    return {
     attributes: {},
     listeners: {},
     setNodeRef: () => undefined,
     transform: null,
     transition: undefined,
     isDragging: false,
-  }),
+    };
+  },
 }));
 
 mock.module("@dnd-kit/utilities", () => ({
@@ -63,6 +69,64 @@ mock.module("./card-context-menu", () => ({
 }));
 
 describe("kanban card", () => {
+  test("renders live draft overlay content for the matching project card", async () => {
+    resetCardDraftStoreForTest();
+    setCardDraftOverlay("default", "card-1", { description: "Draft body" });
+    const { Card } = await import("./card");
+
+    const markup = renderToStaticMarkup(
+      createElement(Card, {
+        projectId: "default",
+        card: {
+          id: "card-1",
+          status: "in_progress",
+          archived: false,
+          title: "Task",
+          description: "Persisted body",
+          priority: "p2-medium",
+          tags: [],
+          agentBlocked: false,
+          created: new Date("2026-03-01T00:00:00.000Z"),
+          order: 0,
+        },
+        columnId: "in_progress",
+        onClick: () => undefined,
+      }),
+    );
+
+    expect(markup.includes("Draft body")).toBe(true);
+  });
+
+  test("keeps live draft overlays out of the interactive card shell", async () => {
+    resetCardDraftStoreForTest();
+    lastUseSortableInput = null;
+    setCardDraftOverlay("default", "card-1", { description: "Draft body" });
+    const { Card } = await import("./card");
+
+    renderToStaticMarkup(
+      createElement(Card, {
+        projectId: "default",
+        card: {
+          id: "card-1",
+          status: "in_progress",
+          archived: false,
+          title: "Task",
+          description: "Persisted body",
+          priority: "p2-medium",
+          tags: [],
+          agentBlocked: false,
+          created: new Date("2026-03-01T00:00:00.000Z"),
+          order: 0,
+        },
+        columnId: "in_progress",
+        onClick: () => undefined,
+      }),
+    );
+
+    const sortableData = (lastUseSortableInput as { data?: { card?: { description?: string } } } | null)?.data;
+    expect(sortableData?.card?.description).toBe("Persisted body");
+  });
+
   test("suppresses browser text selection on the card surface", async () => {
     mockCardPropertyPosition = "inline";
     const { Card } = await import("./card");

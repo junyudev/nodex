@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { shouldPublishCardStagePatch } from "./card-stage-draft-sync";
+import {
+  buildCardStageDraftOverlay,
+  shouldPublishCardStagePatch,
+} from "./card-stage-draft-sync";
 
 describe("card stage draft sync", () => {
   test("keeps freeform text drafts local to the stage", () => {
@@ -21,5 +24,24 @@ describe("card stage draft sync", () => {
       description: "Next description",
       priority: "p1-high",
     })).toBeTrue();
+  });
+
+  test("derives only changed text fields into the draft overlay", () => {
+    const overlay = buildCardStageDraftOverlay({
+      title: "Persisted title",
+      description: "Persisted body",
+      assignee: "alex",
+      agentStatus: "waiting",
+    }, {
+      title: "Draft title",
+      description: "Persisted body",
+      assignee: "alex",
+      agentStatus: "blocked",
+    });
+
+    expect(overlay.title).toBe("Draft title");
+    expect(overlay.agentStatus).toBe("blocked");
+    expect("description" in overlay).toBeFalse();
+    expect("assignee" in overlay).toBeFalse();
   });
 });
