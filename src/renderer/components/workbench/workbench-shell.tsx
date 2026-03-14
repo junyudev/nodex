@@ -1351,7 +1351,11 @@ export function WorkbenchShell({
               onCompleteOccurrence={handleCardStageCompleteOccurrence}
               onSkipOccurrence={handleCardStageSkipOccurrence}
               onOpenHistoryPanel={() => {
-                navigateToCardsTab(dbProjectId, "history", null);
+                navigateToCardsTab(
+                  dbProjectId,
+                  "history",
+                  currentCardStageSession?.id ?? activeRecentSessionId,
+                );
               }}
               onOpenTerminalPanel={() => {
                 const sessionRefId = currentCardStageSession?.id ?? activeRecentSessionId ?? `ephemeral:${activeCardStageCard.id}`;
@@ -1409,7 +1413,7 @@ export function WorkbenchShell({
                 const fallbackSessionId =
                   currentCardStageSession?.projectId === cardStageState.projectId
                     ? currentCardStageSession?.id
-                    : activeCardsSessionId;
+                    : activeRecentSessionId;
                 navigateToCardsTab(
                   dbProjectId,
                   fallbackSessionId ? `session:${fallbackSessionId}` : "",

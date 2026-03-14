@@ -289,6 +289,28 @@ function findRecentCardSession(
   return recentSessions.find((session) => session.projectId === projectId && session.cardId === cardId) ?? null;
 }
 
+export function resolveCardsStageSelectionForCard(
+  recentSessions: readonly RecentCardSession[],
+  projectId: string,
+  cardId: string,
+): {
+  activeRecentSessionId: string | null;
+  activeCardsTabId: string;
+} {
+  const session = findRecentCardSession(recentSessions, projectId, cardId);
+  if (!session) {
+    return {
+      activeRecentSessionId: null,
+      activeCardsTabId: "",
+    };
+  }
+
+  return {
+    activeRecentSessionId: session.id,
+    activeCardsTabId: `session:${session.id}`,
+  };
+}
+
 function recordRecentCardLeaveInList(
   recentSessions: readonly RecentCardSession[],
   projectId: string,
@@ -1848,19 +1870,13 @@ export function useWorkbenchState(
         ? prev.recentCardSessions.find((session) => session.id === sessionId) ?? null
         : null;
       const nextActiveRecentSessionId = target?.id ?? null;
-      const nextActiveCardsTabId = target ? `session:${target.id}` : "";
-
-      if (
-        prev.activeRecentSessionId === nextActiveRecentSessionId
-        && prev.activeCardsTabId === nextActiveCardsTabId
-      ) {
+      if (prev.activeRecentSessionId === nextActiveRecentSessionId) {
         return prev;
       }
 
       return {
         ...prev,
         activeRecentSessionId: nextActiveRecentSessionId,
-        activeCardsTabId: nextActiveCardsTabId,
       };
     });
   }, []);
@@ -1997,6 +2013,7 @@ export const workbenchTestHelpers = {
   normalizeSpaceOrder,
   normalizeRecentSessions,
   findRecentCardSession,
+  resolveCardsStageSelectionForCard,
   recordRecentCardLeaveInList,
   normalizeStageMap,
   normalizeStageCollapsedState,

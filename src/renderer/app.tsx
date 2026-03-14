@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WorkbenchShell } from "@/components/workbench/workbench-shell";
 import { useProjects } from "@/lib/use-projects";
 import {
+  resolveCardsStageSelectionForCard,
   resolveSlidingWindowFocusIntent,
   resolveExpandedStages,
   STAGE_ORDER,
@@ -378,12 +379,6 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
           recordCardLeave(leavingSnapshot);
         }
       }
-
-      const existingSession = recentCardSessions.find((session) =>
-        session.projectId === projectId && session.cardId === cardId
-      );
-      setActiveRecentCardSessionState(existingSession?.id ?? null);
-
       openCardStageState(projectId, cardId);
     },
     [
@@ -391,9 +386,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       cardStageState.open,
       cardStageState.projectId,
       openCardStageState,
-      recentCardSessions,
       recordCardLeave,
-      setActiveRecentCardSessionState,
     ],
   );
 
@@ -595,6 +588,15 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       activeRecentSessionId?: string | null;
     },
   ) => {
+    const defaultCardsSelection = resolveCardsStageSelectionForCard(
+      recentCardSessions,
+      projectId,
+      cardId,
+    );
+    const nextActiveCardsTabId = options?.activeCardsTabId ?? defaultCardsSelection.activeCardsTabId;
+    const nextActiveRecentSessionId = options?.activeRecentSessionId !== undefined
+      ? options.activeRecentSessionId
+      : defaultCardsSelection.activeRecentSessionId;
     const nextSnapshot: NavigationSnapshot = {
       ...currentNavigationSnapshotRef.current,
       dbProjectId: options?.setDbProjectId ?? currentNavigationSnapshotRef.current.dbProjectId,
@@ -604,8 +606,8 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
         projectId,
         cardId,
       },
-      activeCardsTabId: options?.activeCardsTabId ?? currentNavigationSnapshotRef.current.activeCardsTabId,
-      activeRecentSessionId: options?.activeRecentSessionId ?? currentNavigationSnapshotRef.current.activeRecentSessionId,
+      activeCardsTabId: nextActiveCardsTabId,
+      activeRecentSessionId: nextActiveRecentSessionId,
       focusedStage: "cards",
       stageNavDirection: resolveNavigationStageDirection("cards"),
     };
@@ -613,9 +615,21 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     if (options?.setDbProjectId) {
       setDbProjectState(options.setDbProjectId);
     }
+    setActiveCardsTabState(projectId, nextActiveCardsTabId);
+    setActiveRecentCardSessionState(nextActiveRecentSessionId);
     await openCardStageSession(projectId, cardId);
     focusStageWithNearestIntent(options?.setDbProjectId ?? projectId, "cards");
-  }, [focusStageWithNearestIntent, openCardStageSession, recordNavigation, resolveNavigationStageDirection, resolveProjectView, setDbProjectState]);
+  }, [
+    focusStageWithNearestIntent,
+    openCardStageSession,
+    recentCardSessions,
+    recordNavigation,
+    resolveNavigationStageDirection,
+    resolveProjectView,
+    setActiveCardsTabState,
+    setActiveRecentCardSessionState,
+    setDbProjectState,
+  ]);
 
   const navigateToRecentSession = useCallback(async (sessionId: string) => {
     const session = recentCardSessions.find((candidate) => candidate.id === sessionId);

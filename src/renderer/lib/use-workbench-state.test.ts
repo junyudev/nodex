@@ -315,6 +315,35 @@ describe("use-workbench-state helpers", () => {
     expect(match?.id).toBe("session-1");
   });
 
+  test("resolveCardsStageSelectionForCard keeps card-session and history state separate", () => {
+    resetStorage();
+    const recentSessions = [
+      {
+        id: "session-1",
+        projectId: "default",
+        cardId: "card-1",
+        titleSnapshot: "Card 1",
+        lastOpenedAt: "2026-03-01T00:00:00.000Z",
+      },
+    ];
+
+    const existingSelection = workbenchTestHelpers.resolveCardsStageSelectionForCard(
+      recentSessions,
+      "default",
+      "card-1",
+    );
+    const missingSelection = workbenchTestHelpers.resolveCardsStageSelectionForCard(
+      recentSessions,
+      "default",
+      "card-2",
+    );
+
+    expect(existingSelection.activeRecentSessionId).toBe("session-1");
+    expect(existingSelection.activeCardsTabId).toBe("session:session-1");
+    expect(missingSelection.activeRecentSessionId).toBe(null);
+    expect(missingSelection.activeCardsTabId).toBe("");
+  });
+
   test("space refs have stable color and initial", () => {
     resetStorage();
     const one = workbenchTestHelpers.makeSpaceRef("project-a");
