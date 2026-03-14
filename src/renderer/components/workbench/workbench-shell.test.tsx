@@ -305,6 +305,11 @@ mock.module("@/lib/kanban-options", () => ({
   },
 }));
 
+mock.module("@/lib/status-chip", () => ({
+  StatusIcon: ({ className }: { className?: string }) =>
+    createElement("span", { className, "data-status-icon": "true" }, "S"),
+}));
+
 mock.module("@/lib/utils", () => ({
   cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
 }));

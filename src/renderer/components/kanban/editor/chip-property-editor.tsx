@@ -7,12 +7,12 @@ import {
   SELECTOR_MENU_CONTENT_CLASS_NAME,
   SELECTOR_MENU_ITEM_CLASS_NAME,
 } from "@/components/ui/selector-menu-chrome";
-import { columnStyles } from "../column";
 import {
   TOGGLE_LIST_STATUS_ORDER,
   TOGGLE_LIST_STATUS_LABELS,
 } from "@/lib/toggle-list/types";
 import { cn } from "@/lib/utils";
+import { StatusChip } from "@/lib/status-chip";
 import type { MetaChipPropertyType } from "@/lib/toggle-list/meta-chips";
 import {
   tokenToPriorityValue,
@@ -176,7 +176,6 @@ interface MenuItemData {
   value: string;
   label: string;
   className?: string;
-  accentColor?: string;
 }
 
 function getItemsForType(propertyType: string): MenuItemData[] {
@@ -194,14 +193,10 @@ function getItemsForType(propertyType: string): MenuItemData[] {
         className: opt.value === "none" ? "" : estimateStyles[opt.value].className,
       }));
     case "status":
-      return TOGGLE_LIST_STATUS_ORDER.map((statusId) => {
-        const style = columnStyles[statusId];
-        return {
-          value: statusId,
-          label: TOGGLE_LIST_STATUS_LABELS[statusId],
-          accentColor: style?.accentColor ?? "#8E8B86",
-        };
-      });
+      return TOGGLE_LIST_STATUS_ORDER.map((statusId) => ({
+        value: statusId,
+        label: TOGGLE_LIST_STATUS_LABELS[statusId],
+      }));
     default:
       return [];
   }
@@ -243,15 +238,8 @@ function renderItemContent(propertyType: string, item: MenuItemData) {
     );
   }
 
-  if (propertyType === "status" && item.accentColor) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-base">
-        <svg width="8" height="8" viewBox="0 0 8 8" fill="none" className="shrink-0">
-          <rect width="8" height="8" rx="4" fill={item.accentColor} />
-        </svg>
-        {item.label}
-      </span>
-    );
+  if (propertyType === "status") {
+    return <StatusChip statusId={item.value} label={item.label} />;
   }
 
   return <span>{item.label}</span>;

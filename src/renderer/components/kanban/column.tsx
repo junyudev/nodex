@@ -8,9 +8,12 @@ import { Card, type CardPropertyUpdateInput } from "./card";
 import type { DbViewDisplayPrefs } from "../../lib/db-view-prefs";
 import { DropIndicator } from "./drop-indicator";
 import { InlineCardCreator } from "./inline-card-creator";
+import { StatusChip, StatusIcon, columnStyles as sharedColumnStyles } from "@/lib/status-chip";
 import type { Card as CardType, CardCreatePlacement, Column as ColumnType, CardInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { CardContextMenuProjectSummary } from "./card-context-menu-model";
+
+export { columnStyles } from "@/lib/status-chip";
 
 interface ColumnProps {
   projectId: string;
@@ -43,58 +46,6 @@ interface ColumnProps {
   selectedCardIds?: ReadonlySet<string>;
   contextMenuProjects?: CardContextMenuProjectSummary[];
 }
-
-// Column colors - Notion exact RGBA values from Chrome DevTools inspection
-export const columnStyles: Record<string, { dotColor: string; headerBg: string; badgeBg: string; badgeText: string; dropBg: string; accentColor: string }> = {
-  draft: {
-    dotColor: "bg-[var(--column-ideas-dot)]",
-    headerBg: "bg-[var(--column-ideas-header-bg)]",
-    badgeBg: "bg-[var(--status-ideas-bg)]",
-    badgeText: "text-[var(--status-ideas-text)]",
-    dropBg: "bg-[var(--column-ideas-drop-bg)]",
-    accentColor: "var(--status-ideas-dot)",
-  },
-  backlog: {
-    dotColor: "bg-[var(--column-backlog-dot)]",
-    headerBg: "bg-[var(--column-backlog-header-bg)]",
-    badgeBg: "bg-[var(--status-backlog-bg)]",
-    badgeText: "text-[var(--status-backlog-text)]",
-    dropBg: "bg-[var(--column-backlog-drop-bg)]",
-    accentColor: "var(--status-backlog-dot)",
-  },
-  in_progress: {
-    dotColor: "bg-[var(--column-in-progress-dot)]",
-    headerBg: "bg-[var(--column-in-progress-header-bg)]",
-    badgeBg: "bg-[var(--status-in-progress-bg)]",
-    badgeText: "text-[var(--status-in-progress-text)]",
-    dropBg: "bg-[var(--column-in-progress-drop-bg)]",
-    accentColor: "var(--status-in-progress-dot)",
-  },
-  in_review: {
-    dotColor: "bg-[var(--column-review-dot)]",
-    headerBg: "bg-[var(--column-review-header-bg)]",
-    badgeBg: "bg-[var(--status-review-bg)]",
-    badgeText: "text-[var(--status-review-text)]",
-    dropBg: "bg-[var(--column-review-drop-bg)]",
-    accentColor: "var(--status-review-dot)",
-  },
-  done: {
-    dotColor: "bg-[var(--column-done-dot)]",
-    headerBg: "bg-[var(--column-done-header-bg)]",
-    badgeBg: "bg-[var(--status-done-bg)]",
-    badgeText: "text-[var(--status-done-text)]",
-    dropBg: "bg-[var(--column-done-drop-bg)]",
-    accentColor: "var(--status-done-dot)",
-  },
-  "n-archive": {
-    dotColor: "bg-[var(--column-archive-dot)]",
-    headerBg: "bg-[var(--column-archive-header-bg)]",
-    badgeBg: "bg-[var(--column-archive-badge-bg)]",
-    badgeText: "text-[var(--column-archive-badge-text)]",
-    dropBg: "bg-[var(--column-archive-drop-bg)]",
-    accentColor: "var(--column-archive-dot)",
-  },
-};
 
 export const Column = memo(function Column({
   projectId,
@@ -130,7 +81,7 @@ export const Column = memo(function Column({
     [column.cards],
   );
 
-  const styles = columnStyles[column.id] || {
+  const styles = sharedColumnStyles[column.id] || {
     dotColor: "bg-[var(--foreground-tertiary)]",
     headerBg: "bg-[var(--background-secondary)]",
     badgeBg: "bg-[var(--gray-bg)]",
@@ -174,7 +125,11 @@ export const Column = memo(function Column({
                   styles.headerBg,
                 )}
               >
-                <span className={cn("mb-2 h-2 w-2 shrink-0 rounded-full", styles.dotColor)} />
+                <StatusIcon
+                  statusId={column.id}
+                  className="mb-2 size-4"
+                  style={{ color: styles.accentColor }}
+                />
                 <span
                   className="text-base font-medium whitespace-nowrap opacity-70 group-hover:opacity-100"
                   style={{
@@ -210,16 +165,11 @@ export const Column = memo(function Column({
               {/* Status badge pill */}
               <button
                 className={cn(
-                  "flex h-5 items-center gap-1.25 rounded-lg px-1.75 pr-2.25",
+                  "rounded-lg",
                   "hover:opacity-80",
-                  styles.badgeBg,
-                  styles.badgeText
                 )}
               >
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", styles.dotColor)} />
-                <span className="text-sm/5 font-normal">
-                  {column.name}
-                </span>
+                <StatusChip statusId={column.id} label={column.name} />
               </button>
 
               {/* Card count */}

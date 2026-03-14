@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { columnStyles } from "@/components/kanban/column";
 import {
   EMPTY_BRANCH_SELECTOR_STATE,
   parseBranchSelectorState,
@@ -75,12 +74,6 @@ interface UseCardStageControllerResult {
   collapsedPropertyCount: number;
   showCollapsedProperties: boolean;
   currentColumnName: string;
-  colStyle: {
-    dotColor: string;
-    badgeBg: string;
-    badgeText: string;
-    accentColor: string;
-  };
   contentGutterClassName: string;
   contentShellClassName: string;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -1131,13 +1124,6 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
 
   const showCollapsedProperties = propertiesExpanded || collapsedPropertyCount === 0;
 
-  const colStyle = columnStyles[currentColumnId] || {
-    dotColor: "bg-[var(--foreground-tertiary)]",
-    badgeBg: "bg-[var(--gray-bg)]",
-    badgeText: "text-[var(--foreground-secondary)]",
-    accentColor: "#8E8B86",
-  };
-
   const currentColumnName = KANBAN_STATUS_OPTIONS.find((status) => status.id === currentColumnId)?.name ?? columnName;
   const contentGutterClassName = "px-[calc(var(--spacing)*18)]";
   const contentShellClassName = [
@@ -1197,7 +1183,6 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
     collapsedPropertyCount,
     showCollapsedProperties,
     currentColumnName,
-    colStyle,
     contentGutterClassName,
     contentShellClassName,
     scrollContainerRef,

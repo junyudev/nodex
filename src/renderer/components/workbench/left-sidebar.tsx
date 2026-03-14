@@ -38,7 +38,7 @@ export interface StageSidebarSection {
   id: string;
   label?: string;
   count?: number;
-  accentColor?: string;
+  icon?: ComponentType<{ className?: string }>;
   collapsible?: boolean;
   items: StageSidebarItem[];
 }
@@ -505,6 +505,7 @@ export function LeftSidebar({
           };
 
           const renderSection = (section: StageSidebarSection) => {
+            const SectionIcon = section.icon;
             const {
               expanded: sectionExpanded,
               visibleItems,
@@ -539,20 +540,20 @@ export function LeftSidebar({
                         )}
                       >
                         <span className="relative size-3.5 shrink-0">
-                          {section.accentColor ? (
-                            <span
-                              aria-hidden
+                          {SectionIcon ? (
+                            <SectionIcon
                               className={cn(
-                                "absolute inset-0 m-auto size-1.5 rounded-full transition-opacity duration-150",
+                                "absolute inset-0 m-auto size-3.5 transition-opacity duration-150",
                                 "opacity-100 group-hover/status:opacity-0 group-focus-visible:opacity-0",
                               )}
-                              style={{ backgroundColor: section.accentColor }}
                             />
                           ) : null}
                           <ChevronDown
                             className={cn(
                               "absolute inset-0 m-auto size-3 transition-all duration-150",
-                              "opacity-0 group-hover/status:opacity-100 group-focus-visible:opacity-100",
+                              SectionIcon
+                                ? "opacity-0 group-hover/status:opacity-100 group-focus-visible:opacity-100"
+                                : "opacity-100",
                               !sectionExpanded && "-rotate-90",
                             )}
                           />

@@ -94,7 +94,6 @@ export function CardStage(props: CardStageProps) {
               dueDate={controller.dueDate}
               currentColumnId={controller.currentColumnId}
               currentColumnName={controller.currentColumnName}
-              colStyle={controller.colStyle}
               onPriorityChange={controller.handlePriorityChange}
               onEstimateChange={controller.handleEstimateChange}
               onDueDateChange={controller.handleDueDateChange}

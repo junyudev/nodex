@@ -7,7 +7,6 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { estimateOptions, estimateStyles, type Estimate, type Priority } from "@/lib/types";
-import { columnStyles } from "@/components/kanban/column";
 import { CalendarIcon, PriorityIcon, StatusIcon } from "@/components/shared/property-icons";
 import {
   EMPTY_PRIORITY_OPTION_VALUE,
@@ -23,6 +22,7 @@ import {
   cardStagePropertyTriggerChrome,
   cardStagePropertyValueHoverSurface,
 } from "./property-value-styles";
+import { StatusChip } from "@/lib/status-chip";
 
 interface CardStageInlinePropertyStripProps {
   priority?: Priority;
@@ -30,11 +30,6 @@ interface CardStageInlinePropertyStripProps {
   dueDate: string;
   currentColumnId: string;
   currentColumnName: string;
-  colStyle: {
-    badgeBg: string;
-    badgeText: string;
-    accentColor: string;
-  };
   onPriorityChange: (next: Priority | null) => void;
   onEstimateChange: (next: string) => void;
   onDueDateChange: (next: string) => void;
@@ -49,7 +44,6 @@ export function CardStageInlinePropertyStrip({
   dueDate,
   currentColumnId,
   currentColumnName,
-  colStyle,
   onPriorityChange,
   onEstimateChange,
   onDueDateChange,
@@ -154,47 +148,13 @@ export function CardStageInlinePropertyStrip({
                 "gap-0 px-0",
               )}
             >
-              <div
-                className={cn(
-                  "inline-flex h-5 items-center overflow-hidden rounded-lg pr-2 pl-1.75",
-                  colStyle.badgeBg,
-                )}
-              >
-                <div className="flex h-5 items-center overflow-hidden">
-                  <svg width="13" height="8" viewBox="0 0 13 8" fill="none" className="shrink-0">
-                    <rect width="8" height="8" rx="4" fill={colStyle.accentColor} />
-                  </svg>
-                  <span className={cn("text-sm/5 font-normal", colStyle.badgeText)}>
-                    {currentColumnName}
-                  </span>
-                </div>
-              </div>
+              <StatusChip statusId={currentColumnId} label={currentColumnName} />
             </SelectTrigger>
             <SelectContent sideOffset={4}>
               {KANBAN_STATUS_OPTIONS.map((option) => {
-                const statusStyle = columnStyles[option.id];
                 return (
                   <SelectItem key={option.id} value={option.id}>
-                    <div
-                      className={cn(
-                        "inline-flex h-5 items-center rounded-lg pr-2 pl-1.75",
-                        statusStyle?.badgeBg ?? "bg-(--gray-bg)",
-                      )}
-                    >
-                      <div className="flex h-5 items-center">
-                        <svg width="13" height="8" viewBox="0 0 13 8" fill="none" className="shrink-0">
-                          <rect width="8" height="8" rx="4" fill={statusStyle?.accentColor ?? "#8E8B86"} />
-                        </svg>
-                        <span
-                          className={cn(
-                            "text-sm/5 font-normal",
-                            statusStyle?.badgeText ?? "text-(--foreground-secondary)",
-                          )}
-                        >
-                          {option.name}
-                        </span>
-                      </div>
-                    </div>
+                    <StatusChip statusId={option.id} label={option.name} />
                   </SelectItem>
                 );
               })}

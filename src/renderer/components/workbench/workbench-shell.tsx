@@ -80,8 +80,8 @@ import type { StageRailLayoutMode } from "@/lib/stage-rail-layout-mode";
 import { useCodex } from "@/lib/use-codex";
 import { useKanban } from "@/lib/use-kanban";
 import { KANBAN_STATUS_LABELS } from "@/lib/kanban-options";
+import { StatusIcon as SharedStatusIcon } from "@/lib/status-chip";
 import { cn } from "@/lib/utils";
-import { getStatusDotColor } from "../../lib/toggle-list/meta-chips";
 import { TOGGLE_LIST_STATUS_ORDER } from "../../lib/toggle-list/types";
 import {
   resolveVisibleSidebarTopLevelSections,
@@ -947,11 +947,19 @@ export function WorkbenchShell({
       const column = activeProjectBoard?.columns.find((candidate) => candidate.id === statusId);
       if (!column || column.cards.length === 0) return [];
 
+      const StatusSectionIcon = ({ className }: { className?: string }) => (
+        <SharedStatusIcon
+          statusId={statusId}
+          label={column.name || KANBAN_STATUS_LABELS[statusId] || statusId}
+          className={className}
+        />
+      );
+
       return [{
         id: `cards:status:${statusId}`,
         label: column.name || KANBAN_STATUS_LABELS[statusId] || statusId,
         count: column.cards.length,
-        accentColor: getStatusDotColor(column.name || KANBAN_STATUS_LABELS[statusId] || statusId),
+        icon: StatusSectionIcon,
         collapsible: true,
         items: column.cards.map((card) => ({
           id: `project-card:${card.id}`,

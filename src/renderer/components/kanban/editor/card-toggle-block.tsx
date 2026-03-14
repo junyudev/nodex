@@ -8,9 +8,9 @@ import {
 import {
   classifyMetaToken,
   getMetaChipClassName,
-  getStatusDotColor,
   parseMetaTokens,
 } from "@/lib/toggle-list/meta-chips";
+import { createStatusIconElement, getStatusIdByLabel } from "@/lib/status-chip";
 
 export const createCardToggleBlockConfig = createBlockConfig(
   () =>
@@ -56,13 +56,10 @@ export const createCardToggleBlockSpec = createBlockSpec(
         chip.dataset.chipBlockId = block.id;
         chip.dataset.chipToken = token;
 
-        // Status chips get a real dot element instead of CSS ::before
-        const dotColor = getStatusDotColor(token);
-        if (dotColor) {
-          const dot = document.createElement("span");
-          dot.className = "w-2 h-2 rounded-full shrink-0";
-          dot.style.background = dotColor;
-          chip.appendChild(dot);
+        const statusId = getStatusIdByLabel(token);
+        if (statusId) {
+          const icon = createStatusIconElement(statusId, { className: "size-3.5 shrink-0" });
+          chip.appendChild(icon);
         }
 
         chip.appendChild(document.createTextNode(token));

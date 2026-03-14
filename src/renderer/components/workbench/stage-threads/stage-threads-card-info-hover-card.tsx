@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { HoverCard as HoverCardPrimitive } from "radix-ui";
-import { columnStyles } from "@/components/kanban/column";
+import { StatusChip } from "@/lib/status-chip";
 import {
   KANBAN_STATUS_LABELS,
   resolveKanbanPriorityOption,
@@ -31,7 +31,6 @@ export function CardInfoHoverCard({
 }) {
   if (!card) return <>{children}</>;
 
-  const tone = columnId ? columnStyles[columnId] : null;
   const priorityOption = resolveKanbanPriorityOption(card.priority);
   const priorityLabel = priorityOption?.label.replace(" - ", " ") ?? null;
   const descriptionPreview = card.description?.trim()
@@ -73,15 +72,13 @@ export function CardInfoHoverCard({
             <div className="flex flex-wrap items-center gap-1.5">
               {/* Column/status badge */}
               {columnId && (
-                <span className={cn(
-                  "inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium",
-                  tone
-                    ? `${tone.badgeBg} ${tone.badgeText}`
-                    : "bg-(--background-tertiary) text-(--foreground-tertiary)",
-                )}>
-                  <span className={cn("size-1.5 rounded-full", tone?.dotColor ?? "bg-current")} />
-                  {formatColumnName(columnId)}
-                </span>
+                <StatusChip
+                  statusId={columnId}
+                  label={formatColumnName(columnId)}
+                  className="rounded-full px-2 text-[11px]/5 font-medium"
+                  labelClassName="text-[11px] font-medium"
+                  iconClassName="size-3"
+                />
               )}
 
               {/* Priority */}

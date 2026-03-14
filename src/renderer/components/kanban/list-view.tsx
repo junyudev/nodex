@@ -8,7 +8,6 @@ import {
   type DbViewPrefs,
 } from "../../lib/db-view-prefs";
 import { resolveKanbanPriorityOption } from "../../lib/kanban-options";
-import { columnStyles } from "./column";
 import { estimateStyles } from "@/lib/types";
 import type { Card } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -23,6 +22,7 @@ import {
   Calendar,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { StatusChip } from "@/lib/status-chip";
 
 // Card with column info attached
 interface CardWithColumn extends Card {
@@ -356,8 +356,6 @@ export function ListView({
           <tbody>
             {sortedCards.map((card) => {
               const priorityOption = resolveKanbanPriorityOption(card.priority);
-              const style = columnStyles[card.columnId] || columnStyles.draft;
-
               return (
                 <tr
                   key={card.id}
@@ -399,22 +397,7 @@ export function ListView({
 
                   {/* Status */}
                   <td className="border-r border-(--table-border) px-2 py-1 whitespace-nowrap">
-                    <span
-                      className={cn(
-                        "inline-flex h-5 items-center gap-1.25 rounded-lg pr-2.25 pl-1.75",
-                        style.badgeBg
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-2 w-2 shrink-0 rounded-full",
-                          style.dotColor
-                        )}
-                      />
-                      <span className="truncate text-sm/5 font-normal text-(--foreground)">
-                        {card.columnName}
-                      </span>
-                    </span>
+                    <StatusChip statusId={card.columnId} label={card.columnName} />
                   </td>
 
                   {/* Priority */}
