@@ -19,6 +19,10 @@ import {
   TOGGLE_LIST_RANK_FIELDS,
   TOGGLE_LIST_STATUS_ORDER,
 } from "./types";
+import {
+  normalizePriorityClauseIncludeEmpty,
+  priorityClauseIncludesEmpty,
+} from "./priority-clause";
 
 const DEFAULT_FILTER_RULE: ToggleListFilterRule = {
   statuses: [...TOGGLE_LIST_STATUS_ORDER],
@@ -390,14 +394,6 @@ function normalizePriorityList(value: unknown): Priority[] {
   );
 }
 
-function normalizePriorityClauseIncludeEmpty(
-  value: unknown,
-  priorities: Priority[],
-): boolean {
-  if (typeof value === "boolean") return value;
-  return priorities.length === TOGGLE_LIST_PRIORITY_ORDER.length;
-}
-
 function normalizeStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return Array.from(
@@ -422,7 +418,7 @@ function collectClauseUnion<T extends string>(
       if (
         field === "priority"
         && clause.field === "priority"
-        && (clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length)
+        && priorityClauseIncludesEmpty(clause)
       ) {
         includeEmpty = true;
       }

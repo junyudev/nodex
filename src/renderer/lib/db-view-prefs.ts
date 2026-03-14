@@ -7,6 +7,10 @@ import {
   TOGGLE_LIST_PRIORITY_ORDER,
   TOGGLE_LIST_RANK_FIELD_LABELS,
 } from "./toggle-list/types";
+import {
+  normalizePriorityClauseIncludeEmpty,
+  priorityClauseIncludesEmpty,
+} from "./toggle-list/priority-clause";
 
 type WorkbenchView = "kanban" | "list" | "toggle-list" | "canvas" | "calendar";
 
@@ -303,7 +307,7 @@ function normalizeFilterClause(value: unknown): DbViewFilterClause | null {
 
   if (value.field === "status" && value.op === "in") {
     const values = Array.from(new Set(value.values.filter((item): item is CardStatus => typeof item === "string" && CARD_STATUS_ORDER.includes(item as CardStatus))));
-    return { field: "status", op: "in", values: values.length > 0 ? values : [...CARD_STATUS_ORDER] };
+    return { field: "status", op: "in", values };
   }
 
   if (value.field === "priority" && value.op === "in") {
@@ -311,7 +315,7 @@ function normalizeFilterClause(value: unknown): DbViewFilterClause | null {
     return {
       field: "priority",
       op: "in",
-      values: values.length > 0 ? values : [...TOGGLE_LIST_PRIORITY_ORDER],
+      values,
       includeEmpty: normalizePriorityClauseIncludeEmpty(value.includeEmpty, values),
     };
   }
@@ -335,14 +339,6 @@ function normalizeSortKeys(value: unknown, fallback: DbViewSortKey[]): DbViewSor
     .filter((entry): entry is DbViewSortKey => Boolean(entry));
 
   return next.length > 0 ? next : cloneSortKeys(fallback);
-}
-
-function normalizePriorityClauseIncludeEmpty(
-  value: unknown,
-  priorities: Priority[],
-): boolean {
-  if (typeof value === "boolean") return value;
-  return priorities.length === TOGGLE_LIST_PRIORITY_ORDER.length;
 }
 
 function normalizeSortKey(value: unknown): DbViewSortKey | null {
@@ -423,7 +419,7 @@ function matchesClause(card: DbViewCardRecord, clause: DbViewFilterClause): bool
     return clause.values.includes(card.columnId);
   }
   if (clause.field === "priority") {
-    const includeEmpty = clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length;
+    const includeEmpty = priorityClauseIncludesEmpty(clause);
     if (!card.priority) return includeEmpty;
     return clause.values.includes(card.priority);
   }
@@ -581,7 +577,7 @@ function collectUnion<T>(
       if (
         field === "priority"
         && clause.field === "priority"
-        && (clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length)
+        && priorityClauseIncludesEmpty(clause)
       ) {
         includeEmpty = true;
       }

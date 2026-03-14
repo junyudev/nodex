@@ -133,4 +133,30 @@ describe("toggle-list rules v2 jsonlogic interop", () => {
       includeEmpty: true,
     }));
   });
+
+  test("round-trips empty-only priority filters through JSONLogic", () => {
+    const rules: ToggleListRulesV2 = {
+      mode: "advanced",
+      includeHostCard: false,
+      filter: {
+        any: [
+          {
+            all: [
+              { field: "status", op: "in", values: ["backlog"] },
+              { field: "priority", op: "in", values: [], includeEmpty: true },
+            ],
+          },
+        ],
+      },
+      sort: [{ field: "board-order", direction: "asc" }],
+    };
+
+    const json = formatRulesV2AsJsonLogic(rules);
+
+    expect(json.includes("\"missing\"")).toBeTrue();
+
+    const parsed = parseRulesV2FromJsonLogic(json);
+    expect(parsed.error).toBe(null);
+    expect(JSON.stringify(parsed.rules)).toBe(JSON.stringify(rules));
+  });
 });

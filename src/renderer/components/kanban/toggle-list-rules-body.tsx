@@ -7,6 +7,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { formatRulesV2AsJsonLogic, parseRulesV2FromJsonLogic } from "@/lib/toggle-list/rules-v2-jsonlogic";
+import { priorityClauseIncludesEmpty } from "@/lib/toggle-list/priority-clause";
 import {
   deriveToggleListFilterRule,
   moveToggleListProperty,
@@ -829,7 +830,7 @@ function getPriorityIncludesEmpty(group: ToggleListFilterGroup): boolean {
     candidate.field === "priority",
   );
   if (!clause) return true;
-  return clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length;
+  return priorityClauseIncludesEmpty(clause);
 }
 
 function getTagClause(

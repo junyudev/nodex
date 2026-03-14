@@ -35,6 +35,7 @@ import {
   TOGGLE_LIST_STATUS_LABELS,
   TOGGLE_LIST_STATUS_ORDER,
 } from "../../lib/toggle-list/types";
+import { priorityClauseIncludesEmpty } from "../../lib/toggle-list/priority-clause";
 import { cn } from "../../lib/utils";
 
 const PANEL_CLASS_NAME = "min-w-96 max-w-[min(34rem,calc(100vw-2rem))] outline-none";
@@ -130,7 +131,7 @@ function getPriorityIncludesEmpty(group: DbViewFilterGroup) {
     (candidate): candidate is Extract<DbViewFilterClause, { field: "priority" }> => candidate.field === "priority",
   );
   if (!clause) return true;
-  return clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length;
+  return priorityClauseIncludesEmpty(clause);
 }
 
 function getTagClause(group: DbViewFilterGroup) {

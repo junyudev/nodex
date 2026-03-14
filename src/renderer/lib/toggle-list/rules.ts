@@ -13,6 +13,7 @@ import {
   TOGGLE_LIST_PRIORITY_ORDER,
   TOGGLE_LIST_STATUS_ORDER,
 } from "./types";
+import { priorityClauseIncludesEmpty } from "./priority-clause";
 
 const priorityRank = new Map(TOGGLE_LIST_PRIORITY_ORDER.map((priority, index) => [priority, index]));
 const statusRank = new Map(TOGGLE_LIST_STATUS_ORDER.map((status, index) => [status, index]));
@@ -68,7 +69,7 @@ function matchesClause(
     return clause.values.includes(card.columnId);
   }
   if (clause.field === "priority") {
-    const includeEmpty = clause.includeEmpty ?? clause.values.length === TOGGLE_LIST_PRIORITY_ORDER.length;
+    const includeEmpty = priorityClauseIncludesEmpty(clause);
     if (!card.priority) return includeEmpty;
     return clause.values.includes(card.priority);
   }

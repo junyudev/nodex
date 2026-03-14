@@ -134,6 +134,55 @@ describe("db view prefs", () => {
     expect(filtered.map((card) => card.id).join(",")).toBe("a");
   });
 
+  test("normalization preserves explicit empty-only priority filters", () => {
+    const normalized = normalizeDbViewPrefs("kanban", {
+      rules: {
+        filter: {
+          any: [
+            {
+              all: [
+                { field: "status", op: "in", values: ["backlog"] },
+                { field: "priority", op: "in", values: [], includeEmpty: true },
+              ],
+            },
+          ],
+        },
+        sort: [{ field: "board-order", direction: "asc" }],
+      },
+    });
+
+    const priorityClause = normalized.rules.filter.any[0]?.all[1];
+    expect(JSON.stringify(priorityClause)).toBe(JSON.stringify({
+      field: "priority",
+      op: "in",
+      values: [],
+      includeEmpty: true,
+    }));
+  });
+
+  test("normalization preserves explicit empty status filters", () => {
+    const normalized = normalizeDbViewPrefs("kanban", {
+      rules: {
+        filter: {
+          any: [
+            {
+              all: [
+                { field: "status", op: "in", values: [] },
+              ],
+            },
+          ],
+        },
+        sort: [{ field: "board-order", direction: "asc" }],
+      },
+    });
+
+    expect(JSON.stringify(normalized.rules.filter.any[0]?.all[0])).toBe(JSON.stringify({
+      field: "status",
+      op: "in",
+      values: [],
+    }));
+  });
+
   test("sortDbViewCards supports list-specific assignee sorting", () => {
     const prefs = getDefaultDbViewPrefs("list");
     prefs.rules.sort = [{ field: "assignee", direction: "asc" }];
