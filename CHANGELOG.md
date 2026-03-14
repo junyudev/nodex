@@ -8,9 +8,12 @@ All notable changes to this project will be documented in this file.
 - Added a `Show raw` toggle in the Card Stage toolbar that swaps the rich description editor for a read-only raw NFM view of the current card draft, so debugging serialized content is one click away.
 - Added fuzzy full-text card matching to the global command palette, with a cached MiniSearch index so card results now tolerate small typos and rank matches from descriptions, tags, assignees, statuses, column names, project names, and card ids instead of title-only token containment.
 - Added Omnisearch-style contextual preview snippets to command-palette card results, with matching title and metadata indicators plus matching description text highlighted and clamped to three lines.
+- Added a top-level `Projects` sidebar section for switching the DB view datasource, with inline workspace-folder context and project-management shortcuts so project selection no longer depends on a separate current-project header.
 
 ### Changed
 - Changed the global command palette to match VS Code-style command mode: card search is now the default, and command results only appear when the query starts with `>`.
+- Changed `Cmd/Ctrl+Shift+P` to open the global command palette directly in command mode with `>` prefilled, instead of opening the project picker.
+- Changed the command palette to open faster, keep the workbench visible behind it instead of dimming the background, and use a heavier floating shadow for separation.
 
 ### Fixed
 - Fixed the Card Stage history button so it opens reliably again after the navigation-history refactor; the cards overlay no longer clears itself by coupling the selected recent session to the active cards tab.

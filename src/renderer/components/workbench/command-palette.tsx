@@ -11,6 +11,7 @@ import { CommandPaletteSurface } from "./command-palette-surface";
 interface CommandPaletteProps {
   open: boolean;
   openTriggerTick: number;
+  initialQuery?: string;
   projects: Project[];
   activeProjectId: string;
   activeView: WorkbenchView;
@@ -149,7 +150,6 @@ function buildCommands(input: {
       title: "Open project picker",
       subtitle: "Switch spaces or edit the current project",
       keywords: ["project", "space", "switch"],
-      shortcut: createShortcutLabel("Cmd+Shift+P", isMac),
       priority: 480,
     },
     {
@@ -287,6 +287,7 @@ function buildCommands(input: {
 export function CommandPalette({
   open,
   openTriggerTick,
+  initialQuery,
   projects,
   activeProjectId,
   activeView,
@@ -403,6 +404,7 @@ export function CommandPalette({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
+        overlayClassName="bg-transparent"
         onOpenAutoFocus={(event) => event.preventDefault()}
         className="max-w-2xl border-none bg-transparent p-0 shadow-none"
       >
@@ -410,6 +412,7 @@ export function CommandPalette({
         <CommandPaletteSurface
           open={open}
           openTriggerTick={openTriggerTick}
+          initialQuery={initialQuery}
           commands={commands}
           cards={cards}
           cardSearchIndex={cardSearchIndex}

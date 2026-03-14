@@ -24,6 +24,7 @@ type PaletteItem = CommandPaletteCommand | CommandPaletteCard;
 interface CommandPaletteSurfaceProps {
   open: boolean;
   openTriggerTick: number;
+  initialQuery?: string;
   commands: CommandPaletteCommand[];
   cards: CommandPaletteCard[];
   cardSearchIndex?: CommandPaletteCardSearchIndex | null;
@@ -214,6 +215,7 @@ function PaletteSection({
 export function CommandPaletteSurface({
   open,
   openTriggerTick,
+  initialQuery,
   commands,
   cards,
   cardSearchIndex,
@@ -247,15 +249,28 @@ export function CommandPaletteSurface({
   useEffect(() => {
     if (!open) return;
 
+    const nextQuery = initialQuery ?? "";
+    setQuery(nextQuery);
+
     const rafId = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
+      const input = inputRef.current;
+      input?.focus();
+      if (!input) {
+        return;
+      }
+
+      if (nextQuery.length > 0) {
+        input.setSelectionRange(nextQuery.length, nextQuery.length);
+        return;
+      }
+
+      input.select();
     });
 
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [open, openTriggerTick]);
+  }, [initialQuery, open, openTriggerTick]);
 
   useEffect(() => {
     if (open) return;
@@ -345,7 +360,7 @@ export function CommandPaletteSurface({
       cmdk-root=""
       data-cmdk-root
       title="Command menu"
-      className="flex min-w-full select-none flex-col gap-1.25 overflow-hidden rounded-3xl border border-token-border bg-token-dropdown-background px-1.25 py-[calc(var(--spacing)*1.15)] text-sm text-token-foreground shadow-2xl"
+      className="flex min-w-full select-none flex-col gap-1.25 overflow-hidden rounded-3xl border border-token-border bg-token-dropdown-background px-1.25 py-[calc(var(--spacing)*1.15)] text-sm text-token-foreground shadow-[0_28px_90px_rgba(15,23,42,0.34),0_10px_28px_rgba(15,23,42,0.2)]"
     >
       <label
         cmdk-label=""

@@ -145,6 +145,10 @@ describe("CommandPaletteSurface", () => {
         );
       });
 
+      await act(async () => {
+        await Promise.resolve();
+      });
+
       const input = renderer.root.findByProps({ "aria-label": "Command palette search" });
 
       await act(async () => {
@@ -182,6 +186,67 @@ describe("CommandPaletteSurface", () => {
       expect(closeCalls.length).toBe(1);
       expect(executedItems.length).toBe(1);
       expect(executedItems[0]?.card.id).toBe("card-1");
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
+
+  test("seeds command mode when an initial > query is provided", async () => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    const originalConsoleError = console.error;
+    console.error = (...args: unknown[]) => {
+      const firstArg = args[0];
+      if (typeof firstArg === "string" && firstArg.includes("react-test-renderer is deprecated")) {
+        return;
+      }
+      originalConsoleError(...args);
+    };
+
+    try {
+      let renderer!: ReactTestRenderer;
+      await act(async () => {
+        renderer = create(
+          createElement(CommandPaletteSurface, {
+            open: true,
+            openTriggerTick: 2,
+            initialQuery: ">",
+            commands: [
+              {
+                kind: "command",
+                id: "open-settings",
+                title: "Open settings",
+                subtitle: "Workspace preferences",
+                keywords: ["settings", "preferences"],
+                priority: 100,
+              },
+            ],
+            cards: [
+              makePaletteCard({
+                card: makeCard({
+                  id: "card-2",
+                  title: "Misc task",
+                  description: "Should not appear while command mode is active.",
+                }),
+              }),
+            ],
+            cardSearchIndex: createCommandPaletteCardSearchIndex([]),
+            loading: false,
+            onRequestClose: () => undefined,
+            onExecute: () => undefined,
+          }),
+        );
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const input = renderer.root.findByProps({ "aria-label": "Command palette search" });
+      const resultButtons = renderer.root.findAll((node) => node.type === "button" && node.props["cmdk-item"] === "");
+      expect(input.props.value).toBe(">");
+      expect(renderer.root.findAllByType("kbd").length).toBe(0);
+      expect(resultButtons.length).toBe(1);
+      expect(renderer.root.findAll((node) => collectText(node.children).includes("Misc task")).length).toBe(0);
     } finally {
       console.error = originalConsoleError;
     }

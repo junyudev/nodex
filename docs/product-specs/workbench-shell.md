@@ -2,10 +2,11 @@
 
 ## Intent
 The workbench shell presents project work as a staged horizontal pipeline inspired by niri-like focus movement.
-The sidebar project switcher controls the DB stage datasource, while Cards/Threads/Terminal keep stage-local project context and remain mounted in one horizontal shell.
+The sidebar `Projects` section controls the DB stage datasource, while Cards/Threads/Terminal keep stage-local project context and remain mounted in one horizontal shell.
 
 ## Layout
-- Left sidebar: global stage map (`View`, `Card`, `Thread`, `Diff`) and bottom project switcher.
+- Left sidebar: a top-level `Projects` section for DB datasource selection plus the global stage map (`View`, `Card`, `Thread`, `Diff`).
+- The `Projects` section is collapsible, keeps the active DB project highlighted, lists each project as a row while expanded, and still leaves the active project row visible for context when collapsed.
 - The DB stage owns a sticky top toolbar across all board/list/toggle-list/canvas/calendar views.
 - The sticky DB toolbar contains the view selector as a horizontal top-edge tab strip plus a Notion-like trailing action cluster; task search expands inline inside that right-side cluster.
 - The primary DB views keep a consistent inner gutter under that toolbar: kanban, toggle-list, list, calendar, and canvas all inset their content away from the stage edge instead of running flush to the shell chrome.
@@ -97,5 +98,5 @@ The sidebar project switcher controls the DB stage datasource, while Cards/Threa
 - `Cmd/Ctrl+1..4`: jump to stage index.
 - `Cmd/Ctrl+Alt+1..9`: jump to project index.
 - `Cmd/Ctrl+Alt+1..9` updates DB datasource project only.
-- `Cmd/Ctrl+Shift+P`: open project picker.
+- `Cmd/Ctrl+Shift+P`: open command search by launching the command palette with `>` prefilled.
 - `Cmd/Ctrl+J`: toggle global bottom terminal panel.

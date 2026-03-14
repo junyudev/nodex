@@ -209,6 +209,7 @@ interface WorkbenchShellProps {
   projectPickerOpenTick: number;
   taskSearchOpenTick: number;
   commandPaletteOpenTick: number;
+  commandPaletteInitialQuery: string;
   settingsToggleTick: number;
   onCreateProject: (
     id: string,
@@ -363,6 +364,7 @@ export function WorkbenchShell({
   projectPickerOpenTick,
   taskSearchOpenTick,
   commandPaletteOpenTick,
+  commandPaletteInitialQuery,
   settingsToggleTick,
   onCreateProject,
   onDeleteProject,
@@ -1569,6 +1571,7 @@ export function WorkbenchShell({
       <CommandPalette
         open={commandPaletteOpen}
         openTriggerTick={commandPaletteOpenTick}
+        initialQuery={commandPaletteInitialQuery}
         projects={projects}
         activeProjectId={dbProjectId}
         activeView={activeView}

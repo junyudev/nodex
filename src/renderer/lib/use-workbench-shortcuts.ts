@@ -10,7 +10,7 @@ export interface WorkbenchShortcutActions {
   switchToProjectIndex: (index: number) => void;
   toggleTerminalPanel: (projectId: string) => void;
   onRequestNewWindow?: () => void;
-  onRequestCommandPalette?: () => void;
+  onRequestCommandPalette?: (initialQuery?: string) => void;
   onRequestProjectPicker?: () => void;
   onRequestTaskSearch?: (projectId: string) => void;
   onRequestSettingsToggle?: () => void;
@@ -114,9 +114,9 @@ export function handleWorkbenchShortcut(
     return true;
   }
 
-  if (!e.altKey && (e.key === "P" || e.key === "p") && e.shiftKey && actions.onRequestProjectPicker) {
+  if (!e.altKey && (e.key === "P" || e.key === "p") && e.shiftKey && actions.onRequestCommandPalette) {
     if (targetIsEditable && !targetIsEditorSurface) return false;
-    actions.onRequestProjectPicker();
+    actions.onRequestCommandPalette?.(">");
     return true;
   }
 

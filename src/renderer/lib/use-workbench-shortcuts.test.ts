@@ -382,9 +382,9 @@ describe("handleWorkbenchShortcut", () => {
     expect(selectedProjectIndex).toBe(1);
   });
 
-  test("Cmd+Shift+P opens project picker", () => {
-    let called = false;
-    const actions = makeActions({ onRequestProjectPicker: () => (called = true) });
+  test("Cmd+Shift+P opens command search with a > seed", () => {
+    let query: string | undefined;
+    const actions = makeActions({ onRequestCommandPalette: (initialQuery) => (query = initialQuery) });
 
     const handled = handleWorkbenchShortcut(
       {
@@ -400,7 +400,7 @@ describe("handleWorkbenchShortcut", () => {
     );
 
     expect(handled).toBeTrue();
-    expect(called).toBeTrue();
+    expect(query).toBe(">");
   });
 
   test("Cmd+F opens task search for active project", () => {
@@ -499,10 +499,10 @@ describe("handleWorkbenchShortcut", () => {
     expect(direction).toBe(1);
   });
 
-  test("Cmd+Shift+P opens project picker inside NFM editor target", () => {
-    let called = false;
+  test("Cmd+Shift+P opens command search inside NFM editor target", () => {
+    let query: string | undefined;
     const target = makeNfmEditorTarget();
-    const actions = makeActions({ onRequestProjectPicker: () => (called = true) });
+    const actions = makeActions({ onRequestCommandPalette: (initialQuery) => (query = initialQuery) });
 
     const handled = handleWorkbenchShortcut(
       {
@@ -518,7 +518,7 @@ describe("handleWorkbenchShortcut", () => {
     );
 
     expect(handled).toBeTrue();
-    expect(called).toBeTrue();
+    expect(query).toBe(">");
   });
 
   test("Cmd+F remains unhandled inside NFM editor target", () => {

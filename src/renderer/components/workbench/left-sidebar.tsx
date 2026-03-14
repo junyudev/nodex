@@ -4,12 +4,12 @@ import {
   DropdownMenu as DropdownMenuPrimitive,
 } from "radix-ui";
 import { cn } from "@/lib/utils";
-import { invoke } from "@/lib/api";
 import { formatElapsedSince } from "@/lib/elapsed-time";
 import type { Project } from "@/lib/types";
 import type { SpaceRef } from "@/lib/use-workbench-state";
 import { resolveStageSidebarSectionRenderState } from "./left-sidebar-section-state";
 import { LeftSidebarProjectManager } from "./left-sidebar-project-manager";
+import { SidebarProjectsSection } from "./left-sidebar-projects-section";
 import { SIDEBAR_SECTION_ITEM_LIMITS, type SidebarSectionItemLimit } from "../../lib/sidebar-section-prefs";
 import {
   ArrowDown,
@@ -18,7 +18,6 @@ import {
   ChevronDown,
   ChevronRight,
   EyeOff,
-  FolderOpen,
   Hash,
   MoreHorizontal,
 } from "lucide-react";
@@ -70,7 +69,6 @@ interface LeftSidebarProps {
   spaces: SpaceRef[];
   activeProjectId: string;
   stageGroups: StageSidebarGroup[];
-  utilityActions?: React.ReactNode;
   collapsed: boolean;
   width: number;
   expandedSections: Record<string, boolean>;
@@ -284,7 +282,6 @@ export function LeftSidebar({
   spaces,
   activeProjectId,
   stageGroups,
-  utilityActions,
   collapsed,
   width,
   expandedSections,
@@ -299,15 +296,10 @@ export function LeftSidebar({
   onDeleteProject,
   onRenameProject,
 }: LeftSidebarProps) {
-  const projectById = useMemo(
-    () => new Map(projects.map((project) => [project.id, project])),
-    [projects],
+  const projectsStageGroup = useMemo(
+    () => stageGroups.find((group) => group.id === "db"),
+    [stageGroups],
   );
-  const activeProject = projectById.get(activeProjectId);
-  const activeProjectName = activeProject?.name ?? activeProjectId;
-  const activeWorkspacePath = activeProject?.workspacePath?.trim() ?? "";
-  const activeWorkspacePathLabel = activeWorkspacePath || "Set workspace path";
-  const activeWorkspacePathTitle = activeWorkspacePath || "Set workspace path for Codex threads";
   const visibleStageGroups = useMemo(
     () => stageGroups.filter((group) => group.id !== "db"),
     [stageGroups],
@@ -332,26 +324,6 @@ export function LeftSidebar({
       window.clearInterval(intervalId);
     };
   }, [hasElapsedSidebarItems]);
-
-  const handleSetActiveWorkspacePath = async () => {
-    if (!activeProject) return;
-
-    try {
-      const pickedPath = (await invoke("pty:pick-cwd")) as string | null;
-      if (!pickedPath) return;
-
-      const updatedProject = await onRenameProject(
-        activeProject.id,
-        activeProject.id,
-        activeProject.name,
-        undefined,
-        pickedPath,
-      );
-      if (!updatedProject) return;
-    } catch {
-      // Keep the text input path editor available as fallback.
-    }
-  };
 
   const handleResizeStart = (event: React.MouseEvent) => {
     event.preventDefault();
@@ -388,52 +360,31 @@ export function LeftSidebar({
         width,
       }}
     >
-      {/* Project header — drag region is an overlay so traffic lights stay clickable */}
-      <header className="relative shrink-0 px-[calc(var(--sidebar-shell-padding-x)+var(--sidebar-row-padding-x))] pt-11 pb-2">
+      <header className="relative h-11 shrink-0">
         <div
           className="absolute inset-x-0 top-0 h-9"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         />
-        <div className="flex items-baseline gap-2">
-          <h2 className="min-w-0 flex-1 truncate font-semibold text-(--sidebar-foreground)">
-            {activeProjectName}
-          </h2>
-          {utilityActions && (
-            <div className="flex shrink-0 items-center gap-0.5">{utilityActions}</div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => void handleSetActiveWorkspacePath()}
-          disabled={!activeProject}
-          className={cn(
-            "group/path mt-0.5 flex min-w-0 items-center gap-1 rounded-sm",
-            "disabled:cursor-not-allowed disabled:opacity-70",
-          )}
-          title={activeWorkspacePathTitle}
-          aria-label={activeWorkspacePathTitle}
-        >
-          <FolderOpen className="size-3 shrink-0 text-(--sidebar-foreground-tertiary) group-hover/path:text-(--sidebar-foreground-secondary)" />
-          <span
-            className={cn(
-              "truncate font-mono text-xs/4",
-              activeWorkspacePath
-                ? "text-(--sidebar-foreground-secondary)"
-                : "text-(--sidebar-foreground-tertiary)",
-            )}
-          >
-            {activeWorkspacePathLabel}
-          </span>
-        </button>
       </header>
 
-      {/* Stage groups */}
       <div className="scrollbar-token min-h-0 flex-1 overflow-y-auto px-(--sidebar-shell-padding-x) py-1">
+        <SidebarProjectsSection
+          projects={projects}
+          spaces={spaces}
+          activeProjectId={activeProjectId}
+          expanded={projectsStageGroup?.expanded ?? true}
+          onToggleExpanded={projectsStageGroup?.onToggleExpanded ?? (() => undefined)}
+          onSelectSpace={onSelectSpace}
+          onCreateProject={onCreateProject}
+          onDeleteProject={onDeleteProject}
+          onRenameProject={onRenameProject}
+        />
+
         {visibleStageGroups.map((group) => {
           const groupExpanded = group.hideHeader ? true : group.expanded;
           const groupItemPaddingClass = group.hideHeader
             ? "px-[var(--sidebar-row-padding-x)]"
-            : "pr-[var(--sidebar-row-padding-x)] pl-[calc(var(--sidebar-row-padding-x)+0.875rem+0.375rem)]";
+            : "pr-1 pl-[calc(var(--sidebar-row-padding-x)+0.875rem+0.375rem)]";
           const sections = group.sections.filter((section) => section.items.length > 0);
           const groupItemLimit = group.moreActions?.itemLimit ?? STAGE_ITEM_COLLAPSE_LIMIT;
 
@@ -455,7 +406,7 @@ export function LeftSidebar({
               ? "px-[var(--sidebar-row-padding-x)]"
               : item.icon
                 ? "px-[var(--sidebar-row-padding-x)]"
-                : "pr-[var(--sidebar-row-padding-x)] pl-[calc(var(--sidebar-row-padding-x)+0.875rem+0.375rem)]";
+                : "pr-2 pl-[calc(var(--sidebar-row-padding-x)+0.875rem+0.375rem)]";
 
             return (
               <button
@@ -479,7 +430,7 @@ export function LeftSidebar({
                 {elapsedLabel && (
                   <span
                     title={elapsedTitle}
-                    className="ml-auto shrink-0 text-xs/4 text-(--sidebar-foreground-tertiary) tabular-nums"
+                    className="ml-auto shrink-0 text-sm/4 text-(--sidebar-foreground-tertiary) tabular-nums"
                   >
                     {elapsedLabel}
                   </span>
@@ -489,7 +440,7 @@ export function LeftSidebar({
                     role="button"
                     tabIndex={-1}
                     className={cn(
-                      "inline-flex h-4 w-4 items-center justify-center text-(--sidebar-foreground-tertiary) opacity-0 group-hover:opacity-100 hover:text-(--sidebar-foreground)",
+                      "inline-flex h-4 items-center justify-center text-(--sidebar-foreground-tertiary) opacity-0 group-hover:opacity-100 hover:text-(--sidebar-foreground)",
                       elapsedLabel ? "ml-1" : "ml-auto",
                     )}
                     onClick={(event) => {
@@ -685,12 +636,12 @@ export function LeftSidebar({
           };
 
           return (
-            <section key={group.id} className={group.expanded ? "mb-2 last:mb-0" : "mb-1 last:mb-0"}>
+            <section key={group.id} className={group.expanded ? "mb-3 last:mb-0" : "mb-1 last:mb-0"}>
               {!group.hideHeader && (
                 <div
                   className={cn(
-                    "group/top-header flex min-h-7.5 items-center gap-1 rounded-lg px-(--sidebar-row-padding-x) py-(--sidebar-row-padding-tight-y)",
-                    "text-(--sidebar-foreground-secondary) opacity-75 hover:bg-sidebar-accent hover:text-(--sidebar-foreground)",
+                    "group/top-header flex min-h-7.5 items-center gap-1 rounded-lg pl-(--sidebar-header-padding-x) pr-1 py-(--sidebar-row-padding-tight-y)",
+                    "text-token-input-placeholder-foreground hover:bg-sidebar-accent hover:text-(--sidebar-foreground) font-medium",
                   )}
                 >
                   <button
@@ -698,7 +649,7 @@ export function LeftSidebar({
                     onClick={group.onToggleExpanded}
                     aria-expanded={group.expanded}
                     className={cn(
-                      "flex min-w-0 flex-1 items-center gap-2 text-left text-sm outline-none",
+                      "flex min-w-0 flex-1 items-center gap-2 text-left text-xs outline-none",
                     )}
                   >
                     <div className="flex min-w-0 items-center gap-1">

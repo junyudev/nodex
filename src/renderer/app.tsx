@@ -130,6 +130,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
   const [projectPickerOpenTick, setProjectPickerOpenTick] = useState(0);
   const [taskSearchOpenTick, setTaskSearchOpenTick] = useState(0);
   const [commandPaletteOpenTick, setCommandPaletteOpenTick] = useState(0);
+  const [commandPaletteInitialQuery, setCommandPaletteInitialQuery] = useState("");
   const [settingsToggleTick, setSettingsToggleTick] = useState(0);
 
   const setStageRailLayoutMode = useCallback((value: StageRailLayoutMode) => {
@@ -805,7 +806,8 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
     setSettingsToggleTick((tick) => tick + 1);
   }, []);
 
-  const handleOpenCommandPalette = useCallback(() => {
+  const handleOpenCommandPalette = useCallback((initialQuery = "") => {
+    setCommandPaletteInitialQuery(initialQuery);
     setCommandPaletteOpenTick((tick) => tick + 1);
   }, []);
 
@@ -953,6 +955,7 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       projectPickerOpenTick={projectPickerOpenTick}
       taskSearchOpenTick={taskSearchOpenTick}
       commandPaletteOpenTick={commandPaletteOpenTick}
+      commandPaletteInitialQuery={commandPaletteInitialQuery}
       settingsToggleTick={settingsToggleTick}
       onCreateProject={handleCreateProject}
       onDeleteProject={handleDeleteProject}
