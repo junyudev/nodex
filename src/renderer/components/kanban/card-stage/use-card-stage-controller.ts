@@ -8,7 +8,9 @@ import { invoke } from "@/lib/api";
 import { formatCardStageCollapsedPropertyCountLabel } from "@/lib/card-stage-collapsed-properties";
 import {
   readCardStageContentWidthPreference,
+  readCardStageShowRawContentPreference,
   writeCardStageContentWidthPreference,
+  writeCardStageShowRawContentPreference,
 } from "@/lib/card-stage-layout";
 import { loadScrollPosition, saveScrollPosition } from "@/lib/card-stage-scroll";
 import { FIELD_SAVE_DEBOUNCE_MS, SCROLL_SAVE_DEBOUNCE_MS, TAG_BLUR_DELAY_MS } from "@/lib/timing";
@@ -61,6 +63,7 @@ interface UseCardStageControllerResult {
   propertiesExpanded: boolean;
   currentColumnId: string;
   limitMainContentWidth: boolean;
+  showRawContent: boolean;
   historyPanelActive: boolean;
   linkedCodexThreads: NonNullable<CardStageProps["linkedCodexThreads"]>;
   tagHighlight: number;
@@ -103,6 +106,7 @@ interface UseCardStageControllerResult {
   handleClose: () => Promise<void>;
   handleDelete: () => Promise<void>;
   handleToggleContentWidth: () => void;
+  handleToggleShowRawContent: () => void;
   handleScroll: () => void;
   handleTitleChange: (value: string) => void;
   handleTitleBlur: () => void;
@@ -251,6 +255,9 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
   const [currentColumnId, setCurrentColumnId] = useState(columnId);
   const [limitMainContentWidth, setLimitMainContentWidth] = useState(() =>
     readCardStageContentWidthPreference(),
+  );
+  const [showRawContent, setShowRawContent] = useState(() =>
+    readCardStageShowRawContentPreference(),
   );
   const { collapsedProperties } = useCardStageCollapsedProperties();
 
@@ -913,6 +920,14 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
     });
   }, []);
 
+  const handleToggleShowRawContent = useCallback(() => {
+    setShowRawContent((current) => {
+      const next = !current;
+      writeCardStageShowRawContentPreference(next);
+      return next;
+    });
+  }, []);
+
   const refreshRunInBranchState = useCallback(async () => {
     const requestedCwd = projectWorkspacePath?.trim();
     if (!requestedCwd) {
@@ -1191,6 +1206,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
     propertiesExpanded,
     currentColumnId,
     limitMainContentWidth,
+    showRawContent,
     historyPanelActive,
     linkedCodexThreads,
     tagHighlight,
@@ -1232,6 +1248,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
     handleClose,
     handleDelete,
     handleToggleContentWidth,
+    handleToggleShowRawContent,
     handleScroll,
     handleTitleChange,
     handleTitleBlur,

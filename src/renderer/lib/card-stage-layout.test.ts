@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   readCardStageContentWidthPreference,
+  readCardStageShowRawContentPreference,
   writeCardStageContentWidthPreference,
+  writeCardStageShowRawContentPreference,
 } from "./card-stage-layout";
 
 describe("card-stage layout", () => {
@@ -41,6 +43,22 @@ describe("card-stage layout", () => {
       writeCardStageContentWidthPreference(false);
 
       expect(readCardStageContentWidthPreference()).toBeFalse();
+    });
+  });
+
+  test("defaults to hiding raw content mode", () => {
+    withMockLocalStorage(() => {
+      expect(readCardStageShowRawContentPreference()).toBeFalse();
+    });
+  });
+
+  test("persists the raw content preference without clobbering width", () => {
+    withMockLocalStorage(() => {
+      writeCardStageContentWidthPreference(false);
+      writeCardStageShowRawContentPreference(true);
+
+      expect(readCardStageContentWidthPreference()).toBeFalse();
+      expect(readCardStageShowRawContentPreference()).toBeTrue();
     });
   });
 });

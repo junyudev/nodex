@@ -205,6 +205,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - All-day mode uses start/end `date` inputs (end shown as inclusive in UI, persisted as end-exclusive storage) with the same guardrails.
 - Tag input suggests existing project tags while typing via native autocomplete options (excluding tags already on the current card)
 - BlockNote block editor for description (Notion-flavored Markdown)
+- Card Stage toolbar includes a `Show raw` toggle that swaps the description area into a read-only raw NFM view of the current local draft for debugging, without changing card fields or save behavior.
 - BlockNote structural animations are mostly disabled in-editor (including indent/unindent depth transitions) to keep editing interactions immediate
 - NFM link labels are escape-normalized on parse, so repeated auto-save cycles remain idempotent (prevents exponential backslash growth on escaped markdown markers inside link text)
 - NFM autolink behavior is renderer-configurable: typing and paste recognition can be toggled independently, bare-domain recognition defaults on, and paste-time matching is intentionally strict enough to leave repo paths, slash-separated path segments, local file paths, and filename-like text such as `foo/bar/baz.md`, `local/code-block-mock-ui/action-menu-popper.com`, or `nfm-editor-copy-behavior.md` plain by default

@@ -2,6 +2,7 @@ const STORAGE_KEY = "nodex-card-stage-layout-v1";
 
 interface CardStageLayoutPrefs {
   limitMainContentWidth?: boolean;
+  showRawContent?: boolean;
 }
 
 function readPrefs(): CardStageLayoutPrefs {
@@ -12,10 +13,20 @@ function readPrefs(): CardStageLayoutPrefs {
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed !== "object" || parsed === null) return {};
 
-    const candidate = parsed as { limitMainContentWidth?: unknown };
-    if (typeof candidate.limitMainContentWidth !== "boolean") return {};
+    const candidate = parsed as {
+      limitMainContentWidth?: unknown;
+      showRawContent?: unknown;
+    };
 
-    return { limitMainContentWidth: candidate.limitMainContentWidth };
+    const prefs: CardStageLayoutPrefs = {};
+    if (typeof candidate.limitMainContentWidth === "boolean") {
+      prefs.limitMainContentWidth = candidate.limitMainContentWidth;
+    }
+    if (typeof candidate.showRawContent === "boolean") {
+      prefs.showRawContent = candidate.showRawContent;
+    }
+
+    return prefs;
   } catch {
     return {};
   }
@@ -23,7 +34,11 @@ function readPrefs(): CardStageLayoutPrefs {
 
 function writePrefs(prefs: CardStageLayoutPrefs): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+    const nextPrefs = {
+      ...readPrefs(),
+      ...prefs,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextPrefs));
   } catch {
     // localStorage may be unavailable.
   }
@@ -35,4 +50,12 @@ export function readCardStageContentWidthPreference(): boolean {
 
 export function writeCardStageContentWidthPreference(limitMainContentWidth: boolean): void {
   writePrefs({ limitMainContentWidth });
+}
+
+export function readCardStageShowRawContentPreference(): boolean {
+  return readPrefs().showRawContent ?? false;
+}
+
+export function writeCardStageShowRawContentPreference(showRawContent: boolean): void {
+  writePrefs({ showRawContent });
 }

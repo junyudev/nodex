@@ -2,6 +2,7 @@ import { NfmEditor } from "./editor/nfm-editor";
 import { cn } from "@/lib/utils";
 import { CardStageInlinePropertyStrip } from "./card-stage/inline-property-strip";
 import { CardStagePropertiesSection } from "./card-stage/properties-section";
+import { CardStageRawContent } from "./card-stage/raw-content";
 import { CardStageToolbar } from "./card-stage/toolbar";
 import { useCardStageController } from "./card-stage/use-card-stage-controller";
 import type { CardStageProps } from "./card-stage/types";
@@ -19,6 +20,7 @@ export function CardStage(props: CardStageProps) {
         saving={controller.saving}
         historyPanelActive={controller.historyPanelActive}
         limitMainContentWidth={controller.limitMainContentWidth}
+        showRawContent={controller.showRawContent}
         onClose={() => {
           void controller.handleClose();
         }}
@@ -26,6 +28,7 @@ export function CardStage(props: CardStageProps) {
           void controller.handleDelete();
         }}
         onToggleContentWidth={controller.handleToggleContentWidth}
+        onToggleShowRawContent={controller.handleToggleShowRawContent}
         onOpenHistoryPanel={controller.onOpenHistoryPanel}
       />
 
@@ -105,22 +108,26 @@ export function CardStage(props: CardStageProps) {
             <CardStagePropertiesSection controller={controller} />
 
             <div className="pt-2 pb-8">
-              <NfmEditor
-                key={`${props.projectId}:${controller.card.id}`}
-                projectId={props.projectId}
-                content={controller.description}
-                onChange={controller.handleDescriptionChange}
-                onBlur={controller.handleDescriptionBlur}
-                sourceCardContext={{
-                  cardId: controller.card.id,
-                  columnId: controller.currentColumnId,
-                }}
-                linkedCodexThreads={props.linkedCodexThreads}
-                onOpenCodexThread={props.onOpenCodexThread}
-                onStartThreadSection={props.onStartThreadSection}
-                onSendThreadSectionPrompt={props.onSendThreadSectionPrompt}
-                placeholder="Add a description..."
-              />
+              {controller.showRawContent ? (
+                <CardStageRawContent content={controller.description} />
+              ) : (
+                <NfmEditor
+                  key={`${props.projectId}:${controller.card.id}`}
+                  projectId={props.projectId}
+                  content={controller.description}
+                  onChange={controller.handleDescriptionChange}
+                  onBlur={controller.handleDescriptionBlur}
+                  sourceCardContext={{
+                    cardId: controller.card.id,
+                    columnId: controller.currentColumnId,
+                  }}
+                  linkedCodexThreads={props.linkedCodexThreads}
+                  onOpenCodexThread={props.onOpenCodexThread}
+                  onStartThreadSection={props.onStartThreadSection}
+                  onSendThreadSectionPrompt={props.onSendThreadSectionPrompt}
+                  placeholder="Add a description..."
+                />
+              )}
             </div>
           </div>
         </div>

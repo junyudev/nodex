@@ -5,9 +5,11 @@ interface CardStageToolbarProps {
   saving: boolean;
   historyPanelActive: boolean;
   limitMainContentWidth: boolean;
+  showRawContent: boolean;
   onClose: () => void;
   onDelete: () => void;
   onToggleContentWidth: () => void;
+  onToggleShowRawContent: () => void;
   onOpenHistoryPanel?: () => void;
 }
 
@@ -15,9 +17,11 @@ export function CardStageToolbar({
   saving,
   historyPanelActive,
   limitMainContentWidth,
+  showRawContent,
   onClose,
   onDelete,
   onToggleContentWidth,
+  onToggleShowRawContent,
   onOpenHistoryPanel,
 }: CardStageToolbarProps) {
   return (
@@ -69,6 +73,24 @@ export function CardStageToolbar({
             Saving...
           </span>
         )}
+
+        <Tooltip content={showRawContent ? "Show editor" : "Show raw-format content"} side="bottom">
+          <button
+            type="button"
+            onClick={onToggleShowRawContent}
+            aria-pressed={showRawContent}
+            aria-label="Show raw"
+            className={cn(
+              "flex h-7 w-7 items-center justify-center rounded-sm transition-colors duration-100",
+              showRawContent
+                ? "bg-(--background-tertiary) text-(--foreground)"
+                : "text-(--foreground-secondary)",
+              "hover:bg-(--background-tertiary) hover:text-(--foreground)",
+            )}
+          >
+            <RawContentIcon />
+          </button>
+        </Tooltip>
 
         <Tooltip content="Full width" side="bottom">
           <button
@@ -142,5 +164,19 @@ export function CardStageToolbar({
         </Tooltip>
       </div>
     </div>
+  );
+}
+
+function RawContentIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <path
+        d="M4.75 3.5L2.25 7l2.5 3.5M9.25 3.5L11.75 7l-2.5 3.5M6.1 10.75l1.8-7.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
