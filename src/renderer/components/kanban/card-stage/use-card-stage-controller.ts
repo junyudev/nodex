@@ -24,6 +24,7 @@ import type {
 import { useScheduleState } from "@/lib/use-schedule-state";
 import { useCardStageCollapsedProperties } from "@/lib/use-card-stage-collapsed-properties";
 import { KANBAN_STATUS_OPTIONS } from "@/lib/kanban-options";
+import { shouldPublishCardStagePatch } from "./card-stage-draft-sync";
 import { normalizeRunInTarget, resolveDefaultRunInBaseBranch } from "./options";
 import type { CardStageProps, CardStageSessionSnapshot } from "./types";
 
@@ -597,7 +598,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       markDraftDirty("title");
       setTitle(value);
 
-      if (card) {
+      if (card && shouldPublishCardStagePatch({ title: value })) {
         onPatch(columnId, card.id, { title: value });
       }
 
@@ -637,7 +638,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       markDraftDirty("assignee");
       setAssignee(value);
 
-      if (card) {
+      if (card && shouldPublishCardStagePatch({ assignee: value })) {
         onPatch(columnId, card.id, { assignee: value });
       }
 
@@ -677,7 +678,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       markDraftDirty("agentStatus");
       setAgentStatus(value);
 
-      if (card) {
+      if (card && shouldPublishCardStagePatch({ agentStatus: value })) {
         onPatch(columnId, card.id, { agentStatus: value });
       }
 
@@ -717,7 +718,7 @@ export function useCardStageController(props: CardStageProps): UseCardStageContr
       markDraftDirty("description");
       setDescription(value);
 
-      if (card) {
+      if (card && shouldPublishCardStagePatch({ description: value })) {
         onPatch(columnId, card.id, { description: value });
       }
 

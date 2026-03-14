@@ -4,6 +4,9 @@ Status: Verified
 
 This file captures high-signal implementation discoveries that have caused regressions or costly debugging in the past.
 
+### Card Stage freeform text drafts should stay local until save, not patch the shared board store on every keystroke
+`title`, `description`, `assignee`, and `agentStatus` already have local card-stage draft state plus debounced/blur persistence. Mirroring those drafts into the shared Kanban store on every keystroke (`onPatch`) turns editor input into a project-wide realtime update: sidebar groups, card menus, and card previews all rerender, and card surfaces can re-run NFM/plain-text extraction for every typed character. Keep freeform text drafts local inside the card stage and publish only persisted saves; reserve optimistic store patches for discrete card-property changes where cross-surface immediacy matters.
+
 ### macOS 26 icons should treat the checked-in `.icon` as the authoring source, not regenerate it during build
 For Nodex, flat PNG/ICNS fallback assets are not enough on macOS 26: the system can wrap them in a gray enclosure instead of the intended white plate. The working path is to keep `resources/nodex-icon.svg` as the source for flat fallback rasters (`icon.png` / `icon.icns`), but keep the macOS 26 Icon Composer document in `resources/icon.icon/` as a checked-in authored asset. Do not regenerate that `.icon` package from the SVG during `sync:icons`; doing so silently discards manual Icon Composer adjustments and produces the wrong installed icon. Let packaging compile the checked-in `.icon` asset catalog instead of checking a generated `Assets.car` into the repo.
 
