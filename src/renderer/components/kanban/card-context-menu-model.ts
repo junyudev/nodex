@@ -72,7 +72,7 @@ const CARD_ACTION_MENU_ENTRIES: CardActionMenuEntry[] = [
   },
   {
     id: "copy-link",
-    label: "Copy link",
+    label: "Copy deeplink",
     keywords: ["copy", "link", "reference"],
   },
   {

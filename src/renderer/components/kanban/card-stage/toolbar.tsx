@@ -27,7 +27,7 @@ export function CardStageToolbar({
   return (
     <div className="flex h-11 items-center justify-between px-3">
       <div className="flex items-center gap-1">
-        <Tooltip content="Close" side="bottom">
+        <Tooltip content="Close" side="bottom" disableAnimation delayDuration={0}>
           <button
             type="button"
             onClick={onClose}
@@ -44,7 +44,7 @@ export function CardStageToolbar({
           </button>
         </Tooltip>
 
-        <Tooltip content="Open in full page" side="bottom">
+        <Tooltip content="Copy deeplink" side="bottom" disableAnimation delayDuration={0}>
           <button
             type="button"
             className={cn(
@@ -74,7 +74,7 @@ export function CardStageToolbar({
           </span>
         )}
 
-        <Tooltip content={showRawContent ? "Show editor" : "Show raw-format content"} side="bottom">
+        <Tooltip content={showRawContent ? "Show editor" : "Show raw-format content"} side="bottom" disableAnimation delayDuration={0}>
           <button
             type="button"
             onClick={onToggleShowRawContent}
@@ -92,7 +92,7 @@ export function CardStageToolbar({
           </button>
         </Tooltip>
 
-        <Tooltip content="Full width" side="bottom">
+        <Tooltip content="Full width" side="bottom" disableAnimation delayDuration={0}>
           <button
             type="button"
             onClick={onToggleContentWidth}
@@ -118,7 +118,7 @@ export function CardStageToolbar({
           </button>
         </Tooltip>
 
-        <Tooltip content="History" side="bottom">
+        <Tooltip content="History" side="bottom" disableAnimation delayDuration={0}>
           <button
             type="button"
             onClick={onOpenHistoryPanel}
@@ -141,7 +141,7 @@ export function CardStageToolbar({
           </button>
         </Tooltip>
 
-        <Tooltip content="Delete" side="bottom">
+        <Tooltip content="Delete" side="bottom" disableAnimation delayDuration={0}>
           <button
             type="button"
             onClick={onDelete}

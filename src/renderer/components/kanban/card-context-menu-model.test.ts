@@ -16,7 +16,7 @@ describe("card context menu model", () => {
         "Layout",
         "Property visibility",
         "Open in",
-        "Copy link",
+        "Copy deeplink",
         "Duplicate",
         "Move to",
         "Delete",
@@ -24,7 +24,7 @@ describe("card context menu model", () => {
     );
   });
 
-  test("keeps delete and copy link enabled for real actions", () => {
+  test("keeps delete and copy deeplink enabled for real actions", () => {
     const actions = getCardActionMenuEntries("");
     const copyLink = actions.find((action) => action.id === "copy-link");
     const deleteAction = actions.find((action) => action.id === "delete");

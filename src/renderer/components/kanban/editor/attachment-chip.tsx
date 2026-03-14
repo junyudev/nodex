@@ -343,7 +343,6 @@ function AttachmentInlineContent({
           </div>
         }
         side="top"
-        disableHoverableContent
         contentClassName="shadow-none"
         disableAnimation={true}
         delayDuration={0}

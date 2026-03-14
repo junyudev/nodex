@@ -10,7 +10,7 @@ interface TooltipProps {
   contentClassName?: string;
   delayDuration?: number;
   disableAnimation?: boolean;
-  disableHoverableContent?: boolean;
+  enableHoverableContent?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -30,13 +30,13 @@ export function Tooltip({
   contentClassName,
   delayDuration,
   disableAnimation = false,
-  disableHoverableContent,
+  enableHoverableContent,
   onOpenChange,
 }: TooltipProps) {
   return (
     <RadixTooltip.Root
       delayDuration={delayDuration}
-      disableHoverableContent={disableHoverableContent}
+      disableHoverableContent={!enableHoverableContent}
       onOpenChange={onOpenChange}
     >
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>

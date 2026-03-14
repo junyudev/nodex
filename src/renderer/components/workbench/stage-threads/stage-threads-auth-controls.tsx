@@ -109,6 +109,7 @@ export function ConnectionBadge({
       sideOffset={8}
       delayDuration={0}
       onOpenChange={onTooltipOpenChange}
+      enableHoverableContent
     >
       {badge}
     </Tooltip>
