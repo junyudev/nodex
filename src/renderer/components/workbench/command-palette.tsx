@@ -1,27 +1,12 @@
-import { useDeferredValue, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import {
-  ArrowLeft,
-  ArrowRight,
-  CalendarDays,
-  FileText,
-  FolderSearch2,
-  LayoutGrid,
-  PanelBottom,
-  Search,
-  Settings2,
-  SquareKanban,
-  Table2,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { filterCommandPaletteItems, type CommandPaletteCard, type CommandPaletteCommand } from "@/lib/command-palette";
+import type { CommandPaletteCard, CommandPaletteCommand } from "@/lib/command-palette";
 import { getKanbanProjectStore } from "@/lib/kanban-store";
 import { normalizeProjectIcon } from "@/lib/project-icon";
 import type { Project } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { useCommandPaletteCardSearchIndex } from "@/lib/use-command-palette-card-search-index";
 import type { RecentCardSession, StageId, WorkbenchView } from "@/lib/use-workbench-state";
-import { CardIcon } from "./card-icon";
-import { ThreadsIcon } from "./threads-icon";
-import { ToggleListIcon } from "./toggle-list-icon";
+import { CommandPaletteSurface } from "./command-palette-surface";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -299,142 +284,6 @@ function buildCommands(input: {
   ];
 }
 
-function getCommandGlyph(id: string) {
-  if (id === "open-project-picker") return FolderSearch2;
-  if (id === "go-back") return ArrowLeft;
-  if (id === "go-forward") return ArrowRight;
-  if (id === "search-current-project") return Search;
-  if (id === "toggle-terminal") return PanelBottom;
-  if (id === "open-settings") return Settings2;
-  if (id === "view-kanban") return SquareKanban;
-  if (id === "view-list") return Table2;
-  if (id === "view-toggle-list") return ToggleListIcon;
-  if (id === "view-canvas") return LayoutGrid;
-  if (id === "view-calendar") return CalendarDays;
-  if (id === "focus-views-stage") return LayoutGrid;
-  if (id === "focus-cards-stage") return CardIcon;
-  if (id === "focus-threads-stage") return ThreadsIcon;
-  return FileText;
-}
-
-function CommandRow({
-  item,
-  selected,
-  showSubtitle,
-}: {
-  item: CommandPaletteCommand;
-  selected: boolean;
-  showSubtitle: boolean;
-}) {
-  const Glyph = getCommandGlyph(item.id);
-
-  return (
-    <div className="flex w-full items-center gap-2">
-      <Glyph className={cn("size-4 shrink-0 text-token-description-foreground", selected && "text-token-foreground")} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-token-foreground">{item.title}</div>
-        {showSubtitle ? (
-          <div className="truncate text-xs text-token-description-foreground">{item.subtitle}</div>
-        ) : null}
-      </div>
-      {item.shortcut ? (
-        <kbd className="shrink-0 rounded-sm bg-token-foreground/5 px-1.5 py-0.5 text-[11px] font-sans font-medium leading-none tracking-wide text-token-description-foreground">
-          {item.shortcut}
-        </kbd>
-      ) : null}
-    </div>
-  );
-}
-
-function CardRow({
-  item,
-  selected,
-  showSubtitle,
-}: {
-  item: CommandPaletteCard;
-  selected: boolean;
-  showSubtitle: boolean;
-}) {
-  return (
-    <div className="flex w-full items-center gap-2">
-      <div className={cn(
-        "flex size-6 shrink-0 items-center justify-center rounded-lg bg-token-foreground/5 text-xs text-token-description-foreground",
-        selected && "bg-token-foreground/10 text-token-foreground",
-      )}>
-        {item.projectIcon || item.projectName.slice(0, 1).toUpperCase()}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-token-foreground">{item.card.title || "Untitled"}</div>
-        {showSubtitle ? (
-          <div className="truncate text-xs text-token-description-foreground">
-            {item.projectName} / {item.columnName}
-            {item.recentIndex !== null ? " / Recent" : ""}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function PaletteSection({
-  title,
-  items,
-  selectedIndex,
-  startIndex,
-  onSelectIndex,
-  onExecute,
-  showSubtitle,
-}: {
-  title: string;
-  items: PaletteItem[];
-  selectedIndex: number;
-  startIndex: number;
-  onSelectIndex: (index: number) => void;
-  onExecute: (item: PaletteItem) => void;
-  showSubtitle: boolean;
-}) {
-  if (items.length === 0) return null;
-
-  return (
-    <section cmdk-group="" role="presentation" className="flex flex-col gap-[var(--spacing)]" data-value={title}>
-      <div cmdk-group-heading="" aria-hidden="true">
-        <span className="block px-2 pt-2 text-sm text-token-description-foreground">{title}</span>
-      </div>
-      <div cmdk-group-items="" role="group" aria-label={title}>
-        {items.map((item, offset) => {
-          const index = startIndex + offset;
-          const selected = index === selectedIndex;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              cmdk-item=""
-              data-palette-index={index}
-              data-selected={selected}
-              aria-selected={selected}
-              onMouseMove={() => onSelectIndex(index)}
-              onClick={() => onExecute(item)}
-              disabled={item.kind === "command" && item.disabled}
-              className={cn(
-                "flex min-h-[calc(var(--spacing)*6)] w-full cursor-interaction rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-left text-sm text-token-foreground opacity-75 outline-none",
-                item.kind === "command" && item.disabled
-                  ? "cursor-not-allowed opacity-40 hover:bg-transparent hover:opacity-40"
-                  : selected ? "bg-token-list-hover-background opacity-100" : "hover:bg-token-list-hover-background hover:opacity-100",
-              )}
-            >
-              {item.kind === "command" ? (
-                <CommandRow item={item} selected={selected} showSubtitle={false} />
-              ) : (
-                <CardRow item={item} selected={selected} showSubtitle={showSubtitle} />
-              )}
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 export function CommandPalette({
   open,
   openTriggerTick,
@@ -458,14 +307,8 @@ export function CommandPalette({
   onRequestNewWindow,
 }: CommandPaletteProps) {
   const isMac = isMacPlatform();
-  const inputId = useId();
-  const labelId = useId();
-  const listId = useId();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
-  const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
   const { cards, loading } = useCommandPaletteCards(open, projects, activeProjectId, recentCardSessions);
+  const cardSearchIndex = useCommandPaletteCardSearchIndex(cards);
   const activeProjectName = useMemo(
     () => projects.find((project) => project.id === activeProjectId)?.name ?? activeProjectId,
     [activeProjectId, projects],
@@ -482,67 +325,8 @@ export function CommandPalette({
     }),
     [activeProjectName, activeView, canGoBack, canGoForward, focusedStage, isMac, onRequestNewWindow],
   );
-  const results = useMemo(
-    () => filterCommandPaletteItems({
-      query: deferredQuery,
-      commands,
-      cards,
-    }),
-    [cards, commands, deferredQuery],
-  );
-  const flatItems = useMemo(
-    () => [...results.commands, ...results.cards],
-    [results.cards, results.commands],
-  );
-  const showSubtitle = results.query.length > 0;
-  const [selectedIndex, setSelectedIndex] = useState(0);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const rafId = window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [open, openTriggerTick]);
-
-  useEffect(() => {
-    if (!open) return;
-    setSelectedIndex(0);
-  }, [open, results.commandMode, results.query]);
-
-  useEffect(() => {
-    if (flatItems.length === 0) {
-      if (selectedIndex === -1) return;
-      setSelectedIndex(-1);
-      return;
-    }
-
-    if (selectedIndex >= 0 && selectedIndex < flatItems.length) return;
-    setSelectedIndex(0);
-  }, [flatItems.length, selectedIndex]);
-
-  useEffect(() => {
-    if (selectedIndex < 0) return;
-    const next = scrollViewportRef.current?.querySelector<HTMLElement>(`[data-palette-index="${selectedIndex}"]`);
-    next?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex]);
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      setQuery("");
-      setSelectedIndex(0);
-    }
-    onOpenChange(nextOpen);
-  };
 
   const handleExecute = (item: PaletteItem) => {
-    handleOpenChange(false);
-
     if (item.kind === "card") {
       onOpenCard(item.projectId, item.card.id, item.card.title);
       return;
@@ -615,142 +399,24 @@ export function CommandPalette({
     onFocusStage("files");
   };
 
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    const moveSelection = (direction: -1 | 1) => {
-      if (flatItems.length === 0) return;
-      for (let step = 1; step <= flatItems.length; step += 1) {
-        const nextIndex = (selectedIndex + direction * step + flatItems.length) % flatItems.length;
-        const nextItem = flatItems[nextIndex];
-        if (nextItem?.kind === "command" && nextItem.disabled) continue;
-        setSelectedIndex(nextIndex);
-        return;
-      }
-    };
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      moveSelection(1);
-      return;
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      moveSelection(-1);
-      return;
-    }
-
-    if (event.key === "Home") {
-      event.preventDefault();
-      if (flatItems.length === 0) return;
-      setSelectedIndex(0);
-      return;
-    }
-
-    if (event.key === "End") {
-      event.preventDefault();
-      if (flatItems.length === 0) return;
-      setSelectedIndex(flatItems.length - 1);
-      return;
-    }
-
-    if (event.key === "Enter") {
-      if (selectedIndex < 0 || selectedIndex >= flatItems.length) return;
-      event.preventDefault();
-      handleExecute(flatItems[selectedIndex] as PaletteItem);
-      return;
-    }
-
-    if (event.key !== "Escape" || query.trim().length === 0) return;
-    event.preventDefault();
-    setQuery("");
-  };
-
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
         onOpenAutoFocus={(event) => event.preventDefault()}
-        className="max-w-[min(44rem,calc(100vw-2rem))] border-none bg-transparent p-0 shadow-none"
+        className="max-w-2xl border-none bg-transparent p-0 shadow-none"
       >
         <DialogTitle className="sr-only">Command palette</DialogTitle>
-        <div
-          cmdk-root=""
-          data-cmdk-root
-          title="Command menu"
-          className="flex min-w-full select-none flex-col gap-[var(--spacing)] overflow-hidden rounded-[var(--radius-3xl)] border border-token-border bg-token-dropdown-background p-[var(--spacing)] text-sm text-token-foreground shadow-2xl"
-        >
-          <label
-            cmdk-label=""
-            htmlFor={inputId}
-            id={labelId}
-            style={{
-              position: "absolute",
-              width: "1px",
-              height: "1px",
-              padding: 0,
-              margin: "-1px",
-              overflow: "hidden",
-              clip: "rect(0px, 0px, 0px, 0px)",
-              whiteSpace: "nowrap",
-              borderWidth: 0,
-            }}
-          >
-            Command menu
-          </label>
-          <input
-            ref={inputRef}
-            cmdk-input=""
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            aria-autocomplete="list"
-            role="combobox"
-            aria-expanded="true"
-            aria-controls={listId}
-            aria-labelledby={labelId}
-            id={inputId}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search commands"
-            aria-label="Command palette search"
-            className="w-full border-none bg-transparent px-[calc(var(--spacing)*2.5)] py-[calc(var(--spacing)*1.5)] text-sm text-token-foreground outline-none placeholder:text-token-description-foreground"
-          />
-
-          <div
-            ref={scrollViewportRef}
-            cmdk-list=""
-            role="listbox"
-            tabIndex={-1}
-            aria-label="Suggestions"
-            id={listId}
-            className="scrollbar-token flex max-h-[min(300px,70vh)] flex-col gap-[var(--spacing)] overflow-y-auto overscroll-contain"
-          >
-            <PaletteSection
-              title={results.commandMode ? "Commands" : "Quick actions"}
-              items={results.commands}
-              selectedIndex={selectedIndex}
-              startIndex={0}
-              onSelectIndex={setSelectedIndex}
-              onExecute={handleExecute}
-              showSubtitle={showSubtitle}
-            />
-            <PaletteSection
-              title="Cards"
-              items={results.cards}
-              selectedIndex={selectedIndex}
-              startIndex={results.commands.length}
-              onSelectIndex={setSelectedIndex}
-              onExecute={handleExecute}
-              showSubtitle={showSubtitle}
-            />
-            {flatItems.length === 0 ? (
-              <div data-cmdk-empty className="flex min-h-[calc(var(--spacing)*8)] items-center justify-center px-[calc(var(--spacing)*2.5)] py-[calc(var(--spacing)*1.5)] text-center text-sm text-token-description-foreground">
-                {loading ? "Loading cards..." : "No matching commands or cards."}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <CommandPaletteSurface
+          open={open}
+          openTriggerTick={openTriggerTick}
+          commands={commands}
+          cards={cards}
+          cardSearchIndex={cardSearchIndex}
+          loading={loading}
+          onRequestClose={() => onOpenChange(false)}
+          onExecute={handleExecute}
+        />
       </DialogContent>
     </Dialog>
   );

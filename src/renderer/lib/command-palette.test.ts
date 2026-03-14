@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { filterCommandPaletteItems, type CommandPaletteCard, type CommandPaletteCommand } from "./command-palette";
+import { createCommandPaletteCardSearchIndex } from "./command-palette-card-search";
 import type { Card } from "./types";
 
 function makeCard(overrides: Partial<Card> = {}): Card {
@@ -64,7 +65,7 @@ function makePaletteCard(overrides: Partial<CommandPaletteCard> = {}): CommandPa
 }
 
 describe("filterCommandPaletteItems", () => {
-  test("prefers title matches and active-project cards", () => {
+  test("prefers active-project cards when text relevance is tied", () => {
     const currentProjectCard = makePaletteCard({
       card: makeCard({ id: "card-a", title: "Command palette" }),
       inActiveProject: true,
@@ -82,6 +83,7 @@ describe("filterCommandPaletteItems", () => {
       query: "command pal",
       commands: [],
       cards: [otherProjectCard, currentProjectCard],
+      cardSearchIndex: createCommandPaletteCardSearchIndex([otherProjectCard, currentProjectCard]),
     });
 
     expect(result.cards[0]?.card.id).toBe("card-a");
@@ -119,9 +121,30 @@ describe("filterCommandPaletteItems", () => {
       query: "search flow",
       commands: [],
       cards: [staleCard, recentCard],
+      cardSearchIndex: createCommandPaletteCardSearchIndex([staleCard, recentCard]),
     });
 
     expect(result.cards[0]?.card.id).toBe("recent");
+  });
+
+  test("returns fuzzy description matches in card results", () => {
+    const descriptionCard = makePaletteCard({
+      card: makeCard({
+        id: "description-hit",
+        title: "Misc task",
+        description: "Rebuild the search indxer for the command palette.",
+      }),
+    });
+
+    const result = filterCommandPaletteItems({
+      query: "search indexer",
+      commands: [],
+      cards: [descriptionCard],
+      cardSearchIndex: createCommandPaletteCardSearchIndex([descriptionCard]),
+    });
+
+    expect(result.cards.length).toBe(1);
+    expect(result.cards[0]?.card.id).toBe("description-hit");
   });
 
   test("returns useful defaults for an empty query", () => {
@@ -137,13 +160,27 @@ describe("filterCommandPaletteItems", () => {
       ],
     });
 
-    expect(result.commands[0]?.id).toBe("terminal");
+    expect(result.commands.length).toBe(0);
     expect(result.cards[0]?.card.id).toBe("beta");
   });
 
-  test("preserves disabled back and forward commands", () => {
+  test("does not search commands without the > prefix", () => {
     const result = filterCommandPaletteItems({
       query: "go",
+      commands: [
+        makeCommand({ id: "go-back", title: "Go back", keywords: ["back"], disabled: true, priority: 500 }),
+        makeCommand({ id: "go-forward", title: "Go forward", keywords: ["forward"], disabled: false, priority: 490 }),
+      ],
+      cards: [],
+    });
+
+    expect(result.commandMode).toBeFalse();
+    expect(result.commands.length).toBe(0);
+  });
+
+  test("preserves disabled back and forward commands in > command mode", () => {
+    const result = filterCommandPaletteItems({
+      query: "> go",
       commands: [
         makeCommand({ id: "go-back", title: "Go back", keywords: ["back"], disabled: true, priority: 500 }),
         makeCommand({ id: "go-forward", title: "Go forward", keywords: ["forward"], disabled: false, priority: 490 }),

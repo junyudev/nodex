@@ -14,7 +14,7 @@ All keyboard shortcuts in Nodex. Platform modifier: **⌘ (Cmd)** on Mac, **Ctrl
 | `⌘/Ctrl+1`–`4` | Jump to stage by index | Stage index order in sidebar; works while focus is in the NFM editor |
 | `⌘/Ctrl+Alt+1`–`9` | Jump to space by index | First 9 spaces in sidebar order (disabled while focus is in NFM editor because `⌘/Ctrl+Alt+1`–`4` are editor heading shortcuts) |
 | `⌘/Ctrl+Shift+P` | Open project/space picker | Opens space manager popover, including while focus is inside the NFM editor |
-| `⌘/Ctrl+K` | Open command palette | Global launcher for cards and commands; works from editable surfaces too |
+| `⌘/Ctrl+K` | Open command palette | Global launcher for cards; type `>` to switch into command search; works from editable surfaces too |
 | `⌘/Ctrl+P` | Open command palette | Alias for the same global launcher |
 | `⌘/Ctrl+[` | Go back | Restores the previous durable workbench context; works from editable surfaces too |
 | `⌘/Ctrl+]` | Go forward | Restores the next durable workbench context; works from editable surfaces too |
