@@ -533,17 +533,17 @@ export function LeftSidebar({
                       <button
                         type="button"
                         className={cn(
-                          "group/status inline-flex min-h-7.5 w-full items-center gap-1.5 rounded-lg px-(--sidebar-row-padding-x) py-(--sidebar-row-padding-tight-y) text-left hover:bg-(--sidebar-accent)",
+                          "group/status inline-flex min-h-7.5 w-full items-center gap-1 rounded-lg px-(--sidebar-row-padding-x) py-(--sidebar-row-padding-tight-y) text-left hover:bg-(--sidebar-accent)",
                           sectionExpanded
                             ? "text-(--sidebar-foreground)"
                             : "text-(--sidebar-foreground-secondary) hover:text-(--sidebar-foreground)",
                         )}
                       >
-                        <span className="relative size-3.5 shrink-0">
+                        <span className="relative size-4 shrink-0">
                           {SectionIcon ? (
                             <SectionIcon
                               className={cn(
-                                "absolute inset-0 m-auto size-3.5 transition-opacity duration-150",
+                                "absolute inset-0 my-auto ml-[-0.1rem] size-4.5 transition-opacity duration-150",
                                 "opacity-100 group-hover/status:opacity-0 group-focus-visible:opacity-0",
                               )}
                             />
@@ -558,7 +558,7 @@ export function LeftSidebar({
                             )}
                           />
                         </span>
-                        <span className="mr-auto inline-flex min-w-0 items-baseline gap-2.5">
+                        <span className="mr-auto inline-flex min-w-0 items-baseline gap-2.5 text-(--sidebar-foreground)">
                           <span className="truncate">{section.label}</span>
                           {typeof section.count === "number" ? (
                             <span className="shrink-0 text-[calc(var(--text-sm)-1px)]/5 text-(--sidebar-foreground-tertiary)">

@@ -24,9 +24,8 @@ type StatusIconDefinition = {
   paths: StatusIconPath[];
 };
 
-const STATUS_ICON_CLASS_NAME = "size-3.5 shrink-0";
-const STATUS_CHIP_CLASS_NAME =
-  "inline-flex h-5 max-w-full items-center gap-1.25 overflow-hidden rounded-full pl-1 pr-2 text-sm/5 font-normal";
+const STATUS_ICON_CLASS_NAME = "size-4.5 shrink-0";
+const STATUS_CHIP_CLASS_NAME = "inline-flex h-5.5 max-w-full items-center gap-0.5 overflow-hidden rounded-full pl-1 pr-2 text-sm/5 font-normal";
 
 const STATUS_ID_BY_LABEL: Record<string, StatusVisualId> = {
   Draft: "draft",
