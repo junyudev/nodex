@@ -5,24 +5,32 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Card, type CardPropertyUpdateInput } from "./card";
+import { ColumnActionPopover } from "./column-action-popover";
 import type { DbViewDisplayPrefs } from "../../lib/db-view-prefs";
 import { DropIndicator } from "./drop-indicator";
 import { InlineCardCreator } from "./inline-card-creator";
-import { StatusChip, StatusIcon, columnStyles as sharedColumnStyles } from "@/lib/status-chip";
-import type { Card as CardType, CardCreatePlacement, Column as ColumnType, CardInput } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import {
+  COLLAPSED_KANBAN_COLUMN_WIDTH,
+  type KanbanColumnLayout,
+} from "../../lib/kanban-column-layout";
+import { StatusChip, StatusIcon, columnStyles as sharedColumnStyles } from "../../lib/status-chip";
+import type { Card as CardType, CardCreatePlacement, Column as ColumnType, CardInput } from "../../lib/types";
+import { cn } from "../../lib/utils";
 import type { CardContextMenuProjectSummary } from "./card-context-menu-model";
 
-export { columnStyles } from "@/lib/status-chip";
+export { columnStyles } from "../../lib/status-chip";
 
 interface ColumnProps {
   projectId: string;
   projectName: string;
   column: ColumnType;
   displayPrefs?: DbViewDisplayPrefs;
+  layout: KanbanColumnLayout;
   onAddCard: (columnId: CardType["status"], input: CardInput, placement?: CardCreatePlacement) => Promise<void>;
   onEditCard: (columnId: CardType["status"], card: CardType, event: React.MouseEvent<HTMLDivElement>) => void;
   onUpdateCardProperty: (input: CardPropertyUpdateInput) => Promise<void>;
+  onCollapsedChange: (columnId: CardType["status"], collapsed: boolean) => void;
+  onWidthChange: (columnId: CardType["status"], width: number) => void;
   onMoveCardToProjectFromMenu?: (input: {
     cardId: string;
     sourceStatus: CardType["status"];
@@ -52,9 +60,12 @@ export const Column = memo(function Column({
   projectName,
   column,
   displayPrefs,
+  layout,
   onAddCard,
   onEditCard,
   onUpdateCardProperty,
+  onCollapsedChange,
+  onWidthChange,
   onMoveCardToProjectFromMenu,
   onDeleteCardFromMenu,
   onCopyCardLinkFromMenu,
@@ -69,7 +80,9 @@ export const Column = memo(function Column({
   contextMenuProjects = [],
 }: ColumnProps) {
   const [showCreator, setShowCreator] = useState(false);
-  const isEmpty = column.cards.length === 0 && !showCreator;
+  const isAutoCollapsed = column.cards.length === 0 && !showCreator;
+  const isUserCollapsed = layout.collapsed && !showCreator;
+  const isCollapsed = isAutoCollapsed || isUserCollapsed;
 
   const { setNodeRef } = useDroppable({
     id: column.id,
@@ -94,44 +107,58 @@ export const Column = memo(function Column({
     await onAddCard(column.id, input, "top");
   };
 
+  const handleCollapsedSurfaceClick = () => {
+    if (isUserCollapsed) {
+      onCollapsedChange(column.id, false);
+      return;
+    }
+
+    setShowCreator(true);
+  };
+
+  const collapsedSurfaceTitle = isUserCollapsed
+    ? `${column.name} \u2014 click to expand`
+    : `${column.name} \u2014 click to add task`;
+
   return (
     <div
       ref={setNodeRef}
       data-kanban-column-id={column.id}
+      data-kanban-column-collapsed={isCollapsed ? "true" : "false"}
       onDragOver={(event) => onNativeDragOver?.(column.id, event)}
       onDragLeave={(event) => onNativeDragLeave?.(column.id, event)}
       onDrop={(event) => onNativeDrop?.(column.id, event)}
       className="flex shrink-0 flex-col overflow-clip pr-3"
       style={{
-        width: isEmpty ? 56 : 288,
+        width: isCollapsed ? COLLAPSED_KANBAN_COLUMN_WIDTH : layout.width,
         transition: 'width 200ms cubic-bezier(0.32, 0.72, 0, 1)',
         '--column-accent': styles.accentColor,
       } as React.CSSProperties}
     >
-      {isEmpty ? (
+      {isCollapsed ? (
         /* Collapsed: thin vertical bar with rotated label + sticky header */
         <>
           <div
-            onClick={() => setShowCreator(true)}
+            onClick={handleCollapsedSurfaceClick}
             className="group flex flex-1 cursor-pointer flex-col"
             role="button"
-            title={`${column.name} \u2014 click to add task`}
+            title={collapsedSurfaceTitle}
           >
             {/* Sticky header — dot + vertical name */}
             <div className="sticky top-0 z-10 bg-(--background)">
               <div
                 className={cn(
-                  "flex flex-col items-center rounded-t-lg pt-3 pb-2",
+                  "flex flex-col items-center rounded-t-lg px-1 pt-3 pb-2",
                   styles.headerBg,
                 )}
               >
                 <StatusIcon
                   statusId={column.id}
-                  className="mb-2 size-4"
+                  className="size-4"
                   style={{ color: styles.accentColor }}
                 />
                 <span
-                  className="text-base font-medium whitespace-nowrap opacity-70 group-hover:opacity-100"
+                  className="mt-2 text-base font-medium whitespace-nowrap opacity-70 group-hover:opacity-100"
                   style={{
                     color: styles.accentColor,
                     writingMode: 'vertical-lr',
@@ -139,6 +166,29 @@ export const Column = memo(function Column({
                 >
                   {column.name}
                 </span>
+                <span
+                  className="mt-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums"
+                  style={{
+                    color: styles.accentColor,
+                    background: "color-mix(in srgb, var(--column-accent) 14%, transparent)",
+                  }}
+                >
+                  {column.cards.length}
+                </span>
+                <div
+                  className="mt-2"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <ColumnActionPopover
+                    columnName={column.name}
+                    collapsed={layout.collapsed}
+                    width={layout.width}
+                    accentColor={styles.accentColor}
+                    alwaysVisible
+                    onCollapsedChange={(collapsed) => onCollapsedChange(column.id, collapsed)}
+                    onWidthChange={(width) => onWidthChange(column.id, width)}
+                  />
+                </div>
               </div>
             </div>
 
@@ -182,16 +232,14 @@ export const Column = memo(function Column({
 
               {/* Hover actions (right side) */}
               <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
-                <button
-                  className="flex h-[calc(var(--spacing)*6)] w-[calc(var(--spacing)*6)] items-center justify-center rounded-xs text-(--column-accent) hover:bg-(--background-tertiary) hover:opacity-80"
-                  title="More options"
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <circle cx="3" cy="7" r="1.2" fill="currentColor" />
-                    <circle cx="7" cy="7" r="1.2" fill="currentColor" />
-                    <circle cx="11" cy="7" r="1.2" fill="currentColor" />
-                  </svg>
-                </button>
+                <ColumnActionPopover
+                  columnName={column.name}
+                  collapsed={layout.collapsed}
+                  width={layout.width}
+                  accentColor={styles.accentColor}
+                  onCollapsedChange={(collapsed) => onCollapsedChange(column.id, collapsed)}
+                  onWidthChange={(width) => onWidthChange(column.id, width)}
+                />
                 <button
                   onClick={() => setShowCreator(true)}
                   className="flex h-[calc(var(--spacing)*6)] w-[calc(var(--spacing)*6)] items-center justify-center rounded-xs text-(--column-accent) hover:bg-(--background-tertiary) hover:opacity-80"

@@ -105,6 +105,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 #### 2. Kanban Board View
 - 8 columns representing workflow stages
 - Drag-and-drop cards between columns
+- Each kanban column header includes a `more actions` popover for collapsing that column and adjusting its persisted expanded width; collapsed columns still show their card count and the same `more actions` trigger
 - Shift-click in Kanban toggles a temporary multi-selection from the clicked card; selection can span columns, dragging moves the whole selected set together as one grouped undo step, and dropping into editors inserts one `cardToggle` per selected card before deleting all source cards in the same grouped action
 - Native block drag from visible NFM editors (Card Stage, including projected inline embed rows) into Kanban columns creates card(s) using move semantics (source blocks are removed)
 - Dragging a Kanban card into a visible NFM editor (Card Stage, including projected inline embed rows) creates a standalone `cardToggle` snapshot block and removes the source card (move semantics)

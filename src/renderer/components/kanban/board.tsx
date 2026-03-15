@@ -58,6 +58,13 @@ import {
 import { resolveDraggedBlockIds } from "./editor/drag-source-resolver";
 import { invoke } from "@/lib/api";
 import { buildCardDeepLink } from "@/lib/card-deeplink";
+import {
+  getKanbanColumnLayout,
+  readKanbanColumnLayoutPrefs,
+  updateKanbanColumnLayoutPrefs,
+  writeKanbanColumnLayoutPrefs,
+  type KanbanColumnLayoutPrefs,
+} from "@/lib/kanban-column-layout";
 import { useKanban } from "@/lib/use-kanban";
 import { useHistory } from "@/lib/use-history";
 import { useKeyboardShortcuts } from "@/lib/use-keyboard-shortcuts";
@@ -202,6 +209,9 @@ export function KanbanBoard({
   } | null>(null);
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [columnLayoutPrefs, setColumnLayoutPrefs] = useState<KanbanColumnLayoutPrefs>(
+    () => readKanbanColumnLayoutPrefs(projectId),
+  );
 
   const searchTokens = useMemo(
     () => tokenizeSearchQuery(deferredSearchQuery),
@@ -251,6 +261,10 @@ export function KanbanBoard({
       return hasSameCardSelection(current, normalized) ? current : normalized;
     });
   }, [board, filteredBoard]);
+
+  useEffect(() => {
+    setColumnLayoutPrefs(readKanbanColumnLayoutPrefs(projectId));
+  }, [projectId]);
 
   const currentProjectName = useMemo(
     () => projects.find((project) => project.id === projectId)?.name ?? projectId,
@@ -781,6 +795,17 @@ export function KanbanBoard({
     [board, updateCard],
   );
 
+  const updateColumnLayout = useCallback((
+    columnId: CardStatus,
+    patch: { collapsed?: boolean; width?: number },
+  ) => {
+    setColumnLayoutPrefs((current) => {
+      const next = updateKanbanColumnLayoutPrefs(current, columnId, patch);
+      writeKanbanColumnLayoutPrefs(projectId, next);
+      return next;
+    });
+  }, [projectId]);
+
   // Loading state
   if (loading) {
     return (
@@ -828,9 +853,12 @@ export function KanbanBoard({
                 key={column.id}
                 column={column}
                 displayPrefs={viewPrefs.display}
+                layout={getKanbanColumnLayout(columnLayoutPrefs, column.id)}
                 onAddCard={handleAddCard}
                 onEditCard={handleEditCard}
                 onUpdateCardProperty={handleUpdateCardProperty}
+                onCollapsedChange={(columnId, collapsed) => updateColumnLayout(columnId, { collapsed })}
+                onWidthChange={(columnId, width) => updateColumnLayout(columnId, { width })}
                 onMoveCardToProjectFromMenu={handleMoveCardToProjectFromMenu}
                 onDeleteCardFromMenu={handleDeleteCardFromMenu}
                 onCopyCardLinkFromMenu={handleCopyCardLinkFromMenu}
