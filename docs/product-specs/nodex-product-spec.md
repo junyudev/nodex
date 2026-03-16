@@ -927,46 +927,21 @@ bun run package          # Build + create macOS DMG + ZIP in dist/
 bun run release          # Legacy local publish path via electron-builder
 ```
 
-To release a new version:
+To release a new version, use the GitHub Actions `Prepare Release` workflow:
 ```bash
 # 1. Update CHANGELOG.md under ## [Unreleased]
-# 2. Run the GitHub Actions "Prepare Release" workflow
-# 3. Choose patch/minor/major or provide a custom version
-# 4. The workflow runs typecheck/lint/tests, bumps package.json with Bun,
-#    rolls Unreleased into a dated release section, commits, tags, pushes,
-#    notarizes arm64 + x64 builds, publishes the GitHub Release, and updates
-#    the Asphocarp/homebrew-nodex tap with matching DMG checksums
+# 2. Trigger "Prepare Release" in GitHub Actions or from the CLI:
+gh workflow run "Prepare Release" \
+  --repo Asphocarp/nodex \
+  -f release_type=patch
+# 3. The workflow runs typecheck/lint/tests, bumps package.json with Bun,
+#    rolls Unreleased into a release section, commits, tags, pushes,
+#    then calls the Release workflow.
+# 4. The Release workflow signs and notarizes arm64 + x64 builds, verifies
+#    them, publishes the GitHub Release, and updates Asphocarp/homebrew-nodex
 ```
 
-Manual fallback:
-```bash
-# One command locally:
-bun run release:cut:patch   # or: bun run release:cut:minor / bun run release:cut:major
-```
-
-For an explicit version, keep using Bun directly:
-```bash
-bun run release:cut -- 0.2.3
-```
-
-For code signing and notarization, set these env vars (or GitHub Secrets):
-- `CSC_LINK` — Base64-encoded .p12 certificate
-- `CSC_KEY_PASSWORD` — Certificate password
-- `APPLE_API_KEY_B64` — Base64-encoded App Store Connect API key `.p8`
-- `APPLE_API_KEY_ID` — App Store Connect API key id
-- `APPLE_API_ISSUER` — App Store Connect issuer id
-- `HOMEBREW_TAP_GITHUB_TOKEN` — Fine-grained token with contents write access to `Asphocarp/homebrew-nodex`
-
-Homebrew installation path:
-```bash
-brew tap Asphocarp/nodex
-brew install --cask nodex
-```
-
-Example for encoding a downloaded App Store Connect key into `APPLE_API_KEY_B64` on macOS:
-```bash
-base64 < /path/to/AuthKey_XXXXXXX.p8 | tr -d '\n'
-```
+Detailed CI behavior, job responsibilities, secrets, artifact naming, and recovery steps live in `docs/release-macos.md`.
 
 ---
 
