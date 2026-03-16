@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import type { CodexPlanImplementationRequest, CodexUserInputRequest } from "../../../lib/types";
+import { render, textContent } from "../../../test/dom";
 
 mock.module("../../ui/tooltip", () => ({
   Tooltip: ({
@@ -120,14 +120,14 @@ describe("stage-threads request cards", () => {
       JSON.stringify({ q_1: ["Choose none of the above and revise the plan."] }),
     );
 
-    const markup = renderToStaticMarkup(
-      createElement(UserInputComposerView, {
-        request: optionRequestWithoutOtherFlag,
-        onRespond: async () => {},
-      }),
+    const { container } = render(
+      <UserInputComposerView
+        request={optionRequestWithoutOtherFlag}
+        onRespond={async () => {}}
+      />,
     );
 
-    expect(markup.includes("Tell Codex what to do differently")).toBeTrue();
+    expect(textContent(container).includes("Tell Codex what to do differently")).toBeTrue();
   });
 
   test("requires text for freeform-only questions before submit is enabled", async () => {
@@ -182,39 +182,39 @@ describe("stage-threads request cards", () => {
 
   test("renders the composer-style request surface with hover metadata affordance", async () => {
     const { UserInputComposerView } = await import("./stage-threads-request-cards");
-    const markup = renderToStaticMarkup(
-      createElement(UserInputComposerView, {
-        request: optionRequest,
-        onRespond: async () => {},
-      }),
+    const { container, getByLabelText, getByText } = render(
+      <UserInputComposerView
+        request={optionRequest}
+        onRespond={async () => {}}
+      />,
     );
 
-    expect(markup.includes("What is 1 + 1?")).toBeTrue();
-    expect(markup.includes("2 (Recommended)")).toBeTrue();
-    expect(markup.includes("About 2 (Recommended)")).toBeTrue();
-    expect(markup.includes('data-delay-duration="0"')).toBeTrue();
-    expect(markup.includes('data-disable-animation="true"')).toBeTrue();
-    expect(markup.includes("Tell Codex what to do differently")).toBeTrue();
-    expect(markup.includes('data-user-input-focus-target="options"')).toBeTrue();
-    expect(markup.includes('data-user-input-focus-target="other"')).toBeTrue();
-    expect(markup.includes("focus-visible:ring-1")).toBeFalse();
-    expect(markup.includes("Dismiss")).toBeTrue();
-    expect(markup.includes("Submit")).toBeTrue();
+    expect(getByText("What is 1 + 1?").textContent).toBe("What is 1 + 1?");
+    expect(getByText("2 (Recommended)").textContent).toBe("2 (Recommended)");
+    expect(getByLabelText("About 2 (Recommended)").getAttribute("aria-label")).toBe("About 2 (Recommended)");
+    expect(container.querySelector('[data-delay-duration="0"]')).not.toBeNull();
+    expect(container.querySelector('[data-disable-animation="true"]')).not.toBeNull();
+    expect(textContent(container).includes("Tell Codex what to do differently")).toBeTrue();
+    expect(container.querySelector('[data-user-input-focus-target="options"]')).not.toBeNull();
+    expect(container.querySelector('[data-user-input-focus-target="other"]')).not.toBeNull();
+    expect(container.innerHTML.includes("focus-visible:ring-1")).toBeFalse();
+    expect(getByText("Dismiss").textContent).toBe("Dismiss");
+    expect(getByText("Submit").textContent).toBe("Submit");
   });
 
   test("renders the official plan implementation composer copy", async () => {
     const { PlanImplementationComposerView } = await import("./stage-threads-request-cards");
-    const markup = renderToStaticMarkup(
-      createElement(PlanImplementationComposerView, {
-        request: planImplementationRequest,
-        onRespond: async () => {},
-      }),
+    const { container, getByText } = render(
+      <PlanImplementationComposerView
+        request={planImplementationRequest}
+        onRespond={async () => {}}
+      />,
     );
 
-    expect(markup.includes("Implement this plan?")).toBeTrue();
-    expect(markup.includes("Yes, implement this plan")).toBeTrue();
-    expect(markup.includes("No, and tell Codex what to do differently")).toBeTrue();
-    expect(markup.includes('data-user-input-focus-target="options"')).toBeTrue();
-    expect(markup.includes('data-user-input-focus-target="other"')).toBeTrue();
+    expect(getByText("Implement this plan?").textContent).toBe("Implement this plan?");
+    expect(getByText("Yes, implement this plan").textContent).toBe("Yes, implement this plan");
+    expect(getByText("No, and tell Codex what to do differently").textContent).toBe("No, and tell Codex what to do differently");
+    expect(container.querySelector('[data-user-input-focus-target="options"]')).not.toBeNull();
+    expect(container.querySelector('[data-user-input-focus-target="other"]')).not.toBeNull();
   });
 });

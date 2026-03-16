@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import type { Project } from "../../lib/types";
 import { SidebarProjectsSection } from "./left-sidebar-projects-section";
+import { render, textContent } from "../../test/dom";
 
 const PROJECTS: Project[] = [
   {
@@ -25,49 +24,49 @@ const PROJECTS: Project[] = [
 
 describe("SidebarProjectsSection", () => {
   test("renders projects in space order and keeps workspace controls visible", () => {
-    const markup = renderToStaticMarkup(
-      createElement(SidebarProjectsSection, {
-        projects: PROJECTS,
-        spaces: [
+    const { container, getByText, getByLabelText } = render(
+      <SidebarProjectsSection
+        projects={PROJECTS}
+        spaces={[
           { projectId: "beta", colorToken: "var(--accent-blue)", initial: "B" },
           { projectId: "alpha", colorToken: "var(--accent-green)", initial: "A" },
-        ],
-        activeProjectId: "beta",
-        expanded: true,
-        onToggleExpanded: () => undefined,
-        onSelectSpace: () => undefined,
-        onCreateProject: async () => null,
-        onDeleteProject: async () => false,
-        onRenameProject: async () => null,
-      }),
+        ]}
+        activeProjectId="beta"
+        expanded
+        onToggleExpanded={() => undefined}
+        onSelectSpace={() => undefined}
+        onCreateProject={async () => null}
+        onDeleteProject={async () => false}
+        onRenameProject={async () => null}
+      />,
     );
 
-    expect(markup.includes("Projects")).toBeTrue();
-    expect(markup.includes("Manage projects")).toBeTrue();
-    expect(markup.includes("/repo/beta")).toBeTrue();
-    expect(markup.includes("/alpha")).toBeTrue();
-    expect(markup.indexOf("Beta") < markup.indexOf("Alpha")).toBeTrue();
+    expect(getByText("Projects").textContent).toBe("Projects");
+    expect(getByLabelText("Manage projects").getAttribute("aria-label")).toBe("Manage projects");
+    expect(textContent(container).includes("/repo/beta")).toBeTrue();
+    expect(textContent(container).includes("/alpha")).toBeTrue();
+    expect(textContent(container).indexOf("Beta") < textContent(container).indexOf("Alpha")).toBeTrue();
   });
 
   test("keeps only the active project row visible when collapsed", () => {
-    const markup = renderToStaticMarkup(
-      createElement(SidebarProjectsSection, {
-        projects: PROJECTS,
-        spaces: [
+    const { getByText, queryByText } = render(
+      <SidebarProjectsSection
+        projects={PROJECTS}
+        spaces={[
           { projectId: "beta", colorToken: "var(--accent-blue)", initial: "B" },
           { projectId: "alpha", colorToken: "var(--accent-green)", initial: "A" },
-        ],
-        activeProjectId: "beta",
-        expanded: false,
-        onToggleExpanded: () => undefined,
-        onSelectSpace: () => undefined,
-        onCreateProject: async () => null,
-        onDeleteProject: async () => false,
-        onRenameProject: async () => null,
-      }),
+        ]}
+        activeProjectId="beta"
+        expanded={false}
+        onToggleExpanded={() => undefined}
+        onSelectSpace={() => undefined}
+        onCreateProject={async () => null}
+        onDeleteProject={async () => false}
+        onRenameProject={async () => null}
+      />,
     );
 
-    expect(markup.includes("Beta")).toBeTrue();
-    expect(markup.includes("Alpha")).toBeFalse();
+    expect(getByText("Beta").textContent).toBe("Beta");
+    expect(queryByText("Alpha")).toBe(null);
   });
 });

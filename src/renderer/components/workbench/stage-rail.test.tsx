@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { StageRail, type StageRailStage } from "./stage-rail";
+import { render, textContent } from "../../test/dom";
 
 function SquareIcon({ className }: { className?: string }) {
   return createElement("span", { className }, "I");
@@ -36,85 +36,85 @@ const STAGES: StageRailStage[] = [
 
 describe("StageRail", () => {
   test("renders collapsed stages as icon buttons", () => {
-    const markup = renderToStaticMarkup(
-      createElement(StageRail, {
-        stages: STAGES,
-        focusedStage: "cards",
-        collapsedStages: {
+    const { container, getByLabelText } = render(
+      <StageRail
+        stages={STAGES}
+        focusedStage="cards"
+        collapsedStages={{
           cards: true,
           threads: true,
-        },
-        onFocusStage: () => undefined,
-        onSetStageCollapsed: () => undefined,
-      }),
+        }}
+        onFocusStage={() => undefined}
+        onSetStageCollapsed={() => undefined}
+      />,
     );
 
-    expect(markup.includes("Expand Cards")).toBeTrue();
-    expect(markup.includes("Expand Threads")).toBeTrue();
-    expect(markup.match(/data-stage-collapsed=\"true\"/g)?.length ?? 0).toBe(2);
+    expect(getByLabelText("Expand Cards").getAttribute("aria-label")).toBe("Expand Cards");
+    expect(getByLabelText("Expand Threads").getAttribute("aria-label")).toBe("Expand Threads");
+    expect(container.querySelectorAll('[data-stage-collapsed="true"]').length).toBe(2);
   });
 
   test("stacks adjacent collapsed stages vertically in one rail slot", () => {
-    const markup = renderToStaticMarkup(
-      createElement(StageRail, {
-        stages: STAGES,
-        focusedStage: "db",
-        collapsedStages: {
+    const { container } = render(
+      <StageRail
+        stages={STAGES}
+        focusedStage="db"
+        collapsedStages={{
           cards: true,
           threads: true,
-        },
-        onFocusStage: () => undefined,
-      }),
+        }}
+        onFocusStage={() => undefined}
+      />,
     );
 
-    expect(markup.match(/data-collapsed-group=\"true\"/g)?.length ?? 0).toBe(1);
+    expect(container.querySelectorAll('[data-collapsed-group="true"]').length).toBe(1);
   });
 
   test("supports the 4-stage order ending in diff", () => {
-    const markup = renderToStaticMarkup(
-      createElement(StageRail, {
-        stages: STAGES,
-        focusedStage: "files",
-        onFocusStage: () => undefined,
-      }),
+    const { container } = render(
+      <StageRail
+        stages={STAGES}
+        focusedStage="files"
+        onFocusStage={() => undefined}
+      />,
     );
 
-    expect(markup.includes(">Views<")).toBeTrue();
-    expect(markup.includes(">Cards<")).toBeTrue();
-    expect(markup.includes(">Threads<")).toBeTrue();
-    expect(markup.includes(">Diffs<")).toBeTrue();
+    expect(textContent(container).includes("Views")).toBeTrue();
+    expect(textContent(container).includes("Cards")).toBeTrue();
+    expect(textContent(container).includes("Threads")).toBeTrue();
+    expect(textContent(container).includes("Diffs")).toBeTrue();
   });
 
   test("sliding-window mode renders requested visible panes", () => {
-    const markup = renderToStaticMarkup(
-      createElement(StageRail, {
-        stages: STAGES,
-        layoutMode: "sliding-window",
-        focusedStage: "threads",
-        stageNavDirection: "left",
-        slidingWindowPaneCount: 3,
-        onFocusStage: () => undefined,
-      }),
+    const { container } = render(
+      <StageRail
+        stages={STAGES}
+        layoutMode="sliding-window"
+        focusedStage="threads"
+        stageNavDirection="left"
+        slidingWindowPaneCount={3}
+        onFocusStage={() => undefined}
+      />,
     );
 
-    expect(markup.includes("data-layout-mode=\"sliding-window\"")).toBeTrue();
-    expect(markup.match(/data-stage-pane=\"window-/g)?.length ?? 0).toBe(3);
-    expect(markup.match(/role=\"separator\"/g)?.length ?? 0).toBe(2);
+    expect(container.querySelector('[data-layout-mode="sliding-window"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-stage-pane^="window-"]').length).toBe(3);
+    expect(container.querySelectorAll('[role="separator"]').length).toBe(2);
   });
 
   test("sliding-window mode supports single-pane layout", () => {
-    const markup = renderToStaticMarkup(
-      createElement(StageRail, {
-        stages: STAGES,
-        layoutMode: "sliding-window",
-        focusedStage: "cards",
-        slidingWindowPaneCount: 1,
-        onFocusStage: () => undefined,
-      }),
+    const { container } = render(
+      <StageRail
+        stages={STAGES}
+        layoutMode="sliding-window"
+        focusedStage="cards"
+        slidingWindowPaneCount={1}
+        onFocusStage={() => undefined}
+      />,
     );
 
-    expect(markup.includes("data-layout-mode=\"sliding-window\"")).toBeTrue();
-    expect(markup.match(/data-stage-pane=\"window-/g)?.length ?? 0).toBe(1);
-    expect(markup.match(/role=\"separator\"/g)?.length ?? 0).toBe(0);
+    expect(container.querySelector('[data-layout-mode="sliding-window"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-stage-pane^="window-"]').length).toBe(1);
+    expect(container.querySelectorAll('[role="separator"]').length).toBe(0);
   });
 });

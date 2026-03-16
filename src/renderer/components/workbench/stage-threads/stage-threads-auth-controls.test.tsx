@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
   formatRateLimitResetLabel,
   formatRateLimitWindowLabel,
   RateLimitTooltipSection,
 } from "./stage-threads-auth-rate-limits";
+import { render } from "../../../test/dom";
 
 describe("stage-threads-auth-controls", () => {
   test("formats rate limit windows with hourly and weekly labels", () => {
@@ -29,9 +28,9 @@ describe("stage-threads-auth-controls", () => {
   });
 
   test("renders remaining rate limits rows", () => {
-    const markup = renderToStaticMarkup(
-      createElement(RateLimitTooltipSection, {
-        rateLimits: {
+    const { getByText } = render(
+      <RateLimitTooltipSection
+        rateLimits={{
           primary: {
             usedPercent: 5,
             windowDurationMins: 300,
@@ -42,14 +41,14 @@ describe("stage-threads-auth-controls", () => {
             windowDurationMins: 10080,
             resetsAt: Date.UTC(2026, 2, 10, 0, 0, 0),
           },
-        },
-      }),
+        }}
+      />,
     );
 
-    expect(markup.includes("Rate limits remaining")).toBeTrue();
-    expect(markup.includes("5h")).toBeTrue();
-    expect(markup.includes("95%")).toBeTrue();
-    expect(markup.includes("Weekly")).toBeTrue();
-    expect(markup.includes("67%")).toBeTrue();
+    expect(getByText("Rate limits remaining").textContent).toBe("Rate limits remaining");
+    expect(getByText("5h").textContent).toBe("5h");
+    expect(getByText("95%").textContent).toBe("95%");
+    expect(getByText("Weekly").textContent).toBe("Weekly");
+    expect(getByText("67%").textContent).toBe("67%");
   });
 });

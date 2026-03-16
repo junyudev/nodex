@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { render, textContent } from "../../test/dom";
 
 const mockController: Record<string, unknown> = {
   card: { id: "card-1" },
@@ -60,7 +60,7 @@ describe("card stage", () => {
   test("renders the rich editor when raw mode is disabled", async () => {
     mockController.showRawContent = false;
     const { CardStage } = await import("./card-stage");
-    const markup = renderToStaticMarkup(
+    const { getByText, queryByText } = render(
       <CardStage
         onClose={() => undefined}
         card={null}
@@ -75,14 +75,14 @@ describe("card stage", () => {
       />,
     );
 
-    expect(markup.includes("Mock editor")).toBeTrue();
-    expect(markup.includes("Raw format")).toBeFalse();
+    expect(getByText("Mock editor").textContent).toBe("Mock editor");
+    expect(queryByText("Raw format")).toBe(null);
   });
 
   test("renders read-only raw content when raw mode is enabled", async () => {
     mockController.showRawContent = true;
     const { CardStage } = await import("./card-stage");
-    const markup = renderToStaticMarkup(
+    const { container, getByText, queryByText } = render(
       <CardStage
         onClose={() => undefined}
         card={null}
@@ -97,9 +97,9 @@ describe("card stage", () => {
       />,
     );
 
-    expect(markup.includes("Raw format")).toBeTrue();
-    expect(markup.includes("Read-only")).toBeTrue();
-    expect(markup.includes("Mock editor")).toBeFalse();
-    expect(markup.includes("# Raw card")).toBeTrue();
+    expect(getByText("Raw format").textContent).toBe("Raw format");
+    expect(getByText("Read-only").textContent).toBe("Read-only");
+    expect(queryByText("Mock editor")).toBe(null);
+    expect(textContent(container).includes("# Raw card")).toBeTrue();
   });
 });

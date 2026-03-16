@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import type { CodexItemView } from "../../../lib/types";
 import { ThreadItemRenderer } from "./thread-item-renderer";
+import { render, textContent } from "../../../test/dom";
 
 const EXAMPLE_FILE_LINK = "/workspace/nodex/src/renderer/styles/design-system-theme.css#L450";
 
@@ -15,8 +15,8 @@ function renderItem(
     isStreamingTurn?: boolean;
     showAssistantMessageActions?: boolean;
   },
-): string {
-  return renderToStaticMarkup(
+) {
+  return render(
     createElement(
       RadixTooltip.Provider,
       {
@@ -50,7 +50,7 @@ function createBaseItem(partial: Partial<CodexItemView>): CodexItemView {
 
 describe("ThreadItemRenderer", () => {
   test("renders assistant markdown as rich content", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
         role: "assistant",
@@ -58,15 +58,15 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("<h1")).toBeTrue();
-    expect(markup.includes("Heading")).toBeTrue();
-    expect(markup.includes("<ul")).toBeTrue();
-    expect(markup.includes("<pre")).toBeTrue();
-    expect(markup.includes("<table")).toBeTrue();
+    expect(item.container.querySelector("h1")).not.toBeNull();
+    expect(textContent(item.container).includes("Heading")).toBeTrue();
+    expect(item.container.querySelector("ul")).not.toBeNull();
+    expect(item.container.querySelector("pre")).not.toBeNull();
+    expect(item.container.querySelector("table")).not.toBeNull();
   });
 
   test("renders copy and mock edit actions under user messages", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "userMessage",
         role: "user",
@@ -74,13 +74,12 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("aria-label=\"Copy message\"")).toBeTrue();
-    expect(markup.includes("aria-label=\"Edit message\"")).toBeTrue();
-    expect(markup.includes("Edit message (mock)")).toBeTrue();
+    expect(item.getByLabelText("Copy message").getAttribute("aria-label")).toBe("Copy message");
+    expect(item.getByLabelText("Edit message").getAttribute("title")).toBe("Edit message (mock)");
   });
 
   test("renders copy action under the selected assistant message only", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
         role: "assistant",
@@ -89,12 +88,12 @@ describe("ThreadItemRenderer", () => {
       { showAssistantMessageActions: true },
     );
 
-    expect(markup.includes("aria-label=\"Copy message\"")).toBeTrue();
-    expect(markup.includes("aria-label=\"Edit message\"")).toBeFalse();
+    expect(item.getByLabelText("Copy message").getAttribute("aria-label")).toBe("Copy message");
+    expect(item.queryByLabelText("Edit message") === null).toBeTrue();
   });
 
   test("omits assistant action row when it is not the last assistant message", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
         role: "assistant",
@@ -102,11 +101,11 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("aria-label=\"Copy message\"")).toBeFalse();
+    expect(item.queryByLabelText("Copy message") === null).toBeTrue();
   });
 
   test("renders local file links in markdown with a hover title", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
         role: "assistant",
@@ -114,16 +113,12 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(
-      markup.includes(
-        'title="/workspace/nodex/src/renderer/styles/design-system-theme.css (line 450)"',
-      ),
-    ).toBeTrue();
-    expect(markup.includes("design-system-theme.css")).toBeTrue();
+    const link = item.getByText("design-system-theme.css");
+    expect(link.getAttribute("title")).toBe("/workspace/nodex/src/renderer/styles/design-system-theme.css (line 450)");
   });
 
   test("renders assistant display math via Streamdown math plugin", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
         role: "assistant",
@@ -131,12 +126,12 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes('class="katex"')).toBeTrue();
-    expect(markup.includes("annotation")).toBeTrue();
+    expect(item.container.querySelector(".katex")).not.toBeNull();
+    expect(item.container.querySelector("annotation")).not.toBeNull();
   });
 
   test("renders mermaid fences through the Streamdown code block shell", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
         role: "assistant",
@@ -144,12 +139,12 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("animate-spin")).toBeTrue();
-    expect(markup.includes("graph TD")).toBeFalse();
+    expect(item.container.querySelector(".animate-spin")).not.toBeNull();
+    expect(textContent(item.container).includes("graph TD")).toBeFalse();
   });
 
   test("renders tool call toggles collapsed by default", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "toolCall",
         type: "mcpToolCall",
@@ -165,17 +160,15 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("docs / search")).toBeTrue();
-    // Status shown inline for failures
-    expect(markup.includes("Failed")).toBeTrue();
-    // Collapsed — body content not rendered
-    expect(markup.includes("Arguments")).toBeFalse();
-    expect(markup.includes("Result")).toBeFalse();
-    expect(markup.includes("Request failed")).toBeFalse();
+    expect(textContent(item.container).includes("docs / search")).toBeTrue();
+    expect(item.container.querySelector('button[aria-expanded="false"]')).not.toBeNull();
+    expect(textContent(item.container).includes("Arguments")).toBeFalse();
+    expect(textContent(item.container).includes("Result")).toBeFalse();
+    expect(textContent(item.container).includes("Request failed")).toBeFalse();
   });
 
   test("renders completed command exploration summary collapsed by default", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "commandExecution",
         type: "commandExecution",
@@ -211,14 +204,14 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("Explored")).toBeTrue();
-    expect(markup.includes("2 files, 1 search")).toBeTrue();
-    expect(markup.includes("aria-expanded=\"false\"")).toBeTrue();
-    expect(markup.includes("Activity")).toBeFalse();
+    expect(textContent(item.container).includes("Explored")).toBeTrue();
+    expect(textContent(item.container).includes("2 files, 1 search")).toBeTrue();
+    expect(item.container.querySelector('button[aria-expanded="false"]')).not.toBeNull();
+    expect(textContent(item.container).includes("Activity")).toBeFalse();
   });
 
   test("renders in-progress command exploration expanded by default", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "commandExecution",
         type: "commandExecution",
@@ -248,15 +241,15 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("Exploring")).toBeTrue();
-    expect(markup.includes("aria-expanded=\"true\"")).toBeTrue();
-    expect(markup.includes("Activity")).toBeTrue();
-    expect(markup.includes("Read app.ts")).toBeTrue();
-    expect(markup.includes("Searched for normalize in src")).toBeTrue();
+    expect(textContent(item.container).includes("Exploring")).toBeTrue();
+    expect(item.container.querySelector('button[aria-expanded="true"]')).not.toBeNull();
+    expect(textContent(item.container).includes("Activity")).toBeTrue();
+    expect(textContent(item.container).includes("Read app.ts")).toBeTrue();
+    expect(textContent(item.container).includes("Searched for normalize in src")).toBeTrue();
   });
 
   test("renders command execution without shell wrapper prefix", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "commandExecution",
         type: "commandExecution",
@@ -274,13 +267,13 @@ describe("ThreadItemRenderer", () => {
       { threadCwd: "/tmp/repo" },
     );
 
-    expect(markup.includes("ls -la src")).toBeTrue();
-    expect(markup.includes("/bin/zsh -lc")).toBeFalse();
-    expect(markup.includes("in /tmp/repo")).toBeFalse();
+    expect(textContent(item.container).includes("ls -la src")).toBeTrue();
+    expect(textContent(item.container).includes("/bin/zsh -lc")).toBeFalse();
+    expect(textContent(item.container).includes("in /tmp/repo")).toBeFalse();
   });
 
   test("renders in-progress generic commands as a running status line", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "commandExecution",
         type: "commandExecution",
@@ -298,14 +291,14 @@ describe("ThreadItemRenderer", () => {
       { threadCwd: "/tmp/repo" },
     );
 
-    expect(markup.includes("Running command")).toBeTrue();
-    expect(markup.includes("Ran git status")).toBeFalse();
-    expect(markup.includes("git status")).toBeFalse();
-    expect(markup.includes("aria-expanded=\"false\"")).toBeTrue();
+    expect(textContent(item.container).includes("Running command")).toBeTrue();
+    expect(textContent(item.container).includes("Ran git status")).toBeFalse();
+    expect(textContent(item.container).includes("git status")).toBeFalse();
+    expect(item.container.querySelector('button[aria-expanded="false"]')).not.toBeNull();
   });
 
   test("renders command execution cwd subtitle when command runs outside thread cwd", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "commandExecution",
         type: "commandExecution",
@@ -323,12 +316,11 @@ describe("ThreadItemRenderer", () => {
       { threadCwd: "/tmp/repo" },
     );
 
-    expect(markup.includes("in /tmp/repo/packages/ui")).toBeTrue();
-    expect(markup.includes("text-xs")).toBeFalse();
+    expect(textContent(item.container).includes("in /tmp/repo/packages/ui")).toBeTrue();
   });
 
   test("renders file-change inline toggle with filename", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "fileChange",
         type: "fileChange",
@@ -347,13 +339,12 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("app.ts")).toBeTrue();
-    // Inline toggle — no status badge for completed
-    expect(markup.includes("Completed")).toBeFalse();
+    expect(textContent(item.container).includes("app.ts")).toBeTrue();
+    expect(textContent(item.container).includes("Completed")).toBeFalse();
   });
 
   test("renders unknown tool items as inline toggle with label", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "toolCall",
         status: "failed",
@@ -365,15 +356,14 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("Future tool")).toBeTrue();
-    // Collapsed — no body content
-    expect(markup.includes("Raw Item")).toBeFalse();
-    expect(markup.includes("foo")).toBeFalse();
-    expect(markup.includes("bar")).toBeFalse();
+    expect(textContent(item.container).includes("Future tool")).toBeTrue();
+    expect(textContent(item.container).includes("Raw Item")).toBeFalse();
+    expect(textContent(item.container).includes("foo")).toBeFalse();
+    expect(textContent(item.container).includes("bar")).toBeFalse();
   });
 
   test("renders Thinking toggle collapsed by default", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "reasoning",
         role: "assistant",
@@ -381,13 +371,13 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("Thinking")).toBeTrue();
-    expect(markup.includes("aria-expanded=\"false\"")).toBeTrue();
-    expect(markup.includes("Internal reasoning content")).toBeFalse();
+    expect(textContent(item.container).includes("Thinking")).toBeTrue();
+    expect(item.container.querySelector('button[aria-expanded="false"]')).not.toBeNull();
+    expect(textContent(item.container).includes("Internal reasoning content")).toBeFalse();
   });
 
   test("renders answered questions as a collapsed transcript disclosure", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "userInputRequest",
         type: "request_user_input",
@@ -412,15 +402,15 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes("Asked")).toBeTrue();
-    expect(markup.includes("1 question")).toBeTrue();
-    expect(markup.includes("aria-expanded=\"false\"")).toBeTrue();
-    expect(markup.includes("What is 1 + 1?")).toBeFalse();
-    expect(markup.includes(">2<")).toBeFalse();
+    expect(textContent(item.container).includes("Asked")).toBeTrue();
+    expect(textContent(item.container).includes("1 question")).toBeTrue();
+    expect(item.container.querySelector('button[aria-expanded="false"]')).not.toBeNull();
+    expect(textContent(item.container).includes("What is 1 + 1?")).toBeFalse();
+    expect(textContent(item.container).includes("2")).toBeFalse();
   });
 
   test("renders completed plans as collapsed preview cards", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "plan",
         type: "plan",
@@ -443,16 +433,15 @@ describe("ThreadItemRenderer", () => {
       }),
     );
 
-    expect(markup.includes(">Plan<")).toBeTrue();
-    expect(markup.includes("aria-label=\"Expand plan summary\"")).toBeTrue();
-    expect(markup.includes("aria-expanded=\"false\"")).toBeTrue();
-    expect(markup.includes("Expand plan")).toBeTrue();
-    expect(markup.includes("Download plan")).toBeTrue();
-    expect(markup.includes("Copy")).toBeTrue();
+    expect(textContent(item.container).includes("Plan")).toBeTrue();
+    expect(item.getByLabelText("Expand plan summary").getAttribute("aria-expanded")).toBe("false");
+    expect(textContent(item.container).includes("Expand plan")).toBeTrue();
+    expect(item.getByLabelText("Download plan").getAttribute("aria-label")).toBe("Download plan");
+    expect(item.getByLabelText("Copy").getAttribute("aria-label")).toBe("Copy");
   });
 
   test("renders streaming plans expanded by default", () => {
-    const markup = renderItem(
+    const item = renderItem(
       createBaseItem({
         normalizedKind: "plan",
         type: "plan",
@@ -463,8 +452,7 @@ describe("ThreadItemRenderer", () => {
       { isStreamingTurn: true },
     );
 
-    expect(markup.includes("aria-label=\"Collapse plan summary\"")).toBeTrue();
-    expect(markup.includes("aria-expanded=\"true\"")).toBeTrue();
-    expect(markup.includes("Expand plan")).toBeFalse();
+    expect(item.getByLabelText("Collapse plan summary").getAttribute("aria-expanded")).toBe("true");
+    expect(textContent(item.container).includes("Expand plan")).toBeFalse();
   });
 });

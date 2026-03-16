@@ -1,6 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
   StatusChip,
   StatusIcon,
@@ -8,6 +6,7 @@ import {
   getStatusAccentColorByLabel,
   getStatusIdByLabel,
 } from "./status-chip";
+import { render } from "../test/dom";
 
 type MockSvgNode = {
   namespaceURI: string | null;
@@ -53,26 +52,19 @@ function createMockDocument(): Document {
 
 describe("status chip", () => {
   test("renders the shared in-review chip with an icon and label", () => {
-    const markup = renderToStaticMarkup(
-      createElement(StatusChip, {
-        statusId: "in_review",
-      }),
-    );
+    const { container, getByText } = render(<StatusChip statusId="in_review" />);
 
-    expect(markup.includes("In Review")).toBeTrue();
-    expect(markup.includes("<svg")).toBeTrue();
-    expect(markup.includes("status-review-bg")).toBeTrue();
+    expect(getByText("In Review").textContent).toBe("In Review");
+    expect(container.querySelector("svg")).not.toBeNull();
+    expect(container.innerHTML.includes("status-review-bg")).toBeTrue();
   });
 
   test("renders the draft icon as decorative svg markup", () => {
-    const markup = renderToStaticMarkup(
-      createElement(StatusIcon, {
-        statusId: "draft",
-      }),
-    );
+    const { container } = render(<StatusIcon statusId="draft" />);
+    const icon = container.querySelector("svg");
 
-    expect(markup.includes('aria-hidden="true"')).toBeTrue();
-    expect(markup.includes("<path")).toBeTrue();
+    expect(icon?.getAttribute("aria-hidden")).toBe("true");
+    expect(container.querySelector("path")).not.toBeNull();
   });
 
   test("creates a DOM icon element for editor-rendered status chips", () => {

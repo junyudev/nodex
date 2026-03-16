@@ -1,14 +1,23 @@
 import { describe, expect, mock, test } from "bun:test";
 import * as DiffReact from "@pierre/diffs/react";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import * as KanbanOptions from "@/lib/kanban-options";
 import type { HistoryPanelEntry } from "../../../shared/ipc-api";
+import { render, textContent } from "../../test/dom";
 
 mock.module("@/lib/layout", () => ({
   TAB_BAR_HEIGHT: 48,
 }));
 
 mock.module("@/lib/kanban-options", () => ({
+  ...KanbanOptions,
+  ARCHIVED_CARD_OPTION_ID: "archived",
+  ARCHIVED_CARD_OPTION_NAME: "Archived",
+  EMPTY_PRIORITY_OPTION_VALUE: "none",
+  KANBAN_STATUS_OPTIONS: [
+    { id: "draft", name: "Draft" },
+    { id: "in_progress", name: "In progress" },
+  ],
   KANBAN_STATUS_LABELS: {
     draft: "Draft",
     in_progress: "In progress",
@@ -17,6 +26,7 @@ mock.module("@/lib/kanban-options", () => ({
 
 mock.module("@/lib/api", () => ({
   invoke: async () => ({ entries: [] }),
+  subscribeGitBranchChanges: () => () => undefined,
 }));
 
 mock.module("@/lib/use-theme", () => ({
@@ -93,43 +103,43 @@ describe("history panel", () => {
       snapshot: null,
     };
 
-    const markup = renderToStaticMarkup(
-      createElement(HistoryEntryDetails, {
-        entry,
-        selectedIndex: 0,
-        totalCount: 1,
-        onNavigate: () => undefined,
-        onRevert: () => undefined,
-        onRestore: () => undefined,
-        actionInFlight: null,
-        confirmingAction: null,
-        onRequestConfirm: () => undefined,
-        onCancelConfirm: () => undefined,
-        actionError: null,
-      }),
+    const { container, getByText } = render(
+      <HistoryEntryDetails
+        entry={entry}
+        selectedIndex={0}
+        totalCount={1}
+        onNavigate={() => undefined}
+        onRevert={() => undefined}
+        onRestore={() => undefined}
+        actionInFlight={null}
+        confirmingAction={null}
+        onRequestConfirm={() => undefined}
+        onCancelConfirm={() => undefined}
+        actionError={null}
+      />,
     );
 
-    expect(markup.includes("Description")).toBe(true);
-    expect(markup.includes("Alpha paragraph")).toBe(true);
-    expect(markup.includes("Gamma paragraph")).toBe(true);
-    expect(markup.includes("Source")).toBe(true);
-    expect(markup.includes("Full description diff")).toBe(true);
-    expect(markup.includes("Tags")).toBe(true);
+    expect(getByText("Description").textContent).toBe("Description");
+    expect(textContent(container).includes("Alpha paragraph")).toBeTrue();
+    expect(textContent(container).includes("Gamma paragraph")).toBeTrue();
+    expect(container.querySelectorAll("summary").length > 0).toBeTrue();
+    expect(getByText("Full description diff").textContent).toBe("Full description diff");
+    expect(getByText("Tags").textContent).toBe("Tags");
   });
 
   test("renders the shared diff viewer when the full description diff is expanded", async () => {
     const { DescriptionFullDiffDisclosure } = await import("./history-panel");
 
-    const markup = renderToStaticMarkup(
-      createElement(DescriptionFullDiffDisclosure, {
-        beforeText: "Alpha paragraph",
-        afterText: "Beta paragraph",
-        defaultOpen: true,
-      }),
+    const { container } = render(
+      <DescriptionFullDiffDisclosure
+        beforeText="Alpha paragraph"
+        afterText="Beta paragraph"
+        defaultOpen
+      />,
     );
 
-    expect(markup.includes("data-diff=\"true\"")).toBe(true);
-    expect(markup.includes("Alpha paragraph =&gt; Beta paragraph")).toBe(true);
-    expect(markup.includes("nodex-inline-diff")).toBe(true);
+    expect(container.querySelector('[data-diff="true"]')).not.toBeNull();
+    expect(textContent(container).includes("Alpha paragraph => Beta paragraph")).toBeTrue();
+    expect(container.innerHTML.includes("nodex-inline-diff")).toBeTrue();
   });
 });

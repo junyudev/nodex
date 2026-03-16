@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EDITOR_SYNC_DEBOUNCE_MS } from "../../../lib/timing";
 import type { CardInput } from "../../../lib/types";
 import type { ToggleListCard } from "../../../lib/toggle-list/types";
@@ -111,16 +111,20 @@ function installDomShims(): void {
     HTMLElement?: typeof FakeHTMLElement;
   };
 
-  if (typeof domGlobal.Element === "undefined") {
-    domGlobal.Element = FakeHTMLElement;
-  }
-
-  if (typeof domGlobal.HTMLElement === "undefined") {
-    domGlobal.HTMLElement = FakeHTMLElement;
-  }
+  domGlobal.Element = FakeHTMLElement;
+  domGlobal.HTMLElement = FakeHTMLElement;
 }
 
-installDomShims();
+const nativeMutationObserver = globalThis.MutationObserver;
+
+beforeEach(() => {
+  installDomShims();
+  Reflect.set(globalThis, "MutationObserver", undefined);
+});
+
+afterEach(() => {
+  Reflect.set(globalThis, "MutationObserver", nativeMutationObserver);
+});
 
 function makeCard(overrides: Partial<ToggleListCard> = {}): ToggleListCard {
   return {
@@ -513,6 +517,7 @@ describe("projection sync controller", () => {
 
     runtime.setCursorBlock("leaf-1");
     runtime.triggerSelectionChange();
+    runtime.triggerChange();
     runtime.triggerFocusOut();
     await waitForMicrotasks();
 

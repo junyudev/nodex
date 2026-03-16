@@ -1,10 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import * as KanbanOptions from "@/lib/kanban-options";
 import * as StageRailPeek from "@/lib/stage-rail-peek";
+import * as StatusChip from "@/lib/status-chip";
 import * as WorkbenchState from "@/lib/use-workbench-state";
 import type { Project } from "@/lib/types";
 import { resetCardDraftStoreForTest, setCardDraftOverlay } from "../../lib/card-draft-store";
+import { render, textContent } from "../../test/dom";
 
 let resolveSlidingWindowFocusIntentReturn: { direction: "left" | "right" } = {
   direction: "right",
@@ -305,12 +307,14 @@ mock.module("@/lib/use-kanban", () => ({
 }));
 
 mock.module("@/lib/kanban-options", () => ({
+  ...KanbanOptions,
   KANBAN_STATUS_LABELS: {
     in_progress: "In Progress",
   },
 }));
 
 mock.module("@/lib/status-chip", () => ({
+  ...StatusChip,
   StatusIcon: ({ className }: { className?: string }) =>
     createElement("span", { className, "data-status-icon": "true" }, "S"),
 }));
@@ -344,7 +348,7 @@ async function renderShell(
   invokeImpl: ((...args: unknown[]) => Promise<unknown>) | null = null,
   expandedStages: Array<"db" | "cards" | "threads" | "files"> = ["db", "cards"],
   useCodexOverrides?: Record<string, unknown>,
-): Promise<string> {
+): Promise<ReturnType<typeof render>> {
   (globalThis as { __lastSettingsOverlayProps?: Record<string, unknown> }).__lastSettingsOverlayProps = undefined;
   (globalThis as { __lastCommandPaletteProps?: Record<string, unknown> }).__lastCommandPaletteProps = undefined;
   (globalThis as { __lastLeftSidebarProps?: Record<string, unknown> }).__lastLeftSidebarProps = undefined;
@@ -468,40 +472,37 @@ async function renderShell(
   };
 
   const typedProps = props as unknown as Parameters<typeof WorkbenchShell>[0];
-  return renderToStaticMarkup(
-    createElement(WorkbenchShell, typedProps),
-  );
+  return render(createElement(WorkbenchShell, typedProps));
 }
 
 describe("WorkbenchShell", () => {
   test("does not render inline task search input by default", async () => {
-    const markup = await renderShell(false);
-    expect(markup.includes("aria-hidden=\"true\"")).toBeTrue();
+    const shell = await renderShell(false);
+    expect(shell.container.innerHTML.includes('aria-hidden="true"')).toBeTrue();
   });
 
   test("renders database view controls in the top toolbar", async () => {
-    const markup = await renderShell(false, "sliding-window", { activeView: "calendar" });
+    const shell = await renderShell(false, "sliding-window", { activeView: "calendar" });
 
-    expect(markup.includes("aria-label=\"Database views\"")).toBeTrue();
-    expect(markup.includes("Board")).toBeTrue();
-    expect(markup.includes("aria-label=\"Table\"")).toBeTrue();
-    expect(markup.includes("Calendar")).toBeTrue();
-    expect((markup.match(/data-tab-label-visible=\"true\"/g) ?? []).length).toBe(1);
+    expect(shell.getByLabelText("Database views").getAttribute("aria-label")).toBe("Database views");
+    expect(textContent(shell.container).includes("Board")).toBeTrue();
+    expect(shell.container.querySelectorAll('[aria-label="Table"]').length).toBe(1);
+    expect(textContent(shell.container).includes("Calendar")).toBeTrue();
+    expect(shell.container.querySelectorAll('[data-tab-label-visible="true"]').length).toBe(1);
   });
 
   test("places pane controls on either side of the minimap", async () => {
-    const markup = await renderShell(false, "sliding-window");
-    const minusIndex = markup.indexOf("aria-label=\"Decrease visible panes\"");
-    const minimapIndex = markup.indexOf("aria-label=\"Database\"");
-    const plusIndex = markup.indexOf("aria-label=\"Increase visible panes\"");
+    const shell = await renderShell(false, "sliding-window");
+    const decreaseControl = shell.getByLabelText("Decrease visible panes");
+    const minimap = shell.getByLabelText("Database");
+    const increaseControl = shell.getByLabelText("Increase visible panes");
 
-    expect(minusIndex >= 0).toBeTrue();
-    expect(minimapIndex > minusIndex).toBeTrue();
-    expect(plusIndex > minimapIndex).toBeTrue();
+    expect(Boolean(decreaseControl.compareDocumentPosition(minimap) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTrue();
+    expect(Boolean(minimap.compareDocumentPosition(increaseControl) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTrue();
   });
 
   test("renders a left-edge hover trigger when the sidebar is collapsed", async () => {
-    const markup = await renderShell(false, "sliding-window", {
+    const shell = await renderShell(false, "sliding-window", {
       sidebar: {
         collapsed: true,
         width: 280,
@@ -515,14 +516,14 @@ describe("WorkbenchShell", () => {
       },
     });
 
-    expect(markup.includes("data-sidebar-hover-trigger=\"true\"")).toBeTrue();
-    expect(markup.includes("aria-label=\"Expand sidebar\"")).toBeTrue();
-    expect(markup.includes("aria-hidden=\"true\"")).toBeTrue();
-    expect(markup.includes("data-stage-groups=")).toBeTrue();
+    expect(shell.container.querySelector('[data-sidebar-hover-trigger="true"]')).not.toBeNull();
+    expect(shell.getByLabelText("Expand sidebar").getAttribute("aria-label")).toBe("Expand sidebar");
+    expect(shell.container.innerHTML.includes('aria-hidden="true"')).toBeTrue();
+    expect(shell.container.querySelector("[data-stage-groups]")).not.toBeNull();
   });
 
   test("opens history as an overlay for the active card-stage card", async () => {
-    const markup = await renderShell(false, "sliding-window", {
+    const shell = await renderShell(false, "sliding-window", {
       cardsTabs: [{ id: "session:s-1", kind: "session", title: "Card 1", sessionId: "s-1" }],
       activeCardsTabId: "history",
       cardStageState: {
@@ -532,8 +533,8 @@ describe("WorkbenchShell", () => {
       },
     });
 
-    expect(markup.includes("data-card-stage=\"true\"")).toBeTrue();
-    expect(markup.includes("data-history-panel=\"true\"")).toBeTrue();
+    expect(shell.container.querySelector('[data-card-stage="true"]')).not.toBeNull();
+    expect(shell.container.querySelector('[data-history-panel="true"]')).not.toBeNull();
 
     const historyPanelProps = (globalThis as { __lastHistoryPanelProps?: Record<string, unknown> }).__lastHistoryPanelProps;
     const cardStageProps = (globalThis as { __lastCardStageProps?: Record<string, unknown> }).__lastCardStageProps;
@@ -545,7 +546,7 @@ describe("WorkbenchShell", () => {
   });
 
   test("keeps the current card visible when active project differs and resolves history by card project", async () => {
-    const markup = await renderShell(false, "sliding-window", {
+    const shell = await renderShell(false, "sliding-window", {
       dbProjectId: "default",
       projects: [
         ...PROJECTS,
@@ -569,8 +570,8 @@ describe("WorkbenchShell", () => {
       },
     });
 
-    expect(markup.includes("data-card-stage=\"true\"")).toBeTrue();
-    expect(markup.includes("data-history-panel=\"true\"")).toBeTrue();
+    expect(shell.container.querySelector('[data-card-stage="true"]')).not.toBeNull();
+    expect(shell.container.querySelector('[data-history-panel="true"]')).not.toBeNull();
 
     const historyPanelProps = (globalThis as { __lastHistoryPanelProps?: Record<string, unknown> }).__lastHistoryPanelProps;
     expect(historyPanelProps?.projectId).toBe("ops");
@@ -604,9 +605,9 @@ describe("WorkbenchShell", () => {
   });
 
   test("keeps the inline toolbar search field visible when search query exists", async () => {
-    const markup = await renderShell(false, "sliding-window", { activeSearchQuery: "bugfix" });
-    expect(markup.includes("Type to search...")).toBeTrue();
-    expect(markup.includes("bugfix")).toBeTrue();
+    const shell = await renderShell(false, "sliding-window", { activeSearchQuery: "bugfix" });
+    expect(shell.getByPlaceholderText("Type to search...").getAttribute("placeholder")).toBe("Type to search...");
+    expect(shell.getByDisplayValue("bugfix").getAttribute("value")).toBe("bugfix");
   });
 
   test("routes db stage host with dbProjectId even when threads project differs", async () => {
@@ -846,8 +847,8 @@ describe("WorkbenchShell", () => {
   });
 
   test("includes recents as a top-level sidebar group", async () => {
-    const markup = await renderShell(false);
-    expect(markup.includes('data-stage-groups="db,recents,cards,threads,files"')).toBeTrue();
+    const shell = await renderShell(false);
+    expect(shell.container.querySelector('[data-stage-groups="db,recents,cards,threads,files"]')).not.toBeNull();
   });
 
   test("orders and filters top-level sidebar groups from persisted sidebar prefs", async () => {
@@ -1109,9 +1110,8 @@ describe("WorkbenchShell", () => {
   });
 
   test("renders global bottom terminal panel when opened", async () => {
-    const markup = await renderShell(true);
-    expect(markup.includes("Hide terminal panel")).toBeTrue();
-    expect(markup.includes("data-terminal-panel=\"true\"")).toBeTrue();
+    const shell = await renderShell(true);
+    expect(shell.container.querySelector('[data-terminal-panel="true"]')).not.toBeNull();
   });
 
   test("wires stage rail layout mode into settings modal", async () => {

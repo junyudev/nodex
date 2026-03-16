@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createElement, createRef } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { createRef } from "react";
 import { CalendarDays, SquareKanban, Table2 } from "lucide-react";
+import { render, textContent } from "../../test/dom";
 
 type DbViewToolbarItem = {
   id: string;
@@ -67,50 +67,52 @@ describe("DbViewToolbar", () => {
 
   test("renders database view tabs and the idle search trigger", async () => {
     const { DB_VIEW_TOOLBAR_TEST_ID, DbViewToolbar } = await import("./db-view-toolbar");
-    const markup = renderToStaticMarkup(
-      createElement(DbViewToolbar, {
-        ...BASE_PROPS,
-        activeSearchQuery: "",
-        taskSearchOpen: false,
-      }),
+    const { container, getByLabelText, getByText, getByTestId } = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        activeSearchQuery=""
+        taskSearchOpen={false}
+      />,
     );
 
-    expect(markup.includes(`data-testid="${DB_VIEW_TOOLBAR_TEST_ID}"`)).toBeTrue();
-    expect(markup.includes("aria-label=\"Database views\"")).toBeTrue();
-    expect(markup.includes("Board")).toBeTrue();
-    expect((markup.match(/aria-label=\"Table\"/g) ?? []).length).toBe(2);
-    expect(markup.includes("Calendar")).toBeTrue();
-    expect((markup.match(/data-tab-label-visible=\"true\"/g) ?? []).length).toBe(1);
-    expect(markup.includes("aria-label=\"Search\"")).toBeTrue();
-    expect(markup.includes("aria-hidden=\"true\"")).toBeTrue();
+    expect(getByTestId(DB_VIEW_TOOLBAR_TEST_ID).getAttribute("data-testid")).toBe(DB_VIEW_TOOLBAR_TEST_ID);
+    expect(getByLabelText("Database views").getAttribute("aria-label")).toBe("Database views");
+    expect(getByText("Board").textContent).toBe("Board");
+    expect(container.querySelectorAll('[aria-label="Table"]').length).toBe(2);
+    expect(getByText("Calendar").textContent).toBe("Calendar");
+    expect(container.querySelectorAll('[data-tab-label-visible="true"]').length).toBe(1);
+    expect(getByLabelText("Search").getAttribute("aria-label")).toBe("Search");
+    expect(getByTestId(DB_VIEW_TOOLBAR_TEST_ID).innerHTML.includes('aria-hidden="true"')).toBeTrue();
   });
 
   test("renders the inline search field when open or when a query is active", async () => {
     const { DbViewToolbar } = await import("./db-view-toolbar");
-    const openMarkup = renderToStaticMarkup(
-      createElement(DbViewToolbar, {
-        ...BASE_PROPS,
-        activeSearchQuery: "bugfix",
-        taskSearchOpen: true,
-      }),
+    const openRender = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        activeSearchQuery="bugfix"
+        taskSearchOpen
+      />,
     );
 
-    expect(openMarkup.includes("aria-hidden=\"false\"")).toBeTrue();
-    expect(openMarkup.includes("Type to search...")).toBeTrue();
-    expect(openMarkup.includes("Clear search")).toBeTrue();
-    expect(openMarkup.includes("bugfix")).toBeTrue();
+    expect(openRender.container.innerHTML.includes('aria-hidden="false"')).toBeTrue();
+    expect(openRender.getByPlaceholderText("Type to search...").getAttribute("placeholder")).toBe("Type to search...");
+    expect(openRender.getByLabelText("Clear search").getAttribute("aria-label")).toBe("Clear search");
+    expect(openRender.getByDisplayValue("bugfix").getAttribute("value")).toBe("bugfix");
 
-    const filteredMarkup = renderToStaticMarkup(
-      createElement(DbViewToolbar, {
-        ...BASE_PROPS,
-        activeSearchQuery: "bugfix",
-        taskSearchOpen: false,
-      }),
+    openRender.unmount();
+
+    const filteredRender = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        activeSearchQuery="bugfix"
+        taskSearchOpen={false}
+      />,
     );
 
-    expect(filteredMarkup.includes("aria-hidden=\"false\"")).toBeTrue();
-    expect(filteredMarkup.includes("Type to search...")).toBeTrue();
-    expect(filteredMarkup.includes("bugfix")).toBeTrue();
+    expect(filteredRender.container.innerHTML.includes('aria-hidden="false"')).toBeTrue();
+    expect(filteredRender.getByPlaceholderText("Type to search...").getAttribute("placeholder")).toBe("Type to search...");
+    expect(filteredRender.getByDisplayValue("bugfix").getAttribute("value")).toBe("bugfix");
   });
 
   test("renders the active rules summary row for supported views", async () => {
@@ -123,22 +125,21 @@ describe("DbViewToolbar", () => {
       values: ["backlog", "in_progress"],
     };
 
-    const markup = renderToStaticMarkup(
-      createElement(DbViewToolbar, {
-        ...BASE_PROPS,
-        activeSearchQuery: "",
-        taskSearchOpen: false,
-        rulesView: "kanban",
-        dbViewPrefs: prefs,
-        onUpdateDbViewPrefs: () => undefined,
-      }),
+    const { container, getByText } = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        activeSearchQuery=""
+        taskSearchOpen={false}
+        rulesView="kanban"
+        dbViewPrefs={prefs}
+        onUpdateDbViewPrefs={() => undefined}
+      />,
     );
 
-    expect(markup.includes("Board Order")).toBeTrue();
-    expect(markup.includes("Status")).toBeTrue();
-    expect(markup.includes("Status:</span>")).toBeTrue();
-    expect(markup.includes("Backlog, In Progress")).toBeTrue();
-    expect(markup.includes("Ascending")).toBeFalse();
+    expect(getByText("Board Order").textContent).toBe("Board Order");
+    expect(textContent(container).includes("Status")).toBeTrue();
+    expect(textContent(container).includes("Backlog, In Progress")).toBeTrue();
+    expect(textContent(container).includes("Ascending")).toBeFalse();
   });
 
   test("collapses multiple active sorts into a single count chip", async () => {
@@ -155,23 +156,22 @@ describe("DbViewToolbar", () => {
       values: ["p0-critical", "p1-high"],
     };
 
-    const markup = renderToStaticMarkup(
-      createElement(DbViewToolbar, {
-        ...BASE_PROPS,
-        activeSearchQuery: "",
-        taskSearchOpen: false,
-        rulesView: "toggle-list",
-        dbViewPrefs: prefs,
-        onUpdateDbViewPrefs: () => undefined,
-      }),
+    const { container, getByText } = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        activeSearchQuery=""
+        taskSearchOpen={false}
+        rulesView="toggle-list"
+        dbViewPrefs={prefs}
+        onUpdateDbViewPrefs={() => undefined}
+      />,
     );
 
-    expect(markup.includes("2 sorts")).toBeTrue();
-    expect(markup.includes("Priority")).toBeTrue();
-    expect(markup.includes("Priority:</span>")).toBeTrue();
-    expect(markup.includes("P0, P1")).toBeTrue();
-    expect(markup.includes("Ascending")).toBeFalse();
-    expect(markup.includes("Descending")).toBeFalse();
+    expect(getByText("2 sorts").textContent).toBe("2 sorts");
+    expect(textContent(container).includes("Priority")).toBeTrue();
+    expect(textContent(container).includes("P0, P1")).toBeTrue();
+    expect(textContent(container).includes("Ascending")).toBeFalse();
+    expect(textContent(container).includes("Descending")).toBeFalse();
   });
 
   test("renders empty priority in the summary row when selected explicitly", async () => {
@@ -185,18 +185,18 @@ describe("DbViewToolbar", () => {
       includeEmpty: true,
     };
 
-    const markup = renderToStaticMarkup(
-      createElement(DbViewToolbar, {
-        ...BASE_PROPS,
-        activeSearchQuery: "",
-        taskSearchOpen: false,
-        rulesView: "toggle-list",
-        dbViewPrefs: prefs,
-        onUpdateDbViewPrefs: () => undefined,
-      }),
+    const { container } = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        activeSearchQuery=""
+        taskSearchOpen={false}
+        rulesView="toggle-list"
+        dbViewPrefs={prefs}
+        onUpdateDbViewPrefs={() => undefined}
+      />,
     );
 
-    expect(markup.includes("Priority:</span>")).toBeTrue();
-    expect(markup.includes("P0, -")).toBeTrue();
+    expect(textContent(container).includes("Priority")).toBeTrue();
+    expect(textContent(container).includes("P0, -")).toBeTrue();
   });
 });

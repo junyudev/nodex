@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
+import { render, textContent } from "../../../test/dom";
 
 describe("card stage dev story", () => {
   test("renders the story shell and routing hint", async () => {
@@ -8,15 +8,15 @@ describe("card stage dev story", () => {
     }));
 
     const { CardStageDevStoryPage } = await import("./card-stage-dev-story");
-    const markup = renderToStaticMarkup(
+    const { container, getByText } = render(
       <CardStageDevStoryPage onExit={() => undefined} renderPreview={false} />,
     );
 
-    expect(markup.includes("Card Stage Story")).toBeTrue();
-    expect(markup.includes("?dev-story=card-stage")).toBeTrue();
-    expect(markup.includes("Dense Threads")).toBeTrue();
-    expect(markup.includes("Dev story sans font size")).toBeTrue();
-    expect(markup.includes("Dev story code font size")).toBeTrue();
-    expect(markup.includes("Preview disabled for tests.")).toBeTrue();
+    expect(getByText("Card Stage Story").textContent).toBe("Card Stage Story");
+    expect(textContent(container).includes("?dev-story=card-stage")).toBeTrue();
+    expect(getByText("Dense Threads").textContent).toBe("Dense Threads");
+    expect(getByText("Dev story sans font size").textContent).toBe("Dev story sans font size");
+    expect(getByText("Dev story code font size").textContent).toBe("Dev story code font size");
+    expect(getByText("Preview disabled for tests.").textContent).toBe("Preview disabled for tests.");
   });
 });

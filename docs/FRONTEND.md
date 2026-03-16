@@ -41,4 +41,8 @@
 
 ## Frontend Testing
 - Run targeted tests while iterating: `bun test src/renderer/...`
+- Default renderer component tests to DOM-based coverage with Bun + `happy-dom` + `@testing-library/react`.
+- Assert user-visible structure, labels, and behavior through rendered DOM queries; keep `data-testid` and raw class checks as fallback tools, not the default.
+- Reserve HTML-string or server-render assertions for cases where serialized markup is the actual contract.
+- Do not add source-string tests that only verify implementation text inside a file.
 - Prioritize parser/editor and hook tests for regression safety.

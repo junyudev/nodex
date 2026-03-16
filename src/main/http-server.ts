@@ -88,6 +88,22 @@ function getRequestLogFields(c: Context, requestId: string, startedAt: number): 
   };
 }
 
+function withTrustedBrowserCors(origin: string | undefined, response: Response): Response {
+  if (!origin || !isTrustedBrowserOrigin(origin)) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.append("Vary", "Origin");
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 app.use("*", async (c, next) => {
   const requestId = randomUUID();
   const startedAt = Date.now();
@@ -1060,7 +1076,16 @@ export function getHttpServerOptions(port: number): {
   hostname: string;
 } {
   return {
-    fetch: app.fetch,
+    fetch: (request, env, executionCtx) => {
+      const origin = request.headers.get("origin") ?? undefined;
+
+      if (origin && MUTATING_HTTP_METHODS.has(request.method) && !isTrustedBrowserOrigin(origin)) {
+        return Response.json({ error: "Forbidden origin" }, { status: 403 });
+      }
+
+      return Promise.resolve(app.fetch(request, env, executionCtx))
+        .then((response: Response) => withTrustedBrowserCors(origin, response));
+    },
     port,
     hostname: LOOPBACK_HOST,
   };

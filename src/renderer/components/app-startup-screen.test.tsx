@@ -1,19 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { AppStartupScreen } from "./app-startup-screen";
+import { render } from "../test/dom";
 
 describe("AppStartupScreen", () => {
   test("renders migration messaging and the current progress label", () => {
-    const markup = renderToStaticMarkup(
-      createElement(AppStartupScreen, {
-        step: { phase: "sqlite_waiting" },
-        migrationProgress: { type: "InProgress", value: 67 },
-      }),
+    const { getByRole, getByText } = render(
+      <AppStartupScreen
+        step={{ phase: "sqlite_waiting" }}
+        migrationProgress={{ type: "InProgress", value: 67 }}
+      />,
     );
 
-    expect(markup.includes("Applying local data updates")).toBeTrue();
-    expect(markup.includes("Database migration progress")).toBeTrue();
-    expect(markup.includes(">67%</span>")).toBeTrue();
+    expect(getByText("Applying local data updates").textContent).toBe("Applying local data updates");
+    expect(getByRole("progressbar", { name: "Database migration progress" }).getAttribute("aria-label")).toBe("Database migration progress");
+    expect(getByText("67%").textContent).toBe("67%");
   });
 });

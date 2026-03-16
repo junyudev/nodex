@@ -1,44 +1,43 @@
 import { describe, expect, test } from "bun:test";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { render } from "../../test/dom";
 
 describe("column action popover", () => {
   test("renders collapse action and width controls for expanded columns", async () => {
     const { ColumnActionPopoverContent } = await import("./column-action-popover");
 
-    const markup = renderToStaticMarkup(
-      createElement(ColumnActionPopoverContent, {
-        columnName: "In Progress",
-        collapsed: false,
-        width: 360,
-        accentColor: "#336699",
-        onCollapsedChange: () => undefined,
-        onWidthChange: () => undefined,
-        onRequestClose: () => undefined,
-      }),
+    const { getByRole, getByText } = render(
+      <ColumnActionPopoverContent
+        columnName="In Progress"
+        collapsed={false}
+        width={360}
+        accentColor="#336699"
+        onCollapsedChange={() => undefined}
+        onWidthChange={() => undefined}
+        onRequestClose={() => undefined}
+      />,
     );
 
-    expect(markup.includes("In Progress")).toBeTrue();
-    expect(markup.includes("Collapse")).toBeTrue();
-    expect(markup.includes("Width")).toBeTrue();
-    expect(markup.includes("360px")).toBeTrue();
+    expect(getByText("In Progress").textContent).toBe("In Progress");
+    expect(getByRole("button", { name: "Collapse" }).textContent).toBe("Collapse");
+    expect(getByText("Width").textContent).toBe("Width");
+    expect(getByText("360px").textContent).toBe("360px");
   });
 
   test("switches the action label when the column is collapsed", async () => {
     const { ColumnActionPopoverContent } = await import("./column-action-popover");
 
-    const markup = renderToStaticMarkup(
-      createElement(ColumnActionPopoverContent, {
-        columnName: "Done",
-        collapsed: true,
-        width: 288,
-        accentColor: "#336699",
-        onCollapsedChange: () => undefined,
-        onWidthChange: () => undefined,
-        onRequestClose: () => undefined,
-      }),
+    const { getByRole } = render(
+      <ColumnActionPopoverContent
+        columnName="Done"
+        collapsed
+        width={288}
+        accentColor="#336699"
+        onCollapsedChange={() => undefined}
+        onWidthChange={() => undefined}
+        onRequestClose={() => undefined}
+      />,
     );
 
-    expect(markup.includes("Expand")).toBeTrue();
+    expect(getByRole("button", { name: "Expand" }).textContent).toBe("Expand");
   });
 });

@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
   ThreadSectionRuntimeProvider,
   useThreadSectionRuntime,
   type ThreadSectionLinkedThreadState,
 } from "./thread-section-runtime";
+import { render } from "../../../test/dom";
 
 function buildRuntime(threadName: string) {
   const thread: ThreadSectionLinkedThreadState = {
@@ -30,18 +30,21 @@ function RuntimeThreadNameConsumer() {
 
 describe("thread section runtime provider", () => {
   test("passes updated thread titles through the provider", () => {
-    const firstMarkup = renderToStaticMarkup(
+    const firstRender = render(
       <ThreadSectionRuntimeProvider value={buildRuntime("Old title")}>
         <RuntimeThreadNameConsumer />
       </ThreadSectionRuntimeProvider>
     );
-    const secondMarkup = renderToStaticMarkup(
+    expect(firstRender.getByText("Old title").textContent).toBe("Old title");
+
+    firstRender.unmount();
+
+    const secondRender = render(
       <ThreadSectionRuntimeProvider value={buildRuntime("New title")}>
         <RuntimeThreadNameConsumer />
       </ThreadSectionRuntimeProvider>
     );
 
-    expect(firstMarkup.includes("Old title")).toBeTrue();
-    expect(secondMarkup.includes("New title")).toBeTrue();
+    expect(secondRender.getByText("New title").textContent).toBe("New title");
   });
 });

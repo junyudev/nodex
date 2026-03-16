@@ -385,6 +385,7 @@ class ProjectionSyncController {
     this.focusedOwnerId = null;
     for (const owner of this.owners.values()) {
       owner.hasFocusWithin = false;
+      this.capturePendingPatchesForOwner(owner.ownerBlockId);
       this.applyPendingInboundReconcile(owner);
       this.scheduleOwnerFlush(owner.ownerBlockId, true);
     }
