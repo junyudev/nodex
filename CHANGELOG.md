@@ -9,6 +9,14 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 ### Fixed
+
+## [0.1.4] - 2026-03-16
+
+### Added
+
+### Changed
+
+### Fixed
 - Fixed release automation so macOS packaging now gets a larger CI-only Node heap budget, and the version commit/tag are pushed only after both release builds succeed.
 
 ## [0.1.3] - 2026-03-16
@@ -232,3 +240,4 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed SSE controller shutdown handling, optimistic card updates, toggle drag/drop stability, editor newline and empty-line persistence, inline creator dropdowns, tag and estimate edge cases, and a long run of early UI fit-and-finish issues.
+
