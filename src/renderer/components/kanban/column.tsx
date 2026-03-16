@@ -1,13 +1,12 @@
-import { memo, useMemo, useState } from "react";
-import { useDroppable } from "@dnd-kit/core";
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { memo, useEffect, useRef, useState } from "react";
+import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { Card, type CardPropertyUpdateInput } from "./card";
 import { ColumnActionPopover } from "./column-action-popover";
 import type { DbViewDisplayPrefs } from "../../lib/db-view-prefs";
 import { DropIndicator } from "./drop-indicator";
+import { resolveDropIndicatorPlacement } from "./drop-indicator-placement";
 import { InlineCardCreator } from "./inline-card-creator";
 import {
   COLLAPSED_KANBAN_COLUMN_WIDTH,
@@ -17,6 +16,10 @@ import { StatusChip, StatusIcon, columnStyles as sharedColumnStyles } from "../.
 import type { Card as CardType, CardCreatePlacement, Column as ColumnType, CardInput } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import type { CardContextMenuProjectSummary } from "./card-context-menu-model";
+import {
+  buildKanbanColumnDropTargetData,
+  type KanbanCardDragData,
+} from "./pragmatic-drag-data";
 
 export { columnStyles } from "../../lib/status-chip";
 
@@ -25,6 +28,8 @@ interface ColumnProps {
   projectName: string;
   column: ColumnType;
   displayPrefs?: DbViewDisplayPrefs;
+  dragInstanceId?: symbol;
+  buildDragData?: (card: CardType, columnId: string) => KanbanCardDragData;
   layout: KanbanColumnLayout;
   onAddCard: (columnId: CardType["status"], input: CardInput, placement?: CardCreatePlacement) => Promise<void>;
   onEditCard: (columnId: CardType["status"], card: CardType, event: React.MouseEvent<HTMLDivElement>) => void;
@@ -50,6 +55,7 @@ interface ColumnProps {
   onNativeDrop?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
   dragDisabled?: boolean;
   dropIndicatorIndex?: number;
+  draggedCardIds?: ReadonlySet<string>;
   focusedCardId?: string;
   selectedCardIds?: ReadonlySet<string>;
   contextMenuProjects?: CardContextMenuProjectSummary[];
@@ -60,6 +66,8 @@ export const Column = memo(function Column({
   projectName,
   column,
   displayPrefs,
+  dragInstanceId,
+  buildDragData,
   layout,
   onAddCard,
   onEditCard,
@@ -75,24 +83,53 @@ export const Column = memo(function Column({
   onNativeDrop,
   dragDisabled = false,
   dropIndicatorIndex,
+  draggedCardIds = new Set<string>(),
   focusedCardId,
   selectedCardIds = new Set<string>(),
   contextMenuProjects = [],
 }: ColumnProps) {
   const [showCreator, setShowCreator] = useState(false);
+  const columnRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const isAutoCollapsed = column.cards.length === 0 && !showCreator;
   const isUserCollapsed = layout.collapsed && !showCreator;
   const isCollapsed = isAutoCollapsed || isUserCollapsed;
 
-  const { setNodeRef } = useDroppable({
-    id: column.id,
-    data: { column },
-    disabled: dragDisabled,
-  });
-  const sortableCardIds = useMemo(
-    () => column.cards.map((card) => card.id),
-    [column.cards],
-  );
+  useEffect(() => {
+    if (dragDisabled || !dragInstanceId) {
+      return;
+    }
+
+    const element = columnRef.current;
+    const scrollElement = scrollContainerRef.current;
+    if (!element || !scrollElement) {
+      return;
+    }
+
+    return combine(
+      dropTargetForElements({
+        element,
+        canDrop: ({ source }) => {
+          const data = source.data as Partial<KanbanCardDragData>;
+          return data.type === "kanban-card"
+            && data.instanceId === dragInstanceId;
+        },
+        getIsSticky: () => true,
+        getData: () => buildKanbanColumnDropTargetData({
+          instanceId: dragInstanceId,
+          columnId: column.id,
+        }),
+      }),
+      autoScrollForElements({
+        element: scrollElement,
+        canScroll: ({ source }) => {
+          const data = source.data as Partial<KanbanCardDragData>;
+          return data.type === "kanban-card"
+            && data.instanceId === dragInstanceId;
+        },
+      }),
+    );
+  }, [column.id, dragDisabled, dragInstanceId]);
 
   const styles = sharedColumnStyles[column.id] || {
     dotColor: "bg-[var(--foreground-tertiary)]",
@@ -119,10 +156,15 @@ export const Column = memo(function Column({
   const collapsedSurfaceTitle = isUserCollapsed
     ? `${column.name} \u2014 click to expand`
     : `${column.name} \u2014 click to add task`;
+  const dropIndicatorPlacement = resolveDropIndicatorPlacement(
+    column.cards,
+    draggedCardIds,
+    dropIndicatorIndex,
+  );
 
   return (
     <div
-      ref={setNodeRef}
+      ref={columnRef}
       data-kanban-column-id={column.id}
       data-kanban-column-collapsed={isCollapsed ? "true" : "false"}
       onDragOver={(event) => onNativeDragOver?.(column.id, event)}
@@ -256,72 +298,69 @@ export const Column = memo(function Column({
           {/* Cards area with bottom rounded corners */}
           <div className={cn("flex flex-1 flex-col rounded-b-lg", styles.headerBg)}>
             <div
+              ref={scrollContainerRef}
               className={cn(
-                "flex-1 px-2 pt-0.75 pb-2",
+                "flex-1 overflow-y-auto px-2 pt-0.75 pb-2",
                 "transition-colors duration-150",
               )}
             >
-              <SortableContext
-                items={sortableCardIds}
-                strategy={verticalListSortingStrategy}
-                disabled={dragDisabled}
-              >
-                <div className="flex flex-col gap-2">
-                  {showCreator && (
-                    <InlineCardCreator
-                      onSave={handleSaveCard}
-                      onCancel={() => setShowCreator(false)}
+              <div className="flex flex-col gap-2">
+                {showCreator && (
+                  <InlineCardCreator
+                    onSave={handleSaveCard}
+                    onCancel={() => setShowCreator(false)}
+                  />
+                )}
+                {column.cards.map((card) => (
+                  <div
+                    key={card.id}
+                    data-kanban-card-id={card.id}
+                    className="relative"
+                  >
+                    {dropIndicatorPlacement.beforeCardId === card.id ? (
+                          <DropIndicator className="absolute inset-x-0 top-0 -translate-y-1/2" />
+                    ) : null}
+                    <Card
+                      projectId={projectId}
+                      card={card}
+                      columnId={column.id}
+                      displayPrefs={displayPrefs}
+                      dragInstanceId={dragInstanceId}
+                      buildDragData={buildDragData}
+                      dragDisabled={dragDisabled}
+                      isFocused={card.id === focusedCardId}
+                      isSelected={selectedCardIds.has(card.id)}
+                      onClick={(event) => onEditCard(column.id, card, event)}
+                      onUpdateProperty={onUpdateCardProperty}
+                      contextMenu={onMoveCardToProjectFromMenu ? {
+                        currentColumnId: column.id,
+                        currentProjectId: projectId,
+                        currentProjectName: projectName,
+                        projects: contextMenuProjects,
+                        onMoveToProject: (targetProjectId) => onMoveCardToProjectFromMenu({
+                          cardId: card.id,
+                          sourceStatus: column.id,
+                          targetProjectId,
+                        }),
+                        onDelete: ({ cardId, columnId }) => onDeleteCardFromMenu?.({
+                          cardId,
+                          columnId: columnId as CardType["status"],
+                        }),
+                        onCopyLink: ({ cardId, projectId }) => onCopyCardLinkFromMenu?.({
+                          cardId,
+                          projectId,
+                        }),
+                        onMenuOpen: onOpenCardMenu ? () => onOpenCardMenu(card.id) : undefined,
+                      } : undefined}
                     />
-                  )}
-                  {column.cards.map((card, i) => (
-                    <div
-                      key={card.id}
-                      data-kanban-card-id={card.id}
-                      className="relative"
-                    >
-                      {dropIndicatorIndex === i ? (
-                        <DropIndicator className="absolute inset-x-0 top-0 -translate-y-1/2" />
-                      ) : null}
-                      <Card
-                        projectId={projectId}
-                        card={card}
-                        columnId={column.id}
-                        displayPrefs={displayPrefs}
-                        dragDisabled={dragDisabled}
-                        isFocused={card.id === focusedCardId}
-                        isSelected={selectedCardIds.has(card.id)}
-                        onClick={(event) => onEditCard(column.id, card, event)}
-                        onUpdateProperty={onUpdateCardProperty}
-                        contextMenu={onMoveCardToProjectFromMenu ? {
-                          currentColumnId: column.id,
-                          currentProjectId: projectId,
-                          currentProjectName: projectName,
-                          projects: contextMenuProjects,
-                          onMoveToProject: (targetProjectId) => onMoveCardToProjectFromMenu({
-                            cardId: card.id,
-                            sourceStatus: column.id,
-                            targetProjectId,
-                          }),
-                          onDelete: ({ cardId, columnId }) => onDeleteCardFromMenu?.({
-                            cardId,
-                            columnId: columnId as CardType["status"],
-                          }),
-                          onCopyLink: ({ cardId, projectId }) => onCopyCardLinkFromMenu?.({
-                            cardId,
-                            projectId,
-                          }),
-                          onMenuOpen: onOpenCardMenu ? () => onOpenCardMenu(card.id) : undefined,
-                        } : undefined}
-                      />
-                    </div>
-                  ))}
-                  {dropIndicatorIndex === column.cards.length ? (
-                    <div className="-mt-2 relative h-0">
-                      <DropIndicator className="absolute inset-x-0 top-0" />
-                    </div>
-                  ) : null}
-                </div>
-              </SortableContext>
+                  </div>
+                ))}
+                {dropIndicatorPlacement.atEnd ? (
+                  <div className="-mt-2 relative h-0">
+                    <DropIndicator className="absolute inset-x-0 top-0" />
+                  </div>
+                ) : null}
+              </div>
 
               {/* New task button */}
               {!showCreator && (

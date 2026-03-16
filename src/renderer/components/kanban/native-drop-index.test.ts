@@ -66,4 +66,24 @@ describe("native drop index", () => {
 
     expect(computeNativeDropIndexFromSurface(surface, 169)).toBe(1);
   });
+
+  test("ignores dragged cards that remain rendered in the source column", () => {
+    const cardA = {
+      dataset: { kanbanCardId: "a" },
+      getBoundingClientRect: () => ({ top: 100, bottom: 140 }),
+    } as unknown as HTMLElement;
+    const cardB = {
+      dataset: { kanbanCardId: "b" },
+      getBoundingClientRect: () => ({ top: 150, bottom: 190 }),
+    } as unknown as HTMLElement;
+    const surface = {
+      querySelectorAll: () => [cardA, cardB],
+    } as unknown as HTMLElement;
+
+    expect(
+      computeNativeDropIndexFromSurface(surface, 160, {
+        ignoredCardIds: new Set(["a"]),
+      }),
+    ).toBe(0);
+  });
 });

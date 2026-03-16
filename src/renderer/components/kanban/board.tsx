@@ -1,27 +1,11 @@
 import { useState, useEffect, useCallback, useDeferredValue, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
-import {
-  DndContext,
-  DragOverlay,
-  pointerWithin,
-  rectIntersection,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type DragMoveEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-  type CollisionDetection,
-} from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
+import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { Column } from "./column";
-import { CardPreview, type CardPropertyUpdateInput } from "./card";
+import { type CardPropertyUpdateInput } from "./card";
 import {
   emptyCardSelection,
   normalizeCardSelection,
-  resolveDragGroup,
   toggleCardSelection,
   type CardSelectionState,
 } from "./card-selection";
@@ -33,10 +17,6 @@ import {
   resolveTopLevelDraggedBlocks,
 } from "./editor/block-drop-card-mapper";
 import {
-  resolveColumnDropIndex,
-  resolveDragPointer,
-} from "./drag-pointer";
-import {
   type CardDropApplyResult,
   clearCardDropTargetHover,
   updateCardDropTargetHover,
@@ -46,7 +26,6 @@ import {
   getActiveExternalCardDragSession,
   startExternalCardDragSession,
   updateExternalCardDragPointer,
-  type ExternalCardDragItem,
 } from "./editor/external-card-drag-session";
 import {
   endExternalEditorDragSession,
@@ -91,19 +70,13 @@ import {
   buildExternalCardDropMoveRequest,
   resolveExternalCardDropTarget,
 } from "./board-drop-routing";
-import { resolveDragOverlayGeometry } from "./drag-overlay-geometry";
 import { resolveFilteredDropOrder } from "./filtered-drag-order";
-
-// Custom collision detection: prioritize pointerWithin for columns, fall back to rectIntersection
-const customCollisionDetection: CollisionDetection = (args) => {
-  // First try pointerWithin - best for finding the container the pointer is in
-  const pointerCollisions = pointerWithin(args);
-  if (pointerCollisions.length > 0) {
-    return pointerCollisions;
-  }
-  // Fall back to rectIntersection for edge cases
-  return rectIntersection(args);
-};
+import {
+  buildKanbanCardDragData,
+  isKanbanCardDragData,
+  type KanbanCardDragData,
+} from "./pragmatic-drag-data";
+import { resolveKanbanDropLocation } from "./pragmatic-drop-location";
 
 function hasSameCardSelection(
   left: CardSelectionState,
@@ -194,19 +167,16 @@ export function KanbanBoard({
   });
 
   const [cardSelection, setCardSelection] = useState<CardSelectionState>(() => emptyCardSelection());
-  const [activeDrag, setActiveDrag] = useState<{
-    items: ExternalCardDragItem[];
-  } | null>(null);
-  const [activeDragGeometry, setActiveDragGeometry] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
   const externalCardDragSessionIdRef = useRef<string | undefined>(undefined);
+  const boardScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [dragInstanceId] = useState(() => Symbol("kanban-board-dnd"));
 
   const [dropIndicator, setDropIndicator] = useState<{
     columnId: string;
     index: number;
   } | null>(null);
+  const [activeDraggedCardIds, setActiveDraggedCardIds] = useState<ReadonlySet<string>>(() => new Set());
+  const isKanbanCardDragActive = activeDraggedCardIds.size > 0;
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [columnLayoutPrefs, setColumnLayoutPrefs] = useState<KanbanColumnLayoutPrefs>(
@@ -284,104 +254,31 @@ export function KanbanBoard({
 
   const selectedCardIds = cardSelection.cardIds;
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 5 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
   const resolveColumnSurface = useCallback((columnId: string): HTMLElement | null => {
     if (typeof document === "undefined") return null;
 
     return document.querySelector<HTMLElement>(`[data-kanban-column-id="${columnId}"]`);
   }, []);
 
-  const resolveColumnInsertionIndex = useCallback((
-    columnId: string,
-    fallbackIndex: number,
-    event: DragOverEvent | DragEndEvent,
-  ): number => resolveColumnDropIndex({
-    surface: resolveColumnSurface(columnId),
-    fallbackIndex,
-    event,
-  }), [resolveColumnSurface]);
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const data = active.data.current as { card: CardType; columnId: string };
-    const dragItems = resolveDragGroup(
-      filteredBoard ?? board,
-      cardSelection,
-      {
-        card: data.card,
-        columnId: data.columnId,
-      },
-    );
-
-    endExternalCardDragSession(externalCardDragSessionIdRef.current);
-    externalCardDragSessionIdRef.current = startExternalCardDragSession({
+  const buildDragData = useCallback(
+    (card: CardType, columnId: string): KanbanCardDragData => buildKanbanCardDragData({
+      board: filteredBoard ?? board,
+      selection: cardSelection,
+      instanceId: dragInstanceId,
       projectId,
-      cards: dragItems,
-    });
+      activeCard: card,
+      columnId: columnId as CardStatus,
+    }),
+    [board, cardSelection, dragInstanceId, filteredBoard, projectId],
+  );
 
-    clearCardDropTargetHover();
-    setActiveDragGeometry(
-      resolveDragOverlayGeometry(active.rect.current.initial),
-    );
-    setActiveDrag({ items: dragItems });
-    if (!selectedCardIds.has(data.card.id)) {
-      setCardSelection(emptyCardSelection());
-    }
-  };
-
-  const handleDragOver = (event: DragOverEvent) => {
-    const { over } = event;
-    if (!over) {
-      setDropIndicator(null);
-      return;
-    }
-
-    if (over.data.current?.column) {
-      const col = over.data.current.column as { id: string; cards: unknown[] };
-      setDropIndicator({
-        columnId: col.id,
-        index: resolveColumnInsertionIndex(col.id, col.cards.length, event),
-      });
-    } else if (over.data.current?.card) {
-      if (activeDrag && activeDrag.items.length > 1 && selectedCardIds.has(String(over.id))) {
-        setDropIndicator(null);
-        return;
-      }
-      const columnId = over.data.current.columnId as string;
-      const column = filteredBoard?.columns.find((c) => c.id === columnId);
-      const overIndex = column?.cards.findIndex((c) => c.id === over.id) ?? 0;
-      setDropIndicator({ columnId, index: overIndex });
-    } else {
-      setDropIndicator(null);
-    }
-  };
-
-  const handleDragMove = (event: DragMoveEvent) => {
-    const session = getActiveExternalCardDragSession();
-    if (!session) return;
-
-    const pointer = resolveDragPointer(event);
-    if (!pointer) return;
-    updateExternalCardDragPointer(externalCardDragSessionIdRef.current, pointer);
-    updateCardDropTargetHover(pointer, session.payload);
-  };
-
-  const handleDragCancel = () => {
-    setActiveDrag(null);
-    setActiveDragGeometry(null);
+  const clearBoardCardDragState = useCallback(() => {
     setDropIndicator(null);
+    setActiveDraggedCardIds(new Set());
     clearCardDropTargetHover();
     endExternalCardDragSession(externalCardDragSessionIdRef.current);
     externalCardDragSessionIdRef.current = undefined;
-  };
+  }, []);
 
   const commitExternalCardDropMove = useCallback(
     async (
@@ -423,14 +320,12 @@ export function KanbanBoard({
     [moveCardDropToEditor, projectId, refresh, refreshHistoryState, sessionId],
   );
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
+  const performCardDrop = useCallback(async (
+    dragData: KanbanCardDragData,
+    dropTargets: ReadonlyArray<{ data: Record<string | symbol, unknown> }>,
+    pointer: { x: number; y: number } | null,
+  ) => {
     const cardDragSession = getActiveExternalCardDragSession();
-    const activeDragItems = activeDrag?.items ?? [];
-    setActiveDrag(null);
-    setActiveDragGeometry(null);
-    setDropIndicator(null);
-    clearCardDropTargetHover();
 
     if (cardDragSession) {
       const target = resolveExternalCardDropTarget(cardDragSession);
@@ -465,66 +360,37 @@ export function KanbanBoard({
       }
     }
 
-    endExternalCardDragSession(externalCardDragSessionIdRef.current);
-    externalCardDragSessionIdRef.current = undefined;
+    const dragCardIds = dragData.dragItems.map((entry) => entry.card.id);
+    const destination = resolveKanbanDropLocation({
+      visibleBoard: filteredBoard,
+      dropTargets,
+      sourceData: dragData,
+      draggedCardIds: dragCardIds,
+      pointerY: pointer?.y ?? null,
+      resolveColumnSurface,
+    });
+    if (!destination) {
+      return;
+    }
 
-    if (!over || !active.data.current) return;
-
-    const activeData = active.data.current as { card: CardType; columnId: CardStatus };
-    const fromStatus = activeData.columnId;
-    const cardId = activeData.card.id;
-    const dragItems = activeDragItems.length > 0
-      ? activeDragItems
-      : [{
-        card: activeData.card,
-        columnId: activeData.columnId,
-        columnName: board?.columns.find((column) => column.id === activeData.columnId)?.name
-          ?? activeData.columnId,
-      }];
-    const dragCardIds = dragItems.map((entry) => entry.card.id);
-    const sharedSourceColumnId = dragItems.every((entry) => entry.columnId === dragItems[0]?.columnId)
-      ? (dragItems[0]?.columnId as CardStatus | undefined)
+    const sharedSourceColumnId = dragData.dragItems.every(
+      (entry) => entry.columnId === dragData.dragItems[0]?.columnId,
+    )
+      ? (dragData.dragItems[0]?.columnId as CardStatus | undefined)
       : undefined;
-
-    let toStatus: CardStatus;
-    let targetVisibleIndex: number;
-
-    if (over.data.current?.column) {
-      toStatus = over.data.current.column.id as CardStatus;
-      const targetColumn = filteredBoard?.columns.find((c) => c.id === toStatus);
-      const fallbackIndex = targetColumn?.cards.length ?? 0;
-      targetVisibleIndex = resolveColumnInsertionIndex(
-        toStatus,
-        fallbackIndex,
-        event,
-      );
-    } else if (over.data.current?.card) {
-      toStatus = over.data.current.columnId as CardStatus;
-      const targetColumn = filteredBoard?.columns.find((c) => c.id === toStatus);
-      targetVisibleIndex = targetColumn?.cards.findIndex((c) => c.id === over.id) ?? 0;
-    } else {
-      return;
-    }
-
-    if (over.data.current?.card && dragCardIds.includes(String(over.id))) {
-      return;
-    }
-
-    const newOrder = dragDisabled
-      ? resolveFilteredDropOrder({
-        board,
-        visibleBoard: filteredBoard,
-        draggedCardIds: dragCardIds,
-        targetColumnId: toStatus,
-        targetVisibleIndex,
-      })
-      : targetVisibleIndex;
+    const newOrder = resolveFilteredDropOrder({
+      board,
+      visibleBoard: filteredBoard,
+      draggedCardIds: dragCardIds,
+      targetColumnId: destination.columnId,
+      targetVisibleIndex: destination.index,
+    });
 
     if (dragCardIds.length > 1) {
       const moved = await moveCards({
         cardIds: dragCardIds,
         ...(sharedSourceColumnId ? { fromStatus: sharedSourceColumnId } : {}),
-        toStatus,
+        toStatus: destination.columnId,
         newOrder,
       });
       if (!moved) return;
@@ -536,15 +402,133 @@ export function KanbanBoard({
     }
 
     const moved = await moveCard({
-      cardId,
-      fromStatus,
-      toStatus,
+      cardId: dragData.sourceCardId,
+      fromStatus: dragData.sourceColumnId,
+      toStatus: destination.columnId,
       newOrder,
     });
     if (!moved) return;
 
     setCardSelection(emptyCardSelection());
-  };
+  }, [
+    board,
+    commitExternalCardDropMove,
+    filteredBoard,
+    moveCard,
+    moveCards,
+    resolveColumnSurface,
+  ]);
+
+  useEffect(() => {
+    if (dragDisabled) {
+      return;
+    }
+
+    const element = boardScrollContainerRef.current;
+    if (!element) {
+      return;
+    }
+
+    return autoScrollForElements({
+      element,
+      canScroll: ({ source }) => isKanbanCardDragData(source.data)
+        && source.data.instanceId === dragInstanceId,
+    });
+  }, [dragDisabled, dragInstanceId]);
+
+  useEffect(() => {
+    if (dragDisabled) {
+      clearBoardCardDragState();
+      return;
+    }
+
+    return monitorForElements({
+      canMonitor: ({ source }) => isKanbanCardDragData(source.data)
+        && source.data.instanceId === dragInstanceId,
+      onDragStart: ({ source }) => {
+        if (!isKanbanCardDragData(source.data)) {
+          return;
+        }
+
+        endExternalCardDragSession(externalCardDragSessionIdRef.current);
+        externalCardDragSessionIdRef.current = startExternalCardDragSession({
+          projectId: source.data.projectId,
+          cards: source.data.dragItems,
+        });
+        setActiveDraggedCardIds(new Set(source.data.dragItems.map((entry) => entry.card.id)));
+        clearCardDropTargetHover();
+        setDropIndicator(null);
+        if (!selectedCardIds.has(source.data.sourceCardId)) {
+          setCardSelection(emptyCardSelection());
+        }
+      },
+      onDrag: ({ source, location }) => {
+        if (!isKanbanCardDragData(source.data)) {
+          return;
+        }
+
+        const pointer = {
+          x: location.current.input.clientX,
+          y: location.current.input.clientY,
+        };
+        updateExternalCardDragPointer(externalCardDragSessionIdRef.current, pointer);
+        updateCardDropTargetHover(pointer, {
+          projectId: source.data.projectId,
+          cards: source.data.dragItems,
+        });
+
+        const nextIndicator = resolveKanbanDropLocation({
+          visibleBoard: filteredBoard,
+          dropTargets: location.current.dropTargets as Array<{ data: Record<string | symbol, unknown> }>,
+          sourceData: source.data,
+          draggedCardIds: source.data.dragItems.map((entry) => entry.card.id),
+          pointerY: pointer.y,
+          resolveColumnSurface,
+        });
+        setDropIndicator((current) => {
+          if (!nextIndicator) {
+            return current ? null : current;
+          }
+          if (current?.columnId === nextIndicator.columnId && current.index === nextIndicator.index) {
+            return current;
+          }
+          return nextIndicator;
+        });
+      },
+      onDrop: async ({ source, location }) => {
+        if (!isKanbanCardDragData(source.data)) {
+          clearBoardCardDragState();
+          return;
+        }
+
+        const pointer = {
+          x: location.current.input.clientX,
+          y: location.current.input.clientY,
+        };
+        updateExternalCardDragPointer(externalCardDragSessionIdRef.current, pointer);
+        clearCardDropTargetHover();
+        setDropIndicator(null);
+
+        try {
+          await performCardDrop(
+            source.data,
+            location.current.dropTargets as Array<{ data: Record<string | symbol, unknown> }>,
+            pointer,
+          );
+        } finally {
+          clearBoardCardDragState();
+        }
+      },
+    });
+  }, [
+    clearBoardCardDragState,
+    dragDisabled,
+    dragInstanceId,
+    filteredBoard,
+    performCardDrop,
+    resolveColumnSurface,
+    selectedCardIds,
+  ]);
 
   const handleAddCard = useCallback(async (
     columnId: string,
@@ -556,6 +540,10 @@ export function KanbanBoard({
 
   const handleNativeDragOver = useCallback(
     (columnId: string, event: React.DragEvent<HTMLDivElement>) => {
+      if (isKanbanCardDragActive) {
+        return;
+      }
+
       if (dragDisabled) {
         setDropIndicator(null);
         return;
@@ -586,11 +574,15 @@ export function KanbanBoard({
       );
       setDropIndicator({ columnId, index });
     },
-    [dragDisabled],
+    [dragDisabled, isKanbanCardDragActive],
   );
 
   const handleNativeDragLeave = useCallback(
     (columnId: string, event: React.DragEvent<HTMLDivElement>) => {
+      if (isKanbanCardDragActive) {
+        return;
+      }
+
       const nextTarget = event.relatedTarget;
       if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
         return;
@@ -601,11 +593,15 @@ export function KanbanBoard({
         return null;
       });
     },
-    [],
+    [isKanbanCardDragActive],
   );
 
   const handleNativeDrop = useCallback(
     async (columnId: string, event: React.DragEvent<HTMLDivElement>) => {
+      if (isKanbanCardDragActive) {
+        return;
+      }
+
       setDropIndicator(null);
 
       if (dragDisabled) return;
@@ -662,7 +658,7 @@ export function KanbanBoard({
         releaseOptimisticMutation?.();
       }
     },
-    [dragDisabled, importBlockDrop],
+    [dragDisabled, importBlockDrop, isKanbanCardDragActive],
   );
 
   const handleEditCard = useCallback(async (
@@ -834,78 +830,44 @@ export function KanbanBoard({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <KanbanBoardScrollContainer>
-        <DndContext
-          sensors={sensors}
-          collisionDetection={customCollisionDetection}
-          onDragStart={dragDisabled ? undefined : handleDragStart}
-          onDragMove={dragDisabled ? undefined : handleDragMove}
-          onDragOver={dragDisabled ? undefined : handleDragOver}
-          onDragEnd={dragDisabled ? undefined : handleDragEnd}
-          onDragCancel={dragDisabled ? undefined : handleDragCancel}
-        >
-          {/* Board container - Notion-style scroll with sticky headers */}
-          <div className="flex w-max min-w-full px-4">
-            {filteredBoard.columns.map((column) => (
-              <Column
-                projectId={projectId}
-                projectName={currentProjectName}
-                key={column.id}
-                column={column}
-                displayPrefs={viewPrefs.display}
-                layout={getKanbanColumnLayout(columnLayoutPrefs, column.id)}
-                onAddCard={handleAddCard}
-                onEditCard={handleEditCard}
-                onUpdateCardProperty={handleUpdateCardProperty}
-                onCollapsedChange={(columnId, collapsed) => updateColumnLayout(columnId, { collapsed })}
-                onWidthChange={(columnId, width) => updateColumnLayout(columnId, { width })}
-                onMoveCardToProjectFromMenu={handleMoveCardToProjectFromMenu}
-                onDeleteCardFromMenu={handleDeleteCardFromMenu}
-                onCopyCardLinkFromMenu={handleCopyCardLinkFromMenu}
-                onOpenCardMenu={handleCardMenuOpen}
-                onNativeDragOver={handleNativeDragOver}
-                onNativeDragLeave={handleNativeDragLeave}
-                onNativeDrop={handleNativeDrop}
-                dragDisabled={dragDisabled}
-                dropIndicatorIndex={
-                  dropIndicator?.columnId === column.id
-                    ? dropIndicator.index
-                    : undefined
-                }
-                focusedCardId={cardStageCardId}
-                selectedCardIds={selectedCardIds}
-                contextMenuProjects={contextMenuProjects}
-              />
-            ))}
-          </div>
-
-          {/* Drag overlay - shows card being dragged */}
-          {typeof document !== "undefined"
-            ? createPortal(
-              <DragOverlay>
-                {activeDrag ? (
-                  <div className="relative opacity-90">
-                    <CardPreview
-                      projectId={projectId}
-                      card={activeDrag.items[0]!.card}
-                      columnId={activeDrag.items[0]!.columnId}
-                      displayPrefs={viewPrefs.display}
-                      isSelected={activeDrag.items.length > 1}
-                      fixedWidth={activeDragGeometry?.width}
-                      fixedHeight={activeDragGeometry?.height}
-                    />
-                    {activeDrag.items.length > 1 ? (
-                      <div className="absolute -top-1.5 -right-1.5 rounded-full bg-(--foreground) px-1.75 py-0.75 text-sm font-medium text-(--background) shadow-lg">
-                        {activeDrag.items.length}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </DragOverlay>,
-              document.body,
-            )
-            : null}
-        </DndContext>
+      <KanbanBoardScrollContainer ref={boardScrollContainerRef}>
+        {/* Board container - Notion-style scroll with sticky headers */}
+        <div className="flex w-max min-w-full px-4">
+          {filteredBoard.columns.map((column) => (
+            <Column
+              projectId={projectId}
+              projectName={currentProjectName}
+              key={column.id}
+              column={column}
+              displayPrefs={viewPrefs.display}
+              dragInstanceId={dragInstanceId}
+              buildDragData={buildDragData}
+              layout={getKanbanColumnLayout(columnLayoutPrefs, column.id)}
+              onAddCard={handleAddCard}
+              onEditCard={handleEditCard}
+              onUpdateCardProperty={handleUpdateCardProperty}
+              onCollapsedChange={(columnId, collapsed) => updateColumnLayout(columnId, { collapsed })}
+              onWidthChange={(columnId, width) => updateColumnLayout(columnId, { width })}
+              onMoveCardToProjectFromMenu={handleMoveCardToProjectFromMenu}
+              onDeleteCardFromMenu={handleDeleteCardFromMenu}
+              onCopyCardLinkFromMenu={handleCopyCardLinkFromMenu}
+              onOpenCardMenu={handleCardMenuOpen}
+              onNativeDragOver={handleNativeDragOver}
+              onNativeDragLeave={handleNativeDragLeave}
+              onNativeDrop={handleNativeDrop}
+              dragDisabled={dragDisabled}
+              dropIndicatorIndex={
+                dropIndicator?.columnId === column.id
+                  ? dropIndicator.index
+                  : undefined
+              }
+              draggedCardIds={activeDraggedCardIds}
+              focusedCardId={cardStageCardId}
+              selectedCardIds={selectedCardIds}
+              contextMenuProjects={contextMenuProjects}
+            />
+          ))}
+        </div>
       </KanbanBoardScrollContainer>
 
       {/* Undo/Redo toast notification */}

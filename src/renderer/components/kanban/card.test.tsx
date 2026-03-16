@@ -1,36 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
-import * as DndKitSortable from "@dnd-kit/sortable";
-import * as DndKitUtilities from "@dnd-kit/utilities";
 import { createElement } from "react";
 import { resetCardDraftStoreForTest, setCardDraftOverlay } from "../../lib/card-draft-store";
 import type { CardPropertyPosition } from "@/lib/card-property-position";
 import { render, textContent } from "../../test/dom";
-
-let lastUseSortableInput: Record<string, unknown> | null = null;
-
-mock.module("@dnd-kit/sortable", () => ({
-  ...DndKitSortable,
-  useSortable: (input: Record<string, unknown>) => {
-    lastUseSortableInput = input;
-    return {
-      attributes: {},
-      listeners: {},
-      setNodeRef: () => undefined,
-      transform: null,
-      transition: undefined,
-      isDragging: false,
-    };
-  },
-}));
-
-mock.module("@dnd-kit/utilities", () => ({
-  ...DndKitUtilities,
-  CSS: {
-    Transform: {
-      toString: () => undefined,
-    },
-  },
-}));
 
 let mockCardPropertyPosition: CardPropertyPosition = "inline";
 
@@ -87,32 +59,6 @@ describe("kanban card", () => {
     });
 
     expect(textContent(card.container).includes("Draft body")).toBeTrue();
-  });
-
-  test("keeps live draft overlays out of the interactive card shell", async () => {
-    resetCardDraftStoreForTest();
-    lastUseSortableInput = null;
-    setCardDraftOverlay("default", "card-1", { description: "Draft body" });
-    await renderCard({
-      projectId: "default",
-      card: {
-        id: "card-1",
-        status: "in_progress",
-        archived: false,
-        title: "Task",
-        description: "Persisted body",
-        priority: "p2-medium",
-        tags: [],
-        agentBlocked: false,
-        created: new Date("2026-03-01T00:00:00.000Z"),
-        order: 0,
-      },
-      columnId: "in_progress",
-      onClick: () => undefined,
-    });
-
-    const sortableData = (lastUseSortableInput as { data?: { card?: { description?: string } } } | null)?.data;
-    expect(sortableData?.card?.description).toBe("Persisted body");
   });
 
   test("suppresses browser text selection on the card surface", async () => {

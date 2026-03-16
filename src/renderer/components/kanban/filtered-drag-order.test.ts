@@ -135,4 +135,24 @@ describe("resolveFilteredDropOrder", () => {
 
     expect(order).toBe(2);
   });
+
+  test("normalizes same-column single-card reorders in an unfiltered board", () => {
+    const board = createBoard({
+      draft: [],
+      backlog: [],
+      in_progress: ["a", "b", "c"],
+      in_review: [],
+      done: [],
+    });
+
+    const order = resolveFilteredDropOrder({
+      board,
+      visibleBoard: board,
+      draggedCardIds: ["a"],
+      targetColumnId: "in_progress",
+      targetVisibleIndex: 1,
+    });
+
+    expect(order).toBe(0);
+  });
 });

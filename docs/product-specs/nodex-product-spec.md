@@ -110,13 +110,14 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Native block drag from visible NFM editors (Card Stage, including projected inline embed rows) into Kanban columns creates card(s) using move semantics (source blocks are removed)
 - Dragging a Kanban card into a visible NFM editor (Card Stage, including projected inline embed rows) creates a standalone `cardToggle` snapshot block and removes the source card (move semantics)
 - Card->editor drop is pointer-anchored, blocks self-drop, supports same-project and cross-project sources, and persists as one grouped undo/redo action (target description update + source card delete)
-- Card->editor drag shows a live in-editor insertion line (matching BlockNote drop-cursor semantics) even though the drag source is dnd-kit
+- Card->editor drag shows a live in-editor insertion line (matching BlockNote drop-cursor semantics) even though the drag source is the Kanban native drag runtime
 - `cardToggle` chips (`priority`, `estimate`, `status`) are editable inline in NFM editors and mutate both serialized `meta` and embedded snapshot payload
 - Dragging a `cardToggle` block back into Kanban creates card(s) with snapshot-preserved properties (priority/estimate/tags/assignee/due-date/scheduled-start/scheduled-end/blocked) plus current title/description edits
 - Block-drop card creation uses pointer-based insertion (top/middle/bottom) with a visible drop indicator
 - Block->card import supports strict smart shorthand parsing for non-`cardToggle` blocks (`0..4`, optional estimate `XS/S/M/L/XL`, optional `(tag)`), applying parsed values to `priority`, `estimate`, and `tags`
 - Visual card previews with priority badges
 - Kanban card reorder keeps a non-layout-shifting insertion indicator; the source card stays as a static ghost in place while dragging, same-column reorders do not live-shift sibling cards, columns do not tint as separate previews, the drag overlay is geometry-matched to the source card so it starts aligned with the cursor, and dropping on the visual gap between cards still inserts into that gap instead of falling through to column-end append
+- The Kanban insert-position indicator is resolved against the remaining non-dragged cards in the target surface, so same-column and multi-card drags never draw the line above a dragged ghost when the actual drop will land before the next remaining card
 - Kanban card property chips (priority/estimate/tags/assignee) render inline with the card title by default, and Settings can move them above the title or below the body
 - Right-clicking a Kanban card opens a Radix context menu with a searchable action list; `Copy deeplink` copies an `nodex://cards/<card-id>` deeplink to the target card, `Delete` removes the card, and clicking `Move to` advances the same menu into a searchable in-place project picker that moves the card into the same workflow column in the selected project
 - Real-time updates when data changes
@@ -422,7 +423,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - **Description Format**: [Notion-flavored Markdown (NFM)](../references/notion-flavored-markdown-spec.md) with custom parser/serializer
 - **HTTP Server**: Hono (embedded in main process)
 - **HTTP Server Port**: Configurable via `[server].port` / `KANBAN_PORT` (default 51283)
-- **Drag & Drop**: @dnd-kit/core, @dnd-kit/sortable
+- **Drag & Drop**: @atlaskit/pragmatic-drag-and-drop, @atlaskit/pragmatic-drag-and-drop-auto-scroll
 - **Database**: better-sqlite3 (in main process)
 - **Real-Time**: IPC events (Electron) / SSE (browser fallback)
 - **Codex Runtime**: main-process `codex app-server --listen stdio://` JSON-RPC bridge

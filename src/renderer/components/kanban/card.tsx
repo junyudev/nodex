@@ -1,6 +1,12 @@
-import { Fragment, forwardRef, memo, useCallback, useMemo, useState } from "react";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { Fragment, forwardRef, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import {
+  draggable,
+  dropTargetForElements,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { preserveOffsetOnSource } from "@atlaskit/pragmatic-drag-and-drop/element/preserve-offset-on-source";
+import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview";
 import type { CardPropertyPosition } from "@/lib/card-property-position";
 import type { DbViewDisplayPrefs, DbViewDisplayPropertyKey } from "../../lib/db-view-prefs";
 import { resolveKanbanPriorityOption } from "../../lib/kanban-options";
@@ -16,7 +22,11 @@ import { extractPlainText } from "@/lib/nfm/extract-text";
 import { ChipPropertyEditor } from "./editor/chip-property-editor";
 import { CardContextMenu } from "./card-context-menu";
 import type { CardContextMenuProjectSummary } from "./card-context-menu-model";
-import { shouldFreezeSameColumnPreview } from "./sortable-preview-mode";
+import {
+  buildKanbanCardDropTargetData,
+  canDropOnKanbanCard,
+  type KanbanCardDragData,
+} from "./pragmatic-drag-data";
 
 type CardEditableProperty = "priority" | "estimate";
 type CardPropertyBadgeLayout = "stacked" | "inline";
@@ -44,10 +54,12 @@ interface CardProps {
   card: CardType;
   columnId: string;
   displayPrefs?: DbViewDisplayPrefs;
+  dragInstanceId?: symbol;
   dragDisabled?: boolean;
   isFocused?: boolean;
   isSelected?: boolean;
   onClick: (event: React.MouseEvent<HTMLDivElement>) => void;
+  buildDragData?: (card: CardType, columnId: string) => KanbanCardDragData;
   onUpdateProperty?: (input: CardPropertyUpdateInput) => Promise<void> | void;
   contextMenu?: {
     currentColumnId: string;
@@ -525,52 +537,31 @@ export function Card({
   card,
   columnId,
   displayPrefs,
+  dragInstanceId,
   dragDisabled = false,
   isFocused,
   isSelected = false,
   onClick,
+  buildDragData,
   onUpdateProperty,
   contextMenu,
 }: CardProps) {
   const { position } = useCardPropertyPosition();
   const activeTerminals = useActiveTerminals();
   const hasTerminal = activeTerminals.has(card.id);
+  const cardSurfaceRef = useRef<HTMLDivElement | null>(null);
   const [activeChipEdit, setActiveChipEdit] = useState<{
     property: CardEditableProperty;
     currentToken: string;
     anchorRect: DOMRect;
   } | null>(null);
-  const {
-    active,
-    attributes,
-    isSorting,
-    listeners,
-    over,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: card.id,
-    data: { card, columnId },
-    disabled: dragDisabled,
-  });
-  const freezeSameColumnPreview = shouldFreezeSameColumnPreview({
-    columnId,
-    active,
-    over,
-    isSorting,
-  });
+  const [dragState, setDragState] = useState<
+    | { type: "idle" }
+    | { type: "dragging" }
+    | { type: "preview"; container: HTMLElement; rect: DOMRect; itemCount: number }
+  >({ type: "idle" });
+  const isDragging = dragState.type === "dragging";
   const showStaticDragGhost = isDragging;
-
-  const style: React.CSSProperties = {
-    transform: showStaticDragGhost || freezeSameColumnPreview
-      ? undefined
-      : CSS.Transform.toString(transform),
-    transition: showStaticDragGhost || freezeSameColumnPreview
-      ? undefined
-      : transition,
-  };
   const handleChipPointerDown = useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -619,6 +610,76 @@ export function Card({
     [card.id, columnId, onUpdateProperty],
   );
 
+  useEffect(() => {
+    if (dragDisabled) {
+      setDragState({ type: "idle" });
+      return;
+    }
+
+    if (!dragInstanceId || !buildDragData) {
+      return;
+    }
+
+    const element = cardSurfaceRef.current;
+    if (!element) {
+      return;
+    }
+
+    return combine(
+      draggable({
+        element,
+        getInitialData: () => buildDragData(card, columnId),
+        onGenerateDragPreview: ({ location, nativeSetDragImage, source }) => {
+          const dragData = buildDragData(card, columnId);
+          const rect = source.element.getBoundingClientRect();
+
+          setCustomNativeDragPreview({
+            nativeSetDragImage,
+            getOffset: preserveOffsetOnSource({
+              element,
+              input: location.current.input,
+            }),
+            render({ container }) {
+              setDragState({
+                type: "preview",
+                container,
+                rect,
+                itemCount: dragData.dragItems.length,
+              });
+              return () => {
+                setDragState({ type: "dragging" });
+              };
+            },
+          });
+        },
+        onDragStart: () => {
+          setDragState({ type: "dragging" });
+        },
+        onDrop: () => {
+          setDragState({ type: "idle" });
+        },
+      }),
+      dropTargetForElements({
+        element,
+        canDrop: ({ source }) => canDropOnKanbanCard({
+          targetCardId: card.id,
+          source: source.data,
+          instanceId: dragInstanceId,
+        }),
+        getIsSticky: () => true,
+        getData: () => buildKanbanCardDropTargetData({
+          instanceId: dragInstanceId,
+          cardId: card.id,
+          columnId: columnId as CardType["status"],
+        }),
+      }),
+    );
+  }, [buildDragData, card, columnId, dragDisabled, dragInstanceId]);
+
+  const setCardSurfaceRef = useCallback((element: HTMLDivElement | null) => {
+    cardSurfaceRef.current = element;
+  }, []);
+
   const surface = (
     <CardSurface
       projectId={projectId}
@@ -636,10 +697,7 @@ export function Card({
       onClick={onClick}
       onOpenPropertyEditor={onUpdateProperty ? handleOpenPropertyEditor : undefined}
       onChipPointerDown={onUpdateProperty ? handleChipPointerDown : undefined}
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
+      ref={setCardSurfaceRef}
       {...(contextMenu ? { "data-card-context-menu-trigger": "true" } : {})}
     />
   );
@@ -661,6 +719,35 @@ export function Card({
           {surface}
         </CardContextMenu>
       ) : surface}
+      {dragState.type === "preview"
+        ? createPortal(
+          <div
+            style={{
+              boxSizing: "border-box",
+              width: dragState.rect.width,
+              height: dragState.rect.height,
+            }}
+          >
+            <div className="relative opacity-90">
+              <CardPreview
+                projectId={projectId}
+                card={card}
+                columnId={columnId}
+                displayPrefs={displayPrefs}
+                isSelected={dragState.itemCount > 1}
+                fixedWidth={dragState.rect.width}
+                fixedHeight={dragState.rect.height}
+              />
+              {dragState.itemCount > 1 ? (
+                <div className="absolute -top-1.5 -right-1.5 rounded-full bg-(--foreground) px-1.75 py-0.75 text-sm font-medium text-(--background) shadow-lg">
+                  {dragState.itemCount}
+                </div>
+              ) : null}
+            </div>
+          </div>,
+          dragState.container,
+        )
+        : null}
       {activeChipEdit && onUpdateProperty && (
         <ChipPropertyEditor
           propertyType={activeChipEdit.property}
