@@ -1,4 +1,4 @@
-appId: com.nodex.kanban
+appId: app.jyu.nodex
 productName: Nodex
 directories:
   buildResources: resources
@@ -26,11 +26,10 @@ mac:
   - zip
   artifactName: "${productName}-${version}-${arch}.${ext}"
   category: public.app-category.developer-tools
+  hardenedRuntime: true
+  entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
-  # Uncomment after setting up Apple Developer credentials:
-  # identity: "Developer ID Application: Your Name (TEAM_ID)"
-  # notarize:
-  #   teamId: TEAM_ID
+  notarize: true
 
 dmg:
   title: "${productName} ${version}"

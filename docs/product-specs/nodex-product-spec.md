@@ -448,11 +448,13 @@ nodex/
 │   └── backups/                # Whole-store backup snapshots (db + assets)
 ├── electron.vite.config.ts     # electron-vite config (main, preload, renderer)
 ├── electron-builder.yml        # Electron packaging + signing + publish config
-├── homebrew-cask-template.rb   # Template for Homebrew tap distribution
+├── homebrew-cask-template.rb   # Generated local mirror of the Homebrew tap cask layout
 ├── resources/
 │   ├── icon.icns               # macOS app icon
 │   ├── icon.png                # PNG app icon
 │   └── entitlements.mac.plist  # macOS hardened runtime entitlements
+├── scripts/
+│   └── generate-homebrew-cask.ts # Generates the tap cask pushed to Asphocarp/homebrew-nodex
 ├── src/
 │   ├── shared/
 │   │   ├── types.ts            # Shared TypeScript types (Card, Board, Project, etc.)
@@ -553,9 +555,10 @@ nodex/
 │   ├── preload/index.js
 │   └── renderer/
 ├── dist/                       # Packaging output (electron-builder)
-│   ├── Nodex-*.dmg            # macOS installer
-│   ├── Nodex-*.zip            # macOS zip (for auto-update + Homebrew)
-│   └── latest-mac.yml          # Auto-update metadata
+│   ├── Nodex-*-arm64.dmg       # Notarized Apple Silicon installer
+│   ├── Nodex-*-arm64.zip       # Apple Silicon ZIP companion artifact
+│   ├── Nodex-*-x64.dmg         # Notarized Intel installer
+│   └── Nodex-*-x64.zip         # Intel ZIP companion artifact
 └── package.json
 ```
 
@@ -931,7 +934,8 @@ To release a new version:
 # 3. Choose patch/minor/major or provide a custom version
 # 4. The workflow runs typecheck/lint/tests, bumps package.json with Bun,
 #    rolls Unreleased into a dated release section, commits, tags, pushes,
-#    builds the app, and publishes the GitHub Release with the same notes
+#    notarizes arm64 + x64 builds, publishes the GitHub Release, and updates
+#    the Asphocarp/homebrew-nodex tap with matching DMG checksums
 ```
 
 Manual fallback:
@@ -948,9 +952,21 @@ bun run release:cut -- 0.2.3
 For code signing and notarization, set these env vars (or GitHub Secrets):
 - `CSC_LINK` — Base64-encoded .p12 certificate
 - `CSC_KEY_PASSWORD` — Certificate password
-- `APPLE_ID` — Apple ID email
-- `APPLE_APP_SPECIFIC_PASSWORD` — App-specific password
-- `APPLE_TEAM_ID` — 10-character Apple Team ID
+- `APPLE_API_KEY_B64` — Base64-encoded App Store Connect API key `.p8`
+- `APPLE_API_KEY_ID` — App Store Connect API key id
+- `APPLE_API_ISSUER` — App Store Connect issuer id
+- `HOMEBREW_TAP_GITHUB_TOKEN` — Fine-grained token with contents write access to `Asphocarp/homebrew-nodex`
+
+Homebrew installation path:
+```bash
+brew tap Asphocarp/nodex
+brew install --cask nodex
+```
+
+Example for encoding a downloaded App Store Connect key into `APPLE_API_KEY_B64` on macOS:
+```bash
+base64 < /path/to/AuthKey_XXXXXXX.p8 | tr -d '\n'
+```
 
 ---
 

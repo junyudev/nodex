@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Added Omnisearch-style contextual preview snippets to command-palette card results, with matching title and metadata indicators plus matching description text highlighted and clamped to three lines.
 - Added a top-level `Projects` sidebar section for switching the DB view datasource, with inline workspace-folder context and project-management shortcuts so project selection no longer depends on a separate current-project header.
 - Added per-column kanban header popovers for collapsing non-empty columns and adjusting each column's persisted width, while keeping counts and the `more actions` trigger visible on collapsed columns.
+- Added notarized dual-architecture macOS release automation plus Homebrew tap publishing, so tagged releases now produce signed `arm64` and `x64` installers and can be installed with `brew install --cask nodex` after tapping `Asphocarp/nodex`.
 
 ### Changed
 - Changed the global command palette to match VS Code-style command mode: card search is now the default, and command results only appear when the query starts with `>`.

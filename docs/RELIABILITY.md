@@ -55,6 +55,8 @@
 
 ## Operational Checks
 - Before release: run `bun run typecheck`, `bun run lint`, `bun test`.
+- Before enabling CI signing secrets: do one local notarization dry run and verify `codesign --verify --deep --strict`, `spctl --assess --type open`, and `xcrun stapler validate` against the generated macOS artifacts.
+- Release CI publishes only after both `arm64` and `x64` notarized artifacts pass verification; tap sync runs after GitHub Release publication and should be retried independently if the external tap push fails.
 - Before risky migrations/refactors: create a labeled manual backup.
 - Keep retention settings in sync with local storage constraints.
 - After large history-prune events, expect incremental vacuum to reclaim free pages gradually rather than in one blocking rewrite.

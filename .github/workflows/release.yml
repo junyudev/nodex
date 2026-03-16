@@ -13,12 +13,17 @@ on:
 permissions:
   contents: write
 
+env:
+  HOMEBREW_TAP_REPO: Asphocarp/homebrew-nodex
+  RELEASE_GIT_REF: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
+
 jobs:
-  build-macos:
+  build-macos-arm64:
     runs-on: macos-latest
-    env:
-      RELEASE_GIT_REF: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
-      RELEASE_NOTES_PATH: ${{ runner.temp }}/release-notes.md
+    environment: release
+    outputs:
+      tag: ${{ steps.release_meta.outputs.tag }}
+      version: ${{ steps.release_meta.outputs.version }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -32,80 +37,276 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build app
-        run: bun run build
-
-      - name: Package app
-        run: bun run electron-builder --mac --publish never
-        env:
-          # Uncomment after adding Apple Developer secrets:
-          # CSC_LINK: ${{ secrets.CSC_LINK }}
-          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: Resolve release tag
-        id: release_tag
+      - name: Resolve release metadata
+        id: release_meta
         shell: bash
         run: |
           release_ref="${RELEASE_GIT_REF}"
+
           if [[ "${release_ref}" == refs/tags/* ]]; then
-            echo "tag=${release_ref#refs/tags/}" >> "${GITHUB_OUTPUT}"
-            exit 0
+            tag="${release_ref#refs/tags/}"
+          else
+            tag="${release_ref}"
           fi
 
-          echo "tag=${release_ref}" >> "${GITHUB_OUTPUT}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "Expected a semver tag like v0.1.2, got ${tag}." >&2
+            exit 1
+          fi
 
-      - name: Extract release notes from CHANGELOG
-        run: bun run release:notes -- --release-notes-output "${RELEASE_NOTES_PATH}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: ${{ env.RELEASE_NOTES_PATH }}
-          draft: false
-          files: |
-            dist/*.dmg
-            dist/*.zip
-            dist/latest-mac.yml
-          tag_name: ${{ steps.release_tag.outputs.tag }}
+      - name: Materialize App Store Connect API key
+        env:
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          key_path="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          node -e "require('node:fs').writeFileSync(process.argv[1], Buffer.from(process.env.APPLE_API_KEY_B64, 'base64'))" "${key_path}"
+          chmod 600 "${key_path}"
+          echo "APPLE_API_KEY=${key_path}" >> "${GITHUB_ENV}"
+
+      - name: Package app
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: bun run package:mac:arm64
+
+      - name: Resolve artifact paths
+        id: artifact_paths
+        shell: bash
+        run: |
+          version="${{ steps.release_meta.outputs.version }}"
+          dmg_path="dist/Nodex-${version}-arm64.dmg"
+          zip_path="dist/Nodex-${version}-arm64.zip"
+          app_path="$(find dist -type d -name 'Nodex.app' -print -quit)"
+
+          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || -z "${app_path}" ]]; then
+            echo "Expected arm64 artifacts were not created." >&2
+            exit 1
+          fi
+
+          echo "dmg_path=${dmg_path}" >> "${GITHUB_OUTPUT}"
+          echo "zip_path=${zip_path}" >> "${GITHUB_OUTPUT}"
+          echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify signing and notarization
+        run: |
+          codesign --verify --deep --strict --verbose=2 "${{ steps.artifact_paths.outputs.app_path }}"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler staple "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler validate "${{ steps.artifact_paths.outputs.dmg_path }}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: macos-build
+          name: macos-arm64-release
           path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/latest-mac.yml
+            ${{ steps.artifact_paths.outputs.dmg_path }}
+            ${{ steps.artifact_paths.outputs.zip_path }}
 
-  # Uncomment to enable Windows builds:
-  # build-windows:
-  #   runs-on: windows-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: oven-sh/setup-bun@v2
-  #       with:
-  #         bun-version: latest
-  #     - run: bun install --frozen-lockfile
-  #     - run: bun run build
-  #     - name: Package & publish
-  #       run: bun run electron-builder --win --publish always
-  #       env:
-  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  build-macos-x64:
+    runs-on: macos-15-intel
+    environment: release
+    outputs:
+      tag: ${{ steps.release_meta.outputs.tag }}
+      version: ${{ steps.release_meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_GIT_REF }}
 
-  # Uncomment to enable Linux builds:
-  # build-linux:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: oven-sh/setup-bun@v2
-  #       with:
-  #         bun-version: latest
-  #     - run: bun install --frozen-lockfile
-  #     - run: bun run build
-  #     - name: Package & publish
-  #       run: bun run electron-builder --linux --publish always
-  #       env:
-  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: bash
+        run: |
+          release_ref="${RELEASE_GIT_REF}"
+
+          if [[ "${release_ref}" == refs/tags/* ]]; then
+            tag="${release_ref#refs/tags/}"
+          else
+            tag="${release_ref}"
+          fi
+
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "Expected a semver tag like v0.1.2, got ${tag}." >&2
+            exit 1
+          fi
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${tag#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Materialize App Store Connect API key
+        env:
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          key_path="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          node -e "require('node:fs').writeFileSync(process.argv[1], Buffer.from(process.env.APPLE_API_KEY_B64, 'base64'))" "${key_path}"
+          chmod 600 "${key_path}"
+          echo "APPLE_API_KEY=${key_path}" >> "${GITHUB_ENV}"
+
+      - name: Package app
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: bun run package:mac:x64
+
+      - name: Resolve artifact paths
+        id: artifact_paths
+        shell: bash
+        run: |
+          version="${{ steps.release_meta.outputs.version }}"
+          dmg_path="dist/Nodex-${version}-x64.dmg"
+          zip_path="dist/Nodex-${version}-x64.zip"
+          app_path="$(find dist -type d -name 'Nodex.app' -print -quit)"
+
+          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || -z "${app_path}" ]]; then
+            echo "Expected x64 artifacts were not created." >&2
+            exit 1
+          fi
+
+          echo "dmg_path=${dmg_path}" >> "${GITHUB_OUTPUT}"
+          echo "zip_path=${zip_path}" >> "${GITHUB_OUTPUT}"
+          echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify signing and notarization
+        run: |
+          codesign --verify --deep --strict --verbose=2 "${{ steps.artifact_paths.outputs.app_path }}"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler staple "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler validate "${{ steps.artifact_paths.outputs.dmg_path }}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-x64-release
+          path: |
+            ${{ steps.artifact_paths.outputs.dmg_path }}
+            ${{ steps.artifact_paths.outputs.zip_path }}
+
+  publish-release:
+    runs-on: ubuntu-latest
+    environment: release
+    needs:
+      - build-macos-arm64
+      - build-macos-x64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_GIT_REF }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download arm64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-arm64-release
+          path: ${{ runner.temp }}/release-artifacts/arm64
+
+      - name: Download x64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-x64-release
+          path: ${{ runner.temp }}/release-artifacts/x64
+
+      - name: Extract release notes from CHANGELOG
+        run: bun run release:notes -- --version "${{ needs.build-macos-arm64.outputs.version }}" --release-notes-output "${RUNNER_TEMP}/release-notes.md"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ runner.temp }}/release-notes.md
+          draft: false
+          files: |
+            ${{ runner.temp }}/release-artifacts/arm64/*.dmg
+            ${{ runner.temp }}/release-artifacts/arm64/*.zip
+            ${{ runner.temp }}/release-artifacts/x64/*.dmg
+            ${{ runner.temp }}/release-artifacts/x64/*.zip
+          tag_name: ${{ needs.build-macos-arm64.outputs.tag }}
+
+  update-homebrew-tap:
+    runs-on: ubuntu-latest
+    environment: release
+    needs:
+      - build-macos-arm64
+      - build-macos-x64
+      - publish-release
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_GIT_REF }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download arm64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-arm64-release
+          path: ${{ runner.temp }}/release-artifacts/arm64
+
+      - name: Download x64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-x64-release
+          path: ${{ runner.temp }}/release-artifacts/x64
+
+      - name: Compute checksums and generate cask
+        shell: bash
+        run: |
+          arm64_dmg="$(find "${RUNNER_TEMP}/release-artifacts/arm64" -name 'Nodex-*-arm64.dmg' -print -quit)"
+          x64_dmg="$(find "${RUNNER_TEMP}/release-artifacts/x64" -name 'Nodex-*-x64.dmg' -print -quit)"
+
+          if [[ -z "${arm64_dmg}" || -z "${x64_dmg}" ]]; then
+            echo "Expected DMG artifacts for both architectures." >&2
+            exit 1
+          fi
+
+          arm64_sha="$(shasum -a 256 "${arm64_dmg}" | awk '{print $1}')"
+          x64_sha="$(shasum -a 256 "${x64_dmg}" | awk '{print $1}')"
+          tap_workdir="${RUNNER_TEMP}/homebrew-tap"
+
+          git clone "https://x-access-token:${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}@github.com/${HOMEBREW_TAP_REPO}.git" "${tap_workdir}"
+          bun run release:cask -- \
+            --version "${{ needs.build-macos-arm64.outputs.version }}" \
+            --arm64-sha256 "${arm64_sha}" \
+            --x64-sha256 "${x64_sha}" \
+            --output "${tap_workdir}/Casks/nodex.rb"
+
+          cd "${tap_workdir}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ -z "$(git status --short)" ]]; then
+            echo "Tap already up to date."
+            exit 0
+          fi
+
+          git add Casks/nodex.rb
+          git commit -m "chore: update nodex cask to v${{ needs.build-macos-arm64.outputs.version }}"
+          git push origin HEAD

@@ -1,26 +1,29 @@
-# Homebrew Cask template for Nodex
-#
-# To use this:
-# 1. Create a GitHub repo: Asphocarp/homebrew-nodex
-# 2. Place this file at: Casks/a/nodex.rb
-# 3. Update version, sha256, and URL after each release
-# 4. Users install with:
-#      brew tap Asphocarp/nodex
-#      brew install --cask nodex
+# This file mirrors the generated cask layout from scripts/generate-homebrew-cask.ts.
+# CI writes the real release-specific cask into Asphocarp/homebrew-nodex/Casks/nodex.rb.
 
 cask "nodex" do
-  version "0.2.0"
-  sha256 "REPLACE_WITH_SHA256" # Run: shasum -a 256 dist/Nodex-0.2.0-arm64.dmg
+  version "0.0.0"
 
-  url "https://github.com/Asphocarp/nodex/releases/download/v#{version}/Nodex-#{version}-arm64.dmg",
-      verified: "github.com/Asphocarp/nodex/"
+  on_arm do
+    sha256 "ARM64_SHA256"
+
+    url "https://github.com/Asphocarp/nodex/releases/download/v#{version}/Nodex-#{version}-arm64.dmg",
+        verified: "github.com/Asphocarp/nodex/"
+  end
+
+  on_intel do
+    sha256 "X64_SHA256"
+
+    url "https://github.com/Asphocarp/nodex/releases/download/v#{version}/Nodex-#{version}-x64.dmg",
+        verified: "github.com/Asphocarp/nodex/"
+  end
 
   name "Nodex"
   desc "SQLite-based kanban board for managing coding agents"
   homepage "https://github.com/Asphocarp/nodex"
 
   livecheck do
-    url :url
+    url :homepage
     strategy :github_latest
   end
 
@@ -29,7 +32,7 @@ cask "nodex" do
   zap trash: [
     "~/.nodex",
     "~/Library/Application Support/nodex",
-    "~/Library/Preferences/com.nodex.kanban.plist",
-    "~/Library/Saved Application State/com.nodex.kanban.savedState",
+    "~/Library/Preferences/app.jyu.nodex.plist",
+    "~/Library/Saved Application State/app.jyu.nodex.savedState",
   ]
 end
