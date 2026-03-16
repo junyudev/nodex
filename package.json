@@ -1,7 +1,7 @@
 {
   "name": "nodex",
   "version": "0.1.2",
-  "description": "SQLite-based kanban board for managing coding agents",
+  "description": "Block-based Agent Orchestrator",
   "private": false,
   "main": "out/main/index.js",
   "bin": {

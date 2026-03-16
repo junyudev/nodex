@@ -25,7 +25,7 @@ mac:
   - dmg
   - zip
   artifactName: "${productName}-${version}-${arch}.${ext}"
-  category: public.app-category.developer-tools
+  category: public.app-category.productivity
   hardenedRuntime: true
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist

@@ -71,7 +71,7 @@ cask "nodex" do
   end
 
   name "Nodex"
-  desc "SQLite-based kanban board for managing coding agents"
+  desc "Block-based Agent Orchestrator"
   homepage "${homepage}"
 
   livecheck do
