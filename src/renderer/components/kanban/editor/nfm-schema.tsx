@@ -5,7 +5,7 @@ import {
   defaultInlineContentSpecs,
   defaultStyleSpecs,
 } from "@blocknote/core";
-import { dualThemeCodeBlockOptions } from "./code-block-options";
+import { editorCodeBlockOptions } from "./code-block-options";
 import { createAttachmentInlineContentSpec } from "./attachment-chip";
 import { createCalloutBlock } from "./callout-block";
 import { createCardToggleBlockSpec } from "./card-toggle-block";
@@ -22,7 +22,7 @@ export const nfmSchema = BlockNoteSchema.create({
     numberedListItem: defaultBlockSpecs.numberedListItem,
     checkListItem: defaultBlockSpecs.checkListItem,
     toggleListItem: defaultBlockSpecs.toggleListItem,
-    codeBlock: createCodeBlockSpec(dualThemeCodeBlockOptions),
+    codeBlock: createCodeBlockSpec(editorCodeBlockOptions),
     quote: defaultBlockSpecs.quote,
     divider: defaultBlockSpecs.divider,
     image: imageBlockSpec,

@@ -51,10 +51,11 @@ The sidebar `Projects` section controls the DB stage datasource, while Cards/Thr
 - Sidebar thread items replace their default thread glyph with a live running indicator while active; the Thread stage group icon also reflects running state.
 - The composer footer’s bottom-right context ring uses live `thread/tokenUsage/updated` data from Codex. It shows the active thread’s current context-window fill level, and hovering the ring reveals percent-full plus `used / window` token details when available.
 - Markdown security and capability profile:
-  - `remark-gfm`, `remark-math`, optional `remark-breaks`
-  - `rehype-raw` -> `rehype-sanitize` (extended schema) -> `rehype-harden` -> `rehype-katex`
-  - Mermaid is rendered from fenced blocks and sanitized before SVG insertion.
-- Visual styling is scoped via `.codex-markdown` and `codex-tool-*` primitives in `src/renderer/globals.css`, keeping all colors/typography on Nodex design tokens.
+  - `streamdown@2.4.0` with official plugins: `@streamdown/code`, `@streamdown/mermaid`, `@streamdown/math`, `@streamdown/cjk`
+  - Streamdown's default hardening/sanitization pipeline stays enabled; local file links still render through Nodex's `FileLinkAnchor`
+  - `remark-breaks` is applied only on transcript surfaces that explicitly preserve single line breaks
+  - Mermaid fences use Streamdown's diagram plugin with a safe Nodex-branded error fallback
+- Visual styling layers Streamdown's base styles under `.codex-markdown` and `codex-tool-*` token overrides in `src/renderer/globals.css`.
 
 ## Focus and Navigation
 - Focusing a stage scrolls only as needed so the focused stage is fully visible.

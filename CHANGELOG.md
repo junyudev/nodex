@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Added a top-level `Projects` sidebar section for switching the DB view datasource, with inline workspace-folder context and project-management shortcuts so project selection no longer depends on a separate current-project header.
 - Added per-column kanban header popovers for collapsing non-empty columns and adjusting each column's persisted width, while keeping counts and the `more actions` trigger visible on collapsed columns.
 - Added notarized dual-architecture macOS release automation plus Homebrew tap publishing, so tagged releases now produce signed `arm64` and `x64` installers and can be installed with `brew install --cask nodex` after tapping `Asphocarp/nodex`.
+- Added Streamdown 2.4.0-based markdown rendering across Codex threads and raw NFM code blocks, replacing the app-owned transcript Shiki/Mermaid stack with the official Streamdown code, Mermaid, math, and CJK plugins.
 
 ### Changed
 - Changed the global command palette to match VS Code-style command mode: card search is now the default, and command results only appear when the query starts with `>`.

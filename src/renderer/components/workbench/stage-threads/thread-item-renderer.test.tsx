@@ -122,6 +122,32 @@ describe("ThreadItemRenderer", () => {
     expect(markup.includes("design-system-theme.css")).toBeTrue();
   });
 
+  test("renders assistant display math via Streamdown math plugin", () => {
+    const markup = renderItem(
+      createBaseItem({
+        normalizedKind: "assistantMessage",
+        role: "assistant",
+        markdownText: "$$b^2$$",
+      }),
+    );
+
+    expect(markup.includes('class="katex"')).toBeTrue();
+    expect(markup.includes("annotation")).toBeTrue();
+  });
+
+  test("renders mermaid fences through the Streamdown code block shell", () => {
+    const markup = renderItem(
+      createBaseItem({
+        normalizedKind: "assistantMessage",
+        role: "assistant",
+        markdownText: "```mermaid\ngraph TD\nA-->B\n```",
+      }),
+    );
+
+    expect(markup.includes("animate-spin")).toBeTrue();
+    expect(markup.includes("graph TD")).toBeFalse();
+  });
+
   test("renders tool call toggles collapsed by default", () => {
     const markup = renderItem(
       createBaseItem({

@@ -1,9 +1,14 @@
 @import "tailwindcss";
+@import "streamdown/styles.css";
 @import "tw-animate-css";
 @import "./styles/vscode-theme-vars.css";
 @import "./styles/design-system-theme.css";
 @import "./styles/design-local-utilities.css";
 @source "../../node_modules/streamdown/dist/index.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
 @source "../../node_modules/@blocknote/shadcn";
 
 /* fix button pointer */
@@ -594,13 +599,8 @@
   color: var(--foreground);
 }
 
-/* Shiki dual-theme: in dark mode, swap token colors to --shiki-dark */
-.bn-container[data-color-scheme="dark"] .shiki {
-  color: var(--shiki-dark) !important;
-}
 .nfm-code-block {
-  background: var(--code-block-bg);
-  border-radius: 10px;
+  color: var(--foreground);
 }
 
 /* Dark mode callout: translucent surface matching Notion's --c-graBacSec */
@@ -610,10 +610,6 @@
   border: 1px solid transparent;
   padding: 12px 20px 12px 12px;
 }
-.dark .nfm-code-block .shiki {
-  color: var(--shiki-dark) !important;
-}
-
 /* ===== NFM Toggle Styling ===== */
 
 .nfm-toggle-summary {
@@ -1158,15 +1154,35 @@
   border-radius: 0;
 }
 
-.codex-markdown .nfm-code-block {
+.codex-markdown [data-streamdown="code-block"],
+.codex-markdown-plan [data-streamdown="code-block"],
+.nfm-code-block [data-streamdown="code-block"] {
   border: 1px solid var(--border);
   background: var(--code-block-bg);
   border-radius: 10px;
 }
 
-.codex-markdown .nfm-code-block .shiki,
-.codex-markdown .nfm-code-block .shiki pre {
+.codex-markdown [data-streamdown="code-block-header"],
+.codex-markdown-plan [data-streamdown="code-block-header"],
+.nfm-code-block [data-streamdown="code-block-header"] {
+  color: var(--foreground-tertiary);
+}
+
+.codex-markdown [data-streamdown="code-block-body"],
+.codex-markdown-plan [data-streamdown="code-block-body"],
+.nfm-code-block [data-streamdown="code-block-body"] {
+  border-color: var(--border);
+  background: transparent;
+}
+
+.codex-markdown [data-streamdown="code-block"] pre,
+.codex-markdown-plan [data-streamdown="code-block"] pre,
+.nfm-code-block [data-streamdown="code-block"] pre {
   background: transparent !important;
+  border: 0;
+  max-width: none;
+  padding: 0;
+  margin: 0;
 }
 
 .codex-markdown blockquote {

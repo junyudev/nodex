@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
 import { FileCode2, FileText, Folder, Link2 } from "lucide-react";
+import { Streamdown } from "streamdown";
 import type {
   NfmBlock,
   NfmInlineContent,
@@ -10,7 +10,7 @@ import { FileLinkAnchor } from "../shared/file-link-anchor";
 import { parseNfm } from "@/lib/nfm/parser";
 import { resolveAssetSourceToHttpUrl } from "@/lib/assets";
 import { cn } from "@/lib/utils";
-import { getHighlighter, isSupportedLanguage } from "@/lib/shiki";
+import { streamdownCodePlugin } from "@/lib/streamdown";
 
 interface NfmRendererProps {
   content: string;
@@ -272,53 +272,15 @@ function HighlightedCodeBlock({
   language: string;
   className?: string;
 }) {
-  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
+  const normalizedLanguage = language.trim().toLowerCase();
+  const fencedCode = `\`\`\`${normalizedLanguage}\n${code}\n\`\`\``;
 
-  useEffect(() => {
-    let cancelled = false;
-    const lang = language.toLowerCase();
-    if (!lang || !isSupportedLanguage(lang)) return;
-
-    getHighlighter().then(async (hl) => {
-      if (cancelled) return;
-      const loadedLangs = hl.getLoadedLanguages();
-      if (!loadedLangs.includes(lang as never)) {
-        await hl.loadLanguage(lang as never);
-      }
-      if (cancelled) return;
-      // Dual-theme mode: light colors go into `color`, dark into `--shiki-dark`.
-      // CSS in globals.css handles the swap via `.dark .nfm-code-block .shiki`.
-      const result = hl.codeToHtml(code, {
-        lang,
-        themes: { light: "github-light", dark: "github-dark" },
-      });
-      setHighlightedHtml(result);
-    });
-
-    return () => { cancelled = true; };
-  }, [code, language]);
-
-  // Fallback: plain code block (no highlighting available or still loading)
-  if (!highlightedHtml) {
-    return (
-      <pre
-        className={cn(
-          "nfm-code-block my-2 overflow-x-auto rounded-md p-4 font-mono text-sm",
-          className,
-        )}
-      >
-        <code>{code}</code>
-      </pre>
-    );
-  }
-
-  // Shiki output is trusted — generated from code text by the syntax highlighter,
-  // not from arbitrary user HTML. Safe to render directly.
   return (
-    <div
-      className={cn("nfm-code-block my-2 overflow-x-auto rounded-md text-sm [&_code]:bg-transparent! [&_pre]:rounded-md! [&_pre]:p-4", className)}
-      dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-    />
+    <div className={cn("nfm-code-block my-2 text-sm", className)}>
+      <Streamdown plugins={{ code: streamdownCodePlugin }} controls={false}>
+        {fencedCode}
+      </Streamdown>
+    </div>
   );
 }
 

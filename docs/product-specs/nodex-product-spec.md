@@ -386,7 +386,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - `item/plan/delta` streams incremental plan content; both `text` and `markdownText` stay in sync during reducer updates for markdown-first rendering.
 - `serverRequest/resolved` clears stale pending approval and user-input queue entries by request id.
 - Codex thread items are normalized into structured renderer data (`normalizedKind`, optional `toolCall`, optional `markdownText`, optional `rawItem`, optional lifecycle `status`). Top-level duplicate fields such as `text`, `command`, `cwd`, and `aggregatedOutput` are not part of the normalized shape.
-- Assistant, plan, and reasoning content render through a sanitized markdown pipeline with GFM tables/task-lists, math (KaTeX), Mermaid diagrams, and streaming-safe parsing for in-progress turns.
+- Assistant, plan, and reasoning content render through Streamdown with official code, Mermaid, math, and CJK plugins, plus streaming-safe parsing for in-progress turns and Nodex-specific local-file link handling.
 - Reasoning (`Thinking`) items stay visible while in progress and are hidden after completion by default; users can keep completed reasoning visible by disabling Settings -> Editor -> `Hide thinking when done`.
 - Tool activity renders as structured expandable cards instead of plain text dumps: specialized cards for command execution, file changes, MCP, and web search, plus a generic fallback card that always exposes args/result/error/raw payloads for unknown future tool types.
 - Tool-call header labels use a two-tone hierarchy for scanability: the leading action phrase (for example, `Explored`, `Searched web`, `Ran`) is emphasized over trailing detail text.
