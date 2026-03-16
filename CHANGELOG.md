@@ -9,12 +9,9 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 ### Fixed
+- Fixed oversized macOS release packages by keeping renderer-only libraries out of shipped runtime dependencies and pruning dead test/source-map/source-tree files from packaged Node modules.
 
 ## [0.1.4] - 2026-03-16
-
-### Added
-
-### Changed
 
 ### Fixed
 - Fixed release automation so macOS packaging now gets a larger CI-only Node heap budget, and the version commit/tag are pushed only after both release builds succeed.

@@ -5,6 +5,26 @@ directories:
   output: dist
 files:
 - out/**/*
+- package.json
+- "!**/*.map"
+- "!**/*.tsbuildinfo"
+- "!**/webpack-stats.json"
+- "!**/.bun-tag-*"
+- "!**/__snapshots__/**"
+- "!**/__tests__/**"
+- "!**/test/**"
+- "!**/tests/**"
+- "!**/*.test.*"
+- "!**/*.spec.*"
+- "!node_modules/@types/**"
+- "!node_modules/better-sqlite3/deps/**"
+- "!node_modules/better-sqlite3/src/**"
+- "!node_modules/node-pty/deps/**"
+- "!node_modules/node-pty/scripts/**"
+- "!node_modules/node-pty/src/**"
+- "!node_modules/node-pty/third_party/**"
+- "!node_modules/node-pty/typings/**"
+- "!node_modules/node-pty/prebuilds/win32-*/**"
 asarUnpack:
 - "**/*.node"
 npmRebuild: true
