@@ -934,11 +934,10 @@ To release a new version, use the GitHub Actions `Prepare Release` workflow:
 gh workflow run "Prepare Release" \
   --repo Asphocarp/nodex \
   -f release_type=patch
-# 3. The workflow runs typecheck/lint/tests, bumps package.json with Bun,
-#    rolls Unreleased into a release section, commits, tags, pushes,
-#    then calls the Release workflow.
-# 4. The Release workflow signs and notarizes arm64 + x64 builds, verifies
-#    them, publishes the GitHub Release, and updates Asphocarp/homebrew-nodex
+# 3. The workflow runs typecheck/lint/tests, prepares an unpushed release
+#    candidate, and signs/notarizes arm64 + x64 builds from that candidate.
+# 4. Only after both macOS builds pass does it commit, tag, push, publish the
+#    GitHub Release, and update Asphocarp/homebrew-nodex.
 ```
 
 Detailed CI behavior, job responsibilities, secrets, artifact naming, and recovery steps live in `docs/release-macos.md`.

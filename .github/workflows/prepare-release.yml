@@ -21,11 +21,17 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: prepare-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      git_ref: ${{ steps.release_version.outputs.git_ref }}
+      branch_name: ${{ steps.release_version.outputs.branch_name }}
+      head_sha: ${{ steps.release_version.outputs.head_sha }}
+      tag_name: ${{ steps.release_version.outputs.tag_name }}
       version: ${{ steps.release_version.outputs.version }}
     steps:
       - uses: actions/checkout@v6
@@ -82,8 +88,10 @@ jobs:
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
+          echo "branch_name=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "head_sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "tag_name=v${version}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
-          echo "git_ref=v${version}" >> "${GITHUB_OUTPUT}"
 
       - name: Update CHANGELOG and generate release notes
         if: ${{ !github.event.act }}
@@ -92,29 +100,379 @@ jobs:
             --release-notes-output "${RUNNER_TEMP}/release-notes.md" \
             --commit-message-output "${RUNNER_TEMP}/release-commit-message.txt"
 
-      - name: Configure git author
+      - name: Bundle release candidate source
         if: ${{ !github.event.act }}
+        shell: bash
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=dist \
+            --exclude=out \
+            -czf "${RUNNER_TEMP}/release-candidate-source.tgz" \
+            .
+
+      - name: Upload release candidate source
+        if: ${{ !github.event.act }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-source
+          path: ${{ runner.temp }}/release-candidate-source.tgz
+
+      - name: Upload release candidate metadata
+        if: ${{ !github.event.act }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-candidate-metadata
+          path: |
+            ${{ runner.temp }}/release-notes.md
+            ${{ runner.temp }}/release-commit-message.txt
+
+  build-macos-arm64:
+    if: ${{ !github.event.act }}
+    runs-on: macos-latest
+    environment: release
+    needs: prepare
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_WORKDIR: ${{ github.workspace }}/release-candidate
+    steps:
+      - name: Download release candidate source
+        uses: actions/download-artifact@v5
+        with:
+          name: release-candidate-source
+          path: ${{ runner.temp }}/release-source
+
+      - name: Extract release candidate source
+        shell: bash
+        run: |
+          mkdir -p "${RELEASE_WORKDIR}"
+          tar -xzf "${RUNNER_TEMP}/release-source/release-candidate-source.tgz" -C "${RELEASE_WORKDIR}"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: ${{ env.RELEASE_WORKDIR }}
+        run: bun install --frozen-lockfile
+
+      - name: Materialize App Store Connect API key
+        env:
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          key_path="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          node -e "require('node:fs').writeFileSync(process.argv[1], Buffer.from(process.env.APPLE_API_KEY_B64, 'base64'))" "${key_path}"
+          chmod 600 "${key_path}"
+          echo "APPLE_API_KEY=${key_path}" >> "${GITHUB_ENV}"
+
+      - name: Package app
+        working-directory: ${{ env.RELEASE_WORKDIR }}
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: bun run package:mac:arm64
+
+      - name: Resolve artifact paths
+        id: artifact_paths
+        shell: bash
+        working-directory: ${{ env.RELEASE_WORKDIR }}
+        run: |
+          dmg_path="${RELEASE_WORKDIR}/dist/Nodex-${RELEASE_VERSION}-arm64.dmg"
+          zip_path="${RELEASE_WORKDIR}/dist/Nodex-${RELEASE_VERSION}-arm64.zip"
+          app_path="$(find "${RELEASE_WORKDIR}/dist" -type d -name 'Nodex.app' -print -quit)"
+
+          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || -z "${app_path}" ]]; then
+            echo "Expected arm64 artifacts were not created." >&2
+            exit 1
+          fi
+
+          echo "dmg_path=${dmg_path}" >> "${GITHUB_OUTPUT}"
+          echo "zip_path=${zip_path}" >> "${GITHUB_OUTPUT}"
+          echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify signing and notarization
+        run: |
+          codesign --verify --deep --strict --verbose=2 "${{ steps.artifact_paths.outputs.app_path }}"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler staple "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler validate "${{ steps.artifact_paths.outputs.dmg_path }}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-arm64-release
+          path: |
+            ${{ steps.artifact_paths.outputs.dmg_path }}
+            ${{ steps.artifact_paths.outputs.zip_path }}
+
+  build-macos-x64:
+    if: ${{ !github.event.act }}
+    runs-on: macos-15-intel
+    environment: release
+    needs: prepare
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_WORKDIR: ${{ github.workspace }}/release-candidate
+    steps:
+      - name: Download release candidate source
+        uses: actions/download-artifact@v5
+        with:
+          name: release-candidate-source
+          path: ${{ runner.temp }}/release-source
+
+      - name: Extract release candidate source
+        shell: bash
+        run: |
+          mkdir -p "${RELEASE_WORKDIR}"
+          tar -xzf "${RUNNER_TEMP}/release-source/release-candidate-source.tgz" -C "${RELEASE_WORKDIR}"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        working-directory: ${{ env.RELEASE_WORKDIR }}
+        run: bun install --frozen-lockfile
+
+      - name: Materialize App Store Connect API key
+        env:
+          APPLE_API_KEY_B64: ${{ secrets.APPLE_API_KEY_B64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          key_path="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          node -e "require('node:fs').writeFileSync(process.argv[1], Buffer.from(process.env.APPLE_API_KEY_B64, 'base64'))" "${key_path}"
+          chmod 600 "${key_path}"
+          echo "APPLE_API_KEY=${key_path}" >> "${GITHUB_ENV}"
+
+      - name: Package app
+        working-directory: ${{ env.RELEASE_WORKDIR }}
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: bun run package:mac:x64
+
+      - name: Resolve artifact paths
+        id: artifact_paths
+        shell: bash
+        working-directory: ${{ env.RELEASE_WORKDIR }}
+        run: |
+          dmg_path="${RELEASE_WORKDIR}/dist/Nodex-${RELEASE_VERSION}-x64.dmg"
+          zip_path="${RELEASE_WORKDIR}/dist/Nodex-${RELEASE_VERSION}-x64.zip"
+          app_path="$(find "${RELEASE_WORKDIR}/dist" -type d -name 'Nodex.app' -print -quit)"
+
+          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || -z "${app_path}" ]]; then
+            echo "Expected x64 artifacts were not created." >&2
+            exit 1
+          fi
+
+          echo "dmg_path=${dmg_path}" >> "${GITHUB_OUTPUT}"
+          echo "zip_path=${zip_path}" >> "${GITHUB_OUTPUT}"
+          echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify signing and notarization
+        run: |
+          codesign --verify --deep --strict --verbose=2 "${{ steps.artifact_paths.outputs.app_path }}"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler staple "${{ steps.artifact_paths.outputs.dmg_path }}"
+          xcrun stapler validate "${{ steps.artifact_paths.outputs.dmg_path }}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-x64-release
+          path: |
+            ${{ steps.artifact_paths.outputs.dmg_path }}
+            ${{ steps.artifact_paths.outputs.zip_path }}
+
+  finalize-release:
+    if: ${{ !github.event.act }}
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - build-macos-arm64
+      - build-macos-x64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify branch head is unchanged
+        shell: bash
+        run: |
+          expected_sha="${{ needs.prepare.outputs.head_sha }}"
+          branch_name="${{ needs.prepare.outputs.branch_name }}"
+
+          git fetch origin "refs/heads/${branch_name}"
+          current_remote_sha="$(git rev-parse FETCH_HEAD)"
+
+          if [[ "${current_remote_sha}" != "${expected_sha}" ]]; then
+            echo "Branch ${branch_name} advanced from ${expected_sha} to ${current_remote_sha} during the release run." >&2
+            echo "Refusing to push a stale release commit." >&2
+            exit 1
+          fi
+
+      - name: Download release candidate source
+        uses: actions/download-artifact@v5
+        with:
+          name: release-candidate-source
+          path: ${{ runner.temp }}/release-source
+
+      - name: Download release candidate metadata
+        uses: actions/download-artifact@v5
+        with:
+          name: release-candidate-metadata
+          path: ${{ runner.temp }}/release-metadata
+
+      - name: Extract release candidate source
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/release-candidate"
+          tar -xzf "${RUNNER_TEMP}/release-source/release-candidate-source.tgz" -C "${RUNNER_TEMP}/release-candidate"
+
+      - name: Configure git author
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Commit, tag, and push release
-        if: ${{ !github.event.act }}
         shell: bash
         run: |
-          version="${{ steps.release_version.outputs.version }}"
-          tag_name="v${version}"
+          version="${{ needs.prepare.outputs.version }}"
+          tag_name="${{ needs.prepare.outputs.tag_name }}"
+          branch_name="${{ needs.prepare.outputs.branch_name }}"
+
+          if git rev-parse --verify --quiet "refs/tags/${tag_name}" >/dev/null; then
+            echo "Tag ${tag_name} already exists locally." >&2
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag_name}" >/dev/null; then
+            echo "Tag ${tag_name} already exists on origin." >&2
+            exit 1
+          fi
+
+          cp "${RUNNER_TEMP}/release-candidate/package.json" package.json
+          cp "${RUNNER_TEMP}/release-candidate/CHANGELOG.md" CHANGELOG.md
 
           git add package.json CHANGELOG.md
-          git commit -F "${RUNNER_TEMP}/release-commit-message.txt"
-          git tag -a "${tag_name}" -F "${RUNNER_TEMP}/release-commit-message.txt"
-          git push origin HEAD
+          git commit -F "${RUNNER_TEMP}/release-metadata/release-commit-message.txt"
+          git tag -a "${tag_name}" -F "${RUNNER_TEMP}/release-metadata/release-commit-message.txt"
+          git push origin HEAD:refs/heads/${branch_name}
           git push origin "${tag_name}"
 
-  publish:
+  publish-release:
     if: ${{ !github.event.act }}
-    needs: prepare
-    uses: ./.github/workflows/release.yml
-    with:
-      git_ref: ${{ needs.prepare.outputs.git_ref }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    environment: release
+    needs:
+      - prepare
+      - finalize-release
+      - build-macos-arm64
+      - build-macos-x64
+    steps:
+      - name: Download release candidate metadata
+        uses: actions/download-artifact@v5
+        with:
+          name: release-candidate-metadata
+          path: ${{ runner.temp }}/release-metadata
+
+      - name: Download arm64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-arm64-release
+          path: ${{ runner.temp }}/release-artifacts/arm64
+
+      - name: Download x64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-x64-release
+          path: ${{ runner.temp }}/release-artifacts/x64
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ runner.temp }}/release-metadata/release-notes.md
+          draft: false
+          files: |
+            ${{ runner.temp }}/release-artifacts/arm64/*.dmg
+            ${{ runner.temp }}/release-artifacts/arm64/*.zip
+            ${{ runner.temp }}/release-artifacts/x64/*.dmg
+            ${{ runner.temp }}/release-artifacts/x64/*.zip
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+
+  update-homebrew-tap:
+    if: ${{ !github.event.act }}
+    runs-on: ubuntu-latest
+    environment: release
+    needs:
+      - prepare
+      - publish-release
+      - build-macos-arm64
+      - build-macos-x64
+    env:
+      HOMEBREW_TAP_REPO: Asphocarp/homebrew-nodex
+    steps:
+      - name: Download release candidate source
+        uses: actions/download-artifact@v5
+        with:
+          name: release-candidate-source
+          path: ${{ runner.temp }}/release-source
+
+      - name: Extract release candidate source
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/release-candidate"
+          tar -xzf "${RUNNER_TEMP}/release-source/release-candidate-source.tgz" -C "${RUNNER_TEMP}/release-candidate"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Download arm64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-arm64-release
+          path: ${{ runner.temp }}/release-artifacts/arm64
+
+      - name: Download x64 artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: macos-x64-release
+          path: ${{ runner.temp }}/release-artifacts/x64
+
+      - name: Compute checksums and generate cask
+        shell: bash
+        run: |
+          arm64_dmg="$(find "${RUNNER_TEMP}/release-artifacts/arm64" -name 'Nodex-*-arm64.dmg' -print -quit)"
+          x64_dmg="$(find "${RUNNER_TEMP}/release-artifacts/x64" -name 'Nodex-*-x64.dmg' -print -quit)"
+
+          if [[ -z "${arm64_dmg}" || -z "${x64_dmg}" ]]; then
+            echo "Expected DMG artifacts for both architectures." >&2
+            exit 1
+          fi
+
+          arm64_sha="$(shasum -a 256 "${arm64_dmg}" | awk '{print $1}')"
+          x64_sha="$(shasum -a 256 "${x64_dmg}" | awk '{print $1}')"
+          tap_workdir="${RUNNER_TEMP}/homebrew-tap"
+
+          git clone "https://x-access-token:${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}@github.com/${HOMEBREW_TAP_REPO}.git" "${tap_workdir}"
+          bun run "${RUNNER_TEMP}/release-candidate/scripts/generate-homebrew-cask.ts" -- \
+            --version "${{ needs.prepare.outputs.version }}" \
+            --arm64-sha256 "${arm64_sha}" \
+            --x64-sha256 "${x64_sha}" \
+            --output "${tap_workdir}/Casks/nodex.rb"
+
+          cd "${tap_workdir}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ -z "$(git status --short)" ]]; then
+            echo "Tap already up to date."
+            exit 0
+          fi
+
+          git add Casks/nodex.rb
+          git commit -m "chore: update nodex cask to v${{ needs.prepare.outputs.version }}"
+          git push origin HEAD

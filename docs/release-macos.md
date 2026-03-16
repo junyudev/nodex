@@ -10,15 +10,15 @@ Nodex ships notarized macOS builds for both Apple Silicon and Intel:
 - `Nodex-<version>-x64.dmg`
 - `Nodex-<version>-x64.zip`
 
-The release pipeline is split across two GitHub Actions workflows:
+The release pipeline uses two GitHub Actions workflows:
 - `.github/workflows/prepare-release.yml`
 - `.github/workflows/release.yml`
 
-`Prepare Release` is the normal entrypoint. It validates the repo, bumps the version, rolls `CHANGELOG.md` forward, creates the release commit, creates the `v<version>` tag, pushes both, then calls `release.yml`.
+`Prepare Release` is the normal entrypoint. It validates the repo, prepares an unpushed release-candidate workspace, builds and notarizes both macOS artifacts from that candidate, and only then creates and pushes the release commit plus the `v<version>` tag before publishing the GitHub Release and updating the Homebrew tap.
 
-`Release` is the packaging workflow. It signs, notarizes, verifies, publishes the GitHub Release, and updates the first-party Homebrew tap.
+`Release` is the fallback workflow for already-existing refs. It builds, signs, notarizes, verifies, publishes the GitHub Release, and updates the first-party Homebrew tap for a committed tag or ref. It does not mutate git history.
 
-For local Linux-path debugging, Nodex also ships a committed `act` harness for the `prepare` job. That harness intentionally stops after validation and never performs the mutating release steps locally.
+For local Linux-path debugging, Nodex also ships a committed `act` harness for the `prepare` job. That harness intentionally stops after validation and never performs the candidate-build, commit, tag, push, or publish steps locally.
 
 ## One-Time Setup
 
@@ -112,10 +112,10 @@ Supporting files:
 Behavior:
 - runs only the `prepare` job from `.github/workflows/prepare-release.yml`
 - keeps checkout, Bun setup, install, typecheck, lint, and test aligned with GitHub Actions
-- skips version bump, changelog generation, commit/tag/push, and the reusable `publish` workflow when `github.event.act` is true
+- skips version bump, changelog generation, candidate artifact creation, macOS packaging, commit/tag/push, and publication when `github.event.act` is true
 
 Current known target:
-- the cloud failure on March 16, 2026 is in the Ubuntu `bun test` step and currently surfaces as `ThreadItemRenderer > renders file-change inline toggle with filename`
+- the cloud failure on March 16, 2026 was in the macOS `electron-vite build` step, where Node hit its default old-space heap limit during renderer chunk rendering; release CI now applies a larger CI-only heap limit and delays git mutation until after both macOS builds pass
 
 Limitations:
 - no macOS runner emulation
@@ -142,7 +142,7 @@ Steps:
 3. Run `bun run typecheck`.
 4. Run `bun run lint`.
 5. Run `bun test`.
-6. When `github.event.act` is true, stop after validation and skip all mutating release steps plus the downstream `publish` job.
+6. When `github.event.act` is true, stop after validation and skip all candidate-build, git-mutation, and publish steps.
 7. Resolve the target version:
    - for `patch`/`minor`/`major`, use Bun semver bumping
    - for `custom`, use the explicit version string
@@ -151,13 +151,17 @@ Steps:
    - roll `CHANGELOG.md` forward
    - generate release notes
    - generate the release commit message
-10. Create the release commit.
-11. Create annotated tag `v<version>`.
-12. Push the commit and tag.
-13. Call `.github/workflows/release.yml` through `workflow_call`, passing the newly created git ref.
+10. Archive the prepared workspace as a release-candidate source artifact, plus release notes and commit-message metadata artifacts.
+11. Build and notarize `arm64` and `x64` macOS artifacts from that unpushed release-candidate source.
+12. Verify the release branch head is still unchanged since the workflow started.
+13. Create the release commit.
+14. Create annotated tag `v<version>`.
+15. Push the commit and tag.
+16. Publish the GitHub Release from the already-built artifacts.
+17. Update the Homebrew tap from those same verified artifacts.
 
 Output contract:
-- `git_ref`: for example `v0.1.3`
+- `tag_name`: for example `v0.1.3`
 - `version`: for example `0.1.3`
 
 ### `Release`
@@ -166,7 +170,7 @@ Workflow file: `.github/workflows/release.yml`
 
 Triggers:
 - `push` on tags matching `v*`
-- `workflow_call` from `Prepare Release`
+- `workflow_call` from other workflows that already have a committed release ref
 
 Environment:
 - all jobs use the `release` environment
@@ -188,7 +192,7 @@ Responsibilities:
 3. Resolve the release tag and semver version.
 4. Materialize `APPLE_API_KEY_B64` into `${RUNNER_TEMP}/AuthKey_<id>.p8`.
 5. Export `APPLE_API_KEY=<temp-path>` into the job environment.
-6. Run `bun run package:mac:arm64`.
+6. Run `bun run package:mac:arm64` with a larger CI-only `NODE_OPTIONS=--max-old-space-size=6144` heap limit to avoid the default Node old-space cap during renderer bundling.
 7. Assert these files exist:
    - `dist/Nodex-<version>-arm64.dmg`
    - `dist/Nodex-<version>-arm64.zip`
@@ -314,16 +318,20 @@ gh run view --repo Asphocarp/nodex --log
 - note: if the Ubuntu suite fails while isolated renderer tests pass locally, audit top-level `mock.module()` calls in renderer tests first; under Bun they can leak across later files and create Linux-only order-dependent failures
 
 `build-macos-*` failure before notarization:
-- cause: missing signing secrets, malformed `.p12`, wrong certificate, missing `APPLE_API_ISSUER`, or packaging regression
-- action: fix the secret or packaging issue, then rerun the failed job or rerun the entire workflow
+- cause: missing signing secrets, malformed `.p12`, wrong certificate, missing `APPLE_API_ISSUER`, packaging regression, or Node heap exhaustion during `electron-vite build`
+- action: inspect the failed packaging log first; if it is a heap exhaustion, raise or validate the CI `NODE_OPTIONS` heap limit, otherwise fix the secret or packaging issue and rerun the failed job or rerun the entire workflow
 
 `build-macos-*` failure during notarization or stapling:
 - cause: Apple auth issue, notarization rejection, missing hardened runtime entitlement, or transient Apple service failure
 - action: inspect the notarization logs, correct the signing config if needed, and rerun the job
 
+`finalize-release` failure:
+- cause: the release branch advanced while the workflow was running, the tag already exists, or git push was rejected
+- action: inspect the branch/tag state, then rerun from a fresh `Prepare Release` dispatch instead of forcing the stale candidate through
+
 `publish-release` failure:
 - cause: missing release notes extraction, missing artifacts, or GitHub release API issue
-- action: rerun the job after confirming both build jobs uploaded artifacts
+- action: rerun the job after confirming both build jobs uploaded artifacts and `finalize-release` pushed the tag
 
 `update-homebrew-tap` failure:
 - cause: invalid tap token, missing tap repo access, or push conflict in `Asphocarp/homebrew-nodex`
@@ -339,15 +347,14 @@ If `Prepare Release` is failing before the version bump:
 - use the local `act` harness first
 - do not try to debug the macOS packaging jobs until the Ubuntu `prepare` path is green again
 
-If the version tag was created but the release workflow is unusable:
-- fix the blocking issue
-- rerun the existing workflow for that tag
-- do not create a second tag for the same version
+If a macOS build fails in `Prepare Release`:
+- no release commit or tag has been pushed yet
+- fix the packaging issue and rerun `Prepare Release`; there is no partial git release state to clean up
 
-If a bad release commit was created by `Prepare Release` but not yet published:
-- revert or fix forward on the default branch
-- cut a new version
-- do not move the existing tag silently
+If `finalize-release` succeeds but `publish-release` or `update-homebrew-tap` fails:
+- do not cut a second version
+- rerun the failed job in the same workflow run when possible
+- if that run is no longer recoverable, use the committed tag with the fallback `Release` workflow instead of moving the tag silently
 
 ## Local Validation Before Enabling Secrets
 
