@@ -19,6 +19,7 @@ import type {
   CodexApprovalRequest,
   CodexCollaborationModeKind,
   CodexConnectionState,
+  CodexItemView,
   CodexModelOption,
   CodexPermissionMode,
   CodexThreadStartProgressPhase,
@@ -188,6 +189,28 @@ const STORY_PRESETS: StoryPreset[] = [
 ];
 
 const DEFAULT_PRESET = STORY_PRESETS[0];
+
+export function StageThreadsInlineDiffPreviewCard({
+  item,
+}: {
+  item: CodexItemView;
+}) {
+  return (
+    <section className="shrink-0 rounded-lg border border-(--border) bg-(--background) shadow-card-sm">
+      <div className="border-b border-(--border) px-3 py-2">
+        <div className="text-xs font-semibold tracking-wide text-(--foreground-tertiary) uppercase">
+          Inline Diff Preview
+        </div>
+        <div className="mt-1 text-xs/normal text-(--foreground-secondary)">
+          Always-visible mock data for iterating on the thread-stage file diff styling.
+        </div>
+      </div>
+      <div className="scrollbar-token h-56 overflow-y-auto px-3 py-3">
+        <FileChangeToolCall item={item} defaultExpanded />
+      </div>
+    </section>
+  );
+}
 
 const STORY_MODELS: CodexModelOption[] = [
   {
@@ -809,19 +832,7 @@ export function StageThreadsDevStoryPage({ onExit }: { onExit: () => void }) {
               />
             </div>
 
-            <section className="shrink-0 rounded-lg border border-(--border) bg-(--background) shadow-card-sm">
-              <div className="border-b border-(--border) px-3 py-2">
-                <div className="text-xs font-semibold tracking-wide text-(--foreground-tertiary) uppercase">
-                  Inline Diff Preview
-                </div>
-                <div className="mt-1 text-xs/normal text-(--foreground-secondary)">
-                  Always-visible mock data for iterating on the thread-stage file diff styling.
-                </div>
-              </div>
-              <div className="scrollbar-token h-56 overflow-y-auto px-3 py-3">
-                <FileChangeToolCall item={diffPreviewItem} defaultExpanded />
-              </div>
-            </section>
+            <StageThreadsInlineDiffPreviewCard item={diffPreviewItem} />
           </div>
         </main>
       </div>

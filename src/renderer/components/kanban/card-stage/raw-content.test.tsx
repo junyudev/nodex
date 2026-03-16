@@ -1,9 +1,5 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-
-mock.module("@/lib/utils", () => ({
-  cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
-}));
 
 describe("card stage raw content", () => {
   test("renders exact raw content in a read-only chrome", async () => {

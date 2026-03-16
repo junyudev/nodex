@@ -1,11 +1,7 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createElement, createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CalendarDays, SquareKanban, Table2 } from "lucide-react";
-
-mock.module("@/lib/utils", () => ({
-  cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
-}));
 
 type DbViewToolbarItem = {
   id: string;

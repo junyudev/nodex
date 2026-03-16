@@ -1,4 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
+import * as DndKitSortable from "@dnd-kit/sortable";
+import * as DndKitUtilities from "@dnd-kit/utilities";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { resetCardDraftStoreForTest, setCardDraftOverlay } from "../../lib/card-draft-store";
@@ -7,20 +9,22 @@ import type { CardPropertyPosition } from "@/lib/card-property-position";
 let lastUseSortableInput: Record<string, unknown> | null = null;
 
 mock.module("@dnd-kit/sortable", () => ({
+  ...DndKitSortable,
   useSortable: (input: Record<string, unknown>) => {
     lastUseSortableInput = input;
     return {
-    attributes: {},
-    listeners: {},
-    setNodeRef: () => undefined,
-    transform: null,
-    transition: undefined,
-    isDragging: false,
+      attributes: {},
+      listeners: {},
+      setNodeRef: () => undefined,
+      transform: null,
+      transition: undefined,
+      isDragging: false,
     };
   },
 }));
 
 mock.module("@dnd-kit/utilities", () => ({
+  ...DndKitUtilities,
   CSS: {
     Transform: {
       toString: () => undefined,
@@ -34,26 +38,12 @@ mock.module("@/lib/use-card-property-position", () => ({
   useCardPropertyPosition: () => ({ position: mockCardPropertyPosition }),
 }));
 
-mock.module("@/lib/types", () => ({
-  estimateStyles: {
-    xs: { label: "XS", className: "estimate-xs" },
-    s: { label: "S", className: "estimate-s" },
-    m: { label: "M", className: "estimate-m" },
-    l: { label: "L", className: "estimate-l" },
-    xl: { label: "XL", className: "estimate-xl" },
-  },
-}));
-
 mock.module("@/lib/terminal-sessions", () => ({
   useActiveTerminals: () => new Set<string>(),
 }));
 
 mock.module("@/lib/use-theme", () => ({
   useTheme: () => ({ resolved: "light" as const }),
-}));
-
-mock.module("@/lib/utils", () => ({
-  cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
 }));
 
 mock.module("@/lib/nfm/extract-text", () => ({

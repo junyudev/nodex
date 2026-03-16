@@ -1,6 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import * as StageRailPeek from "@/lib/stage-rail-peek";
+import * as WorkbenchState from "@/lib/use-workbench-state";
 import type { Project } from "@/lib/types";
 import { resetCardDraftStoreForTest, setCardDraftOverlay } from "../../lib/card-draft-store";
 
@@ -108,7 +110,7 @@ mock.module("./stage-tab-strip", () => ({
   },
 }));
 
-mock.module("@/components/kanban/history-panel", () => ({
+mock.module("./workbench-history-panel", () => ({
   HistoryPanel: (props: Record<string, unknown>) => {
     (globalThis as { __lastHistoryPanelProps?: Record<string, unknown> }).__lastHistoryPanelProps = props;
     if (!props.open) return null;
@@ -116,14 +118,14 @@ mock.module("@/components/kanban/history-panel", () => ({
   },
 }));
 
-mock.module("@/components/kanban/card-stage", () => ({
+mock.module("./workbench-card-stage", () => ({
   CardStage: (props: Record<string, unknown>) => {
     (globalThis as { __lastCardStageProps?: Record<string, unknown> }).__lastCardStageProps = props;
     return createElement("div", { "data-card-stage": "true" });
   },
 }));
 
-mock.module("@/components/kanban/terminal-panel", () => ({
+mock.module("./workbench-terminal-panel", () => ({
   TerminalPanel: (props: Record<string, unknown>) => {
     (globalThis as { __lastTerminalPanelProps?: Record<string, unknown> }).__lastTerminalPanelProps = props;
     return createElement("div", { "data-terminal-panel": "true" });
@@ -143,6 +145,8 @@ mock.module("@/lib/api", () => ({
 }));
 
 mock.module("@/lib/stage-rail-peek", () => ({
+  ...StageRailPeek,
+  normalizeNextPanelPeekPx: (value: number) => value,
   readNextPanelPeekPx: () => 28,
   writeNextPanelPeekPx: (value: number) => value,
 }));
@@ -311,13 +315,11 @@ mock.module("@/lib/status-chip", () => ({
     createElement("span", { className, "data-status-icon": "true" }, "S"),
 }));
 
-mock.module("@/lib/utils", () => ({
-  cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
-}));
-
 mock.module("@/lib/use-workbench-state", () => ({
+  ...WorkbenchState,
   STAGE_ORDER: ["db", "cards", "threads", "files"],
   NEW_THREAD_STAGE_TAB_ID: "thread:new",
+  resolveEffectiveSlidingWindowPaneCount: () => 2,
   resolveExpandedStages: () => resolveExpandedStagesReturn,
   resolveSlidingWindowFocusIntent: (...args: [unknown, unknown, unknown, unknown]) => {
     resolveSlidingWindowFocusIntentCalls.push(args);
@@ -1257,6 +1259,7 @@ describe("WorkbenchShell", () => {
       focusedStage: "threads",
       stageNavDirection: "right",
       activeThreadsTabId: "thr-1",
+      threadsTabs: [{ id: "thr-1", title: "Thread 1", preview: "Preview" }],
     }, [
       {
         threadId: "thr-1",
@@ -1265,7 +1268,7 @@ describe("WorkbenchShell", () => {
         statusType: "idle",
         cardId: "card-1",
       },
-    ]);
+    ], null, ["db", "threads"]);
 
     const stageThreadsProps = (globalThis as { __lastStageThreadsProps?: Record<string, unknown> }).__lastStageThreadsProps;
     const onOpenCard = stageThreadsProps?.onOpenCard as ((cardId: string) => void) | undefined;

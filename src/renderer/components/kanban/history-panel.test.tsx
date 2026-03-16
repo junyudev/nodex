@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import * as DiffReact from "@pierre/diffs/react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { HistoryPanelEntry } from "../../../shared/ipc-api";
@@ -14,10 +15,6 @@ mock.module("@/lib/kanban-options", () => ({
   },
 }));
 
-mock.module("@/lib/utils", () => ({
-  cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
-}));
-
 mock.module("@/lib/api", () => ({
   invoke: async () => ({ entries: [] }),
 }));
@@ -27,6 +24,7 @@ mock.module("@/lib/use-theme", () => ({
 }));
 
 mock.module("@pierre/diffs/react", () => ({
+  ...DiffReact,
   FileDiff: ({ className }: { className?: string }) => createElement("div", { className, "data-file-diff": "true" }),
   MultiFileDiff: ({
     oldFile,

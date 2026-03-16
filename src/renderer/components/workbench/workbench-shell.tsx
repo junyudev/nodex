@@ -32,9 +32,9 @@ import { StageTabStrip } from "./stage-tab-strip";
 import { StageThreads } from "./stage-threads";
 import { resolveThreadCardStatus } from "./stage-threads/thread-card-fetch";
 import { StageFilesPlaceholder } from "./stage-files-placeholder";
-import { HistoryPanel } from "@/components/kanban/history-panel";
-import { CardStage } from "@/components/kanban/card-stage";
-import { TerminalPanel } from "@/components/kanban/terminal-panel";
+import { HistoryPanel } from "./workbench-history-panel";
+import { CardStage } from "./workbench-card-stage";
+import { TerminalPanel } from "./workbench-terminal-panel";
 import { invoke } from "@/lib/api";
 import {
   FLOATING_SIDEBAR_TRANSITION_DURATION_MS,

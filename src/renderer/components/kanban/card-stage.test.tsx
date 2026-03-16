@@ -1,10 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-mock.module("@/lib/utils", () => ({
-  cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
-}));
-
 const mockController: Record<string, unknown> = {
   card: { id: "card-1" },
   saving: false,

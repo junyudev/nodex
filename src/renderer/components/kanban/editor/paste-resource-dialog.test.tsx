@@ -17,10 +17,6 @@ mock.module("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: ComponentProps<"div">) => <div>{children}</div>,
 }));
 
-mock.module("@/lib/utils", () => ({
-  cn: (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(" "),
-}));
-
 describe("paste resource dialog", () => {
   test("renders link action only when the current paste supports it", async () => {
     const { PasteResourceDialog } = await import("./paste-resource-dialog");

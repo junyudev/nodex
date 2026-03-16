@@ -311,6 +311,7 @@ gh run view --repo Asphocarp/nodex --log
 `Prepare Release` failure:
 - cause: typecheck, lint, or test regression
 - action: reproduce locally with `bun run release:prepare:act -- --release-type patch`, fix the repo state on the default branch, then rerun `Prepare Release`
+- note: if the Ubuntu suite fails while isolated renderer tests pass locally, audit top-level `mock.module()` calls in renderer tests first; under Bun they can leak across later files and create Linux-only order-dependent failures
 
 `build-macos-*` failure before notarization:
 - cause: missing signing secrets, malformed `.p12`, wrong certificate, missing `APPLE_API_ISSUER`, or packaging regression

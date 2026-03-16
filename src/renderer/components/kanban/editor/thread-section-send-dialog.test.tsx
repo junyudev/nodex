@@ -17,10 +17,6 @@ mock.module("@/components/ui/dialog", () => ({
   DialogTitle: ({ children }: ComponentProps<"div">) => <div>{children}</div>,
 }));
 
-mock.module("@/lib/utils", () => ({
-  cn: (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(" "),
-}));
-
 describe("thread section send dialog", () => {
   test("renders the plain-text preview and section metadata", async () => {
     const { ThreadSectionSendDialog } = await import("./thread-section-send-dialog");

@@ -5,10 +5,6 @@ import type { CommandPaletteCard, CommandPaletteCommand } from "@/lib/command-pa
 import type { Card } from "@/lib/types";
 import { createCommandPaletteCardSearchIndex } from "../../lib/command-palette-card-search";
 
-mock.module("@/lib/utils", () => ({
-  cn: (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" "),
-}));
-
 mock.module("./card-icon", () => ({
   CardIcon: ({ className }: { className?: string }) => createElement("span", { className }, "C"),
 }));
