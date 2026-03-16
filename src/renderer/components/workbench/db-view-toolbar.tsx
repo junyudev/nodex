@@ -6,7 +6,7 @@ import {
   SlidersHorizontal,
   XCircle,
 } from "lucide-react";
-import { Tabs as TabsPrimitive } from "radix-ui";
+import * as TabsPrimitive from "@radix-ui/react-tabs";
 import {
   getAvailableSortFields,
   hasActiveDbViewFilters,

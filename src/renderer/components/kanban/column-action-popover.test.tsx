@@ -2,26 +2,24 @@ import { describe, expect, mock, test } from "bun:test";
 import { createElement, type ComponentProps, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-mock.module("radix-ui", () => ({
-  Popover: {
-    Root: ({ children }: { children: ReactNode }) => createElement("div", null, children),
-    Trigger: ({ children }: { children: ReactNode }) => createElement("div", null, children),
-    Portal: ({ children }: { children: ReactNode }) => createElement("div", null, children),
-    Content: (props: {
-      children: ReactNode;
-      sideOffset?: unknown;
-      collisionPadding?: unknown;
-    } & ComponentProps<"div">) => {
-      const {
-        children,
-        sideOffset,
-        collisionPadding,
-        ...contentProps
-      } = props;
-      void sideOffset;
-      void collisionPadding;
-      return createElement("div", contentProps, children);
-    },
+mock.module("@radix-ui/react-popover", () => ({
+  Root: ({ children }: { children: ReactNode }) => createElement("div", null, children),
+  Trigger: ({ children }: { children: ReactNode }) => createElement("div", null, children),
+  Portal: ({ children }: { children: ReactNode }) => createElement("div", null, children),
+  Content: (props: {
+    children: ReactNode;
+    sideOffset?: unknown;
+    collisionPadding?: unknown;
+  } & ComponentProps<"div">) => {
+    const {
+      children,
+      sideOffset,
+      collisionPadding,
+      ...contentProps
+    } = props;
+    void sideOffset;
+    void collisionPadding;
+    return createElement("div", contentProps, children);
   },
 }));
 

@@ -1,6 +1,6 @@
 import { useForm, useStore } from "@tanstack/react-form";
 import { type ReactNode } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import { handleFormSubmit } from "@/lib/forms";
 import { cn } from "../../../lib/utils";

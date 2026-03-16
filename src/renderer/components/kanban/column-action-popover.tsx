@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronsLeftRight, ChevronsRightLeft, Minus, MoreHorizontal, Plus } from "lucide-react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import {
   SELECTOR_MENU_CONTENT_CLASS_NAME,
   SELECTOR_MENU_DIVIDER_CLASS_NAME,

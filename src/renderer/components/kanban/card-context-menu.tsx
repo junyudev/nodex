@@ -1,5 +1,5 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
+import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import {
   ArrowLeft,
   ChevronRight,

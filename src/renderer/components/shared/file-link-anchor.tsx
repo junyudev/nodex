@@ -1,5 +1,5 @@
 import { parseLocalFileLinkHref } from "../../../shared/file-link-openers";
-import { Tooltip as RadixTooltip } from "radix-ui";
+import * as RadixTooltip from "@radix-ui/react-tooltip";
 import type { ReactNode } from "react";
 
 interface FileLinkAnchorProps {

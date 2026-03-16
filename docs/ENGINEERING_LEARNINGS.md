@@ -4,6 +4,9 @@ Status: Verified
 
 This file captures high-signal implementation discoveries that have caused regressions or costly debugging in the past.
 
+### Release CI should inherit Bun from `packageManager`, not `setup-bun` `latest`
+When GitHub Actions pins `oven-sh/setup-bun` to `latest`, release validation can drift onto a just-published Bun build that no developer or lockfile update has exercised yet. In Nodex, that surfaced as Ubuntu-only renderer test failures through the `radix-ui` umbrella package while the same commit stayed green locally. Keep `package.json#packageManager` as the single Bun source of truth, let `setup-bun` read that pinned version, and only advance Bun by an explicit repo change that also reruns typecheck/lint/tests.
+
 ### Card Stage freeform text drafts should stay local until save, not patch the shared board store on every keystroke
 `title`, `description`, `assignee`, and `agentStatus` already have local card-stage draft state plus debounced/blur persistence. Mirroring those drafts into the shared Kanban store on every keystroke (`onPatch`) turns editor input into a project-wide realtime update: sidebar groups, card menus, and card previews all rerender, and card surfaces can re-run NFM/plain-text extraction for every typed character. Keep freeform text drafts local inside the card stage and publish only persisted saves; reserve optimistic store patches for discrete card-property changes where cross-surface immediacy matters. If other surfaces need live draft previews, project them through a scoped per-card draft overlay store so only readers of that specific card rerender.
 

@@ -1,4 +1,4 @@
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "../../../lib/utils";
 import type { CodexPermissionMode } from "../../../lib/types";

@@ -100,7 +100,7 @@ Inputs:
 
 Steps:
 1. Check out the repository with full history.
-2. Install Bun dependencies with `bun install --frozen-lockfile`.
+2. Install the Bun version pinned in `package.json#packageManager`, then install dependencies with `bun install --frozen-lockfile`.
 3. Run `bun run typecheck`.
 4. Run `bun run lint`.
 5. Run `bun test`.
@@ -145,7 +145,7 @@ Runner:
 
 Responsibilities:
 1. Check out the release tag or passed git ref.
-2. Install Bun dependencies.
+2. Install the Bun version pinned in `package.json#packageManager`, then install dependencies.
 3. Resolve the release tag and semver version.
 4. Materialize `APPLE_API_KEY_B64` into `${RUNNER_TEMP}/AuthKey_<id>.p8`.
 5. Export `APPLE_API_KEY=<temp-path>` into the job environment.
@@ -186,7 +186,7 @@ Dependencies:
 
 Responsibilities:
 1. Check out the same release ref.
-2. Install Bun dependencies.
+2. Install the Bun version pinned in `package.json#packageManager`, then install dependencies.
 3. Download the `macos-arm64-release` artifact.
 4. Download the `macos-x64-release` artifact.
 5. Extract release notes for the resolved version from `CHANGELOG.md` with `bun run release:notes`.
@@ -211,7 +211,7 @@ Dependencies:
 
 Responsibilities:
 1. Check out the same release ref.
-2. Install Bun dependencies.
+2. Install the Bun version pinned in `package.json#packageManager`, then install dependencies.
 3. Download the arm64 and x64 release artifacts.
 4. Locate the released DMGs for both architectures.
 5. Compute `sha256` for both DMGs with `shasum -a 256`.

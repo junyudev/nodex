@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Tooltip as RadixTooltip } from "radix-ui";
+import * as RadixTooltip from "@radix-ui/react-tooltip";
 import type { CodexItemView } from "../../../lib/types";
 import { ThreadItemRenderer } from "./thread-item-renderer";
 

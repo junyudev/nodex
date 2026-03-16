@@ -7,7 +7,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   ChevronLeft,
   Monitor,

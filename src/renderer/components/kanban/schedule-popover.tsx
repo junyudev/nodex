@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Input } from "@/components/ui/input";
 import {
   Select,

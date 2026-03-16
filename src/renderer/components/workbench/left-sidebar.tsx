@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState, type ComponentType } from "react";
-import {
-  Collapsible as CollapsiblePrimitive,
-  DropdownMenu as DropdownMenuPrimitive,
-} from "radix-ui";
+import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
 import { formatElapsedSince } from "@/lib/elapsed-time";
 import type { Project } from "@/lib/types";

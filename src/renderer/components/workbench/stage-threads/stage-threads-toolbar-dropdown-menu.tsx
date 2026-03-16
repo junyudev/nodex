@@ -1,5 +1,5 @@
 import { forwardRef, type ComponentPropsWithoutRef, type ReactNode } from "react";
-import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "../../../lib/utils";
 import { CheckmarkIcon, ChevronDownIcon } from "@/components/shared/icons";
 import {

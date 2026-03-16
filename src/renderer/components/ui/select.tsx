@@ -1,6 +1,6 @@
 import * as React from "react"
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
-import { Select as SelectPrimitive } from "radix-ui"
+import * as SelectPrimitive from "@radix-ui/react-select"
 
 import {
   SELECTOR_MENU_ITEM_CLASS_NAME,

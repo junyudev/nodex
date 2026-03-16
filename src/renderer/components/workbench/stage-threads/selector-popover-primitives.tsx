@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { ChevronDownIcon } from "../../shared/icons";
 import { SELECTOR_MENU_CONTENT_CLASS_NAME } from "../../ui/selector-menu-chrome";
 import { cn } from "../../../lib/utils";

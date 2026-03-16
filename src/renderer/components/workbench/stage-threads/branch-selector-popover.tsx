@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { cn } from "../../../lib/utils";
 import {
   BranchStatusIcon,

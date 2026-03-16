@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Eye, EyeOff, Plus, X } from "lucide-react";
 import {
   Select,

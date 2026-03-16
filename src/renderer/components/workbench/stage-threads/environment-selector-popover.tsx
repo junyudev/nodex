@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { CheckmarkIcon, ConfigStatusIcon } from "@/components/shared/icons";
 import type { WorktreeEnvironmentOption } from "@/lib/types";
 import { cn } from "@/lib/utils";

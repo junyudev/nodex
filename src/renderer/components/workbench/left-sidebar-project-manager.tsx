@@ -1,6 +1,6 @@
 import { useForm, useStore } from "@tanstack/react-form";
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { invoke } from "../../lib/api";
 import { handleFormSubmit } from "../../lib/forms";
 import { normalizeProjectIcon } from "../../lib/project-icon";

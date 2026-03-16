@@ -31,8 +31,6 @@ jobs:
           ref: ${{ env.RELEASE_GIT_REF }}
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -121,8 +119,6 @@ jobs:
           ref: ${{ env.RELEASE_GIT_REF }}
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -211,8 +207,6 @@ jobs:
           ref: ${{ env.RELEASE_GIT_REF }}
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -258,8 +252,6 @@ jobs:
           ref: ${{ env.RELEASE_GIT_REF }}
 
       - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
