@@ -19,7 +19,7 @@ env:
 
 jobs:
   build-macos-arm64:
-    runs-on: macos-latest
+    runs-on: macos-26
     environment: release
     outputs:
       tag: ${{ steps.release_meta.outputs.tag }}
@@ -95,9 +95,8 @@ jobs:
       - name: Verify signing and notarization
         run: |
           codesign --verify --deep --strict --verbose=2 "${{ steps.artifact_paths.outputs.app_path }}"
-          spctl --assess --type open --context context:primary-signature --verbose=4 "${{ steps.artifact_paths.outputs.dmg_path }}"
-          xcrun stapler staple "${{ steps.artifact_paths.outputs.dmg_path }}"
-          xcrun stapler validate "${{ steps.artifact_paths.outputs.dmg_path }}"
+          spctl --assess --type execute --verbose=4 "${{ steps.artifact_paths.outputs.app_path }}"
+          xcrun stapler validate "${{ steps.artifact_paths.outputs.app_path }}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
@@ -108,7 +107,7 @@ jobs:
             ${{ steps.artifact_paths.outputs.zip_path }}
 
   build-macos-x64:
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     environment: release
     outputs:
       tag: ${{ steps.release_meta.outputs.tag }}
@@ -184,9 +183,8 @@ jobs:
       - name: Verify signing and notarization
         run: |
           codesign --verify --deep --strict --verbose=2 "${{ steps.artifact_paths.outputs.app_path }}"
-          spctl --assess --type open --context context:primary-signature --verbose=4 "${{ steps.artifact_paths.outputs.dmg_path }}"
-          xcrun stapler staple "${{ steps.artifact_paths.outputs.dmg_path }}"
-          xcrun stapler validate "${{ steps.artifact_paths.outputs.dmg_path }}"
+          spctl --assess --type execute --verbose=4 "${{ steps.artifact_paths.outputs.app_path }}"
+          xcrun stapler validate "${{ steps.artifact_paths.outputs.app_path }}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

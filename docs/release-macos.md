@@ -184,7 +184,7 @@ Release jobs:
 #### `build-macos-arm64`
 
 Runner:
-- `macos-latest`
+- `macos-26`
 
 Responsibilities:
 1. Check out the release tag or passed git ref.
@@ -193,14 +193,14 @@ Responsibilities:
 4. Materialize `APPLE_API_KEY_B64` into `${RUNNER_TEMP}/AuthKey_<id>.p8`.
 5. Export `APPLE_API_KEY=<temp-path>` into the job environment.
 6. Run `bun run package:mac:arm64` with a larger CI-only `NODE_OPTIONS=--max-old-space-size=6144` heap limit to avoid the default Node old-space cap during renderer bundling.
+7. Package on a macOS 26 runner so `electron-builder` can compile the checked-in `resources/icon.icon` asset with `actool >= 26`.
 7. Assert these files exist:
    - `dist/Nodex-<version>-arm64.dmg`
    - `dist/Nodex-<version>-arm64.zip`
    - built `Nodex.app`
 8. Verify signing and notarization:
    - `codesign --verify --deep --strict --verbose=2`
-   - `spctl --assess --type open --context context:primary-signature --verbose=4`
-   - `xcrun stapler staple`
+   - `spctl --assess --type execute --verbose=4`
    - `xcrun stapler validate`
 9. Upload the DMG and ZIP as the `macos-arm64-release` artifact.
 
@@ -214,9 +214,9 @@ Secrets consumed:
 #### `build-macos-x64`
 
 Runner:
-- `macos-15-intel`
+- `macos-26-intel`
 
-Responsibilities are the same as the arm64 job, except it runs `bun run package:mac:x64`, expects `x64` artifacts, and uploads them as `macos-x64-release`.
+Responsibilities are the same as the arm64 job, except it runs `bun run package:mac:x64`, expects `x64` artifacts, and uploads them as `macos-x64-release`. It also must stay on a macOS 26 image because `mac.icon` packaging now requires the Xcode 26 `actool` toolchain.
 
 #### `publish-release`
 
@@ -320,6 +320,7 @@ gh run view --repo Asphocarp/nodex --log
 `build-macos-*` failure before notarization:
 - cause: missing signing secrets, malformed `.p12`, wrong certificate, missing `APPLE_API_ISSUER`, packaging regression, or Node heap exhaustion during `electron-vite build`
 - action: inspect the failed packaging log first; if it is a heap exhaustion, raise or validate the CI `NODE_OPTIONS` heap limit, otherwise fix the secret or packaging issue and rerun the failed job or rerun the entire workflow
+- note: a DMG rejection like `source=no usable signature` from `spctl --assess --type open` usually means the workflow is verifying the wrong artifact. In Nodex's current electron-builder setup, the notarized target is the `.app`, not the unsigned DMG container.
 
 `build-macos-*` failure during notarization or stapling:
 - cause: Apple auth issue, notarization rejection, missing hardened runtime entitlement, or transient Apple service failure
@@ -363,8 +364,8 @@ Before trusting CI with signing secrets, do one local dry run on a Mac that has 
 ```bash
 bun run package:mac:arm64
 codesign --verify --deep --strict --verbose=2 "dist/mac-arm64/Nodex.app"
-spctl --assess --type open --context context:primary-signature --verbose=4 "dist/Nodex-<version>-arm64.dmg"
-xcrun stapler validate "dist/Nodex-<version>-arm64.dmg"
+spctl --assess --type execute --verbose=4 "dist/mac-arm64/Nodex.app"
+xcrun stapler validate "dist/mac-arm64/Nodex.app"
 ```
 
 Repeat the same flow for `bun run package:mac:x64` if Intel packaging is being validated locally.
