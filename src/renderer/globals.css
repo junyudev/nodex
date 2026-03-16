@@ -770,6 +770,16 @@
 
 /* ===== Side Menu ===== */
 
+/*
+ * BlockNote side menus live inside a floating popover wrapper. Disable
+ * hit-testing on that overlay subtree during active mouse selection while
+ * keeping the menu visible.
+ */
+.bn-side-menu-selection-guard-overlay,
+.bn-side-menu-selection-guard-overlay * {
+  pointer-events: none !important;
+}
+
 .nfm-editor .bn-side-menu .bn-button[aria-label="Add block"] {
   height: 24px;
   width: 24px;
@@ -782,17 +792,6 @@
   margin-right: 10px;
   cursor: grab;
   transition: opacity 200ms ease-out;
-}
-
-/*
- * BlockNote toggles pointer-events on the floating wrapper, but HTML children
- * can still remain hit-testable. Disable the full subtree while a text
- * selection gesture is active so the visible add/drag buttons never clip the
- * native range.
- */
-.nfm-editor[data-side-menu-selection-guard] .bn-side-menu,
-.nfm-editor[data-side-menu-selection-guard] .bn-side-menu * {
-  pointer-events: none !important;
 }
 
 /*

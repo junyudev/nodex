@@ -63,7 +63,10 @@ import {
   snapshotEditorDocument,
 } from "./external-block-drag-session";
 import type { ExternalCardDragPayload } from "./external-card-drag-session";
-import { useSideMenuSelectionGuard } from "./side-menu-selection-guard";
+import {
+  getSideMenuSelectionGuardFloatingOptions,
+  useSideMenuSelectionGuard,
+} from "./side-menu-selection-guard";
 import {
   applyCardToggleMetaEdit,
   updateCardToggleSnapshotForMetaEdit,
@@ -312,7 +315,11 @@ export function ToggleListCardEditor({
     containerRef,
     externalDropAdapter,
   });
-  useSideMenuSelectionGuard(containerRef);
+  const sideMenuSelectionGuardActive = useSideMenuSelectionGuard(containerRef);
+  const sideMenuFloatingOptions = useMemo(
+    () => getSideMenuSelectionGuardFloatingOptions(sideMenuSelectionGuardActive),
+    [sideMenuSelectionGuardActive],
+  );
 
   useEffect(() => {
     cardByIdRef.current = cardById;
@@ -991,7 +998,10 @@ export function ToggleListCardEditor({
         sideMenu={false}
         data-theming-css-variables-demo
       >
-        <SideMenuController sideMenu={NfmSideMenu} />
+        <SideMenuController
+          sideMenu={NfmSideMenu}
+          floatingUIOptions={sideMenuFloatingOptions}
+        />
         <FormattingToolbarController formattingToolbar={NfmFormattingToolbar} />
         <NfmSlashMenu projectId={projectId} />
       </BlockNoteView>

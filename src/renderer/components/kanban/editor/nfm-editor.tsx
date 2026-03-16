@@ -75,7 +75,10 @@ import {
 } from "./paste-resource";
 import { SendBlocksDialog } from "./send-blocks-dialog";
 import { ThreadSectionSendDialog, type ThreadSectionSendDialogState } from "./thread-section-send-dialog";
-import { useSideMenuSelectionGuard } from "./side-menu-selection-guard";
+import {
+  getSideMenuSelectionGuardFloatingOptions,
+  useSideMenuSelectionGuard,
+} from "./side-menu-selection-guard";
 import { ImagePreviewDialog } from "./image-preview-dialog";
 import {
   isSpaceShortcut,
@@ -1697,7 +1700,11 @@ export function NfmEditor({
     containerRef,
     externalDropAdapter,
   });
-  useSideMenuSelectionGuard(containerRef);
+  const sideMenuSelectionGuardActive = useSideMenuSelectionGuard(containerRef);
+  const sideMenuFloatingOptions = useMemo(
+    () => getSideMenuSelectionGuardFloatingOptions(sideMenuSelectionGuardActive),
+    [sideMenuSelectionGuardActive],
+  );
 
   const applyCardImportDrop = useCallback(
     (payload: ExternalCardDragPayload, pointer: { x: number; y: number }) => {
@@ -2136,7 +2143,10 @@ export function NfmEditor({
           sideMenu={false}
           data-theming-css-variables-demo
         >
-          <SideMenuController sideMenu={customSideMenu} />
+          <SideMenuController
+            sideMenu={customSideMenu}
+            floatingUIOptions={sideMenuFloatingOptions}
+          />
           <FormattingToolbarController formattingToolbar={NfmFormattingToolbar} />
           <NfmSlashMenu projectId={projectId} />
         </BlockNoteView>
