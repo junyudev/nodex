@@ -599,6 +599,10 @@
   color: var(--foreground);
 }
 
+.bn-container[data-color-scheme="dark"] .bn-block-content[data-content-type="codeBlock"] .shiki {
+  color: var(--shiki-dark, var(--foreground)) !important;
+}
+
 .nfm-code-block {
   color: var(--foreground);
 }

@@ -10,11 +10,12 @@ import {
 } from "streamdown";
 import type { Pluggable } from "unified";
 import { FileLinkAnchor } from "@/components/shared/file-link-anchor";
+import { NFM_CODE_THEME_PAIR } from "./syntax-highlighting";
 
 import "katex/dist/katex.min.css";
 
 export const streamdownCodePlugin = createCodePlugin({
-  themes: ["github-light", "github-dark"],
+  themes: [NFM_CODE_THEME_PAIR[0], NFM_CODE_THEME_PAIR[1]],
 });
 
 export const streamdownPlugins = {
