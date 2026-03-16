@@ -41,6 +41,7 @@ function resetStorage(): void {
     storage.removeItem(workbenchStorageKeys.sidebar);
     storage.removeItem(workbenchStorageKeys.dock);
     storage.removeItem(workbenchStorageKeys.recent);
+    storage.removeItem(workbenchStorageKeys.dbViewPrefs);
   }
 }
 
@@ -195,25 +196,23 @@ describe("use-workbench-state helpers", () => {
 
   test("loads persisted db-view prefs per project and view", () => {
     resetStorage();
-    sessionStorageRef.setItem(
-      workbenchStorageKeys.workbench,
+    localStorageRef.setItem(
+      workbenchStorageKeys.dbViewPrefs,
       JSON.stringify({
-        dbViewPrefsByProject: {
-          default: {
-            list: {
-              summaryExpanded: false,
-              rules: {
-                filter: {
-                  any: [
-                    {
-                      all: [
-                        { field: "status", op: "in", values: ["backlog"] },
-                      ],
-                    },
-                  ],
-                },
-                sort: [{ field: "assignee", direction: "asc" }],
+        default: {
+          list: {
+            summaryExpanded: false,
+            rules: {
+              filter: {
+                any: [
+                  {
+                    all: [
+                      { field: "status", op: "in", values: ["backlog"] },
+                    ],
+                  },
+                ],
               },
+              sort: [{ field: "assignee", direction: "asc" }],
             },
           },
         },
@@ -223,6 +222,38 @@ describe("use-workbench-state helpers", () => {
     const state = workbenchTestHelpers.loadInitialState();
     expect(state.dbViewPrefsByProject.default?.list?.summaryExpanded).toBeFalse();
     expect(state.dbViewPrefsByProject.default?.list?.rules.sort[0]?.field).toBe("assignee");
+  });
+
+  test("falls back to legacy workbench-session db-view prefs when dedicated storage is empty", () => {
+    resetStorage();
+    sessionStorageRef.setItem(
+      workbenchStorageKeys.workbench,
+      JSON.stringify({
+        dbViewPrefsByProject: {
+          default: {
+            kanban: {
+              summaryExpanded: false,
+              rules: {
+                filter: {
+                  any: [
+                    {
+                      all: [
+                        { field: "status", op: "in", values: ["done"] },
+                      ],
+                    },
+                  ],
+                },
+                sort: [{ field: "created", direction: "asc" }],
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    const state = workbenchTestHelpers.loadInitialState();
+    expect(state.dbViewPrefsByProject.default?.kanban?.summaryExpanded).toBeFalse();
+    expect(state.dbViewPrefsByProject.default?.kanban?.rules.sort[0]?.field).toBe("created");
   });
 
   test("normalizeRecentSessions caps persisted sessions at ten", () => {

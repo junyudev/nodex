@@ -87,6 +87,7 @@ const WORKBENCH_STORAGE_KEY = "nodex-workbench-v1";
 const SIDEBAR_STORAGE_KEY = "nodex-sidebar-v1";
 const DOCK_STORAGE_KEY = "nodex-dock-layout-v1";
 const RECENT_STORAGE_KEY = "nodex-recent-card-sessions-v1";
+const DB_VIEW_PREFS_STORAGE_KEY = "nodex-db-view-prefs-v1";
 const WINDOW_LOCAL_STORAGE_KEYS = new Set([
   WORKBENCH_STORAGE_KEY,
   RECENT_STORAGE_KEY,
@@ -589,6 +590,7 @@ function loadInitialState(options: LoadInitialStateOptions = {}): WorkbenchState
   const persistedSidebar = readJson<Partial<SidebarPrefs>>(SIDEBAR_STORAGE_KEY);
   const persistedDock = readJson<Partial<DockPrefs>>(DOCK_STORAGE_KEY);
   const persistedRecent = readJson<unknown>(RECENT_STORAGE_KEY);
+  const persistedDbViewPrefs = readJson<WorkbenchPrefs["dbViewPrefsByProject"]>(DB_VIEW_PREFS_STORAGE_KEY);
   const resumeSnapshot = options.resumeSnapshot ?? null;
   const dbProjectId =
     resumeSnapshot?.dbProjectId ||
@@ -656,7 +658,9 @@ function loadInitialState(options: LoadInitialStateOptions = {}): WorkbenchState
       ? normalizeViewMap(resumeSnapshot.viewsByProject)
       : normalizeViewMap(persistedWorkbench?.viewsByProject),
     searchByProject: normalizeSearchMap(persistedWorkbench?.searchByProject),
-    dbViewPrefsByProject: normalizeDbViewPrefsMap(persistedWorkbench?.dbViewPrefsByProject),
+    dbViewPrefsByProject: normalizeDbViewPrefsMap(
+      persistedDbViewPrefs ?? persistedWorkbench?.dbViewPrefsByProject,
+    ),
     spaceOrder: normalizeSpaceOrder(persistedWorkbench?.spaceOrder),
     sidebar: {
       collapsed: Boolean(persistedSidebar?.collapsed),
@@ -1183,6 +1187,7 @@ export function useWorkbenchState(
     writeJson(SIDEBAR_STORAGE_KEY, state.sidebar);
     writeJson(DOCK_STORAGE_KEY, state.dock);
     writeJson(RECENT_STORAGE_KEY, state.recentCardSessions);
+    writeJson(DB_VIEW_PREFS_STORAGE_KEY, state.dbViewPrefsByProject);
   }, [state]);
 
   const spaces = useMemo(
@@ -2002,6 +2007,7 @@ export const workbenchStorageKeys = {
   sidebar: SIDEBAR_STORAGE_KEY,
   dock: DOCK_STORAGE_KEY,
   recent: RECENT_STORAGE_KEY,
+  dbViewPrefs: DB_VIEW_PREFS_STORAGE_KEY,
 };
 
 export const workbenchTestHelpers = {
