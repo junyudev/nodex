@@ -16,7 +16,7 @@ describe("StageTabStrip", () => {
       }),
     );
 
-    expect(markup.includes("animate-pulse")).toBeTrue();
+    expect(markup.includes("data-running-indicator=\"true\"")).toBeTrue();
   });
 
   test("hides active tab underline when disabled", () => {

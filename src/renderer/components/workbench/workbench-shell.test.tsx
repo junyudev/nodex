@@ -101,7 +101,7 @@ mock.module("./stage-files-placeholder", () => ({
   StageFilesPlaceholder: () => createElement("div", { "data-diff-placeholder": "true" }),
 }));
 
-mock.module("./stage-tab-strip", () => ({
+mock.module("./workbench-stage-tab-strip", () => ({
   StageTabStrip: (props: StageTabStripProps) => {
     const globalState = globalThis as { __stageTabStripProps?: StageTabStripProps[] };
     globalState.__stageTabStripProps ??= [];
@@ -136,7 +136,7 @@ mock.module("@/components/ui/input", () => ({
   Input: (props: Record<string, unknown>) => createElement("input", props),
 }));
 
-mock.module("@/lib/api", () => ({
+mock.module("./workbench-api", () => ({
   invoke: async (...args: unknown[]) => {
     invokeCalls.push(args);
     if (!mockInvokeImpl) return null;

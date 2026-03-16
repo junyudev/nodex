@@ -28,14 +28,14 @@ import {
 } from "./left-sidebar";
 import { StageMinimap } from "./stage-minimap";
 import { StageRail, type StageRailStage } from "./stage-rail";
-import { StageTabStrip } from "./stage-tab-strip";
+import { StageTabStrip } from "./workbench-stage-tab-strip";
 import { StageThreads } from "./stage-threads";
 import { resolveThreadCardStatus } from "./stage-threads/thread-card-fetch";
 import { StageFilesPlaceholder } from "./stage-files-placeholder";
 import { HistoryPanel } from "./workbench-history-panel";
 import { CardStage } from "./workbench-card-stage";
 import { TerminalPanel } from "./workbench-terminal-panel";
-import { invoke } from "@/lib/api";
+import { invoke } from "./workbench-api";
 import {
   FLOATING_SIDEBAR_TRANSITION_DURATION_MS,
   FLOATING_SIDEBAR_TRANSITION_TIMING_FUNCTION,

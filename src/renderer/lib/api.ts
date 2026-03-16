@@ -3,7 +3,9 @@ import { toApiUrl } from "./http-base";
 import type { CodexEvent } from "./types";
 import type { BoardChangeEvent } from "../../shared/ipc-api";
 
-const isElectron = typeof window !== "undefined" && !!window.api;
+function hasElectronApi() {
+  return typeof window !== "undefined" && !!window.api;
+}
 
 // ---------------------------------------------------------------------------
 // invoke — maps IPC channels to HTTP endpoints when not in Electron
@@ -466,6 +468,8 @@ export async function invoke(
   channel: string,
   ...args: unknown[]
 ): Promise<unknown> {
+  const isElectron = hasElectronApi();
+
   if (channel.startsWith("codex:") && !isElectron) {
     throw new Error("Codex threads require Electron in this release");
   }
@@ -488,6 +492,7 @@ export function subscribeBoardChanges(
   projectId: string,
   callback: () => void,
 ): () => void {
+  const isElectron = hasElectronApi();
   if (isElectron) {
     return window.api!.on("board-changed", (...args: unknown[]) => {
       const payload = args[0] as BoardChangeEvent | undefined;
@@ -514,6 +519,7 @@ export function subscribeBoardChanges(
 }
 
 export function subscribeCodexEvents(callback: (event: CodexEvent) => void): () => void {
+  const isElectron = hasElectronApi();
   if (!isElectron) {
     return () => { };
   }
@@ -528,6 +534,7 @@ export function subscribeCodexEvents(callback: (event: CodexEvent) => void): () 
 export function subscribeGitBranchChanges(
   callback: (event: { cwd: string }) => void,
 ): () => void {
+  const isElectron = hasElectronApi();
   if (!isElectron) {
     return () => { };
   }
