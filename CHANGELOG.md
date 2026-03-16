@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Matched NFM editor heading typography to the reference scale, including heading weights and drag-handle alignment for heading rows.
 
 ### Fixed
+- Fixed Kanban so card drag-and-drop no longer locks completely under active search, filter, or sort rules: filtered boards keep subset-aware reordering, and non-default sorts still allow drag-to-move across columns without pretending to manually rank a sorted column.
 - Fixed Kanban drag performance and interaction stability on dense boards by replacing the old sortable runtime with Atlassian Pragmatic Drag and Drop while preserving multi-card moves, gap insertion, and board-to-editor move semantics.
 - Fixed the unreleased Kanban insert-position indicator so it no longer flickers from board-card/editor-import drag-handler races, and now matches the final persisted drop position for same-column reorders.
 - Fixed Card Stage code blocks in light mode after the Streamdown migration by restoring BlockNote's shared dual-theme Shiki parser instead of falling back to a dark-only parser.

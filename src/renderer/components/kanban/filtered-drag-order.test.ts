@@ -109,18 +109,18 @@ describe("resolveFilteredDropOrder", () => {
     expect(order).toBe(0);
   });
 
-  test("adjusts visible indices when moving multiple selected visible cards in the same column", () => {
+  test("maps same-column filtered drops from the remaining visible slot space", () => {
     const board = createBoard({
       draft: [],
       backlog: [],
-      in_progress: ["visible-a", "hidden-b", "visible-c", "visible-d", "hidden-e"],
+      in_progress: ["hidden-a", "visible-b", "hidden-c", "visible-d", "hidden-e"],
       in_review: [],
       done: [],
     });
     const visibleBoard = createBoard({
       draft: [],
       backlog: [],
-      in_progress: ["visible-a", "visible-c", "visible-d"],
+      in_progress: ["visible-b", "visible-d"],
       in_review: [],
       done: [],
     });
@@ -128,15 +128,15 @@ describe("resolveFilteredDropOrder", () => {
     const order = resolveFilteredDropOrder({
       board,
       visibleBoard,
-      draggedCardIds: ["visible-a", "visible-c"],
+      draggedCardIds: ["visible-b"],
       targetColumnId: "in_progress",
-      targetVisibleIndex: 3,
+      targetVisibleIndex: 1,
     });
 
-    expect(order).toBe(2);
+    expect(order).toBe(3);
   });
 
-  test("normalizes same-column single-card reorders in an unfiltered board", () => {
+  test("maps same-column unfiltered drops from the remaining visible slot space", () => {
     const board = createBoard({
       draft: [],
       backlog: [],
@@ -153,6 +153,6 @@ describe("resolveFilteredDropOrder", () => {
       targetVisibleIndex: 1,
     });
 
-    expect(order).toBe(0);
+    expect(order).toBe(1);
   });
 });

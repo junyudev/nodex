@@ -56,6 +56,7 @@ interface CardProps {
   displayPrefs?: DbViewDisplayPrefs;
   dragInstanceId?: symbol;
   dragDisabled?: boolean;
+  dropDisabled?: boolean;
   isFocused?: boolean;
   isSelected?: boolean;
   onClick: (event: React.MouseEvent<HTMLDivElement>) => void;
@@ -539,6 +540,7 @@ export function Card({
   displayPrefs,
   dragInstanceId,
   dragDisabled = false,
+  dropDisabled = false,
   isFocused,
   isSelected = false,
   onClick,
@@ -625,40 +627,46 @@ export function Card({
       return;
     }
 
-    return combine(
-      draggable({
-        element,
-        getInitialData: () => buildDragData(card, columnId),
-        onGenerateDragPreview: ({ location, nativeSetDragImage, source }) => {
-          const dragData = buildDragData(card, columnId);
-          const rect = source.element.getBoundingClientRect();
+    const draggableCleanup = draggable({
+      element,
+      getInitialData: () => buildDragData(card, columnId),
+      onGenerateDragPreview: ({ location, nativeSetDragImage, source }) => {
+        const dragData = buildDragData(card, columnId);
+        const rect = source.element.getBoundingClientRect();
 
-          setCustomNativeDragPreview({
-            nativeSetDragImage,
-            getOffset: preserveOffsetOnSource({
-              element,
-              input: location.current.input,
-            }),
-            render({ container }) {
-              setDragState({
-                type: "preview",
-                container,
-                rect,
-                itemCount: dragData.dragItems.length,
-              });
-              return () => {
-                setDragState({ type: "dragging" });
-              };
-            },
-          });
-        },
-        onDragStart: () => {
-          setDragState({ type: "dragging" });
-        },
-        onDrop: () => {
-          setDragState({ type: "idle" });
-        },
-      }),
+        setCustomNativeDragPreview({
+          nativeSetDragImage,
+          getOffset: preserveOffsetOnSource({
+            element,
+            input: location.current.input,
+          }),
+          render({ container }) {
+            setDragState({
+              type: "preview",
+              container,
+              rect,
+              itemCount: dragData.dragItems.length,
+            });
+            return () => {
+              setDragState({ type: "dragging" });
+            };
+          },
+        });
+      },
+      onDragStart: () => {
+        setDragState({ type: "dragging" });
+      },
+      onDrop: () => {
+        setDragState({ type: "idle" });
+      },
+    });
+
+    if (dropDisabled) {
+      return draggableCleanup;
+    }
+
+    return combine(
+      draggableCleanup,
       dropTargetForElements({
         element,
         canDrop: ({ source }) => canDropOnKanbanCard({
@@ -674,7 +682,7 @@ export function Card({
         }),
       }),
     );
-  }, [buildDragData, card, columnId, dragDisabled, dragInstanceId]);
+  }, [buildDragData, card, columnId, dragDisabled, dragInstanceId, dropDisabled]);
 
   const setCardSurfaceRef = useCallback((element: HTMLDivElement | null) => {
     cardSurfaceRef.current = element;

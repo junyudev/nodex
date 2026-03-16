@@ -156,6 +156,7 @@ export interface MoveCardInput {
   cardId: string;
   fromStatus?: CardStatus;
   toStatus: CardStatus;
+  // Insertion index after removing the dragged card from the target column.
   newOrder?: number;
   groupId?: string;
 }
@@ -164,6 +165,7 @@ export interface MoveCardsInput {
   cardIds: string[];
   fromStatus?: CardStatus;
   toStatus: CardStatus;
+  // Insertion index after removing the dragged cards from the target column.
   newOrder?: number;
   groupId?: string;
 }

@@ -46,7 +46,7 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
 }
 
 describe("moveCards", () => {
-  test("moves a non-contiguous selection as one block within the same column", async () => {
+  test("treats same-column move-many newOrder as the post-removal insertion index", async () => {
     const ran = await withTempDatabase(async () => {
       await createCard("default", "in_progress", { title: "First" });
       const second = await createCard("default", "in_progress", { title: "Second" });
@@ -58,7 +58,7 @@ describe("moveCards", () => {
         cardIds: [second.id, fourth.id],
         fromStatus: "in_progress",
         toStatus: "in_progress",
-        newOrder: 4,
+        newOrder: 2,
         sessionId: "session-move-many-same-column",
       });
 
@@ -90,7 +90,7 @@ describe("moveCards", () => {
         cardIds: [first.id, third.id],
         fromStatus: "in_progress",
         toStatus: "in_progress",
-        newOrder: 4,
+        newOrder: 2,
         sessionId: "session-move-many-same-column-undo",
       });
 

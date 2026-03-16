@@ -1057,12 +1057,8 @@ export async function moveCards(
 
     const targetCards = cardsByColumn.get(input.toStatus) ?? [];
     const remainingTargetCards = targetCards.filter((card) => !selectedCardIdSet.has(card.id));
-    const requestedOrder = input.newOrder ?? targetCards.length;
-    const selectedTargetCardsBeforeRequested = targetCards.filter((card) =>
-      selectedCardIdSet.has(card.id) && card.order < requestedOrder
-    ).length;
     const insertIndex = clampOrderIndex(
-      requestedOrder - selectedTargetCardsBeforeRequested,
+      input.newOrder ?? remainingTargetCards.length,
       remainingTargetCards.length,
     );
 

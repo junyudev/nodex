@@ -124,7 +124,9 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Card updates include revision-based stale-write detection: stale edits return typed `conflict` results instead of silent last-write-wins
 - Card Stage surfaces conflicts inline with explicit recovery actions: `Reload Latest` (drop local draft fields) and `Overwrite Mine` (retry on newest revision)
 - Header task search supports token-contains matching across title/description/tags/assignee/agent status/id in Kanban, All Tasks, and Toggle List views
-- While a search filter, toolbar filter, or non-default toolbar sort is active in Kanban view, drag-and-drop is disabled to avoid ambiguous reorder semantics on filtered/sorted subsets (including native block-drop import)
+- Kanban card drag-and-drop stays available while search or toolbar filters are active; reordering maps the visible drop slot back into the underlying board order so hidden non-matching cards keep their relative position
+- When a non-default toolbar sort is active in Kanban view, cards remain draggable across columns and into editors, but same-column manual re-ranking is disabled because the active sort, not board order, owns the visible ordering
+- Native block-drop import into Kanban remains disabled while search/filter/sort rules are active, because insertion-slot semantics for newly created cards are ambiguous on derived subsets
 
 #### 3. Toggle-List View
 - Third project page tab (`Toggle List`) renders cards as top-level toggle rows in a specialized BlockNote editor

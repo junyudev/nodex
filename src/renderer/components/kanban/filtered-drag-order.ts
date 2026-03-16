@@ -36,17 +36,7 @@ export function resolveFilteredDropOrder({
   const visibleTargetCards = visibleTargetColumn.cards;
   const remainingTargetCards = fullTargetCards.filter((card) => !draggedCardIdSet.has(card.id));
   const visibleRemainingCards = visibleTargetCards.filter((card) => !draggedCardIdSet.has(card.id));
-
-  const requestedVisibleIndex = clamp(targetVisibleIndex, 0, visibleTargetCards.length);
-  const draggedVisibleCardsBeforeIndex = visibleTargetCards
-    .slice(0, requestedVisibleIndex)
-    .filter((card) => draggedCardIdSet.has(card.id))
-    .length;
-  const visibleInsertIndex = clamp(
-    requestedVisibleIndex - draggedVisibleCardsBeforeIndex,
-    0,
-    visibleRemainingCards.length,
-  );
+  const visibleInsertIndex = clamp(targetVisibleIndex, 0, visibleRemainingCards.length);
 
   if (visibleRemainingCards.length === 0) {
     const firstDraggedIndex = fullTargetCards.findIndex((card) => draggedCardIdSet.has(card.id));

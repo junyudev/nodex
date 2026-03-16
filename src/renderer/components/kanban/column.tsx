@@ -54,8 +54,10 @@ interface ColumnProps {
   onNativeDragLeave?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
   onNativeDrop?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
   dragDisabled?: boolean;
+  dropDisabled?: boolean;
   dropIndicatorIndex?: number;
   draggedCardIds?: ReadonlySet<string>;
+  isDropTargetActive?: boolean;
   focusedCardId?: string;
   selectedCardIds?: ReadonlySet<string>;
   contextMenuProjects?: CardContextMenuProjectSummary[];
@@ -82,8 +84,10 @@ export const Column = memo(function Column({
   onNativeDragLeave,
   onNativeDrop,
   dragDisabled = false,
+  dropDisabled = false,
   dropIndicatorIndex,
   draggedCardIds = new Set<string>(),
+  isDropTargetActive = false,
   focusedCardId,
   selectedCardIds = new Set<string>(),
   contextMenuProjects = [],
@@ -96,7 +100,7 @@ export const Column = memo(function Column({
   const isCollapsed = isAutoCollapsed || isUserCollapsed;
 
   useEffect(() => {
-    if (dragDisabled || !dragInstanceId) {
+    if (dropDisabled || !dragInstanceId) {
       return;
     }
 
@@ -129,7 +133,7 @@ export const Column = memo(function Column({
         },
       }),
     );
-  }, [column.id, dragDisabled, dragInstanceId]);
+  }, [column.id, dropDisabled, dragInstanceId]);
 
   const styles = sharedColumnStyles[column.id] || {
     dotColor: "bg-[var(--foreground-tertiary)]",
@@ -175,6 +179,9 @@ export const Column = memo(function Column({
         width: isCollapsed ? COLLAPSED_KANBAN_COLUMN_WIDTH : layout.width,
         transition: 'width 200ms cubic-bezier(0.32, 0.72, 0, 1)',
         '--column-accent': styles.accentColor,
+        boxShadow: isDropTargetActive
+          ? "0 0 0 1.5px color-mix(in srgb, var(--column-accent) 30%, transparent)"
+          : undefined,
       } as React.CSSProperties}
     >
       {isCollapsed ? (
@@ -328,6 +335,7 @@ export const Column = memo(function Column({
                       dragInstanceId={dragInstanceId}
                       buildDragData={buildDragData}
                       dragDisabled={dragDisabled}
+                      dropDisabled={dropDisabled}
                       isFocused={card.id === focusedCardId}
                       isSelected={selectedCardIds.has(card.id)}
                       onClick={(event) => onEditCard(column.id, card, event)}

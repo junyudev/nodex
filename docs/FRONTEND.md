@@ -4,7 +4,7 @@
 - React 19 + TypeScript (`strict`)
 - Tailwind CSS + local UI primitives in `src/renderer/components/ui/`
 - BlockNote editor for rich card descriptions
-- DnD-kit for board drag-and-drop
+- Atlassian Pragmatic Drag and Drop for board drag-and-drop
 
 ## Structure
 - App shell: `src/renderer/app.tsx`
