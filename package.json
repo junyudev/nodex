@@ -18,6 +18,8 @@
   "scripts": {
     "sync:icons": "bun run scripts/sync-app-icons.ts",
     "release:prepare": "bun run scripts/release-changelog.ts prepare --",
+    "release:prepare:act": "bash scripts/run-prepare-release-act.sh",
+    "release:prepare:act:list": "bash scripts/run-prepare-release-act.sh --list",
     "release:notes": "bun run scripts/release-changelog.ts extract --",
     "release:cask": "bun run scripts/generate-homebrew-cask.ts --",
     "release:cut": "bun run scripts/release-cut.ts --",

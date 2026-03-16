@@ -47,6 +47,7 @@ jobs:
         run: bun test
 
       - name: Resolve version bump
+        if: ${{ !github.event.act }}
         id: bump
         shell: bash
         run: |
@@ -72,9 +73,11 @@ jobs:
           esac
 
       - name: Bump package version with Bun
+        if: ${{ !github.event.act }}
         run: bun pm version "${{ steps.bump.outputs.value }}" --no-git-tag-version
 
       - name: Resolve release version
+        if: ${{ !github.event.act }}
         id: release_version
         shell: bash
         run: |
@@ -83,17 +86,20 @@ jobs:
           echo "git_ref=v${version}" >> "${GITHUB_OUTPUT}"
 
       - name: Update CHANGELOG and generate release notes
+        if: ${{ !github.event.act }}
         run: |
           bun run release:prepare -- \
             --release-notes-output "${RUNNER_TEMP}/release-notes.md" \
             --commit-message-output "${RUNNER_TEMP}/release-commit-message.txt"
 
       - name: Configure git author
+        if: ${{ !github.event.act }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Commit, tag, and push release
+        if: ${{ !github.event.act }}
         shell: bash
         run: |
           version="${{ steps.release_version.outputs.version }}"
@@ -106,6 +112,7 @@ jobs:
           git push origin "${tag_name}"
 
   publish:
+    if: ${{ !github.event.act }}
     needs: prepare
     uses: ./.github/workflows/release.yml
     with:

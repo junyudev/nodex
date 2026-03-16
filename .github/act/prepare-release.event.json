@@ -1,0 +1,7 @@
+{
+  "act": true,
+  "inputs": {
+    "release_type": "patch",
+    "custom_version": ""
+  }
+}

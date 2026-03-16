@@ -18,6 +18,8 @@ The release pipeline is split across two GitHub Actions workflows:
 
 `Release` is the packaging workflow. It signs, notarizes, verifies, publishes the GitHub Release, and updates the first-party Homebrew tap.
 
+For local Linux-path debugging, Nodex also ships a committed `act` harness for the `prepare` job. That harness intentionally stops after validation and never performs the mutating release steps locally.
+
 ## One-Time Setup
 
 ### GitHub
@@ -85,6 +87,42 @@ git push origin v0.1.3
 
 This bypasses the `Prepare Release` workflow, so use it only when necessary.
 
+### Local `act` reproduction for `prepare`
+
+Use this when `Prepare Release` fails in the Ubuntu validation path and you need a local reproduction that stays aligned with the real workflow:
+
+```bash
+brew install act
+bun run release:prepare:act:list
+bun run release:prepare:act -- --release-type patch
+```
+
+For an explicit version:
+
+```bash
+bun run release:prepare:act -- --release-type custom --custom-version 0.1.3
+```
+
+Supporting files:
+- `.actrc`
+- `.github/act/prepare-release.event.json`
+- `.github/act/prepare-release.secrets.example`
+- `scripts/run-prepare-release-act.sh`
+
+Behavior:
+- runs only the `prepare` job from `.github/workflows/prepare-release.yml`
+- keeps checkout, Bun setup, install, typecheck, lint, and test aligned with GitHub Actions
+- skips version bump, changelog generation, commit/tag/push, and the reusable `publish` workflow when `github.event.act` is true
+
+Current known target:
+- the cloud failure on March 16, 2026 is in the Ubuntu `bun test` step and currently surfaces as `ThreadItemRenderer > renders file-change inline toggle with filename`
+
+Limitations:
+- no macOS runner emulation
+- no notarization validation
+- no environment-scoped GitHub Actions secret parity
+- requires a working Docker-compatible runtime such as Docker Desktop or OrbStack
+
 ## Workflow Details
 
 ### `Prepare Release`
@@ -104,18 +142,19 @@ Steps:
 3. Run `bun run typecheck`.
 4. Run `bun run lint`.
 5. Run `bun test`.
-6. Resolve the target version:
+6. When `github.event.act` is true, stop after validation and skip all mutating release steps plus the downstream `publish` job.
+7. Resolve the target version:
    - for `patch`/`minor`/`major`, use Bun semver bumping
    - for `custom`, use the explicit version string
-7. Run `bun pm version ... --no-git-tag-version`.
-8. Run `bun run release:prepare` to:
+8. Run `bun pm version ... --no-git-tag-version`.
+9. Run `bun run release:prepare` to:
    - roll `CHANGELOG.md` forward
    - generate release notes
    - generate the release commit message
-9. Create the release commit.
-10. Create annotated tag `v<version>`.
-11. Push the commit and tag.
-12. Call `.github/workflows/release.yml` through `workflow_call`, passing the newly created git ref.
+10. Create the release commit.
+11. Create annotated tag `v<version>`.
+12. Push the commit and tag.
+13. Call `.github/workflows/release.yml` through `workflow_call`, passing the newly created git ref.
 
 Output contract:
 - `git_ref`: for example `v0.1.3`
@@ -271,7 +310,7 @@ gh run view --repo Asphocarp/nodex --log
 
 `Prepare Release` failure:
 - cause: typecheck, lint, or test regression
-- action: fix the repo state on the default branch and rerun `Prepare Release`
+- action: reproduce locally with `bun run release:prepare:act -- --release-type patch`, fix the repo state on the default branch, then rerun `Prepare Release`
 
 `build-macos-*` failure before notarization:
 - cause: missing signing secrets, malformed `.p12`, wrong certificate, missing `APPLE_API_ISSUER`, or packaging regression
@@ -294,6 +333,10 @@ gh run view --repo Asphocarp/nodex --log
 If `publish-release` succeeds but `update-homebrew-tap` fails:
 - do not rebuild macOS artifacts
 - rerun only `update-homebrew-tap` after fixing the token or repo issue
+
+If `Prepare Release` is failing before the version bump:
+- use the local `act` harness first
+- do not try to debug the macOS packaging jobs until the Ubuntu `prepare` path is green again
 
 If the version tag was created but the release workflow is unusable:
 - fix the blocking issue
