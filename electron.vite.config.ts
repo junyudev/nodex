@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
+import { resolveRendererManualChunk } from "./config/renderer-manual-chunks";
 
 export default defineConfig({
   main: {
@@ -32,6 +33,11 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, "src/renderer/index.html"),
+        },
+        output: {
+          manualChunks(id) {
+            return resolveRendererManualChunk(id);
+          },
         },
       },
     },

@@ -9,13 +9,17 @@ import {
   getCardIdFromElement,
   updateCardElements,
 } from "@/lib/canvas-card-elements";
-import { CanvasCardSidebar } from "./canvas-card-sidebar";
 import type { Card } from "@/lib/types";
 import { LayoutGrid } from "lucide-react";
 
 const ExcalidrawLazy = lazy(async () => {
   const mod = await import("@excalidraw/excalidraw");
   return { default: mod.Excalidraw };
+});
+
+const CanvasCardSidebarLazy = lazy(async () => {
+  const mod = await import("./canvas-card-sidebar");
+  return { default: mod.CanvasCardSidebar };
 });
 
 // Lazy-load convertToExcalidrawElements alongside Excalidraw
@@ -207,7 +211,7 @@ export function CanvasView({ projectId, openCardStage, cardStageCardId, cardStag
               },
             }}
           >
-            <CanvasCardSidebar
+            <CanvasCardSidebarLazy
               board={board}
               placedCardIds={placedCardIds}
               onPlaceCard={handlePlaceCard}
