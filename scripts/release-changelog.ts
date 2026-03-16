@@ -55,6 +55,67 @@ function hasMeaningfulReleaseNotes(content: string): boolean {
     .some((line) => line.length > 0 && !line.startsWith("### "));
 }
 
+function trimBlankLines(lines: string[]): string[] {
+  let start = 0;
+  let end = lines.length;
+
+  while (start < end && lines[start].trim().length === 0) {
+    start += 1;
+  }
+
+  while (end > start && lines[end - 1].trim().length === 0) {
+    end -= 1;
+  }
+
+  return lines.slice(start, end);
+}
+
+function omitEmptySubsections(content: string): string {
+  const normalizedContent = trimTrailingWhitespace(content).trim();
+
+  if (normalizedContent.length === 0) {
+    return "";
+  }
+
+  const blocks: Array<{ heading: string | null; lines: string[] }> = [];
+  let currentBlock: { heading: string | null; lines: string[] } = {
+    heading: null,
+    lines: [],
+  };
+
+  for (const line of normalizedContent.split("\n")) {
+    if (line.startsWith("### ")) {
+      blocks.push(currentBlock);
+      currentBlock = {
+        heading: line,
+        lines: [],
+      };
+      continue;
+    }
+
+    currentBlock.lines.push(line);
+  }
+
+  blocks.push(currentBlock);
+
+  return blocks
+    .map((block) => {
+      const bodyLines = trimBlankLines(block.lines);
+
+      if (bodyLines.length === 0) {
+        return "";
+      }
+
+      if (!block.heading) {
+        return bodyLines.join("\n");
+      }
+
+      return `${block.heading}\n${bodyLines.join("\n")}`;
+    })
+    .filter((block) => block.length > 0)
+    .join("\n\n");
+}
+
 function hasSection(changelogContent: string, headingPattern: RegExp): boolean {
   return Array.from(normalizeContent(changelogContent).matchAll(/^## \[.*\](?: - \d{4}-\d{2}-\d{2})?$/gm)).some((match) =>
     headingPattern.test(match[0]),
@@ -147,7 +208,7 @@ export function prepareReleaseArtifacts(options: PrepareReleaseOptions): Prepare
 
   const beforeUnreleased = normalizedChangelog.slice(0, unreleasedSection.start).trimEnd();
   const afterUnreleased = normalizedChangelog.slice(unreleasedSection.end).trimStart();
-  const normalizedReleaseNotes = trimTrailingWhitespace(releaseNotes).trim();
+  const normalizedReleaseNotes = omitEmptySubsections(releaseNotes);
   const releaseSection = buildReleaseSection(options.version, options.date, normalizedReleaseNotes);
   const nextChangelog = [beforeUnreleased, emptyUnreleasedSection, releaseSection, afterUnreleased]
     .filter((section) => section.length > 0)

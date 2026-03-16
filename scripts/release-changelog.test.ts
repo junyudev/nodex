@@ -61,6 +61,30 @@ test("prepareReleaseArtifacts rejects an empty Unreleased section", () => {
   expect(errorMessage.includes("Unreleased changelog section is empty")).toBeTrue();
 });
 
+test("prepareReleaseArtifacts omits empty subsections from the released version", () => {
+  const prepared = prepareReleaseArtifacts({
+    changelogContent: `# Changelog
+
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+- Fixed the release script edge case.
+`,
+    version: "0.1.2",
+    date: "2026-03-13",
+  });
+
+  expect(prepared.changelogContent.includes("## [0.1.2] - 2026-03-13\n\n### Fixed\n- Fixed the release script edge case.")).toBeTrue();
+  expect(prepared.changelogContent.includes("## [0.1.2] - 2026-03-13\n\n### Added")).toBeFalse();
+  expect(prepared.changelogContent.includes("## [0.1.2] - 2026-03-13\n\n### Changed")).toBeFalse();
+  expect(prepared.releaseNotes).toBe("### Fixed\n- Fixed the release script edge case.\n");
+  expect(prepared.commitMessage).toBe("release: v0.1.2\n\n### Fixed\n- Fixed the release script edge case.\n");
+});
+
 test("prepareReleaseArtifacts rejects an already released version", () => {
   let errorMessage = "";
 
