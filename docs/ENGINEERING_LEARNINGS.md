@@ -135,6 +135,9 @@ For custom embed blocks that render editable controls (input + nested editor), i
 ### BlockNote toggle caret size can unintentionally scale with heading/parent typography
 BlockNote toggle SVG uses `1em` dimensions; custom caret replacements using `em` also inherit container font size. In derived editors (like card-toggle children), this can make toggle icons appear oversized. Pin toggle button/caret size with px in scoped editor CSS (e.g. `.nodex-toggle-list-editor .bn-toggle-button::before`) for stable icon sizing.
 
+### BlockNote heading typography needs matching side-menu height overrides
+BlockNote heading scale is driven by `--level` / `--prev-level` variables on `[data-content-type="heading"]` and `[data-prev-level]`, while the drag-handle side menu uses separate hardcoded `.bn-side-menu[data-block-type="heading"][data-level="…"]` heights. If you change heading typography to match a product style guide, update both the level variables and the side-menu heights together or the drag handle will look vertically offset from the rendered heading.
+
 ### Custom BlockNote embed blocks may need explicit full-width block-content overrides
 BlockNote applies default `.bn-block-content` padding/width behavior that can make custom embed-like blocks look inset. For full-bleed inline embeds, set a targeted rule (e.g. `.nfm-editor .bn-block-content[data-content-type=\"toggleListInlineView\"] { width: 100%; padding: 0; }`) and keep it after broad editor rules like `.nfm-editor .bn-block-content { padding: 4px 2px; }` so the inline-view override wins.
 

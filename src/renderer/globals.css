@@ -565,6 +565,69 @@
   padding: 4px 2px;
 }
 
+/* Match NFM heading scale to the Notion reference sizing. */
+.nfm-editor [data-content-type="heading"] {
+  --level: 1.875em;
+}
+.nfm-editor [data-content-type="heading"][data-level="2"] {
+  --level: 1.5em;
+}
+.nfm-editor [data-content-type="heading"][data-level="3"] {
+  --level: 1.25em;
+}
+.nfm-editor [data-content-type="heading"][data-level="4"] {
+  --level: 1.125em;
+}
+
+.nfm-editor [data-prev-level="1"] {
+  --prev-level: 1.875em;
+}
+.nfm-editor [data-prev-level="2"] {
+  --prev-level: 1.5em;
+}
+.nfm-editor [data-prev-level="3"] {
+  --prev-level: 1.25em;
+}
+.nfm-editor [data-prev-level="4"] {
+  --prev-level: 1.125em;
+}
+
+.nfm-editor .bn-block-content[data-content-type="heading"] {
+  padding-block: 3px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.nfm-editor .bn-block-outer[data-prev-type="heading"] > .bn-block > .bn-block-content,
+.nfm-editor
+  .bn-block-outer:not([data-prev-type])
+  > .bn-block
+  > .bn-block-content[data-content-type="heading"],
+.nfm-editor
+  .bn-block-outer:not([data-prev-type])
+  > .bn-block
+  > div[data-type="modification"]
+  > div[data-type="modification"]
+  > .bn-block-content[data-content-type="heading"] {
+  font-weight: 600;
+}
+
+.nfm-editor .bn-side-menu[data-block-type="heading"][data-level="1"] {
+  height: 45px;
+}
+
+.nfm-editor .bn-side-menu[data-block-type="heading"][data-level="2"] {
+  height: 37px;
+}
+
+.nfm-editor .bn-side-menu[data-block-type="heading"][data-level="3"] {
+  height: 32px;
+}
+
+.nfm-editor .bn-side-menu[data-block-type="heading"][data-level="4"] {
+  height: 29px;
+}
+
 /* Disable most built-in BlockNote structural animations (indent/outdent, depth guides, heading morph). */
 .nfm-editor .bn-block-outer,
 .nfm-editor .bn-block-content,
