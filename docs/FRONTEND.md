@@ -12,6 +12,7 @@
 - Editor subsystem: `src/renderer/components/kanban/editor/`
 - Shared hooks/helpers: `src/renderer/lib/`
 - NFM conversion/parsing: `src/renderer/lib/nfm/`
+- Storybook workspace: `packages/storybook/` with colocated `*.stories.tsx` under `src/renderer/`
 
 ## State and Data Access
 - API boundary: always go through `src/renderer/lib/api.ts`.
@@ -41,6 +42,9 @@
 
 ## Frontend Testing
 - Run targeted tests while iterating: `bun test src/renderer/...`
+- Run isolated UI harness: `bun run dev:storybook`
+- Build the isolated UI harness before handoff when story code changes: `bun run build:storybook`
+- Keep Storybook scenes canvas-first: use story variants, `args`, and `argTypes` for presets and controls instead of rendering custom preset/control sidebars inside story pages.
 - Default renderer component tests to DOM-based coverage with Bun + `happy-dom` + `@testing-library/react`.
 - Assert user-visible structure, labels, and behavior through rendered DOM queries; keep `data-testid` and raw class checks as fallback tools, not the default.
 - Reserve HTML-string or server-render assertions for cases where serialized markup is the actual contract.

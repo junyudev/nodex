@@ -1,9 +1,10 @@
-@import "tailwindcss";
+@import "tailwindcss" source(".");
 @import "streamdown/styles.css";
 @import "tw-animate-css";
 @import "./styles/vscode-theme-vars.css";
 @import "./styles/design-system-theme.css";
 @import "./styles/design-local-utilities.css";
+@source "../../packages/storybook/.storybook";
 @source "../../node_modules/streamdown/dist/index.js";
 @source "../../node_modules/@streamdown/code/dist/*.js";
 @source "../../node_modules/@streamdown/mermaid/dist/*.js";

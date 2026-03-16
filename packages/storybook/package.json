@@ -1,0 +1,24 @@
+{
+  "name": "@nodex/storybook",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "storybook": "storybook dev -p 6006",
+    "build": "storybook build"
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "^10.2.13",
+    "@storybook/addon-docs": "^10.2.13",
+    "@storybook/addon-links": "^10.2.13",
+    "@storybook/react-vite": "^10.2.13",
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/node": "^25.3.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "storybook": "^10.2.13",
+    "typescript": "^5",
+    "vite": "^7.1.4"
+  }
+}

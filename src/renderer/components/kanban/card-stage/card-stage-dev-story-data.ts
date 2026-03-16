@@ -4,6 +4,9 @@ import type { CardStageLinkedThread } from "./types";
 
 export type CardStageStoryThreadDensity = "none" | "few" | "many";
 export type CardStageStoryPreviewMode = "none" | "mixed" | "all";
+export const CARD_STAGE_STORY_RUN_TARGETS = ["localProject", "newWorktree", "cloud"] as const;
+export const CARD_STAGE_STORY_THREAD_DENSITIES = ["none", "few", "many"] as const;
+export const CARD_STAGE_STORY_PREVIEW_MODES = ["none", "mixed", "all"] as const;
 
 export interface CardStageStoryControls {
   runInTarget: CardRunInTarget;

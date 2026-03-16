@@ -1,4 +1,186 @@
-import type { CodexItemView, CodexThreadDetail, CodexTurnSummary } from "../../../lib/types";
+import type {
+  CodexCollaborationModeKind,
+  CodexConnectionState,
+  CodexItemView,
+  CodexPermissionMode,
+  CodexThreadDetail,
+  CodexTurnSummary,
+} from "../../../lib/types";
+
+export type StageThreadsStoryThreadMode = "none" | "idle" | "running";
+export type StageThreadsStoryAccountMode = "loggedOut" | "pendingLogin" | "apiKey" | "chatgpt";
+export type StageThreadsStoryThreadStartProgressMode = "none" | "creating" | "runningSetup" | "failed";
+
+export interface StageThreadsStoryControls {
+  threadMode: StageThreadsStoryThreadMode;
+  isNewThreadTab: boolean;
+  hasNewThreadTarget: boolean;
+  threadStartProgressMode: StageThreadsStoryThreadStartProgressMode;
+  hideThinkingWhenDone: boolean;
+  showApprovals: boolean;
+  showUserInput: boolean;
+  collaborationMode: CodexCollaborationModeKind;
+  hasCollaborationModes: boolean;
+  permissionMode: CodexPermissionMode;
+  connectionStatus: CodexConnectionState["status"];
+  accountMode: StageThreadsStoryAccountMode;
+}
+
+export interface StageThreadsStoryPreset {
+  id: string;
+  name: string;
+  description: string;
+  controls: StageThreadsStoryControls;
+}
+
+export const STAGE_THREADS_STORY_THREAD_MODES = ["none", "idle", "running"] as const;
+export const STAGE_THREADS_STORY_THREAD_START_PROGRESS_MODES = ["none", "creating", "runningSetup", "failed"] as const;
+export const STAGE_THREADS_STORY_CONNECTION_STATUSES = ["connected", "starting", "disconnected", "missingBinary", "error"] as const;
+export const STAGE_THREADS_STORY_ACCOUNT_MODES = ["loggedOut", "pendingLogin", "apiKey", "chatgpt"] as const;
+export const STAGE_THREADS_STORY_COLLABORATION_MODES = ["default", "plan"] as const;
+export const STAGE_THREADS_STORY_PERMISSION_MODES = ["sandbox", "full-access", "custom"] as const;
+
+export const STAGE_THREADS_STORY_PRESETS: StageThreadsStoryPreset[] = [
+  {
+    id: "overview",
+    name: "Overview",
+    description: "Idle thread with full transcript and all tool card variants.",
+    controls: {
+      threadMode: "idle",
+      isNewThreadTab: false,
+      hasNewThreadTarget: true,
+      threadStartProgressMode: "none",
+      hideThinkingWhenDone: false,
+      showApprovals: true,
+      showUserInput: true,
+      collaborationMode: "default",
+      hasCollaborationModes: true,
+      permissionMode: "sandbox",
+      connectionStatus: "connected",
+      accountMode: "chatgpt",
+    },
+  },
+  {
+    id: "running",
+    name: "Running",
+    description: "In-progress turn with active footer and stop button behavior.",
+    controls: {
+      threadMode: "running",
+      isNewThreadTab: false,
+      hasNewThreadTarget: true,
+      threadStartProgressMode: "none",
+      hideThinkingWhenDone: true,
+      showApprovals: false,
+      showUserInput: false,
+      collaborationMode: "default",
+      hasCollaborationModes: true,
+      permissionMode: "full-access",
+      connectionStatus: "connected",
+      accountMode: "apiKey",
+    },
+  },
+  {
+    id: "plan-clarifying",
+    name: "Plan Clarifying",
+    description: "Plan mode selected with user-input cards to validate clarifying-question UX.",
+    controls: {
+      threadMode: "running",
+      isNewThreadTab: false,
+      hasNewThreadTarget: true,
+      threadStartProgressMode: "none",
+      hideThinkingWhenDone: false,
+      showApprovals: false,
+      showUserInput: true,
+      collaborationMode: "plan",
+      hasCollaborationModes: true,
+      permissionMode: "sandbox",
+      connectionStatus: "connected",
+      accountMode: "chatgpt",
+    },
+  },
+  {
+    id: "new-thread",
+    name: "New Thread",
+    description: "First-prompt tab state with target card context.",
+    controls: {
+      threadMode: "none",
+      isNewThreadTab: true,
+      hasNewThreadTarget: true,
+      threadStartProgressMode: "none",
+      hideThinkingWhenDone: true,
+      showApprovals: false,
+      showUserInput: false,
+      collaborationMode: "default",
+      hasCollaborationModes: true,
+      permissionMode: "sandbox",
+      connectionStatus: "connected",
+      accountMode: "chatgpt",
+    },
+  },
+  {
+    id: "new-thread-worktree-setup",
+    name: "Worktree Setup (Running)",
+    description: "Real-time new-worktree setup progress log in the New thread tab.",
+    controls: {
+      threadMode: "none",
+      isNewThreadTab: true,
+      hasNewThreadTarget: true,
+      threadStartProgressMode: "runningSetup",
+      hideThinkingWhenDone: true,
+      showApprovals: false,
+      showUserInput: false,
+      collaborationMode: "default",
+      hasCollaborationModes: true,
+      permissionMode: "sandbox",
+      connectionStatus: "connected",
+      accountMode: "chatgpt",
+    },
+  },
+  {
+    id: "new-thread-worktree-failed",
+    name: "Worktree Setup (Failed)",
+    description: "Failed setup state with stderr-rich progress output in the New thread tab.",
+    controls: {
+      threadMode: "none",
+      isNewThreadTab: true,
+      hasNewThreadTarget: true,
+      threadStartProgressMode: "failed",
+      hideThinkingWhenDone: true,
+      showApprovals: false,
+      showUserInput: false,
+      collaborationMode: "default",
+      hasCollaborationModes: true,
+      permissionMode: "sandbox",
+      connectionStatus: "connected",
+      accountMode: "chatgpt",
+    },
+  },
+  {
+    id: "auth-login",
+    name: "Auth / Login",
+    description: "No account logged in, with pending login state.",
+    controls: {
+      threadMode: "none",
+      isNewThreadTab: false,
+      hasNewThreadTarget: false,
+      threadStartProgressMode: "none",
+      hideThinkingWhenDone: true,
+      showApprovals: false,
+      showUserInput: false,
+      collaborationMode: "default",
+      hasCollaborationModes: false,
+      permissionMode: "custom",
+      connectionStatus: "starting",
+      accountMode: "pendingLogin",
+    },
+  },
+];
+
+export const STAGE_THREADS_STORY_DEFAULT_PRESET = STAGE_THREADS_STORY_PRESETS[0];
+
+export function resolveStageThreadsStoryPreset(id: string): StageThreadsStoryPreset {
+  return STAGE_THREADS_STORY_PRESETS.find((preset) => preset.id === id) ?? STAGE_THREADS_STORY_DEFAULT_PRESET;
+}
 
 export const STORY_PROJECT_ID = "demo/project/threads";
 export const STORY_CARD_ID = "card-thread-demo";
@@ -63,7 +245,7 @@ export const STORY_DIFF_PATCH = [
   STORY_DIFF_HUNK,
 ].join("\n");
 
-type StoryThreadMode = "idle" | "running";
+type StoryThreadMode = Extract<StageThreadsStoryThreadMode, "idle" | "running">;
 
 function makeTokenUsage(usedTokens: number, modelContextWindow: number): NonNullable<CodexTurnSummary["tokenUsage"]> {
   return {

@@ -40,9 +40,7 @@ The sidebar `Projects` section controls the DB stage datasource, while Cards/Thr
   - specialized cards: command, file-change, MCP, web-search
   - generic fallback card for unknown tools, showing JSON args/result/error/raw payloads when expanded
   - tool cards are collapsed by default across all tool types
-- Dev-only story harness: append `?dev-story=threads-panel` (alias: `threads`) to the renderer URL in development mode to open an isolated mock Threads panel with scenario presets and interaction controls.
-- Dev-only card-stage story harness: append `?dev-story=card-stage` (aliases: `card`, `cardstage`) to open an isolated mock Card Stage page with preset scenarios and thread-property controls for UI refinement.
-- Dev-only general UI story harness: append `?dev-story=ui-components` (aliases: `ui`, `components`) to open a gallery of shared renderer primitives and recurring Nodex interaction patterns.
+- Storybook is the supported renderer harness for isolated UI work. Run `bun run dev:storybook` from the repository root to inspect the Threads panel scenarios, Card Stage scenarios, and the general shared-UI gallery without booting the Electron shell.
 - Assistant-like text (`assistantMessage`, `plan`, `reasoning`) renders with `stage-threads/markdown/markdown-core.tsx` and `streamdown` in static or streaming mode.
 - User transcript bubbles expose hover/focus message actions under the bubble: `Copy message` and a mock-only `Edit message` control styled from the `design.local/copy-edit-buttons.html` reference. The newest assistant text message exposes the same under-message copy affordance without the edit control.
 - Running-thread status rows use verb-led summaries: contiguous exploration actions coalesce into `Exploring` / `Explored` groups (absorbing adjacent reasoning steps in the same turn), generic commands render as `Running command` while active and `Ran …` once settled, and MCP calls render as `Calling …` / `Called …`.

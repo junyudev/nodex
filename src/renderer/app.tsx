@@ -34,10 +34,6 @@ import {
   consumeWorkbenchResumeSnapshot,
   saveWorkbenchResumeSnapshot,
 } from "@/lib/workbench-resume";
-import { clearActiveDevStoryFromLocation, resolveActiveDevStory } from "@/lib/dev-story";
-import { StageThreadsDevStoryPage } from "@/components/workbench/stage-threads/stage-threads-dev-story";
-import { CardStageDevStoryPage } from "@/components/kanban/card-stage/card-stage-dev-story";
-import { GeneralDevStoryPage } from "@/components/dev-story/general-dev-story-page";
 import { AppStartupScreen } from "@/components/app-startup-screen";
 import type { CardStageSessionSnapshot } from "@/components/kanban/card-stage/types";
 import type { WorkbenchResumeSnapshot } from "@/lib/types";
@@ -57,7 +53,6 @@ function readWorkbenchV2Flag(): boolean {
 }
 
 function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: WorkbenchResumeSnapshot | null }) {
-  const activeDevStory = resolveActiveDevStory();
   const workbenchV2Enabled = readWorkbenchV2Flag();
   const [stageRailLayoutMode, setStageRailLayoutModeState] = useState<StageRailLayoutMode>(() =>
     readStageRailLayoutMode(),
@@ -833,36 +828,6 @@ function WorkbenchApp({ initialResumeSnapshot }: { initialResumeSnapshot: Workbe
       void navigateForward();
     },
   });
-
-  if (activeDevStory === "threads-panel") {
-    return (
-      <StageThreadsDevStoryPage
-        onExit={() => {
-          clearActiveDevStoryFromLocation();
-        }}
-      />
-    );
-  }
-
-  if (activeDevStory === "card-stage") {
-    return (
-      <CardStageDevStoryPage
-        onExit={() => {
-          clearActiveDevStoryFromLocation();
-        }}
-      />
-    );
-  }
-
-  if (activeDevStory === "ui-components") {
-    return (
-      <GeneralDevStoryPage
-        onExit={() => {
-          clearActiveDevStoryFromLocation();
-        }}
-      />
-    );
-  }
 
   if (loading) {
     return (

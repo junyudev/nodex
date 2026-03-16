@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DevStoryFontSettingsSection } from "../../dev-story/dev-story-font-settings";
-import { useDevStoryFontSize } from "../../../lib/use-dev-story-font-size";
 import { StageThreads } from "./stage-threads";
 import {
   buildMockStandaloneDiffItem,
   buildMockThread,
+  type StageThreadsStoryAccountMode,
+  type StageThreadsStoryControls,
+  type StageThreadsStoryThreadStartProgressMode,
   STORY_CARD_ID,
   STORY_PROJECT_ID,
   STORY_THREAD_ID,
@@ -12,183 +13,15 @@ import {
   STORY_WORKTREE_PATH,
 } from "./stage-threads-dev-story-data";
 import { FileChangeToolCall } from "./tools/file-change-tool-call";
-import { cn } from "../../../lib/utils";
 import type {
   CodexAccountSnapshot,
-  CodexApprovalDecision,
   CodexApprovalRequest,
-  CodexCollaborationModeKind,
   CodexConnectionState,
   CodexItemView,
   CodexModelOption,
-  CodexPermissionMode,
   CodexThreadStartProgressPhase,
   CodexUserInputRequest,
 } from "@/lib/types";
-
-type ThreadMode = "none" | "idle" | "running";
-type AccountMode = "loggedOut" | "pendingLogin" | "apiKey" | "chatgpt";
-type ThreadStartProgressStoryMode = "none" | "creating" | "runningSetup" | "failed";
-
-interface StoryControls {
-  threadMode: ThreadMode;
-  isNewThreadTab: boolean;
-  hasNewThreadTarget: boolean;
-  threadStartProgressMode: ThreadStartProgressStoryMode;
-  hideThinkingWhenDone: boolean;
-  showApprovals: boolean;
-  showUserInput: boolean;
-  collaborationMode: CodexCollaborationModeKind;
-  hasCollaborationModes: boolean;
-  permissionMode: CodexPermissionMode;
-  connectionStatus: CodexConnectionState["status"];
-  accountMode: AccountMode;
-}
-
-interface StoryPreset {
-  id: string;
-  name: string;
-  description: string;
-  controls: StoryControls;
-}
-
-const STORY_PRESETS: StoryPreset[] = [
-  {
-    id: "overview",
-    name: "Overview",
-    description: "Idle thread with full transcript and all tool card variants.",
-    controls: {
-      threadMode: "idle",
-      isNewThreadTab: false,
-      hasNewThreadTarget: true,
-      threadStartProgressMode: "none",
-      hideThinkingWhenDone: false,
-      showApprovals: true,
-      showUserInput: true,
-      collaborationMode: "default",
-      hasCollaborationModes: true,
-      permissionMode: "sandbox",
-      connectionStatus: "connected",
-      accountMode: "chatgpt",
-    },
-  },
-  {
-    id: "running",
-    name: "Running",
-    description: "In-progress turn with active footer and stop button behavior.",
-    controls: {
-      threadMode: "running",
-      isNewThreadTab: false,
-      hasNewThreadTarget: true,
-      threadStartProgressMode: "none",
-      hideThinkingWhenDone: true,
-      showApprovals: false,
-      showUserInput: false,
-      collaborationMode: "default",
-      hasCollaborationModes: true,
-      permissionMode: "full-access",
-      connectionStatus: "connected",
-      accountMode: "apiKey",
-    },
-  },
-  {
-    id: "plan-clarifying",
-    name: "Plan Clarifying",
-    description: "Plan mode selected with user-input cards to validate clarifying-question UX.",
-    controls: {
-      threadMode: "running",
-      isNewThreadTab: false,
-      hasNewThreadTarget: true,
-      threadStartProgressMode: "none",
-      hideThinkingWhenDone: false,
-      showApprovals: false,
-      showUserInput: true,
-      collaborationMode: "plan",
-      hasCollaborationModes: true,
-      permissionMode: "sandbox",
-      connectionStatus: "connected",
-      accountMode: "chatgpt",
-    },
-  },
-  {
-    id: "new-thread",
-    name: "New Thread",
-    description: "First-prompt tab state with target card context.",
-    controls: {
-      threadMode: "none",
-      isNewThreadTab: true,
-      hasNewThreadTarget: true,
-      threadStartProgressMode: "none",
-      hideThinkingWhenDone: true,
-      showApprovals: false,
-      showUserInput: false,
-      collaborationMode: "default",
-      hasCollaborationModes: true,
-      permissionMode: "sandbox",
-      connectionStatus: "connected",
-      accountMode: "chatgpt",
-    },
-  },
-  {
-    id: "new-thread-worktree-setup",
-    name: "Worktree Setup (Running)",
-    description: "Real-time new-worktree setup progress log in the New thread tab.",
-    controls: {
-      threadMode: "none",
-      isNewThreadTab: true,
-      hasNewThreadTarget: true,
-      threadStartProgressMode: "runningSetup",
-      hideThinkingWhenDone: true,
-      showApprovals: false,
-      showUserInput: false,
-      collaborationMode: "default",
-      hasCollaborationModes: true,
-      permissionMode: "sandbox",
-      connectionStatus: "connected",
-      accountMode: "chatgpt",
-    },
-  },
-  {
-    id: "new-thread-worktree-failed",
-    name: "Worktree Setup (Failed)",
-    description: "Failed setup state with stderr-rich progress output in the New thread tab.",
-    controls: {
-      threadMode: "none",
-      isNewThreadTab: true,
-      hasNewThreadTarget: true,
-      threadStartProgressMode: "failed",
-      hideThinkingWhenDone: true,
-      showApprovals: false,
-      showUserInput: false,
-      collaborationMode: "default",
-      hasCollaborationModes: true,
-      permissionMode: "sandbox",
-      connectionStatus: "connected",
-      accountMode: "chatgpt",
-    },
-  },
-  {
-    id: "auth-login",
-    name: "Auth / Login",
-    description: "No account logged in, with pending login state.",
-    controls: {
-      threadMode: "none",
-      isNewThreadTab: false,
-      hasNewThreadTarget: false,
-      threadStartProgressMode: "none",
-      hideThinkingWhenDone: true,
-      showApprovals: false,
-      showUserInput: false,
-      collaborationMode: "default",
-      hasCollaborationModes: false,
-      permissionMode: "custom",
-      connectionStatus: "starting",
-      accountMode: "pendingLogin",
-    },
-  },
-];
-
-const DEFAULT_PRESET = STORY_PRESETS[0];
 
 export function StageThreadsInlineDiffPreviewCard({
   item,
@@ -244,7 +77,7 @@ const STORY_MODELS: CodexModelOption[] = [
   },
 ];
 
-function buildMockAccount(mode: AccountMode): CodexAccountSnapshot {
+function buildMockAccount(mode: StageThreadsStoryAccountMode): CodexAccountSnapshot {
   if (mode === "loggedOut") {
     return {
       account: null,
@@ -397,12 +230,8 @@ function buildUserInputQueue(threadId: string, multiQuestion?: boolean): CodexUs
   ];
 }
 
-function presetById(id: string): StoryPreset {
-  return STORY_PRESETS.find((preset) => preset.id === id) ?? DEFAULT_PRESET;
-}
-
 function buildThreadStartProgressStory(
-  mode: ThreadStartProgressStoryMode,
+  mode: StageThreadsStoryThreadStartProgressMode,
 ): {
   phase: CodexThreadStartProgressPhase;
   message: string;
@@ -463,19 +292,46 @@ function buildThreadStartProgressStory(
   };
 }
 
-export function StageThreadsDevStoryPage({ onExit }: { onExit: () => void }) {
-  const [selectedPresetId, setSelectedPresetId] = useState(DEFAULT_PRESET.id);
-  const [controls, setControls] = useState<StoryControls>(DEFAULT_PRESET.controls);
-  const [actionLog, setActionLog] = useState<string[]>([]);
+function buildSceneControls(props: StageThreadsDevStoryPageProps): StageThreadsStoryControls {
+  return {
+    threadMode: props.threadMode,
+    isNewThreadTab: props.isNewThreadTab,
+    hasNewThreadTarget: props.hasNewThreadTarget,
+    threadStartProgressMode: props.threadStartProgressMode,
+    hideThinkingWhenDone: props.hideThinkingWhenDone,
+    showApprovals: props.showApprovals,
+    showUserInput: props.showUserInput,
+    collaborationMode: props.collaborationMode,
+    hasCollaborationModes: props.hasCollaborationModes,
+    permissionMode: props.permissionMode,
+    connectionStatus: props.connectionStatus,
+    accountMode: props.accountMode,
+  };
+}
+
+export type StageThreadsDevStoryPageProps = StageThreadsStoryControls;
+
+export function StageThreadsDevStoryPage(props: StageThreadsDevStoryPageProps) {
+  const [controls, setControls] = useState<StageThreadsStoryControls>(() => buildSceneControls(props));
   const [approvalQueue, setApprovalQueue] = useState<CodexApprovalRequest[]>([]);
   const [userInputQueue, setUserInputQueue] = useState<CodexUserInputRequest[]>([]);
-  const {
-    sansFontSize,
-    codeFontSize,
-    setSansFontSize,
-    setCodeFontSize,
-    fontSizeVariables,
-  } = useDevStoryFontSize();
+
+  useEffect(() => {
+    setControls(buildSceneControls(props));
+  }, [
+    props.accountMode,
+    props.collaborationMode,
+    props.connectionStatus,
+    props.hasCollaborationModes,
+    props.hasNewThreadTarget,
+    props.hideThinkingWhenDone,
+    props.isNewThreadTab,
+    props.permissionMode,
+    props.showApprovals,
+    props.showUserInput,
+    props.threadMode,
+    props.threadStartProgressMode,
+  ]);
 
   const thread = useMemo(() => {
     if (controls.threadMode === "none") return null;
@@ -513,328 +369,124 @@ export function StageThreadsDevStoryPage({ onExit }: { onExit: () => void }) {
   const connection = useMemo(() => buildConnection(controls.connectionStatus), [controls.connectionStatus]);
   const account = useMemo(() => buildMockAccount(controls.accountMode), [controls.accountMode]);
 
-  const pushLog = useCallback((message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setActionLog((prev) => [`${timestamp} - ${message}`, ...prev].slice(0, 10));
-  }, []);
-
-  const applyPreset = useCallback((presetId: string) => {
-    const preset = presetById(presetId);
-    setSelectedPresetId(preset.id);
-    setControls(preset.controls);
-    setActionLog([]);
-  }, []);
-
   const updateControl = useCallback(
-    <K extends keyof StoryControls>(key: K, value: StoryControls[K]) => {
+    <K extends keyof StageThreadsStoryControls>(key: K, value: StageThreadsStoryControls[K]) => {
       setControls((prev) => ({ ...prev, [key]: value }));
     },
     [],
   );
 
   return (
-    <div
-      className="h-screen min-h-0 bg-(--background) text-(--foreground)"
-      style={fontSizeVariables}
-    >
-      <div className="flex h-full min-h-0">
-        <aside className="scrollbar-token w-85 shrink-0 overflow-y-auto border-r border-(--border) bg-(--background-secondary)">
-          <div className="space-y-4 p-4">
-            <div className="space-y-2">
-              <div className="text-sm font-semibold">Threads Panel Story</div>
-              <div className="text-sm/normal text-(--foreground-secondary)">
-                Development-only mock page for iterating on the thread panel UI.
-              </div>
-              <div className="flex items-center gap-2">
-                <code className="rounded-sm border border-(--border) bg-(--background) px-1.5 py-1 text-xs">
-                  ?dev-story=threads-panel
-                </code>
-                <button
-                  type="button"
-                  className="h-7 rounded-sm border border-(--border) px-2.5 text-xs transition-colors hover:bg-(--background-tertiary)"
-                  onClick={onExit}
-                >
-                  Back to app
-                </button>
+    <div className="min-h-[calc(100vh-3rem)] bg-(--background) text-(--foreground)">
+      <div className="mx-auto flex h-full min-h-0 max-w-245 flex-col gap-4">
+        <section className="rounded-[24px] border border-(--border) bg-[color-mix(in_srgb,var(--background-secondary),transparent_10%)] px-5 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.18)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <div className="text-sm font-semibold">Threads Panel</div>
+              <div className="mt-1 text-sm/relaxed text-(--foreground-secondary)">
+                Production-backed thread-panel scene with transcript, approvals, and new-thread setup states. Presets are Storybook stories, and scene controls belong in Storybook Controls rather than a custom sidebar.
               </div>
             </div>
-
-            <div className="space-y-2">
-              <div className="text-xs font-semibold tracking-wide text-(--foreground-tertiary) uppercase">Presets</div>
-              <div className="space-y-1.5">
-                {STORY_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className={cn(
-                      "w-full rounded-md border px-2.5 py-2 text-left transition-colors",
-                      selectedPresetId === preset.id
-                        ? "border-(--foreground) bg-(--background)"
-                        : "border-(--border) bg-(--background) hover:bg-(--background-tertiary)",
-                    )}
-                    onClick={() => applyPreset(preset.id)}
-                  >
-                    <div className="text-sm font-medium">{preset.name}</div>
-                    <div className="mt-0.5 text-xs text-(--foreground-tertiary)">{preset.description}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2.5">
-              <div className="text-xs font-semibold tracking-wide text-(--foreground-tertiary) uppercase">Controls</div>
-
-              <label className="block text-xs text-(--foreground-secondary)">
-                Thread mode
-                <select
-                  className="mt-1 h-8 w-full rounded-sm border border-(--border) bg-(--background) px-2 text-sm"
-                  value={controls.threadMode}
-                  onChange={(event) => updateControl("threadMode", event.target.value as ThreadMode)}
-                >
-                  <option value="none">none</option>
-                  <option value="idle">idle</option>
-                  <option value="running">running</option>
-                </select>
-              </label>
-
-              <label className="block text-xs text-(--foreground-secondary)">
-                Start progress
-                <select
-                  className="mt-1 h-8 w-full rounded-sm border border-(--border) bg-(--background) px-2 text-sm"
-                  value={controls.threadStartProgressMode}
-                  onChange={(event) => updateControl("threadStartProgressMode", event.target.value as ThreadStartProgressStoryMode)}
-                >
-                  <option value="none">none</option>
-                  <option value="creating">creating</option>
-                  <option value="runningSetup">running setup</option>
-                  <option value="failed">failed</option>
-                </select>
-              </label>
-
-              <label className="block text-xs text-(--foreground-secondary)">
-                Connection
-                <select
-                  className="mt-1 h-8 w-full rounded-sm border border-(--border) bg-(--background) px-2 text-sm"
-                  value={controls.connectionStatus}
-                  onChange={(event) => updateControl("connectionStatus", event.target.value as CodexConnectionState["status"])}
-                >
-                  <option value="connected">connected</option>
-                  <option value="starting">starting</option>
-                  <option value="disconnected">disconnected</option>
-                  <option value="missingBinary">missingBinary</option>
-                  <option value="error">error</option>
-                </select>
-              </label>
-
-              <label className="block text-xs text-(--foreground-secondary)">
-                Account
-                <select
-                  className="mt-1 h-8 w-full rounded-sm border border-(--border) bg-(--background) px-2 text-sm"
-                  value={controls.accountMode}
-                  onChange={(event) => updateControl("accountMode", event.target.value as AccountMode)}
-                >
-                  <option value="loggedOut">loggedOut</option>
-                  <option value="pendingLogin">pendingLogin</option>
-                  <option value="apiKey">apiKey</option>
-                  <option value="chatgpt">chatgpt</option>
-                </select>
-              </label>
-
-              <label className="block text-xs text-(--foreground-secondary)">
-                Collaboration mode
-                <select
-                  className="mt-1 h-8 w-full rounded-sm border border-(--border) bg-(--background) px-2 text-sm"
-                  value={controls.collaborationMode}
-                  onChange={(event) => updateControl("collaborationMode", event.target.value as CodexCollaborationModeKind)}
-                >
-                  <option value="default">default</option>
-                  <option value="plan">plan</option>
-                </select>
-              </label>
-
-              <label className="block text-xs text-(--foreground-secondary)">
-                Permission mode
-                <select
-                  className="mt-1 h-8 w-full rounded-sm border border-(--border) bg-(--background) px-2 text-sm"
-                  value={controls.permissionMode}
-                  onChange={(event) => updateControl("permissionMode", event.target.value as CodexPermissionMode)}
-                >
-                  <option value="sandbox">sandbox</option>
-                  <option value="full-access">full-access</option>
-                  <option value="custom">custom</option>
-                </select>
-              </label>
-
-              <label className="flex items-center gap-2 text-xs text-(--foreground-secondary)">
-                <input
-                  type="checkbox"
-                  checked={controls.isNewThreadTab}
-                  onChange={(event) => updateControl("isNewThreadTab", event.target.checked)}
-                />
-                New thread tab
-              </label>
-              <label className="flex items-center gap-2 text-xs text-(--foreground-secondary)">
-                <input
-                  type="checkbox"
-                  checked={controls.hasNewThreadTarget}
-                  onChange={(event) => updateControl("hasNewThreadTarget", event.target.checked)}
-                />
-                New thread target
-              </label>
-              <label className="flex items-center gap-2 text-xs text-(--foreground-secondary)">
-                <input
-                  type="checkbox"
-                  checked={controls.hideThinkingWhenDone}
-                  onChange={(event) => updateControl("hideThinkingWhenDone", event.target.checked)}
-                />
-                Hide thinking when done
-              </label>
-              <label className="flex items-center gap-2 text-xs text-(--foreground-secondary)">
-                <input
-                  type="checkbox"
-                  checked={controls.showApprovals}
-                  onChange={(event) => updateControl("showApprovals", event.target.checked)}
-                />
-                Show approval requests
-              </label>
-              <label className="flex items-center gap-2 text-xs text-(--foreground-secondary)">
-                <input
-                  type="checkbox"
-                  checked={controls.showUserInput}
-                  onChange={(event) => updateControl("showUserInput", event.target.checked)}
-                />
-                Show user-input requests
-              </label>
-              <label className="flex items-center gap-2 text-xs text-(--foreground-secondary)">
-                <input
-                  type="checkbox"
-                  checked={controls.hasCollaborationModes}
-                  onChange={(event) => updateControl("hasCollaborationModes", event.target.checked)}
-                />
-                Collaboration presets available
-              </label>
-            </div>
-
-            <DevStoryFontSettingsSection
-              sansFontSize={sansFontSize}
-              codeFontSize={codeFontSize}
-              setSansFontSize={setSansFontSize}
-              setCodeFontSize={setCodeFontSize}
-            />
-
-            <div className="space-y-2">
-              <div className="text-xs font-semibold tracking-wide text-(--foreground-tertiary) uppercase">Actions</div>
-              <div className="scrollbar-token max-h-40 space-y-1 overflow-y-auto rounded-md border border-(--border) bg-(--background) p-2 text-xs text-(--foreground-secondary)">
-                {actionLog.length === 0 ? <div>No actions yet.</div> : actionLog.map((entry) => <div key={entry}>{entry}</div>)}
-              </div>
+            <div className="flex max-w-md flex-wrap justify-end gap-2">
+              <span className="rounded-full border border-(--border) bg-(--background) px-2.5 py-1 text-xs text-(--foreground-secondary)">
+                {controls.threadMode}
+              </span>
+              <span className="rounded-full border border-(--border) bg-(--background) px-2.5 py-1 text-xs text-(--foreground-secondary)">
+                {controls.connectionStatus}
+              </span>
+              <span className="rounded-full border border-(--border) bg-(--background) px-2.5 py-1 text-xs text-(--foreground-secondary)">
+                {controls.accountMode}
+              </span>
+              <span className="rounded-full border border-(--border) bg-(--background) px-2.5 py-1 text-xs text-(--foreground-secondary)">
+                {controls.permissionMode}
+              </span>
             </div>
           </div>
-        </aside>
+        </section>
 
-        <main className="min-w-0 flex-1 overflow-hidden p-4">
-          <div className="mx-auto flex h-full min-h-0 max-w-245 flex-col gap-3">
-            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-(--border) bg-(--background) shadow-card-lg">
-              <StageThreads
-                projectId={STORY_PROJECT_ID}
-                projectWorkspacePath={STORY_WORKSPACE_PATH}
-                isNewThreadTab={controls.isNewThreadTab}
-                newThreadTarget={newThreadTarget}
-                activeThreadCardColumnId={thread ? "6-in-progress" : newThreadTarget?.columnId ?? null}
-                threadStartProgress={threadStartProgress}
-                thread={thread}
-                connection={connection}
-                account={account}
-                availableModels={[...STORY_MODELS]}
-                collaborationModes={controls.hasCollaborationModes
-                  ? [
-                    { name: "Default", mode: "default", model: null, reasoningEffort: undefined },
-                    { name: "Plan", mode: "plan", model: null, reasoningEffort: undefined },
-                  ]
-                  : []}
-                selectedCollaborationMode={controls.collaborationMode}
-                selectedModel="gpt-5.3-codex"
-                selectedReasoningEffort="high"
-                reasoningEffortOptions={[...STORY_MODELS[0].supportedReasoningEfforts]}
-                permissionMode={controls.permissionMode}
-                hideThinkingWhenDone={controls.hideThinkingWhenDone}
-                promptSubmitShortcut="enter"
-                approvalQueue={approvalQueue}
-                userInputQueue={userInputQueue}
-                planImplementationQueue={[]}
-                onCollaborationModeChange={(mode) => {
-                  updateControl("collaborationMode", mode);
-                  pushLog(`collaboration mode -> ${mode}`);
-                }}
-                onModelChange={(model) => {
-                  pushLog(`model -> ${model}`);
-                }}
-                onReasoningEffortChange={(reasoningEffort) => {
-                  pushLog(`reasoning -> ${reasoningEffort}`);
-                }}
-                onPermissionModeChange={(mode) => {
-                  updateControl("permissionMode", mode);
-                  pushLog(`permission mode -> ${mode}`);
-                }}
-                onRefreshAccount={async () => {
-                  pushLog("refresh account");
-                }}
-                onStartChatGptLogin={async () => {
-                  pushLog("start ChatGPT login");
-                  updateControl("accountMode", "pendingLogin");
-                  return {
-                    type: "chatgpt" as const,
-                    loginId: "login_demo_1",
-                    authUrl: "https://chatgpt.com/codex-login/demo",
-                  };
-                }}
-                onStartApiKeyLogin={async (apiKey) => {
-                  pushLog(`start API key login (${apiKey.length} chars)`);
-                  updateControl("accountMode", "apiKey");
-                  return { type: "apiKey" as const };
-                }}
-                onCancelLogin={async (loginId) => {
-                  pushLog(`cancel login ${loginId}`);
-                  updateControl("accountMode", "loggedOut");
-                }}
-                onLogout={async () => {
-                  pushLog("logout");
-                  updateControl("accountMode", "loggedOut");
-                }}
-                onStartThreadForCard={async ({ cardId, prompt }) => {
-                  pushLog(`start thread (${controls.collaborationMode}) for card ${cardId}: ${prompt.slice(0, 48)}`);
-                  updateControl("threadMode", "running");
-                  updateControl("isNewThreadTab", false);
-                }}
-                onSendPrompt={async (prompt, opts) => {
-                  pushLog(`send prompt (${opts?.collaborationMode ?? controls.collaborationMode}): ${prompt.slice(0, 48)}`);
-                }}
-                onSteerPrompt={async (turnId, prompt) => {
-                  pushLog(`steer ${turnId}: ${prompt.slice(0, 48)}`);
-                }}
-                onInterruptTurn={async (turnId) => {
-                  pushLog(`interrupt turn ${turnId ?? "(latest)"}`);
-                  updateControl("threadMode", "idle");
-                }}
-                onRespondApproval={async (requestId: string, decision: CodexApprovalDecision) => {
-                  pushLog(`approval ${requestId}: ${decision}`);
-                  setApprovalQueue((prev) => prev.filter((entry) => entry.requestId !== requestId));
-                }}
-                onRespondUserInput={async (requestId, answers) => {
-                  pushLog(`user input ${requestId}: ${JSON.stringify(answers)}`);
-                  setUserInputQueue((prev) => prev.filter((entry) => entry.requestId !== requestId));
-                }}
-                onResolvePlanImplementationRequest={(threadId, turnId) => {
-                  pushLog(`resolve plan implementation ${threadId}:${turnId}`);
-                }}
-                onOpenCard={(cardId) => {
-                  pushLog(`open card ${cardId}`);
-                }}
-              />
-            </div>
+        <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-(--border) bg-(--background) shadow-card-lg">
+          <StageThreads
+            projectId={STORY_PROJECT_ID}
+            projectWorkspacePath={STORY_WORKSPACE_PATH}
+            isNewThreadTab={controls.isNewThreadTab}
+            newThreadTarget={newThreadTarget}
+            activeThreadCardColumnId={thread ? "6-in-progress" : newThreadTarget?.columnId ?? null}
+            threadStartProgress={threadStartProgress}
+            thread={thread}
+            connection={connection}
+            account={account}
+            availableModels={[...STORY_MODELS]}
+            collaborationModes={controls.hasCollaborationModes
+              ? [
+                { name: "Default", mode: "default", model: null, reasoningEffort: undefined },
+                { name: "Plan", mode: "plan", model: null, reasoningEffort: undefined },
+              ]
+              : []}
+            selectedCollaborationMode={controls.collaborationMode}
+            selectedModel="gpt-5.3-codex"
+            selectedReasoningEffort="high"
+            reasoningEffortOptions={[...STORY_MODELS[0].supportedReasoningEfforts]}
+            permissionMode={controls.permissionMode}
+            hideThinkingWhenDone={controls.hideThinkingWhenDone}
+            promptSubmitShortcut="enter"
+            approvalQueue={approvalQueue}
+            userInputQueue={userInputQueue}
+            planImplementationQueue={[]}
+            onCollaborationModeChange={(mode) => {
+              updateControl("collaborationMode", mode);
+            }}
+            onModelChange={() => {
+            }}
+            onReasoningEffortChange={() => {
+            }}
+            onPermissionModeChange={(mode) => {
+              updateControl("permissionMode", mode);
+            }}
+            onRefreshAccount={async () => {
+            }}
+            onStartChatGptLogin={async () => {
+              updateControl("accountMode", "pendingLogin");
+              return {
+                type: "chatgpt" as const,
+                loginId: "login_demo_1",
+                authUrl: "https://chatgpt.com/codex-login/demo",
+              };
+            }}
+            onStartApiKeyLogin={async () => {
+              updateControl("accountMode", "apiKey");
+              return { type: "apiKey" as const };
+            }}
+            onCancelLogin={async () => {
+              updateControl("accountMode", "loggedOut");
+            }}
+            onLogout={async () => {
+              updateControl("accountMode", "loggedOut");
+            }}
+            onStartThreadForCard={async () => {
+              updateControl("threadMode", "running");
+              updateControl("isNewThreadTab", false);
+            }}
+            onSendPrompt={async () => {
+            }}
+            onSteerPrompt={async () => {
+            }}
+            onInterruptTurn={async () => {
+              updateControl("threadMode", "idle");
+            }}
+            onRespondApproval={async (requestId: string) => {
+              setApprovalQueue((prev) => prev.filter((entry) => entry.requestId !== requestId));
+            }}
+            onRespondUserInput={async (requestId) => {
+              setUserInputQueue((prev) => prev.filter((entry) => entry.requestId !== requestId));
+            }}
+            onResolvePlanImplementationRequest={() => {
+            }}
+            onOpenCard={() => {
+            }}
+          />
+        </div>
 
-            <StageThreadsInlineDiffPreviewCard item={diffPreviewItem} />
-          </div>
-        </main>
+        <StageThreadsInlineDiffPreviewCard item={diffPreviewItem} />
       </div>
     </div>
   );

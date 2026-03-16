@@ -2,6 +2,10 @@ import { toApiUrl } from "./http-base";
 import type { CodexEvent } from "./types";
 import type { BoardChangeEvent } from "../../shared/ipc-api";
 
+function isStorybookRuntime(): boolean {
+  return typeof window !== "undefined" && window.__NODEX_STORYBOOK__ === true;
+}
+
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   switch (channel) {
     case "projects:list": {
@@ -354,12 +358,22 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
       return res.json();
     }
     case "git:branch:state": {
+      if (isStorybookRuntime()) {
+        return {
+          currentBranch: "main",
+          defaultBranch: "main",
+          branches: ["main", "codex/storybook", "release/candidate"],
+        };
+      }
       const [cwd] = args as [string];
       const params = new URLSearchParams({ cwd });
       const res = await fetch(toApiUrl(`/api/git/branch?${params.toString()}`));
       return res.json();
     }
     case "git:branch:checkout": {
+      if (isStorybookRuntime()) {
+        return { success: true };
+      }
       const [input] = args as [{ cwd: string; branch: string }];
       const res = await fetch(toApiUrl("/api/git/branch/checkout"), {
         method: "POST",
@@ -369,6 +383,9 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
       return res.json();
     }
     case "git:branch:create": {
+      if (isStorybookRuntime()) {
+        return { success: true };
+      }
       const [input] = args as [{ cwd: string; branch: string }];
       const res = await fetch(toApiUrl("/api/git/branch/create"), {
         method: "POST",
@@ -423,6 +440,15 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
     }
     case "worktrees:environments:list": {
       return [];
+    }
+    case "codex:permission:custom-description:get": {
+      if (isStorybookRuntime()) {
+        return "Uses the permission policy defined in your local Codex config.";
+      }
+      return null;
+    }
+    case "pty:pick-cwd": {
+      return null;
     }
     case "worktrees:delete": {
       return false;
