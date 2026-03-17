@@ -24,7 +24,7 @@ const PROJECTS: Project[] = [
 
 describe("SidebarProjectsSection", () => {
   test("renders projects in space order and keeps workspace controls visible", () => {
-    const { container, getByText, getByLabelText } = render(
+    const { container, getByRole, getByText, getByLabelText } = render(
       <SidebarProjectsSection
         projects={PROJECTS}
         spaces={[
@@ -46,6 +46,10 @@ describe("SidebarProjectsSection", () => {
     expect(textContent(container).includes("/repo/beta")).toBeTrue();
     expect(textContent(container).includes("/alpha")).toBeTrue();
     expect(textContent(container).indexOf("Beta") < textContent(container).indexOf("Alpha")).toBeTrue();
+
+    const projectButton = getByRole("button", { name: /Beta\s*\/beta/ });
+    const workspaceButton = getByLabelText("/repo/beta");
+    expect(projectButton.contains(workspaceButton)).toBeFalse();
   });
 
   test("keeps only the active project row visible when collapsed", () => {

@@ -138,61 +138,61 @@ export function SidebarProjectsSection({
               key={project.id}
               data-active={isActive ? "true" : undefined}
               className={cn(
-                "group/project flex items-start gap-1 rounded-xl pr-(--sidebar-header-padding-x) pl-(--sidebar-row-padding-x) py-1 min-h-7.5",
+                "group/project rounded-xl pr-(--sidebar-header-padding-x) pl-(--sidebar-row-padding-x) py-1 min-h-7.5",
                 isActive
                   ? "bg-[color-mix(in_srgb,var(--sidebar-accent)_68%,transparent)] text-(--sidebar-foreground)"
                   : "text-(--sidebar-foreground) hover:bg-(--sidebar-accent)",
               )}
             >
-              <button
-                type="button"
-                onClick={() => onSelectSpace(project.id)}
-                className="flex min-w-0 flex-1 items-start gap-1.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-(--sidebar-ring)/35"
-              >
-                <span
-                  className={cn(
-                    "ml-[-0.1rem] mt-0.5 inline-flex size-4.5 shrink-0 items-center justify-center rounded-md",
-                    isActive
-                      ? "opacity-100"
-                      : "opacity-40 grayscale",
-                  )}
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => onSelectSpace(project.id)}
+                  className="flex w-full min-w-0 items-start gap-1.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-(--sidebar-ring)/35"
                 >
-                  <ProjectMark
-                    icon={project.icon}
-                    colorToken={colorToken}
-                    className="text-sm leading-none"
-                    dotClassName="h-2.5 w-2.5"
-                  />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="truncate text-sm">{project.name}</span>
-                    <span className="shrink-0 text-[11px]/4 text-(--sidebar-foreground-tertiary)">
-                      /{project.id}
+                  <span
+                    className={cn(
+                      "ml-[-0.1rem] mt-0.5 inline-flex size-4.5 shrink-0 items-center justify-center rounded-md",
+                      isActive
+                        ? "opacity-100"
+                        : "opacity-40 grayscale",
+                    )}
+                  >
+                    <ProjectMark
+                      icon={project.icon}
+                      colorToken={colorToken}
+                      className="text-sm leading-none"
+                      dotClassName="h-2.5 w-2.5"
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-baseline gap-1.5">
+                      <span className="truncate text-sm">{project.name}</span>
+                      <span className="shrink-0 text-[11px]/4 text-(--sidebar-foreground-tertiary)">
+                        /{project.id}
+                      </span>
                     </span>
                   </span>
+                </button>
 
-                  {isActive && (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void handleSetProjectWorkspacePath(project);
-                      }}
-                      title={workspaceTitle}
-                      aria-label={workspaceTitle}
-                      className={cn(
-                        "mt-0.5 flex min-w-0 items-center gap-1 text-[11px]/4 rounded-md",
-                        "text-(--sidebar-foreground-secondary) hover:text-(--sidebar-foreground)",
-                      )}
-                    >
-                      <FolderOpen className="size-3 shrink-0" />
-                      <span className="truncate">{workspaceLabel}</span>
-                    </button>
-                  )}
-
-                </span>
-              </button>
+                {isActive && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleSetProjectWorkspacePath(project);
+                    }}
+                    title={workspaceTitle}
+                    aria-label={workspaceTitle}
+                    className={cn(
+                      "mt-0.5 ml-6 flex min-w-0 max-w-full items-center gap-1 rounded-md text-[11px]/4 outline-none focus-visible:ring-2 focus-visible:ring-(--sidebar-ring)/35",
+                      "text-(--sidebar-foreground-secondary) hover:text-(--sidebar-foreground)",
+                    )}
+                  >
+                    <FolderOpen className="size-3 shrink-0" />
+                    <span className="truncate">{workspaceLabel}</span>
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

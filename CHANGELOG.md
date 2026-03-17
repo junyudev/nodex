@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Fixed Card Stage code blocks in light mode after the Streamdown migration by restoring BlockNote's shared dual-theme Shiki parser instead of falling back to a dark-only parser.
 - Fixed the recurring NFM side-menu text-selection clipping regression by disabling hit-testing on BlockNote's floating side-menu overlay during mouse drag-selection instead of relying on brittle subtree-only CSS rules.
 - Fixed local dev browser-origin HTTP requests so trusted localhost origins now receive the expected CORS headers and untrusted origins are rejected consistently even on unknown API routes.
+- Fixed the Projects sidebar active-row workspace control so it no longer renders an invalid nested-button DOM tree that could trigger hydration failures.
 
 ## [0.1.5] - 2026-03-16
 
