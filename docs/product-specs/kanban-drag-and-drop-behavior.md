@@ -79,6 +79,7 @@ This post-removal contract must stay identical across:
 - Same-column manual re-ranking is disabled in that state.
 - The reason is semantic, not technical: the active sort owns the visible order, so a manual insertion line inside the same sorted column would be misleading.
 - Sorted drags use column-level target feedback instead of a same-column insert line.
+- Under non-default sort, column drop targets stay active while card drop targets are disabled. This split is required so cross-column drops still resolve even though same-column insert slots do not.
 
 ### Block import while derived views are active
 - Native block-drop import into Kanban is disabled while search, filter, or sort rules are active.
@@ -107,6 +108,7 @@ This post-removal contract must stay identical across:
 - Same-column board reorder uses an insertion line resolved against remaining cards.
 - The insertion line must never render above a dragged ghost when the actual persisted position is before the next remaining card.
 - Sorted same-column drags must not show a misleading insertion line.
+- Sorted cross-column drags should highlight the destination column on the actual column header/body surfaces, not only on the outer wrapper edges.
 - Editor-targeted card drags show an editor insertion line, not just board-column feedback.
 - Bare column hits still derive a real insertion slot from pointer position when manual ranking is active.
 

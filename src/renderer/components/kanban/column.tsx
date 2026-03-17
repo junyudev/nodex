@@ -54,7 +54,8 @@ interface ColumnProps {
   onNativeDragLeave?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
   onNativeDrop?: (columnId: CardType["status"], event: React.DragEvent<HTMLDivElement>) => void;
   dragDisabled?: boolean;
-  dropDisabled?: boolean;
+  cardDropDisabled?: boolean;
+  columnDropDisabled?: boolean;
   dropIndicatorIndex?: number;
   draggedCardIds?: ReadonlySet<string>;
   isDropTargetActive?: boolean;
@@ -84,7 +85,8 @@ export const Column = memo(function Column({
   onNativeDragLeave,
   onNativeDrop,
   dragDisabled = false,
-  dropDisabled = false,
+  cardDropDisabled = false,
+  columnDropDisabled = false,
   dropIndicatorIndex,
   draggedCardIds = new Set<string>(),
   isDropTargetActive = false,
@@ -100,7 +102,7 @@ export const Column = memo(function Column({
   const isCollapsed = isAutoCollapsed || isUserCollapsed;
 
   useEffect(() => {
-    if (dropDisabled || !dragInstanceId) {
+    if (columnDropDisabled || !dragInstanceId) {
       return;
     }
 
@@ -133,7 +135,7 @@ export const Column = memo(function Column({
         },
       }),
     );
-  }, [column.id, dropDisabled, dragInstanceId]);
+  }, [column.id, columnDropDisabled, dragInstanceId]);
 
   const styles = sharedColumnStyles[column.id] || {
     dotColor: "bg-[var(--foreground-tertiary)]",
@@ -165,6 +167,12 @@ export const Column = memo(function Column({
     draggedCardIds,
     dropIndicatorIndex,
   );
+  const surfaceToneClassName = isDropTargetActive ? styles.dropBg : styles.headerBg;
+  const activeDropSurfaceStyle = isDropTargetActive
+    ? {
+      boxShadow: "inset 0 0 0 1.5px color-mix(in srgb, var(--column-accent) 38%, transparent)",
+    } as React.CSSProperties
+    : undefined;
 
   return (
     <div
@@ -179,9 +187,6 @@ export const Column = memo(function Column({
         width: isCollapsed ? COLLAPSED_KANBAN_COLUMN_WIDTH : layout.width,
         transition: 'width 200ms cubic-bezier(0.32, 0.72, 0, 1)',
         '--column-accent': styles.accentColor,
-        boxShadow: isDropTargetActive
-          ? "0 0 0 1.5px color-mix(in srgb, var(--column-accent) 30%, transparent)"
-          : undefined,
       } as React.CSSProperties}
     >
       {isCollapsed ? (
@@ -198,8 +203,9 @@ export const Column = memo(function Column({
               <div
                 className={cn(
                   "flex flex-col items-center rounded-t-lg px-1 pt-3 pb-2",
-                  styles.headerBg,
+                  surfaceToneClassName,
                 )}
+                style={activeDropSurfaceStyle}
               >
                 <StatusIcon
                   statusId={column.id}
@@ -245,8 +251,9 @@ export const Column = memo(function Column({
             <div
               className={cn(
                 "flex-1 rounded-b-lg",
-                styles.headerBg,
+                surfaceToneClassName,
               )}
+              style={activeDropSurfaceStyle}
             />
           </div>
           <div className="h-4 shrink-0" />
@@ -258,8 +265,9 @@ export const Column = memo(function Column({
             <div
               className={cn(
                 "group flex h-10 shrink-0 items-center rounded-t-lg px-2",
-                styles.headerBg
+                surfaceToneClassName,
               )}
+              style={activeDropSurfaceStyle}
             >
               {/* Status badge pill */}
               <button
@@ -280,7 +288,12 @@ export const Column = memo(function Column({
               </span>
 
               {/* Hover actions (right side) */}
-              <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100">
+              <div
+                className={cn(
+                  "ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100",
+                  isDropTargetActive && "opacity-0",
+                )}
+              >
                 <ColumnActionPopover
                   columnName={column.name}
                   collapsed={layout.collapsed}
@@ -303,7 +316,10 @@ export const Column = memo(function Column({
           </div>
 
           {/* Cards area with bottom rounded corners */}
-          <div className={cn("flex flex-1 flex-col rounded-b-lg", styles.headerBg)}>
+          <div
+            className={cn("flex flex-1 flex-col rounded-b-lg", surfaceToneClassName)}
+            style={activeDropSurfaceStyle}
+          >
             <div
               ref={scrollContainerRef}
               className={cn(
@@ -335,7 +351,7 @@ export const Column = memo(function Column({
                       dragInstanceId={dragInstanceId}
                       buildDragData={buildDragData}
                       dragDisabled={dragDisabled}
-                      dropDisabled={dropDisabled}
+                      dropDisabled={cardDropDisabled}
                       isFocused={card.id === focusedCardId}
                       isSelected={selectedCardIds.has(card.id)}
                       onClick={(event) => onEditCard(column.id, card, event)}

@@ -78,6 +78,7 @@ import {
 } from "./pragmatic-drag-data";
 import { resolveKanbanDropLocation } from "./pragmatic-drop-location";
 import { resolveKanbanCardDropStrategy } from "./kanban-card-drop-strategy";
+import { resolveKanbanDropCapabilities } from "./kanban-drop-capabilities";
 
 function hasSameCardSelection(
   left: CardSelectionState,
@@ -194,6 +195,10 @@ export function KanbanBoard({
   const hasRuleFiltering = hasActiveDbViewFilters("kanban", viewPrefs.rules);
   const hasNonDefaultSort = hasActiveDbViewSorts("kanban", viewPrefs.rules);
   const externalBlockImportDisabled = hasSearchFilter || hasRuleFiltering || hasNonDefaultSort;
+  const dropCapabilities = useMemo(
+    () => resolveKanbanDropCapabilities({ hasNonDefaultSort }),
+    [hasNonDefaultSort],
+  );
 
   const filteredBoard = useMemo(() => {
     if (!board) return null;
@@ -879,7 +884,8 @@ export function KanbanBoard({
               onNativeDragOver={handleNativeDragOver}
               onNativeDragLeave={handleNativeDragLeave}
               onNativeDrop={handleNativeDrop}
-              dropDisabled={hasNonDefaultSort}
+              cardDropDisabled={!dropCapabilities.allowCardTargets}
+              columnDropDisabled={!dropCapabilities.allowColumnTargets}
               dropIndicatorIndex={
                 dropIndicator?.columnId === column.id
                   ? dropIndicator.index
