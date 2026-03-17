@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Matched NFM editor heading typography to the reference scale, including heading weights and drag-handle alignment for heading rows.
+- Clarified the desktop app system requirement as macOS 12 Monterey or later, and aligned the app bundle plus Homebrew metadata with that runtime floor instead of implying the macOS 26 release-runner requirement applies to users.
 
 ### Fixed
 - Fixed the NFM editor side menu so the add-block `+` now uses the same icon color as the drag handle.

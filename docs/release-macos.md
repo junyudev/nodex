@@ -10,6 +10,10 @@ Nodex ships notarized macOS builds for both Apple Silicon and Intel:
 - `Nodex-<version>-x64.dmg`
 - `Nodex-<version>-x64.zip`
 
+User runtime requirement: macOS 12 Monterey or later.
+
+Build requirement: release packaging runs on macOS 26 runners because `electron-builder`'s Icon Composer path requires `actool >= 26`. Do not present that build-runner constraint as a user-facing OS requirement.
+
 The release pipeline uses two GitHub Actions workflows:
 - `.github/workflows/prepare-release.yml`
 - `.github/workflows/release.yml`

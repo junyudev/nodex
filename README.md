@@ -2,6 +2,13 @@
 
 Block-based Agent Orchestrator.
 
+## System Requirements
+
+- Desktop app: macOS 12 Monterey or later
+- CPU: Apple silicon and Intel Macs are supported
+
+Release packaging currently runs on macOS 26 CI runners because the Icon Composer build path requires Xcode 26 `actool`, but that is a build-time requirement, not a user runtime requirement.
+
 ## Features
 
 [TODO]

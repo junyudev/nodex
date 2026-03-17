@@ -41,6 +41,7 @@ protocols:
 # --- macOS ---
 mac:
   icon: icon.icon
+  minimumSystemVersion: 12.0.0
   target:
   - dmg
   - zip

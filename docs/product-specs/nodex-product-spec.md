@@ -4,6 +4,8 @@
 
 Nodex is a local SQLite-based kanban board designed for managing coding agents (e.g., Claude Code). It runs as an Electron desktop app with a Notion-like UI, and also serves a web interface accessible from any browser. All data is stored in a SQLite database that agents can interact with via REST API. Supports multiple independent projects, each with its own kanban board, history, and undo/redo stacks.
 
+Desktop runtime requirement: macOS 12 Monterey or later. Nodex ships separate notarized Apple silicon (`arm64`) and Intel (`x64`) macOS builds.
+
 ## Problem Statement
 
 When working with coding agents like Claude Code, there's no streamlined way to:
