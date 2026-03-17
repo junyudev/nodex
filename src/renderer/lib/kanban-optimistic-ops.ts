@@ -130,6 +130,18 @@ function insertCardIntoColumn(
   return replaceColumnCards(board, columnIndex, nextCards);
 }
 
+function applyCardPatch(card: Card, updates: Partial<CardInput>): Card {
+  const patch = normalizePatch(updates);
+  if (Object.keys(patch).length === 0) {
+    return card;
+  }
+
+  return {
+    ...card,
+    ...patch,
+  };
+}
+
 export function buildPatchCardTransform(
   columnId: string | undefined,
   cardId: string,
@@ -233,6 +245,9 @@ export function buildMoveCardTransform(input: MoveCardInput): BoardTransform {
     if (!sourceColumn) return board;
     const movingCard = sourceColumn.cards[location.cardIndex];
     if (!movingCard) return board;
+    const patchedCard = input.fieldPatch
+      ? applyCardPatch(movingCard, input.fieldPatch)
+      : movingCard;
 
     const withoutSourceCards = [...sourceColumn.cards];
     withoutSourceCards.splice(location.cardIndex, 1);
@@ -245,7 +260,7 @@ export function buildMoveCardTransform(input: MoveCardInput): BoardTransform {
 
     const targetCards = [...targetColumn.cards];
     const insertIndex = clamp(input.newOrder ?? targetCards.length, 0, targetCards.length);
-    targetCards.splice(insertIndex, 0, movingCard);
+    targetCards.splice(insertIndex, 0, patchedCard);
     nextBoard = replaceColumnCards(nextBoard, targetColumnIndex, targetCards);
     return nextBoard;
   };
@@ -271,7 +286,7 @@ export function buildMoveCardsTransform(input: MoveCardsInput): BoardTransform {
           continue;
         }
         changed = true;
-        movingCards.push(card);
+        movingCards.push(input.fieldPatch ? applyCardPatch(card, input.fieldPatch) : card);
       }
 
       if (!changed) continue;
@@ -396,10 +411,14 @@ export function conflictKeysForDelete(cardId: string): string[] {
 }
 
 export function conflictKeysForMove(input: MoveCardInput): string[] {
+  const patchKeys = input.fieldPatch
+    ? conflictKeysForPatch(input.cardId, input.fieldPatch)
+    : [];
   return [
     conflictKeyForCardPosition(input.cardId),
     `column:${input.toStatus}:cards`,
     ...(input.fromStatus ? [`column:${input.fromStatus}:cards`] : []),
+    ...patchKeys,
   ];
 }
 
@@ -410,6 +429,9 @@ export function conflictKeysForMoveMany(input: MoveCardsInput): string[] {
   ];
   for (const cardId of input.cardIds) {
     keys.push(conflictKeyForCardPosition(cardId));
+    if (input.fieldPatch) {
+      keys.push(...conflictKeysForPatch(cardId, input.fieldPatch));
+    }
   }
   return keys;
 }

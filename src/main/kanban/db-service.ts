@@ -273,6 +273,17 @@ type CardHistoryValues = Omit<Partial<Card>, "priority"> & {
   priority?: Card["priority"] | null;
 };
 
+function assertValidMoveFieldPatch(fieldPatch: MoveCardInput["fieldPatch"] | MoveCardsInput["fieldPatch"]): void {
+  if (!fieldPatch) return;
+
+  const fieldNames = Object.keys(fieldPatch);
+  if (fieldNames.some((fieldName) => fieldName !== "priority" && fieldName !== "estimate")) {
+    throw new Error("Invalid move fieldPatch");
+  }
+
+  assertValidCardInput(fieldPatch, "update");
+}
+
 function buildCardUpdateMutation(
   existing: DbCard,
   updates: Partial<CardInput>,
@@ -404,6 +415,51 @@ function buildCardUpdateMutation(
   }
 
   return { fields, values, previousValues, newValues, descriptionChanged };
+}
+
+function applyMoveFieldPatch(args: {
+  database: Database.Database;
+  cardRow: DbCard;
+  projectId: string;
+  status: CardStatus;
+  fieldPatch?: MoveCardInput["fieldPatch"] | MoveCardsInput["fieldPatch"];
+  sessionId?: string;
+  groupId?: string;
+}): { cardRow: DbCard; didMutate: boolean } {
+  if (!args.fieldPatch) {
+    return { cardRow: args.cardRow, didMutate: false };
+  }
+
+  const mutation = buildCardUpdateMutation(args.cardRow, args.fieldPatch);
+  if (mutation.fields.length === 0) {
+    return { cardRow: args.cardRow, didMutate: false };
+  }
+
+  mutation.values.push(args.cardRow.id);
+  args.database.prepare(
+    `UPDATE cards SET ${mutation.fields.join(", ")}, revision = revision + 1 WHERE id = ?`
+  ).run(...mutation.values);
+
+  historyService.recordUpdate(
+    args.cardRow.id,
+    args.projectId,
+    args.status,
+    mutation.previousValues,
+    mutation.newValues,
+    null,
+    null,
+    args.sessionId,
+    args.groupId,
+  );
+
+  const updatedRow = args.database
+    .prepare("SELECT * FROM cards WHERE id = ?")
+    .get(args.cardRow.id) as DbCard;
+
+  return {
+    cardRow: updatedRow,
+    didMutate: true,
+  };
 }
 
 // === Project CRUD ===
@@ -891,6 +947,7 @@ function readCardRowsByIds(
 
 export async function moveCard(input: MoveCardInputWithSession): Promise<"moved" | "not_found" | "wrong_column"> {
   const database = getDb();
+  assertValidMoveFieldPatch(input.fieldPatch);
 
   const result = database.transaction(() => {
     // Resolve fromStatus — either explicitly provided (atomic claim) or auto-resolved
@@ -925,7 +982,19 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
       if (!card) return "not_found";
     }
 
-    const currentOrder = card.order;
+    const groupId = input.groupId ?? randomUUID();
+    historyService.clearRedoStack(input.projectId, input.sessionId);
+
+    const patchedCard = applyMoveFieldPatch({
+      database,
+      cardRow: card,
+      projectId: input.projectId,
+      status: fromStatus,
+      fieldPatch: input.fieldPatch,
+      sessionId: input.sessionId,
+      groupId,
+    });
+    const currentOrder = patchedCard.cardRow.order;
 
     // Resolve newOrder: undefined means append to end of target column
     const newOrder = input.newOrder ?? (() => {
@@ -937,6 +1006,15 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
       if (fromStatus === input.toStatus) return max;
       return max + 1;
     })();
+
+    const didMove = fromStatus !== input.toStatus || newOrder !== currentOrder;
+    if (!didMove) {
+      return {
+        movedFromColumnId: fromStatus,
+        didMove: false,
+        didPatch: patchedCard.didMutate,
+      };
+    }
 
     if (fromStatus === input.toStatus) {
       if (newOrder > currentOrder) {
@@ -977,7 +1055,6 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
         .run(input.toStatus, newOrder, input.cardId);
     }
 
-    historyService.clearRedoStack(input.projectId, input.sessionId);
     historyService.recordMove(
       input.cardId,
       input.projectId,
@@ -985,18 +1062,27 @@ export async function moveCard(input: MoveCardInputWithSession): Promise<"moved"
       input.toStatus,
       currentOrder,
       newOrder,
-      input.sessionId
+      input.sessionId,
+      groupId,
     );
 
-    return { movedFromColumnId: fromStatus };
+    return {
+      movedFromColumnId: fromStatus,
+      didMove: true,
+      didPatch: patchedCard.didMutate,
+    };
   })();
 
   // Error results are strings
   if (typeof result === "string") return result;
 
-  dbNotifier.notifyChange(input.projectId, "move", input.toStatus, input.cardId);
-  if (result.movedFromColumnId !== input.toStatus) {
-    dbNotifier.notifyChange(input.projectId, "move", result.movedFromColumnId, input.cardId);
+  if (result.didMove) {
+    dbNotifier.notifyChange(input.projectId, "move", input.toStatus, input.cardId);
+    if (result.movedFromColumnId !== input.toStatus) {
+      dbNotifier.notifyChange(input.projectId, "move", result.movedFromColumnId, input.cardId);
+    }
+  } else if (result.didPatch) {
+    dbNotifier.notifyChange(input.projectId, "update", result.movedFromColumnId, input.cardId);
   }
 
   return "moved";
@@ -1015,6 +1101,7 @@ export async function moveCards(
   }
 
   const database = getDb();
+  assertValidMoveFieldPatch(input.fieldPatch);
 
   const result = database.transaction(() => {
     let selectedCards: DbCard[];
@@ -1063,62 +1150,94 @@ export async function moveCards(
     );
 
     const groupId = input.groupId ?? randomUUID();
+    historyService.clearRedoStack(input.projectId, input.sessionId);
+
+    const patchedSelectedCards = selectedCards.map((card) =>
+      applyMoveFieldPatch({
+        database,
+        cardRow: card,
+        projectId: input.projectId,
+        status: card.status,
+        fieldPatch: input.fieldPatch,
+        sessionId: input.sessionId,
+        groupId,
+      }),
+    );
+    const nextSelectedCards = patchedSelectedCards.map((entry) => entry.cardRow);
+    const patchedCardIds = patchedSelectedCards
+      .filter((entry) => entry.didMutate)
+      .map((entry) => entry.cardRow.id);
 
     const reorderedTargetCards = [...remainingTargetCards];
-    reorderedTargetCards.splice(insertIndex, 0, ...selectedCards);
-    const movedCards = selectedCards.map((card) => ({
+    reorderedTargetCards.splice(insertIndex, 0, ...nextSelectedCards);
+    const movedCards = nextSelectedCards.map((card) => ({
       id: card.id,
       fromStatus: card.status,
       fromOrder: card.order,
       toOrder: reorderedTargetCards.findIndex((candidate) => candidate.id === card.id),
     }));
-    const hasAnyChange = movedCards.some((card) =>
+    const didMove = movedCards.some((card) =>
       card.fromStatus !== input.toStatus || card.fromOrder !== card.toOrder
     );
 
-    if (!hasAnyChange) {
+    if (!didMove && patchedCardIds.length === 0) {
       return {
         movedCards: [] as typeof movedCards,
+        patchedCardIds: [] as string[],
       };
     }
 
-    for (const [columnId, columnCards] of cardsByColumn) {
-      if (columnId === input.toStatus) continue;
-      rewriteColumnOrdering(
-        database,
-        columnCards.filter((card) => !selectedCardIdSet.has(card.id)),
-        columnId,
-      );
+    if (didMove) {
+      for (const [columnId, columnCards] of cardsByColumn) {
+        if (columnId === input.toStatus) continue;
+        rewriteColumnOrdering(
+          database,
+          columnCards.filter((card) => !selectedCardIdSet.has(card.id)),
+          columnId,
+        );
+      }
+      rewriteColumnOrdering(database, reorderedTargetCards, input.toStatus);
     }
-    rewriteColumnOrdering(database, reorderedTargetCards, input.toStatus);
 
-    historyService.clearRedoStack(input.projectId, input.sessionId);
-    [...movedCards].reverse().forEach((card) => {
-      historyService.recordMove(
-        card.id,
-        input.projectId,
-        card.fromStatus,
-        input.toStatus,
-        card.fromOrder,
-        card.toOrder,
-        input.sessionId,
-        groupId,
-      );
-    });
+    if (didMove) {
+      [...movedCards].reverse().forEach((card) => {
+        historyService.recordMove(
+          card.id,
+          input.projectId,
+          card.fromStatus,
+          input.toStatus,
+          card.fromOrder,
+          card.toOrder,
+          input.sessionId,
+          groupId,
+        );
+      });
+    }
 
     return {
       movedCards,
+      patchedCardIds,
     };
   })();
 
   if (typeof result === "string") return result;
 
-  result.movedCards.forEach((card) => {
-    dbNotifier.notifyChange(input.projectId, "move", input.toStatus, card.id);
-    if (card.fromStatus !== input.toStatus) {
-      dbNotifier.notifyChange(input.projectId, "move", card.fromStatus, card.id);
-    }
-  });
+  if (result.movedCards.length > 0) {
+    result.movedCards.forEach((card) => {
+      dbNotifier.notifyChange(input.projectId, "move", input.toStatus, card.id);
+      if (card.fromStatus !== input.toStatus) {
+        dbNotifier.notifyChange(input.projectId, "move", card.fromStatus, card.id);
+      }
+    });
+  } else {
+    result.patchedCardIds.forEach((cardId) => {
+      const card = database
+        .prepare("SELECT status FROM cards WHERE id = ? AND project_id = ?")
+        .get(cardId, input.projectId) as { status: CardStatus } | undefined;
+      if (!card) return;
+      dbNotifier.notifyChange(input.projectId, "update", card.status, cardId);
+    });
+  }
 
   return "moved";
 }

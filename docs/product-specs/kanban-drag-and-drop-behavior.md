@@ -74,12 +74,29 @@ This post-removal contract must stay identical across:
 - Hidden non-matching cards keep their relative order.
 - If no visible anchor cards remain in a target column, the fallback behavior must be stable and deterministic.
 
-### Non-default sort
-- When a non-default sort is active, cards remain draggable across columns and into editors.
-- Same-column manual re-ranking is disabled in that state.
-- The reason is semantic, not technical: the active sort owns the visible order, so a manual insertion line inside the same sorted column would be misleading.
-- Sorted drags use column-level target feedback instead of a same-column insert line.
-- Under non-default sort, column drop targets stay active while card drop targets are disabled. This split is required so cross-column drops still resolve even though same-column insert slots do not.
+### Sort-driven drag modes
+- Kanban drag mode is decided by the primary sort key, not by a binary "sorted vs unsorted" check.
+- `board-order` primary sort uses `manual-rank` mode.
+- `priority` and `estimate` primary sorts use `property-sorted` mode.
+- `created` and `title` primary sorts use `derived-move-only` mode.
+
+### `manual-rank` mode
+- When `board-order` is the primary sort key, same-column and cross-column drag both remain enabled.
+- Secondary sort keys do not disable manual ranking.
+- The visible slot still maps back to persisted post-removal `newOrder`.
+
+### `property-sorted` mode
+- When `priority` or `estimate` is the primary sort key, same-column drag stays enabled.
+- The drop resolves to an inferred target bucket from the visible neighbor cards.
+- If the dragged cards already belong to that bucket, the drop is a pure reorder inside the bucket.
+- If the drop crosses buckets, the dragged cards receive one inferred property patch (`priority` or `estimate`) and then reorder using `board-order` as the intra-bucket tiebreaker.
+- Grouped multi-card drags preserve relative order while sharing the same inferred property patch.
+
+### `derived-move-only` mode
+- When `created` or `title` is the primary sort key, same-column manual ranking is blocked.
+- Cross-column status changes remain enabled.
+- The board must explain the block with explicit feedback instead of silently no-oping the drop.
+- In this mode, column drop targets stay active while card drop targets stay disabled.
 
 ### Block import while derived views are active
 - Native block-drop import into Kanban stays blocked while free-text search is active.
@@ -112,7 +129,9 @@ This post-removal contract must stay identical across:
 ## Visual Feedback Rules
 - Same-column board reorder uses an insertion line resolved against remaining cards.
 - The insertion line must never render above a dragged ghost when the actual persisted position is before the next remaining card.
-- Sorted same-column drags must not show a misleading insertion line.
+- `property-sorted` drags render the same insertion line plus a property-preview label that states the inferred target bucket.
+- `derived-move-only` same-column drags must not show a misleading insertion line.
+- `derived-move-only` same-column drags must show an explicit blocked-sort message on the destination column.
 - Sorted cross-column drags should highlight the destination column on the actual column header/body surfaces, not only on the outer wrapper edges.
 - Editor-targeted card drags show an editor insertion line, not just board-column feedback.
 - Bare column hits still derive a real insertion slot from pointer position when manual ranking is active.
@@ -121,10 +140,10 @@ This post-removal contract must stay identical across:
 - `newOrder` is a post-removal insertion index.
 - `moveCard` and `moveCards` must interpret `newOrder` the same way.
 - Renderer optimistic transforms and backend persistence must produce the same column order for identical inputs.
+- Drop-derived property patches must be applied atomically with the move, not through a follow-up card update.
 - Grouped drags must record one grouped undo/redo action.
 - Move semantics must stay atomic when a drag updates one surface and deletes from another.
 
 ## Non-Goals
 - Copy-style board drag that leaves the source card in place
-- Same-column manual ranking while a non-default Kanban sort is active
 - Allowing derived-view block import when insert semantics are ambiguous

@@ -180,4 +180,73 @@ describe("moveCards", () => {
 
     if (!ran) expect(true).toBeTrue();
   });
+
+  test("applies a grouped priority patch and restores it on undo", async () => {
+    const ran = await withTempDatabase(async () => {
+      const first = await createCard("default", "in_progress", {
+        title: "First",
+        priority: "p2-medium",
+      });
+      await createCard("default", "in_progress", {
+        title: "Second",
+        priority: "p1-high",
+      });
+
+      const result = await moveCards({
+        projectId: "default",
+        cardIds: [first.id],
+        fromStatus: "in_progress",
+        toStatus: "in_progress",
+        newOrder: 1,
+        fieldPatch: { priority: "p1-high" },
+        sessionId: "session-move-many-with-patch",
+      });
+
+      expect(result).toBe("moved");
+
+      let board = await getBoard("default");
+      let column = board.columns.find((entry) => entry.id === "in_progress");
+      expect(column?.cards.map((card) => `${card.title}:${card.priority ?? "none"}`).join(",")).toBe(
+        "Second:p1-high,First:p1-high",
+      );
+
+      const undoResult = undoLatest("default", "session-move-many-with-patch");
+      expect(undoResult.success).toBeTrue();
+
+      board = await getBoard("default");
+      column = board.columns.find((entry) => entry.id === "in_progress");
+      expect(column?.cards.map((card) => `${card.title}:${card.priority ?? "none"}`).join(",")).toBe(
+        "First:p2-medium,Second:p1-high",
+      );
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
+
+  test("skips history writes for a no-op drag with an unchanged patch", async () => {
+    const ran = await withTempDatabase(async () => {
+      const only = await createCard("default", "in_progress", {
+        title: "Only",
+        priority: "p2-medium",
+      });
+
+      const result = await moveCards({
+        projectId: "default",
+        cardIds: [only.id],
+        fromStatus: "in_progress",
+        toStatus: "in_progress",
+        newOrder: 0,
+        fieldPatch: { priority: "p2-medium" },
+        sessionId: "session-move-many-no-op-patch",
+      });
+
+      expect(result).toBe("moved");
+
+      const history = getRecentHistory("default", 10, 0);
+      const matchingEntries = history.filter((entry) => entry.sessionId === "session-move-many-no-op-patch");
+      expect(matchingEntries.length).toBe(0);
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
 });

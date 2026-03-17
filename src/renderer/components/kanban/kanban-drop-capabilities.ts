@@ -1,12 +1,14 @@
+import type { KanbanCardDragMode } from "./kanban-card-drop-strategy";
+
 export interface KanbanDropCapabilities {
   allowCardTargets: boolean;
   allowColumnTargets: boolean;
 }
 
 export function resolveKanbanDropCapabilities(args: {
-  hasNonDefaultSort: boolean;
+  dragMode: KanbanCardDragMode;
 }): KanbanDropCapabilities {
-  if (args.hasNonDefaultSort) {
+  if (args.dragMode.kind === "derived-move-only") {
     return {
       allowCardTargets: false,
       allowColumnTargets: true,

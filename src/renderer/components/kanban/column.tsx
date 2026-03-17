@@ -52,8 +52,10 @@ interface ColumnProps {
   cardDropDisabled?: boolean;
   columnDropDisabled?: boolean;
   dropIndicatorIndex?: number;
+  dropIndicatorLabel?: string;
   draggedCardIds?: ReadonlySet<string>;
   isDropTargetActive?: boolean;
+  dropBlockedMessage?: string;
   focusedCardId?: string;
   selectedCardIds?: ReadonlySet<string>;
   contextMenuProjects?: CardContextMenuProjectSummary[];
@@ -83,8 +85,10 @@ export const Column = memo(function Column({
   cardDropDisabled = false,
   columnDropDisabled = false,
   dropIndicatorIndex,
+  dropIndicatorLabel,
   draggedCardIds = new Set<string>(),
   isDropTargetActive = false,
+  dropBlockedMessage,
   focusedCardId,
   selectedCardIds = new Set<string>(),
   contextMenuProjects = [],
@@ -255,6 +259,11 @@ export const Column = memo(function Column({
               >
                 {column.cards.length}
               </span>
+              {dropBlockedMessage ? (
+                <span className="ml-2 rounded-sm bg-(--background) px-1.5 py-0.5 text-[10px]/none font-medium text-(--foreground-secondary)">
+                  {dropBlockedMessage}
+                </span>
+              ) : null}
 
               {/* Hover actions (right side) */}
               <div
@@ -310,7 +319,10 @@ export const Column = memo(function Column({
                     className="relative"
                   >
                     {dropIndicatorPlacement.beforeCardId === card.id ? (
-                          <DropIndicator className="absolute inset-x-0 top-0 -translate-y-1/2" />
+                          <DropIndicator
+                            className="absolute inset-x-0 top-0 -translate-y-1/2"
+                            label={dropIndicatorLabel}
+                          />
                     ) : null}
                     <Card
                       projectId={projectId}
@@ -350,7 +362,10 @@ export const Column = memo(function Column({
                 ))}
                 {dropIndicatorPlacement.atEnd ? (
                   <div className="-mt-2 relative h-0">
-                    <DropIndicator className="absolute inset-x-0 top-0" />
+                    <DropIndicator
+                      className="absolute inset-x-0 top-0"
+                      label={dropIndicatorLabel}
+                    />
                   </div>
                 ) : null}
               </div>

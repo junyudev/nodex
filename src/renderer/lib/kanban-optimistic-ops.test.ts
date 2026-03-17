@@ -82,4 +82,33 @@ describe("kanban optimistic ops", () => {
 
     expect(nextBoard.columns[2]?.cards.map((card) => card.id).join(",")).toBe("b,a,c,d");
   });
+
+  test("move-card applies the drag field patch before reinserting", () => {
+    const board = createBoard();
+
+    const nextBoard = buildMoveCardTransform({
+      cardId: "a",
+      fromStatus: "in_progress",
+      toStatus: "in_progress",
+      newOrder: 1,
+      fieldPatch: { priority: "p1-high" },
+    })(board);
+
+    expect(nextBoard.columns[2]?.cards[1]?.priority).toBe("p1-high");
+  });
+
+  test("move-many applies the drag field patch to every dragged card", () => {
+    const board = createBoard();
+
+    const nextBoard = buildMoveCardsTransform({
+      cardIds: ["a", "c"],
+      fromStatus: "in_progress",
+      toStatus: "in_progress",
+      newOrder: 1,
+      fieldPatch: { estimate: "m" },
+    })(board);
+
+    expect(nextBoard.columns[2]?.cards[1]?.estimate).toBe("m");
+    expect(nextBoard.columns[2]?.cards[2]?.estimate).toBe("m");
+  });
 });

@@ -51,7 +51,6 @@ import { writeTextToClipboard } from "@/lib/clipboard";
 import {
   filterDbViewCards,
   getDefaultDbViewPrefs,
-  hasActiveDbViewSorts,
   sortDbViewCards,
   type DbViewCardRecord,
   type DbViewPrefs,
@@ -69,14 +68,16 @@ import {
   buildExternalCardDropMoveRequest,
   resolveExternalCardDropTarget,
 } from "./board-drop-routing";
-import { resolveFilteredDropOrder } from "./filtered-drag-order";
 import {
   buildKanbanCardDragData,
   isKanbanCardDragData,
   type KanbanCardDragData,
 } from "./pragmatic-drag-data";
 import { resolveKanbanDropLocation } from "./pragmatic-drop-location";
-import { resolveKanbanCardDropStrategy } from "./kanban-card-drop-strategy";
+import {
+  resolveKanbanCardDragMode,
+  resolveKanbanCardDropIntent,
+} from "./kanban-card-drop-strategy";
 import { resolveKanbanDropCapabilities } from "./kanban-drop-capabilities";
 import { resolveKanbanImportInference } from "./kanban-import-inference";
 
@@ -176,8 +177,13 @@ export function KanbanBoard({
   const [dropIndicator, setDropIndicator] = useState<{
     columnId: string;
     index: number;
+    label?: string;
   } | null>(null);
   const [activeDropColumnId, setActiveDropColumnId] = useState<string | null>(null);
+  const [blockedDropMessage, setBlockedDropMessage] = useState<{
+    columnId: string;
+    message: string;
+  } | null>(null);
   const [activeDraggedCardIds, setActiveDraggedCardIds] = useState<ReadonlySet<string>>(() => new Set());
   const isKanbanCardDragActive = activeDraggedCardIds.size > 0;
 
@@ -192,10 +198,13 @@ export function KanbanBoard({
   );
   const viewPrefs = dbViewPrefs ?? getDefaultDbViewPrefs("kanban");
   const hasSearchFilter = searchTokens.length > 0;
-  const hasNonDefaultSort = hasActiveDbViewSorts("kanban", viewPrefs.rules);
+  const dragMode = useMemo(
+    () => resolveKanbanCardDragMode({ rules: viewPrefs.rules }),
+    [viewPrefs.rules],
+  );
   const dropCapabilities = useMemo(
-    () => resolveKanbanDropCapabilities({ hasNonDefaultSort }),
-    [hasNonDefaultSort],
+    () => resolveKanbanDropCapabilities({ dragMode }),
+    [dragMode],
   );
 
   const filteredBoard = useMemo(() => {
@@ -280,6 +289,7 @@ export function KanbanBoard({
   const clearBoardCardDragState = useCallback(() => {
     setDropIndicator(null);
     setActiveDropColumnId(null);
+    setBlockedDropMessage(null);
     setActiveDraggedCardIds(new Set());
     clearCardDropTargetHover();
     endExternalCardDragSession(externalCardDragSessionIdRef.current);
@@ -379,12 +389,15 @@ export function KanbanBoard({
       return;
     }
 
-    const dropStrategy = resolveKanbanCardDropStrategy({
-      hasNonDefaultSort,
+    const dropIntent = resolveKanbanCardDropIntent({
+      board,
+      visibleBoard: filteredBoard,
+      rules: viewPrefs.rules,
       destinationColumnId: destination.columnId,
+      destinationIndex: destination.index,
       dragItems: dragData.dragItems,
     });
-    if (dropStrategy === "none") {
+    if (dropIntent.kind === "blocked") {
       return;
     }
 
@@ -393,14 +406,11 @@ export function KanbanBoard({
     )
       ? (dragData.dragItems[0]?.columnId as CardStatus | undefined)
       : undefined;
-    const newOrder = dropStrategy === "reorder"
-      ? resolveFilteredDropOrder({
-        board,
-        visibleBoard: filteredBoard,
-        draggedCardIds: dragCardIds,
-        targetColumnId: destination.columnId,
-        targetVisibleIndex: destination.index,
-      })
+    const newOrder = dropIntent.kind === "reorder" || dropIntent.kind === "reorder-with-patch"
+      ? dropIntent.newOrder
+      : undefined;
+    const fieldPatch = dropIntent.kind === "reorder-with-patch"
+      ? dropIntent.fieldPatch
       : undefined;
 
     if (dragCardIds.length > 1) {
@@ -409,6 +419,7 @@ export function KanbanBoard({
         ...(sharedSourceColumnId ? { fromStatus: sharedSourceColumnId } : {}),
         toStatus: destination.columnId,
         ...(typeof newOrder === "number" ? { newOrder } : {}),
+        ...(fieldPatch ? { fieldPatch } : {}),
       });
       if (!moved) return;
 
@@ -423,6 +434,7 @@ export function KanbanBoard({
       fromStatus: dragData.sourceColumnId,
       toStatus: destination.columnId,
       ...(typeof newOrder === "number" ? { newOrder } : {}),
+      ...(fieldPatch ? { fieldPatch } : {}),
     });
     if (!moved) return;
 
@@ -431,10 +443,10 @@ export function KanbanBoard({
     board,
     commitExternalCardDropMove,
     filteredBoard,
-    hasNonDefaultSort,
     moveCard,
     moveCards,
     resolveColumnSurface,
+    viewPrefs.rules,
   ]);
 
   useEffect(() => {
@@ -466,6 +478,7 @@ export function KanbanBoard({
         });
         setActiveDraggedCardIds(new Set(source.data.dragItems.map((entry) => entry.card.id)));
         setActiveDropColumnId(null);
+        setBlockedDropMessage(null);
         clearCardDropTargetHover();
         setDropIndicator(null);
         if (!selectedCardIds.has(source.data.sourceCardId)) {
@@ -495,20 +508,36 @@ export function KanbanBoard({
           pointerY: pointer.y,
           resolveColumnSurface,
         });
-        const nextDropStrategy = nextIndicator
-          ? resolveKanbanCardDropStrategy({
-            hasNonDefaultSort,
+        const nextDropIntent = nextIndicator
+          ? resolveKanbanCardDropIntent({
+            board,
+            visibleBoard: filteredBoard,
+            rules: viewPrefs.rules,
             destinationColumnId: nextIndicator.columnId,
+            destinationIndex: nextIndicator.index,
             dragItems: source.data.dragItems,
           })
-          : "none";
+          : null;
         setActiveDropColumnId((current) => {
-          const nextColumnId = nextDropStrategy === "move-only"
+          const nextColumnId = nextDropIntent?.kind === "move-only"
+            || nextDropIntent?.kind === "blocked"
             ? nextIndicator?.columnId ?? null
             : null;
           return current === nextColumnId ? current : nextColumnId;
         });
-        if (nextDropStrategy !== "reorder") {
+        setBlockedDropMessage((current) => {
+          if (nextDropIntent?.kind !== "blocked") {
+            return current ? null : current;
+          }
+          if (current?.columnId === nextDropIntent.columnId && current.message === nextDropIntent.message) {
+            return current;
+          }
+          return {
+            columnId: nextDropIntent.columnId,
+            message: nextDropIntent.message,
+          };
+        });
+        if (nextDropIntent?.kind !== "reorder" && nextDropIntent?.kind !== "reorder-with-patch") {
           setDropIndicator((current) => current ? null : current);
           return;
         }
@@ -517,10 +546,20 @@ export function KanbanBoard({
           if (!nextIndicator) {
             return current ? null : current;
           }
-          if (current?.columnId === nextIndicator.columnId && current.index === nextIndicator.index) {
+          const nextLabel = nextDropIntent.kind === "reorder-with-patch"
+            ? nextDropIntent.previewLabel
+            : undefined;
+          if (
+            current?.columnId === nextIndicator.columnId
+            && current.index === nextIndicator.index
+            && current.label === nextLabel
+          ) {
             return current;
           }
-          return nextIndicator;
+          return {
+            ...nextIndicator,
+            ...(nextLabel ? { label: nextLabel } : {}),
+          };
         });
       },
       onDrop: async ({ source, location }) => {
@@ -552,10 +591,11 @@ export function KanbanBoard({
     clearBoardCardDragState,
     dragInstanceId,
     filteredBoard,
-    hasNonDefaultSort,
     performCardDrop,
     resolveColumnSurface,
     selectedCardIds,
+    board,
+    viewPrefs.rules,
   ]);
 
   const handleAddCard = useCallback(async (
@@ -922,8 +962,18 @@ export function KanbanBoard({
                   ? dropIndicator.index
                   : undefined
               }
+              dropIndicatorLabel={
+                dropIndicator?.columnId === column.id
+                  ? dropIndicator.label
+                  : undefined
+              }
               draggedCardIds={activeDraggedCardIds}
               isDropTargetActive={activeDropColumnId === column.id}
+              dropBlockedMessage={
+                blockedDropMessage?.columnId === column.id
+                  ? blockedDropMessage.message
+                  : undefined
+              }
               focusedCardId={cardStageCardId}
               selectedCardIds={selectedCardIds}
               contextMenuProjects={contextMenuProjects}

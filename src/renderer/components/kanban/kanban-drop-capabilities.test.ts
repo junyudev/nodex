@@ -4,16 +4,25 @@ import { resolveKanbanDropCapabilities } from "./kanban-drop-capabilities";
 describe("resolveKanbanDropCapabilities", () => {
   test("keeps both card and column targets active under the default board sort", () => {
     const capabilities = resolveKanbanDropCapabilities({
-      hasNonDefaultSort: false,
+      dragMode: { kind: "manual-rank" },
     });
 
     expect(capabilities.allowCardTargets).toBeTrue();
     expect(capabilities.allowColumnTargets).toBeTrue();
   });
 
-  test("disables only card targets under non-default sort so cross-column drops still resolve", () => {
+  test("keeps card targets active for inferable property-sorted drags", () => {
     const capabilities = resolveKanbanDropCapabilities({
-      hasNonDefaultSort: true,
+      dragMode: { kind: "property-sorted", field: "priority" },
+    });
+
+    expect(capabilities.allowCardTargets).toBeTrue();
+    expect(capabilities.allowColumnTargets).toBeTrue();
+  });
+
+  test("disables only card targets under move-only derived sorts so cross-column drops still resolve", () => {
+    const capabilities = resolveKanbanDropCapabilities({
+      dragMode: { kind: "derived-move-only", field: "title" },
     });
 
     expect(capabilities.allowCardTargets).toBeFalse();

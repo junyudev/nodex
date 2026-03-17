@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Added derived-view Kanban block-drop import support for structured filter/sort views, including exact-slot placement when the board can infer safe workflow properties and column-level fallback when the active sort owns visible order.
+- Added richer sorted Kanban drag modes: `board-order` now keeps same-column ranking even with secondary sorts, `priority` / `estimate` sorts can infer bucket-changing drops, and `title` / `created` sorts now explain blocked same-column ranking while still allowing cross-column moves.
 
 ### Changed
 - Matched NFM editor heading typography to the reference scale, including heading weights and drag-handle alignment for heading rows.

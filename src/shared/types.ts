@@ -158,6 +158,7 @@ export interface MoveCardInput {
   toStatus: CardStatus;
   // Insertion index after removing the dragged card from the target column.
   newOrder?: number;
+  fieldPatch?: Pick<Partial<CardInput>, "priority" | "estimate">;
   groupId?: string;
 }
 
@@ -167,6 +168,7 @@ export interface MoveCardsInput {
   toStatus: CardStatus;
   // Insertion index after removing the dragged cards from the target column.
   newOrder?: number;
+  fieldPatch?: Pick<Partial<CardInput>, "priority" | "estimate">;
   groupId?: string;
 }
 
