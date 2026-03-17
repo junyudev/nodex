@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.8.0",
     "hono": "^4.12.5",
     "node-pty": "^1.1.0",
     "smol-toml": "^1.4.2"
