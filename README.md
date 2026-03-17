@@ -17,6 +17,20 @@ Release packaging currently runs on macOS 26 CI runners because the Icon Compose
 
 [TODO]
 
+## Landing Site
+
+The public landing site lives in [`packages/landing`](packages/landing/) and is intended to publish to [nodexapp.github.io](https://nodexapp.github.io).
+
+Local commands:
+
+```bash
+bun run dev:landing
+bun run build:landing
+bun run preview:landing
+```
+
+Operational details for GitHub Pages publishing live in [`docs/landing-site.md`](docs/landing-site.md).
+
 ## Local GitHub Actions Debugging
 
 To reproduce the Ubuntu `prepare` job from `Prepare Release` locally with [`act`](https://github.com/nektos/act):

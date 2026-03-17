@@ -17,7 +17,8 @@
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
     "scripts/**/*.ts",
-    "electron.vite.config.ts"
+    "electron.vite.config.ts",
+    "packages/landing/**/*.ts"
   ],
   "exclude": [
     "scripts/**/*.test.ts"

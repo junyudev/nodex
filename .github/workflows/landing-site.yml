@@ -1,0 +1,32 @@
+name: Landing Site
+
+on:
+  pull_request:
+    paths:
+      - "packages/landing/**"
+      - ".github/workflows/landing-site.yml"
+      - "package.json"
+      - "bun.lock"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/landing/**"
+      - ".github/workflows/landing-site.yml"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build landing site
+        run: bun run build:landing

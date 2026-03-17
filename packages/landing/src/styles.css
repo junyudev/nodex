@@ -1,0 +1,308 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist-sans.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/geist-mono.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme static {
+  --color-night-950: #090b10;
+  --color-night-900: #0d1017;
+  --color-night-850: #10131b;
+  --color-night-800: #151924;
+  --color-night-700: #212735;
+  --color-night-600: #3a4356;
+  --color-night-500: #657089;
+  --color-mist-100: #eef2ff;
+  --color-mist-200: #d6deff;
+  --color-mist-300: #a7b6ec;
+  --color-line-100: rgba(255, 255, 255, 0.08);
+  --color-line-200: rgba(255, 255, 255, 0.12);
+  --color-brand-400: #55a2ff;
+  --color-brand-500: #2288ff;
+  --color-brand-600: #0d6fe6;
+  --font-sans: "Geist", "Helvetica Neue", "Segoe UI", sans-serif;
+  --font-display: "Geist", "Helvetica Neue", "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", "JetBrains Mono", monospace;
+  --shadow-hero: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-height: 100%;
+    background-color: #1c1c1e;
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    font-family: var(--font-sans);
+    background: transparent;
+    color: #eef2ff;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  img {
+    display: block;
+    max-width: 100%;
+  }
+
+  code,
+  kbd {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer components {
+  .landing-page {
+    @apply relative flex min-h-screen flex-col overflow-hidden;
+  }
+
+  .landing-shell {
+    @apply relative mx-auto flex w-full max-w-[860px] flex-1 flex-col px-6 sm:px-10;
+  }
+
+  .landing-nav {
+    @apply fixed inset-x-0 top-0 z-20 bg-[rgba(28,28,30,0.85)] px-6 backdrop-blur-[20px] sm:px-10;
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+
+  .landing-nav-inner {
+    @apply mx-auto flex h-14 max-w-[860px] items-center justify-between gap-4 border-b border-white/6;
+  }
+
+  .landing-nav-icon {
+    @apply size-[30px] object-contain opacity-50 transition-opacity duration-150;
+    position: relative;
+    top: 0.5px;
+  }
+
+  .landing-wordmark {
+    @apply text-[19px] font-bold tracking-[-0.02em] text-[#86868b] transition-colors duration-150;
+  }
+
+  .landing-nav-link {
+    @apply text-[15px] font-semibold text-[#86868b] transition-colors duration-150 hover:text-[#f5f5f7] focus-visible:text-[#f5f5f7] focus-visible:outline-hidden;
+  }
+
+  .landing-nav a:hover .landing-wordmark {
+    color: #f5f5f7;
+  }
+
+  .landing-nav a:hover .landing-nav-icon {
+    opacity: 1;
+  }
+
+  .landing-main {
+    @apply flex flex-1 items-center justify-center px-0 pt-14;
+  }
+
+  .landing-hero {
+    @apply relative z-10 flex w-full max-w-[640px] flex-1 flex-col items-center justify-center px-0 text-center;
+  }
+
+  .landing-icon-wrap {
+    display: block;
+    animation: landing-icon-in 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+
+  .landing-title {
+    @apply mt-7 font-(family-name:--font-display) text-[56px] font-bold leading-none tracking-[-0.035em] text-[#f5f5f7];
+  }
+
+  .landing-copy {
+    @apply mt-6 max-w-[640px] text-balance text-[21px] leading-[1.6] font-normal text-[#86868b];
+  }
+
+  .landing-actions {
+    @apply mt-9 flex flex-col items-center gap-3;
+  }
+
+  .landing-primary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-[14px] bg-[#0a84ff] px-7 py-3.5 text-base font-semibold text-white transition-colors duration-150 hover:bg-[#0070e0] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#55a2ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#1c1c1e];
+  }
+
+  .landing-apple-glyph {
+    font-family:
+      "SF Pro Display",
+      "SF Pro Text",
+      -apple-system,
+      BlinkMacSystemFont,
+      "Helvetica Neue",
+      sans-serif;
+    font-size: 1.05em;
+    line-height: 1;
+    position: relative;
+    top: -0.02em;
+  }
+
+  .landing-release-note {
+    @apply mt-2 inline-flex items-center justify-center gap-2 text-[13px] text-[#636366];
+  }
+
+  .landing-release-copy {
+    @apply text-[#636366];
+  }
+
+  .landing-meta-pill {
+    @apply inline-block rounded-full bg-white/[0.06] px-[7px] py-[2px] text-[9px] font-medium tracking-[0.06em] text-[#8e8e93] uppercase align-middle;
+  }
+
+  .landing-footer {
+    @apply relative z-10 flex w-full flex-wrap items-center justify-between gap-3 px-0 pb-8 pt-6 text-[13px] text-[#48484a];
+    animation-delay: 0.8s;
+  }
+
+  .landing-footer-links {
+    @apply flex items-center gap-5;
+  }
+
+  .landing-footer a {
+    @apply text-[#48484a] transition-colors duration-150 hover:text-[#86868b];
+  }
+
+  .landing-app-icon {
+    width: 196px;
+    height: 196px;
+    object-fit: contain;
+    filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.26));
+  }
+
+  .landing-fade-up {
+    animation: landing-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .landing-title.landing-fade-up {
+    animation-delay: 0.2s;
+  }
+
+  .landing-copy.landing-fade-up {
+    animation-delay: 0.35s;
+  }
+
+  .landing-actions.landing-fade-up {
+    animation-delay: 0.5s;
+  }
+
+  .landing-release-note.landing-fade-up {
+    animation-delay: 0.6s;
+  }
+
+  .legal-shell {
+    @apply relative mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 py-12 sm:px-10;
+  }
+
+  .legal-back-link {
+    @apply mb-10 inline-flex items-center gap-2 text-sm text-white/54 transition-none hover:text-white/84 focus-visible:text-white focus-visible:outline-hidden;
+  }
+
+  .legal-card {
+    @apply rounded-[28px] border border-white/8 bg-white/[0.035] p-7 shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-sm sm:p-9;
+  }
+
+  .legal-title {
+    @apply font-(family-name:--font-display) text-4xl font-semibold tracking-[-0.045em] text-white;
+  }
+
+  .legal-updated {
+    @apply mt-3 text-sm text-white/42;
+  }
+
+  .legal-copy {
+    @apply mt-8 space-y-7 text-[15px] leading-7 text-white/66;
+  }
+
+  .legal-copy h2 {
+    @apply mb-2 text-lg font-medium tracking-[-0.03em] text-white;
+  }
+
+  .legal-copy p {
+    @apply m-0;
+  }
+
+  .legal-copy ul {
+    @apply m-0 space-y-2 pl-5;
+  }
+
+  @keyframes landing-icon-in {
+    0% {
+      opacity: 0;
+      transform: scale(0.6) translateY(16px) rotate(-3deg);
+    }
+
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0) rotate(0deg);
+    }
+  }
+
+  @keyframes landing-fade-up {
+    0% {
+      opacity: 0;
+      transform: translateY(10px);
+      filter: blur(4px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+      filter: blur(0);
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  @layer components {
+    .landing-nav {
+      @apply px-6;
+    }
+
+    .landing-main {
+      @apply px-0;
+    }
+
+    .landing-hero {
+      @apply px-7;
+    }
+
+    .landing-app-icon {
+      width: 148px;
+      height: 148px;
+    }
+
+    .landing-title {
+      @apply text-[46px];
+    }
+
+    .landing-copy {
+      @apply text-[19px];
+    }
+  }
+}

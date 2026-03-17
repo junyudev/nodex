@@ -1,0 +1,72 @@
+name: Deploy Landing Site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/landing/**"
+      - ".github/workflows/deploy-landing-site.yml"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: Override the publish target repository
+        required: false
+        default: NodexApp/NodexApp.github.io
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-landing-site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_TARGET_REPO: NodexApp/NodexApp.github.io
+      TARGET_REPO_OVERRIDE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.target_repo || '' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build landing site
+        run: bun run build:landing
+
+      - name: Publish built site
+        env:
+          NODEXAPP_GITHUB_IO_TOKEN: ${{ secrets.NODEXAPP_GITHUB_IO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${NODEXAPP_GITHUB_IO_TOKEN}" ]]; then
+            echo "Missing NODEXAPP_GITHUB_IO_TOKEN secret." >&2
+            exit 1
+          fi
+
+          target_repo="${TARGET_REPO_OVERRIDE:-$DEFAULT_TARGET_REPO}"
+          target_dir="${RUNNER_TEMP}/target-site"
+
+          git clone "https://x-access-token:${NODEXAPP_GITHUB_IO_TOKEN}@github.com/${target_repo}.git" "${target_dir}"
+          rsync -a --delete --exclude ".git" "packages/landing/dist/" "${target_dir}/"
+
+          cd "${target_dir}"
+
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No landing-site changes to publish."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "deploy: refresh landing site from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          git push origin HEAD

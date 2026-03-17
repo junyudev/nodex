@@ -20,6 +20,9 @@
   ],
   "scripts": {
     "sync:icons": "bun run scripts/sync-app-icons.ts",
+    "dev:landing": "bun run --cwd packages/landing dev",
+    "build:landing": "bun run --cwd packages/landing build",
+    "preview:landing": "bun run --cwd packages/landing preview",
     "release:prepare": "bun run scripts/release-changelog.ts prepare --",
     "release:prepare:act": "bash scripts/run-prepare-release-act.sh",
     "release:prepare:act:list": "bash scripts/run-prepare-release-act.sh --list",
@@ -45,7 +48,7 @@
     "build:storybook": "bun run --cwd packages/storybook build",
     "tokens:vscode:generate": "bun run scripts/generate-vscode-theme-vars.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "lint": "eslint src/ packages/storybook/.storybook/",
+    "lint": "eslint src/ packages/storybook/.storybook/ packages/landing/vite.config.ts",
     "lint:tailwind:fix": "ESLINT_BETTER_TAILWIND=1 eslint src/ --fix",
     "postinstall": "electron-builder install-app-deps && (chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true)"
   },
