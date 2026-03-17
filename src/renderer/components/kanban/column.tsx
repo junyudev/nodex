@@ -1,7 +1,4 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
-import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
-import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { Card, type CardPropertyUpdateInput } from "./card";
 import { ColumnActionPopover } from "./column-action-popover";
 import type { DbViewDisplayPrefs } from "../../lib/db-view-prefs";
@@ -16,10 +13,8 @@ import { StatusChip, StatusIcon, columnStyles as sharedColumnStyles } from "../.
 import type { Card as CardType, CardCreatePlacement, Column as ColumnType, CardInput } from "../../lib/types";
 import { cn } from "../../lib/utils";
 import type { CardContextMenuProjectSummary } from "./card-context-menu-model";
-import {
-  buildKanbanColumnDropTargetData,
-  type KanbanCardDragData,
-} from "./pragmatic-drag-data";
+import type { KanbanCardDragData } from "./pragmatic-drag-data";
+import { bindKanbanColumnDropSurface } from "./column-drop-surface";
 
 export { columnStyles } from "../../lib/status-chip";
 
@@ -102,39 +97,13 @@ export const Column = memo(function Column({
   const isCollapsed = isAutoCollapsed || isUserCollapsed;
 
   useEffect(() => {
-    if (columnDropDisabled || !dragInstanceId) {
-      return;
-    }
-
-    const element = columnRef.current;
-    const scrollElement = scrollContainerRef.current;
-    if (!element || !scrollElement) {
-      return;
-    }
-
-    return combine(
-      dropTargetForElements({
-        element,
-        canDrop: ({ source }) => {
-          const data = source.data as Partial<KanbanCardDragData>;
-          return data.type === "kanban-card"
-            && data.instanceId === dragInstanceId;
-        },
-        getIsSticky: () => true,
-        getData: () => buildKanbanColumnDropTargetData({
-          instanceId: dragInstanceId,
-          columnId: column.id,
-        }),
-      }),
-      autoScrollForElements({
-        element: scrollElement,
-        canScroll: ({ source }) => {
-          const data = source.data as Partial<KanbanCardDragData>;
-          return data.type === "kanban-card"
-            && data.instanceId === dragInstanceId;
-        },
-      }),
-    );
+    return bindKanbanColumnDropSurface({
+      columnId: column.id,
+      columnDropDisabled,
+      dragInstanceId,
+      element: columnRef.current,
+      scrollElement: scrollContainerRef.current,
+    });
   }, [column.id, columnDropDisabled, dragInstanceId]);
 
   const styles = sharedColumnStyles[column.id] || {
