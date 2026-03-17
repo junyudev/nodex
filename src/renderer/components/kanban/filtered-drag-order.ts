@@ -21,7 +21,7 @@ export function resolveFilteredDropOrder({
   targetColumnId,
   targetVisibleIndex,
 }: ResolveFilteredDropOrderInput): number {
-  if (!board || !visibleBoard || draggedCardIds.length === 0) {
+  if (!board || !visibleBoard) {
     return 0;
   }
 

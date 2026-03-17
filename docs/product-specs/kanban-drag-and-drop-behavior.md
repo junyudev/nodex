@@ -82,8 +82,13 @@ This post-removal contract must stay identical across:
 - Under non-default sort, column drop targets stay active while card drop targets are disabled. This split is required so cross-column drops still resolve even though same-column insert slots do not.
 
 ### Block import while derived views are active
-- Native block-drop import into Kanban is disabled while search, filter, or sort rules are active.
-- Creating new cards into a derived subset does not have a trustworthy insertion-slot meaning.
+- Native block-drop import into Kanban stays blocked while free-text search is active.
+- Structured derived views can still accept block-drop import when the board can explain the result as either an exact visible slot or a column-level create.
+- Exact-slot import is allowed when newly created cards can remain in the active subset using only safe inferred workflow properties, and the resulting placement can be mapped to a persisted insertion anchor.
+- Safe inferred properties are limited to workflow metadata already owned by the board/view contract, such as target column status, unambiguous priority defaults, required tags, and discrete sortable fields like priority or estimate.
+- If the active sort does not support a truthful gap meaning for new cards (for example title/created ordering), the board falls back to column-level target feedback instead of an insertion line.
+- Column-level import still creates cards in the hovered column, but the current sort owns their rendered position.
+- The board must not invent title/description text or other search-only content just to keep a created card visible in the current query.
 
 ## Editor Interop
 

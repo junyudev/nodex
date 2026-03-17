@@ -51,7 +51,6 @@ import { writeTextToClipboard } from "@/lib/clipboard";
 import {
   filterDbViewCards,
   getDefaultDbViewPrefs,
-  hasActiveDbViewFilters,
   hasActiveDbViewSorts,
   sortDbViewCards,
   type DbViewCardRecord,
@@ -79,6 +78,7 @@ import {
 import { resolveKanbanDropLocation } from "./pragmatic-drop-location";
 import { resolveKanbanCardDropStrategy } from "./kanban-card-drop-strategy";
 import { resolveKanbanDropCapabilities } from "./kanban-drop-capabilities";
+import { resolveKanbanImportInference } from "./kanban-import-inference";
 
 function hasSameCardSelection(
   left: CardSelectionState,
@@ -192,9 +192,7 @@ export function KanbanBoard({
   );
   const viewPrefs = dbViewPrefs ?? getDefaultDbViewPrefs("kanban");
   const hasSearchFilter = searchTokens.length > 0;
-  const hasRuleFiltering = hasActiveDbViewFilters("kanban", viewPrefs.rules);
   const hasNonDefaultSort = hasActiveDbViewSorts("kanban", viewPrefs.rules);
-  const externalBlockImportDisabled = hasSearchFilter || hasRuleFiltering || hasNonDefaultSort;
   const dropCapabilities = useMemo(
     () => resolveKanbanDropCapabilities({ hasNonDefaultSort }),
     [hasNonDefaultSort],
@@ -574,37 +572,59 @@ export function KanbanBoard({
         return;
       }
 
-      if (externalBlockImportDisabled) {
-        setDropIndicator(null);
-        return;
-      }
-
       const session = getActiveExternalEditorDragSession();
       if (!session) {
         setDropIndicator(null);
+        setActiveDropColumnId(null);
         return;
       }
 
       const draggedIds = resolveDraggedBlockIds(session.editor, session.container);
       if (draggedIds.length === 0) {
         setDropIndicator(null);
+        setActiveDropColumnId(null);
         return;
       }
 
       const draggedBlocks = resolveTopLevelDraggedBlocks(session.editor, draggedIds);
       if (draggedBlocks.length === 0) {
         setDropIndicator(null);
+        setActiveDropColumnId(null);
+        return;
+      }
+
+      const cards = mapDraggedBlocksToCardInputs(draggedBlocks);
+      if (cards.length === 0) {
+        setDropIndicator(null);
+        setActiveDropColumnId(null);
         return;
       }
 
       event.preventDefault();
-      const index = computeNativeDropIndexFromSurface(
+      const targetVisibleIndex = computeNativeDropIndexFromSurface(
         event.currentTarget,
         event.clientY,
       );
-      setDropIndicator({ columnId, index });
+      const inference = resolveKanbanImportInference({
+        board,
+        visibleBoard: filteredBoard,
+        rules: viewPrefs.rules,
+        targetColumnId: columnId as CardType["status"],
+        targetVisibleIndex,
+        cards,
+        hasSearchFilter,
+      });
+
+      if (inference.mode === "slot") {
+        setActiveDropColumnId(null);
+        setDropIndicator({ columnId, index: targetVisibleIndex });
+        return;
+      }
+
+      setDropIndicator(null);
+      setActiveDropColumnId(inference.mode === "column" ? columnId : null);
     },
-    [externalBlockImportDisabled, isKanbanCardDragActive],
+    [board, filteredBoard, hasSearchFilter, isKanbanCardDragActive, viewPrefs.rules],
   );
 
   const handleNativeDragLeave = useCallback(
@@ -622,6 +642,7 @@ export function KanbanBoard({
         if (!current || current.columnId !== columnId) return current;
         return null;
       });
+      setActiveDropColumnId(null);
     },
     [isKanbanCardDragActive],
   );
@@ -633,8 +654,7 @@ export function KanbanBoard({
       }
 
       setDropIndicator(null);
-
-      if (externalBlockImportDisabled) return;
+      setActiveDropColumnId(null);
 
       const session = getActiveExternalEditorDragSession();
       if (!session) return;
@@ -651,10 +671,21 @@ export function KanbanBoard({
       event.preventDefault();
       event.stopPropagation();
 
-      const insertIndex = computeNativeDropIndexFromSurface(
+      const targetVisibleIndex = computeNativeDropIndexFromSurface(
         event.currentTarget,
         event.clientY,
       );
+      const inference = resolveKanbanImportInference({
+        board,
+        visibleBoard: filteredBoard,
+        rules: viewPrefs.rules,
+        targetColumnId: columnId as CardType["status"],
+        targetVisibleIndex,
+        cards,
+        hasSearchFilter,
+      });
+      if (inference.mode === "blocked") return;
+
       const snapshot = snapshotEditorDocument(session.editor);
       const baseline = session.adapter.captureBaseline(session.editor, session.container);
       const releaseOptimisticMutation = session.adapter.beginOptimisticMutation?.();
@@ -672,8 +703,8 @@ export function KanbanBoard({
 
         const result = await importBlockDrop({
           targetStatus: columnId as CardType["status"],
-          insertIndex,
-          cards,
+          ...(inference.mode === "slot" ? { insertIndex: inference.insertIndex } : {}),
+          cards: inference.cards,
           sourceUpdates,
           groupId: crypto.randomUUID(),
         });
@@ -688,7 +719,7 @@ export function KanbanBoard({
         releaseOptimisticMutation?.();
       }
     },
-    [externalBlockImportDisabled, importBlockDrop, isKanbanCardDragActive],
+    [board, filteredBoard, hasSearchFilter, importBlockDrop, isKanbanCardDragActive, viewPrefs.rules],
   );
 
   const handleEditCard = useCallback(async (
