@@ -3,7 +3,7 @@ import { TooltipProvider } from "../../ui/tooltip";
 import { StageThreadsDevStoryPage, StageThreadsInlineDiffPreviewCard } from "./stage-threads-dev-story";
 import { buildMockStandaloneDiffItem } from "./stage-threads-dev-story-data";
 import { STAGE_THREADS_STORY_DEFAULT_PRESET } from "./stage-threads-dev-story-data";
-import { render, textContent } from "../../../test/dom";
+import { render, settleAsyncRender, textContent } from "../../../test/dom";
 
 describe("StageThreadsInlineDiffPreviewCard", () => {
   test("renders the always-visible inline diff preview card", async () => {
@@ -23,6 +23,7 @@ describe("StageThreadsInlineDiffPreviewCard", () => {
         <StageThreadsDevStoryPage {...STAGE_THREADS_STORY_DEFAULT_PRESET.controls} />
       </TooltipProvider>,
     );
+    await settleAsyncRender();
 
     expect(getByText("Threads Panel").textContent).toBe("Threads Panel");
     expect(textContent(container).includes("Storybook Controls")).toBeTrue();

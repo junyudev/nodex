@@ -3,7 +3,12 @@ import { createElement } from "react";
 import * as RadixTooltip from "@radix-ui/react-tooltip";
 import type { CodexItemView } from "../../../lib/types";
 import { ThreadItemRenderer } from "./thread-item-renderer";
-import { render, textContent } from "../../../test/dom";
+import {
+  render,
+  textContent,
+  waitForStreamdownCodeHighlight,
+  waitForStreamdownMermaidBlock,
+} from "../../../test/dom";
 
 const EXAMPLE_FILE_LINK = "/workspace/nodex/src/renderer/styles/design-system-theme.css#L450";
 
@@ -49,7 +54,7 @@ function createBaseItem(partial: Partial<CodexItemView>): CodexItemView {
 }
 
 describe("ThreadItemRenderer", () => {
-  test("renders assistant markdown as rich content", () => {
+  test("renders assistant markdown as rich content", async () => {
     const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
@@ -57,6 +62,7 @@ describe("ThreadItemRenderer", () => {
         markdownText: "# Heading\n\n- one\n- two\n\n```ts\nconst a = 1\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |",
       }),
     );
+    await waitForStreamdownCodeHighlight(item.container);
 
     expect(item.container.querySelector("h1")).not.toBeNull();
     expect(textContent(item.container).includes("Heading")).toBeTrue();
@@ -130,7 +136,7 @@ describe("ThreadItemRenderer", () => {
     expect(item.container.querySelector("annotation")).not.toBeNull();
   });
 
-  test("renders mermaid fences through the Streamdown code block shell", () => {
+  test("renders mermaid fences through the Streamdown mermaid block shell", async () => {
     const item = renderItem(
       createBaseItem({
         normalizedKind: "assistantMessage",
@@ -138,8 +144,9 @@ describe("ThreadItemRenderer", () => {
         markdownText: "```mermaid\ngraph TD\nA-->B\n```",
       }),
     );
+    await waitForStreamdownMermaidBlock(item.container);
 
-    expect(item.container.querySelector(".animate-spin")).not.toBeNull();
+    expect(item.container.querySelector('[data-streamdown="mermaid-block"]')).not.toBeNull();
     expect(textContent(item.container).includes("graph TD")).toBeFalse();
   });
 

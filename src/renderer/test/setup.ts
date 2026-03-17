@@ -23,6 +23,20 @@ const browserWindow = window;
 const browserDocument = document;
 const browserLocalStorage = localStorage;
 
+function ensureHtmlDoctype() {
+  if (document.doctype?.name.toLowerCase() === "html") return;
+  const documentType = document.implementation.createDocumentType("html", "", "");
+  document.insertBefore(documentType, document.documentElement);
+}
+
+function ensureStandardsMode() {
+  if (document.compatMode === "CSS1Compat") return;
+  Object.defineProperty(document, "compatMode", {
+    configurable: true,
+    value: "CSS1Compat",
+  });
+}
+
 function restoreBrowserGlobals() {
   Object.defineProperty(globalThis, "Request", {
     configurable: true,
@@ -72,12 +86,16 @@ function restoreBrowserGlobals() {
 }
 
 restoreBrowserGlobals();
+ensureHtmlDoctype();
+ensureStandardsMode();
 
 afterEach(() => {
   try {
     cleanup();
   } finally {
     restoreBrowserGlobals();
+    ensureHtmlDoctype();
+    ensureStandardsMode();
     document.body.innerHTML = "";
   }
 });
