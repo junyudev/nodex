@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Matched NFM editor heading typography to the reference scale, including heading weights and drag-handle alignment for heading rows.
 
 ### Fixed
+- Fixed the NFM editor side menu so the add-block `+` now uses the same icon color as the drag handle.
 - Fixed sorted Kanban cross-column drag feedback so the destination column now shows a clear in-column target state instead of only subtle outer edge lines.
 - Fixed sorted Kanban drag-and-drop so non-default sorts still allow cross-column card moves; only same-column manual ranking stays disabled.
 - Fixed Kanban so card drag-and-drop no longer locks completely under active search, filter, or sort rules: filtered boards keep subset-aware reordering, and non-default sorts still allow drag-to-move across columns without pretending to manually rank a sorted column.

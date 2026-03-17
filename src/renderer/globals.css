@@ -781,9 +781,18 @@
   pointer-events: none !important;
 }
 
+.nfm-editor .bn-side-menu {
+  --nfm-side-menu-icon-color: #ada9a3;
+}
+
+.dark .nfm-editor .bn-side-menu {
+  --nfm-side-menu-icon-color: #7d7a75;
+}
+
 .nfm-editor .bn-side-menu .bn-button[aria-label="Add block"] {
   height: 24px;
   width: 24px;
+  color: var(--nfm-side-menu-icon-color);
   cursor: grab;
   transition: opacity 200ms ease-out;
 }
@@ -791,6 +800,7 @@
   height: 24px;
   width: 18px;
   margin-right: 10px;
+  color: var(--nfm-side-menu-icon-color);
   cursor: grab;
   transition: opacity 200ms ease-out;
 }
@@ -814,8 +824,6 @@
   display: block;
   flex-shrink: 0;
   background-color: currentColor;
-  color: #ada9a3;
-  fill: #ada9a3;
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M6.25 4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m5 0a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m1.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 10a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m6.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 16a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M6.25 4a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m5 0a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m1.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 10a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0m6.25 7.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5M6.25 16a1.25 1.25 0 1 0 2.5 0 1.25 1.25 0 0 0-2.5 0'/%3E%3C/svg%3E");
   -webkit-mask-size: contain;
@@ -825,10 +833,6 @@
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
 }
-.dark .nfm-editor .bn-side-menu .bn-button[draggable="true"]::before {
-  color: #7d7a75;
-  fill: #7d7a75;
-}
 
 .nfm-editor .bn-side-menu .bn-button svg {
   width: 18px;
@@ -836,6 +840,10 @@
   cursor: grab;
   opacity: 0.4;
   transition: opacity 150ms ease;
+}
+
+.nfm-editor .bn-side-menu .bn-button[aria-label="Add block"] svg {
+  opacity: 1;
 }
 
 .nfm-editor .bn-block-group .bn-block-group .bn-block-outer::before {
