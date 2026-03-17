@@ -3,6 +3,7 @@
 | Spec | Status | Last Updated | Summary |
 |------|--------|--------------|---------|
 | nodex-product-spec.md | Active | 2026-02-13 | Full product contract: goals, features, API, CLI, config, architecture |
+| kanban-drag-and-drop-behavior.md | Active | 2026-03-17 | Detailed Kanban DnD contract covering same-column reorder, filtered/sorted behavior, editor interop, and persistence invariants |
 | command-palette-behavior.md | Active | 2026-03-14 | Detailed command-palette launch, mode switching, ranking, previews, highlights, and execution behavior |
 | description-history-revisions.md | Active | 2026-03-11 | Detailed storage, migration, hydration, pruning, and disk-reclamation behavior for revision-based card description history |
 | nfm-editor-autolink-behavior.md | Active | 2026-03-10 | Detailed autolink behavior for typing and paste in the NFM editor, including settings, strict bare-domain rules, and separator-aware path protection |
