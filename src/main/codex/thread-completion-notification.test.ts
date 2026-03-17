@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CodexThreadSummary, CodexTurnSummary } from "../../shared/types";
-import type { CodexThreadSnapshot } from "./codex-link-repository";
+import type { CodexThreadDetail, CodexThreadSummary, CodexTurnSummary } from "../../shared/types";
 import { resolveThreadCompletionNotificationContent } from "./thread-completion-notification";
 
 function makeThread(overrides?: Partial<CodexThreadSummary>): CodexThreadSummary {
@@ -32,9 +31,21 @@ function makeTurn(overrides?: Partial<CodexTurnSummary>): CodexTurnSummary {
   };
 }
 
-function makeSnapshot(overrides?: Partial<CodexThreadSnapshot>): CodexThreadSnapshot {
+function makeDetail(overrides?: Partial<CodexThreadDetail>): CodexThreadDetail {
   return {
     threadId: "thread-1",
+    projectId: "default",
+    cardId: "card-1",
+    threadName: "Ship thread notifications",
+    threadPreview: "Preview fallback",
+    modelProvider: "openai",
+    cwd: null,
+    statusType: "idle",
+    statusActiveFlags: [],
+    archived: false,
+    createdAt: 1,
+    updatedAt: 1,
+    linkedAt: "2026-03-04T00:00:00.000Z",
     turns: [],
     items: [
       {
@@ -49,7 +60,6 @@ function makeSnapshot(overrides?: Partial<CodexThreadSnapshot>): CodexThreadSnap
         updatedAt: 1,
       },
     ],
-    updatedAt: 1,
     ...overrides,
   };
 }
@@ -58,7 +68,7 @@ describe("resolveThreadCompletionNotificationContent", () => {
   test("uses the last assistant message for a completed turn", () => {
     const content = resolveThreadCompletionNotificationContent({
       thread: makeThread(),
-      snapshot: makeSnapshot({
+      detail: makeDetail({
         items: [
           {
             threadId: "thread-1",
@@ -94,7 +104,7 @@ describe("resolveThreadCompletionNotificationContent", () => {
   test("falls back to the thread preview when the turn has no text items", () => {
     const content = resolveThreadCompletionNotificationContent({
       thread: makeThread({ threadPreview: "Preview from thread summary" }),
-      snapshot: makeSnapshot({ items: [] }),
+      detail: makeDetail({ items: [] }),
       turn: makeTurn(),
     });
 
@@ -105,7 +115,7 @@ describe("resolveThreadCompletionNotificationContent", () => {
   test("uses a status fallback for failed turns without text", () => {
     const content = resolveThreadCompletionNotificationContent({
       thread: makeThread({ threadPreview: "" }),
-      snapshot: makeSnapshot({ items: [] }),
+      detail: makeDetail({ items: [] }),
       turn: makeTurn({ status: "failed", errorMessage: "Process exited with code 1" }),
     });
 
@@ -116,7 +126,7 @@ describe("resolveThreadCompletionNotificationContent", () => {
   test("does not build content for active turns", () => {
     const content = resolveThreadCompletionNotificationContent({
       thread: makeThread(),
-      snapshot: makeSnapshot(),
+      detail: makeDetail(),
       turn: makeTurn({ status: "inProgress" }),
     });
 
@@ -126,7 +136,7 @@ describe("resolveThreadCompletionNotificationContent", () => {
   test("does not build content for unlinked helper threads", () => {
     const content = resolveThreadCompletionNotificationContent({
       thread: null,
-      snapshot: makeSnapshot(),
+      detail: makeDetail(),
       turn: makeTurn(),
     });
 

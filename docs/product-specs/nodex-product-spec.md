@@ -403,7 +403,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - While the current turn is still active, the trailing coalesced exploration section remains visually `in progress` (`Exploring` shimmer) until a non-exploration item appears in that same turn or the turn stops.
 - Exploration sections are expanded by default only while they are `in progress`; once exploration settles, they collapse by default.
 - Command execution headers show `in <cwd>` only when the command ran outside the active project's workspace path.
-- Tool-call transcript state is durably snapshotted in SQLite and merged with runtime reads so existing tool logs are preserved across thread tab switches and app restarts.
+- Tool-call transcript state is recovered from persisted Codex session history when available, with a SQLite snapshot fallback while a rollout has not materialized yet, so existing tool logs survive thread tab switches and app restarts without Nodex owning a second durable transcript copy.
 - Browser/HTTP transport returns explicit unsupported errors for `codex:*` methods in this release.
 
 ### Statuses

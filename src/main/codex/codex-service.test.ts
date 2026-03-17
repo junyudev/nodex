@@ -21,7 +21,13 @@ import {
   initializeDatabase,
 } from "../kanban/db-service";
 import { CodexRpcError } from "./codex-app-server-client";
-import { getCodexCardThreadLink, upsertCodexCardThreadLink, upsertCodexThreadSnapshot } from "./codex-link-repository";
+import {
+  getCodexCardThreadLink,
+  getCodexThreadSnapshot,
+  upsertCodexCardThreadLink,
+  upsertCodexThreadSnapshot,
+} from "./codex-link-repository";
+import { resetCodexSessionStoreCaches } from "./codex-session-store";
 import { CodexService } from "./codex-service";
 
 interface TestableCodexService {
@@ -121,6 +127,25 @@ async function withTempDatabase(run: () => Promise<void>): Promise<boolean> {
     closeDatabase();
     fs.rmSync(tempDir, { recursive: true, force: true });
     delete process.env.KANBAN_DIR;
+  }
+}
+
+function withTempCodexHome(run: (codexHome: string) => void): void {
+  const previousCodexHome = process.env.CODEX_HOME;
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-codex-home-"));
+  process.env.CODEX_HOME = tempDir;
+  resetCodexSessionStoreCaches();
+
+  try {
+    run(tempDir);
+  } finally {
+    if (previousCodexHome) {
+      process.env.CODEX_HOME = previousCodexHome;
+    } else {
+      delete process.env.CODEX_HOME;
+    }
+    resetCodexSessionStoreCaches();
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
@@ -472,6 +497,166 @@ describe("codex-service thread snapshot cache", () => {
           const rehydrated = rebooted.serializeThreadDetail("thr_tokens");
           expect(rehydrated?.turns[0]?.tokenUsage?.modelContextWindow).toBe(258_000);
           expect(rehydrated?.turns[0]?.tokenUsage?.last.totalTokens).toBe(209_000);
+        } finally {
+          await rebooted.shutdown();
+        }
+      } finally {
+        await service.shutdown();
+      }
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
+});
+
+describe("codex-service session-backed transcript recovery", () => {
+  test("serializeThreadDetail rehydrates from Codex session files when no snapshot exists", async () => {
+    const ran = await withTempDatabase(async () => {
+      withTempCodexHome((codexHome) => {
+        fs.mkdirSync(path.join(codexHome, "sessions", "2026", "03", "17"), { recursive: true });
+        fs.writeFileSync(
+          path.join(codexHome, "session_index.jsonl"),
+          JSON.stringify({
+            id: "thr_session_file",
+            thread_name: "Recovered from session file",
+            updated_at: "2026-03-17T10:03:00.000Z",
+          }) + "\n",
+        );
+        fs.writeFileSync(
+          path.join(codexHome, "sessions", "2026", "03", "17", "rollout-2026-03-17T10-00-00-thr_session_file.jsonl"),
+          [
+            JSON.stringify({
+              timestamp: "2026-03-17T10:00:00.000Z",
+              type: "session_meta",
+              payload: {
+                id: "thr_session_file",
+                timestamp: "2026-03-17T10:00:00.000Z",
+                cwd: "/tmp/recovered",
+              },
+            }),
+            JSON.stringify({
+              timestamp: "2026-03-17T10:00:01.000Z",
+              type: "event_msg",
+              payload: {
+                type: "task_started",
+                turn_id: "turn_recovered",
+              },
+            }),
+            JSON.stringify({
+              timestamp: "2026-03-17T10:00:02.000Z",
+              type: "response_item",
+              payload: {
+                type: "message",
+                role: "user",
+                content: [{ type: "input_text", text: "Hello" }],
+              },
+            }),
+            JSON.stringify({
+              timestamp: "2026-03-17T10:00:03.000Z",
+              type: "response_item",
+              payload: {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "Recovered response" }],
+              },
+            }),
+          ].join("\n"),
+        );
+      });
+
+      const card = await createCard("codex", "in_progress", { title: "Session-backed recovery" });
+      upsertCodexCardThreadLink({
+        projectId: "codex",
+        cardId: card.id,
+        threadId: "thr_session_file",
+      });
+
+      const service = createService();
+      try {
+        const detail = service.serializeThreadDetail("thr_session_file");
+        expect(detail).not.toBeNull();
+        expect(detail?.threadName).toBe("Recovered from session file");
+        expect(detail?.cwd).toBe("/tmp/recovered");
+        expect(detail?.turns.length).toBe(1);
+        expect(detail?.items.length).toBe(2);
+        expect(detail?.items[1]?.markdownText).toBe("Recovered response");
+      } finally {
+        await service.shutdown();
+      }
+    });
+
+    if (!ran) expect(true).toBeTrue();
+  });
+
+  test("skips snapshot persistence once a Codex session file is materialized", async () => {
+    const ran = await withTempDatabase(async () => {
+      withTempCodexHome((codexHome) => {
+        fs.mkdirSync(path.join(codexHome, "sessions", "2026", "03", "17"), { recursive: true });
+        fs.writeFileSync(
+          path.join(codexHome, "sessions", "2026", "03", "17", "rollout-2026-03-17T10-00-00-thr_materialized.jsonl"),
+          [
+            JSON.stringify({
+              timestamp: "2026-03-17T10:00:00.000Z",
+              type: "session_meta",
+              payload: {
+                id: "thr_materialized",
+                timestamp: "2026-03-17T10:00:00.000Z",
+                cwd: "/tmp/materialized",
+              },
+            }),
+            JSON.stringify({
+              timestamp: "2026-03-17T10:00:01.000Z",
+              type: "event_msg",
+              payload: {
+                type: "task_started",
+                turn_id: "turn_materialized",
+              },
+            }),
+            JSON.stringify({
+              timestamp: "2026-03-17T10:00:02.000Z",
+              type: "response_item",
+              payload: {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: "Ready" }],
+              },
+            }),
+          ].join("\n"),
+        );
+      });
+
+      const card = await createCard("codex", "in_progress", { title: "Skip snapshot writes" });
+      upsertCodexCardThreadLink({
+        projectId: "codex",
+        cardId: card.id,
+        threadId: "thr_materialized",
+      });
+
+      const service = createService();
+      const serviceInternals = service as unknown as {
+        mergeTurn: (threadId: string, turn: CodexTurnSummary) => void;
+        persistThreadSnapshot: (threadId: string) => void;
+      };
+
+      try {
+        serviceInternals.mergeTurn("thr_materialized", {
+          threadId: "thr_materialized",
+          turnId: "turn_materialized",
+          status: "completed",
+          itemIds: [],
+        });
+
+        serviceInternals.persistThreadSnapshot("thr_materialized");
+        expect(getCodexThreadSnapshot("thr_materialized")).toBe(null);
+
+        const snapshotless = service.serializeThreadDetail("thr_materialized");
+        expect(snapshotless?.turns.length).toBe(1);
+
+        const rebooted = createService();
+        try {
+          const rehydrated = rebooted.serializeThreadDetail("thr_materialized");
+          expect(rehydrated?.items.length).toBe(1);
+          expect(rehydrated?.cwd).toBe("/tmp/materialized");
         } finally {
           await rebooted.shutdown();
         }

@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Matched NFM editor heading typography to the reference scale, including heading weights and drag-handle alignment for heading rows.
+- Changed linked Codex thread recovery to prefer persisted Codex session history over Nodex-owned full transcript snapshots, reducing duplicate local state while preserving restart recovery for thread logs and notifications.
 
 ### Fixed
 - Fixed Kanban drag performance and interaction stability on dense boards by replacing the old sortable runtime with Atlassian Pragmatic Drag and Drop while preserving multi-card moves, gap insertion, and board-to-editor move semantics.

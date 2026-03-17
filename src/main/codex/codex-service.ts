@@ -47,6 +47,7 @@ import {
 import * as dbService from "../kanban/db-service";
 import { getKanbanDir } from "../kanban/config";
 import {
+  deleteCodexThreadSnapshot,
   getCodexCardThreadLink,
   getCodexThreadSnapshot,
   listCodexThreadLinks,
@@ -63,6 +64,7 @@ import {
   CodexRpcError,
   type CodexServerRequest,
 } from "./codex-app-server-client";
+import { hasCodexSessionMaterialized, readCodexSessionThreadDetail } from "./codex-session-store";
 import { createManagedWorktree, removeManagedWorktree } from "./git-worktree-service";
 import { normalizeThreadItem } from "./codex-item-normalizer";
 import {
@@ -1789,29 +1791,53 @@ export class CodexService extends EventEmitter {
     threadId: string,
     liveDetail: CodexThreadDetail | null,
   ): CodexThreadDetail | null {
-    const snapshot = getCodexThreadSnapshot(threadId);
-    if (!snapshot) return liveDetail;
-
-    const baseDetail = liveDetail ?? (() => {
-      const link = getCodexCardThreadLink(threadId);
-      if (!link) return null;
-      return {
-        ...link,
-        turns: [] as CodexTurnSummary[],
-        items: [] as CodexItemView[],
-      };
-    })();
+    const link = getCodexCardThreadLink(threadId);
+    const baseDetail = liveDetail ?? (link
+      ? {
+          ...link,
+          turns: [] as CodexTurnSummary[],
+          items: [] as CodexItemView[],
+        }
+      : null);
 
     if (!baseDetail) return null;
 
+    const sessionDetail = link
+      ? readCodexSessionThreadDetail({
+          threadId,
+          link,
+        })
+      : null;
+
+    const withSessionRecovery = sessionDetail
+      ? {
+          ...baseDetail,
+          threadName: sessionDetail.threadName ?? baseDetail.threadName,
+          threadPreview: sessionDetail.threadPreview || baseDetail.threadPreview,
+          cwd: sessionDetail.cwd ?? baseDetail.cwd,
+          updatedAt: Math.max(baseDetail.updatedAt, sessionDetail.updatedAt),
+          turns: mergeTurnSummaries(baseDetail.turns, sessionDetail.turns),
+          items: mergeItemViews(baseDetail.items, sessionDetail.items),
+        }
+      : baseDetail;
+
+    const snapshot = sessionDetail ? null : getCodexThreadSnapshot(threadId);
+    if (!snapshot) return withSessionRecovery;
+
     return {
-      ...baseDetail,
-      turns: mergeTurnSummaries(baseDetail.turns, snapshot.turns),
-      items: mergeItemViews(baseDetail.items, snapshot.items),
+      ...withSessionRecovery,
+      updatedAt: Math.max(withSessionRecovery.updatedAt, snapshot.updatedAt),
+      turns: mergeTurnSummaries(withSessionRecovery.turns, snapshot.turns),
+      items: mergeItemViews(withSessionRecovery.items, snapshot.items),
     };
   }
 
   private persistThreadSnapshot(threadId: string): void {
+    if (hasCodexSessionMaterialized(threadId)) {
+      deleteCodexThreadSnapshot(threadId);
+      return;
+    }
+
     const detail = this.serializeThreadDetail(threadId);
     if (!detail) return;
 
@@ -3353,12 +3379,22 @@ export class CodexService extends EventEmitter {
       inMemoryItems.push(...ordered);
     }
 
-    const snapshot = getCodexThreadSnapshot(threadId);
-    const turns = mergeTurnSummaries(inMemoryTurns, snapshot?.turns ?? []);
-    const items = mergeItemViews(inMemoryItems, snapshot?.items ?? []);
+    const sessionDetail = readCodexSessionThreadDetail({
+      threadId,
+      link,
+    });
+    const snapshot = sessionDetail ? null : getCodexThreadSnapshot(threadId);
+    const recoveredTurns = mergeTurnSummaries(sessionDetail?.turns ?? [], snapshot?.turns ?? []);
+    const recoveredItems = mergeItemViews(sessionDetail?.items ?? [], snapshot?.items ?? []);
+    const turns = mergeTurnSummaries(inMemoryTurns, recoveredTurns);
+    const items = mergeItemViews(inMemoryItems, recoveredItems);
 
     return {
       ...link,
+      threadName: sessionDetail?.threadName ?? link.threadName,
+      threadPreview: sessionDetail?.threadPreview || link.threadPreview,
+      cwd: sessionDetail?.cwd ?? link.cwd,
+      updatedAt: Math.max(link.updatedAt, sessionDetail?.updatedAt ?? 0, snapshot?.updatedAt ?? 0),
       turns,
       items,
     };

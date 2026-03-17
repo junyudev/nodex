@@ -32,7 +32,8 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `codex/codex-app-server-client.ts`: global JSON-RPC client for `codex app-server` stdio lifecycle, handshake, request correlation, and reconnect/backoff.
 - `codex/codex-service.ts`: domain facade for account/auth, thread/turn actions, approval + request-user-input handling, and normalized `codex:event` emission.
 - `codex/codex-item-normalizer.ts`: maps heterogeneous app-server item payloads into stable renderer-oriented `CodexItemView` shapes (`normalizedKind`, optional `toolCall`, optional `markdownText`).
-- `codex/codex-link-repository.ts`: persistence adapter for card-thread links (`codex_card_threads`) and per-thread transcript snapshots (`codex_thread_snapshots`) used to recover turns/items across sparse reads and restarts.
+- `codex/codex-link-repository.ts`: persistence adapter for card-thread links (`codex_card_threads`) plus a legacy/transient per-thread snapshot cache (`codex_thread_snapshots`) used only when Codex session history is not yet materialized.
+- `codex/codex-session-store.ts`: reads persisted Codex session artifacts from `$CODEX_HOME` / `~/.codex`, supports both legacy JSON and modern JSONL rollout layouts, and materializes thread detail for restart recovery/import.
 - `codex/git-worktree-service.ts`: managed Git worktree creation for card thread starts (`autoBranch` or `detachedHead`) with base-ref resolution, thread-title-driven auto-branch naming (`<prefix><thread-slug>`), and path allocation under `${serverDir}/worktrees`.
 - `codex/worktree-environment-service.ts`: lists and validates `.codex/environments/*.toml`, parses environment metadata (`name`, `[setup].script`), and enforces in-repo path boundaries.
 
@@ -74,7 +75,7 @@ Codex Threads flow:
 3. `codex-service` resolves card run target (`localProject` / `newWorktree` / `cloud`), including sticky per-card managed-worktree reuse via `runInWorktreePath`; for freshly created worktrees, it optionally executes selected `.codex/environments/*.toml` `[setup].script` before thread start.
 4. For fresh worktree creation, `codex-service` emits `codex:event` `threadStartProgress` updates (`creatingWorktree` / `runningSetup` / `startingThread` / terminal `ready|failed`) with streamed stdout/stderr chunks so renderer can render real-time setup logs.
 5. `codex-service` persists thread cwd in `codex_card_threads` (payload cwd or resolved fallback) so follow-up turns keep the same execution location.
-6. `codex-link-repository` persists one-owner card-thread link metadata and thread transcript snapshots in SQLite.
+6. `codex-link-repository` persists one-owner card-thread link metadata in SQLite, while `codex-session-store` rehydrates transcript history from persisted Codex session artifacts and falls back to SQLite snapshot cache only before session materialization.
 7. Runtime notifications/server requests are normalized into structured `CodexItemView` events (`normalizedKind` + optional `toolCall` + markdown-ready text), including plan streaming (`item/plan/delta`) and queue cleanup parity (`serverRequest/resolved`).
 8. Main process broadcasts `codex:event` to renderers; `codex-store` reduces deltas into thread state.
 
@@ -86,7 +87,7 @@ Workbench reopen flow:
 5. Main process saves only the last-focused window snapshot, under the profile-scoped Electron `userData` path.
 
 ## Invariants
-- SQLite is the only source of persistent truth; renderer state is a cache.
+- Persistent truth is split by ownership: Nodex-owned board/link metadata lives in SQLite, while Codex-owned transcript history is recovered from persisted Codex session artifacts; renderer state is a cache.
 - All card writes must pass `card-input-validation` constraints.
 - Recurrence exceptions and reminder receipts are project-scoped and persisted in SQLite.
 - Completing an occurrence creates a `done` card with `archived = true`; archived cards stay out of board/sidebar/toggle-list flows but still surface in calendar occurrence queries.

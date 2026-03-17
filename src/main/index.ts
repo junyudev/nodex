@@ -33,7 +33,7 @@ import {
   getPort,
 } from "./kanban/config";
 import { codexService } from "./codex/codex-service";
-import { getCodexCardThreadLink, getCodexThreadSnapshot } from "./codex/codex-link-repository";
+import { getCodexCardThreadLink } from "./codex/codex-link-repository";
 import { resolveThreadCompletionNotificationContent } from "./codex/thread-completion-notification";
 import { configureInstanceScopePaths } from "./instance-scope";
 import { parseCardDeepLink } from "../shared/card-deeplink";
@@ -265,11 +265,9 @@ function showThreadCompletionNotification(turn: CodexTurnSummary): void {
   if (!Notification.isSupported()) return;
   if (!getThreadNotificationSettings().threadCompletionEnabled) return;
 
-  const snapshot = getCodexThreadSnapshot(turn.threadId);
-
   const content = resolveThreadCompletionNotificationContent({
     thread: getCodexCardThreadLink(turn.threadId),
-    snapshot,
+    detail: codexService.serializeThreadDetail(turn.threadId),
     turn,
   });
   if (!content) return;

@@ -527,3 +527,11 @@ export function getCodexThreadSnapshot(threadId: string): CodexThreadSnapshot | 
     updatedAt: row.updated_at,
   };
 }
+
+export function deleteCodexThreadSnapshot(threadId: string): boolean {
+  const database = getDb();
+  const result = database
+    .prepare("DELETE FROM codex_thread_snapshots WHERE thread_id = ?")
+    .run(threadId);
+  return result.changes > 0;
+}

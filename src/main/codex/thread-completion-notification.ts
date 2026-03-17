@@ -1,5 +1,4 @@
-import type { CodexThreadSummary, CodexTurnSummary } from "../../shared/types";
-import type { CodexThreadSnapshot } from "./codex-link-repository";
+import type { CodexThreadDetail, CodexThreadSummary, CodexTurnSummary } from "../../shared/types";
 
 const UNTITLED_THREAD_LABEL = "Untitled thread";
 const MAX_NOTIFICATION_BODY_CHARS = 220;
@@ -24,10 +23,10 @@ function stringifyToolCallResult(value: unknown): string {
   }
 }
 
-function pickLastTurnMessage(snapshot: CodexThreadSnapshot | null, turnId: string): string {
-  if (!snapshot) return "";
+function pickLastTurnMessage(detail: CodexThreadDetail | null, turnId: string): string {
+  if (!detail) return "";
 
-  const turnItems = snapshot.items.filter((item) => item.turnId === turnId);
+  const turnItems = detail.items.filter((item) => item.turnId === turnId);
   if (turnItems.length === 0) return "";
 
   const assistantItems = turnItems.filter((item) =>
@@ -59,7 +58,7 @@ function buildStatusFallback(turn: CodexTurnSummary): string {
 
 export function resolveThreadCompletionNotificationContent(input: {
   thread: CodexThreadSummary | null;
-  snapshot: CodexThreadSnapshot | null;
+  detail: CodexThreadDetail | null;
   turn: CodexTurnSummary;
 }): { title: string; body: string } | null {
   if (input.turn.status === "inProgress") return null;
@@ -67,7 +66,7 @@ export function resolveThreadCompletionNotificationContent(input: {
 
   const title = normalizeNotificationText(input.thread.threadName) || UNTITLED_THREAD_LABEL;
   const body =
-    pickLastTurnMessage(input.snapshot, input.turn.turnId) ||
+    pickLastTurnMessage(input.detail, input.turn.turnId) ||
     normalizeNotificationText(input.thread.threadPreview) ||
     buildStatusFallback(input.turn);
 

@@ -3,7 +3,7 @@
 ## Reliability Goals
 - Maintain durable local task state across app restarts.
 - Keep board views synchronized across Electron and browser clients.
-- Keep Codex thread state synchronized between main-process runtime, SQLite link cache, and renderer views.
+- Keep Codex thread state synchronized between main-process runtime, persisted Codex session history, SQLite link metadata, and renderer views.
 - Provide safe recovery paths for destructive operations.
 
 ## Data Durability Model
@@ -14,7 +14,8 @@
 - Project deletion cascades card/history rows to prevent orphaned state.
 - Card descriptions remain materialized on `cards.description`, while historical description changes are stored in `description_revisions` / `description_blocks` and referenced from history rows via revision ids.
 - Codex thread-card metadata persists in `codex_card_threads` (project/card/thread ownership, cached status, archive state).
-- Codex turn/item transcript snapshots persist in `codex_thread_snapshots` and are merged with runtime reads to prevent sparse-read log loss on tab switches and restarts.
+- Persisted Codex session files under `$CODEX_HOME` / `~/.codex` are the preferred recovery source for linked thread turns/items across tab switches and app restarts.
+- `codex_thread_snapshots` remains a transient/legacy fallback cache for threads whose session rollout has not materialized yet.
 - Project rename updates linked Codex rows transactionally with project metadata updates.
 
 ## Backup and Restore
