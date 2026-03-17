@@ -114,6 +114,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Card->editor drop is pointer-anchored, blocks self-drop, supports same-project and cross-project sources, and persists as one grouped undo/redo action (target description update + source card delete)
 - Card->editor drag shows a live in-editor insertion line (matching BlockNote drop-cursor semantics) even though the drag source is the Kanban native drag runtime
 - `cardToggle` chips (`priority`, `estimate`, `status`) are editable inline in NFM editors and mutate both serialized `meta` and embedded snapshot payload
+- In NFM editors, `cardToggle` property chips sit in the same inline text flow as the toggle title, so wrapped titles use the full row width like inline kanban card properties instead of a separate leading chip column
 - Dragging a `cardToggle` block back into Kanban creates card(s) with snapshot-preserved properties (priority/estimate/tags/assignee/due-date/scheduled-start/scheduled-end/blocked) plus current title/description edits
 - Block-drop card creation uses pointer-based insertion (top/middle/bottom) with a visible drop indicator
 - Block->card import supports strict smart shorthand parsing for non-`cardToggle` blocks (`0..4`, optional estimate `XS/S/M/L/XL`, optional `(tag)`), applying parsed values to `priority`, `estimate`, and `tags`

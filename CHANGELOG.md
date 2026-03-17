@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Fixed Kanban drag performance and interaction stability on dense boards by replacing the old sortable runtime with Atlassian Pragmatic Drag and Drop while preserving multi-card moves, gap insertion, and board-to-editor move semantics.
+- Fixed NFM editor `cardToggle` rows so property chips now stay inline with the toggle title text and wrapped titles use the full row width, matching kanban card properties.
 - Fixed the NFM editor side menu so the add-block `+` now uses the same icon color as the drag handle.
 - Fixed sorted Kanban cross-column drag feedback so the destination column now shows a clear in-column target state instead of only subtle outer edge lines.
 - Fixed sorted Kanban drag-and-drop so non-default sorts still allow cross-column card moves; only same-column manual ranking stays disabled.

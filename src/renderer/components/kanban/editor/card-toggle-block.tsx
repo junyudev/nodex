@@ -41,10 +41,11 @@ export const createCardToggleBlockSpec = createBlockSpec(
     },
     render(block, editor) {
       const line = document.createElement("div");
-      line.className = "flex items-center gap-2 min-w-0 flex-nowrap";
+      line.className = "min-w-0";
 
       const meta = document.createElement("span");
-      meta.className = "inline-flex items-center gap-1.5 flex-nowrap shrink-0";
+      meta.className =
+        "mr-1 inline-flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-1 align-middle";
       meta.contentEditable = "false";
 
       for (const token of parseMetaTokens(block.props.meta)) {
@@ -76,8 +77,8 @@ export const createCardToggleBlockSpec = createBlockSpec(
         meta.appendChild(chip);
       }
 
-      const title = document.createElement("p");
-      title.className = "min-w-0 m-0 flex-1";
+      const title = document.createElement("span");
+      title.className = "min-w-0";
 
       if (meta.childElementCount > 0) {
         line.appendChild(meta);
@@ -103,19 +104,21 @@ export const createCardToggleBlockSpec = createBlockSpec(
     toExternalHTML(block) {
       const li = document.createElement("li");
       const p = document.createElement("p");
+      const title = document.createElement("span");
       addDefaultPropsExternalHTML(block.props, li);
 
       if (block.props.meta) {
         const meta = document.createElement("span");
         meta.textContent = `${block.props.meta} `;
-        li.appendChild(meta);
+        p.appendChild(meta);
       }
 
+      p.appendChild(title);
       li.appendChild(p);
 
       return {
         dom: li,
-        contentDOM: p,
+        contentDOM: title,
       };
     },
   },
