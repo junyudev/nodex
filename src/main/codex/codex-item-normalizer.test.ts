@@ -112,6 +112,55 @@ describe("codex-item-normalizer", () => {
     expect(item?.markdownText?.includes("Comparing item lifecycle with turn status")).toBeTrue();
   });
 
+  test("keeps empty transcript items blank instead of showing internal type labels", () => {
+    const variants = [
+      {
+        type: "userMessage",
+        payload: {
+          id: "item-user-empty",
+          type: "userMessage",
+          content: [],
+        },
+        unexpectedFallback: "User Message",
+      },
+      {
+        type: "agentMessage",
+        payload: {
+          id: "item-agent-empty",
+          type: "agentMessage",
+          text: "",
+        },
+        unexpectedFallback: "Agent Message",
+      },
+      {
+        type: "plan",
+        payload: {
+          id: "item-plan-empty",
+          type: "plan",
+          text: "",
+        },
+        unexpectedFallback: "Plan",
+      },
+      {
+        type: "reasoning",
+        payload: {
+          id: "item-reasoning-empty",
+          type: "reasoning",
+          summary: [],
+          content: [],
+        },
+        unexpectedFallback: "Reasoning",
+      },
+    ] as const;
+
+    for (const variant of variants) {
+      const item = normalizeThreadItem(variant.payload, "thread-1", "turn-1");
+      expect(item).not.toBeNull();
+      expect((item?.markdownText ?? "").length).toBe(0);
+      expect(item?.markdownText === variant.unexpectedFallback).toBeFalse();
+    }
+  });
+
   test("normalizes request_user_input items with transcript answers", () => {
     const item = normalizeThreadItem(
       {

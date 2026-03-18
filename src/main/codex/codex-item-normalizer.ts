@@ -58,6 +58,15 @@ function humanizeType(type: string): string {
   return `${spaced.charAt(0).toUpperCase()}${spaced.slice(1)}`;
 }
 
+function shouldRenderTypeFallback(result: CodexItemView): boolean {
+  return !(
+    result.normalizedKind === "userMessage" ||
+    result.normalizedKind === "assistantMessage" ||
+    result.normalizedKind === "plan" ||
+    result.normalizedKind === "reasoning"
+  );
+}
+
 function parseUserMessageText(candidate: Record<string, unknown>): string {
   const content = Array.isArray(candidate.content) ? candidate.content : [];
   const textParts = content
@@ -241,10 +250,11 @@ function parseCommandActions(value: unknown): CodexCommandAction[] {
   return actions;
 }
 
-function applyFallbackContent(result: CodexItemView, candidate: Record<string, unknown>, type: string): CodexItemView {
+function applyFallbackContent(result: CodexItemView, type: string): CodexItemView {
   const hasVisibleContent = Boolean(result.markdownText || result.toolCall);
 
   if (hasVisibleContent) return result;
+  if (!shouldRenderTypeFallback(result)) return result;
 
   return {
     ...result,
@@ -277,7 +287,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
     result.normalizedKind = "userMessage";
     result.role = "user";
     result.markdownText = text;
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["agentMessage"])) {
@@ -285,7 +295,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
     result.normalizedKind = "assistantMessage";
     result.role = "assistant";
     result.markdownText = text;
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["plan"])) {
@@ -293,7 +303,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
     result.normalizedKind = "plan";
     result.role = "assistant";
     result.markdownText = text;
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["requestUserInput", "request_user_input"])) {
@@ -303,7 +313,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
     result.markdownText = formatAskedQuestionLabel(questions.length);
     result.userInputQuestions = questions;
     result.userInputAnswers = parseUserInputAnswers(candidate.answers);
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["reasoning"])) {
@@ -317,7 +327,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
     result.normalizedKind = "reasoning";
     result.status = normalizeItemStatus(getUnknown(candidate, ["status"]));
     result.markdownText = text;
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["commandExecution", "command_execution"])) {
@@ -337,7 +347,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
       result: output,
       error: resolveToolCallError(candidate),
     });
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["fileChange", "file_change"])) {
@@ -355,7 +365,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
       },
       error: resolveToolCallError(candidate),
     });
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["mcpToolCall", "mcp_tool_call"])) {
@@ -371,7 +381,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
       result: candidate.result,
       error,
     });
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["collabAgentToolCall", "collab_agent_tool_call"])) {
@@ -392,7 +402,7 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
       result: candidate.result,
       error: resolveToolCallError(candidate),
     });
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["webSearch", "web_search"])) {
@@ -405,39 +415,38 @@ export function normalizeThreadItem(item: unknown, threadId: string, turnId: str
       result: candidate.action ?? candidate.result,
       error: resolveToolCallError(candidate),
     });
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["imageView", "image_view"])) {
     const path = getString(candidate, ["path"]);
     result.normalizedKind = "systemEvent";
     result.markdownText = path ? `Viewed image: ${path}` : "Viewed image";
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["enteredReviewMode", "entered_review_mode"])) {
     const reviewId = getString(candidate, ["review"]);
     result.normalizedKind = "systemEvent";
     result.markdownText = reviewId ? `Entered review mode (${reviewId})` : "Entered review mode";
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["exitedReviewMode", "exited_review_mode"])) {
     const reviewId = getString(candidate, ["review"]);
     result.normalizedKind = "systemEvent";
     result.markdownText = reviewId ? `Exited review mode (${reviewId})` : "Exited review mode";
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   if (isType(itemType, ["contextCompaction", "context_compaction"])) {
     result.normalizedKind = "systemEvent";
     result.markdownText = "Context compacted";
-    return applyFallbackContent(result, candidate, itemType);
+    return applyFallbackContent(result, itemType);
   }
 
   return applyFallbackContent(
     result,
-    candidate,
     itemType,
   );
 }
