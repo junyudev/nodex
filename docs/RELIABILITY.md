@@ -47,7 +47,8 @@
 - Backup restore failures surface explicit error responses.
 - Reminder delivery is at-least-once at scheduler level, then effectively exactly-once per `(project_id, card_id, occurrence_start, offset)` via receipt uniqueness.
 - Missing Codex CLI binary surfaces explicit `missingBinary` connection status in UI.
-- Codex runtime subprocess launch augments binary lookup with common install directories (for example `/opt/homebrew/bin`, `/usr/local/bin`, `~/.bun/bin`) so packaged macOS app launches are less sensitive to GUI `PATH` differences.
+- Packaged builds ship a pinned Codex runtime inside `Contents/Resources/codex` and never fall back to system `PATH`, so the bundled CLI version stays aligned with the committed `src/shared/codex_schemas`.
+- Dev and unpackaged runs still augment binary lookup with common install directories (for example `/opt/homebrew/bin`, `/usr/local/bin`, `~/.bun/bin`) so local GUI launches remain less sensitive to shell `PATH` differences.
 - `codex:*` API calls in browser mode fail fast with explicit unsupported errors.
 - App-update IPC/status calls in browser mode, unpackaged builds, and non-macOS builds return explicit `unsupported` status and do not attempt network update checks.
 - Approval/user-input pending requests are rejected on Codex service shutdown to prevent hung renderer promises.
@@ -58,6 +59,7 @@
 
 ## Operational Checks
 - Before release: run `bun run typecheck`, `bun run lint`, `bun test`.
+- Before release packaging on macOS: run `bun run codex:schemas:verify` so checked-in app-server schemas still match the pinned Codex version.
 - Before enabling CI signing secrets: do one local notarization dry run and verify `codesign --verify --deep --strict`, `spctl --assess --type open`, and `xcrun stapler validate` against the generated macOS artifacts.
 - Release CI publishes only after both `arm64` and `x64` notarized artifacts pass verification, and it synthesizes one canonical `latest-mac.yml` plus referenced blockmaps from the two per-arch updater outputs before the GitHub Release is published; tap sync runs after GitHub Release publication and should be retried independently if the external tap push fails.
 - The authoritative release runbook for workflow triggers, job ordering, secret requirements, artifact naming, and rerun strategy is `docs/release-macos.md`.

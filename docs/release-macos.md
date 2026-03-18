@@ -202,17 +202,22 @@ Responsibilities:
 5. Export `APPLE_API_KEY=<temp-path>` into the job environment.
 6. Run `bun run package:mac:arm64` with a larger CI-only `NODE_OPTIONS=--max-old-space-size=6144` heap limit to avoid the default Node old-space cap during renderer bundling.
 7. Package on a macOS 26 runner so `electron-builder` can compile the checked-in `resources/icon.icon` asset with `actool >= 26`.
-7. Assert these files exist:
+8. Assert these files exist:
    - `dist/Nodex-<version>-arm64.dmg`
    - `dist/Nodex-<version>-arm64.zip`
    - `dist/latest-mac.yml`
    - `dist/Nodex-<version>-arm64.zip.blockmap`
    - built `Nodex.app`
-8. Verify signing and notarization:
+9. Assert bundled Codex runtime resources exist inside `Nodex.app/Contents/Resources/codex`:
+   - `codex`
+   - `path/rg`
+   - `runtime.json`
+10. Run the bundled `codex --version` and verify it matches `runtime.json`.
+11. Verify signing and notarization:
    - `codesign --verify --deep --strict --verbose=2`
    - `spctl --assess --type execute --verbose=4`
    - `xcrun stapler validate`
-9. Upload the DMG, ZIP, `latest-mac.yml`, and blockmaps as the `macos-arm64-release` artifact.
+12. Upload the DMG, ZIP, `latest-mac.yml`, and blockmaps as the `macos-arm64-release` artifact.
 
 Secrets consumed:
 - `CSC_LINK`
@@ -381,6 +386,7 @@ Before trusting CI with signing secrets, do one local dry run on a Mac that has 
 
 ```bash
 bun run package:mac:arm64
+"dist/mac-arm64/Nodex.app/Contents/Resources/codex/codex" --version
 codesign --verify --deep --strict --verbose=2 "dist/mac-arm64/Nodex.app"
 spctl --assess --type execute --verbose=4 "dist/mac-arm64/Nodex.app"
 xcrun stapler validate "dist/mac-arm64/Nodex.app"

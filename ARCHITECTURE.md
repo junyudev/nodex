@@ -29,8 +29,8 @@ Nodex is a local-first kanban platform for coordinating coding-agent work. The E
 - `logging/logger.ts`: structured backend logger with child scopes, sensitive-field redaction, bounded payload serialization, and profile-scoped JSONL file persistence under `${KANBAN_DIR}/logs`.
 - `workbench-resume-state.ts`: profile-scoped persisted last-window snapshot store under Electron `userData`, plus restore-eligible window gating for app reopen.
 - `pty-manager.ts`: PTY process lifecycle management for per-card terminals (spawn, write, resize, kill).
-- `codex/codex-app-server-client.ts`: global JSON-RPC client for `codex app-server` stdio lifecycle, handshake, request correlation, and reconnect/backoff.
-- `codex/codex-service.ts`: domain facade for account/auth, thread/turn actions, approval + request-user-input handling, and normalized `codex:event` emission.
+- `codex/codex-app-server-client.ts`: global JSON-RPC client for `codex app-server` stdio lifecycle, handshake, request correlation, reconnect/backoff, and wire-level typing against the committed `src/shared/codex_schemas`.
+- `codex/codex-service.ts`: domain facade for account/auth, thread/turn actions, approval + request-user-input handling, packaged-vs-dev Codex runtime resolution, and normalized `codex:event` emission.
 - `codex/codex-item-normalizer.ts`: maps heterogeneous app-server item payloads into stable renderer-oriented `CodexItemView` shapes (`normalizedKind`, optional `toolCall`, optional `markdownText`).
 - `codex/codex-link-repository.ts`: persistence adapter for card-thread links (`codex_card_threads`) plus a legacy/transient per-thread snapshot cache (`codex_thread_snapshots`) used only when Codex session history is not yet materialized.
 - `codex/codex-session-store.ts`: reads persisted Codex session artifacts from `$CODEX_HOME` / `~/.codex`, supports both legacy JSON and modern JSONL rollout layouts, and materializes thread detail for restart recovery/import.

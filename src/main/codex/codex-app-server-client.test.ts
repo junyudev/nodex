@@ -120,6 +120,7 @@ describe("codex-app-server-client", () => {
   test("reports missing binary state", async () => {
     const client = new CodexAppServerClient({
       binaryPath: "__missing_codex_binary_for_test__",
+      missingBinaryMessage: "Bundled Codex runtime is missing or corrupted. Reinstall Nodex.",
     });
 
     try {
@@ -137,6 +138,7 @@ describe("codex-app-server-client", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       expect(client.getState().status).toBe("missingBinary");
+      expect(client.getState().message).toBe("Bundled Codex runtime is missing or corrupted. Reinstall Nodex.");
     } finally {
       await client.stop();
     }

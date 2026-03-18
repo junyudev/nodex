@@ -96,6 +96,26 @@ jobs:
           echo "zip_blockmap_path=${zip_blockmap_path}" >> "${GITHUB_OUTPUT}"
           echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
 
+      - name: Verify bundled Codex runtime
+        run: |
+          codex_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/codex"
+          rg_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/path/rg"
+          metadata_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/runtime.json"
+
+          if [[ ! -f "${codex_path}" || ! -f "${rg_path}" || ! -f "${metadata_path}" ]]; then
+            echo "Bundled Codex runtime resources are missing from the packaged app." >&2
+            exit 1
+          fi
+
+          codex_version="$("${codex_path}" --version)"
+          metadata_version="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).codexVersion" "${metadata_path}")"
+
+          echo "Bundled Codex: ${codex_version}"
+          if [[ "${codex_version}" != *"${metadata_version}"* ]]; then
+            echo "Bundled Codex version ${codex_version} did not match metadata ${metadata_version}." >&2
+            exit 1
+          fi
+
       - name: Verify signing and notarization
         run: |
           codesign --verify --deep --strict --verbose=2 "${{ steps.artifact_paths.outputs.app_path }}"
@@ -190,6 +210,26 @@ jobs:
           echo "latest_mac_path=${latest_mac_path}" >> "${GITHUB_OUTPUT}"
           echo "zip_blockmap_path=${zip_blockmap_path}" >> "${GITHUB_OUTPUT}"
           echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify bundled Codex runtime
+        run: |
+          codex_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/codex"
+          rg_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/path/rg"
+          metadata_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/runtime.json"
+
+          if [[ ! -f "${codex_path}" || ! -f "${rg_path}" || ! -f "${metadata_path}" ]]; then
+            echo "Bundled Codex runtime resources are missing from the packaged app." >&2
+            exit 1
+          fi
+
+          codex_version="$("${codex_path}" --version)"
+          metadata_version="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).codexVersion" "${metadata_path}")"
+
+          echo "Bundled Codex: ${codex_version}"
+          if [[ "${codex_version}" != *"${metadata_version}"* ]]; then
+            echo "Bundled Codex version ${codex_version} did not match metadata ${metadata_version}." >&2
+            exit 1
+          fi
 
       - name: Verify signing and notarization
         run: |

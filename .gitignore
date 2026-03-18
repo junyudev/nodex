@@ -19,6 +19,7 @@ node_modules
 
 # production
 /build
+/.generated/
 
 # misc
 .DS_Store

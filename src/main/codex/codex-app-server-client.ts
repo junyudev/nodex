@@ -1,6 +1,13 @@
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type {
+  ClientRequest,
+  InitializeParams,
+  InitializeResponse,
+  ServerNotification,
+  ServerRequest,
+} from "../../shared/codex_schemas";
 import type { CodexConnectionState } from "../../shared/types";
 import { getLogger } from "../logging/logger";
 
@@ -76,8 +83,13 @@ interface PendingRequest {
 
 export interface CodexServerRequest {
   id: JsonRpcId;
-  method: string;
-  params: unknown;
+  method: ServerRequest["method"];
+  params: ServerRequest["params"];
+}
+
+export interface CodexServerNotification {
+  method: ServerNotification["method"];
+  params: ServerNotification["params"];
 }
 
 export interface CodexAppServerClientOptions {
@@ -85,6 +97,7 @@ export interface CodexAppServerClientOptions {
   args?: string[];
   env?: NodeJS.ProcessEnv;
   additionalSearchPaths?: string[];
+  missingBinaryMessage?: string;
   initializeTimeoutMs?: number;
   requestTimeoutMs?: number;
   clientInfo?: {
@@ -208,11 +221,15 @@ function summarizeRpcParams(method: string, params: unknown): Record<string, unk
   };
 }
 
+type ClientRequestMethod = ClientRequest["method"];
+type ClientRequestParams<TMethod extends ClientRequestMethod> = Extract<ClientRequest, { method: TMethod }>["params"];
+
 export class CodexAppServerClient extends EventEmitter {
   private readonly binaryPath: string;
   private readonly args: string[];
   private readonly env: NodeJS.ProcessEnv;
   private readonly additionalSearchPaths: string[];
+  private readonly missingBinaryMessage: string;
   private readonly initializeTimeoutMs: number;
   private readonly requestTimeoutMs: number;
   private readonly clientInfo: { name: string; title: string; version: string };
@@ -239,6 +256,7 @@ export class CodexAppServerClient extends EventEmitter {
     this.args = options?.args ?? ["app-server", "--listen", "stdio://"];
     this.env = { ...(options?.env ?? process.env) };
     this.additionalSearchPaths = options?.additionalSearchPaths ?? [];
+    this.missingBinaryMessage = options?.missingBinaryMessage ?? "Could not find 'codex' in PATH or common install directories";
     this.initializeTimeoutMs = options?.initializeTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
     this.requestTimeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.clientInfo = options?.clientInfo ?? {
@@ -301,12 +319,20 @@ export class CodexAppServerClient extends EventEmitter {
     await this.readyDeferred.promise;
   }
 
-  async request<T>(method: string, params?: unknown): Promise<T> {
+  async request<TMethod extends ClientRequestMethod, TResult>(
+    method: TMethod,
+    ...args: ClientRequestParams<TMethod> extends undefined ? [] | [params: ClientRequestParams<TMethod>] : [params: ClientRequestParams<TMethod>]
+  ): Promise<TResult>;
+  async request<TResult>(method: string, params?: unknown): Promise<TResult>;
+  async request(
+    method: string,
+    ...args: [params?: unknown]
+  ): Promise<unknown> {
     if (!this.child) {
       await this.start();
     }
     await this.waitUntilReady();
-    return this.requestRaw<T>(method, params);
+    return this.requestRaw(method, args[0]);
   }
 
   async notify(method: string, params?: unknown): Promise<void> {
@@ -315,6 +341,14 @@ export class CodexAppServerClient extends EventEmitter {
     }
     await this.waitUntilReady();
     this.writeMessage({ method, params } satisfies JsonRpcNotification);
+  }
+
+  private setMissingBinaryState(): void {
+    this.setConnectionState({
+      status: "missingBinary",
+      retries: this.reconnectAttempts,
+      message: this.missingBinaryMessage,
+    });
   }
 
   private async spawnAndInitialize(): Promise<void> {
@@ -336,11 +370,7 @@ export class CodexAppServerClient extends EventEmitter {
         binaryPath: this.binaryPath,
         error,
       });
-      this.setConnectionState({
-        status: "missingBinary",
-        retries: this.reconnectAttempts,
-        message: `Could not find '${this.binaryPath}' in PATH or common install directories`,
-      });
+      this.setMissingBinaryState();
       this.readyDeferred.reject(error);
       throw error;
     }
@@ -377,11 +407,7 @@ export class CodexAppServerClient extends EventEmitter {
           binaryPath: this.binaryPath,
           error,
         });
-        this.setConnectionState({
-          status: "missingBinary",
-          retries: this.reconnectAttempts,
-          message: `Could not find '${this.binaryPath}' in PATH or common install directories`,
-        });
+        this.setMissingBinaryState();
         this.readyDeferred.reject(new Error(`Missing Codex binary: ${this.binaryPath}`));
         return;
       }
@@ -443,14 +469,16 @@ export class CodexAppServerClient extends EventEmitter {
   }
 
   private async initializeHandshake(): Promise<void> {
-    const initializePromise = this.requestRaw<unknown>(
-      "initialize",
-      {
-        clientInfo: this.clientInfo,
-        capabilities: {
-          experimentalApi: true,
-        },
+    const initializeParams: InitializeParams = {
+      clientInfo: this.clientInfo,
+      capabilities: {
+        experimentalApi: true,
       },
+    };
+
+    const initializePromise = this.requestRaw<"initialize", InitializeResponse>(
+      "initialize",
+      initializeParams,
       true,
     );
 
@@ -463,7 +491,17 @@ export class CodexAppServerClient extends EventEmitter {
     this.initialized = true;
   }
 
-  private async requestRaw<T>(method: string, params?: unknown, skipInitialization = false): Promise<T> {
+  private async requestRaw<TMethod extends ClientRequestMethod, TResult>(
+    method: TMethod,
+    params: ClientRequestParams<TMethod> | undefined,
+    skipInitialization?: boolean,
+  ): Promise<TResult>;
+  private async requestRaw<TResult>(method: string, params?: unknown, skipInitialization?: boolean): Promise<TResult>;
+  private async requestRaw(
+    method: string,
+    params?: unknown,
+    skipInitialization = false,
+  ): Promise<unknown> {
     if (!this.child || this.child.stdin.destroyed) {
       throw new Error("Codex app-server is not running");
     }
@@ -482,7 +520,7 @@ export class CodexAppServerClient extends EventEmitter {
       params: summarizeRpcParams(method, params),
     });
 
-    const promise = new Promise<T>((resolve, reject) => {
+    const promise = new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(String(id));
         logger.error("Codex RPC request timed out", {
@@ -497,7 +535,7 @@ export class CodexAppServerClient extends EventEmitter {
         method,
         startedAt: Date.now(),
         timeout,
-        resolve: (value) => resolve(value as T),
+        resolve,
         reject,
       });
     });
@@ -576,7 +614,7 @@ export class CodexAppServerClient extends EventEmitter {
       this.emit("notification", {
         method: candidate.method,
         params: candidate.params,
-      });
+      } as CodexServerNotification);
       return;
     }
 

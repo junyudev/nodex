@@ -1,10 +1,32 @@
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import * as path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { parse as parseToml } from "smol-toml";
+import type { CollaborationModeListResponse } from "../../shared/codex_schemas/v2/CollaborationModeListResponse";
+import type { CommandExecutionRequestApprovalParams } from "../../shared/codex_schemas/v2/CommandExecutionRequestApprovalParams";
+import type { CommandExecutionRequestApprovalResponse } from "../../shared/codex_schemas/v2/CommandExecutionRequestApprovalResponse";
+import type { GetAccountRateLimitsResponse } from "../../shared/codex_schemas/v2/GetAccountRateLimitsResponse";
+import type { GetAccountResponse } from "../../shared/codex_schemas/v2/GetAccountResponse";
+import type { LoginAccountResponse } from "../../shared/codex_schemas/v2/LoginAccountResponse";
+import type { CancelLoginAccountResponse } from "../../shared/codex_schemas/v2/CancelLoginAccountResponse";
+import type { FileChangeRequestApprovalParams } from "../../shared/codex_schemas/v2/FileChangeRequestApprovalParams";
+import type { FileChangeRequestApprovalResponse } from "../../shared/codex_schemas/v2/FileChangeRequestApprovalResponse";
+import type { ModelListResponse } from "../../shared/codex_schemas/v2/ModelListResponse";
+import type { ThreadReadResponse } from "../../shared/codex_schemas/v2/ThreadReadResponse";
+import type { ThreadResumeParams } from "../../shared/codex_schemas/v2/ThreadResumeParams";
+import type { ThreadStartParams } from "../../shared/codex_schemas/v2/ThreadStartParams";
+import type { ThreadStartResponse } from "../../shared/codex_schemas/v2/ThreadStartResponse";
+import type { ThreadUnarchiveResponse } from "../../shared/codex_schemas/v2/ThreadUnarchiveResponse";
+import type { TurnStartParams } from "../../shared/codex_schemas/v2/TurnStartParams";
+import type { TurnStartResponse } from "../../shared/codex_schemas/v2/TurnStartResponse";
+import type { TurnSteerParams } from "../../shared/codex_schemas/v2/TurnSteerParams";
+import type { TurnSteerResponse } from "../../shared/codex_schemas/v2/TurnSteerResponse";
+import type { ToolRequestUserInputParams } from "../../shared/codex_schemas/v2/ToolRequestUserInputParams";
+import type { ToolRequestUserInputResponse } from "../../shared/codex_schemas/v2/ToolRequestUserInputResponse";
 import type {
   CardRunInTarget,
   CodexAccountIdentity,
@@ -63,10 +85,12 @@ import {
   CodexAppServerClient,
   CodexRpcError,
   type CodexServerRequest,
+  type CodexServerNotification,
 } from "./codex-app-server-client";
 import { hasCodexSessionMaterialized, readCodexSessionThreadDetail } from "./codex-session-store";
 import { createManagedWorktree, removeManagedWorktree } from "./git-worktree-service";
 import { normalizeThreadItem } from "./codex-item-normalizer";
+import { resolveCodexRuntime, type ResolvedCodexRuntime } from "./codex-runtime";
 import {
   listWorktreeEnvironmentOptions,
   readWorktreeEnvironmentDefinition,
@@ -74,6 +98,7 @@ import {
 import { getLogger } from "../logging/logger";
 
 const codexLogger = getLogger({ subsystem: "codex", component: "service" });
+const require = createRequire(import.meta.url);
 
 interface ThreadRef {
   projectId: string;
@@ -83,7 +108,7 @@ interface ThreadRef {
 
 interface PendingApproval {
   request: CodexApprovalRequest;
-  resolve: (value: { decision: string }) => void;
+  resolve: (value: CommandExecutionRequestApprovalResponse | FileChangeRequestApprovalResponse) => void;
   reject: (reason?: unknown) => void;
 }
 
@@ -176,12 +201,19 @@ interface GenerateThreadTitleAdapterInput {
   };
 }
 
+type CodexServiceOptions = {
+  runtime?: ResolvedCodexRuntime;
+};
+
 const THREAD_TITLE_MIN_LENGTH = 18;
 const THREAD_TITLE_MAX_LENGTH = 36;
 const THREAD_TITLE_PROMPT_MAX_CHARS = 2_000;
 const THREAD_TITLE_TIMEOUT_MS = 30_000;
 const THREAD_TITLE_MODEL = "gpt-5.1-codex-mini";
 const THREAD_TITLE_REASONING_EFFORT: CodexReasoningEffort = "low";
+const THREAD_START_EXPERIMENTAL_RAW_EVENTS = false;
+const THREAD_START_PERSIST_EXTENDED_HISTORY = true;
+const THREAD_RESUME_PERSIST_EXTENDED_HISTORY = true;
 const WORKTREE_SETUP_SCRIPT_TIMEOUT_MS = 10 * 60 * 1000;
 const WORKTREE_LOG_STATUS_MESSAGE = "Creating a worktree and running setup.";
 const THREAD_TITLE_PROMPT_PATH = path.resolve(process.cwd(), "scripts", "generate-thread-title.md");
@@ -411,6 +443,29 @@ function truncateLastLines(value: string, maxLines = 12): string {
 function previewText(value: string, maxLength = 160): string {
   if (value.length <= maxLength) return value;
   return `${value.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function createTextUserInput(text: string): TurnStartParams["input"][number] {
+  return {
+    type: "text",
+    text,
+    text_elements: [],
+  };
+}
+
+function resolveDefaultCodexRuntime(): ResolvedCodexRuntime {
+  try {
+    const electronModule = require("electron") as { app?: { isPackaged?: boolean } };
+    return resolveCodexRuntime({
+      isPackaged: Boolean(electronModule.app?.isPackaged),
+      resourcesPath: process.resourcesPath,
+    });
+  } catch {
+    return resolveCodexRuntime({
+      isPackaged: false,
+      resourcesPath: process.resourcesPath,
+    });
+  }
 }
 
 function appendOutputTail(currentTail: string, chunk: string, maxChars = 64_000): string {
@@ -870,13 +925,7 @@ function parseModelOption(value: unknown): CodexModelOption | null {
 
 export class CodexService extends EventEmitter {
   private readonly logger = codexLogger;
-  private readonly client = new CodexAppServerClient({
-    clientInfo: {
-      name: "nodex",
-      title: "Nodex",
-      version: "0.5.0",
-    },
-  });
+  private readonly client: CodexAppServerClient;
 
   private readonly projectPermissionMode = new Map<string, CodexPermissionMode>();
   private readonly collaborationModePresets = new Map<CodexCollaborationModeKind, CodexCollaborationModePreset>();
@@ -889,8 +938,21 @@ export class CodexService extends EventEmitter {
   private threadTitlePromptTemplate: string | null | undefined = undefined;
   private syntheticItemIdCounter = 0;
 
-  constructor() {
+  constructor(options?: CodexServiceOptions) {
     super();
+
+    const runtime = options?.runtime ?? resolveDefaultCodexRuntime();
+
+    this.client = new CodexAppServerClient({
+      binaryPath: runtime.binaryPath,
+      additionalSearchPaths: runtime.additionalSearchPaths,
+      missingBinaryMessage: runtime.missingBinaryMessage,
+      clientInfo: {
+        name: "nodex",
+        title: "Nodex",
+        version: "0.5.0",
+      },
+    });
 
     this.client.setServerRequestHandler(async (request) => this.handleServerRequest(request));
 
@@ -898,7 +960,7 @@ export class CodexService extends EventEmitter {
       this.emitEvent({ type: "connection", connection });
     });
 
-    this.client.on("notification", ({ method, params }: { method: string; params: unknown }) => {
+    this.client.on("notification", ({ method, params }: CodexServerNotification) => {
       void this.handleNotification(method, params);
     });
 
@@ -1124,20 +1186,19 @@ export class CodexService extends EventEmitter {
   async readAccountSnapshot(): Promise<CodexAccountSnapshot> {
     await this.ensureClientReady();
 
-    const accountResult = await this.client.request<{
-      account?: unknown;
-      requiresOpenAiAuth?: unknown;
-    }>("account/read", { refreshToken: false });
+    const accountResult = await this.client.request<"account/read", GetAccountResponse>("account/read", {
+      refreshToken: false,
+    });
 
-    const rateLimitResult = await this.client.request<{
-      rateLimits?: unknown;
-    }>("account/rateLimits/read").catch(() => ({ rateLimits: null }));
+    const rateLimitResult = await this.client.request<"account/rateLimits/read", GetAccountRateLimitsResponse>(
+      "account/rateLimits/read",
+    ).catch(() => ({ rateLimits: null, rateLimitsByLimitId: null }));
 
     this.accountSnapshot = {
-      account: parseAccountIdentity(accountResult?.account ?? null),
-      requiresOpenAiAuth: Boolean(accountResult?.requiresOpenAiAuth),
+      account: parseAccountIdentity(accountResult.account ?? null),
+      requiresOpenAiAuth: Boolean(accountResult.requiresOpenaiAuth),
       pendingLogin: this.accountSnapshot.pendingLogin ?? null,
-      rateLimits: parseRateLimitsSnapshot(rateLimitResult?.rateLimits ?? null),
+      rateLimits: parseRateLimitsSnapshot(rateLimitResult.rateLimits ?? null),
     };
 
     this.logger.info("Read Codex account snapshot", {
@@ -1163,15 +1224,15 @@ export class CodexService extends EventEmitter {
       return { type: "apiKey" };
     }
 
-    const result = await this.client.request<{ type?: unknown; loginId?: unknown; authUrl?: unknown }>(
+    const result = await this.client.request<"account/login/start", LoginAccountResponse>(
       "account/login/start",
       { type: "chatgpt" },
     );
 
     const response: { type: "chatgpt"; loginId: string; authUrl: string } = {
       type: "chatgpt",
-      loginId: typeof result?.loginId === "string" ? result.loginId : "",
-      authUrl: typeof result?.authUrl === "string" ? result.authUrl : "",
+      loginId: result.type === "chatgpt" ? result.loginId : "",
+      authUrl: result.type === "chatgpt" ? result.authUrl : "",
     };
 
     this.accountSnapshot = {
@@ -1189,7 +1250,7 @@ export class CodexService extends EventEmitter {
   async cancelAccountLogin(loginId: string): Promise<{ status: "canceled" | "notFound" }> {
     await this.ensureClientReady();
 
-    const result = await this.client.request<{ status?: unknown }>("account/login/cancel", {
+    const result = await this.client.request<"account/login/cancel", CancelLoginAccountResponse>("account/login/cancel", {
       loginId,
     });
 
@@ -1202,7 +1263,7 @@ export class CodexService extends EventEmitter {
     }
 
     return {
-      status: result?.status === "canceled" ? "canceled" : "notFound",
+      status: result.status === "canceled" ? "canceled" : "notFound",
     };
   }
 
@@ -1305,8 +1366,7 @@ export class CodexService extends EventEmitter {
   async listModels(): Promise<CodexModelOption[]> {
     await this.ensureClientReady();
 
-    const result = await this.client.request<{ data?: unknown }>("model/list", {});
-    if (!Array.isArray(result.data)) return [];
+    const result = await this.client.request<"model/list", ModelListResponse>("model/list", {});
 
     return result.data
       .map(parseModelOption)
@@ -1316,19 +1376,8 @@ export class CodexService extends EventEmitter {
   async listCollaborationModes(): Promise<CodexCollaborationModePreset[]> {
     await this.ensureClientReady();
 
-    const result = await this.client.request<{ data?: unknown } | unknown>("collaborationMode/list", {});
-    const resultRecord = asRecord(result);
-    const rawData = resultRecord?.data
-      ?? resultRecord?.modes
-      ?? resultRecord?.collaborationModes
-      ?? resultRecord?.collaboration_modes
-      ?? result;
-    if (!Array.isArray(rawData)) {
-      this.collaborationModePresets.clear();
-      return [];
-    }
-
-    const presets = rawData
+    const result = await this.client.request<"collaborationMode/list", CollaborationModeListResponse>("collaborationMode/list", {});
+    const presets = result.data
       .map(parseCollaborationModePreset)
       .filter((preset): preset is CodexCollaborationModePreset => preset !== null)
       .filter((preset) => preset.mode === "default" || preset.mode === "plan");
@@ -2234,8 +2283,8 @@ export class CodexService extends EventEmitter {
       prompt: firstPrompt,
       cwd,
       appServerConnection: {
-        startThread: (params) => this.client.request("thread/start", params),
-        startTurn: (params) => this.client.request("turn/start", params),
+        startThread: (params) => this.client.request("thread/start", params as ThreadStartParams),
+        startTurn: (params) => this.client.request("turn/start", params as TurnStartParams),
         interruptTurn: (params) => this.client.request("turn/interrupt", params),
         registerInternalNotificationHandler: (handler) => {
           this.client.on("notification", handler);
@@ -2371,10 +2420,13 @@ export class CodexService extends EventEmitter {
         });
       }
 
-      const threadStart = await this.client.request<{ thread?: unknown }>("thread/start", {
+      const threadStartParams: ThreadStartParams = {
         cwd: runLocation.cwd,
-        model: input.model,
-      });
+        model: input.model ?? null,
+        experimentalRawEvents: THREAD_START_EXPERIMENTAL_RAW_EVENTS,
+        persistExtendedHistory: THREAD_START_PERSIST_EXTENDED_HISTORY,
+      };
+      const threadStart = await this.client.request<"thread/start", ThreadStartResponse>("thread/start", threadStartParams);
 
       const link = this.upsertLinkFromThread(threadStart.thread, {
         projectId: input.projectId,
@@ -2407,15 +2459,16 @@ export class CodexService extends EventEmitter {
         reasoningEffort: input.reasoningEffort,
       });
 
-      const turnStart = await this.client.request<{ turn?: unknown }>("turn/start", {
+      const turnStartParams: TurnStartParams = {
         threadId: link.threadId,
-        input: [{ type: "text", text: prompt }],
+        input: [createTextUserInput(prompt)],
         cwd: runLocation.cwd,
         ...turnPermissionOverrides,
         ...(input.model ? { model: input.model } : {}),
         ...(input.reasoningEffort ? { effort: input.reasoningEffort } : {}),
         ...(collaborationMode ? { collaborationMode } : {}),
-      });
+      };
+      const turnStart = await this.client.request<"turn/start", TurnStartResponse>("turn/start", turnStartParams);
       const startedTurn = this.asTurnSummary(link.threadId, turnStart.turn);
       if (startedTurn) {
         this.mergeTurn(link.threadId, startedTurn);
@@ -2497,7 +2550,7 @@ export class CodexService extends EventEmitter {
     threadId: string,
     includeTurns: boolean,
   ): Promise<CodexThreadDetail | null> {
-    const result = await this.client.request<{ thread?: unknown }>("thread/read", {
+    const result = await this.client.request<"thread/read", ThreadReadResponse>("thread/read", {
       threadId,
       includeTurns,
     });
@@ -2517,9 +2570,11 @@ export class CodexService extends EventEmitter {
     await this.ensureClientReady();
     this.logger.info("Resuming Codex thread", { threadId });
 
-    await this.client.request("thread/resume", {
+    const resumeParams: ThreadResumeParams = {
       threadId,
-    });
+      persistExtendedHistory: THREAD_RESUME_PERSIST_EXTENDED_HISTORY,
+    };
+    await this.client.request("thread/resume", resumeParams);
 
     return this.readThread(threadId, true);
   }
@@ -2549,7 +2604,7 @@ export class CodexService extends EventEmitter {
 
   async unarchiveThread(threadId: string): Promise<CodexThreadSummary | null> {
     await this.ensureClientReady();
-    const result = await this.client.request<{ thread?: unknown }>("thread/unarchive", { threadId });
+    const result = await this.client.request<"thread/unarchive", ThreadUnarchiveResponse>("thread/unarchive", { threadId });
 
     const summary = this.upsertLinkFromThread(result.thread) ?? updateCodexThreadArchived(threadId, false);
     if (summary) {
@@ -2597,25 +2652,30 @@ export class CodexService extends EventEmitter {
       promptPreview: previewText(promptText),
     });
 
-    const startTurnRequest = () =>
-      this.client.request<{ turn?: unknown }>("turn/start", {
+    const startTurnRequest = () => {
+      const turnStartParams: TurnStartParams = {
         threadId,
         ...(workspacePath ? { cwd: workspacePath } : {}),
         ...turnPermissionOverrides,
         ...(overrides?.model ? { model: overrides.model } : {}),
         ...(overrides?.reasoningEffort ? { effort: overrides.reasoningEffort } : {}),
         ...(collaborationMode ? { collaborationMode } : {}),
-        input: [{ type: "text", text: promptText }],
-      });
+        input: [createTextUserInput(promptText)],
+      };
+      return this.client.request<"turn/start", TurnStartResponse>("turn/start", turnStartParams);
+    };
 
-    let turnStartResult: { turn?: unknown };
+    let turnStartResult: TurnStartResponse;
     try {
       turnStartResult = await startTurnRequest();
     } catch (error) {
       if (!isThreadNotFoundError(error)) throw error;
 
       this.logger.warn("Codex turn start hit missing thread; attempting resume", { threadId, error });
-      await this.client.request("thread/resume", { threadId });
+      await this.client.request("thread/resume", {
+        threadId,
+        persistExtendedHistory: THREAD_RESUME_PERSIST_EXTENDED_HISTORY,
+      });
       turnStartResult = await startTurnRequest();
     }
 
@@ -2665,13 +2725,14 @@ export class CodexService extends EventEmitter {
       optimisticItemId: optimisticItemId ?? null,
     });
 
-    const result = await this.client.request<{ turnId?: unknown }>("turn/steer", {
+    const steerParams: TurnSteerParams = {
       threadId,
       expectedTurnId,
-      input: [{ type: "text", text: promptText }],
-    });
+      input: [createTextUserInput(promptText)],
+    };
+    const result = await this.client.request<"turn/steer", TurnSteerResponse>("turn/steer", steerParams);
 
-    if (typeof result?.turnId !== "string") {
+    if (typeof result.turnId !== "string") {
       this.logger.warn("Codex turn steer returned no turn id", { threadId, expectedTurnId });
       return null;
     }
@@ -2838,15 +2899,23 @@ export class CodexService extends EventEmitter {
     });
 
     if (request.method === "item/commandExecution/requestApproval") {
-      return this.handleApprovalRequest(request, "command");
+      return this.handleApprovalRequest(
+        String(request.id),
+        request.params as CommandExecutionRequestApprovalParams,
+        "command",
+      );
     }
 
     if (request.method === "item/fileChange/requestApproval") {
-      return this.handleApprovalRequest(request, "file");
+      return this.handleApprovalRequest(
+        String(request.id),
+        request.params as FileChangeRequestApprovalParams,
+        "file",
+      );
     }
 
     if (request.method === "item/tool/requestUserInput") {
-      return this.handleRequestUserInput(request);
+      return this.handleRequestUserInput(String(request.id), request.params as ToolRequestUserInputParams);
     }
 
     if (request.method === "item/tool/call") {
@@ -2857,23 +2926,19 @@ export class CodexService extends EventEmitter {
   }
 
   private async handleApprovalRequest(
-    request: CodexServerRequest,
+    requestId: string,
+    params: CommandExecutionRequestApprovalParams | FileChangeRequestApprovalParams,
     kind: "command" | "file",
-  ): Promise<{ decision: string }> {
-    const params = (typeof request.params === "object" && request.params !== null)
-      ? request.params as Record<string, unknown>
-      : {};
-
-    const threadId = typeof params.threadId === "string" ? params.threadId : "";
-    const turnId = typeof params.turnId === "string" ? params.turnId : "";
-    const itemId = typeof params.itemId === "string" ? params.itemId : "";
+  ): Promise<CommandExecutionRequestApprovalResponse | FileChangeRequestApprovalResponse> {
+    const threadId = params.threadId;
+    const turnId = params.turnId;
+    const itemId = params.itemId;
 
     if (!threadId || !turnId || !itemId) {
-      return { decision: "decline" };
+      return { decision: "decline" as const };
     }
 
     const ref = this.parseThreadRef(threadId);
-    const requestId = String(request.id);
 
     const payload: CodexApprovalRequest = {
       requestId,
@@ -2883,9 +2948,9 @@ export class CodexService extends EventEmitter {
       threadId,
       turnId,
       itemId,
-      reason: typeof params.reason === "string" ? params.reason : undefined,
-      command: typeof params.command === "string" ? params.command : undefined,
-      cwd: typeof params.cwd === "string" ? params.cwd : undefined,
+      reason: params.reason ?? undefined,
+      command: "command" in params ? params.command ?? undefined : undefined,
+      cwd: "cwd" in params ? params.cwd ?? undefined : undefined,
       createdAt: Date.now(),
     };
 
@@ -2916,7 +2981,7 @@ export class CodexService extends EventEmitter {
 
     this.emitEvent({ type: "approvalRequested", request: payload });
 
-    return await new Promise<{ decision: string }>((resolve, reject) => {
+    return await new Promise<CommandExecutionRequestApprovalResponse | FileChangeRequestApprovalResponse>((resolve, reject) => {
       this.pendingApprovals.set(requestId, {
         request: payload,
         resolve,
@@ -2926,62 +2991,29 @@ export class CodexService extends EventEmitter {
   }
 
   private async handleRequestUserInput(
-    request: CodexServerRequest,
-  ): Promise<{ answers: Record<string, { answers: string[] }> }> {
-    const params = (typeof request.params === "object" && request.params !== null)
-      ? request.params as Record<string, unknown>
-      : {};
-
-    const threadId = typeof params.threadId === "string" ? params.threadId : "";
-    const turnId = typeof params.turnId === "string" ? params.turnId : "";
-    const itemId = typeof params.itemId === "string" ? params.itemId : "";
+    requestId: string,
+    params: ToolRequestUserInputParams,
+  ): Promise<ToolRequestUserInputResponse> {
+    const threadId = params.threadId;
+    const turnId = params.turnId;
+    const itemId = params.itemId;
 
     if (!threadId || !turnId || !itemId) {
       throw new Error("Invalid tool request_user_input payload");
     }
 
     const ref = this.parseThreadRef(threadId);
-    const requestId = String(request.id);
-
-    const questions = Array.isArray(params.questions)
-      ? params.questions.reduce<CodexUserInputRequest["questions"]>((acc, question) => {
-        if (typeof question !== "object" || question === null) return acc;
-        const candidate = question as Record<string, unknown>;
-        if (
-          typeof candidate.id !== "string" ||
-          typeof candidate.header !== "string" ||
-          typeof candidate.question !== "string"
-        ) {
-          return acc;
-        }
-
-        const options = Array.isArray(candidate.options)
-          ? candidate.options
-            .map((option) => {
-              if (typeof option !== "object" || option === null) return null;
-              const parsed = option as Record<string, unknown>;
-              if (typeof parsed.label !== "string" || typeof parsed.description !== "string") {
-                return null;
-              }
-              return {
-                label: parsed.label,
-                description: parsed.description,
-              };
-            })
-            .filter((option): option is { label: string; description: string } => option !== null)
-          : undefined;
-
-        acc.push({
-          id: candidate.id,
-          header: candidate.header,
-          question: candidate.question,
-          isOther: Boolean(candidate.isOther),
-          isSecret: Boolean(candidate.isSecret),
-          options,
-        });
-        return acc;
-      }, [])
-      : [];
+    const questions = params.questions.map((question) => ({
+      id: question.id,
+      header: question.header,
+      question: question.question,
+      isOther: question.isOther,
+      isSecret: question.isSecret,
+      options: question.options?.map((option) => ({
+        label: option.label,
+        description: option.description,
+      })),
+    }));
 
     const payload: CodexUserInputRequest = {
       requestId,

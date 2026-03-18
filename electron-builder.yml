@@ -31,6 +31,8 @@ npmRebuild: true
 extraResources:
 - from: resources/icon.png
   to: icon.png
+- from: .generated/codex-runtime
+  to: codex
 extraMetadata:
   main: out/main/index.js
 protocols:
