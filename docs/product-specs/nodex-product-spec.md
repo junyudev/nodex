@@ -935,7 +935,6 @@ bun run start            # electron out/main/index.js
 ### Packaging & Release
 ```bash
 bun run package          # Build + create macOS DMG + ZIP in dist/
-bun run release          # Legacy local publish path via electron-builder
 ```
 
 To release a new version, use the GitHub Actions `Prepare Release` workflow:

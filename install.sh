@@ -11,6 +11,8 @@ APP_NAME="Nodex.app"
 SKILL_DIR="$HOME/.agents/skills/nodex-kanban"
 APP_INSTALL_PATH="/Applications/$APP_NAME"
 CLI_INSTALL_PATH="$HOME/.bun/bin/nodex"
+APP_RESOURCES_PATH="$APP_INSTALL_PATH/Contents/Resources"
+CODEX_RUNTIME_PATH="$APP_RESOURCES_PATH/codex"
 
 print_usage() {
   cat <<EOF
@@ -20,9 +22,39 @@ Install targets:
   --app, -a    Install desktop app to $APP_INSTALL_PATH
   --cli, -c    Install CLI to $CLI_INSTALL_PATH
   --skill, -s  Install skill to $SKILL_DIR/SKILL.md
-  --all        Install all targets (same as no args)
+  --all        Install app, CLI, and skill
   --help, -h   Show this help
+
+Defaults:
+  With no args, installs the desktop app only.
 EOF
+}
+
+verify_installed_app() {
+  local runtime_json_path="$CODEX_RUNTIME_PATH/runtime.json"
+  local codex_binary_path="$CODEX_RUNTIME_PATH/codex"
+  local rg_binary_path="$CODEX_RUNTIME_PATH/path/rg"
+
+  if [ ! -f "$runtime_json_path" ]; then
+    echo "Error: Missing bundled Codex runtime metadata at $runtime_json_path" >&2
+    exit 1
+  fi
+
+  if [ ! -x "$codex_binary_path" ]; then
+    echo "Error: Missing bundled Codex binary at $codex_binary_path" >&2
+    exit 1
+  fi
+
+  if [ ! -x "$rg_binary_path" ]; then
+    echo "Error: Missing bundled rg binary at $rg_binary_path" >&2
+    exit 1
+  fi
+
+  echo "==> Verified bundled runtime resources:"
+  echo "    Codex: $codex_binary_path"
+  echo "    rg:    $rg_binary_path"
+  echo "    Meta:  $runtime_json_path"
+  echo "    Version: $("$codex_binary_path" --version)"
 }
 
 install_app=false
@@ -65,18 +97,6 @@ done
 
 if [ "$selected_any" = false ]; then
   install_app=true
-  install_cli=true
-  install_skill=true
-fi
-
-if [ "$install_skill" = true ] && ! command -v codex >/dev/null 2>&1; then
-  cat >&2 <<'EOF'
-Error: Codex CLI is required but was not found in PATH.
-Install it first with one of:
-  npm install -g @openai/codex
-  brew install --cask codex
-EOF
-  exit 1
 fi
 
 if [ "$install_app" = true ] || [ "$install_cli" = true ]; then
@@ -86,12 +106,21 @@ if [ "$install_app" = true ] || [ "$install_cli" = true ]; then
 fi
 
 if [ "$install_app" = true ]; then
-  echo "==> Building app bundle (local-only, unsigned)..."
+  echo "==> Building packaged app bundle via package:mac (unsigned local build)..."
   cd "$REPO_DIR"
-  bun run build
-  CSC_IDENTITY_AUTO_DISCOVERY=false ./node_modules/.bin/electron-builder --mac dir
+  env \
+    CSC_IDENTITY_AUTO_DISCOVERY=false \
+    APPLE_API_KEY= \
+    APPLE_API_KEY_ID= \
+    APPLE_API_ISSUER= \
+    APPLE_ID= \
+    APPLE_APP_SPECIFIC_PASSWORD= \
+    APPLE_TEAM_ID= \
+    APPLE_KEYCHAIN= \
+    APPLE_KEYCHAIN_PROFILE= \
+    bun run package:mac
 
-  # Find the built .app in dist/mac-arm64 or dist/mac
+  # Find the packaged .app in dist/mac-arm64 or dist/mac
   APP_PATH=""
   for candidate in dist/mac-arm64/"$APP_NAME" dist/mac/"$APP_NAME"; do
     if [ -d "$REPO_DIR/$candidate" ]; then
@@ -112,6 +141,7 @@ if [ "$install_app" = true ]; then
   fi
   cp -R "$APP_PATH" /Applications/
   echo "    Installed $APP_INSTALL_PATH"
+  verify_installed_app
 fi
 
 if [ "$install_cli" = true ]; then

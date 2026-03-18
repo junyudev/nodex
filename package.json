@@ -49,7 +49,6 @@
     "package:mac:arm64": "bun run build && bun run stage:codex-runtime:mac:arm64 && electron-builder --mac dmg zip --arm64 --publish never",
     "package:mac:x64": "bun run build && bun run stage:codex-runtime:mac:x64 && electron-builder --mac dmg zip --x64 --publish never",
     "package:all": "bun run build && electron-builder -mwl",
-    "release": "bun run build && electron-builder --mac --publish always",
     "dev:storybook": "bun run --cwd packages/storybook storybook",
     "build:storybook": "bun run --cwd packages/storybook build",
     "tokens:vscode:generate": "bun run scripts/generate-vscode-theme-vars.ts",
