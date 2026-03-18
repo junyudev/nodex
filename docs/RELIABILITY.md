@@ -32,6 +32,7 @@
 - Renderer IPC board-change subscriptions filter by `projectId` to avoid unrelated refresh churn across windows/projects.
 - Reminder path: main-process scheduler scans due reminders every 30s, dedupes with `reminder_receipts`, and emits desktop notifications while app is running.
 - Resume/startup catch-up replays missed reminders within the configured catch-up window and still dedupes by receipt keys.
+- Packaged macOS builds expose an `electron-updater`-backed app-update channel: the main process publishes updater status changes over IPC, auto-checks only start after initialization completes and at least one window exists, downloads run in the background when enabled, and installation stays explicit via `Restart to Update`.
 - Codex path: `codex-service` emits normalized `codex:event` IPC updates; renderer reduces events into thread/turn/item state.
 - Codex client startup is handshake-gated (`initialize` + `initialized`) and reconnects with backoff on unexpected child exit.
 - Backend observability now includes structured JSON-line logs under `${KANBAN_DIR}/logs`, covering HTTP requests, app lifecycle, PTY, backup/reminder jobs, and Codex client/service flows (thread start, turn start, approvals, user-input, reconnects, worktree setup).
@@ -48,6 +49,7 @@
 - Missing Codex CLI binary surfaces explicit `missingBinary` connection status in UI.
 - Codex runtime subprocess launch augments binary lookup with common install directories (for example `/opt/homebrew/bin`, `/usr/local/bin`, `~/.bun/bin`) so packaged macOS app launches are less sensitive to GUI `PATH` differences.
 - `codex:*` API calls in browser mode fail fast with explicit unsupported errors.
+- App-update IPC/status calls in browser mode, unpackaged builds, and non-macOS builds return explicit `unsupported` status and do not attempt network update checks.
 - Approval/user-input pending requests are rejected on Codex service shutdown to prevent hung renderer promises.
 - Codex thread start tolerates rollout materialization lag (`empty session file`) by degrading to summary-only thread reads until full turn history becomes available.
 - Codex follow-up turns tolerate app-server cold state after app restart: if `turn/start` reports `thread not found` for a persisted thread, the service issues `thread/resume` and retries once.
@@ -57,7 +59,7 @@
 ## Operational Checks
 - Before release: run `bun run typecheck`, `bun run lint`, `bun test`.
 - Before enabling CI signing secrets: do one local notarization dry run and verify `codesign --verify --deep --strict`, `spctl --assess --type open`, and `xcrun stapler validate` against the generated macOS artifacts.
-- Release CI publishes only after both `arm64` and `x64` notarized artifacts pass verification; tap sync runs after GitHub Release publication and should be retried independently if the external tap push fails.
+- Release CI publishes only after both `arm64` and `x64` notarized artifacts pass verification, and it synthesizes one canonical `latest-mac.yml` plus referenced blockmaps from the two per-arch updater outputs before the GitHub Release is published; tap sync runs after GitHub Release publication and should be retried independently if the external tap push fails.
 - The authoritative release runbook for workflow triggers, job ordering, secret requirements, artifact naming, and rerun strategy is `docs/release-macos.md`.
 - Before risky migrations/refactors: create a labeled manual backup.
 - Keep retention settings in sync with local storage constraints.

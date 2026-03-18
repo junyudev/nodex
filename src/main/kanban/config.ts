@@ -3,9 +3,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import type {
+  AppUpdateSettings,
   BackupSettings,
   HistorySettings,
   ThreadNotificationSettings,
+  UpdateAppUpdateSettingsInput,
   UpdateBackupSettingsInput,
   UpdateHistorySettingsInput,
   UpdateThreadNotificationSettingsInput,
@@ -21,6 +23,7 @@ interface ServerTomlConfig {
   backup_retention?: number;
   thread_completion_notifications_enabled?: boolean;
   history_retention?: number;
+  app_updates_auto_check_enabled?: boolean;
 }
 
 interface RootTomlConfig extends Record<string, unknown> {
@@ -31,6 +34,7 @@ const BACKUP_AUTO_DEFAULT = false;
 const BACKUP_INTERVAL_DEFAULT = 6;
 const BACKUP_RETENTION_DEFAULT = 28;
 const THREAD_COMPLETION_NOTIFICATIONS_DEFAULT = true;
+const APP_UPDATES_AUTO_CHECK_DEFAULT = true;
 
 function readServerSection(configPath: string): ServerTomlConfig | null {
   try {
@@ -209,6 +213,15 @@ function threadNotificationSettingsFromConfig(config: ServerTomlConfig): ThreadN
   };
 }
 
+function appUpdateSettingsFromConfig(config: ServerTomlConfig): AppUpdateSettings {
+  return {
+    automaticChecksEnabled:
+      typeof config.app_updates_auto_check_enabled === "boolean"
+        ? config.app_updates_auto_check_enabled
+        : APP_UPDATES_AUTO_CHECK_DEFAULT,
+  };
+}
+
 export function getBackupSettings(): BackupSettings {
   const fromToml = backupSettingsFromConfig(serverToml);
   const envOverrides = {
@@ -336,6 +349,36 @@ export function updateThreadNotificationSettings(
   serverToml = loadServerTomlConfig();
 
   return getThreadNotificationSettings();
+}
+
+export function getAppUpdateSettings(): AppUpdateSettings {
+  return appUpdateSettingsFromConfig(userServerToml);
+}
+
+export function updateAppUpdateSettings(
+  input: UpdateAppUpdateSettingsInput,
+): AppUpdateSettings {
+  if (typeof input.automaticChecksEnabled !== "boolean") {
+    throw new Error("automaticChecksEnabled must be a boolean");
+  }
+
+  const userConfigPath = getUserConfigPath();
+  const nextToml = readTomlConfig(userConfigPath);
+  const nextServer = {
+    ...(nextToml.server ?? {}),
+    app_updates_auto_check_enabled: input.automaticChecksEnabled,
+  };
+
+  nextToml.server = nextServer;
+
+  const configDirectory = path.dirname(userConfigPath);
+  mkdirSync(configDirectory, { recursive: true });
+  writeFileSync(userConfigPath, stringifyToml(nextToml as Record<string, unknown>), "utf8");
+
+  userServerToml = loadUserServerTomlConfig();
+  serverToml = loadServerTomlConfig();
+
+  return getAppUpdateSettings();
 }
 
 export function getThreadCompletionNotificationsEnabled(): boolean {

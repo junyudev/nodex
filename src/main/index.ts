@@ -14,7 +14,7 @@ import type {
   AppInitializationStep,
   DatabaseMigrationProgress,
 } from "../shared/app-startup";
-import type { CodexTurnSummary } from "../shared/types";
+import type { AppUpdateStatus, CodexTurnSummary } from "../shared/types";
 import { registerIpcHandlers } from "./ipc-handlers";
 import { startHttpServer } from "./http-server";
 import { findCardLocationById, initializeDatabase } from "./kanban/db-service";
@@ -27,6 +27,7 @@ import { getAssetsPathPrefix } from "./kanban/asset-service";
 import { runReminderTick, snoozeReminder, startReminderScheduler } from "./kanban/reminder-service";
 import * as ptyManager from "./pty-manager";
 import {
+  getAppUpdateSettings,
   getBackupSettings,
   getKanbanDir,
   getThreadNotificationSettings,
@@ -39,6 +40,7 @@ import { configureInstanceScopePaths } from "./instance-scope";
 import { parseCardDeepLink } from "../shared/card-deeplink";
 import { WorkbenchResumeState } from "./workbench-resume-state";
 import { getLogger, shutdownBackendLogger } from "./logging/logger";
+import { AppUpdateService } from "./app-update-service";
 // macOS uses the packaged bundle icon from the app resources.
 // We only keep a PNG around for development Dock icon parity and non-macOS window icons.
 const appIconPath = app.isPackaged
@@ -60,7 +62,25 @@ let workbenchResumeState: WorkbenchResumeState | null = null;
 let appInitializationStep: AppInitializationStep = { phase: "app_waiting" };
 let latestDatabaseMigrationProgress: DatabaseMigrationProgress | null = null;
 let appInitializationPromise: Promise<void> = Promise.resolve();
+let appUpdateService: AppUpdateService | null = null;
 const logger = getLogger({ subsystem: "app" });
+
+function resolveUnsupportedAppUpdateStatus(): AppUpdateStatus {
+  return {
+    status: "unsupported",
+    supported: false,
+    currentVersion: app.getVersion(),
+    availableVersion: null,
+    releaseName: null,
+    releaseDate: null,
+    releaseNotes: null,
+    progressPercent: null,
+    transferredBytes: null,
+    totalBytes: null,
+    checkedAt: null,
+    message: "App updates are only available in packaged macOS builds.",
+  };
+}
 
 function getLastFocusedWindow(): BrowserWindow | null {
   if (lastFocusedWindowId !== null) {
@@ -114,7 +134,17 @@ function configureMacWindowMenus(): void {
   app.dock?.setMenu(Menu.buildFromTemplate(dockMenuTemplate));
 
   const appMenuTemplate: MenuItemConstructorOptions[] = [
-    { role: "appMenu" },
+    {
+      role: "appMenu",
+      submenu: [
+        {
+          label: "Check for Updates…",
+          click: () => {
+            void appUpdateService?.checkForUpdates("manual");
+          },
+        },
+      ],
+    },
     {
       label: "File",
       submenu: [
@@ -146,6 +176,22 @@ function broadcastToWindows(channel: string, payload: unknown): void {
 function setAppInitializationStep(step: AppInitializationStep): void {
   appInitializationStep = step;
   broadcastToWindows("app:init-step", step);
+}
+
+function broadcastAppUpdateStatus(status: AppUpdateStatus): void {
+  broadcastToWindows("app:update-status", status);
+}
+
+function maybeStartAutomaticAppUpdateChecks(): void {
+  if (!appUpdateService) {
+    return;
+  }
+
+  if (appInitializationStep.phase !== "done" || openWindows.size === 0) {
+    return;
+  }
+
+  appUpdateService.maybeStartAutomaticChecks(getAppUpdateSettings());
 }
 
 function publishDatabaseMigrationProgress(progress: DatabaseMigrationProgress): void {
@@ -366,7 +412,12 @@ function createWindow(
     lastFocusedWindowId = webContentsId;
   });
   window.webContents.on("did-finish-load", () => {
+    const appUpdateStatus = appUpdateService?.getStatus();
+    if (appUpdateStatus) {
+      window.webContents.send("app:update-status", appUpdateStatus);
+    }
     flushPendingCardDeepLink();
+    maybeStartAutomaticAppUpdateChecks();
   });
   window.on("closed", () => {
     workbenchResumeState?.clearWindowEligibility(webContentsId);
@@ -476,6 +527,7 @@ async function initializeDesktopApp(serverPort: number): Promise<void> {
   });
 
   setAppInitializationStep({ phase: "done" });
+  maybeStartAutomaticAppUpdateChecks();
 }
 
 configureInstanceScopePaths(app, getKanbanDir());
@@ -516,6 +568,16 @@ if (hasSingleInstanceLock) {
         app.dock?.setIcon(appDockIcon);
       }
       workbenchResumeState = new WorkbenchResumeState(app.getPath("userData"));
+      appUpdateService = new AppUpdateService({
+        currentVersion: app.getVersion(),
+        isPackaged: app.isPackaged,
+        logger,
+        platform: process.platform,
+      });
+      appUpdateService.onStatusChange((status) => {
+        broadcastAppUpdateStatus(status);
+      });
+      appUpdateService.initialize();
 
       const serverPort = getPort();
       const serverUrl = `http://127.0.0.1:${serverPort}`;
@@ -535,6 +597,15 @@ if (hasSingleInstanceLock) {
             openWindows.size,
             snapshot,
           ) ?? false,
+        onGetAppUpdateStatus: () =>
+          appUpdateService?.getStatus() ?? resolveUnsupportedAppUpdateStatus(),
+        onCheckForAppUpdate: async () =>
+          await (appUpdateService?.checkForUpdates("manual")
+            ?? Promise.resolve(resolveUnsupportedAppUpdateStatus())),
+        onInstallAppUpdate: () => appUpdateService?.installUpdateAndRestart() ?? false,
+        onAppUpdateSettingsChanged: () => {
+          maybeStartAutomaticAppUpdateChecks();
+        },
       });
 
       ipcMain.removeHandler("app:flush-before-close:done");

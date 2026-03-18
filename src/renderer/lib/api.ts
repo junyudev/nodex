@@ -29,3 +29,9 @@ export function subscribeGitBranchChanges(
 ): () => void {
   return resolveRendererTransport().subscribeGitBranchChanges(callback);
 }
+
+export function subscribeAppUpdateStatus(
+  callback: (status: import("./types").AppUpdateStatus) => void,
+): () => void {
+  return resolveRendererTransport().subscribeAppUpdateStatus(callback);
+}

@@ -180,6 +180,51 @@ describe("thread notification settings config", () => {
   });
 });
 
+describe("app update settings config", () => {
+  test("defaults to automatic checks enabled and persists updates to user config", async () => {
+    await withTempConfigFixture(async ({ tempHome }) => {
+      const config = await importConfigModule();
+
+      expect(config.getAppUpdateSettings().automaticChecksEnabled).toBeTrue();
+
+      const updated = config.updateAppUpdateSettings({
+        automaticChecksEnabled: false,
+      });
+
+      expect(updated.automaticChecksEnabled).toBeFalse();
+
+      const configPath = path.join(tempHome, ".nodex", "config.toml");
+      const written = fs.readFileSync(configPath, "utf8");
+      expect(written.includes("app_updates_auto_check_enabled = false")).toBeTrue();
+
+      const reloaded = await importConfigModule();
+      expect(reloaded.getAppUpdateSettings().automaticChecksEnabled).toBeFalse();
+    });
+  });
+
+  test("reads app update settings from user config even when project config exists", async () => {
+    await withTempConfigFixture(async ({ tempHome }) => {
+      const projectConfigDir = path.join(tempHome, "workspace", ".nodex");
+      fs.mkdirSync(projectConfigDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(projectConfigDir, "config.toml"),
+        ["[server]", "app_updates_auto_check_enabled = true", ""].join("\n"),
+        "utf8",
+      );
+
+      const config = await importConfigModule();
+      const updated = config.updateAppUpdateSettings({
+        automaticChecksEnabled: false,
+      });
+
+      expect(updated.automaticChecksEnabled).toBeFalse();
+
+      const reloaded = await importConfigModule();
+      expect(reloaded.getAppUpdateSettings().automaticChecksEnabled).toBeFalse();
+    });
+  });
+});
+
 describe("history settings config", () => {
   test("persists updated history retention to user config", async () => {
     await withTempConfigFixture(async ({ tempHome }) => {

@@ -80,6 +80,7 @@ cask "nodex" do
   end
 
   depends_on macos: ">= :monterey"
+  auto_updates true
 
   app "Nodex.app"
 

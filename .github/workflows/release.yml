@@ -81,15 +81,19 @@ jobs:
           version="${{ steps.release_meta.outputs.version }}"
           dmg_path="dist/Nodex-${version}-arm64.dmg"
           zip_path="dist/Nodex-${version}-arm64.zip"
+          latest_mac_path="dist/latest-mac.yml"
+          zip_blockmap_path="dist/Nodex-${version}-arm64.zip.blockmap"
           app_path="$(find dist -type d -name 'Nodex.app' -print -quit)"
 
-          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || -z "${app_path}" ]]; then
-            echo "Expected arm64 artifacts were not created." >&2
+          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || ! -f "${latest_mac_path}" || ! -f "${zip_blockmap_path}" || -z "${app_path}" ]]; then
+            echo "Expected arm64 release and updater artifacts were not created." >&2
             exit 1
           fi
 
           echo "dmg_path=${dmg_path}" >> "${GITHUB_OUTPUT}"
           echo "zip_path=${zip_path}" >> "${GITHUB_OUTPUT}"
+          echo "latest_mac_path=${latest_mac_path}" >> "${GITHUB_OUTPUT}"
+          echo "zip_blockmap_path=${zip_blockmap_path}" >> "${GITHUB_OUTPUT}"
           echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Verify signing and notarization
@@ -105,6 +109,9 @@ jobs:
           path: |
             ${{ steps.artifact_paths.outputs.dmg_path }}
             ${{ steps.artifact_paths.outputs.zip_path }}
+            ${{ steps.artifact_paths.outputs.latest_mac_path }}
+            ${{ steps.artifact_paths.outputs.zip_blockmap_path }}
+            dist/*.dmg.blockmap
 
   build-macos-x64:
     runs-on: macos-26-intel
@@ -169,15 +176,19 @@ jobs:
           version="${{ steps.release_meta.outputs.version }}"
           dmg_path="dist/Nodex-${version}-x64.dmg"
           zip_path="dist/Nodex-${version}-x64.zip"
+          latest_mac_path="dist/latest-mac.yml"
+          zip_blockmap_path="dist/Nodex-${version}-x64.zip.blockmap"
           app_path="$(find dist -type d -name 'Nodex.app' -print -quit)"
 
-          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || -z "${app_path}" ]]; then
-            echo "Expected x64 artifacts were not created." >&2
+          if [[ ! -f "${dmg_path}" || ! -f "${zip_path}" || ! -f "${latest_mac_path}" || ! -f "${zip_blockmap_path}" || -z "${app_path}" ]]; then
+            echo "Expected x64 release and updater artifacts were not created." >&2
             exit 1
           fi
 
           echo "dmg_path=${dmg_path}" >> "${GITHUB_OUTPUT}"
           echo "zip_path=${zip_path}" >> "${GITHUB_OUTPUT}"
+          echo "latest_mac_path=${latest_mac_path}" >> "${GITHUB_OUTPUT}"
+          echo "zip_blockmap_path=${zip_blockmap_path}" >> "${GITHUB_OUTPUT}"
           echo "app_path=${app_path}" >> "${GITHUB_OUTPUT}"
 
       - name: Verify signing and notarization
@@ -193,6 +204,9 @@ jobs:
           path: |
             ${{ steps.artifact_paths.outputs.dmg_path }}
             ${{ steps.artifact_paths.outputs.zip_path }}
+            ${{ steps.artifact_paths.outputs.latest_mac_path }}
+            ${{ steps.artifact_paths.outputs.zip_blockmap_path }}
+            dist/*.dmg.blockmap
 
   publish-release:
     runs-on: ubuntu-latest
@@ -226,6 +240,15 @@ jobs:
       - name: Extract release notes from CHANGELOG
         run: bun run release:notes -- --version "${{ needs.build-macos-arm64.outputs.version }}" --release-notes-output "${RUNNER_TEMP}/release-notes.md"
 
+      - name: Merge macOS update manifests
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/release-artifacts/merged"
+          bun run release:merge-mac-update-manifest -- \
+            --input "${RUNNER_TEMP}/release-artifacts/arm64/latest-mac.yml" \
+            --input "${RUNNER_TEMP}/release-artifacts/x64/latest-mac.yml" \
+            --output "${RUNNER_TEMP}/release-artifacts/merged/latest-mac.yml"
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
@@ -234,8 +257,11 @@ jobs:
           files: |
             ${{ runner.temp }}/release-artifacts/arm64/*.dmg
             ${{ runner.temp }}/release-artifacts/arm64/*.zip
+            ${{ runner.temp }}/release-artifacts/arm64/*.blockmap
             ${{ runner.temp }}/release-artifacts/x64/*.dmg
             ${{ runner.temp }}/release-artifacts/x64/*.zip
+            ${{ runner.temp }}/release-artifacts/x64/*.blockmap
+            ${{ runner.temp }}/release-artifacts/merged/latest-mac.yml
           tag_name: ${{ needs.build-macos-arm64.outputs.tag }}
 
   update-homebrew-tap:

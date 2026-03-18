@@ -20,6 +20,7 @@ test("generateHomebrewCask renders architecture-specific URLs and checksums", ()
   expect(cask.includes(`sha256 "${otherSha256}"`)).toBeTrue();
   expect(cask.includes('url "https://github.com/Asphocarp/nodex/releases/download/v#{version}/Nodex-#{version}-arm64.dmg"')).toBeTrue();
   expect(cask.includes('url "https://github.com/Asphocarp/nodex/releases/download/v#{version}/Nodex-#{version}-x64.dmg"')).toBeTrue();
+  expect(cask.includes("auto_updates true")).toBeTrue();
 });
 
 test("generateHomebrewCask derives zap paths from the bundle id", () => {

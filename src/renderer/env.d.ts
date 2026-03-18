@@ -2,13 +2,18 @@ import type {
   AppInitializationStep,
   DatabaseMigrationProgress,
 } from "../shared/app-startup";
-import type { ClipboardPasteInspectionItem, ClipboardPasteInspectionResult } from "../shared/types";
+import type {
+  AppUpdateStatus,
+  ClipboardPasteInspectionItem,
+  ClipboardPasteInspectionResult,
+} from "../shared/types";
 
 declare global {
   interface Window {
     api?: {
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
       on: (event: string, callback: (...args: unknown[]) => void) => () => void;
+      onAppUpdateStatus?: (callback: (status: AppUpdateStatus) => void) => () => void;
       awaitInitialization?: () => Promise<void>;
       onInitializationStep?: (
         callback: (step: AppInitializationStep) => void,

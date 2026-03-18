@@ -7,6 +7,7 @@ export interface RendererTransport {
   subscribeBoardChanges: (projectId: string, callback: () => void) => () => void;
   subscribeCodexEvents: (callback: (event: import("./types").CodexEvent) => void) => () => void;
   subscribeGitBranchChanges: (callback: (event: { cwd: string }) => void) => () => void;
+  subscribeAppUpdateStatus: (callback: (status: import("./types").AppUpdateStatus) => void) => () => void;
 }
 
 const BROWSER_ONLY_INVOKE_CHANNELS = new Set<string>([

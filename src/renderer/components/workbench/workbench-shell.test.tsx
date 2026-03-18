@@ -1277,7 +1277,9 @@ describe("WorkbenchShell", () => {
     onOpenCard?.("card-1");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(invokeCalls.length).toBe(0);
+    expect(
+      invokeCalls.every((entry) => entry[0] === "app:update:status"),
+    ).toBeTrue();
     expect(openCardStageCalls.length).toBe(1);
   });
 

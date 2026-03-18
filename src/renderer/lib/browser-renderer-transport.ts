@@ -1,9 +1,26 @@
 import { toApiUrl } from "./http-base";
-import type { CodexEvent } from "./types";
+import type { AppUpdateStatus, CodexEvent } from "./types";
 import type { BoardChangeEvent } from "../../shared/ipc-api";
 
 function isStorybookRuntime(): boolean {
   return typeof window !== "undefined" && window.__NODEX_STORYBOOK__ === true;
+}
+
+function resolveUnsupportedAppUpdateStatus(): AppUpdateStatus {
+  return {
+    status: "unsupported",
+    supported: false,
+    currentVersion: "dev",
+    availableVersion: null,
+    releaseName: null,
+    releaseDate: null,
+    releaseNotes: null,
+    progressPercent: null,
+    transferredBytes: null,
+    totalBytes: null,
+    checkedAt: null,
+    message: "App updates are only available in packaged macOS builds.",
+  };
 }
 
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
@@ -357,6 +374,20 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
       });
       return res.json();
     }
+    case "settings:app-updates:get": {
+      return { automaticChecksEnabled: true };
+    }
+    case "settings:app-updates:update": {
+      const [input] = args as [{ automaticChecksEnabled?: boolean }];
+      return { automaticChecksEnabled: input.automaticChecksEnabled !== false };
+    }
+    case "app:update:status":
+    case "app:update:check": {
+      return resolveUnsupportedAppUpdateStatus();
+    }
+    case "app:update:install": {
+      return false;
+    }
     case "git:branch:state": {
       if (isStorybookRuntime()) {
         return {
@@ -485,10 +516,16 @@ function subscribeGitBranchChanges(callback: (event: { cwd: string }) => void): 
   return () => { };
 }
 
+function subscribeAppUpdateStatus(callback: (status: AppUpdateStatus) => void): () => void {
+  void callback;
+  return () => { };
+}
+
 export const browserRendererTransport = {
   kind: "browser" as const,
   invoke,
   subscribeBoardChanges,
   subscribeCodexEvents,
   subscribeGitBranchChanges,
+  subscribeAppUpdateStatus,
 };

@@ -51,6 +51,7 @@ import {
 } from "../../lib/sans-font-size";
 import { useCodeFontSize } from "../../lib/use-code-font-size";
 import { useNfmAutolinkSettings } from "../../lib/use-nfm-autolink-settings";
+import { AppUpdateSettingsControl } from "./app-update-settings-control";
 import {
   DEFAULT_DESCRIPTION_SOFT_LIMIT,
   DEFAULT_TEXT_PROMPT_CHAR_THRESHOLD,
@@ -1829,6 +1830,12 @@ export function SettingsOverlay({
                     description="Show a desktop notification when a Codex thread settles."
                   >
                     <ThreadNotificationSettingControl open={open} />
+                  </SettingRow>
+                  <SettingRow
+                    label="App updates"
+                    description="Packaged macOS builds can check, download, and install stable updates in the background."
+                  >
+                    <AppUpdateSettingsControl open={open} />
                   </SettingRow>
                   <SettingRow
                     label="Sidebar sections"

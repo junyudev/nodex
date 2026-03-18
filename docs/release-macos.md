@@ -9,6 +9,8 @@ Nodex ships notarized macOS builds for both Apple Silicon and Intel:
 - `Nodex-<version>-arm64.zip`
 - `Nodex-<version>-x64.dmg`
 - `Nodex-<version>-x64.zip`
+- canonical `latest-mac.yml`
+- per-architecture ZIP blockmaps required by `electron-updater`
 
 User runtime requirement: macOS 12 Monterey or later.
 
@@ -21,6 +23,8 @@ The release pipeline uses two GitHub Actions workflows:
 `Prepare Release` is the normal entrypoint. It validates the repo, prepares an unpushed release-candidate workspace, builds and notarizes both macOS artifacts from that candidate, and only then creates and pushes the release commit plus the `v<version>` tag before publishing the GitHub Release and updating the Homebrew tap.
 
 `Release` is the fallback workflow for already-existing refs. It builds, signs, notarizes, verifies, publishes the GitHub Release, and updates the first-party Homebrew tap for a committed tag or ref. It does not mutate git history.
+
+Because `arm64` and `x64` packaging run in separate jobs, each macOS build uploads its own updater manifest and blockmaps as first-class artifacts. The publish job merges the two per-arch `latest-mac.yml` files into one canonical `latest-mac.yml` before publishing the GitHub Release.
 
 For local Linux-path debugging, Nodex also ships a committed `act` harness for the `prepare` job. That harness intentionally stops after validation and never performs the candidate-build, commit, tag, push, or publish steps locally.
 
@@ -201,12 +205,14 @@ Responsibilities:
 7. Assert these files exist:
    - `dist/Nodex-<version>-arm64.dmg`
    - `dist/Nodex-<version>-arm64.zip`
+   - `dist/latest-mac.yml`
+   - `dist/Nodex-<version>-arm64.zip.blockmap`
    - built `Nodex.app`
 8. Verify signing and notarization:
    - `codesign --verify --deep --strict --verbose=2`
    - `spctl --assess --type execute --verbose=4`
    - `xcrun stapler validate`
-9. Upload the DMG and ZIP as the `macos-arm64-release` artifact.
+9. Upload the DMG, ZIP, `latest-mac.yml`, and blockmaps as the `macos-arm64-release` artifact.
 
 Secrets consumed:
 - `CSC_LINK`
@@ -236,13 +242,17 @@ Responsibilities:
 2. Install the Bun version pinned in `package.json#packageManager`, then install dependencies.
 3. Download the `macos-arm64-release` artifact.
 4. Download the `macos-x64-release` artifact.
-5. Extract release notes for the resolved version from `CHANGELOG.md` with `bun run release:notes`.
-6. Publish a non-draft GitHub Release using `softprops/action-gh-release`.
-7. Attach all four release assets:
+5. Merge the two per-arch `latest-mac.yml` files into one canonical `latest-mac.yml`.
+6. Extract release notes for the resolved version from `CHANGELOG.md` with `bun run release:notes`.
+7. Publish a non-draft GitHub Release using `softprops/action-gh-release`.
+8. Attach release assets:
    - arm64 DMG
    - arm64 ZIP
+   - arm64 blockmaps
    - x64 DMG
    - x64 ZIP
+   - x64 blockmaps
+   - canonical `latest-mac.yml`
 
 This job does not build binaries. It only publishes artifacts produced and verified by the two macOS jobs.
 
@@ -277,12 +287,16 @@ The release job assumes these filenames:
 - `dist/Nodex-<version>-arm64.zip`
 - `dist/Nodex-<version>-x64.dmg`
 - `dist/Nodex-<version>-x64.zip`
+- `dist/latest-mac.yml` in each per-architecture build output before merge
+- `dist/Nodex-<version>-arm64.zip.blockmap`
+- `dist/Nodex-<version>-x64.zip.blockmap`
 
 The Homebrew cask generator assumes:
 - the GitHub release tag is `v<version>`
 - the app name is `Nodex`
 - `app.jyu.nodex` is the canonical macOS bundle id for zap paths
 - the cask lives at `Asphocarp/homebrew-nodex/Casks/nodex.rb`
+- the cask declares `auto_updates true`, because packaged macOS builds now self-update through GitHub Releases
 
 Homebrew install path:
 

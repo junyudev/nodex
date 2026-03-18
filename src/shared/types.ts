@@ -341,6 +341,39 @@ export interface UpdateThreadNotificationSettingsInput {
   threadCompletionEnabled: boolean;
 }
 
+export interface AppUpdateSettings {
+  automaticChecksEnabled: boolean;
+}
+
+export interface UpdateAppUpdateSettingsInput {
+  automaticChecksEnabled: boolean;
+}
+
+export type AppUpdateStatusKind =
+  | "unsupported"
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "upToDate"
+  | "error";
+
+export interface AppUpdateStatus {
+  status: AppUpdateStatusKind;
+  supported: boolean;
+  currentVersion: string;
+  availableVersion: string | null;
+  releaseName: string | null;
+  releaseDate: string | null;
+  releaseNotes: string | null;
+  progressPercent: number | null;
+  transferredBytes: number | null;
+  totalBytes: number | null;
+  checkedAt: string | null;
+  message: string | null;
+}
+
 export interface RestoreBackupInput {
   backupId: string;
   confirm: boolean;

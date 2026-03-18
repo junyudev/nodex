@@ -5,9 +5,11 @@ import * as backupService from "./kanban/backup-service";
 import * as canvasService from "./kanban/canvas-service";
 import * as ptyManager from "./pty-manager";
 import {
+  getAppUpdateSettings,
   getBackupSettings,
   getHistorySettings,
   getThreadNotificationSettings,
+  updateAppUpdateSettings,
   updateBackupSettings,
   updateHistorySettings,
   updateThreadNotificationSettings,
@@ -23,6 +25,7 @@ import {
   readGitBranchState,
   watchGitBranch,
 } from "./git-branch-service";
+import type { AppUpdateSettings, AppUpdateStatus } from "../shared/types";
 
 function registerHandle(
   channel: string,
@@ -37,6 +40,10 @@ interface RegisterIpcHandlersOptions {
   onCreateWindow?: () => void;
   onConsumeWorkbenchResume?: (webContentsId: number) => WorkbenchResumeSnapshot | null;
   onSaveWorkbenchResume?: (webContentsId: number, snapshot: WorkbenchResumeSnapshot) => boolean;
+  onGetAppUpdateStatus?: () => AppUpdateStatus;
+  onCheckForAppUpdate?: () => Promise<AppUpdateStatus>;
+  onInstallAppUpdate?: () => boolean;
+  onAppUpdateSettingsChanged?: (settings: AppUpdateSettings) => void;
 }
 
 export function registerIpcHandlers(options: RegisterIpcHandlersOptions = {}): void {
@@ -220,6 +227,50 @@ export function registerIpcHandlers(options: RegisterIpcHandlersOptions = {}): v
   registerHandle("settings:thread-notifications:update", (_, input) =>
     updateThreadNotificationSettings(input)
   );
+
+  registerHandle("settings:app-updates:get", () => getAppUpdateSettings());
+
+  registerHandle("settings:app-updates:update", (_, input) => {
+    const settings = updateAppUpdateSettings(input);
+    options.onAppUpdateSettingsChanged?.(settings);
+    return settings;
+  });
+
+  registerHandle("app:update:status", () =>
+    options.onGetAppUpdateStatus?.() ?? {
+      status: "unsupported",
+      supported: false,
+      currentVersion: app.getVersion(),
+      availableVersion: null,
+      releaseName: null,
+      releaseDate: null,
+      releaseNotes: null,
+      progressPercent: null,
+      transferredBytes: null,
+      totalBytes: null,
+      checkedAt: null,
+      message: "App updates are unavailable.",
+    }
+  );
+
+  registerHandle("app:update:check", async () =>
+    options.onCheckForAppUpdate?.() ?? {
+      status: "unsupported",
+      supported: false,
+      currentVersion: app.getVersion(),
+      availableVersion: null,
+      releaseName: null,
+      releaseDate: null,
+      releaseNotes: null,
+      progressPercent: null,
+      transferredBytes: null,
+      totalBytes: null,
+      checkedAt: null,
+      message: "App updates are unavailable.",
+    }
+  );
+
+  registerHandle("app:update:install", () => options.onInstallAppUpdate?.() ?? false);
 
   registerHandle("shell:open-file-link", (_, target, openerId) =>
     openFileLinkTarget(target, openerId)

@@ -8,6 +8,8 @@ import {
   SquareKanban,
   Table2,
 } from "lucide-react";
+import { subscribeAppUpdateStatus } from "../../lib/api";
+import { AppUpdateRestartNotice } from "./app-update-restart-notice";
 import { CardIcon } from "./card-icon";
 import { CommandPalette } from "./command-palette";
 import { DbViewToolbar } from "./db-view-toolbar";
@@ -90,6 +92,7 @@ import {
   type SidebarTopLevelSectionsPrefs,
 } from "../../lib/sidebar-section-prefs";
 import type {
+  AppUpdateStatus,
   Card,
   CardInput,
   CardUpdateMutationResult,
@@ -384,6 +387,8 @@ export function WorkbenchShell({
   const canRequestNewWindow = typeof window !== "undefined" && Boolean(window.api);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [appUpdateStatus, setAppUpdateStatus] = useState<AppUpdateStatus | null>(null);
+  const [dismissedDownloadedUpdateVersion, setDismissedDownloadedUpdateVersion] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(() => !sidebar.collapsed);
   const [hoverSidebarOpen, setHoverSidebarOpen] = useState(false);
   const sidebarHideTimeoutRef = useRef<number | null>(null);
@@ -547,6 +552,56 @@ export function WorkbenchShell({
     };
   }, [listCollaborationModes]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    void invoke("app:update:status")
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+
+        const nextStatus =
+          typeof result === "object"
+            && result !== null
+            && typeof (result as AppUpdateStatus).status === "string"
+            && typeof (result as AppUpdateStatus).supported === "boolean"
+            && typeof (result as AppUpdateStatus).currentVersion === "string"
+            ? (result as AppUpdateStatus)
+            : null;
+
+        if (nextStatus) {
+          setAppUpdateStatus(nextStatus);
+        }
+      })
+      .catch(() => { });
+
+    const unsubscribe = subscribeAppUpdateStatus((nextStatus) => {
+      setAppUpdateStatus(nextStatus);
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!appUpdateStatus || appUpdateStatus.status !== "downloaded") {
+      setDismissedDownloadedUpdateVersion(null);
+      return;
+    }
+
+    if (dismissedDownloadedUpdateVersion === null) {
+      return;
+    }
+
+    const nextDismissKey = appUpdateStatus.availableVersion ?? "__downloaded__";
+    if (dismissedDownloadedUpdateVersion !== nextDismissKey) {
+      setDismissedDownloadedUpdateVersion(null);
+    }
+  }, [appUpdateStatus, dismissedDownloadedUpdateVersion]);
+
   const openTaskSearch = useCallback((selectQuery = false) => {
     setTaskSearchOpen(true);
     window.requestAnimationFrame(() => {
@@ -664,6 +719,10 @@ export function WorkbenchShell({
   const handleCommandPaletteToggleTerminal = useCallback(() => {
     setTerminalPanelOpen(dbProjectId, !terminalPanelOpen);
   }, [dbProjectId, setTerminalPanelOpen, terminalPanelOpen]);
+
+  const handleInstallAppUpdate = useCallback(() => {
+    void invoke("app:update:install");
+  }, []);
 
   const clearSidebarHideTimeout = useCallback(() => {
     if (sidebarHideTimeoutRef.current === null) return;
@@ -1565,6 +1624,9 @@ export function WorkbenchShell({
       </svg>
     </button>
   );
+  const appUpdateDismissKey = appUpdateStatus?.availableVersion ?? "__downloaded__";
+  const showAppUpdateRestartNotice = appUpdateStatus?.status === "downloaded"
+    && appUpdateDismissKey !== dismissedDownloadedUpdateVersion;
 
   return (
     <div className="relative flex h-screen">
@@ -1721,6 +1783,17 @@ export function WorkbenchShell({
             </div>
           </div>
           <div className="flex items-center justify-end gap-0.5">
+            {showAppUpdateRestartNotice && appUpdateStatus ? (
+              <div className="mr-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+                <AppUpdateRestartNotice
+                  status={appUpdateStatus}
+                  onDismiss={() => {
+                    setDismissedDownloadedUpdateVersion(appUpdateDismissKey);
+                  }}
+                  onRestart={handleInstallAppUpdate}
+                />
+              </div>
+            ) : null}
             {activeProjectPendingMutationCount > 0 ? (
               <span
                 className="mr-1 inline-flex items-center rounded-full border border-(--border) bg-(--background-secondary) px-2 py-0.5 text-xs font-medium text-(--foreground-secondary)"

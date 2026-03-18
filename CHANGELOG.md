@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Added derived-view Kanban block-drop import support for structured filter/sort views, including exact-slot placement when the board can infer safe workflow properties and column-level fallback when the active sort owns visible order.
 - Added richer sorted Kanban drag modes: `board-order` now keeps same-column ranking even with secondary sorts, `priority` / `estimate` sorts can infer bucket-changing drops, and `title` / `created` sorts now explain blocked same-column ranking while still allowing cross-column moves.
+- Added packaged-macOS app auto-update support via GitHub Releases, including background update checks/downloads, a new Settings -> Workspace -> `App updates` control, a `Check for Updates…` macOS app-menu action, and in-app restart prompts when a downloaded update is ready.
 
 ### Changed
 - Matched NFM editor heading typography to the reference scale, including heading weights and drag-handle alignment for heading rows.

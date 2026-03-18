@@ -2,6 +2,8 @@ import type {
   BackupRecord,
   BackupSettings,
   HistorySettings,
+  AppUpdateSettings,
+  AppUpdateStatus,
   Board,
   CodexAccountSnapshot,
   CodexApprovalDecision,
@@ -42,6 +44,7 @@ import type {
   RestoreBackupResult,
   ThreadNotificationSettings,
   UpdateBackupSettingsInput,
+  UpdateAppUpdateSettingsInput,
   UpdateHistorySettingsInput,
   UpdateThreadNotificationSettingsInput,
 } from "./types";
@@ -299,6 +302,14 @@ export interface IpcApi {
     args: [input: UpdateThreadNotificationSettingsInput];
     result: ThreadNotificationSettings;
   };
+  "settings:app-updates:get": { args: []; result: AppUpdateSettings };
+  "settings:app-updates:update": {
+    args: [input: UpdateAppUpdateSettingsInput];
+    result: AppUpdateSettings;
+  };
+  "app:update:status": { args: []; result: AppUpdateStatus };
+  "app:update:check": { args: []; result: AppUpdateStatus };
+  "app:update:install": { args: []; result: boolean };
   "shell:open-file-link": {
     args: [target: FileLinkTarget, openerId: FileLinkOpenerId];
     result: boolean;
