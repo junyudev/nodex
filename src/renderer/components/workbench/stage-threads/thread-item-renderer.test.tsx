@@ -18,6 +18,7 @@ function renderItem(
     projectWorkspacePath?: string;
     threadCwd?: string;
     isStreamingTurn?: boolean;
+    showUserMessageActions?: boolean;
     showAssistantMessageActions?: boolean;
   },
 ) {
@@ -31,6 +32,7 @@ function renderItem(
           item,
           isLatestTurn: true,
           isStreamingTurn: options?.isStreamingTurn ?? false,
+          showUserMessageActions: options?.showUserMessageActions,
           showAssistantMessageActions: options?.showAssistantMessageActions,
           projectWorkspacePath: options?.projectWorkspacePath,
           threadCwd: options?.threadCwd,
@@ -71,17 +73,31 @@ describe("ThreadItemRenderer", () => {
     expect(item.container.querySelector("table")).not.toBeNull();
   });
 
-  test("renders copy and mock edit actions under user messages", () => {
+  test("renders copy and mock edit actions under user messages when enabled", () => {
     const item = renderItem(
       createBaseItem({
         normalizedKind: "userMessage",
         role: "user",
         markdownText: "Refine the transcript actions.",
       }),
+      { showUserMessageActions: true },
     );
 
     expect(item.getByLabelText("Copy message").getAttribute("aria-label")).toBe("Copy message");
     expect(item.getByLabelText("Edit message").getAttribute("title")).toBe("Edit message (mock)");
+  });
+
+  test("omits user actions when the message is not the final settled transcript item", () => {
+    const item = renderItem(
+      createBaseItem({
+        normalizedKind: "userMessage",
+        role: "user",
+        markdownText: "Still waiting on the assistant.",
+      }),
+    );
+
+    expect(item.queryByLabelText("Copy message") === null).toBeTrue();
+    expect(item.queryByLabelText("Edit message") === null).toBeTrue();
   });
 
   test("renders copy action under the selected assistant message only", () => {

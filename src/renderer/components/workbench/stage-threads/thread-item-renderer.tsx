@@ -15,6 +15,7 @@ interface ThreadItemRendererProps {
   item: CodexItemView;
   isLatestTurn: boolean;
   isStreamingTurn: boolean;
+  showUserMessageActions?: boolean;
   showAssistantMessageActions?: boolean;
   projectWorkspacePath?: string;
   threadCwd?: string;
@@ -32,6 +33,7 @@ export function ThreadItemRenderer({
   item,
   isLatestTurn,
   isStreamingTurn,
+  showUserMessageActions = false,
   showAssistantMessageActions = false,
   projectWorkspacePath,
   threadCwd,
@@ -55,18 +57,20 @@ export function ThreadItemRenderer({
           <div className="max-w-[77%] rounded-2xl bg-token-foreground/5 px-3 py-2 wrap-break-word [&_.contain-inline-size]:contain-[initial]">
             <MarkdownRenderer content={content} preserveLineBreaks className="codex-markdown-user" />
           </div>
-          <div className="flex flex-row-reverse items-center gap-1">
-            <ThreadMessageActionRow align="end">
-              <CopyMessageActionButton text={content} />
-              <ThreadActionIconButton
-                label="Edit message"
-                title="Edit message (mock)"
-                onClick={() => {}}
-              >
-                <EditMessageIcon />
-              </ThreadActionIconButton>
-            </ThreadMessageActionRow>
-          </div>
+          {showUserMessageActions && (
+            <div className="flex flex-row-reverse items-center gap-1">
+              <ThreadMessageActionRow align="end">
+                <CopyMessageActionButton text={content} />
+                <ThreadActionIconButton
+                  label="Edit message"
+                  title="Edit message (mock)"
+                  onClick={() => {}}
+                >
+                  <EditMessageIcon />
+                </ThreadActionIconButton>
+              </ThreadMessageActionRow>
+            </div>
+          )}
         </div>
       </div>
     );

@@ -22,7 +22,6 @@ import type {
   CodexCollaborationModeKind,
   CodexCollaborationModePreset,
   CodexConnectionState,
-  CodexItemView,
   CodexModelOption,
   CodexPermissionMode,
   CodexPlanImplementationRequest,
@@ -54,6 +53,7 @@ import {
 } from "./thread-auto-scroll";
 import { ThreadItemRenderer } from "./thread-item-renderer";
 import { coalesceExplorationItems } from "./exploration-item-coalescer";
+import { resolveThreadRoundActionVisibility } from "./thread-round-action-visibility";
 import {
   AuthPopover,
   ConnectionBadge,
@@ -100,10 +100,6 @@ function resolvePhaseIndex(phase: CodexThreadStartProgressPhase): number {
   if (phase === "runningSetup") return 1;
   if (phase === "startingThread" || phase === "ready") return 2;
   return -1; // failed
-}
-
-function isAssistantTranscriptMessage(item: CodexItemView): boolean {
-  return item.normalizedKind === "assistantMessage";
 }
 
 function ThreadStartProgressPanel({
@@ -447,16 +443,10 @@ export function StageThreads({
     () => shouldShowPendingResponseRow(orderedItems, activeTurn?.turnId ?? null, isThreadRunning),
     [activeTurn?.turnId, isThreadRunning, orderedItems],
   );
-
-  const latestAssistantMessageItemId = useMemo(() => {
-    for (let index = orderedItems.length - 1; index >= 0; index -= 1) {
-      const item = orderedItems[index];
-      if (isAssistantTranscriptMessage(item)) {
-        return item.itemId;
-      }
-    }
-    return null;
-  }, [orderedItems]);
+  const roundActionVisibility = useMemo(
+    () => resolveThreadRoundActionVisibility(orderedItems, thread?.turns ?? []),
+    [orderedItems, thread?.turns],
+  );
 
   const handleRespondPlanImplementation = useCallback(async (
     response:
@@ -996,7 +986,8 @@ export function StageThreads({
                   item={item}
                   isLatestTurn={item.turnId === latestTurnId}
                   isStreamingTurn={item.turnId === activeTurn?.turnId}
-                  showAssistantMessageActions={item.itemId === latestAssistantMessageItemId}
+                  showUserMessageActions={item.normalizedKind === "userMessage"}
+                  showAssistantMessageActions={roundActionVisibility.assistantMessageActionItemIds.has(item.itemId)}
                   projectWorkspacePath={projectWorkspacePath ?? undefined}
                   threadCwd={thread?.cwd ?? undefined}
                 />
