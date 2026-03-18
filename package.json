@@ -57,7 +57,8 @@
     "better-sqlite3": "^12.8.0",
     "hono": "^4.12.5",
     "node-pty": "^1.1.0",
-    "smol-toml": "^1.4.2"
+    "smol-toml": "^1.4.2",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@blocknote/code-block": "0.47.1",

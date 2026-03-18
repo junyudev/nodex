@@ -6,6 +6,7 @@ describe("card-id", () => {
     const value = createUuidV7();
     expect(isUuidV7(value)).toBeTrue();
     expect(value).toBe(value.toLowerCase());
+    expect(isUuidV7(value.toUpperCase())).toBeFalse();
   });
 
   test("creates monotonic timestamp-derived UUID-v7 values", () => {

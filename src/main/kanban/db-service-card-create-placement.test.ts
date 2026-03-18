@@ -111,7 +111,7 @@ describe("createCard placement", () => {
 
   test("preserves a caller-provided UUID-v7 id", async () => {
     const ran = await withTempDatabase(async () => {
-      const requestedId = "018f0f85-6d56-7000-8000-000000000123";
+      const requestedId = "018f0f85-6d56-7625-bdea-000000000123";
       const card = await createCard("default", "in_progress", {
         id: requestedId,
         title: "Requested id",
