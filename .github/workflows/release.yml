@@ -212,13 +212,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download arm64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-arm64-release
           path: ${{ runner.temp }}/release-artifacts/arm64
 
       - name: Download x64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-x64-release
           path: ${{ runner.temp }}/release-artifacts/x64
@@ -257,13 +257,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download arm64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-arm64-release
           path: ${{ runner.temp }}/release-artifacts/arm64
 
       - name: Download x64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-x64-release
           path: ${{ runner.temp }}/release-artifacts/x64

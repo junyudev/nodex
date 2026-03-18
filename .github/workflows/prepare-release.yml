@@ -138,7 +138,7 @@ jobs:
       RELEASE_WORKDIR: ${{ github.workspace }}/release-candidate
     steps:
       - name: Download release candidate source
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-candidate-source
           path: ${{ runner.temp }}/release-source
@@ -217,7 +217,7 @@ jobs:
       RELEASE_WORKDIR: ${{ github.workspace }}/release-candidate
     steps:
       - name: Download release candidate source
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-candidate-source
           path: ${{ runner.temp }}/release-source
@@ -314,13 +314,13 @@ jobs:
           fi
 
       - name: Download release candidate source
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-candidate-source
           path: ${{ runner.temp }}/release-source
 
       - name: Download release candidate metadata
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-candidate-metadata
           path: ${{ runner.temp }}/release-metadata
@@ -373,19 +373,19 @@ jobs:
       - build-macos-x64
     steps:
       - name: Download release candidate metadata
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-candidate-metadata
           path: ${{ runner.temp }}/release-metadata
 
       - name: Download arm64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-arm64-release
           path: ${{ runner.temp }}/release-artifacts/arm64
 
       - name: Download x64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-x64-release
           path: ${{ runner.temp }}/release-artifacts/x64
@@ -415,7 +415,7 @@ jobs:
       HOMEBREW_TAP_REPO: Asphocarp/homebrew-nodex
     steps:
       - name: Download release candidate source
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: release-candidate-source
           path: ${{ runner.temp }}/release-source
@@ -429,13 +429,13 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - name: Download arm64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-arm64-release
           path: ${{ runner.temp }}/release-artifacts/arm64
 
       - name: Download x64 artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: macos-x64-release
           path: ${{ runner.temp }}/release-artifacts/x64
