@@ -55,21 +55,21 @@ describe("card toggle block", () => {
     const result = render.call({ blockContentDOMAttributes: {} }, block, createEditor(block));
     const wrapper = result.dom.querySelector(".bn-toggle-wrapper");
 
-    expect(wrapper instanceof HTMLElement).toBeTrue();
-    if (!(wrapper instanceof HTMLElement)) return;
+    expect(wrapper).not.toBeNull();
+    if (wrapper === null) return;
 
     const row = wrapper.children.item(1);
-    expect(row instanceof HTMLElement).toBeTrue();
-    if (!(row instanceof HTMLElement)) return;
+    expect(row).not.toBeNull();
+    if (row === null) return;
 
     expect(row.classList.contains("flex")).toBeFalse();
 
     const meta = row.firstElementChild;
-    expect(meta instanceof HTMLSpanElement).toBeTrue();
-    if (!(meta instanceof HTMLSpanElement)) return;
+    expect(meta?.tagName).toBe("SPAN");
+    if (meta === null) return;
 
     expect(meta.classList.contains("inline-flex")).toBeTrue();
-    expect(result.contentDOM instanceof HTMLSpanElement).toBeTrue();
+    expect(result.contentDOM?.tagName).toBe("SPAN");
     expect(row.lastElementChild === result.contentDOM).toBeTrue();
   });
 
@@ -88,11 +88,11 @@ describe("card toggle block", () => {
     const result = toExternalHTML.call({ blockContentDOMAttributes: {} }, block);
     const paragraph = result.dom.querySelector("p");
 
-    expect(paragraph instanceof HTMLParagraphElement).toBeTrue();
-    if (!(paragraph instanceof HTMLParagraphElement)) return;
+    expect(paragraph?.tagName).toBe("P");
+    if (paragraph === null) return;
 
-    expect(result.contentDOM instanceof HTMLSpanElement).toBeTrue();
+    expect(result.contentDOM?.tagName).toBe("SPAN");
     expect(paragraph.lastElementChild === result.contentDOM).toBeTrue();
-    expect(paragraph.firstElementChild instanceof HTMLSpanElement).toBeTrue();
+    expect(paragraph.firstElementChild?.tagName).toBe("SPAN");
   });
 });

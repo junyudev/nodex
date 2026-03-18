@@ -1,9 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement, type ReactNode } from "react";
+import * as TooltipModule from "../../ui/tooltip";
 import type { CodexPlanImplementationRequest, CodexUserInputRequest } from "../../../lib/types";
 import { render, textContent } from "../../../test/dom";
 
 mock.module("../../ui/tooltip", () => ({
+  ...TooltipModule,
   Tooltip: ({
     children,
     delayDuration,

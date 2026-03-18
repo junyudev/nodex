@@ -1,9 +1,15 @@
 import { describe, expect, mock, test } from "bun:test";
 import { createElement } from "react";
+import * as CodexCollaborationModeSettings from "@/lib/codex-collaboration-mode-settings";
 import * as KanbanOptions from "@/lib/kanban-options";
+import * as SmartPrefixParsing from "@/lib/smart-prefix-parsing";
 import * as StageRailPeek from "@/lib/stage-rail-peek";
 import * as StatusChip from "@/lib/status-chip";
+import * as ThreadPanelPromptSubmitShortcut from "@/lib/thread-panel-prompt-submit-shortcut";
+import * as ThreadPanelThinkingVisibility from "@/lib/thread-panel-thinking-visibility";
 import * as WorkbenchState from "@/lib/use-workbench-state";
+import * as WorktreeBranchPrefix from "@/lib/worktree-branch-prefix";
+import * as WorktreeStartMode from "@/lib/worktree-start-mode";
 import type { Project } from "@/lib/types";
 import { resetCardDraftStoreForTest, setCardDraftOverlay } from "../../lib/card-draft-store";
 import { render, textContent } from "../../test/dom";
@@ -154,26 +160,31 @@ mock.module("@/lib/stage-rail-peek", () => ({
 }));
 
 mock.module("@/lib/thread-panel-thinking-visibility", () => ({
+  ...ThreadPanelThinkingVisibility,
   readThreadPanelHideThinkingWhenDone: () => false,
   writeThreadPanelHideThinkingWhenDone: (value: boolean) => value,
 }));
 
 mock.module("@/lib/thread-panel-prompt-submit-shortcut", () => ({
+  ...ThreadPanelPromptSubmitShortcut,
   readThreadPromptSubmitShortcut: () => "enter" as const,
   writeThreadPromptSubmitShortcut: (value: "enter" | "mod-enter") => value,
 }));
 
 mock.module("@/lib/worktree-start-mode", () => ({
+  ...WorktreeStartMode,
   readWorktreeStartMode: () => "autoBranch" as const,
   writeWorktreeStartMode: (value: "autoBranch" | "detachedHead") => value,
 }));
 
 mock.module("@/lib/worktree-branch-prefix", () => ({
+  ...WorktreeBranchPrefix,
   readWorktreeAutoBranchPrefix: () => "nodex/" as const,
   writeWorktreeAutoBranchPrefix: (value: string) => value,
 }));
 
 mock.module("@/lib/codex-collaboration-mode-settings", () => ({
+  ...CodexCollaborationModeSettings,
   DEFAULT_CODEX_COLLABORATION_MODE: "default" as const,
   getDraftCollaborationModeStorageKey: (projectId: string, cardId: string) => `draft:${projectId}:${cardId}`,
   getThreadCollaborationModeStorageKey: (threadId: string) => `thread:${threadId}`,
@@ -182,6 +193,7 @@ mock.module("@/lib/codex-collaboration-mode-settings", () => ({
 }));
 
 mock.module("@/lib/smart-prefix-parsing", () => ({
+  ...SmartPrefixParsing,
   readSmartPrefixParsingEnabled: () => true,
   readStripSmartPrefixFromTitleEnabled: () => true,
   writeSmartPrefixParsingEnabled: (value: boolean) => value,
