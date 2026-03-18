@@ -962,9 +962,6 @@ export function WorkbenchShell({
     void readCodexThread(activeThreadTab.id, true).catch(() => { });
   }, [activeThreadTab, codexState.threadDetailsById, readCodexThread]);
 
-  const activeCardsSessionId = activeCardsTabId.startsWith("session:")
-    ? activeCardsTabId.slice("session:".length)
-    : null;
   const activeCardStageCardId = cardStageState.open ? cardStageState.cardId : null;
   const activeCardStageCard = useMemo(
     () => (activeCardStageCardId ? cardStageCardIndex.get(activeCardStageCardId) ?? null : null),
@@ -994,6 +991,7 @@ export function WorkbenchShell({
       ) ?? null
     );
   }, [activeCardStageCardId, cardStageState.projectId, recentCardSessions]);
+  const activeRecentSidebarSessionId = currentCardStageSession?.id ?? null;
 
   const dbSidebarItems: StageSidebarItem[] = DB_VIEW_TABS.map((tab) => ({
     id: tab.id,
@@ -1054,7 +1052,7 @@ export function WorkbenchShell({
       items: recentCardSessions.map((session) => ({
         id: `session:${session.id}`,
         label: session.titleSnapshot || session.cardId,
-        active: isSidebarStageVisible("cards") && session.id === activeCardsSessionId,
+        active: isSidebarStageVisible("cards") && session.id === activeRecentSidebarSessionId,
         closable: true,
         onClose: () => closeRecentCardSession(session.id),
         onSelect: () => {
@@ -1063,7 +1061,7 @@ export function WorkbenchShell({
       })),
     }];
   }, [
-    activeCardsSessionId,
+    activeRecentSidebarSessionId,
     closeRecentCardSession,
     isSidebarStageVisible,
     navigateToRecentSession,

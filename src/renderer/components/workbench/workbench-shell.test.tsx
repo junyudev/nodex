@@ -920,6 +920,75 @@ describe("WorkbenchShell", () => {
     expect(recentsGroup?.items?.[0]?.label).toBe("Cross-project recent");
   });
 
+  test("keeps the currently open recent card active when card-stage and tab state disagree", async () => {
+    await renderShell(false, "sliding-window", {
+      recentCardSessions: [
+        {
+          id: "session-1",
+          projectId: "default",
+          cardId: "card-1",
+          titleSnapshot: "Card 1",
+          lastOpenedAt: "2026-02-26T12:00:00.000Z",
+        },
+        {
+          id: "session-2",
+          projectId: "default",
+          cardId: "card-ops-1",
+          titleSnapshot: "Ops Card",
+          lastOpenedAt: "2026-02-26T13:00:00.000Z",
+        },
+      ],
+      focusedStage: "cards",
+      activeCardsTabId: "session:session-2",
+      activeRecentSessionId: "session-2",
+      cardStageState: {
+        open: true,
+        projectId: "default",
+        cardId: "card-1",
+      },
+      cardStageCardId: "card-1",
+    });
+
+    const sidebarProps = (globalThis as { __lastLeftSidebarProps?: Record<string, unknown> }).__lastLeftSidebarProps;
+    const stageGroups = (sidebarProps?.stageGroups as SidebarGroup[] | undefined) ?? [];
+    const recentsGroup = stageGroups.find((group) => group.id === "recents");
+    const card1 = recentsGroup?.items?.find((item) => item.id === "session:session-1");
+    const card2 = recentsGroup?.items?.find((item) => item.id === "session:session-2");
+
+    expect(card1?.active).toBeTrue();
+    expect(card2?.active).toBeFalse();
+  });
+
+  test("keeps the current recent card active while history is open as an overlay", async () => {
+    await renderShell(false, "sliding-window", {
+      recentCardSessions: [
+        {
+          id: "session-1",
+          projectId: "default",
+          cardId: "card-1",
+          titleSnapshot: "Card 1",
+          lastOpenedAt: "2026-02-26T12:00:00.000Z",
+        },
+      ],
+      focusedStage: "cards",
+      activeCardsTabId: "history",
+      activeRecentSessionId: "session-1",
+      cardStageState: {
+        open: true,
+        projectId: "default",
+        cardId: "card-1",
+      },
+      cardStageCardId: "card-1",
+    });
+
+    const sidebarProps = (globalThis as { __lastLeftSidebarProps?: Record<string, unknown> }).__lastLeftSidebarProps;
+    const stageGroups = (sidebarProps?.stageGroups as SidebarGroup[] | undefined) ?? [];
+    const recentsGroup = stageGroups.find((group) => group.id === "recents");
+    const card1 = recentsGroup?.items?.find((item) => item.id === "session:session-1");
+
+    expect(card1?.active).toBeTrue();
+  });
+
   test("passes sidebar section visibility controls through to settings", async () => {
     await renderShell(false, "sliding-window", {
       sidebar: {

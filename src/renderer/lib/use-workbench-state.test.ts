@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { act } from "@testing-library/react";
+import { createElement, useEffect } from "react";
 import {
+  useWorkbenchState,
   workbenchStorageKeys,
   workbenchTestHelpers,
 } from "./use-workbench-state";
+import { render, settleAsyncRender } from "../test/dom";
 
 const storageMap = new Map<string, string>();
 
@@ -325,6 +329,77 @@ describe("use-workbench-state helpers", () => {
     expect(next[0]?.id).toBe("session-1");
     expect(next[1]?.id).toBe("session-2");
     expect(next[1]?.titleSnapshot).toBe("Card 2 renamed");
+  });
+
+  test("recordRecentCardLeave updates recents without overwriting the active destination session", async () => {
+    resetStorage();
+
+    let latestState: ReturnType<typeof useWorkbenchState> | null = null;
+    const projects = [
+      { id: "default", name: "Default", description: "", created: new Date("2026-03-01T00:00:00.000Z") },
+    ];
+
+    function Harness() {
+      const state = useWorkbenchState(
+        projects,
+        {
+          initialResumeSnapshot: {
+            version: 1,
+            dbProjectId: "default",
+            threadsProjectId: "default",
+            viewsByProject: { default: "kanban" },
+            focusedStage: "cards",
+            stageNavDirection: "right",
+            activeCardsTabId: "session:session-2",
+            activeRecentSessionId: "session-2",
+            activeThreadsTabId: "thread:new",
+            recentCardSessions: [
+              {
+                id: "session-2",
+                projectId: "default",
+                cardId: "card-2",
+                titleSnapshot: "Card 2",
+                lastOpenedAt: "2026-03-02T00:00:00.000Z",
+              },
+            ],
+            cardStage: {
+              open: true,
+              projectId: "default",
+              cardId: "card-2",
+            },
+          },
+        },
+      );
+
+      useEffect(() => {
+        latestState = state;
+      }, [state]);
+
+      return createElement("div");
+    }
+
+    function getLatestState(): ReturnType<typeof useWorkbenchState> {
+      if (latestState === null) {
+        throw new Error("Expected workbench state to be captured after render.");
+      }
+
+      return latestState;
+    }
+
+    render(createElement(Harness));
+    await settleAsyncRender();
+
+    await act(async () => {
+      getLatestState().recordRecentCardLeave("default", "card-1", "Card 1");
+    });
+    await settleAsyncRender();
+
+    const state = getLatestState();
+    expect(state.activeRecentSessionId).toBe("session-2");
+    expect(state.activeCardsTabId).toBe("session:session-2");
+    expect(state.recentCardSessions.length).toBe(2);
+    expect(state.recentCardSessions[0]?.cardId).toBe("card-1");
+    expect(state.recentCardSessions[1]?.cardId).toBe("card-2");
   });
 
   test("findRecentCardSession matches cards by project and card id", () => {

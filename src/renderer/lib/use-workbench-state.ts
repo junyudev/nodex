@@ -1844,9 +1844,7 @@ export function useWorkbenchState(
 
         return {
           ...prev,
-          activeRecentSessionId: targetSession.id,
           recentCardSessions: nextRecent,
-          activeCardsTabId: `session:${targetSession.id}`,
         };
       });
 
