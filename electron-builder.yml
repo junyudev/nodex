@@ -55,14 +55,16 @@ mac:
   notarize: true
 
 dmg:
-  title: "${productName} ${version}"
-  iconSize: 80
+  title: "${productName}"
+  background: dmg-background.png
+  iconSize: 128
+  iconTextSize: 16
   contents:
-  - x: 130
-    y: 220
+  - x: 176
+    y: 135
     type: file
-  - x: 410
-    y: 220
+  - x: 464
+    y: 135
     type: link
     path: /Applications
 

@@ -28,6 +28,8 @@ The release pipeline uses two GitHub Actions workflows:
 
 Because `arm64` and `x64` packaging run in separate jobs, each macOS build uploads its own updater manifest and blockmaps as first-class artifacts. The publish job merges the two per-arch `latest-mac.yml` files into one canonical `latest-mac.yml`, creates stable DMG aliases for the landing page, and then publishes the GitHub Release.
 
+Installer styling is checked in with the app: `electron-builder.yml` owns the DMG Finder geometry, and `resources/dmg-background.png` plus `resources/dmg-background@2x.png` provide the 1x/Retina background pair. Keep those two background assets in sync so packaged DMGs stay sharp on Retina displays.
+
 For local Linux-path debugging, Nodex also ships a committed `act` harness for the `prepare` job. That harness intentionally stops after validation and never performs the candidate-build, commit, tag, push, or publish steps locally.
 
 ## One-Time Setup
