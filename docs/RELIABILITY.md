@@ -47,8 +47,8 @@
 - Backup restore failures surface explicit error responses.
 - Reminder delivery is at-least-once at scheduler level, then effectively exactly-once per `(project_id, card_id, occurrence_start, offset)` via receipt uniqueness.
 - Missing Codex CLI binary surfaces explicit `missingBinary` connection status in UI.
-- Packaged builds ship a pinned Codex runtime inside `Contents/Resources/codex` and never fall back to system `PATH`, so the bundled CLI version stays aligned with the committed `src/shared/codex_schemas`.
-- Dev and unpackaged runs still augment binary lookup with common install directories (for example `/opt/homebrew/bin`, `/usr/local/bin`, `~/.bun/bin`) so local GUI launches remain less sensitive to shell `PATH` differences.
+- Packaged builds ship a pinned Codex runtime inside `Contents/Resources/codex`, and dev/unpackaged runs use the staged pinned runtime under `.generated/codex-runtime`.
+- Nodex never falls back to a system `codex` binary from `PATH`, so the runtime CLI version stays aligned with the committed `src/shared/codex_schemas` in both packaged and local development flows.
 - `codex:*` API calls in browser mode fail fast with explicit unsupported errors.
 - App-update IPC/status calls in browser mode, unpackaged builds, and non-macOS builds return explicit `unsupported` status and do not attempt network update checks.
 - Approval/user-input pending requests are rejected on Codex service shutdown to prevent hung renderer promises.

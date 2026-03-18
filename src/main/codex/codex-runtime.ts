@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type CodexRuntimeSource = "bundled" | "system";
+export type CodexRuntimeSource = "bundled" | "staged";
 
 export type BundledCodexRuntimeMetadata = {
   binarySha256: string;
@@ -24,8 +24,34 @@ export type ResolvedCodexRuntime = {
 
 type ResolveCodexRuntimeOptions = {
   isPackaged: boolean;
+  projectRootPath?: string;
   resourcesPath?: string;
 };
+
+function resolveRuntimeFromRoot(input: {
+  missingBinaryMessage: string;
+  runtimeRoot: string;
+  source: CodexRuntimeSource;
+}): ResolvedCodexRuntime {
+  const binaryPath = path.join(input.runtimeRoot, "codex");
+  const rgPath = path.join(input.runtimeRoot, "path", "rg");
+  const metadataPath = path.join(input.runtimeRoot, "runtime.json");
+
+  if (!fs.existsSync(binaryPath) || !fs.existsSync(rgPath) || !fs.existsSync(metadataPath)) {
+    throw new Error(`Codex runtime is missing or incomplete under ${input.runtimeRoot}`);
+  }
+
+  const metadata = parseBundledRuntimeMetadata(metadataPath);
+
+  return {
+    source: input.source,
+    binaryPath,
+    additionalSearchPaths: [path.dirname(rgPath)],
+    version: metadata.codexVersion,
+    metadataPath,
+    missingBinaryMessage: input.missingBinaryMessage,
+  };
+}
 
 function parseBundledRuntimeMetadata(metadataPath: string): BundledCodexRuntimeMetadata {
   const parsed = JSON.parse(fs.readFileSync(metadataPath, "utf8")) as Partial<BundledCodexRuntimeMetadata>;
@@ -55,14 +81,16 @@ function parseBundledRuntimeMetadata(metadataPath: string): BundledCodexRuntimeM
 
 export function resolveCodexRuntime(options: ResolveCodexRuntimeOptions): ResolvedCodexRuntime {
   if (!options.isPackaged) {
-    return {
-      source: "system",
-      binaryPath: "codex",
-      additionalSearchPaths: [],
-      version: null,
-      metadataPath: null,
-      missingBinaryMessage: "Could not find 'codex' in PATH or common install directories",
-    };
+    const projectRootPath = options.projectRootPath?.trim();
+    if (!projectRootPath) {
+      throw new Error("Unpackaged Codex runtime resolution requires a project root path");
+    }
+
+    return resolveRuntimeFromRoot({
+      source: "staged",
+      runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime"),
+      missingBinaryMessage: "Pinned Codex runtime is missing or incomplete. Run `bun run stage:codex-runtime:mac`.",
+    });
   }
 
   const resourcesPath = options.resourcesPath?.trim();
@@ -70,23 +98,9 @@ export function resolveCodexRuntime(options: ResolveCodexRuntimeOptions): Resolv
     throw new Error("Packaged Codex runtime resolution requires process.resourcesPath");
   }
 
-  const runtimeRoot = path.join(resourcesPath, "codex");
-  const binaryPath = path.join(runtimeRoot, "codex");
-  const rgPath = path.join(runtimeRoot, "path", "rg");
-  const metadataPath = path.join(runtimeRoot, "runtime.json");
-
-  if (!fs.existsSync(binaryPath) || !fs.existsSync(rgPath) || !fs.existsSync(metadataPath)) {
-    throw new Error(`Bundled Codex runtime is missing or incomplete under ${runtimeRoot}`);
-  }
-
-  const metadata = parseBundledRuntimeMetadata(metadataPath);
-
-  return {
+  return resolveRuntimeFromRoot({
     source: "bundled",
-    binaryPath,
-    additionalSearchPaths: [path.dirname(rgPath)],
-    version: metadata.codexVersion,
-    metadataPath,
+    runtimeRoot: path.join(resourcesPath, "codex"),
     missingBinaryMessage: "Bundled Codex runtime is missing or corrupted. Reinstall Nodex.",
-  };
+  });
 }

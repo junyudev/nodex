@@ -256,7 +256,7 @@ export class CodexAppServerClient extends EventEmitter {
     this.args = options?.args ?? ["app-server", "--listen", "stdio://"];
     this.env = { ...(options?.env ?? process.env) };
     this.additionalSearchPaths = options?.additionalSearchPaths ?? [];
-    this.missingBinaryMessage = options?.missingBinaryMessage ?? "Could not find 'codex' in PATH or common install directories";
+    this.missingBinaryMessage = options?.missingBinaryMessage ?? "Configured Codex runtime is missing or unavailable.";
     this.initializeTimeoutMs = options?.initializeTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
     this.requestTimeoutMs = options?.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.clientInfo = options?.clientInfo ?? {

@@ -456,13 +456,16 @@ function createTextUserInput(text: string): TurnStartParams["input"][number] {
 function resolveDefaultCodexRuntime(): ResolvedCodexRuntime {
   try {
     const electronModule = require("electron") as { app?: { isPackaged?: boolean } };
+    const isPackaged = Boolean(electronModule.app?.isPackaged);
     return resolveCodexRuntime({
-      isPackaged: Boolean(electronModule.app?.isPackaged),
+      isPackaged,
+      projectRootPath: isPackaged ? undefined : process.cwd(),
       resourcesPath: process.resourcesPath,
     });
   } catch {
     return resolveCodexRuntime({
       isPackaged: false,
+      projectRootPath: process.cwd(),
       resourcesPath: process.resourcesPath,
     });
   }
