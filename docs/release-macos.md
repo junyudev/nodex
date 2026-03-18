@@ -9,6 +9,8 @@ Nodex ships notarized macOS builds for both Apple Silicon and Intel:
 - `Nodex-<version>-arm64.zip`
 - `Nodex-<version>-x64.dmg`
 - `Nodex-<version>-x64.zip`
+- `Nodex-latest-arm64.dmg`
+- `Nodex-latest-x64.dmg`
 - canonical `latest-mac.yml`
 - per-architecture ZIP blockmaps required by `electron-updater`
 
@@ -24,7 +26,7 @@ The release pipeline uses two GitHub Actions workflows:
 
 `Release` is the fallback workflow for already-existing refs. It builds, signs, notarizes, verifies, publishes the GitHub Release, and updates the first-party Homebrew tap for a committed tag or ref. It does not mutate git history.
 
-Because `arm64` and `x64` packaging run in separate jobs, each macOS build uploads its own updater manifest and blockmaps as first-class artifacts. The publish job merges the two per-arch `latest-mac.yml` files into one canonical `latest-mac.yml` before publishing the GitHub Release.
+Because `arm64` and `x64` packaging run in separate jobs, each macOS build uploads its own updater manifest and blockmaps as first-class artifacts. The publish job merges the two per-arch `latest-mac.yml` files into one canonical `latest-mac.yml`, creates stable DMG aliases for the landing page, and then publishes the GitHub Release.
 
 For local Linux-path debugging, Nodex also ships a committed `act` harness for the `prepare` job. That harness intentionally stops after validation and never performs the candidate-build, commit, tag, push, or publish steps locally.
 
@@ -248,13 +250,18 @@ Responsibilities:
 3. Download the `macos-arm64-release` artifact.
 4. Download the `macos-x64-release` artifact.
 5. Merge the two per-arch `latest-mac.yml` files into one canonical `latest-mac.yml`.
-6. Extract release notes for the resolved version from `CHANGELOG.md` with `bun run release:notes`.
-7. Publish a non-draft GitHub Release using `softprops/action-gh-release`.
-8. Attach release assets:
+6. Create stable landing-page aliases by copying the versioned DMGs to:
+   - `Nodex-latest-arm64.dmg`
+   - `Nodex-latest-x64.dmg`
+7. Extract release notes for the resolved version from `CHANGELOG.md` with `bun run release:notes`.
+8. Publish a non-draft GitHub Release using `softprops/action-gh-release`.
+9. Attach release assets:
    - arm64 DMG
+   - arm64 latest alias DMG
    - arm64 ZIP
    - arm64 blockmaps
    - x64 DMG
+   - x64 latest alias DMG
    - x64 ZIP
    - x64 blockmaps
    - canonical `latest-mac.yml`

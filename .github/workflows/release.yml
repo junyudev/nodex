@@ -289,6 +289,13 @@ jobs:
             --input "${RUNNER_TEMP}/release-artifacts/x64/latest-mac.yml" \
             --output "${RUNNER_TEMP}/release-artifacts/merged/latest-mac.yml"
 
+      - name: Create stable macOS download aliases
+        run: |
+          bun run release:download-aliases -- \
+            --version "${{ needs.build-macos-arm64.outputs.version }}" \
+            --arm64-dir "${RUNNER_TEMP}/release-artifacts/arm64" \
+            --x64-dir "${RUNNER_TEMP}/release-artifacts/x64"
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:

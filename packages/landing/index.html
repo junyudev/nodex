@@ -27,6 +27,7 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/download-cta.ts"></script>
   </head>
   <body>
     <div class="landing-page">
@@ -75,7 +76,8 @@
 
             <div class="landing-actions landing-fade-up">
               <a
-                href="https://github.com/Asphocarp/nodex/releases/latest"
+                id="landing-download-button"
+                href="https://github.com/Asphocarp/nodex/releases/latest/download/Nodex-latest-arm64.dmg"
                 class="landing-primary-button"
               >
                 <span class="landing-apple-glyph" aria-hidden="true"></span>
@@ -85,7 +87,7 @@
 
             <div class="landing-release-note landing-fade-up" aria-label="Release information">
               <span class="landing-meta-pill">Beta</span>
-              <span class="landing-release-copy">v0.1.5 · Requires macOS 12+</span>
+              <span class="landing-release-copy">Latest stable · Requires macOS 12+</span>
             </div>
           </section>
         </main>

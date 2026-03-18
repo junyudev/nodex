@@ -33,6 +33,7 @@
     "release:prepare:act:list": "bash scripts/run-prepare-release-act.sh --list",
     "release:notes": "bun run scripts/release-changelog.ts extract --",
     "release:cask": "bun run scripts/generate-homebrew-cask.ts --",
+    "release:download-aliases": "bun run scripts/release-download-aliases.ts --",
     "release:merge-mac-update-manifest": "bun run scripts/merge-mac-update-manifest.ts --",
     "release:cut": "bun run scripts/release-cut.ts --",
     "release:cut:patch": "bun run release:cut -- patch",
@@ -52,8 +53,8 @@
     "dev:storybook": "bun run --cwd packages/storybook storybook",
     "build:storybook": "bun run --cwd packages/storybook build",
     "tokens:vscode:generate": "bun run scripts/generate-vscode-theme-vars.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "lint": "eslint src/ packages/storybook/.storybook/ packages/landing/vite.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p packages/landing/tsconfig.json",
+    "lint": "eslint src/ packages/storybook/.storybook/ packages/landing/vite.config.ts packages/landing/src/",
     "lint:tailwind:fix": "ESLINT_BETTER_TAILWIND=1 eslint src/ --fix",
     "postinstall": "electron-builder install-app-deps && (chmod +x node_modules/node-pty/prebuilds/*/spawn-helper 2>/dev/null || true)"
   },
