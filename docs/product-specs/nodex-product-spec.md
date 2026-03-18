@@ -463,7 +463,7 @@ nodex/
 │   ├── icon.png                # PNG app icon
 │   └── entitlements.mac.plist  # macOS hardened runtime entitlements
 ├── scripts/
-│   └── generate-homebrew-cask.ts # Generates the tap cask pushed to Asphocarp/homebrew-nodex
+│   └── generate-homebrew-cask.ts # Generates the tap cask pushed to junyudev/homebrew-nodex
 ├── src/
 │   ├── shared/
 │   │   ├── types.ts            # Shared TypeScript types (Card, Board, Project, etc.)
@@ -942,12 +942,12 @@ To release a new version, use the GitHub Actions `Prepare Release` workflow:
 # 1. Update CHANGELOG.md under ## [Unreleased]
 # 2. Trigger "Prepare Release" in GitHub Actions or from the CLI:
 gh workflow run "Prepare Release" \
-  --repo Asphocarp/nodex \
+  --repo junyudev/nodex \
   -f release_type=patch
 # 3. The workflow runs typecheck/lint/tests, prepares an unpushed release
 #    candidate, and signs/notarizes arm64 + x64 builds from that candidate.
 # 4. Only after both macOS builds pass does it commit, tag, push, publish the
-#    GitHub Release, and update Asphocarp/homebrew-nodex.
+#    GitHub Release, and update junyudev/homebrew-nodex.
 ```
 
 Detailed CI behavior, job responsibilities, secrets, artifact naming, and recovery steps live in `docs/release-macos.md`.

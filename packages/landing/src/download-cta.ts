@@ -1,6 +1,6 @@
 export type MacDownloadArch = "arm64" | "x64";
 
-const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Asphocarp/nodex/releases/latest/download";
+const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/junyudev/nodex/releases/latest/download";
 
 type NavigatorUADataLike = {
   getHighEntropyValues?: (hints: string[]) => Promise<{ architecture?: string }>;

@@ -69,7 +69,7 @@ dmg:
 # --- Auto-update / Release hosting ---
 publish:
   provider: github
-  owner: Asphocarp
+  owner: junyudev
   repo: nodex
 
 # --- Windows (uncomment to enable) ---

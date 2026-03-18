@@ -15,7 +15,7 @@ type CliOptions = GenerateHomebrewCaskOptions;
 
 const defaultOptions: Omit<CliOptions, "arm64Sha256" | "outputPath" | "version" | "x64Sha256"> = {
   bundleId: "app.jyu.nodex",
-  owner: "Asphocarp",
+  owner: "junyudev",
   repo: "nodex",
 };
 

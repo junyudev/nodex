@@ -8,7 +8,7 @@ import {
 
 test("resolveLatestMacDownloadUrl returns the stable arm64 alias URL", () => {
   expect(resolveLatestMacDownloadUrl("arm64")).toBe(
-    "https://github.com/Asphocarp/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
+    "https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg",
   );
 });
 
@@ -28,7 +28,7 @@ test("resolvePreferredMacDownloadArch uses explicit mac Intel user-agent tokens"
 
 test("upgradeLandingDownloadLink prefers arm64 when client hints expose ARM architecture", async () => {
   const anchor = document.createElement("a");
-  anchor.href = "https://github.com/Asphocarp/nodex/releases/latest";
+  anchor.href = "https://github.com/junyudev/nodex/releases/latest";
 
   await upgradeLandingDownloadLink(anchor, {
     platform: "MacIntel",
@@ -46,7 +46,7 @@ test("upgradeLandingDownloadLink prefers arm64 when client hints expose ARM arch
 
 test("upgradeLandingDownloadLink keeps arm64 when userAgentData is missing", async () => {
   const anchor = document.createElement("a");
-  anchor.href = "https://github.com/Asphocarp/nodex/releases/latest";
+  anchor.href = "https://github.com/junyudev/nodex/releases/latest";
 
   await upgradeLandingDownloadLink(anchor, {
     platform: "MacIntel",
@@ -58,7 +58,7 @@ test("upgradeLandingDownloadLink keeps arm64 when userAgentData is missing", asy
 
 test("upgradeLandingDownloadLink switches to x64 when client hints expose Intel architecture", async () => {
   const anchor = document.createElement("a");
-  anchor.href = "https://github.com/Asphocarp/nodex/releases/latest";
+  anchor.href = "https://github.com/junyudev/nodex/releases/latest";
 
   await upgradeLandingDownloadLink(anchor, {
     platform: "MacIntel",

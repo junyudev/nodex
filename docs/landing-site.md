@@ -41,7 +41,7 @@ The homepage keeps the primary macOS CTA no-JS-safe by pointing at the stable ar
 Builds happen in this repository. Deployment publishes the generated `packages/landing/dist/` output into the root of `NodexApp/NodexApp.github.io`.
 
 Repository roles:
-- `Asphocarp/nodex`: source code, build logic, CI, and documentation
+- `junyudev/nodex`: source code, build logic, CI, and documentation
 - `NodexApp/NodexApp.github.io`: published static artifact only
 
 This split matters because the root org site URL `https://nodexapp.github.io` must be served by a repository named `NodexApp.github.io`.
@@ -63,7 +63,7 @@ Two workflows manage the site:
 
 ## Required Secrets
 
-The deploy workflow expects this secret in `Asphocarp/nodex`:
+The deploy workflow expects this secret in `junyudev/nodex`:
 
 - `NODEXAPP_GITHUB_IO_TOKEN`
   - fine-grained GitHub token
@@ -86,8 +86,8 @@ The v1 site is intentionally narrow:
 - minimal privacy and terms pages
 
 Release CTA contract:
-- default CTA target: `https://github.com/Asphocarp/nodex/releases/latest/download/Nodex-latest-arm64.dmg`
-- x64 CTA target: `https://github.com/Asphocarp/nodex/releases/latest/download/Nodex-latest-x64.dmg`
+- default CTA target: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg`
+- x64 CTA target: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg`
 - browser-side detection is conservative; ambiguous clients stay on arm64 and only explicit Intel evidence switches to x64
 
 If the site later expands into screenshots, FAQ, or longer-form product copy, keep that work inside `packages/landing` rather than pulling renderer code into the package.

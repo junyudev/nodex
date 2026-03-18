@@ -34,7 +34,7 @@ For local Linux-path debugging, Nodex also ships a committed `act` harness for t
 
 ### GitHub
 
-Create a GitHub Actions environment named `release` in the `Asphocarp/nodex` repository. The macOS build jobs, release publication job, and Homebrew tap update job all run under that environment.
+Create a GitHub Actions environment named `release` in the `junyudev/nodex` repository. The macOS build jobs, release publication job, and Homebrew tap update job all run under that environment.
 
 Add these environment secrets:
 - `CSC_LINK`: base64 of the exported `Developer ID Application` `.p12`
@@ -42,7 +42,7 @@ Add these environment secrets:
 - `APPLE_API_KEY_B64`: base64 of the App Store Connect API key `.p8`
 - `APPLE_API_KEY_ID`: App Store Connect API key id
 - `APPLE_API_ISSUER`: App Store Connect issuer id
-- `HOMEBREW_TAP_GITHUB_TOKEN`: fine-grained token with `Contents: Read and write` on `Asphocarp/homebrew-nodex`
+- `HOMEBREW_TAP_GITHUB_TOKEN`: fine-grained token with `Contents: Read and write` on `junyudev/homebrew-nodex`
 
 Recommended environment protection:
 - required reviewers for first releases
@@ -67,7 +67,7 @@ For a patch bump:
 
 ```bash
 gh workflow run "Prepare Release" \
-  --repo Asphocarp/nodex \
+  --repo junyudev/nodex \
   -f release_type=patch
 ```
 
@@ -75,7 +75,7 @@ For an explicit version:
 
 ```bash
 gh workflow run "Prepare Release" \
-  --repo Asphocarp/nodex \
+  --repo junyudev/nodex \
   -f release_type=custom \
   -f custom_version=0.1.3
 ```
@@ -284,7 +284,7 @@ Responsibilities:
 3. Download the arm64 and x64 release artifacts.
 4. Locate the released DMGs for both architectures.
 5. Compute `sha256` for both DMGs with `shasum -a 256`.
-6. Clone `Asphocarp/homebrew-nodex` using `HOMEBREW_TAP_GITHUB_TOKEN`.
+6. Clone `junyudev/homebrew-nodex` using `HOMEBREW_TAP_GITHUB_TOKEN`.
 7. Run `bun run release:cask` to generate `Casks/nodex.rb`.
 8. Commit the cask update:
    - `chore: update nodex cask to v<version>`
@@ -307,13 +307,13 @@ The Homebrew cask generator assumes:
 - the GitHub release tag is `v<version>`
 - the app name is `Nodex`
 - `app.jyu.nodex` is the canonical macOS bundle id for zap paths
-- the cask lives at `Asphocarp/homebrew-nodex/Casks/nodex.rb`
+- the cask lives at `junyudev/homebrew-nodex/Casks/nodex.rb`
 - the cask declares `auto_updates true`, because packaged macOS builds now self-update through GitHub Releases
 
 Homebrew install path:
 
 ```bash
-brew tap Asphocarp/nodex
+brew tap junyudev/nodex
 brew install --cask nodex
 ```
 
@@ -324,20 +324,20 @@ brew install --cask nodex
 List recent runs:
 
 ```bash
-gh run list --repo Asphocarp/nodex --workflow "Prepare Release"
-gh run list --repo Asphocarp/nodex --workflow "Release"
+gh run list --repo junyudev/nodex --workflow "Prepare Release"
+gh run list --repo junyudev/nodex --workflow "Release"
 ```
 
 Watch a run:
 
 ```bash
-gh run watch --repo Asphocarp/nodex
+gh run watch --repo junyudev/nodex
 ```
 
 Inspect logs:
 
 ```bash
-gh run view --repo Asphocarp/nodex --log
+gh run view --repo junyudev/nodex --log
 ```
 
 ### Common failure points
@@ -365,7 +365,7 @@ gh run view --repo Asphocarp/nodex --log
 - action: rerun the job after confirming both build jobs uploaded artifacts and `finalize-release` pushed the tag
 
 `update-homebrew-tap` failure:
-- cause: invalid tap token, missing tap repo access, or push conflict in `Asphocarp/homebrew-nodex`
+- cause: invalid tap token, missing tap repo access, or push conflict in `junyudev/homebrew-nodex`
 - action: fix the token or repo state, then rerun only the tap update job
 
 ### Recovery guidance
