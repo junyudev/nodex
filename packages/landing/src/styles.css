@@ -163,6 +163,39 @@
     top: -0.02em;
   }
 
+  .landing-brew-row {
+    @apply mt-5 flex flex-col items-center gap-2.5;
+  }
+
+  .landing-brew-or {
+    @apply text-[13px] text-[#48484a];
+  }
+
+  .landing-brew-snippet {
+    @apply inline-flex items-center gap-0 rounded-[10px] border border-white/[0.08] bg-white/[0.04];
+  }
+
+  .landing-brew-code {
+    @apply py-2.5 pl-4 pr-3 text-[14px] leading-none text-[#86868b] select-all;
+  }
+
+  .landing-brew-copy {
+    @apply flex cursor-pointer items-center justify-center border-0 border-l border-white/[0.08] bg-transparent px-3 py-2.5 text-[#636366] transition-colors duration-150 hover:text-[#a1a1a6];
+  }
+
+  .landing-brew-copy .landing-brew-check-icon {
+    display: none;
+  }
+
+  .landing-brew-copy.copied .landing-brew-copy-icon {
+    display: none;
+  }
+
+  .landing-brew-copy.copied .landing-brew-check-icon {
+    display: block;
+    color: #30d158;
+  }
+
   .landing-release-note {
     @apply mt-2 inline-flex items-center justify-center gap-2 text-[13px] text-[#636366];
   }
@@ -213,6 +246,10 @@
 
   .landing-release-note.landing-fade-up {
     animation-delay: 0.6s;
+  }
+
+  .landing-brew-row.landing-fade-up {
+    animation-delay: 0.7s;
   }
 
   .legal-shell {
