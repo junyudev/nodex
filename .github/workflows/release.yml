@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 env:
-  HOMEBREW_TAP_REPO: junyudev/homebrew-nodex
+  HOMEBREW_TAP_REPO: junyudev/homebrew-tap
   RELEASE_GIT_REF: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
 
 jobs:

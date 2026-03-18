@@ -1,5 +1,5 @@
 # This file mirrors the generated cask layout from scripts/generate-homebrew-cask.ts.
-# CI writes the real release-specific cask into junyudev/homebrew-nodex/Casks/nodex.rb.
+# CI writes the real release-specific cask into junyudev/homebrew-tap/Casks/nodex.rb.
 
 cask "nodex" do
   version "0.0.0"

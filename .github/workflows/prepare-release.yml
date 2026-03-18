@@ -503,7 +503,7 @@ jobs:
     - build-macos-arm64
     - build-macos-x64
     env:
-      HOMEBREW_TAP_REPO: junyudev/homebrew-nodex
+      HOMEBREW_TAP_REPO: junyudev/homebrew-tap
     steps:
     - name: Download release candidate source
       uses: actions/download-artifact@v8

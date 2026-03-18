@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Packaged macOS builds now bundle a pinned Codex CLI runtime and its bundled `rg`, keeping the shipped app-server binary version aligned with the committed generated `codex_schemas` instead of depending on a separately installed `codex` binary.
+- Changed the first-party Homebrew tap namespace to `junyudev/tap`, so the canonical macOS install command is now `brew install --cask junyudev/tap/nodex`.
 
 ### Fixed
 
@@ -55,7 +56,7 @@ All notable changes to this project will be documented in this file.
 - Added Omnisearch-style contextual preview snippets to command-palette card results, with matching title and metadata indicators plus matching description text highlighted and clamped to three lines.
 - Added a top-level `Projects` sidebar section for switching the DB view datasource, with inline workspace-folder context and project-management shortcuts so project selection no longer depends on a separate current-project header.
 - Added per-column kanban header popovers for collapsing non-empty columns and adjusting each column's persisted width, while keeping counts and the `more actions` trigger visible on collapsed columns.
-- Added notarized dual-architecture macOS release automation plus Homebrew tap publishing, so tagged releases now produce signed `arm64` and `x64` installers and can be installed with `brew install --cask nodex` after tapping `junyudev/nodex`.
+- Added notarized dual-architecture macOS release automation plus first-party Homebrew tap publishing, so tagged releases now produce signed `arm64` and `x64` installers and can be installed through Homebrew alongside the direct GitHub Release downloads.
 - Added Streamdown 2.4.0-based markdown rendering across Codex threads and raw NFM code blocks, replacing the app-owned transcript Shiki/Mermaid stack with the official Streamdown code, Mermaid, math, and CJK plugins.
 
 ### Changed

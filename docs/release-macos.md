@@ -44,7 +44,7 @@ Add these environment secrets:
 - `APPLE_API_KEY_B64`: base64 of the App Store Connect API key `.p8`
 - `APPLE_API_KEY_ID`: App Store Connect API key id
 - `APPLE_API_ISSUER`: App Store Connect issuer id
-- `HOMEBREW_TAP_GITHUB_TOKEN`: fine-grained token with `Contents: Read and write` on `junyudev/homebrew-nodex`
+- `HOMEBREW_TAP_GITHUB_TOKEN`: fine-grained token with `Contents: Read and write` on `junyudev/homebrew-tap`
 
 Recommended environment protection:
 - required reviewers for first releases
@@ -286,7 +286,7 @@ Responsibilities:
 3. Download the arm64 and x64 release artifacts.
 4. Locate the released DMGs for both architectures.
 5. Compute `sha256` for both DMGs with `shasum -a 256`.
-6. Clone `junyudev/homebrew-nodex` using `HOMEBREW_TAP_GITHUB_TOKEN`.
+6. Clone `junyudev/homebrew-tap` using `HOMEBREW_TAP_GITHUB_TOKEN`.
 7. Run `bun run release:cask` to generate `Casks/nodex.rb`.
 8. Commit the cask update:
    - `chore: update nodex cask to v<version>`
@@ -309,13 +309,16 @@ The Homebrew cask generator assumes:
 - the GitHub release tag is `v<version>`
 - the app name is `Nodex`
 - `app.jyu.nodex` is the canonical macOS bundle id for zap paths
-- the cask lives at `junyudev/homebrew-nodex/Casks/nodex.rb`
+- the cask lives at `junyudev/homebrew-tap/Casks/nodex.rb`
 - the cask declares `auto_updates true`, because packaged macOS builds now self-update through GitHub Releases
 
 Homebrew install path:
 
 ```bash
-brew tap junyudev/nodex
+brew install --cask junyudev/tap/nodex
+
+# equivalent two-step flow
+brew tap junyudev/tap
 brew install --cask nodex
 ```
 
@@ -367,7 +370,7 @@ gh run view --repo junyudev/nodex --log
 - action: rerun the job after confirming both build jobs uploaded artifacts and `finalize-release` pushed the tag
 
 `update-homebrew-tap` failure:
-- cause: invalid tap token, missing tap repo access, or push conflict in `junyudev/homebrew-nodex`
+- cause: invalid tap token, missing tap repo access, or push conflict in `junyudev/homebrew-tap`
 - action: fix the token or repo state, then rerun only the tap update job
 
 ### Recovery guidance
