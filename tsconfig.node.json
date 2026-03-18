@@ -18,6 +18,7 @@
     "src/shared/**/*.ts",
     "scripts/**/*.ts",
     "electron.vite.config.ts",
+    "packages/codex-app-server-protocol/**/*.ts",
     "packages/landing/**/*.ts"
   ],
   "exclude": [

@@ -7,7 +7,7 @@ import type {
   InitializeResponse,
   ServerNotification,
   ServerRequest,
-} from "../../shared/codex_schemas";
+} from "@nodex/codex-app-server-protocol";
 import type { CodexConnectionState } from "../../shared/types";
 import { getLogger } from "../logging/logger";
 

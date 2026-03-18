@@ -1,0 +1,11 @@
+{
+  "name": "@nodex/codex-app-server-protocol",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./v2": "./src/v2/index.ts",
+    "./v2/*": "./src/v2/*.ts"
+  },
+  "types": "./src/index.ts"
+}

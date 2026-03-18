@@ -22,6 +22,7 @@
         "@blocknote/shadcn": "0.47.1",
         "@excalidraw/excalidraw": "^0.18.0",
         "@happy-dom/global-registrator": "^20.8.4",
+        "@nodex/codex-app-server-protocol": "workspace:*",
         "@openai/codex": "0.115.0",
         "@openai/codex-darwin-arm64": "npm:@openai/codex@0.115.0-darwin-arm64",
         "@openai/codex-darwin-x64": "npm:@openai/codex@0.115.0-darwin-x64",
@@ -86,6 +87,9 @@
         "typescript-eslint": "^8.57.0",
         "unified": "^11.0.5",
       },
+    },
+    "packages/codex-app-server-protocol": {
+      "name": "@nodex/codex-app-server-protocol",
     },
     "packages/landing": {
       "name": "@nodex/landing",
@@ -413,6 +417,8 @@
     "@next/swc-win32-arm64-msvc": ["@next/swc-win32-arm64-msvc@16.1.7", "", { "os": "win32", "cpu": "arm64" }, "sha512-S0n3KrDJokKTeFyM/vGGGR8+pCmXYrjNTk2ZozOL1C/JFdfUIL9O1ATaJOl5r2POe56iRChbsszrjMAdWSv7kQ=="],
 
     "@next/swc-win32-x64-msvc": ["@next/swc-win32-x64-msvc@16.1.7", "", { "os": "win32", "cpu": "x64" }, "sha512-mwgtg8CNZGYm06LeEd+bNnOUfwOyNem/rOiP14Lsz+AnUY92Zq/LXwtebtUiaeVkhbroRCQ0c8GlR4UT1U+0yg=="],
+
+    "@nodex/codex-app-server-protocol": ["@nodex/codex-app-server-protocol@workspace:packages/codex-app-server-protocol"],
 
     "@nodex/landing": ["@nodex/landing@workspace:packages/landing"],
 

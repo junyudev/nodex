@@ -67,6 +67,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@nodex/codex-app-server-protocol": "workspace:*",
     "@blocknote/code-block": "0.47.1",
     "@blocknote/core": "0.47.1",
     "@blocknote/react": "0.47.1",
