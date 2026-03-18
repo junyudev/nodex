@@ -46,13 +46,13 @@ describe("stage-codex-runtime", () => {
 
       expect(metadata.codexVersion).toBe("0.115.0");
       expect(metadata.targetTriple).toBe("aarch64-apple-darwin");
-      expect(fs.existsSync(path.join(outputPath, "codex"))).toBeTrue();
-      expect(fs.existsSync(path.join(outputPath, "path", "rg"))).toBeTrue();
-      expect(fs.existsSync(path.join(outputPath, "runtime.json"))).toBeTrue();
+      expect(fs.existsSync(path.join(outputPath, "bin", "codex"))).toBeTrue();
+      expect(fs.existsSync(path.join(outputPath, "bin", "rg"))).toBeTrue();
+      expect(fs.existsSync(path.join(outputPath, "bin", "runtime.json"))).toBeTrue();
       expect(fs.existsSync(path.join(outputPath, "stale.txt"))).toBeFalse();
 
       const writtenMetadata = JSON.parse(
-        fs.readFileSync(path.join(outputPath, "runtime.json"), "utf8"),
+        fs.readFileSync(path.join(outputPath, "bin", "runtime.json"), "utf8"),
       ) as { sourcePackage?: string; binarySha256?: string; rgSha256?: string };
 
       expect(writtenMetadata.sourcePackage).toBe("@openai/codex-darwin-arm64@0.115.0-darwin-arm64");

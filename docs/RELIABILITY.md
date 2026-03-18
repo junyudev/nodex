@@ -47,7 +47,8 @@
 - Backup restore failures surface explicit error responses.
 - Reminder delivery is at-least-once at scheduler level, then effectively exactly-once per `(project_id, card_id, occurrence_start, offset)` via receipt uniqueness.
 - Missing Codex CLI binary surfaces explicit `missingBinary` connection status in UI.
-- Packaged builds ship a pinned Codex runtime inside `Contents/Resources/codex`, and dev/unpackaged runs use the staged pinned runtime under `.generated/codex-runtime`.
+- Packaged builds ship a pinned Codex runtime inside `Contents/Resources/bin`, and dev/unpackaged runs use the staged pinned runtime under `.generated/codex-runtime/bin`.
+- macOS packaging preserves the upstream OpenAI signature on `Contents/Resources/bin/codex` instead of re-signing that binary under the app's identity, so existing `Codex MCP Credentials` Keychain ACL entries that trust OpenAI's Codex team continue to match packaged Nodex builds.
 - Nodex never falls back to a system `codex` binary from `PATH`, so the runtime CLI version stays aligned with the committed `@nodex/codex-app-server-protocol` package in both packaged and local development flows.
 - `codex:*` API calls in browser mode fail fast with explicit unsupported errors.
 - App-update IPC/status calls in browser mode, unpackaged builds, and non-macOS builds return explicit `unsupported` status and do not attempt network update checks.
@@ -61,6 +62,7 @@
 - Before release: run `bun run typecheck`, `bun run lint`, `bun test`.
 - Before release packaging on macOS: run `bun run codex:schemas:verify` so checked-in app-server schemas still match the pinned Codex version.
 - Before enabling CI signing secrets: do one local notarization dry run and verify `codesign --verify --deep --strict`, `spctl --assess --type open`, and `xcrun stapler validate` against the generated macOS artifacts.
+- During macOS packaging validation, inspect `Contents/Resources/bin/codex` with `codesign -dvvv` and verify it still reports `TeamIdentifier=2DC432GLL2`.
 - Release CI publishes only after both `arm64` and `x64` notarized artifacts pass verification, and it synthesizes one canonical `latest-mac.yml` plus referenced blockmaps from the two per-arch updater outputs before the GitHub Release is published; tap sync runs after GitHub Release publication and should be retried independently if the external tap push fails.
 - The authoritative release runbook for workflow triggers, job ordering, secret requirements, artifact naming, and rerun strategy is `docs/release-macos.md`.
 - Before risky migrations/refactors: create a labeled manual backup.

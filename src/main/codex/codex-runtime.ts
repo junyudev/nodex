@@ -34,7 +34,7 @@ function resolveRuntimeFromRoot(input: {
   source: CodexRuntimeSource;
 }): ResolvedCodexRuntime {
   const binaryPath = path.join(input.runtimeRoot, "codex");
-  const rgPath = path.join(input.runtimeRoot, "path", "rg");
+  const rgPath = path.join(input.runtimeRoot, "rg");
   const metadataPath = path.join(input.runtimeRoot, "runtime.json");
 
   if (!fs.existsSync(binaryPath) || !fs.existsSync(rgPath) || !fs.existsSync(metadataPath)) {
@@ -46,7 +46,7 @@ function resolveRuntimeFromRoot(input: {
   return {
     source: input.source,
     binaryPath,
-    additionalSearchPaths: [path.dirname(rgPath)],
+    additionalSearchPaths: [input.runtimeRoot],
     version: metadata.codexVersion,
     metadataPath,
     missingBinaryMessage: input.missingBinaryMessage,
@@ -88,7 +88,7 @@ export function resolveCodexRuntime(options: ResolveCodexRuntimeOptions): Resolv
 
     return resolveRuntimeFromRoot({
       source: "staged",
-      runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime"),
+      runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime", "bin"),
       missingBinaryMessage: "Pinned Codex runtime is missing or incomplete. Run `bun run stage:codex-runtime:mac`.",
     });
   }
@@ -100,7 +100,7 @@ export function resolveCodexRuntime(options: ResolveCodexRuntimeOptions): Resolv
 
   return resolveRuntimeFromRoot({
     source: "bundled",
-    runtimeRoot: path.join(resourcesPath, "codex"),
+    runtimeRoot: path.join(resourcesPath, "bin"),
     missingBinaryMessage: "Bundled Codex runtime is missing or corrupted. Reinstall Nodex.",
   });
 }

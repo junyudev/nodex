@@ -31,8 +31,8 @@ npmRebuild: true
 extraResources:
 - from: resources/icon.png
   to: icon.png
-- from: .generated/codex-runtime
-  to: codex
+- from: .generated/codex-runtime/bin
+  to: bin
 extraMetadata:
   main: out/main/index.js
 protocols:
@@ -50,6 +50,8 @@ mac:
   artifactName: "${productName}-${version}-${arch}.${ext}"
   category: public.app-category.productivity
   hardenedRuntime: true
+  signIgnore:
+  - "^.*\\/Contents\\/Resources\\/bin\\/codex$"
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.plist
   notarize: true

@@ -212,16 +212,17 @@ Responsibilities:
    - `dist/latest-mac.yml`
    - `dist/Nodex-<version>-arm64.zip.blockmap`
    - built `Nodex.app`
-9. Assert bundled Codex runtime resources exist inside `Nodex.app/Contents/Resources/codex`:
+9. Assert bundled Codex runtime resources exist inside `Nodex.app/Contents/Resources/bin`:
    - `codex`
-   - `path/rg`
+   - `rg`
    - `runtime.json`
 10. Run the bundled `codex --version` and verify it matches `runtime.json`.
-11. Verify signing and notarization:
+11. Inspect the embedded Codex binary with `codesign -dvvv` and verify it still reports `TeamIdentifier=2DC432GLL2` so packaged builds preserve the upstream OpenAI Keychain identity.
+12. Verify signing and notarization:
    - `codesign --verify --deep --strict --verbose=2`
    - `spctl --assess --type execute --verbose=4`
    - `xcrun stapler validate`
-12. Upload the DMG, ZIP, `latest-mac.yml`, and blockmaps as the `macos-arm64-release` artifact.
+13. Upload the DMG, ZIP, `latest-mac.yml`, and blockmaps as the `macos-arm64-release` artifact.
 
 Secrets consumed:
 - `CSC_LINK`
@@ -398,7 +399,8 @@ Before trusting CI with signing secrets, do one local dry run on a Mac that has 
 
 ```bash
 bun run package:mac:arm64
-"dist/mac-arm64/Nodex.app/Contents/Resources/codex/codex" --version
+"dist/mac-arm64/Nodex.app/Contents/Resources/bin/codex" --version
+codesign -dvvv "dist/mac-arm64/Nodex.app/Contents/Resources/bin/codex" 2>&1 | rg "TeamIdentifier=2DC432GLL2"
 codesign --verify --deep --strict --verbose=2 "dist/mac-arm64/Nodex.app"
 spctl --assess --type execute --verbose=4 "dist/mac-arm64/Nodex.app"
 xcrun stapler validate "dist/mac-arm64/Nodex.app"

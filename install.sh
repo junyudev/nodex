@@ -12,7 +12,7 @@ SKILL_DIR="$HOME/.agents/skills/nodex-kanban"
 APP_INSTALL_PATH="/Applications/$APP_NAME"
 CLI_INSTALL_PATH="$HOME/.bun/bin/nodex"
 APP_RESOURCES_PATH="$APP_INSTALL_PATH/Contents/Resources"
-CODEX_RUNTIME_PATH="$APP_RESOURCES_PATH/codex"
+BUNDLED_BIN_PATH="$APP_RESOURCES_PATH/bin"
 
 print_usage() {
   cat <<EOF
@@ -31,9 +31,9 @@ EOF
 }
 
 verify_installed_app() {
-  local runtime_json_path="$CODEX_RUNTIME_PATH/runtime.json"
-  local codex_binary_path="$CODEX_RUNTIME_PATH/codex"
-  local rg_binary_path="$CODEX_RUNTIME_PATH/path/rg"
+  local runtime_json_path="$BUNDLED_BIN_PATH/runtime.json"
+  local codex_binary_path="$BUNDLED_BIN_PATH/codex"
+  local rg_binary_path="$BUNDLED_BIN_PATH/rg"
 
   if [ ! -f "$runtime_json_path" ]; then
     echo "Error: Missing bundled Codex runtime metadata at $runtime_json_path" >&2
@@ -55,6 +55,17 @@ verify_installed_app() {
   echo "    rg:    $rg_binary_path"
   echo "    Meta:  $runtime_json_path"
   echo "    Version: $("$codex_binary_path" --version)"
+
+  if command -v codesign >/dev/null 2>&1; then
+    local codesign_output
+    codesign_output="$(codesign -dvvv "$codex_binary_path" 2>&1)"
+    if ! printf '%s\n' "$codesign_output" | rg -q '^TeamIdentifier=2DC432GLL2$'; then
+      echo "Error: Bundled Codex binary was re-signed unexpectedly; expected TeamIdentifier=2DC432GLL2." >&2
+      printf '%s\n' "$codesign_output" >&2
+      exit 1
+    fi
+    echo "    Signature: preserved OpenAI TeamIdentifier=2DC432GLL2"
+  fi
 }
 
 install_app=false

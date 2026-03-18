@@ -5,9 +5,9 @@ import path from "node:path";
 import { resolveCodexRuntime } from "./codex-runtime";
 
 function writeRuntime(rootPath: string): void {
-  fs.mkdirSync(path.join(rootPath, "path"), { recursive: true });
+  fs.mkdirSync(rootPath, { recursive: true });
   fs.writeFileSync(path.join(rootPath, "codex"), "#!/bin/sh\necho codex\n", "utf8");
-  fs.writeFileSync(path.join(rootPath, "path", "rg"), "#!/bin/sh\necho rg\n", "utf8");
+  fs.writeFileSync(path.join(rootPath, "rg"), "#!/bin/sh\necho rg\n", "utf8");
   fs.writeFileSync(
     path.join(rootPath, "runtime.json"),
     JSON.stringify({
@@ -25,7 +25,7 @@ function writeRuntime(rootPath: string): void {
 
 function makeBundledRuntimeFixture(): { cleanup: () => void; resourcesPath: string } {
   const resourcesPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-codex-runtime-"));
-  writeRuntime(path.join(resourcesPath, "codex"));
+  writeRuntime(path.join(resourcesPath, "bin"));
 
   return {
     resourcesPath,
@@ -35,7 +35,7 @@ function makeBundledRuntimeFixture(): { cleanup: () => void; resourcesPath: stri
 
 function makeStagedRuntimeFixture(): { cleanup: () => void; projectRootPath: string } {
   const projectRootPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-codex-project-"));
-  writeRuntime(path.join(projectRootPath, ".generated", "codex-runtime"));
+  writeRuntime(path.join(projectRootPath, ".generated", "codex-runtime", "bin"));
 
   return {
     projectRootPath,
@@ -54,8 +54,8 @@ describe("codex-runtime", () => {
       });
 
       expect(runtime.source).toBe("bundled");
-      expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "codex", "codex"));
-      expect(runtime.additionalSearchPaths[0]).toBe(path.join(fixture.resourcesPath, "codex", "path"));
+      expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin", "codex"));
+      expect(runtime.additionalSearchPaths[0]).toBe(path.join(fixture.resourcesPath, "bin"));
       expect(runtime.version).toBe("0.115.0");
       expect(runtime.missingBinaryMessage).toBe("Bundled Codex runtime is missing or corrupted. Reinstall Nodex.");
     } finally {
@@ -68,7 +68,7 @@ describe("codex-runtime", () => {
     let threw = false;
 
     try {
-      fs.rmSync(path.join(fixture.resourcesPath, "codex", "runtime.json"));
+      fs.rmSync(path.join(fixture.resourcesPath, "bin", "runtime.json"));
       try {
         resolveCodexRuntime({
           isPackaged: true,
@@ -94,10 +94,10 @@ describe("codex-runtime", () => {
       });
 
       expect(runtime.source).toBe("staged");
-      expect(runtime.binaryPath).toBe(path.join(fixture.projectRootPath, ".generated", "codex-runtime", "codex"));
-      expect(runtime.additionalSearchPaths[0]).toBe(path.join(fixture.projectRootPath, ".generated", "codex-runtime", "path"));
+      expect(runtime.binaryPath).toBe(path.join(fixture.projectRootPath, ".generated", "codex-runtime", "bin", "codex"));
+      expect(runtime.additionalSearchPaths[0]).toBe(path.join(fixture.projectRootPath, ".generated", "codex-runtime", "bin"));
       expect(runtime.version).toBe("0.115.0");
-      expect(runtime.metadataPath).toBe(path.join(fixture.projectRootPath, ".generated", "codex-runtime", "runtime.json"));
+      expect(runtime.metadataPath).toBe(path.join(fixture.projectRootPath, ".generated", "codex-runtime", "bin", "runtime.json"));
       expect(runtime.missingBinaryMessage).toBe("Pinned Codex runtime is missing or incomplete. Run `bun run stage:codex-runtime:mac`.");
     } finally {
       fixture.cleanup();

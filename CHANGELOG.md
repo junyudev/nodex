@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Changed the first-party Homebrew tap namespace to `junyudev/tap`, so the canonical macOS install command is now `brew install --cask junyudev/tap/nodex`.
 
 ### Fixed
+- Fixed packaged macOS builds re-signing the bundled Codex binary, so `Contents/Resources/bin/codex` now keeps OpenAI's original code signature and can reuse existing `Codex MCP Credentials` Keychain access without extra prompts.
 
 ## [0.1.6] - 2026-03-18
 

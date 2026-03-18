@@ -199,9 +199,9 @@ jobs:
 
     - name: Verify bundled Codex runtime
       run: |
-        codex_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/codex"
-        rg_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/path/rg"
-        metadata_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/runtime.json"
+        codex_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/bin/codex"
+        rg_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/bin/rg"
+        metadata_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/bin/runtime.json"
 
         if [[ ! -f "${codex_path}" || ! -f "${rg_path}" || ! -f "${metadata_path}" ]]; then
           echo "Bundled Codex runtime resources are missing from the packaged app." >&2
@@ -305,9 +305,9 @@ jobs:
 
     - name: Verify bundled Codex runtime
       run: |
-        codex_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/codex"
-        rg_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/path/rg"
-        metadata_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/codex/runtime.json"
+        codex_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/bin/codex"
+        rg_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/bin/rg"
+        metadata_path="${{ steps.artifact_paths.outputs.app_path }}/Contents/Resources/bin/runtime.json"
 
         if [[ ! -f "${codex_path}" || ! -f "${rg_path}" || ! -f "${metadata_path}" ]]; then
           echo "Bundled Codex runtime resources are missing from the packaged app." >&2

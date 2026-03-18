@@ -113,13 +113,13 @@ export function stageCodexRuntime(options: StageCodexRuntimeOptions): BundledCod
   const outputParent = dirname(outputPath);
   mkdirSync(outputParent, { recursive: true });
   const tempOutputPath = mkdtempSync(join(outputParent, `${basename(outputPath)}-`));
-  const tempPathDir = join(tempOutputPath, "path");
+  const tempBinDir = join(tempOutputPath, "bin");
 
-  mkdirSync(tempPathDir, { recursive: true });
-  copyFileSync(codexSourcePath, join(tempOutputPath, "codex"));
-  copyFileSync(rgSourcePath, join(tempPathDir, "rg"));
-  chmodSync(join(tempOutputPath, "codex"), 0o755);
-  chmodSync(join(tempPathDir, "rg"), 0o755);
+  mkdirSync(tempBinDir, { recursive: true });
+  copyFileSync(codexSourcePath, join(tempBinDir, "codex"));
+  copyFileSync(rgSourcePath, join(tempBinDir, "rg"));
+  chmodSync(join(tempBinDir, "codex"), 0o755);
+  chmodSync(join(tempBinDir, "rg"), 0o755);
 
   const metadata: BundledCodexRuntimeMetadata = {
     codexVersion: packageVersion.replace(/-(darwin-(arm64|x64))$/, ""),
@@ -127,11 +127,11 @@ export function stageCodexRuntime(options: StageCodexRuntimeOptions): BundledCod
     targetArch: target.targetArch,
     targetTriple: target.targetTriple,
     sourcePackage: `${target.packageName}@${packageVersion}`,
-    binarySha256: readSha256(join(tempOutputPath, "codex")),
-    rgSha256: readSha256(join(tempPathDir, "rg")),
+    binarySha256: readSha256(join(tempBinDir, "codex")),
+    rgSha256: readSha256(join(tempBinDir, "rg")),
   };
 
-  writeFileSync(join(tempOutputPath, "runtime.json"), JSON.stringify(metadata, null, 2), "utf8");
+  writeFileSync(join(tempBinDir, "runtime.json"), JSON.stringify(metadata, null, 2), "utf8");
 
   try {
     replaceDirectory(tempOutputPath, outputPath);
