@@ -5,7 +5,6 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- Added stable `Nodex-latest-arm64.dmg` and `Nodex-latest-x64.dmg` GitHub Release aliases, and changed the landing-page macOS CTA to download those installers directly with arm64 as the default target and Intel-only downgrade detection.
 
 ### Changed
 - Packaged macOS builds now bundle a pinned Codex CLI runtime and its bundled `rg`, keeping the shipped app-server binary version aligned with the committed generated `codex_schemas` instead of depending on a separately installed `codex` binary.
