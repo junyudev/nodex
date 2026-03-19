@@ -100,7 +100,7 @@
     "@tailwindcss/node": "^4.2.1",
     "@tailwindcss/postcss": "^4.2.1",
     "@tanstack/form-core": "1.28.4",
-    "@tanstack/react-form": "^1.28.4",
+    "@tanstack/react-form": "^1.28.5",
     "@tiptap/core": "^3.13.0",
     "@tiptap/extension-link": "^3.13.0",
     "@tiptap/pm": "^3.13.0",
