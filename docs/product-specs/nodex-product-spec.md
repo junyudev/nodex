@@ -228,7 +228,7 @@ When working with coding agents like Claude Code, there's no streamlined way to:
 - Toggle open/closed state is persisted in NFM using `▼` (expanded) / `▶` (collapsed) markers; state survives save/reload cycles via a localStorage bridge that pre-populates BlockNote's `defaultToggledState` on editor init and reads DOM `data-show-children` on save
 - `ArrowUp` / `ArrowDown` across a collapsed toggle boundary preserve browser-native visual-line movement and never jump into hidden edge non-inline children while the toggle stays collapsed
 - Typing `## ` inside a toggle header converts it to a toggle heading (preserves toggle state)
-- `Cmd/Ctrl+Enter` sends the current explicit thread section from the Card Stage editor without moving focus to the Threads stage; if the cursor is on a toggle header, the editor preserves toggle-expand behavior instead of sending
+- `Cmd/Ctrl+Enter` sends the current explicit thread section from the Card Stage editor without moving focus to the Threads stage; if the cursor is on a toggle header or `cardToggle` row, the editor preserves toggle-expand behavior instead of sending
 - `Enter` at end of an open toggle header (or toggle heading) with no children still creates a first child paragraph (Notion fallback) instead of a sibling block
 - `Enter` in the middle or at the end of any inline parent block that already has children splits trailing parent text into a new first child paragraph
 - `Backspace` at the start of a leaf child block under an inline parent always merges into the previous sibling, or into the parent if it is the first child

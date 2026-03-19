@@ -60,7 +60,7 @@ All keyboard shortcuts in Nodex. Platform modifier: **⌘ (Cmd)** on Mac, **Ctrl
 |----------|--------|
 | `⌘/Ctrl+Alt+1`–`4` | Heading level 1–4 |
 | `⌘/Ctrl+Enter` | Send current thread section | Opens a confirmation preview by default; can auto-create a section at the current block when none exists |
-| `⌘+Enter` | Toggle expand/collapse (Mac, only when the cursor is on a toggle header) |
+| `⌘+Enter` | Toggle expand/collapse (Mac, when the cursor is on a toggle header or `cardToggle` row) |
 | `⌘/Ctrl+A` | Select current block content |
 
 ### Input Rules (text triggers)

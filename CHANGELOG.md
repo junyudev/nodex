@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Fixed Thread-stage transcript message actions so user bubbles keep their copy/edit controls, while assistant copy now waits for the round to settle and only attaches to the round's final assistant message instead of appearing on streaming output.
 - Fixed Thread-stage streaming transcript text so empty assistant/plan/thinking item shells no longer flash internal fallback labels like `Agent Message` before real content arrives.
 - Fixed the Cards sidebar `Recents` section so clicking a recent card now keeps the newly opened card active instead of briefly reselecting the card you just left, and the active highlight now follows the actual open card even while the history overlay is shown.
+- Fixed Card Stage `Cmd+Enter` toggle behavior so `cardToggle` rows now expand/collapse like other toggle headers instead of being intercepted by thread-section send.
 
 ## [0.1.6] - 2026-03-18
 
