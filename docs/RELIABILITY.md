@@ -47,6 +47,7 @@
 - Backup restore failures surface explicit error responses.
 - Reminder delivery is at-least-once at scheduler level, then effectively exactly-once per `(project_id, card_id, occurrence_start, offset)` via receipt uniqueness.
 - Missing Codex CLI binary surfaces explicit `missingBinary` connection status in UI.
+- `codex-service` defers staged/bundled runtime validation until the Codex client actually starts, so pure service construction and state-only test paths do not fail on hosts where the pinned runtime has not been materialized yet.
 - Packaged builds ship a pinned Codex runtime inside `Contents/Resources/bin`, and dev/unpackaged runs use the staged pinned runtime under `.generated/codex-runtime/bin`.
 - macOS packaging preserves the upstream OpenAI signature on `Contents/Resources/bin/codex` instead of re-signing that binary under the app's identity, so existing `Codex MCP Credentials` Keychain ACL entries that trust OpenAI's Codex team continue to match packaged Nodex builds.
 - Nodex never falls back to a system `codex` binary from `PATH`, so the runtime CLI version stays aligned with the committed `@nodex/codex-app-server-protocol` package in both packaged and local development flows.

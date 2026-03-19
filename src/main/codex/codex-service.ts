@@ -205,6 +205,12 @@ type CodexServiceOptions = {
   runtime?: ResolvedCodexRuntime;
 };
 
+type DefaultCodexRuntimeOptions = {
+  isPackaged: boolean;
+  projectRootPath?: string;
+  resourcesPath?: string;
+};
+
 const THREAD_TITLE_MIN_LENGTH = 18;
 const THREAD_TITLE_MAX_LENGTH = 36;
 const THREAD_TITLE_PROMPT_MAX_CHARS = 2_000;
@@ -454,20 +460,68 @@ function createTextUserInput(text: string): TurnStartParams["input"][number] {
 }
 
 function resolveDefaultCodexRuntime(): ResolvedCodexRuntime {
+  const resolveRuntimeOptions = (): DefaultCodexRuntimeOptions => {
+    try {
+      const electronModule = require("electron") as { app?: { isPackaged?: boolean } };
+      const isPackaged = Boolean(electronModule.app?.isPackaged);
+      return {
+        isPackaged,
+        projectRootPath: isPackaged ? undefined : process.cwd(),
+        resourcesPath: process.resourcesPath,
+      };
+    } catch {
+      return {
+        isPackaged: false,
+        projectRootPath: process.cwd(),
+        resourcesPath: process.resourcesPath,
+      };
+    }
+  };
+
+  const buildDeferredRuntime = (options: DefaultCodexRuntimeOptions): ResolvedCodexRuntime => {
+    if (!options.isPackaged) {
+      const projectRootPath = options.projectRootPath?.trim();
+      if (!projectRootPath) {
+        throw new Error("Unpackaged Codex runtime resolution requires a project root path");
+      }
+
+      const runtimeRoot = path.join(projectRootPath, ".generated", "codex-runtime", "bin");
+      return {
+        source: "staged",
+        binaryPath: path.join(runtimeRoot, "codex"),
+        additionalSearchPaths: [runtimeRoot],
+        version: null,
+        metadataPath: path.join(runtimeRoot, "runtime.json"),
+        missingBinaryMessage: "Pinned Codex runtime is missing or incomplete. Run `bun run stage:codex-runtime:mac`.",
+      };
+    }
+
+    const resourcesPath = options.resourcesPath?.trim();
+    if (!resourcesPath) {
+      throw new Error("Packaged Codex runtime resolution requires process.resourcesPath");
+    }
+
+    const runtimeRoot = path.join(resourcesPath, "bin");
+    return {
+      source: "bundled",
+      binaryPath: path.join(runtimeRoot, "codex"),
+      additionalSearchPaths: [runtimeRoot],
+      version: null,
+      metadataPath: path.join(runtimeRoot, "runtime.json"),
+      missingBinaryMessage: "Bundled Codex runtime is missing or corrupted. Reinstall Nodex.",
+    };
+  };
+
+  const runtimeOptions = resolveRuntimeOptions();
+
   try {
-    const electronModule = require("electron") as { app?: { isPackaged?: boolean } };
-    const isPackaged = Boolean(electronModule.app?.isPackaged);
-    return resolveCodexRuntime({
-      isPackaged,
-      projectRootPath: isPackaged ? undefined : process.cwd(),
-      resourcesPath: process.resourcesPath,
-    });
-  } catch {
-    return resolveCodexRuntime({
-      isPackaged: false,
-      projectRootPath: process.cwd(),
-      resourcesPath: process.resourcesPath,
-    });
+    return resolveCodexRuntime(runtimeOptions);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Codex runtime is missing or incomplete under")) {
+      return buildDeferredRuntime(runtimeOptions);
+    }
+    throw error;
   }
 }
 
