@@ -2,12 +2,13 @@
 
 ## Purpose
 
-Nodex is a local-first workspace for coordinating durable content and agent
-work. It combines a Library of Pages, Databases, Views, Canvases, schedules, and
-history with Projects, Chats, worktrees, terminals, Browser, Files, and Review.
-The product keeps an agent's execution context, output, and conversation close
-to the durable work that motivated it without turning Projects or Chats into
-content ownership.
+Nodex is a local-first workspace for shared context and agent work. Pages hold
+durable, block-based context that people can shape and coding agents can access
+through explicit tools. It combines a Library of Pages, Databases, Views,
+Canvases, schedules, and history with Projects, Chats, worktrees, terminals,
+Browser, Files, and Review. The product keeps an agent's execution context,
+output, and conversation close to the durable work that motivated it without
+turning Projects or Chats into content ownership.
 
 This document is the product map. It defines the stable product promise,
 capability boundaries, and routes to focused contracts. It does not own detailed
@@ -19,6 +20,7 @@ or recovery algorithms.
 Nodex helps a local builder:
 
 - organize work in durable Pages and Database Views;
+- shape, select, and revisit the context a Chat needs;
 - start and resume coding-agent Chats in the correct filesystem context;
 - use local worktrees and Environments for isolated execution;
 - keep Browser, Files, Terminal, Review, and agent output beside the Chat;
@@ -170,11 +172,13 @@ Read [Settings Route Behavior](settings-route-behavior.md),
 
 ### Agent and automation interfaces
 
-Eligible Codex tasks receive revisioned `nodex_app` semantic tools scoped by
-trusted Project/Turn context. Local shell-capable agents and scripts use the
-native `nodex` CLI and official Skill. Both interfaces use bounded semantic
-Core contracts; neither receives raw SQL, a database path, renderer state, or
-caller-forged authority.
+Local shell-capable agents and scripts use the native `nodex` CLI and official
+Skill as the default content interface. Eligible local Full access tasks receive
+the executable, Skill, Profile, and Project context for each Turn; CLI operations
+use Project access. Revisioned `nodex_app` tools retain trusted Project/Turn
+authorization behind a default-off development feature. Both interfaces use
+bounded semantic Core contracts; neither receives raw SQL, a database path,
+renderer state, or caller-forged authority.
 
 Nested Markdown is the default agent bulk-content representation. Stable Block
 operations remain available when identity matters. Consent and Full access may

@@ -1,49 +1,31 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, test } from "vite-plus/test";
-import { build, mergeConfig, type UserConfig } from "vite";
 
-import landingConfig from "../vite.config";
+test("the static build emits the public Nodex routes and release links", () => {
+  const landingRoot = resolve(import.meta.dirname, "..");
 
-function readRootPackageVersion(): string {
-  const packageJsonPath = resolve(import.meta.dirname, "../../../package.json");
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
+  const builtIndexHtml = readFileSync(resolve(landingRoot, "dist/index.html"), "utf8");
+  const builtDownloadHtml = readFileSync(resolve(landingRoot, "dist/download/index.html"), "utf8");
+  const builtChangelogHtml = readFileSync(
+    resolve(landingRoot, "dist/changelog/index.html"),
+    "utf8",
+  );
+  const builtPrivacyHtml = readFileSync(resolve(landingRoot, "dist/privacy/index.html"), "utf8");
+  const builtTermsHtml = readFileSync(resolve(landingRoot, "dist/terms/index.html"), "utf8");
 
-  if (typeof packageJson.version !== "string" || packageJson.version.trim().length === 0) {
-    throw new Error(`Expected a non-empty version in ${packageJsonPath}`);
-  }
-
-  return packageJson.version.trim();
-}
-
-test("landing build renders the real app version in the release stamp", async () => {
-  const outputDir = mkdtempSync(join(tmpdir(), "nodex-landing-build-"));
-  const rootDir = resolve(import.meta.dirname, "..");
-  const expectedVersionLabel = `v${readRootPackageVersion()}`;
-
-  try {
-    const config = mergeConfig(landingConfig as UserConfig, {
-      root: rootDir,
-      logLevel: "silent",
-      build: {
-        outDir: outputDir,
-      },
-    });
-
-    await build(config);
-
-    const builtIndexHtml = readFileSync(join(outputDir, "index.html"), "utf8");
-    const builtChangelogHtml = readFileSync(join(outputDir, "changelog/index.html"), "utf8");
-
-    expect(builtIndexHtml.includes(expectedVersionLabel)).toBe(true);
-    expect(builtIndexHtml.includes("Latest stable")).toBe(false);
-    expect(builtChangelogHtml.includes("<h1>Changelog</h1>")).toBe(true);
-    expect(builtChangelogHtml.includes("<h2>Unreleased</h2>")).toBe(true);
-    expect(builtChangelogHtml.includes("<p>In development</p>")).toBe(true);
-    expect(builtChangelogHtml.includes("Codex-style project session shell")).toBe(true);
-    expect(builtChangelogHtml.includes("__NODEX_CHANGELOG_HTML__")).toBe(false);
-  } finally {
-    rmSync(outputDir, { force: true, recursive: true });
-  }
+  expect(builtIndexHtml).toContain('content="You and your agents, on the same page."');
+  expect(builtIndexHtml).toContain("/media/hero-video/video.webm");
+  expect(builtIndexHtml).toContain("/media/workspaces/video.webm");
+  expect(builtIndexHtml).toContain("/media/compact-mode/video.webm");
+  expect(builtIndexHtml).toContain("/media/glance/video.webm");
+  expect(builtIndexHtml).toContain("/media/split-views/video.webm");
+  expect(builtIndexHtml).toContain('href="https://nodex.jyu.app/"');
+  expect(builtDownloadHtml).toContain("Nodex-latest-arm64.dmg");
+  expect(builtDownloadHtml).toContain("Nodex-latest-x64.dmg");
+  expect(builtChangelogHtml).toContain('id="unreleased"');
+  expect(builtChangelogHtml).toContain("<h2>Unreleased</h2>");
+  expect(builtPrivacyHtml).toContain("<h1");
+  expect(builtTermsHtml).toContain("<h1");
+  expect(builtIndexHtml).not.toContain("Zen Browser");
 });

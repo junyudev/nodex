@@ -1,0 +1,98 @@
+---
+import Image from 'astro/components/Image.astro'
+import CoreValuesImage from '~/assets/ComImage.png'
+import Button from '~/components/Button.astro'
+import CheckIcon from '~/icons/CheckIcon.astro'
+import GitHubIcon from '~/icons/GitHubIcon.astro'
+import { getLocale, getUI } from '~/utils/i18n'
+
+const locale = getLocale(Astro)
+
+const {
+  routes: {
+    index: { coreValues },
+  },
+} = getUI(locale)
+---
+
+<section
+  id="core-values"
+  class="relative flex w-full flex-col items-center gap-6 py-12 text-start md:text-center lg:py-36"
+>
+  <h2 class="mb-2 text-4xl font-bold sm:text-6xl">
+    <span style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)">
+      {coreValues.title}
+    </span>
+  </h2>
+  <p
+    class="text-base lg:w-1/2 lg:px-0"
+    style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+  >
+    <span class="opacity-80">{coreValues.description}</span>
+  </p>
+  <div class="flex w-full flex-wrap gap-3 sm:gap-10 md:justify-center">
+    <div
+      class="core-values__item"
+      style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+    >
+      <Button
+        class:list={['px-4']}
+        href="https://github.com/junyudev/nodex"
+        localePath={false}
+        target="_blank"
+        rel="noreferrer"
+      >
+        <GitHubIcon class="size-4" aria-hidden="true" />
+        <span>{coreValues.values.openSource}</span>
+      </Button>
+    </div>
+    <div
+      class="core-values__item flex items-center gap-4"
+      style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+    >
+      <CheckIcon class="size-4" aria-hidden="true" />
+      <span>{coreValues.values.tangibleContext}</span>
+    </div>
+    <div
+      class="core-values__item flex items-center gap-4"
+      style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+    >
+      <CheckIcon class="size-4" aria-hidden="true" />
+      <span>{coreValues.values.localFirst}</span>
+    </div>
+  </div>
+  <span class="flex max-w-full lg:max-w-none lg:flex-none">
+    <Image
+      src={CoreValuesImage}
+      alt={coreValues.imageAlt}
+      class="rounded-3xl shadow-md lg:mx-auto dark:opacity-80"
+      style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+    />
+  </span>
+</section>
+
+<script>
+  import { animate, onScroll, stagger } from 'animejs'
+
+  function initAnimations() {
+    const debug = false
+
+    const elements = document.querySelectorAll(
+      '#core-values h2 span, #core-values p, #core-values .core-values__item, #core-values img'
+    )
+
+    animate(elements, {
+      opacity: { from: 0.001, to: 1 },
+      translateY: { from: 20, to: 0 },
+      filter: { from: 'blur(4px)', to: 'blur(0px)' },
+      duration: 300,
+      delay: stagger(150),
+      ease: 'cubicBezier(0.25, 0.1, 0.25, 1)',
+      autoplay: onScroll({
+        target: '#core-values',
+        debug,
+      }),
+    })
+  }
+  initAnimations()
+</script>

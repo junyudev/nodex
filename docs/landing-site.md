@@ -1,57 +1,133 @@
 # Landing Site
 
-This document is the source of truth for the public Nodex landing site and its GitHub Pages deployment path.
+This document is the source of truth for the public Nodex landing site, its
+content and media contracts, and its GitHub Pages deployment path.
 
 ## Overview
 
-The landing site lives in `packages/landing`. It is a small Vite-built static site that intentionally stays separate from the Electron renderer and its design-token stack.
+The site lives in `packages/landing`. Astro builds ordinary static HTML for
+`https://nodex.jyu.app`; the package stays separate from the Electron renderer
+and does not inherit desktop-only CSS or runtime assumptions.
 
-Why it is separate:
-
-- the site is published to `https://nodex.jyu.app`
-- it should stay fast and low-risk
-- it should not inherit desktop-app-only code, CSS, or runtime assumptions
-
-The source of truth stays in this repository. Published static output is pushed to the separate org-site repository `NodexApp/NodexApp.github.io`.
+The homepage is one componentized marketing composition with a hero, a
+four-state workflow demonstration, an Our Core Values section, and the shared
+footer. Public wording is centralized in
+`src/i18n/en/translation.json`. The checked-in third-party source license for
+the landing implementation remains in `packages/landing/ZEN_LICENSE`.
 
 ## Local Commands
 
-Run these from the repo root:
+Run these from the repository root:
 
 ```bash
 vp run dev:landing
 vp run build:landing
 vp run preview:landing
+vp run test:landing
 ```
 
-## Package Layout
+`build:landing` produces `packages/landing/dist/` with Astro. `test:landing`
+builds first, then validates the generated routes, release links, Changelog
+rendering, release metadata, and media-readiness contract.
 
-`packages/landing` contains:
+For the Storybook review entry, run the landing preview and Storybook together:
 
-- `index.html` for the homepage
-- `changelog/index.html` for the generated changelog page
-- `privacy/index.html`
-- `terms/index.html`
-- `src/styles.css` for landing-only Tailwind and token styling
-- `src/changelog-renderer.ts` for build-time `CHANGELOG.md` parsing and rendering
-- `src/download-cta.ts` for the direct-download CTA upgrade logic
-- `public/` for copied brand assets, the committed OG image, and `.nojekyll`
+```bash
+vp run preview:landing
+vp run dev:storybook
+```
 
-The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
-The homepage keeps the primary macOS CTA no-JS-safe by pointing at the stable arm64 GitHub Release alias first, then downgrades to the x64 alias only when browser signals positively identify Intel.
-The homepage release stamp is also build-time data: it reads the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
-The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, renders `Unreleased` first as an in-development entry, and then renders dated release entries in the same order as the source file.
+Then open `Landing/Page preview`. Set `VITE_LANDING_PREVIEW_URL` if the preview
+is not available at `http://127.0.0.1:4321/`.
+
+## Routes and Sources of Truth
+
+Astro file routing emits these public routes:
+
+- `/` — product landing
+- `/download/` — explicit Apple silicon and Intel downloads plus Homebrew
+- `/changelog/` — generated from the root `CHANGELOG.md`
+- `/privacy/`
+- `/terms/`
+
+The displayed version comes from the root `package.json`. Canonical, Open Graph,
+Twitter, sitemap, and structured metadata use `https://nodex.jyu.app` as the
+site origin. Static assets, `CNAME`, `.nojekyll`, and `robots.txt` live in
+`packages/landing/public/`.
+
+## Content Contract
+
+The homepage makes four claims:
+
+1. A developer can shape a task as a Page and choose the context that matters.
+2. A Project keeps that Page beside agent chat, files, terminal, browser, and
+   Review.
+3. The native CLI and official Skill let local agents search, read, create, and
+   update Pages.
+4. Library and Project state live in the local SQLite-backed core, and the
+   desktop app and CLI are open source.
+
+The site must not claim a Markdown-file source of truth, automatic return of
+agent output to the originating Page, provenance that does not exist, or
+multi-user cloud collaboration.
+
+The site navigation stays intentionally narrow. The header exposes GitHub,
+theme, and Download without a secondary navigation row or mobile drawer. The
+hero has one Download call to action. The footer retains the large brand and
+download call to action, then limits navigation to GitHub, Changelog, Privacy,
+and Terms.
+
+The final homepage section is Our Core Values: Open source, Tangible context,
+and Local-first. It reuses the established product-principles composition and
+must not be preceded by a second download, Homebrew, or source-link section.
+
+## Product Media
+
+The five product-media slots keep stable public paths:
+
+- `hero-video`
+- `workspaces` (Shape)
+- `compact-mode` (Run)
+- `glance` (Review)
+- `split-views` (Shared Pages)
+
+Each directory contains `poster.webp`, `video.webm`, and `video.mp4`. The exact
+storyboard, privacy review, and byte budgets live in
+`packages/landing/MEDIA.md`.
+
+The current files are temporary. Keep `landingMediaStatus` in
+`src/constants/media.ts` set to `pending` until the final captures have been
+recorded and reviewed. Local builds intentionally remain available for copy and
+layout review; the deployment workflow sets `NODEX_REQUIRE_LANDING_MEDIA=1` and
+therefore refuses to publish while the status is pending.
+
+## Release and Download Contracts
+
+- Apple silicon: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg`
+- Intel Mac: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg`
+- Homebrew: `brew install --cask junyudev/tap/nodex`
+- Supported desktop runtime: macOS 15 or later
+
+The main CTA opens `/download/`, where both architectures are always explicit.
+No user-agent inference is required, and the page remains complete without
+JavaScript.
 
 ## Publishing Topology
 
-Builds happen in this repository. Deployment publishes the generated `packages/landing/dist/` output into the root of `NodexApp/NodexApp.github.io`.
+Builds happen in this repository. Deployment publishes
+`packages/landing/dist/` into the root of `NodexApp/NodexApp.github.io`.
 
-Repository roles:
+- `.github/workflows/deploy-landing-site.yml` runs on protected `main` changes
+  to landing source, release metadata, or the deployment workflows.
+- `.github/workflows/_deploy-landing-site.yml` checks out one exact source SHA,
+  requires reviewed media, builds the site, replaces the target artifact, and
+  commits only when the generated output changed.
+- Release promotion calls the same reusable workflow after release verification,
+  so version and Changelog copy cannot precede their downloadable artifacts.
 
-- `junyudev/nodex`: source code, build logic, CI, and documentation
-- `NodexApp/NodexApp.github.io`: published static artifact only
-
-This split matters because the root org site URL `https://nodexapp.github.io` must be served by a repository named `NodexApp.github.io`.
+The `landing-production` environment binds the
+`NODEXAPP_GITHUB_IO_TOKEN` secret. The token needs read/write contents access
+only to `NodexApp/NodexApp.github.io`.
 
 ## GitHub Workflows
 
@@ -103,21 +179,3 @@ regenerate or re-sign an existing release.
 No SPA fallback is needed. `packages/landing/public/CNAME` is part of the
 production custom-domain contract and must remain in the generated Pages tree;
 `nodexapp.github.io` is only the underlying Pages host.
-
-## Content Notes
-
-The v1 site is intentionally narrow:
-
-- a single-screen homepage
-- a generated changelog page at `/changelog/`
-- a primary release CTA
-- a secondary Homebrew install affordance
-- minimal privacy and terms pages
-
-Release CTA contract:
-
-- default CTA target: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg`
-- x64 CTA target: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg`
-- browser-side detection is conservative; ambiguous clients stay on arm64 and only explicit Intel evidence switches to x64
-
-If the site later expands into screenshots, FAQ, or longer-form product copy, keep that work inside `packages/landing` rather than pulling renderer code into the package.

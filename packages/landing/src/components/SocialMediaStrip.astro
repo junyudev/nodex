@@ -1,0 +1,24 @@
+---
+const { class: className, ...props } = Astro.props
+
+import { icon, library } from '@fortawesome/fontawesome-svg-core'
+import { faGithub } from '@fortawesome/free-brands-svg-icons'
+import { cn } from '~/utils/merge'
+
+library.add(faGithub)
+const Github = icon({ prefix: 'fab', iconName: 'github' })
+---
+
+<ul class={cn('flex items-center gap-4 opacity-80', className)} {...props}>
+  <li>
+    <a
+      href="https://github.com/junyudev/nodex"
+      target="_blank"
+      rel="noreferrer"
+      class="font-bold"
+      aria-label="Visit Nodex on GitHub"
+    >
+      <Fragment set:html={Github.html} />
+    </a>
+  </li>
+</ul>

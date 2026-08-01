@@ -1,0 +1,104 @@
+{
+  "layout": {
+    "index": {
+      "title": "Nodex — On the same page as your coding agents",
+      "description": "Shape tasks in Pages, send the right context to coding agents, and keep it beside the code, terminal, and review in one local-first workspace."
+    },
+    "download": {
+      "title": "Download - Nodex",
+      "description": "Download Nodex for macOS or install it with Homebrew."
+    },
+    "privacyPolicy": {
+      "title": "Privacy - Nodex",
+      "description": "Privacy notes for the Nodex public site."
+    }
+  },
+  "routes": {
+    "index": {
+      "title": "Nodex",
+      "hero": {
+        "title": [
+          {
+            "text": "You ",
+            "highlight": false
+          },
+          {
+            "text": "and your agents,",
+            "highlight": false
+          },
+          {
+            "text": "\n",
+            "highlight": false
+          },
+          {
+            "text": "on the ",
+            "highlight": false
+          },
+          {
+            "text": "same page.",
+            "highlight": true
+          }
+        ],
+        "description": [
+          "Shape tasks in Pages, send the right context to a coding agent,",
+          "and keep it beside the code, terminal, and review."
+        ],
+        "cta": "Download for macOS"
+      },
+      "features": {
+        "titles": ["Keep context ", "beside ", "the work"],
+        "description": "The Page, agent chat, files, terminal, browser, and Review live in one Project, so the brief remains in reach while the work moves forward.",
+        "featureTabs": {
+          "workspaces": {
+            "title": "Shape",
+            "description": "Draft the task as a Page, structure it in blocks, and select the context that matters."
+          },
+          "compactMode": {
+            "title": "Run",
+            "description": "Send that context to a new or existing chat, then work with the agent in the same Project."
+          },
+          "glance": {
+            "title": "Review",
+            "description": "Inspect files and diffs beside the brief without changing apps."
+          },
+          "splitView": {
+            "title": "Shared Pages",
+            "description": "Agents can search, read, create, and update Pages directly, so useful context can live beyond a chat transcript."
+          }
+        }
+      },
+      "coreValues": {
+        "title": "Our Core Values",
+        "description": "Working context should be tangible, your data should stay local, and the tools around it should remain open.",
+        "values": {
+          "openSource": "Open source",
+          "tangibleContext": "Tangible context",
+          "localFirst": "Local-first"
+        },
+        "imageAlt": "Nodex keeping a Page beside coding-agent work and Review"
+      }
+    }
+  },
+  "components": {
+    "nav": {
+      "brand": "Nodex",
+      "menu": {
+        "download": "Download",
+        "githubLabel": "View Nodex on GitHub",
+        "themeLabel": "Toggle theme"
+      }
+    },
+    "footer": {
+      "title": "Nodex",
+      "description": "Open source, local-first software for shared context and agent work.",
+      "download": "Download for macOS",
+      "links": {
+        "github": "GitHub",
+        "changelog": "Changelog",
+        "privacy": "Privacy",
+        "terms": "Terms"
+      },
+      "copyright": "© 2026 Nodex"
+    }
+  }
+}

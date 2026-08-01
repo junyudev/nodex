@@ -1,0 +1,62 @@
+---
+import Layout from '~/layouts/Layout.astro'
+import { renderChangelogHtml } from '~/changelog-renderer'
+import { readRootChangelog } from '~/utils/release'
+
+const changelogHtml = renderChangelogHtml(readRootChangelog())
+---
+
+<Layout
+  title="Changelog - Nodex"
+  description="Read the public Nodex changelog."
+>
+  <main class="container grid gap-8 py-16 lg:py-32">
+    <header class="grid gap-3">
+      <h1 class="font-junicode text-dark text-6xl leading-none font-semibold sm:text-8xl">
+        Changelog
+      </h1>
+      <p class="max-w-2xl opacity-80">What changed in Nodex, from work in progress to release.</p>
+    </header>
+    <article class="changelog grid gap-12" set:html={changelogHtml} />
+  </main>
+</Layout>
+
+<style is:global>
+  @reference '../../styles/global.css';
+
+  .changelog-release {
+    @apply border-dark grid gap-6 border-t pt-8 md:grid-cols-[12rem_1fr];
+  }
+
+  .changelog-release-header {
+    @apply grid h-fit gap-1;
+  }
+
+  .changelog-release-header h2 {
+    @apply text-2xl font-bold;
+  }
+
+  .changelog-release-header p {
+    @apply text-sm opacity-60;
+  }
+
+  .changelog-release-body {
+    @apply grid gap-8;
+  }
+
+  .changelog-category {
+    @apply grid gap-3;
+  }
+
+  .changelog-category h3 {
+    @apply text-lg font-bold;
+  }
+
+  .changelog-category ul {
+    @apply grid list-disc gap-2 pl-5 opacity-80;
+  }
+
+  .changelog-category code {
+    @apply bg-subtle rounded px-1 py-0.5 font-mono text-sm;
+  }
+</style>

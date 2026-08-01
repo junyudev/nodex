@@ -1,0 +1,33 @@
+---
+import CoreValues from '~/components/CoreValues.astro'
+import Features from '~/components/Features.astro'
+import Hero from '~/components/Hero.astro'
+import Layout from '~/layouts/Layout.astro'
+import { getLocale, getUI } from '~/utils/i18n'
+
+const locale = getLocale(Astro)
+
+const { layout } = getUI(locale)
+---
+
+<Layout title={layout.index.title} description={layout.index.description} isHome>
+  <main class="container">
+    <Hero />
+    <Features />
+    <CoreValues />
+  </main>
+</Layout>
+<style>
+  @keyframes headerSlideIn {
+    0% {
+      transform: translateY(100%);
+    }
+    100% {
+      transform: translateY(0);
+    }
+  }
+
+  #header-browser-image {
+    animation: headerSlideIn 0.5s ease-in-out;
+  }
+</style>

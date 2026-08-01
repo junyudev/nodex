@@ -1,18 +1,9 @@
 {
+  "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ES2020",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noEmit": true,
-    "incremental": true,
-    "tsBuildInfoFile": "../../.cache/typescript/landing.tsbuildinfo",
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"]
+    "paths": {
+      "~/*": ["./src/*"]
+    }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": [".astro", "dist", "src/**/*.test.ts"]
 }

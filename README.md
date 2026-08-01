@@ -2,45 +2,54 @@
 
 ![Nodex preview](packages/landing/public/og.png)
 
-**Local-first orchestration for coding agents.** Nodex gives your agent work a real workspace: tasks, threads, terminals, files, diffs, and history stay together instead of scattering across chat tabs and terminal windows.
+**A local-first workspace for shared context and agent work.**
+
+Nodex keeps you and your coding agents on the same Page. Shape a task in
+blocks, send the context that matters to a new or existing chat, and keep the
+brief beside the code, terminal, browser, files, and Review.
 
 [Download for macOS](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg) · [Intel Mac download](https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg) · [Product page](https://nodex.jyu.app) · [Changelog](https://nodex.jyu.app/changelog/)
 
 ## Why Nodex
 
-Coding agents are powerful, but the surrounding workflow can get messy fast. One task turns into a chat, a terminal, a diff, a browser tab, a note, and a half-remembered branch name.
+A useful task rarely fits in one prompt. It has goals, constraints, references,
+decisions, and a definition of done. When that context lives apart from the
+agent doing the work, developers spend time reconstructing it across chats,
+notes, terminals, and review tools.
 
-Nodex is built for that moment. It turns agent work into a visible operating surface where every project has its own board, every session has context, and every change can be reviewed where the conversation happened.
+A Nodex Page is durable working context. It stays visible while the work moves
+through a Project, and Nodex’s native CLI and official Skill let local agents search, read, create,
+and update Pages directly.
 
 ## What You Can Do
 
-- **Coordinate work on a live board.** Track ideas, bugs, experiments, and implementation tasks across project-specific views.
-- **Keep the agent close to the task.** Start Codex sessions from cards or project chats, then keep the thread attached to the work it belongs to.
-- **Review changes in context.** Open diffs next to the conversation that produced them, with files and terminals available in the same workspace.
-- **Work safely in local projects or new worktrees.** Keep exploratory agent runs isolated without losing the thread, task, or review trail.
-- **Capture richer task context.** Write card notes with blocks, attachments, images, toggles, and runnable thread sections.
-- **Resume without losing context.** Reopen windows, sessions, panels, and project state so long-running work stays organized.
+- **Shape work in Pages.** Write structured briefs with blocks, attachments,
+  images, toggles, and task properties.
+- **Send the right context to an agent.** Select Page content and start a new
+  chat or add it to an existing one without rebuilding the prompt elsewhere.
+- **Keep execution beside the brief.** Use agent chat, files, terminals,
+  browser tabs, and Project tools without losing the Page that framed the work.
+- **Review changes in context.** Inspect files and diffs beside the conversation
+  that produced them.
+- **Let agents work from shared Pages.** The native CLI and official Skill let
+  local coding agents search, read, create, and update Pages.
+- **Resume the whole workspace.** Reopen windows, sessions, panels, and local
+  Project state without reconstructing the setup.
 
 ## Who It Is For
 
-Nodex is for builders who use coding agents as part of real development work:
+Nodex is for developers who use coding agents in real local projects:
 
-- solo developers running several agent tasks at once
-- founders turning product ideas into working software
-- engineers who want a local, inspectable command center for agent-assisted changes
-- anyone who wants agent output tied back to tasks, branches, files, and review
+- developers turning product and implementation context into agent work
+- builders running several tasks without losing the brief behind each one
+- reviewers who want the Page, conversation, files, and diff in reach together
+- teams that value open-source software and local ownership
 
-## The Shape of the App
+## Local-First by Design
 
-Think of Nodex as a local desktop workbench:
-
-- a project board for deciding what should happen next
-- a session space for talking to agents
-- a card editor for durable product and implementation notes
-- side panels for files, browser previews, terminals, and reviews
-- local history and backups so the workspace remains yours
-
-It is intentionally local-first. The core task state lives on your machine, and the app is designed around project folders you already own.
+Your Library and Project state live on your machine in Nodex’s SQLite-backed
+core. Project source folders remain folders you own, and the desktop app and
+CLI are open source.
 
 ## Try Nodex
 

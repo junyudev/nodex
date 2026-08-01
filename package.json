@@ -132,6 +132,7 @@
     "dev:landing": "vp run --filter @nodex/landing dev",
     "build:landing": "vp run --filter @nodex/landing build",
     "preview:landing": "vp run --filter @nodex/landing preview",
+    "test:landing": "vp run --filter @nodex/landing test",
     "release:prepare": "tsx scripts/release/cli.ts prepare",
     "release:check": "tsx scripts/release/cli.ts check",
     "release:detect": "tsx scripts/release/cli.ts detect",

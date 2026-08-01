@@ -1,0 +1,107 @@
+---
+import Button from '~/components/Button.astro'
+import Title from '~/components/Title.astro'
+import ArrowRightIcon from '~/icons/ArrowRightIcon.astro'
+import { getLocale, getPath, getUI } from '~/utils/i18n'
+import SocialMediaStrip from './SocialMediaStrip.astro'
+import Video from './Video.astro'
+
+const locale = getLocale(Astro)
+
+const getLocalePath = getPath(locale)
+
+const {
+  routes: {
+    index: { hero },
+  },
+} = getUI(locale)
+---
+
+<header
+  id="header"
+  class="flex w-full flex-col items-center gap-6 py-16 text-center lg:gap-12 lg:py-32"
+>
+  <div class="flex h-full flex-col items-center justify-center gap-6 md:gap-8">
+    <div class="flex flex-col items-center justify-center gap-4 md:gap-8">
+      <div>
+        <Title class="relative px-12 text-center text-5xl md:text-7xl lg:px-0 lg:text-9xl">
+          {
+            hero.title.map(title =>
+              title.text !== '\n' ? (
+                <b
+                  class:list={['font-normal', title.highlight && 'text-coral italic']}
+                  style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+                >
+                  {title.text}
+                </b>
+              ) : (
+                <br class="hidden md:block" />
+              )
+            )
+          }
+        </Title>
+        <p
+          class="px-12 text-center lg:px-0"
+          style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+        >
+          {hero.description[0]}
+          <br class="hidden sm:inline" />
+          {hero.description[1]}
+        </p>
+      </div>
+      <div
+        class="hero__cta"
+        style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)"
+      >
+        <Button class="w-fit" href={getLocalePath('/download/')} isPrimary>
+          {hero.cta}
+          <ArrowRightIcon class="size-4" aria-hidden="true" />
+        </Button>
+      </div>
+    </div>
+    <SocialMediaStrip style="transform: translateY(20px); opacity: 0.001; filter: blur(4px)" />
+  </div>
+  <Video
+    name="hero-video"
+    autoplay
+    loop
+    muted
+    playsinline
+    preload="none"
+    label="A Nodex Page moving into agent work and Review in the same Project"
+    class="rounded-xl"
+    style="transform: translateY(20px); opacity: 0.001; filter: blur(4px); transform-origin: top;"
+  />
+</header>
+
+<script>
+  import { animate, onScroll, stagger } from 'animejs'
+
+  function initAnimations() {
+    const debug = false
+
+    const elements = document.querySelectorAll(
+      '#header h1 b, #header p, #header .hero__cta, #header video, #header ul'
+    )
+
+    animate(elements, {
+      // @ts-expect-error - element is HTMLElement
+      opacity: element => {
+        if (element.tagName === 'UL') {
+          return { from: 0.001, to: 0.8 }
+        }
+        return { from: 0.001, to: 1 }
+      },
+      translateY: { from: 20, to: 0 },
+      filter: { from: 'blur(4px)', to: 'blur(0px)' },
+      duration: 300,
+      delay: stagger(150),
+      ease: 'cubicBezier(0.25, 0.1, 0.25, 1)',
+      autoplay: onScroll({
+        target: '#header',
+        debug,
+      }),
+    })
+  }
+  initAnimations()
+</script>

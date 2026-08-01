@@ -1,0 +1,67 @@
+---
+import Button from '~/components/Button.astro'
+import ArrowRightIcon from '~/icons/ArrowRightIcon.astro'
+import DownloadIcon from '~/icons/DownloadIcon.astro'
+import GitHubIcon from '~/icons/GitHubIcon.astro'
+import { getLocale, getPath, getUI } from '~/utils/i18n'
+import Logo from './Logo.astro'
+import ThemeSwitch from './ThemeSwitch.astro'
+
+const locale = getLocale(Astro)
+const getLocalePath = getPath(locale)
+const {
+  components: {
+    nav: { brand, menu },
+  },
+} = getUI(locale)
+---
+
+<header class="bg-paper relative z-20">
+  <nav
+    class="container grid w-full grid-cols-[auto_1fr_auto] items-center gap-2 py-3 lg:py-6"
+    aria-label="Primary navigation"
+  >
+    <a
+      class="col-start-1 flex items-center gap-2 text-lg font-bold"
+      href={getLocalePath('/')}
+    >
+      <Logo class="text-coral" />
+      <span>{brand}</span>
+    </a>
+
+    <div class="col-start-3 flex items-center gap-2 place-self-end lg:gap-4">
+      <a
+        class="text-dark inline-flex h-8 w-8 items-center justify-center"
+        href="https://github.com/junyudev/nodex"
+        target="_blank"
+        rel="noreferrer"
+        aria-label={menu.githubLabel}
+      >
+        <GitHubIcon class="size-5" aria-hidden="true" />
+      </a>
+      <div class="theme-switcher">
+        <ThemeSwitch label={menu.themeLabel} />
+      </div>
+      <Button
+        href="/download/"
+        class="!p-3 sm:!px-6 sm:!py-4"
+        isPrimary
+        aria-label={menu.download}
+      >
+        <span class="hidden items-center gap-2 sm:flex">
+          {menu.download}
+          <ArrowRightIcon class="size-4" aria-hidden="true" />
+        </span>
+        <DownloadIcon class="size-4 sm:hidden" aria-hidden="true" />
+      </Button>
+    </div>
+  </nav>
+</header>
+
+<style is:global>
+  @reference '../styles/global.css';
+
+  .theme-switcher * {
+    @apply text-dark;
+  }
+</style>

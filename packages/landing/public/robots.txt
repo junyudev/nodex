@@ -1,2 +1,3 @@
 User-agent: *
 Allow: /
+Sitemap: https://nodex.jyu.app/sitemap-index.xml

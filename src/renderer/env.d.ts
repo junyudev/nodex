@@ -39,6 +39,7 @@ declare global {
     readonly DEV: boolean;
     readonly PROD: boolean;
     readonly SSR: boolean;
+    readonly VITE_LANDING_PREVIEW_URL?: string;
   }
 
   interface ImportMeta {

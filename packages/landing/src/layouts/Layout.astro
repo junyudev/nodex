@@ -1,0 +1,120 @@
+---
+interface Props {
+  title: string
+  description?: string
+  ogImage?: string
+  isHome?: boolean
+  redirect?: string
+}
+
+const { title, description, ogImage, isHome, redirect } = Astro.props
+const defaultDescription =
+  'Shape tasks in Pages, send the right context to coding agents, and keep it beside the code, terminal, and review in one local-first workspace.'
+const siteOrigin = Astro.site ?? new URL(Astro.url.origin)
+const canonicalUrl = new URL(Astro.url.pathname, siteOrigin)
+const openGraphImage = new URL(ogImage ?? '/og.png', siteOrigin)
+const openGraphTitle = isHome ? 'You and your agents, on the same page.' : title
+import '@fontsource/bricolage-grotesque/latin-400.css'
+import '@fontsource/bricolage-grotesque/latin-500.css'
+import '@fontsource/bricolage-grotesque/latin-600.css'
+import '../styles/global.css'
+import Footer from '~/components/Footer.astro'
+import NavBar from '~/components/NavBar.astro'
+import { getLocale } from '~/utils/i18n'
+const locale = getLocale(Astro)
+---
+
+<script is:inline data-cfasync="false">
+  const readStoredTheme = () => {
+    try {
+      return window.localStorage.getItem('theme')
+    } catch {
+      return null
+    }
+  }
+
+  const theme = (() => {
+    const storedTheme = readStoredTheme()
+    if (storedTheme) return storedTheme
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark'
+    }
+    return 'light'
+  })()
+
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light')
+  } else {
+    document.documentElement.setAttribute('data-theme', 'dark')
+  }
+</script>
+
+<html lang={locale}>
+  <head>
+    <meta charset="UTF-8" />
+    {redirect ? <meta http-equiv="refresh" content={`0;url=${redirect}`} /> : null}
+    <meta name="description" content={description ?? defaultDescription} />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+
+    {
+      isHome && (
+        <>
+          {/* Injecting schema to homepage only (for SEO) */}
+          <script
+            is:inline
+            type="application/ld+json"
+            set:html={JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'WebSite',
+              name: 'Nodex',
+              url: 'https://nodex.jyu.app/',
+            })}
+          />
+        </>
+      )
+    }
+
+    <!-- ICO favicon as a fallback for browsers that don't support SVG favicons (Safari) -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="theme-color" content="#da755b" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content={openGraphTitle} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:site_name" content="Nodex" />
+    <meta property="og:image" content={openGraphImage} />
+    <meta
+      property="og:image:alt"
+      content="Nodex, a local-first workspace for shared context and agent work."
+    />
+    <meta property="og:description" content={description ?? defaultDescription} />
+    <meta property="og:color" content="#da755b" />
+    <!-- Twitter card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={openGraphTitle} />
+    <meta name="twitter:description" content={description ?? defaultDescription} />
+    <meta name="twitter:image" content={openGraphImage} />
+
+    <script>
+      console.log(
+        '%cNodex%c\nYou and your agents, on the same page.',
+        'filter: invert(1); font-size: 28px; font-weight: bolder; font-family: "Rubik"; margin-top: 20px; margin-bottom: 8px;',
+        'color: #f76f53; font-size: 16px; font-family: "Rubik"; margin-bottom: 20px;'
+      )
+    </script>
+  </head>
+  <body
+    class="bg-paper text-dark min-h-[max(100dvh,_64rem)] overflow-x-hidden font-['bricolage-grotesque'] text-balance"
+  >
+    <NavBar />
+    <slot />
+    <Footer />
+  </body>
+</html>

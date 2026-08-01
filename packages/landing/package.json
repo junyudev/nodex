@@ -3,12 +3,26 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp dev",
-    "build": "vp build",
-    "preview": "vp preview"
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "preview": "astro preview --host 127.0.0.1",
+    "test": "vp run build && vp test run --root ../.. --config vitest.node.config.ts packages/landing/src"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "3.7.3",
+    "@fontsource/bricolage-grotesque": "5.2.10",
+    "@fortawesome/fontawesome-svg-core": "7.2.0",
+    "@fortawesome/free-brands-svg-icons": "7.2.0",
+    "@tailwindcss/vite": "4.3.1",
+    "animejs": "4.4.1",
+    "astro": "6.4.4",
+    "clsx": "2.1.1",
+    "sharp": "0.34.5",
+    "tailwind-merge": "3.6.0",
+    "tailwindcss": "4.3.1"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.3.1",
+    "fontkitten": "1.0.3",
     "typescript": "7.0.2",
     "vite": "8.0.16"
   }

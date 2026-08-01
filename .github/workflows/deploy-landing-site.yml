@@ -8,6 +8,8 @@ on:
       - "packages/landing/**"
       - ".github/workflows/deploy-landing-site.yml"
       - ".github/workflows/_deploy-landing-site.yml"
+      - "CHANGELOG.md"
+      - "package.json"
       - "pnpm-lock.yaml"
   workflow_dispatch:
 

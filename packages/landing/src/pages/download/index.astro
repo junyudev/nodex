@@ -1,0 +1,43 @@
+---
+import Button from '~/components/Button.astro'
+import Layout from '~/layouts/Layout.astro'
+import { release } from '~/utils/release'
+---
+
+<Layout
+  title="Download - Nodex"
+  description="Download Nodex for macOS or install it with Homebrew."
+>
+  <main class="container grid gap-10 py-16 lg:py-32">
+    <section class="grid gap-6 text-center">
+      <h1 class="font-junicode text-dark text-6xl leading-none font-semibold sm:text-8xl">
+        Download Nodex
+      </h1>
+      <p class="mx-auto max-w-2xl opacity-80">
+        {release.versionLabel} beta for Apple silicon and Intel Macs running macOS 15 or later.
+      </p>
+      <div class="flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <Button
+          href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg"
+          localePath={false}
+          isPrimary
+        >
+          Apple silicon
+        </Button>
+        <Button
+          href="https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg"
+          localePath={false}
+        >
+          Intel Mac
+        </Button>
+        <Button href="https://github.com/junyudev/nodex" localePath={false}>
+          View on GitHub
+        </Button>
+      </div>
+    </section>
+    <section class="mx-auto grid max-w-2xl gap-3 rounded-xl bg-subtle p-6 text-center">
+      <p class="font-bold">Homebrew</p>
+      <code>brew install --cask junyudev/tap/nodex</code>
+    </section>
+  </main>
+</Layout>

@@ -36,7 +36,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
       - uses: ./.github/actions/setup-vite-plus
       - run: vp install --frozen-lockfile
-      - run: vp run build:landing
+      - run: NODEX_REQUIRE_LANDING_MEDIA=1 vp run build:landing
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: inputs.publish_updates
         with:

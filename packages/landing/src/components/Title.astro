@@ -1,0 +1,10 @@
+---
+import { cn } from '~/utils/merge'
+const { class: className } = Astro.props
+---
+
+<h1
+  class={cn('font-junicode text-dark mb-[0.4rem] text-5xl leading-[0.9] font-semibold', className)}
+>
+  <slot />
+</h1>
