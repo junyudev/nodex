@@ -1,12 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
-import {
-  AlertTriangle,
-  Bot,
-  Gauge,
-  RotateCcw,
-  Settings2,
-} from "@/components/shared/icons/generic-icons";
+import { AlertTriangle, Gauge } from "@/components/shared/icons/generic-icons";
+import { AgentIcon, ResetIcon, SettingsGeneralIcon } from "@/components/shared/icons";
 import {
   NodexDropdownButtonTrigger,
   NodexOptionPicker,
@@ -328,7 +323,7 @@ function AgentConfigPopoverBody({
           {chip.invalid ? (
             <AlertTriangle className="size-3.5" />
           ) : (
-            <Settings2 className="size-3.5" />
+            <SettingsGeneralIcon className="size-3.5" />
           )}
         </div>
         <div className="min-w-0 flex-1">
@@ -351,7 +346,7 @@ function AgentConfigPopoverBody({
               onReset();
             }}
           >
-            <RotateCcw className="size-3" />
+            <ResetIcon className="size-3" />
             <span>Reset</span>
           </button>
         ) : null}
@@ -432,7 +427,7 @@ export function AgentConfigInlineContentView({
   const title = chip.invalid
     ? "This agent config has invalid attributes or values."
     : [chip.label, chip.detail].filter(Boolean).join(" · ");
-  const Icon = props.reasoning ? Gauge : props.mode ? Bot : Settings2;
+  const Icon = props.reasoning ? Gauge : props.mode ? AgentIcon : SettingsGeneralIcon;
 
   const handlePatch = (patch: AgentConfigFieldPatch) => {
     updateInlineContent(buildAgentConfigUpdate(props, patch));
@@ -524,7 +519,7 @@ export function createAgentConfigInlineContentSpec() {
       );
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] px-2 py-0.5 text-xs text-[var(--foreground)]">
-          <Settings2 className="size-3" />
+          <SettingsGeneralIcon className="size-3" />
           <span>{chip.label}</span>
           {chip.detail ? <span className="opacity-60">({chip.detail})</span> : null}
         </span>

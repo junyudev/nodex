@@ -10,8 +10,12 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { ListFilter } from "@/components/shared/icons/generic-icons";
-import { DatabaseIcon, SidePanelSideChatIcon, SidebarVisibleIcon } from "@/components/shared/icons";
+import {
+  FilterIcon,
+  DatabaseIcon,
+  SidePanelSideChatIcon,
+  SidebarVisibleIcon,
+} from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   areCommandPalettePageFiltersEqual,
@@ -1165,7 +1169,7 @@ export const CommandPaletteSurface = forwardRef<
             }
           >
             <NodexIconButton
-              icon={ListFilter}
+              icon={FilterIcon}
               size="sm"
               active={filterActive}
               ariaLabel="Filter pages"

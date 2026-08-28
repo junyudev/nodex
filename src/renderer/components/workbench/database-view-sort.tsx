@@ -1,5 +1,5 @@
-import { DeleteIcon, PlusIcon } from "@/components/shared/icons";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "@/components/shared/icons/generic-icons";
+import { DeleteIcon, MoveDownIcon, MoveUpIcon, PlusIcon } from "@/components/shared/icons";
+import { ArrowUpDown } from "@/components/shared/icons/generic-icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { createDatabaseViewSort, moveDatabaseViewSort } from "@/lib/database-view-authoring";
@@ -155,14 +155,14 @@ export function DatabaseViewSort({
                 />
                 <div className="ml-auto flex items-center">
                   <NodexIconButton
-                    icon={ArrowUp}
+                    icon={MoveUpIcon}
                     size="xs"
                     ariaLabel={`Move sort ${index + 1} up`}
                     disabled={busy || index === 0}
                     onClick={() => setSorts(moveDatabaseViewSort(sorts, index, "up"))}
                   />
                   <NodexIconButton
-                    icon={ArrowDown}
+                    icon={MoveDownIcon}
                     size="xs"
                     ariaLabel={`Move sort ${index + 1} down`}
                     disabled={busy || index === sorts.length - 1}

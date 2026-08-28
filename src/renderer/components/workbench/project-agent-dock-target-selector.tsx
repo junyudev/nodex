@@ -1,6 +1,10 @@
-import { Check } from "@/components/shared/icons/generic-icons";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { ActivitySpinnerIcon, PlusIcon, SearchIcon } from "@/components/shared/icons";
+import {
+  ActivitySpinnerIcon,
+  CheckmarkIcon,
+  PlusIcon,
+  SearchIcon,
+} from "@/components/shared/icons";
 import { NodexDropdownButtonTrigger } from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
@@ -235,7 +239,7 @@ export function ProjectAgentDockTargetSelector({
                   </span>
                 ) : null}
               </span>
-              <Check
+              <CheckmarkIcon
                 aria-hidden="true"
                 className={cn("size-3.5 shrink-0", row.selected ? "opacity-100" : "opacity-0")}
               />

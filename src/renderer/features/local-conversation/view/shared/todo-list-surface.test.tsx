@@ -85,9 +85,11 @@ describe("TodoListSurface", () => {
     expect(Boolean(textContent(container).includes("Port the todo shell"))).toBe(true);
     expect(toggle.getAttribute("aria-label")).toBe("Collapse todo list");
     expect(container.querySelector('[data-thread-find-skip="true"]')).toBe(null);
+    const collapseIcon = toggle.querySelector("path")?.getAttribute("d");
 
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-label")).toBe("Expand todo list");
     expect(container.querySelector('[data-thread-find-skip="true"]')).not.toBeNull();
+    expect(toggle.querySelector("path")?.getAttribute("d")).not.toBe(collapseIcon);
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Loader2 } from "@/components/shared/icons/generic-icons";
+import { LoadingIcon } from "@/components/shared/icons";
 import {
   NodexDialog,
   NodexDialogContent,
@@ -165,7 +165,7 @@ export function MermaidCodePreview({
         </button>
       ) : preview.status === "rendering" ? (
         <div className="flex items-center gap-2 text-sm text-token-text-tertiary">
-          <Loader2 className="size-4 animate-spin" /> Rendering diagram…
+          <LoadingIcon className="size-4 animate-spin" /> Rendering diagram…
         </div>
       ) : preview.status === "empty" ? (
         <span className="text-sm text-token-text-tertiary">

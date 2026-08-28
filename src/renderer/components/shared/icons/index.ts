@@ -1,5 +1,6 @@
 export * from "./app-icons";
 export * from "./activity-icons";
+export * from "./canonical-icons";
 export * from "./code-preview-icons";
 export * from "./dictation-icons";
 export * from "./file-tree-icons";

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Repeat2Icon } from "@/components/shared/icons/generic-icons";
+import { RepeatIcon } from "@/components/shared/icons";
 import { formatTimeRange } from "@/lib/calendar-utils";
 import { resolveBoardPriorityOption } from "@/lib/board-options";
 import { estimateStyles } from "@/lib/types";
@@ -282,7 +282,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
                   : "border-(--border)/70 bg-(--background)/70 text-(--foreground-secondary)",
               )}
             >
-              <Repeat2Icon className="size-2.5" />
+              <RepeatIcon className="size-2.5" />
               <span className="sr-only">{recurringIndicatorLabel}</span>
             </span>
           )}
@@ -300,7 +300,7 @@ export const CalendarEventBlock = memo(function CalendarEventBlock({
                 aria-label={recurringIndicatorLabel}
                 className={isSeriesStartIndicator ? RECURRING_BADGE_ORIGIN : RECURRING_BADGE}
               >
-                <Repeat2Icon className="size-2.5" />
+                <RepeatIcon className="size-2.5" />
                 <span className="sr-only">{recurringIndicatorLabel}</span>
               </span>
             )}

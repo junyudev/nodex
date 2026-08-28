@@ -1,7 +1,7 @@
-import { FolderOpenIcon } from "@/components/shared/icons";
+import { CopyIcon, FolderOpenIcon, OpenExternalIcon } from "@/components/shared/icons";
 import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
-import { ArrowUpRight, Copy, Link2 } from "@/components/shared/icons/generic-icons";
+import { Link2 } from "@/components/shared/icons/generic-icons";
 
 import { NodexPopover, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -177,7 +177,7 @@ export function AttachmentPopoverView({
       <div className="mt-3 flex flex-wrap gap-1.5 px-1">
         <AttachmentActionButton
           label={isOwnedFile ? "Save" : "Open"}
-          icon={ArrowUpRight}
+          icon={OpenExternalIcon}
           onClick={onPrimaryOpen}
         />
         {onReveal ? (
@@ -185,7 +185,7 @@ export function AttachmentPopoverView({
         ) : null}
         <AttachmentActionButton
           label={isOwnedFile ? "Copy reference" : "Copy path"}
-          icon={Copy}
+          icon={CopyIcon}
           onClick={onCopyPath}
         />
         {onOpenOriginal ? (

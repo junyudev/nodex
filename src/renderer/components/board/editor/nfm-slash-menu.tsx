@@ -23,7 +23,7 @@ import {
   type SuggestionMenuProps,
 } from "@blocknote/react";
 import { getMathSlashMenuItems } from "@blocknote/math-block";
-import { Ellipsis, Minus, Settings2 } from "@/components/shared/icons/generic-icons";
+import { Minus } from "@/components/shared/icons/generic-icons";
 import {
   NodexDropdownActionRow,
   NodexDropdownMessage,
@@ -63,6 +63,8 @@ import {
   PageIcon,
   TextActionReactionIcon,
   TextActionEquationIcon,
+  MoreActionsIcon,
+  SettingsGeneralIcon,
 } from "@/components/shared/icons";
 import { buildDateMentionQueryMatches, type DateMentionQueryMatch } from "@/lib/nfm/date-mention";
 import type { NfmDateMentionInlineContent } from "@/lib/nfm/types";
@@ -282,7 +284,7 @@ function getNfmSlashMenuItemIcon(key: NfmSlashMenuItemKey, turnIntoKey?: NfmTurn
   if (key === "thread_section") return <ThreadIcon className="size-5" />;
   if (key === "math_block" || key === "inline_math") return <TextActionEquationIcon />;
   if (key === "code_mermaid") return <CodeIcon />;
-  return <Settings2 className="size-5" />;
+  return <SettingsGeneralIcon className="size-5" />;
 }
 
 function presentNfmSlashMenuItem(item: NfmSuggestionItem): NfmSuggestionItem | null {
@@ -1481,7 +1483,7 @@ export function selectNfmPageMentionSuggestionItems(
           kind: "expand_section",
           family: section.family,
         },
-        icon: <Ellipsis className="icon-xs shrink-0" aria-hidden="true" />,
+        icon: <MoreActionsIcon className="icon-xs shrink-0" aria-hidden="true" />,
         onItemClick: () => options.onExpandSection?.(section.family),
       } satisfies NfmSuggestionItem,
     ];

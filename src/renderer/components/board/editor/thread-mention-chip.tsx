@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
-import { AlertCircle, CheckCircle2, Copy, Play } from "@/components/shared/icons/generic-icons";
+import { AlertCircle } from "@/components/shared/icons/generic-icons";
 
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
@@ -18,7 +18,14 @@ import {
 } from "@/lib/nfm/thread-mention-display";
 import { cn } from "@/lib/utils";
 import { threadMentionInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
-import { ActivitySpinnerIcon, ThreadIcon, ArchiveIcon } from "@/components/shared/icons";
+import {
+  ActivitySpinnerIcon,
+  ArchiveIcon,
+  CopyIcon,
+  PlayIcon,
+  SuccessCircleIcon,
+  ThreadIcon,
+} from "@/components/shared/icons";
 import { MentionInlineFocusAffordance } from "../mention-inline-focus-affordance";
 import { ThreadMentionInlineVisual } from "../thread-mention-inline-visual";
 
@@ -87,9 +94,9 @@ function ThreadMentionStateIcon({
   }
   if (thread?.archived) return <ArchiveIcon className="inline-block size-3.5 shrink-0" />;
   if (thread?.statusType === "active")
-    return <Play className="inline-block size-3.5 shrink-0 fill-current" />;
+    return <PlayIcon className="inline-block size-3.5 shrink-0" />;
   if (thread?.statusType === "idle")
-    return <CheckCircle2 className="inline-block size-3.5 shrink-0" />;
+    return <SuccessCircleIcon className="inline-block size-3.5 shrink-0" />;
   return <ThreadIcon className="inline-block size-3.5 shrink-0" />;
 }
 
@@ -157,7 +164,7 @@ function ThreadMentionPopoverBody({
             void handleCopyUuid();
           }}
         >
-          <Copy className="size-3" />
+          <CopyIcon className="size-3" />
           <span>Copy UUID</span>
         </button>
       </div>

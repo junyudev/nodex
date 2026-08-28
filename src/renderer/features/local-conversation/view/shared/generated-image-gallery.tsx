@@ -7,11 +7,7 @@ import {
   useSyncExternalStore,
   type ComponentProps,
 } from "react";
-import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ImagesIcon,
-} from "@/components/shared/icons/generic-icons";
+import { ChevronLeft } from "@/components/shared/icons/generic-icons";
 import {
   areGeneratedImageLiveGroupsEqual,
   GeneratedImagePlaceholder,
@@ -24,7 +20,12 @@ import {
   subscribeGeneratedImageLiveCollections,
   type GeneratedImageDescriptor,
 } from "@/features/user-attachment-image-editor";
-import { EditIcon, ImageCanvasViewIcon } from "@/components/shared/icons";
+import {
+  ChevronRightIcon,
+  EditIcon,
+  ImageCanvasViewIcon,
+  ImageMultiSelectIcon,
+} from "@/components/shared/icons";
 import { cn } from "../../../../lib/utils";
 import type { ThreadGeneratedImageGalleryItemModel } from "../../thread-stage-types";
 import { useCodexConversationValue } from "../../local-conversation-store";
@@ -53,7 +54,7 @@ function GalleryControls({
   return (
     <>
       <div className="pointer-events-none absolute right-2 bottom-2 inline-flex h-6 items-center gap-0.5 rounded-full bg-black/45 pr-2 pl-1.5 text-sm font-medium leading-none text-white shadow-sm backdrop-blur-[12px] group-focus-within/generated-image-gallery-controls:opacity-0 group-hover/generated-image-gallery-controls:opacity-0">
-        <ImagesIcon className="size-4 shrink-0" aria-hidden="true" />
+        <ImageMultiSelectIcon className="size-4 shrink-0" aria-hidden="true" />
         <span className="tabular-nums">{overflowCount}</span>
       </div>
       <div className="pointer-events-none absolute right-2 bottom-2 z-10 flex items-center gap-1 opacity-0 group-focus-within/generated-image-gallery-controls:pointer-events-auto group-focus-within/generated-image-gallery-controls:opacity-100 group-hover/generated-image-gallery-controls:pointer-events-auto group-hover/generated-image-gallery-controls:opacity-100">
@@ -76,7 +77,7 @@ function GalleryControls({
           onClick={onPrevious}
           onPointerUp={(event) => event.currentTarget.blur()}
         >
-          <ChevronLeftIcon className="size-4" aria-hidden="true" />
+          <ChevronLeft className="size-4" aria-hidden="true" />
         </button>
         <button
           type="button"

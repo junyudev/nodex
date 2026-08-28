@@ -1,6 +1,6 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
-import { LayoutTemplate, type LucideIcon } from "@/components/shared/icons/generic-icons";
+import { LayoutTemplate } from "@/components/shared/icons/generic-icons";
 import {
   isInlineDocumentOwnerCycle,
   useBlockReferenceHostRuntime,
@@ -19,7 +19,7 @@ const EmbeddedOwnedBlockDocument = lazy(() =>
 );
 
 export interface DocumentBearingShellVisualProps extends OwnedDocumentReferenceStateDependencies {
-  readonly icon: LucideIcon;
+  readonly icon: ComponentType<{ className?: string }>;
   readonly label: string;
   readonly detail: string;
   readonly identity?: string;

@@ -27,19 +27,14 @@ import {
   type DefaultStyleSchema,
 } from "@blocknote/core";
 import { TableHandlesExtension } from "@blocknote/core/extensions";
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  ChevronDown,
-  CircleX,
-  Scissors,
-} from "@/components/shared/icons/generic-icons";
+import { ArrowLeft, ArrowRight, CircleX, Scissors } from "@/components/shared/icons/generic-icons";
 import type { ReactNode } from "react";
 import {
   CheckmarkIcon,
+  ChevronDownIcon,
   DragHandleDotsIcon,
+  MoveDownIcon,
+  MoveUpIcon,
   NfmSideMenuColorIcon,
   NfmSideMenuDeleteIcon,
   NfmSideMenuDuplicateIcon,
@@ -461,8 +456,8 @@ function getInsertLabel(
 function getInsertIcon(side: "above" | "below" | "left" | "right") {
   if (side === "left") return <ArrowLeft className="size-5" aria-hidden="true" />;
   if (side === "right") return <ArrowRight className="size-5" aria-hidden="true" />;
-  if (side === "above") return <ArrowUp className="size-5" aria-hidden="true" />;
-  return <ArrowDown className="size-5" aria-hidden="true" />;
+  if (side === "above") return <MoveUpIcon className="size-5" aria-hidden="true" />;
+  return <MoveDownIcon className="size-5" aria-hidden="true" />;
 }
 
 function NfmTableInsertButton(
@@ -648,7 +643,7 @@ function NfmTableHandle(props: TableHandleProps) {
 function NfmTableCellHandle(props: TableCellButtonProps) {
   return (
     <TableCellButton {...props} tableCellMenu={NfmTableCellMenu}>
-      <ChevronDown className="size-3" aria-hidden="true" />
+      <ChevronDownIcon className="size-3" aria-hidden="true" />
     </TableCellButton>
   );
 }

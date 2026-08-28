@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { XIcon } from "@/components/shared/icons/generic-icons";
-import { PageIcon } from "@/components/shared/icons";
+import { CloseIcon, PageIcon } from "@/components/shared/icons";
 import { PageStage } from "./page-stage-dev-story-deps";
 import { ReadonlyNfmBlockNotePreview } from "../editor/readonly-nfm-blocknote-preview";
 import type { PageInput } from "../../../lib/types";
@@ -362,7 +361,7 @@ export function PageStageDevStoryPage({
                   onClick={() => setHistoryPanelActive(false)}
                   className="inline-flex size-6 items-center justify-center rounded-full text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-primary"
                 >
-                  <XIcon className="icon-2xs" />
+                  <CloseIcon className="icon-2xs" />
                 </button>
               </header>
               <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">

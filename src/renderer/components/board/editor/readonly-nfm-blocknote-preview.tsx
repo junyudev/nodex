@@ -21,14 +21,8 @@ import {
   useCreateBlockNote,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
-import {
-  Bot,
-  BoxSelect,
-  Link2,
-  RefreshCw,
-  Rows3,
-  Settings2,
-} from "@/components/shared/icons/generic-icons";
+import { BoxSelect, Link2, Rows3 } from "@/components/shared/icons/generic-icons";
+import { AgentIcon, RefreshIcon, SettingsGeneralIcon } from "@/components/shared/icons";
 
 import { cn } from "@/lib/utils";
 import { nfmSyntaxHighlighter } from "@/lib/syntax-highlighting";
@@ -163,7 +157,7 @@ const createReadonlyCanvasBlockSpec = createReactBlockSpec(canvasBlockConfig, {
 const createReadonlySyncedBlockRefBlockSpec = createReactBlockSpec(syncedBlockRefBlockConfig, {
   render: ({ block }) => (
     <InertEmbedPlaceholder
-      icon={RefreshCw}
+      icon={RefreshIcon}
       label="Synced block"
       detail={String(block.props.sourceBlockId || "").trim()}
     />
@@ -233,7 +227,11 @@ const createReadonlyAgentConfigInlineContentSpec = () =>
   createReactInlineContentSpec(agentConfigInlineContentConfig, {
     render: ({ inlineContent }) => {
       const chip = resolveAgentConfigChip(inlineContent.props as Partial<AgentConfigProps>);
-      const Icon = chip.invalid ? Settings2 : chip.detail ? Bot : Settings2;
+      const Icon = chip.invalid
+        ? SettingsGeneralIcon
+        : chip.detail
+          ? AgentIcon
+          : SettingsGeneralIcon;
       return (
         <NodexTooltip tooltipContent={[chip.label, chip.detail].filter(Boolean).join(" - ")}>
           <span

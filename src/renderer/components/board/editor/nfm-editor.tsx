@@ -13,8 +13,8 @@ import {
 import { SideMenuController, type LinkToolbarProps, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/shadcn";
-import { ChevronDown, ChevronUp, CornerDownLeft, X } from "@/components/shared/icons/generic-icons";
-import { ReplaceIcon } from "@/components/shared/icons";
+import { CornerDownLeft } from "@/components/shared/icons/generic-icons";
+import { ChevronDownIcon, CloseIcon, ReplaceIcon } from "@/components/shared/icons";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 
@@ -2811,7 +2811,7 @@ function NfmEditorInstance({
                     onClick={() => navigateSearch("prev", true)}
                     aria-label="Previous match"
                   >
-                    <ChevronUp className="size-4" />
+                    <ChevronDownIcon className="size-4 rotate-180" />
                   </button>
                 </NodexTooltip>
                 <NodexTooltip tooltipContent="Next match (Enter)">
@@ -2821,7 +2821,7 @@ function NfmEditorInstance({
                     onClick={() => navigateSearch("next", true)}
                     aria-label="Next match"
                   >
-                    <ChevronDown className="size-4" />
+                    <ChevronDownIcon className="size-4" />
                   </button>
                 </NodexTooltip>
                 <NodexTooltip
@@ -2846,7 +2846,7 @@ function NfmEditorInstance({
                     onClick={closeSearch}
                     aria-label="Close find"
                   >
-                    <X className="size-4" />
+                    <CloseIcon className="size-4" />
                   </button>
                 </NodexTooltip>
               </div>

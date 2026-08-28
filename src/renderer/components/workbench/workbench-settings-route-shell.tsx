@@ -10,8 +10,8 @@ import {
   useState,
   type ComponentType,
 } from "react";
-import { DeleteIcon } from "@/components/shared/icons";
-import { Monitor, Moon, RotateCcw, Sun } from "@/components/shared/icons/generic-icons";
+import { DeleteIcon, ResetIcon } from "@/components/shared/icons";
+import { Monitor, Moon, Sun } from "@/components/shared/icons/generic-icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
@@ -1004,7 +1004,7 @@ function FontSizeSettingControl({
         onClick={() => onChangeValue(defaultValue)}
         className="gap-1 text-token-text-secondary"
       >
-        <RotateCcw className="size-3.5" />
+        <ResetIcon className="size-3.5" />
         <span>Default</span>
       </NodexButton>
     </div>

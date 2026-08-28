@@ -1,4 +1,12 @@
-import { ChevronRightIcon, ProjectActionsIcon } from "@/components/shared/icons";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CheckmarkIcon,
+  MoveDownIcon,
+  MoveUpIcon,
+  ProjectActionsIcon,
+  VisibilityOffIcon,
+} from "@/components/shared/icons";
 import { useEffect, useMemo, useState, type ComponentType } from "react";
 import {
   NodexCollapsiblePanel,
@@ -28,14 +36,7 @@ import {
   SIDEBAR_SECTION_ITEM_LIMITS,
   type SidebarSectionItemLimit,
 } from "../../lib/sidebar-section-prefs";
-import {
-  ArrowDown,
-  ArrowUp,
-  Check,
-  ChevronDown,
-  EyeOff,
-  Hash,
-} from "@/components/shared/icons/generic-icons";
+import { Hash } from "@/components/shared/icons/generic-icons";
 
 export interface StageSidebarItem {
   id: string;
@@ -161,7 +162,9 @@ function SidebarSectionMoreActionsMenu({
               onItemLimitChange(limit);
             }}
             rightSlot={
-              itemLimit === limit ? <Check className="size-4 shrink-0 text-(--foreground)" /> : null
+              itemLimit === limit ? (
+                <CheckmarkIcon className="size-4 shrink-0 text-(--foreground)" />
+              ) : null
             }
           >
             {limit} items
@@ -173,7 +176,7 @@ function SidebarSectionMoreActionsMenu({
         onSelect={onMoveUp}
         disabled={!canMoveUp}
         className="mt-0.5"
-        leftSlot={<ArrowUp className="size-4 shrink-0 text-(--sidebar-foreground-secondary)" />}
+        leftSlot={<MoveUpIcon className="size-4 shrink-0 text-(--sidebar-foreground-secondary)" />}
       >
         Move up
       </NodexDropdownItem>
@@ -181,7 +184,9 @@ function SidebarSectionMoreActionsMenu({
       <NodexDropdownItem
         onSelect={onMoveDown}
         disabled={!canMoveDown}
-        leftSlot={<ArrowDown className="size-4 shrink-0 text-(--sidebar-foreground-secondary)" />}
+        leftSlot={
+          <MoveDownIcon className="size-4 shrink-0 text-(--sidebar-foreground-secondary)" />
+        }
       >
         Move down
       </NodexDropdownItem>
@@ -190,7 +195,7 @@ function SidebarSectionMoreActionsMenu({
 
       <NodexDropdownItem
         onSelect={onHide}
-        leftSlot={<EyeOff className="size-4 shrink-0 text-(--red-text)" />}
+        leftSlot={<VisibilityOffIcon className="size-4 shrink-0 text-(--red-text)" />}
       >
         Hide section
       </NodexDropdownItem>
@@ -430,7 +435,7 @@ export function LeftSidebar({
                             )}
                           />
                         ) : null}
-                        <ChevronDown
+                        <ChevronDownIcon
                           className={cn(
                             "absolute inset-0 m-auto size-3 transition-transform duration-150",
                             SectionIcon
@@ -578,7 +583,7 @@ export function LeftSidebar({
                   >
                     <div className="flex min-w-0 items-center gap-1">
                       <span className="truncate">{group.label}</span>
-                      <ChevronDown
+                      <ChevronDownIcon
                         aria-hidden
                         className={cn(
                           "size-3 shrink-0 text-(--sidebar-foreground) transition-all duration-150",

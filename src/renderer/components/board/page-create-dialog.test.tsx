@@ -389,10 +389,12 @@ describe("PageCreateDialog", () => {
     expect(document.activeElement).toBe(description);
 
     fireEvent.change(description, { target: { value: "Keep editor state" } });
-    fireEvent.click(view.getByRole("button", { name: "Expand Page composer" }));
-    expect(
-      view.getByRole("button", { name: "Collapse Page composer" }).getAttribute("aria-expanded"),
-    ).toBe("true");
+    const expandButton = view.getByRole("button", { name: "Expand Page composer" });
+    const expandIcon = expandButton.querySelector("path")?.getAttribute("d");
+    fireEvent.click(expandButton);
+    const collapseButton = view.getByRole("button", { name: "Collapse Page composer" });
+    expect(collapseButton.getAttribute("aria-expanded")).toBe("true");
+    expect(collapseButton.querySelector("path")?.getAttribute("d")).not.toBe(expandIcon);
     expect(view.getByLabelText("Page description").getAttribute("data-document-id")).toBe(
       documentId,
     );

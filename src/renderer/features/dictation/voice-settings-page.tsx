@@ -12,8 +12,13 @@ import {
 import { ConfigValueDropdown } from "@/components/workbench/config-value-dropdown";
 import { TogglePill } from "@/components/workbench/workbench-settings-route-shell";
 import { toast } from "@/components/ui/toast";
-import { DeleteIcon, DownloadIcon, LinkToolbarCopyIcon, PlusIcon } from "@/components/shared/icons";
-import { Ellipsis } from "@/components/shared/icons/generic-icons";
+import {
+  DeleteIcon,
+  DownloadIcon,
+  LinkToolbarCopyIcon,
+  MoreActionsIcon,
+  PlusIcon,
+} from "@/components/shared/icons";
 import { queryKeys } from "@/lib/query-keys";
 import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
 import {
@@ -610,7 +615,7 @@ export function VoiceSettingsPage(_props: { readonly onPathChange: (path: string
                 disabled={historyAction !== null}
                 triggerButton={
                   <NodexButton aria-label="Recording actions" size="icon-xs" variant="ghost">
-                    <Ellipsis className="icon-2xs" />
+                    <MoreActionsIcon className="icon-2xs" />
                   </NodexButton>
                 }
               >

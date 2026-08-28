@@ -1,12 +1,12 @@
 import { useState, type ReactNode } from "react";
 
-import { BoardIcon } from "@/components/shared/icons";
 import {
-  ArrowDown,
-  ArrowUp,
-  List,
-  SlidersHorizontal,
-} from "@/components/shared/icons/generic-icons";
+  BoardIcon,
+  ListLayoutIcon,
+  SortAscendingIcon,
+  SortDescendingIcon,
+} from "@/components/shared/icons";
+import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import { NodexButton, NodexIconButton, NodexSwitch } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
@@ -217,7 +217,7 @@ export function DatabaseViewDisplayOptions({
             className="grid h-8 grid-cols-2 gap-1 rounded-lg bg-token-foreground/5 p-0.5"
           >
             {[
-              { value: "list" as const, label: "List", icon: List },
+              { value: "list" as const, label: "List", icon: ListLayoutIcon },
               { value: "board" as const, label: "Board", icon: BoardIcon },
             ].map((candidate) => (
               <NodexButton
@@ -268,7 +268,7 @@ export function DatabaseViewDisplayOptions({
               className="w-[116px]"
             />
             <NodexIconButton
-              icon={presentation.groupDirection === "asc" ? ArrowUp : ArrowDown}
+              icon={presentation.groupDirection === "asc" ? SortAscendingIcon : SortDescendingIcon}
               size="xs"
               ariaLabel="Group ordering"
               aria-pressed={presentation.groupDirection === "desc"}
@@ -329,7 +329,7 @@ export function DatabaseViewDisplayOptions({
               className="w-[116px]"
             />
             <NodexIconButton
-              icon={currentSort.direction === "asc" ? ArrowUp : ArrowDown}
+              icon={currentSort.direction === "asc" ? SortAscendingIcon : SortDescendingIcon}
               size="xs"
               ariaLabel="Direction"
               aria-pressed={currentSort.direction === "desc"}

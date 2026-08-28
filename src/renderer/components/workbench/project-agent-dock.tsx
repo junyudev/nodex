@@ -1,4 +1,4 @@
-import { ArrowUpRight } from "@/components/shared/icons/generic-icons";
+import { OpenExternalIcon } from "@/components/shared/icons";
 import type {
   ProjectAgentDockModel,
   ProjectAgentDockPendingWorktreeModel,
@@ -64,7 +64,7 @@ export function ProjectAgentDockLeadingRow({
           onClick={onOpenPendingWorktreeDetails}
         >
           {pendingWorktree.statusLabel}
-          <ArrowUpRight className="size-3" aria-hidden="true" />
+          <OpenExternalIcon className="size-3" aria-hidden="true" />
         </button>
       ) : canOpenChat ? (
         <NodexTooltip tooltipContent="Open chat" side="bottom" delayOpen>
@@ -74,7 +74,7 @@ export function ProjectAgentDockLeadingRow({
             className="inline-flex size-7 shrink-0 cursor-interaction items-center justify-center rounded-full text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:bg-token-foreground/5 focus-visible:text-token-foreground focus-visible:outline-none"
             onClick={onOpenChat}
           >
-            <ArrowUpRight className="icon-2xs shrink-0" aria-hidden="true" />
+            <OpenExternalIcon className="icon-2xs shrink-0" aria-hidden="true" />
           </button>
         </NodexTooltip>
       ) : null}

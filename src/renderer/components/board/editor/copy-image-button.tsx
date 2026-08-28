@@ -5,7 +5,7 @@ import {
   type StyleSchema,
 } from "@blocknote/core";
 import { useBlockNoteEditor, useComponentsContext, useEditorState } from "./copy-image-button-deps";
-import { Copy } from "@/components/shared/icons/generic-icons";
+import { CopyIcon } from "@/components/shared/icons";
 import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
 
@@ -83,7 +83,7 @@ export function CopyImageButton({
       className={"bn-button"}
       label={"Copy image"}
       mainTooltip={"Copy image"}
-      icon={<Copy className="size-4" />}
+      icon={<CopyIcon className="size-4" />}
       onClick={onClick}
     />
   );

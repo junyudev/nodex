@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot } from "@/components/shared/icons/generic-icons";
-import { ActivitySpinnerIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, AgentIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
 import {
   ConnectedThreadStage,
@@ -303,7 +302,7 @@ function BackgroundAgentLoadingPanel({ title }: { title: string }) {
     <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary p-6 select-none">
       <div className="mx-auto flex h-full w-full max-w-2xl flex-col items-center justify-center text-center">
         <div className="relative mb-3 flex size-10 items-center justify-center rounded-xl bg-token-bg-secondary text-token-text-secondary">
-          <Bot className="icon-md opacity-40" />
+          <AgentIcon className="icon-md opacity-40" />
           <ActivitySpinnerIcon
             className="icon-xs text-token-text-secondary"
             containerClassName="absolute"

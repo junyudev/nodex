@@ -1,6 +1,10 @@
 import { startTransition, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChevronRightIcon } from "@/components/shared/icons/generic-icons";
-import { ActivitySpinnerIcon, EditIcon, PlusIcon } from "@/components/shared/icons";
+import {
+  ActivitySpinnerIcon,
+  ChevronRightIcon,
+  EditIcon,
+  PlusIcon,
+} from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { localEnvironmentSnapshotQueryOptions } from "@/lib/query-options";
 import {

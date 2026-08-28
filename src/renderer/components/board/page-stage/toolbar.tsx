@@ -1,5 +1,12 @@
-import { ArrowLeft, Link2 } from "@/components/shared/icons/generic-icons";
-import { CodeIcon, DeleteIcon, ProjectActionsIcon } from "@/components/shared/icons";
+import {
+  BackIcon,
+  CodeIcon,
+  DeleteIcon,
+  FullWidthIcon,
+  PageHistoryIcon,
+  PageMenuCopyLinkIcon,
+  ProjectActionsIcon,
+} from "@/components/shared/icons";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
@@ -60,7 +67,7 @@ export function PageStageToolbar({
               "hover:text-(--foreground-secondary)",
             )}
           >
-            <ArrowLeft className="icon-sm" />
+            <BackIcon className="icon-sm" />
           </button>
         </NodexTooltip>
       ) : null}
@@ -117,15 +124,7 @@ export function PageStageToolbar({
                 "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--foreground-tertiary)",
             )}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M13 3v10M3 3v10M10.5 8H13M6 8l1.5-1.5M6 8l1.5 1.5M10 8l-1.5-1.5M10 8l-1.5 1.5M3 8h2.5"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <FullWidthIcon className="icon-xs" />
           </button>
         </NodexTooltip>
 
@@ -147,14 +146,7 @@ export function PageStageToolbar({
                 "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--foreground-tertiary)",
             )}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M8 4v4l3 1.5M14 8a6 6 0 11-12 0 6 6 0 0112 0z"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
+            <PageHistoryIcon className="icon-xs" />
           </button>
         </NodexTooltip>
 
@@ -185,7 +177,7 @@ export function PageStageToolbar({
           }
         >
           <NodexDropdownItem
-            leftSlot={<Link2 className="icon-2xs shrink-0" />}
+            leftSlot={<PageMenuCopyLinkIcon className="icon-2xs" />}
             onSelect={onCopyDeeplink}
           >
             Copy deeplink

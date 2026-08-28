@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { SparklesIcon } from "@/components/shared/icons/generic-icons";
+import { Sparkles } from "@/components/shared/icons/generic-icons";
 import { ActivitySpinnerIcon, FileIcon } from "@/components/shared/icons";
 import type { CodexUserAttachment, CodexUserImageAttachment } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -195,7 +195,7 @@ function UserFileAttachmentChip({
 }: {
   attachment: Extract<CodexUserAttachment, { type: "file" }>;
 }) {
-  const Icon = attachment.sourceKind === "skill" ? SparklesIcon : FileIcon;
+  const Icon = attachment.sourceKind === "skill" ? Sparkles : FileIcon;
 
   return (
     <div

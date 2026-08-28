@@ -1,4 +1,4 @@
-import { Check, Copy } from "@/components/shared/icons/generic-icons";
+import { CheckmarkIcon, CopyIcon } from "@/components/shared/icons";
 import {
   codeBlockActionButtonClassName,
   codeBlockActionDividerClassName,
@@ -50,7 +50,7 @@ export function CodeBlockReadOnlyHeader({
           className={cn(codeBlockActionButtonClassName, "shrink-0")}
           onClick={() => void copy()}
         >
-          {copyFeedback.visible ? <Check /> : <Copy />}
+          {copyFeedback.visible ? <CheckmarkIcon /> : <CopyIcon />}
         </button>
       </NodexTooltip>
     </div>

@@ -7,15 +7,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import { Route, ShieldCheck } from "@/components/shared/icons/generic-icons";
 import {
-  ChevronDown,
-  GitCommitHorizontal,
-  History,
-  Route,
-  ShieldCheck,
-  XIcon,
-} from "@/components/shared/icons/generic-icons";
-import { FileIcon } from "@/components/shared/icons";
+  ChevronDownIcon,
+  CloseIcon,
+  FileIcon,
+  HistoryIcon,
+  ThreadSummaryCommitIcon,
+} from "@/components/shared/icons";
 
 import { NodexButton } from "@/components/ui/button";
 import { NodexDialog, NodexDialogContent, NodexDialogTitle } from "@/components/ui/dialog";
@@ -390,7 +389,7 @@ export function HistoryPanel({
 
         <section className="flex min-h-0 min-w-0 flex-col bg-token-main-surface-primary">
           <header className="flex h-11 shrink-0 items-center gap-2 border-b-[0.5px] border-token-border px-3">
-            <History className="icon-2xs shrink-0 text-token-description-foreground" />
+            <HistoryIcon className="icon-2xs shrink-0 text-token-description-foreground" />
             <span className="min-w-0 flex-1 truncate text-sm font-medium text-token-text-secondary">
               {previewTitle ?? pageTitle ?? "Untitled Page"}
             </span>
@@ -465,7 +464,7 @@ export function HistoryPanel({
               aria-label="Close Page history"
               onClick={onClose}
             >
-              <XIcon className="icon-2xs shrink-0" />
+              <CloseIcon className="icon-2xs shrink-0" />
             </NodexButton>
           </header>
 
@@ -531,7 +530,7 @@ export function HistoryPanel({
                 onClick={() => void handleLoadOlder()}
                 className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-2 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-text-secondary disabled:opacity-40"
               >
-                <ChevronDown className="icon-2xs shrink-0" />
+                <ChevronDownIcon className="icon-2xs shrink-0" />
                 {loadingOlder ? "Loading…" : "Load earlier"}
               </button>
             ) : null}
@@ -832,7 +831,7 @@ function CurrentHistoryEntryRow({
       onClick={onSelect}
       className={historyEntryRowClassName(selected)}
     >
-      <History className="icon-2xs mt-0.5 shrink-0 text-token-description-foreground" />
+      <HistoryIcon className="icon-2xs mt-0.5 shrink-0 text-token-description-foreground" />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-token-text-primary">Current</span>
         <span className="mt-0.5 block text-xs text-token-description-foreground">
@@ -861,7 +860,7 @@ function HistoryKindIcon({ entry, className }: { entry: PageHistoryEntry; classN
     );
   }
   return (
-    <GitCommitHorizontal
+    <ThreadSummaryCommitIcon
       className={cn("icon-2xs shrink-0 text-token-description-foreground", className)}
     />
   );

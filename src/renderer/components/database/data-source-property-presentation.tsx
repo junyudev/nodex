@@ -1,13 +1,14 @@
 import {
   AssigneeIcon,
   CalendarIcon,
+  CheckboxSquareIcon,
   EstimateIcon,
   PageIcon,
   PriorityIcon,
   StatusIcon,
   TagIcon,
 } from "@/components/shared/icons";
-import { CheckSquare2, Hash, Tags, TextCursorInput } from "@/components/shared/icons/generic-icons";
+import { Hash, Tags, TextCursorInput } from "@/components/shared/icons/generic-icons";
 import type { DatabasePropertyValueType } from "../../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
@@ -28,7 +29,7 @@ export const dataSourcePropertyTypeIcon = (valueType: DatabasePropertyValueType)
     case "number":
       return Hash;
     case "checkbox":
-      return CheckSquare2;
+      return CheckboxSquareIcon;
     case "select":
     case "multi_select":
       return Tags;

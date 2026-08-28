@@ -1,14 +1,16 @@
 import { useEffect, useState, type ReactNode, type Ref } from "react";
-import { ImageIcon, LoaderCircleIcon, RotateCcw } from "@/components/shared/icons/generic-icons";
 import {
   ChevronDownIcon,
   DownloadIcon,
   FolderOpenIcon,
+  ImageEditorTabIcon,
   ImageCommentIcon,
   ImageRemoveIcon,
   ImageResizeIcon,
   LandscapeAspectRatioIcon,
+  LoadingIcon,
   PortraitAspectRatioIcon,
+  RetryIcon,
   SquareAspectRatioIcon,
   StoryAspectRatioIcon,
   WidescreenAspectRatioIcon,
@@ -74,7 +76,7 @@ function EditorLoadingState({ children }: { children?: ReactNode }) {
       role="status"
       className="[container-type:size] flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4 text-token-text-tertiary"
     >
-      {children ?? <LoaderCircleIcon aria-hidden="true" className="icon-sm animate-spin" />}
+      {children ?? <LoadingIcon aria-hidden="true" className="icon-sm animate-spin" />}
     </div>
   );
 }
@@ -129,7 +131,7 @@ function LocalImageOpenControl({
         onClick={() => void openPath("default")}
       >
         <span className="flex size-4 items-center justify-center rounded-sm bg-token-charts-blue text-white">
-          <ImageIcon aria-hidden="true" className="size-3" />
+          <ImageEditorTabIcon aria-hidden="true" className="size-3" />
         </span>
         <span className="whitespace-nowrap">Open</span>
       </button>
@@ -158,7 +160,7 @@ function LocalImageOpenControl({
           disabled={isDownloading}
           leftSlot={
             isDownloading ? (
-              <LoaderCircleIcon aria-hidden="true" className="icon-sm animate-spin" />
+              <LoadingIcon aria-hidden="true" className="icon-sm animate-spin" />
             ) : (
               <DownloadIcon aria-hidden="true" className="icon-sm" />
             )
@@ -283,7 +285,7 @@ export function SingleImageEditor({
           onClick={() => void handleDownload()}
         >
           {isDownloading ? (
-            <LoaderCircleIcon aria-hidden="true" className="icon-xs animate-spin" />
+            <LoadingIcon aria-hidden="true" className="icon-xs animate-spin" />
           ) : (
             <DownloadIcon aria-hidden="true" className="icon-xs" />
           )}
@@ -352,7 +354,7 @@ export function SingleImageEditor({
                   }
                 >
                   {isSubmitting ? (
-                    <LoaderCircleIcon aria-hidden="true" className="icon-sm animate-spin" />
+                    <LoadingIcon aria-hidden="true" className="icon-sm animate-spin" />
                   ) : (
                     <ImageResizeIcon aria-hidden="true" className="icon-sm" />
                   )}
@@ -489,7 +491,7 @@ export function SingleImageEditor({
                 void asset.refetch();
               }}
             >
-              <RotateCcw aria-hidden="true" className="icon-xs" />
+              <RetryIcon aria-hidden="true" className="icon-xs" />
               Retry
             </NodexButton>
           </div>

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check } from "@/components/shared/icons/generic-icons";
-import { EstimateIcon, PriorityValueIcon } from "@/components/shared/icons";
+import { CheckmarkIcon, EstimateIcon, PriorityValueIcon } from "@/components/shared/icons";
 import { EMPTY_PRIORITY_OPTION_VALUE, BOARD_PRIORITY_SELECT_OPTIONS } from "@/lib/board-options";
 import { NodexDropdownActionRow, NodexDropdownSurface } from "@/components/ui/dropdown";
 import { estimateOptions, estimateStyles } from "@/lib/types";
@@ -166,7 +165,7 @@ export function ChipPropertyEditor({
         >
           <span className="min-w-0 truncate">{renderItemContent(propertyType, item)}</span>
           {(propertyType === "tag" ? selectedSet.has(item.value) : item.value === currentValue) && (
-            <Check className="h-3.5 w-3.5 shrink-0 text-token-foreground" />
+            <CheckmarkIcon className="h-3.5 w-3.5 shrink-0 text-token-foreground" />
           )}
         </NodexDropdownActionRow>
       ))}

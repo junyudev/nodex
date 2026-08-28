@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react";
-import { LoaderCircleIcon } from "@/components/shared/icons/generic-icons";
 import {
   BrowserBackIcon,
   ImageZoomMinusIcon,
   DownloadIcon,
   EditIcon,
+  LoadingIcon,
   PlusIcon,
 } from "@/components/shared/icons";
 import {
@@ -319,7 +319,7 @@ export function ImagePreviewDialog({
               onClick={() => void handleDownload()}
             >
               {isDownloading ? (
-                <LoaderCircleIcon className="icon-xs animate-spin" aria-hidden="true" />
+                <LoadingIcon className="icon-xs animate-spin" aria-hidden="true" />
               ) : (
                 <DownloadIcon className="icon-xs" />
               )}
@@ -355,7 +355,7 @@ export function ImagePreviewDialog({
           >
             {previewAsset.isLoading ? (
               <div className="m-auto flex items-center gap-2 text-sm text-white/70" role="status">
-                <LoaderCircleIcon className="icon-xs animate-spin" aria-hidden="true" />
+                <LoadingIcon className="icon-xs animate-spin" aria-hidden="true" />
                 Loading image…
               </div>
             ) : previewAsset.isError || loadFailed ? (

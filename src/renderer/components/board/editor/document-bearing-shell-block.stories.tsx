@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { LayoutTemplate, RefreshCw } from "@/components/shared/icons/generic-icons";
+import { LayoutTemplate } from "@/components/shared/icons/generic-icons";
+import { RefreshIcon } from "@/components/shared/icons";
 import { useState } from "react";
 import { DocumentBearingShellVisual } from "./document-bearing-shell-block";
 import { BlockDisclosureStateStore } from "@/lib/block-disclosure-state";
@@ -30,7 +31,7 @@ function InteractiveShells() {
         </p>
         <DocumentBearingShellVisual
           {...sharedState}
-          icon={RefreshCw}
+          icon={RefreshIcon}
           label="Synced block"
           detail="Shared launch notes"
           identity="synced-source:launch-notes"
@@ -61,7 +62,7 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    icon: RefreshCw,
+    icon: RefreshIcon,
     label: "Synced block",
     detail: "Shared launch notes",
   },

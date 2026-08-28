@@ -1,4 +1,4 @@
-import { ListFilter } from "@/components/shared/icons/generic-icons";
+import { FilterIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { commitDatabaseViewOperations } from "@/lib/database-view-row-mutations";
@@ -98,7 +98,7 @@ export function DatabaseViewFilter({
     <NodexPopover open={open} onOpenChange={setOpen}>
       <NodexPopoverTrigger>
         <NodexIconButton
-          icon={ListFilter}
+          icon={FilterIcon}
           size="sm"
           active={open || hasFilter(model.query.view.config)}
           ariaLabel="Filter View"

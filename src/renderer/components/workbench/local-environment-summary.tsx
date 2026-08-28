@@ -1,6 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { LocalEnvironmentActionIcon } from "@/components/shared/icons";
-import { Check, ChevronDown, ChevronUp, Copy } from "@/components/shared/icons/generic-icons";
+import {
+  CheckmarkIcon,
+  ChevronDownIcon,
+  CopyIcon,
+  LocalEnvironmentActionIcon,
+} from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import { writeTextToClipboard } from "@/lib/clipboard";
@@ -77,7 +81,7 @@ function LocalEnvironmentScriptPreview({
             });
           }}
         >
-          {copied ? <Check className="icon-xs" /> : <Copy className="icon-xs" />}
+          {copied ? <CheckmarkIcon className="icon-xs" /> : <CopyIcon className="icon-xs" />}
         </NodexButton>
       </div>
       <LazySourceViewer
@@ -202,9 +206,9 @@ function ActionsSummary({ environment }: { environment: WorktreeEnvironmentDefin
                       }}
                     >
                       {expanded ? (
-                        <ChevronUp className="icon-xs" />
+                        <ChevronDownIcon className="icon-xs rotate-180" />
                       ) : (
-                        <ChevronDown className="icon-xs" />
+                        <ChevronDownIcon className="icon-xs" />
                       )}
                     </NodexButton>
                   ) : null}

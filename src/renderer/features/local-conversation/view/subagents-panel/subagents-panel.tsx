@@ -1,4 +1,4 @@
-import { ArrowLeft } from "@/components/shared/icons/generic-icons";
+import { BackIcon } from "@/components/shared/icons";
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -363,7 +363,7 @@ export function SubagentsPanelDetailHeader({
         className="flex size-6 cursor-interaction items-center justify-center rounded-md text-token-text-secondary hover:bg-token-bg-secondary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
         onClick={onBack}
       >
-        <ArrowLeft className="icon-xs" />
+        <BackIcon className="icon-xs" />
       </button>
       <SubagentAvatar seed={threadId} className="size-6" />
       <div className="min-w-0 flex-1 truncate text-sm font-medium text-token-foreground">

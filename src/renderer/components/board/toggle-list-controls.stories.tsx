@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { Layers3, RotateCcw, SlidersHorizontal } from "@/components/shared/icons/generic-icons";
+import { Layers3, SlidersHorizontal } from "@/components/shared/icons/generic-icons";
+import { ResetIcon } from "@/components/shared/icons";
 import { ToggleListRulesBody, ToggleListSummaryBadges } from "./toggle-list-rules-body";
 import { PROJECTION_ACTION_BTN } from "./editor/projection-drag-handle";
 import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
@@ -100,7 +101,7 @@ function ToggleListInlineToolbarStory() {
                 className={cn(PROJECTION_ACTION_BTN, "h-6 px-2")}
                 onClick={() => setSettings(getDefaultToggleListSettings())}
               >
-                <RotateCcw className="size-3" />
+                <ResetIcon className="size-3" />
                 Reset
               </button>
             </div>

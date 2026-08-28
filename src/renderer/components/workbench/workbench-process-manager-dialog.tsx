@@ -1,13 +1,14 @@
-import { ActivitySpinnerIcon, ProjectActionsIcon } from "@/components/shared/icons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ExternalLink,
-  Play,
-  RotateCw,
-  SquareTerminal,
-  StopCircle,
-  XIcon,
-} from "@/components/shared/icons/generic-icons";
+  ActivitySpinnerIcon,
+  CloseIcon,
+  OpenInIcon,
+  PlayIcon,
+  ProjectActionsIcon,
+  RefreshIcon,
+  StopIcon,
+  TerminalIcon,
+} from "@/components/shared/icons";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import {
@@ -170,9 +171,9 @@ function ProcessManagerActionMenu({
   const resumeIcon = busy ? (
     <ActivitySpinnerIcon className="size-3.5" />
   ) : row.status === "not-found" ? (
-    <Play className="size-3.5" />
+    <PlayIcon className="size-3.5" />
   ) : (
-    <RotateCw className="size-3.5" />
+    <RefreshIcon className="size-3.5" />
   );
   const resumeTooltip =
     row.command.trim().length === 0
@@ -204,7 +205,7 @@ function ProcessManagerActionMenu({
       }
     >
       <NodexDropdownItem
-        leftSlot={<ExternalLink className="size-3.5" />}
+        leftSlot={<OpenInIcon className="size-3.5" />}
         onSelect={() => onOpenOutput(row)}
       >
         Open output
@@ -212,7 +213,7 @@ function ProcessManagerActionMenu({
       <NodexDropdownSeparator />
       <NodexDropdownItem
         leftSlot={
-          busy ? <ActivitySpinnerIcon className="size-3.5" /> : <StopCircle className="size-3.5" />
+          busy ? <ActivitySpinnerIcon className="size-3.5" /> : <StopIcon className="size-3.5" />
         }
         disabled={!canStop}
         tooltipText={stopTooltip}
@@ -470,7 +471,7 @@ export function WorkbenchProcessManagerDialog({
               aria-label="Close process manager"
               className="justify-self-end text-token-description-foreground hover:text-token-foreground"
             >
-              <XIcon />
+              <CloseIcon />
             </NodexButton>
           </NodexDialogClose>
         </div>
@@ -529,7 +530,7 @@ export function WorkbenchProcessManagerDialog({
         </div>
 
         <div className="flex h-9 items-center gap-2 border-t border-token-border px-3 text-xs text-token-description-foreground">
-          <SquareTerminal className="size-3.5" />
+          <TerminalIcon className="size-3.5" />
           <span className="truncate">
             {visibleRows.length === 1 ? "1 process" : `${visibleRows.length} processes`}
           </span>

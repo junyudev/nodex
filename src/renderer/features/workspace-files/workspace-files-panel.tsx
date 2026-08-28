@@ -10,14 +10,8 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  PanelRightClose,
-  PanelRightOpen,
-  RefreshCw,
-} from "@/components/shared/icons/generic-icons";
+import { CheckmarkIcon, CopyIcon, OpenInIcon, RefreshIcon } from "@/components/shared/icons";
+import { PanelRightHiddenIcon, PanelRightVisibleIcon } from "@/components/shared/icons";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import {
   FileIcon,
@@ -262,7 +256,7 @@ function WorkspaceFilePreview({
           className="border-token-border bg-token-foreground/5 hover:bg-token-foreground/10 flex h-token-button-composer items-center gap-1.5 rounded-lg border px-2 text-base leading-[18px] text-token-text-primary"
           onClick={onOpenExternal}
         >
-          <ExternalLink className="icon-2xs" />
+          <OpenInIcon className="icon-2xs" />
           Open externally
         </button>
       </div>
@@ -1176,7 +1170,7 @@ export function WorkspaceFilesPanel({
               onClick={() => openExternal()}
               disabled={!selectedPath}
             >
-              <ExternalLink className="icon-2xs" />
+              <OpenInIcon className="icon-2xs" />
               Open
             </button>
             <NodexDropdownMenu
@@ -1193,7 +1187,7 @@ export function WorkspaceFilesPanel({
             >
               <NodexDropdownFlyoutSubmenuItem
                 label="Open with"
-                leftSlot={<ExternalLink className="icon-2xs" />}
+                leftSlot={<OpenInIcon className="icon-2xs" />}
                 disabled={!selectedPath}
               >
                 {FILE_LINK_OPENER_OPTIONS.map((option) => (
@@ -1220,14 +1214,18 @@ export function WorkspaceFilesPanel({
                   <NodexDropdownItem
                     data-tab-preview-pin-exempt="true"
                     onSelect={() => selectMarkdownMode("source")}
-                    rightSlot={markdownMode === "source" ? <Check className="icon-2xs" /> : null}
+                    rightSlot={
+                      markdownMode === "source" ? <CheckmarkIcon className="icon-2xs" /> : null
+                    }
                   >
                     Source
                   </NodexDropdownItem>
                   <NodexDropdownItem
                     data-tab-preview-pin-exempt="true"
                     onSelect={() => selectMarkdownMode("rendered")}
-                    rightSlot={markdownMode === "rendered" ? <Check className="icon-2xs" /> : null}
+                    rightSlot={
+                      markdownMode === "rendered" ? <CheckmarkIcon className="icon-2xs" /> : null
+                    }
                   >
                     Rendered Markdown
                   </NodexDropdownItem>
@@ -1237,14 +1235,14 @@ export function WorkspaceFilesPanel({
               <NodexDropdownItem
                 data-tab-preview-pin-exempt="true"
                 onSelect={toggleWordWrap}
-                rightSlot={wordWrap ? <Check className="icon-2xs" /> : null}
+                rightSlot={wordWrap ? <CheckmarkIcon className="icon-2xs" /> : null}
                 disabled={previewState.status !== "loaded" || previewState.binaryUrl !== null}
               >
                 Word wrap
               </NodexDropdownItem>
               <NodexDropdownItem
                 data-tab-preview-pin-exempt="true"
-                leftSlot={<Copy className="icon-2xs" />}
+                leftSlot={<CopyIcon className="icon-2xs" />}
                 onSelect={copyPath}
                 disabled={!selectedPath}
               >
@@ -1252,7 +1250,7 @@ export function WorkspaceFilesPanel({
               </NodexDropdownItem>
               <NodexDropdownItem
                 data-tab-preview-pin-exempt="true"
-                leftSlot={<Copy className="icon-2xs" />}
+                leftSlot={<CopyIcon className="icon-2xs" />}
                 onSelect={copyContents}
                 disabled={
                   previewState.status !== "loaded" ||
@@ -1274,7 +1272,7 @@ export function WorkspaceFilesPanel({
                 onClick={refreshDirectories}
                 disabled={!workspaceRoot}
               >
-                <RefreshCw className="icon-2xs" />
+                <RefreshIcon className="icon-2xs" />
               </button>
             </NodexTooltip>
             <NodexTooltip
@@ -1288,9 +1286,9 @@ export function WorkspaceFilesPanel({
                 disabled={!workspaceRoot}
               >
                 {treeVisible ? (
-                  <PanelRightClose className="icon-2xs" />
+                  <PanelRightHiddenIcon className="icon-2xs" />
                 ) : (
-                  <PanelRightOpen className="icon-2xs" />
+                  <PanelRightVisibleIcon className="icon-2xs" />
                 )}
               </button>
             </NodexTooltip>

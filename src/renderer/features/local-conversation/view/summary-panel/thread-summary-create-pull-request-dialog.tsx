@@ -1,9 +1,9 @@
 import {
-  ExternalLink,
-  GitBranch,
-  GitPullRequest,
-  PencilLine,
-} from "@/components/shared/icons/generic-icons";
+  BranchStatusIcon,
+  BrowserExternalIcon,
+  EditIcon,
+  ThreadSummaryCreatePullRequestIcon,
+} from "@/components/shared/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { NodexButton } from "@/components/ui/button";
@@ -407,7 +407,7 @@ export function ThreadSummaryCreatePullRequestDialog({
         <NodexDialogDescription className="sr-only">{statusMessage}</NodexDialogDescription>
         <div className="flex h-9 items-center justify-between gap-3 px-3 text-sm text-token-description-foreground">
           <span className="flex min-w-0 items-center gap-2">
-            <GitBranch className="icon-xs shrink-0" />
+            <BranchStatusIcon className="icon-xs shrink-0" />
             <span className="truncate">{branchLabel}</span>
           </span>
           <span className="shrink-0 text-size-chat">{statusMessage}</span>
@@ -486,7 +486,7 @@ export function ThreadSummaryCreatePullRequestDialog({
               disabled={!existingPullRequestUrl}
               onClick={() => openPullRequestUrl(existingPullRequestUrl)}
             >
-              <ExternalLink className="icon-xs" />
+              <BrowserExternalIcon className="icon-xs" />
               Open PR in browser
             </NodexButton>
           ) : (
@@ -498,7 +498,7 @@ export function ThreadSummaryCreatePullRequestDialog({
                 disabled={!canCreate}
                 onClick={() => void runCreatePullRequest({ draft: true, openInBrowser: false })}
               >
-                <PencilLine className="icon-xs" />
+                <EditIcon className="icon-xs" />
                 Create draft PR
               </NodexButton>
               <NodexButton
@@ -507,7 +507,7 @@ export function ThreadSummaryCreatePullRequestDialog({
                 disabled={!canCreate}
                 onClick={() => void runCreatePullRequest({ draft: false, openInBrowser: false })}
               >
-                <GitPullRequest className="icon-xs" />
+                <ThreadSummaryCreatePullRequestIcon className="icon-xs" />
                 Create PR
               </NodexButton>
               <NodexButton
@@ -517,7 +517,7 @@ export function ThreadSummaryCreatePullRequestDialog({
                 disabled={!canCreate}
                 onClick={() => void runCreatePullRequest({ draft: false, openInBrowser: true })}
               >
-                <ExternalLink className="icon-xs" />
+                <BrowserExternalIcon className="icon-xs" />
                 Open PR in browser
               </NodexButton>
             </>

@@ -279,6 +279,13 @@ work follows [Page Stage rich-editor performance](product-specs/card-stage-rich-
   meaning and normalize geometry at that boundary instead of scattering inline
   SVG paths or compensating classes through features. Search the other shared
   icon modules first; `generic-icons` and Lucide fallback icons are last resorts.
+- Give each reusable glyph one geometry owner. Distinct product meanings may
+  keep semantic wrappers, but those wrappers share the glyph instead of copying
+  SVG paths. Cross-runtime consumers share transport-neutral geometry data and
+  keep runtime-specific render adapters.
+- Keep diagrams, data marks, favicons, brand artwork, and rendering fixtures at
+  their owning boundary. Treat them as reviewed exceptions rather than forcing
+  them into the app-icon API.
 - Give visual roles an explicit semantic class or data attribute at their owning
   module. Do not style controls through localized accessibility copy such as
   `aria-label`, or through interaction mechanics such as `draggable`.

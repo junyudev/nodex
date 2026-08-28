@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useMotionValue, useTransform, type MotionStyle } from "motion/react";
-import { ArrowLeft } from "@/components/shared/icons/generic-icons";
+import { BackIcon } from "@/components/shared/icons";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { WorkbenchSidebar, type WorkbenchSidebarBodyProps } from "./workbench-sidebar";
@@ -2848,7 +2848,7 @@ export function WorkbenchRuntime({
         disabled={!shellCanNavigateBack}
         onClick={() => void executeShellNavigation("back")}
       >
-        <ArrowLeft className="icon-xs" />
+        <BackIcon className="icon-xs" />
       </WindowNavigationToolbarButton>
       <WindowNavigationToolbarButton
         label={forwardCommand.label}
@@ -2856,7 +2856,7 @@ export function WorkbenchRuntime({
         disabled={!shellCanNavigateForward}
         onClick={() => void executeShellNavigation("forward")}
       >
-        <ArrowLeft className="icon-xs -scale-x-100" />
+        <BackIcon className="icon-xs -scale-x-100" />
       </WindowNavigationToolbarButton>
     </div>
   );

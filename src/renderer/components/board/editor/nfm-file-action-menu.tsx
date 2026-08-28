@@ -12,8 +12,8 @@ import {
   useDictionary,
   useEditorState,
 } from "@blocknote/react";
-import { ReplaceIcon } from "@/components/shared/icons";
-import { ArrowLeft, TextCursorInput } from "@/components/shared/icons/generic-icons";
+import { BackIcon, ReplaceIcon } from "@/components/shared/icons";
+import { TextCursorInput } from "@/components/shared/icons/generic-icons";
 import { NodexFloatingSurface } from "@/components/ui/floating-surface";
 import { cn } from "@/lib/utils";
 import { type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
@@ -169,7 +169,7 @@ function NfmFileActionPanel({
           }}
           onClick={onClose}
         >
-          <ArrowLeft className="size-4" />
+          <BackIcon className="size-4" />
         </button>
         <span className="min-w-0 flex-1 truncate px-1 text-[13px] font-medium leading-5 text-token-foreground">
           {title}

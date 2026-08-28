@@ -25,8 +25,9 @@ import {
   CheckmarkIcon,
   ChevronDownIcon,
   DeleteIcon,
+  FormattingToolbarLinkIcon,
 } from "@/components/shared/icons";
-import { ImagePlus, Link2, UploadCloud } from "@/components/shared/icons/generic-icons";
+import { ImagePlus, UploadCloud } from "@/components/shared/icons/generic-icons";
 import { NodexButton } from "@/components/ui/button";
 import {
   NodexDropdownContent,
@@ -527,7 +528,7 @@ function FilePanelButton({
       onClick={onClick}
       aria-label={label}
     >
-      <Link2 className="size-4 text-token-text-secondary" />
+      <FormattingToolbarLinkIcon className="text-token-text-secondary" />
       {children ?? label}
     </NodexButton>
   );

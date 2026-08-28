@@ -1,12 +1,13 @@
-import { DatabaseIcon, DeleteIcon, PlusIcon } from "@/components/shared/icons";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  ArrowDown,
-  ArrowUp,
-  Columns3,
-  List,
-  SlidersHorizontal,
-} from "@/components/shared/icons/generic-icons";
+  DatabaseIcon,
+  DeleteIcon,
+  ListLayoutIcon,
+  MoveDownIcon,
+  MoveUpIcon,
+  PlusIcon,
+} from "@/components/shared/icons";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Columns3, SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import {
   databaseViewReferencedPropertyIdsV4,
   type DatabasePropertyOption,
@@ -113,7 +114,8 @@ const VIEW_LAYOUTS: readonly {
   { value: "board", label: "Board" },
 ];
 
-const viewLayoutIcon = (layout: DatabaseViewLayout) => (layout === "board" ? Columns3 : List);
+const viewLayoutIcon = (layout: DatabaseViewLayout) =>
+  layout === "board" ? Columns3 : ListLayoutIcon;
 
 const submitTrimmed = (
   event: FormEvent<HTMLFormElement>,
@@ -585,7 +587,7 @@ export function DatabaseManagementSurface({
                           onClick={() => setExpandedViewId(expanded ? null : view.viewId)}
                         />
                         <NodexIconButton
-                          icon={ArrowUp}
+                          icon={MoveUpIcon}
                           size="xs"
                           ariaLabel={`Move View ${view.name} up`}
                           disabled={
@@ -594,7 +596,7 @@ export function DatabaseManagementSurface({
                           onClick={() => submitView(moveUpBeforeId)}
                         />
                         <NodexIconButton
-                          icon={ArrowDown}
+                          icon={MoveDownIcon}
                           size="xs"
                           ariaLabel={`Move View ${view.name} down`}
                           disabled={

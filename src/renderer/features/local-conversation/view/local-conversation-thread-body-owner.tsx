@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
-import { CheckmarkIcon, RefreshIcon, ActivitySpinnerIcon } from "@/components/shared/icons";
+import {
+  ActivitySpinnerIcon,
+  CheckmarkIcon,
+  RefreshIcon,
+  RetryIcon,
+} from "@/components/shared/icons";
 import {
   useRegisterContentSearchSource,
   type ContentSearchLocalMatch,
@@ -164,7 +169,7 @@ function ThreadAttachmentFailureNotice({
         onClick={onRetry}
         className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg bg-token-foreground/5 px-2.5 text-xs font-medium text-token-text-primary hover:bg-token-foreground/10"
       >
-        <RefreshIcon className="icon-2xs shrink-0" />
+        <RetryIcon className="icon-2xs shrink-0" />
         Retry
       </button>
     </div>

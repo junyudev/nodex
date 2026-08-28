@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { ActivitySpinnerIcon } from "@/components/shared/icons";
+import { ActivitySpinnerIcon, ExpandPanelIcon, RestorePanelIcon } from "@/components/shared/icons";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import type { CodexTranscriptEntry } from "../../../../lib/types";
 import { cn } from "../../../../lib/utils";
@@ -249,17 +249,6 @@ export function TodoListCompactPillContent({ item }: TodoListSurfaceProps) {
   );
 }
 
-function ExpandIcon() {
-  return (
-    <svg viewBox="0 0 20 20" className="icon-2xs" fill="none" aria-hidden="true">
-      <path
-        d="M16.0299 3.0293C16.2896 2.76996 16.7107 2.76988 16.9703 3.0293C17.23 3.28899 17.23 3.711 16.9703 3.9707L13.2731 7.66797H16.9996L17.1344 7.68164C17.4372 7.74375 17.6645 8.01192 17.6647 8.33301C17.6647 8.65421 17.4372 8.92219 17.1344 8.98438L16.9996 8.99805H11.6666C11.2994 8.99801 11.0016 8.70026 11.0016 8.33301V3C11.0016 2.63275 11.2994 2.33499 11.6666 2.33496C12.0339 2.33496 12.3317 2.63273 12.3317 3V6.72754L16.0299 3.0293ZM8.99475 17C8.99475 17.3673 8.69698 17.665 8.32971 17.665C7.96258 17.6649 7.66467 17.3672 7.66467 17V13.2725L3.96741 16.9707C3.70771 17.2304 3.2857 17.2304 3.026 16.9707C2.7663 16.711 2.7663 16.289 3.026 16.0293L6.72424 12.332H2.9967C2.62955 12.332 2.33185 12.0341 2.33167 11.667C2.33167 11.2997 2.62943 11.002 2.9967 11.002H8.32971C8.69698 11.002 8.99475 11.2997 8.99475 11.667V17Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 export function TodoListSurface({ item }: TodoListSurfaceProps) {
   const steps = useMemo(() => parseTodoSteps(item), [item]);
   const completedCount = useMemo(() => countCompletedSteps(steps), [steps]);
@@ -322,7 +311,11 @@ export function TodoListSurface({ item }: TodoListSurfaceProps) {
                 setExpanded((current) => !current);
               }}
             >
-              <ExpandIcon />
+              {expanded ? (
+                <RestorePanelIcon className="icon-2xs" />
+              ) : (
+                <ExpandPanelIcon className="icon-2xs" />
+              )}
             </button>
           </div>
         </div>

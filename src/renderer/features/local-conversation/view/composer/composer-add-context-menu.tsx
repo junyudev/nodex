@@ -11,11 +11,10 @@ import {
   type SVGProps,
 } from "react";
 import {
-  CheckIcon,
   CircleDotIcon,
-  MessageSquareIcon,
+  MessageSquare,
   SplitIcon,
-  SparklesIcon,
+  Sparkles,
 } from "@/components/shared/icons/generic-icons";
 import {
   GoalTargetIcon,
@@ -25,6 +24,8 @@ import {
   ComposerAppshotIcon,
   ComposerPlanModeIcon,
   ComposerPluginsIcon,
+  CheckmarkIcon,
+  ConversationIcon,
   PlusIcon,
 } from "@/components/shared/icons";
 import { invoke } from "@/lib/api";
@@ -282,17 +283,6 @@ function ComposerSitesProjectIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function ComposerChatGptConversationIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" {...props}>
-      <path
-        d="M13.4746 8.00098C13.4746 5.18918 11.0524 2.85938 8 2.85938C4.94756 2.85938 2.52539 5.18918 2.52539 8.00098C2.52548 9.13438 2.98018 9.88391 3.55176 11.0156C3.62017 11.1511 3.63938 11.3067 3.60645 11.4551L3.34277 12.6416L4.62598 12.3096L4.74023 12.29C4.81669 12.2841 4.89333 12.2922 4.9668 12.3125L5.0752 12.3525L5.44238 12.5225C6.29248 12.9002 7.09158 13.1426 8 13.1426C11.0523 13.1426 13.4744 10.8126 13.4746 8.00098ZM14.5254 8.00098C14.5252 11.4483 11.5749 14.1924 8 14.1924C6.78477 14.1924 5.75932 13.8299 4.75488 13.3604L2.9873 13.8193C2.5113 13.9426 2.07317 13.5191 2.17969 13.0391L2.5498 11.3643C2.03641 10.3607 1.4747 9.38268 1.47461 8.00098C1.47461 4.55354 4.42502 1.80859 8 1.80859C11.575 1.80859 14.5254 4.55354 14.5254 8.00098Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 function getComposerSkillScopeLabel(input: {
   readonly scope: string;
   readonly skillPath: string;
@@ -380,7 +370,7 @@ function buildComposerSkillItem(
         iconUrl={skill.iconUrl}
         iconUrlDark={null}
         brandColor={skill.brandColor}
-        fallback={<SparklesIcon className="size-3.5" />}
+        fallback={<Sparkles className="size-3.5" />}
       />
     ),
     active: false,
@@ -455,7 +445,7 @@ function buildComposerChatGptConversationItem(
         },
       },
     },
-    icon: <ComposerChatGptConversationIcon className="size-4 shrink-0" />,
+    icon: <ConversationIcon className="size-4 shrink-0" />,
     active: false,
   };
 }
@@ -511,7 +501,7 @@ function ComposerContextRow({
           </span>
         ) : null}
         {item.active ? (
-          <CheckIcon
+          <CheckmarkIcon
             data-state="checked"
             className="icon-xs ml-auto shrink-0 text-token-text-link-foreground"
           />
@@ -1059,7 +1049,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
               },
             },
           },
-          icon: <MessageSquareIcon className="size-4 shrink-0" />,
+          icon: <MessageSquare className="size-4 shrink-0" />,
           active: false,
         }))
       : [];
@@ -1278,7 +1268,7 @@ const ComposerProjectMenuContent = forwardRef<
                   run: () => onProjectChange(null),
                 },
               },
-              icon: <MessageSquareIcon className="size-4 shrink-0" />,
+              icon: <MessageSquare className="size-4 shrink-0" />,
               active: projectSelector.selectedProjectId === null,
             },
           ]

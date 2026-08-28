@@ -1,4 +1,3 @@
-import { Info } from "@/components/shared/icons/generic-icons";
 import {
   useCallback,
   useDeferredValue,
@@ -10,7 +9,13 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { ThreadIcon, ActivitySpinnerIcon, PlusIcon, SearchIcon } from "@/components/shared/icons";
+import {
+  ActivitySpinnerIcon,
+  InfoIcon,
+  PlusIcon,
+  SearchIcon,
+  ThreadIcon,
+} from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   selectCommandPaletteChatResults,
@@ -148,7 +153,7 @@ function SendToThreadModeSelector({
                   className="inline-flex size-3.5 shrink-0 items-center justify-center text-token-description-foreground"
                   aria-hidden="true"
                 >
-                  <Info className="size-3 shrink-0" aria-hidden="true" />
+                  <InfoIcon className="size-3 shrink-0" aria-hidden="true" />
                 </span>
               </NodexTooltip>
             ) : null}

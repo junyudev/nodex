@@ -1,5 +1,5 @@
 import { DeleteIcon, PlusIcon } from "@/components/shared/icons";
-import { ArrowDown, ArrowUp, ListFilter } from "@/components/shared/icons/generic-icons";
+import { FilterIcon, MoveDownIcon, MoveUpIcon } from "@/components/shared/icons";
 import { useEffect, type ReactNode } from "react";
 import type {
   DatabaseJsonValue,
@@ -492,14 +492,14 @@ function SortEditor({
             className="w-24"
           />
           <NodexIconButton
-            icon={ArrowUp}
+            icon={MoveUpIcon}
             size="xs"
             ariaLabel={`Move sort ${index + 1} up`}
             disabled={disabled || index === 0}
             onClick={() => onChange(moveDatabaseViewSort(sorts, index, "up"))}
           />
           <NodexIconButton
-            icon={ArrowDown}
+            icon={MoveDownIcon}
             size="xs"
             ariaLabel={`Move sort ${index + 1} down`}
             disabled={disabled || index === sorts.length - 1}
@@ -586,7 +586,7 @@ export function DatabaseViewConfigEditor({
 
   const filterEditor = (
     <div className="flex items-start gap-2">
-      <ListFilter className="mt-1.5 size-3.5 shrink-0 text-token-description-foreground" />
+      <FilterIcon className="mt-1.5 size-3.5 shrink-0 text-token-description-foreground" />
       <div className="min-w-0 flex-1">
         {config.filter.kind === "group" ? (
           <FilterNodeEditor

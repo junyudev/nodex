@@ -1,5 +1,5 @@
 import { AppActivityIcon, SettingsGeneralIcon, StopIcon } from "@/components/shared/icons";
-import { SparklesIcon } from "@/components/shared/icons/generic-icons";
+import { Sparkles } from "@/components/shared/icons/generic-icons";
 import { cloneElement, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import type {
   CodexCommandAction,
@@ -130,7 +130,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
     case "stopped":
       return <StopIcon aria-hidden className={iconClassName} />;
     case "visualization":
-      return <SparklesIcon aria-hidden className={iconClassName} />;
+      return <Sparkles aria-hidden className={iconClassName} />;
     case "web-search":
       return <ConnectorGlobeIcon aria-hidden className={iconClassName} />;
     case "run-command":

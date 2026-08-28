@@ -1,5 +1,9 @@
-import { ActivitySpinnerIcon, ThreadIcon } from "@/components/shared/icons";
-import { CircleAlert, ShieldCheck, TextCursorInput } from "@/components/shared/icons/generic-icons";
+import {
+  ActivitySpinnerIcon,
+  PermissionAskForApprovalIcon,
+  ThreadIcon,
+} from "@/components/shared/icons";
+import { CircleAlert, TextCursorInput } from "@/components/shared/icons/generic-icons";
 import type { PageChatActivityPresentation } from "@/lib/page-chat-activity-presentation";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +22,7 @@ export function PageChatActivityGlyph({
     ) : activity.execution === "error" ? (
       <CircleAlert className="size-3" />
     ) : activity.execution === "approval" ? (
-      <ShieldCheck className="size-3" />
+      <PermissionAskForApprovalIcon className="size-3" />
     ) : activity.execution === "input" ? (
       <TextCursorInput className="size-3" />
     ) : (

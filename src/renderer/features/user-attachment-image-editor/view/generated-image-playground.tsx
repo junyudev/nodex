@@ -1,8 +1,12 @@
 import { useEffect, useState, type CSSProperties, type Ref } from "react";
 import { motion } from "motion/react";
-import { CheckmarkIcon, ImageCommentIcon, ImageMultiSelectIcon } from "@/components/shared/icons";
+import {
+  CheckmarkIcon,
+  ImageCommentIcon,
+  ImageMultiSelectIcon,
+  RetryIcon,
+} from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
-import { RotateCcw } from "@/components/shared/icons/generic-icons";
 import { cn } from "@/lib/utils";
 import { useResolvedImageAsset } from "../adapters/use-resolved-image-asset";
 import {
@@ -143,7 +147,7 @@ function GeneratedImagePlaygroundCard({
             void asset.refetch();
           }}
         >
-          <RotateCcw aria-hidden="true" className="icon-xs" />
+          <RetryIcon aria-hidden="true" className="icon-xs" />
           Retry
         </NodexButton>
       </div>

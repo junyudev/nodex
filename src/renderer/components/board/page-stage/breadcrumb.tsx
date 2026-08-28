@@ -1,5 +1,5 @@
 import { ChevronRightIcon } from "@/components/shared/icons";
-import { Ellipsis } from "@/components/shared/icons/generic-icons";
+import { MoreActionsIcon } from "@/components/shared/icons";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -125,7 +125,7 @@ export function PageStageBreadcrumb({
                       "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-token-description-foreground",
                   )}
                 >
-                  <Ellipsis className="icon-2xs shrink-0" />
+                  <MoreActionsIcon className="icon-2xs shrink-0" />
                 </button>
               }
             >

@@ -1,12 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
-import {
-  Check,
-  FolderGit2,
-  Settings2,
-  Shield,
-  Sparkles,
-} from "@/components/shared/icons/generic-icons";
+import { Shield, Sparkles } from "@/components/shared/icons/generic-icons";
 import {
   ArchiveIcon,
   DatabaseIcon,
@@ -21,6 +15,9 @@ import {
   SidePanelSideChatIcon,
   ConfigStatusIcon,
   EstimateIcon,
+  CheckmarkIcon,
+  SettingsGeneralIcon,
+  SettingsGitIcon,
   RefreshIcon,
   BoardIcon,
 } from "@/components/shared/icons";
@@ -182,14 +179,14 @@ function IconOnlyDropdownDemo() {
         <NodexDropdownTitle>Action icon</NodexDropdownTitle>
         <NodexDropdownItem
           leftSlot={<Sparkles className="size-4" />}
-          rightSlot={value === "run" ? <Check className="size-4" /> : null}
+          rightSlot={value === "run" ? <CheckmarkIcon className="size-4" /> : null}
           onSelect={() => setValue("run")}
         >
           Run
         </NodexDropdownItem>
         <NodexDropdownItem
           leftSlot={<Shield className="size-4" />}
-          rightSlot={value === "sandbox" ? <Check className="size-4" /> : null}
+          rightSlot={value === "sandbox" ? <CheckmarkIcon className="size-4" /> : null}
           onSelect={() => setValue("sandbox")}
         >
           Sandbox
@@ -319,12 +316,12 @@ function SearchableDropdownDemo() {
           {
             value: "nodex",
             label: "Nodex",
-            leftSlot: <FolderGit2 className="size-4" />,
+            leftSlot: <SettingsGitIcon className="size-4" />,
           },
           {
             value: "bundle",
             label: "Codex Electron readable bundle",
-            leftSlot: <FolderGit2 className="size-4" />,
+            leftSlot: <SettingsGitIcon className="size-4" />,
           },
         ]}
       />
@@ -342,7 +339,7 @@ function FlyoutSubmenuDropdownDemo() {
         contentWidth="sm"
         triggerButton={
           <NodexDropdownButtonTrigger showChevron={false} className="size-8 justify-center px-0">
-            <Settings2 className="size-4" />
+            <SettingsGeneralIcon className="size-4" />
           </NodexDropdownButtonTrigger>
         }
       >
@@ -361,13 +358,13 @@ function FlyoutSubmenuDropdownDemo() {
             <NodexDropdownItem
               key={limit}
               onSelect={() => setValue(limit)}
-              rightSlot={value === limit ? <Check className="size-4" /> : null}
+              rightSlot={value === limit ? <CheckmarkIcon className="size-4" /> : null}
             >
               {limit} items
             </NodexDropdownItem>
           ))}
         </NodexDropdownFlyoutSubmenuItem>
-        <NodexDropdownItem leftSlot={<FolderGit2 className="size-4" />}>
+        <NodexDropdownItem leftSlot={<SettingsGitIcon className="size-4" />}>
           Move down
         </NodexDropdownItem>
       </NodexDropdownMenu>
@@ -384,7 +381,7 @@ function CompactTooltipDemo() {
             type="button"
             className="inline-flex size-8 items-center justify-center rounded-full bg-token-main-surface-secondary text-token-description-foreground ring-1 ring-token-border"
           >
-            <Settings2 className="size-4" />
+            <SettingsGeneralIcon className="size-4" />
           </button>
         </NodexTooltip>
         <NodexTooltip

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Play, SendHorizontal } from "@/components/shared/icons/generic-icons";
-import { ActivitySpinnerIcon } from "@/components/shared/icons";
+import { SendHorizontal } from "@/components/shared/icons/generic-icons";
+import { ActivitySpinnerIcon, PlayIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { formatElapsedSince } from "@/lib/elapsed-time";
 import { cn } from "@/lib/utils";
@@ -55,7 +55,7 @@ function StatusIcon({
   pending: boolean;
 }) {
   if (pending) return <ActivitySpinnerIcon className="size-3" />;
-  if (thread?.statusType === "active") return <Play className="size-3 fill-current" />;
+  if (thread?.statusType === "active") return <PlayIcon className="size-3" />;
   return null;
 }
 

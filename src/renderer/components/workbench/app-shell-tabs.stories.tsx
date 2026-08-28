@@ -1,7 +1,6 @@
-import { BoardIcon } from "@/components/shared/icons";
+import { BoardIcon, CloseIcon, HistoryIcon } from "@/components/shared/icons";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { History, X } from "@/components/shared/icons/generic-icons";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { resolveFileResourceIcon } from "@/components/shared/file-resource-icon";
 import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
@@ -48,7 +47,7 @@ function AppShellTabsStory({ showInsertionPreview = false }: { showInsertionPrev
       title: historyOpen && tab.id === activeTabId ? "History" : tab.title,
       contextLabel: tab.contextLabel,
       titleLabel: tab.contextLabel ? `${tab.contextLabel} project, ${tab.title}` : undefined,
-      icon: historyOpen && tab.id === activeTabId ? History : BoardIcon,
+      icon: historyOpen && tab.id === activeTabId ? HistoryIcon : BoardIcon,
       closable: true,
       reorderable: true,
       splittable: true,
@@ -375,7 +374,7 @@ function RapidCloseEqualWidthsStory() {
     {
       id: "rapid:history",
       title: "History",
-      icon: History,
+      icon: HistoryIcon,
       closable: false,
       isLabel: true,
       reorderable: false,
@@ -459,7 +458,7 @@ export const PageStagePreviewTab: Story = {
                 className="inline-flex size-7 items-center justify-center rounded-md text-token-description-foreground hover:bg-token-main-surface-tertiary hover:text-token-foreground"
                 aria-label="Close"
               >
-                <X className="size-4" />
+                <CloseIcon className="size-4" />
               </button>
             </div>
             <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-token-description-foreground">
@@ -624,7 +623,7 @@ export const ContextMenuTabStates: Story = {
       {
         id: "preview",
         title: "Files",
-        icon: History,
+        icon: HistoryIcon,
         closable: true,
         preview: true,
         reorderable: false,
@@ -650,7 +649,7 @@ export const ContextMenuTabStates: Story = {
       {
         id: "history",
         title: "History",
-        icon: History,
+        icon: HistoryIcon,
         isLabel: true,
         closable: false,
         reorderable: false,

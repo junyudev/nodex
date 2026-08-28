@@ -1,7 +1,6 @@
-import { SearchIcon, PlusIcon } from "@/components/shared/icons";
+import { CheckmarkIcon, SearchIcon, PlusIcon } from "@/components/shared/icons";
 import { useState, useMemo, useCallback } from "react";
 import { Sidebar } from "@excalidraw/excalidraw";
-import { Check } from "@/components/shared/icons/generic-icons";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { BoardSummary, DatabasePageSummary } from "@/lib/types";
@@ -101,7 +100,7 @@ export function CanvasCardSidebar({
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1 truncate text-xs font-medium">
-                        {isPlaced && <Check className="size-3 shrink-0 text-green-500" />}
+                        {isPlaced && <CheckmarkIcon className="size-3 shrink-0 text-green-500" />}
                         {card.title}
                       </div>
                       <div className="mt-0.5 flex items-center gap-1">

@@ -17,13 +17,13 @@ import {
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
+import { ChevronLeft, Minus } from "@/components/shared/icons/generic-icons";
 import {
-  Check,
-  ChevronLeft,
+  CheckmarkIcon,
   ChevronRightIcon,
-  Minus,
-} from "@/components/shared/icons/generic-icons";
-import { CompactChevronDownIcon, PlusIcon } from "@/components/shared/icons";
+  CompactChevronDownIcon,
+  PlusIcon,
+} from "@/components/shared/icons";
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
@@ -680,7 +680,7 @@ function PdfZoomControl(input: {
           key={option}
           className="!rounded-[6px] !py-[5px] !ps-2 !pe-[5px] text-token-text-primary"
           rightSlot={
-            <Check
+            <CheckmarkIcon
               className={cn(
                 "icon-sm",
                 !fitToWidth && Math.round(option * 100) === zoomPercent ? undefined : "invisible",
@@ -695,7 +695,9 @@ function PdfZoomControl(input: {
       <NodexDropdownSeparator className="py-0" />
       <NodexDropdownItem
         className="!rounded-[6px] !py-[5px] !ps-2 !pe-[5px] text-token-text-primary"
-        rightSlot={<Check className={cn("icon-sm", fitToWidth ? undefined : "invisible")} />}
+        rightSlot={
+          <CheckmarkIcon className={cn("icon-sm", fitToWidth ? undefined : "invisible")} />
+        }
         onSelect={onFitToWidth}
       >
         Fit width

@@ -1,11 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useSyncExternalStore } from "react";
-import {
-  AlertCircle,
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  X,
-} from "@/components/shared/icons/generic-icons";
+import { AlertCircle, AlertTriangle } from "@/components/shared/icons/generic-icons";
+import { CloseIcon, InfoIcon, SuccessCircleIcon } from "@/components/shared/icons";
 import { NodexButton, type NodexButtonProps } from "@/components/ui/button";
 import { motion } from "motion/react";
 import { APP_SHELL_TOAST_LAYER_CLASS } from "@/lib/app-shell-layers";
@@ -299,14 +294,14 @@ function ToastDismissButton({ onClick }: { onClick: () => void }) {
       aria-label="Dismiss notification"
       onClick={onClick}
     >
-      <X className="size-3.5" />
+      <CloseIcon className="size-3.5" />
     </button>
   );
 }
 
 function ToastLevelIcon({ level }: { level: ToastLevel }) {
   if (level === "success") {
-    return <CheckCircle2 className="size-4 shrink-0 text-token-charts-green" />;
+    return <SuccessCircleIcon className="size-4 shrink-0 text-token-charts-green" />;
   }
 
   if (level === "warning") {
@@ -317,7 +312,7 @@ function ToastLevelIcon({ level }: { level: ToastLevel }) {
     return <AlertCircle className="size-4 shrink-0 text-token-charts-red" />;
   }
 
-  return <Info className="size-4 shrink-0 text-token-description-foreground" />;
+  return <InfoIcon className="size-4 shrink-0 text-token-description-foreground" />;
 }
 
 function plainToastToneClassName(level: ToastLevel): string {

@@ -372,9 +372,9 @@ function PageCreateDialogContent({
                 className="grid size-7 place-items-center rounded-full text-token-description-foreground outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {expanded ? (
-                  <ExpandPanelIcon className="icon-xs" />
-                ) : (
                   <RestorePanelIcon className="icon-xs" />
+                ) : (
+                  <ExpandPanelIcon className="icon-xs" />
                 )}
               </button>
               <NodexDialogClose>

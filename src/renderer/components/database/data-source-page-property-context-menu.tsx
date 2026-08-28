@@ -7,11 +7,8 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import {
-  ChevronRightIcon,
-  Loader2,
-  SlidersHorizontal,
-} from "@/components/shared/icons/generic-icons";
+import { ChevronRightIcon, LoadingIcon } from "@/components/shared/icons";
+import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import {
   NodexContextMenuItem,
   NodexContextMenuSubmenu,
@@ -59,7 +56,7 @@ const PropertyMenuTrigger = forwardRef<
     >
       <span className="flex size-5 shrink-0 items-center justify-center text-token-description-foreground">
         {descriptor.pending ? (
-          <Loader2 className="size-4 animate-spin" strokeWidth={1.8} />
+          <LoadingIcon className="size-4 animate-spin" />
         ) : (
           <Icon className="size-4" />
         )}

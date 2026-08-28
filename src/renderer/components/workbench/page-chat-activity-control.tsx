@@ -1,8 +1,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState, type MouseEvent } from "react";
 
-import { ActivitySpinnerIcon } from "@/components/shared/icons";
-import { XIcon } from "@/components/shared/icons/generic-icons";
+import { ActivitySpinnerIcon, CloseIcon } from "@/components/shared/icons";
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
 import { NodexButton } from "@/components/ui/button";
 import {
@@ -90,7 +89,7 @@ function RelatedChatRow({
           className="size-6 text-token-description-foreground opacity-0 group-hover/related-chat:opacity-100 group-focus-within/related-chat:opacity-100"
           onClick={onRemove}
         >
-          {removing ? <ActivitySpinnerIcon className="size-3" /> : <XIcon className="size-3" />}
+          {removing ? <ActivitySpinnerIcon className="size-3" /> : <CloseIcon className="size-3" />}
         </NodexButton>
       ) : null}
     </div>

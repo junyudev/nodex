@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "@/components/shared/icons/generic-icons";
+import { BackIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
 import {
@@ -63,7 +63,7 @@ export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void 
           size="xs"
           onClick={onBack}
         >
-          <ArrowLeft className="icon-xs" />
+          <BackIcon className="icon-xs" />
           Back
         </NodexButton>
       }

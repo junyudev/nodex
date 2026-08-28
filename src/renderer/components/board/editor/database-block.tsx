@@ -1,5 +1,4 @@
-import { DatabaseIcon } from "@/components/shared/icons";
-import { ExternalLink } from "@/components/shared/icons/generic-icons";
+import { DatabaseIcon, OpenInIcon } from "@/components/shared/icons";
 import { createReactBlockSpec } from "@blocknote/react";
 
 import { useBlockReferenceHostRuntime } from "@/components/block-documents/block-reference-runtime-context";
@@ -28,7 +27,7 @@ export function DatabaseBlockSurface({
         {loading ? "Opening database…" : title}
       </span>
       {onOpen ? (
-        <ExternalLink className="size-3.5 shrink-0 text-token-description-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+        <OpenInIcon className="size-3.5 shrink-0 text-token-description-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
       ) : null}
     </button>
   );

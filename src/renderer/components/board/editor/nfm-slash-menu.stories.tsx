@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { DefaultReactSuggestionItem, SuggestionMenuProps } from "@blocknote/react";
-import { Ellipsis, Settings2 } from "@/components/shared/icons/generic-icons";
+import { SettingsGeneralIcon, MoreActionsIcon } from "@/components/shared/icons";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { ThreadIcon, BellIcon, CalendarIcon, ClockIcon, PageIcon } from "@/components/shared/icons";
 import {
@@ -104,7 +104,7 @@ const MENTION_ITEMS: NfmSuggestionItem[] = [
     hint: null,
     tooltipContent: null,
     mentionUtility: { kind: "expand_section", family: "page" },
-    icon: <Ellipsis className="icon-xs shrink-0" aria-hidden="true" />,
+    icon: <MoreActionsIcon className="icon-xs shrink-0" aria-hidden="true" />,
     onItemClick: () => undefined,
   },
   {
@@ -198,7 +198,7 @@ const LONG_ITEMS: NfmSuggestionItem[] = [
     subtext: "Insert a one-send configuration chip with model, reasoning, and plan-mode overrides",
     aliases: ["agent-config"],
     group: "Others",
-    icon: <Settings2 size={16} />,
+    icon: <SettingsGeneralIcon className="size-4" />,
     hint: null,
     onItemClick: () => undefined,
   },

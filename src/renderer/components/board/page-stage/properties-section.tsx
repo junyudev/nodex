@@ -13,12 +13,12 @@ import { DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME } from "@/components/d
 import {
   ActivitySpinnerIcon,
   ChevronDownIcon,
+  CloseIcon,
   PageMenuOpenNewChatIcon,
   PlusIcon,
   ThreadIcon,
 } from "@/components/shared/icons";
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
-import { XIcon } from "@/components/shared/icons/generic-icons";
 import { presentPageChatItemActivity } from "@/lib/page-chat-activity-presentation";
 import {
   advancePageStageQuietPropertiesState,
@@ -92,7 +92,7 @@ export function RelatedChatPropertyChip({
           className="pointer-events-none absolute right-0.5 top-1/2 z-10 flex size-5 -translate-y-1/2 shrink-0 items-center justify-center rounded-sm bg-[color-mix(in_srgb,var(--color-token-foreground)_5%,var(--color-token-main-surface-primary))] text-token-description-foreground opacity-0 hover:bg-[color-mix(in_srgb,var(--color-token-foreground)_10%,var(--color-token-main-surface-primary))] hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus focus-visible:text-token-text-primary group-hover/related-chat:pointer-events-auto group-hover/related-chat:opacity-100 group-focus-within/related-chat:pointer-events-auto group-focus-within/related-chat:opacity-100 disabled:pointer-events-none disabled:opacity-40"
           onClick={() => void onRemove()}
         >
-          <XIcon className="size-3" />
+          <CloseIcon className="size-3" />
         </button>
       ) : null}
     </span>

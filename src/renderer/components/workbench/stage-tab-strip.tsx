@@ -1,5 +1,4 @@
-import { ActivitySpinnerIcon, PlusIcon } from "@/components/shared/icons";
-import { X } from "@/components/shared/icons/generic-icons";
+import { ActivitySpinnerIcon, CloseIcon, PlusIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "../../lib/utils";
 
@@ -73,7 +72,7 @@ export function StageTabStrip({
                       onCloseTab(tab.id);
                     }}
                   >
-                    <X className="size-2.5" />
+                    <CloseIcon className="size-2.5" />
                   </span>
                 )}
                 {isActive && showActiveUnderline && (

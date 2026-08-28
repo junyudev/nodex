@@ -2,16 +2,16 @@ import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 import type { HookEventName } from "@nodex/codex-app-server-protocol/v2/HookEventName";
 import type { HookMetadata } from "@nodex/codex-app-server-protocol/v2/HookMetadata";
 import type { HooksListEntry } from "@nodex/codex-app-server-protocol/v2/HooksListEntry";
+import { Plug, TriangleAlert, UserRound } from "@/components/shared/icons/generic-icons";
 import {
-  ChevronDown,
-  FolderGit2,
-  Plug,
-  RefreshCw,
-  ShieldCheck,
-  TriangleAlert,
-  UserRound,
-} from "@/components/shared/icons/generic-icons";
-import { ActivitySpinnerIcon, FileIcon, HooksIcon } from "@/components/shared/icons";
+  ActivitySpinnerIcon,
+  ChevronDownIcon,
+  FileIcon,
+  HooksIcon,
+  PermissionDefaultIcon,
+  RefreshIcon,
+  SettingsGitIcon,
+} from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
@@ -91,8 +91,8 @@ const HOOK_SOURCE_LABELS: Record<CodexHooksSettingsSource, string> = {
 const HOOK_SOURCE_ICONS: Record<CodexHooksSettingsSource, ComponentType<{ className?: string }>> = {
   plugin: Plug,
   user: UserRound,
-  admin: ShieldCheck,
-  project: FolderGit2,
+  admin: PermissionDefaultIcon,
+  project: SettingsGitIcon,
   sessionFlags: HooksIcon,
   unknown: HooksIcon,
 };
@@ -385,7 +385,7 @@ function HookRow({
               </button>
             </NodexTooltip>
           ) : null}
-          <ChevronDown
+          <ChevronDownIcon
             aria-hidden="true"
             className={cn(
               "icon-2xs pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 text-token-text-secondary",
@@ -401,7 +401,7 @@ function HookRow({
               }
             >
               <NodexButton variant="outline" size="xs" onClick={() => onTrust(hook)}>
-                <ShieldCheck className="icon-2xs" />
+                <PermissionDefaultIcon className="icon-2xs" />
                 Trust
               </NodexButton>
             </NodexTooltip>
@@ -455,7 +455,7 @@ function HooksIssues({ entry }: { entry: CodexHooksSourceEntry }) {
           <TriangleAlert className="icon-xs shrink-0 text-token-editor-warning-foreground" />
           {issueCount} {issueCount === 1 ? "issue" : "issues"} loading hooks for this source
         </span>
-        <ChevronDown
+        <ChevronDownIcon
           className={cn("icon-2xs transition-transform", expanded ? "rotate-180" : null)}
         />
       </button>
@@ -668,9 +668,9 @@ export function CodexHooksSettingsView({
             onClick={onRefresh}
           >
             {refreshing ? (
-              <ActivitySpinnerIcon className="icon-xs" icon={RefreshCw} />
+              <ActivitySpinnerIcon className="icon-xs" icon={RefreshIcon} />
             ) : (
-              <RefreshCw className="icon-xs" />
+              <RefreshIcon className="icon-xs" />
             )}
           </NodexButton>
         </NodexTooltip>

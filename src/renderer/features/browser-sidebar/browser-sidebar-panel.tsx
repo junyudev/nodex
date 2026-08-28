@@ -13,24 +13,17 @@ import {
 } from "react";
 import type { MotionValue } from "motion/react";
 import {
-  Check,
   AlertTriangle,
   ContactRound,
-  History,
-  Info,
   KeyRound,
   LockKeyhole,
   Maximize2,
   Minus,
-  Pause,
-  Play,
   Printer,
   Puzzle,
   RotateCcw,
-  Settings2,
   Smartphone,
   WifiOff,
-  X,
 } from "@/components/shared/icons/generic-icons";
 import {
   BROWSER_SIDEBAR_DEVICE_PRESETS,
@@ -143,9 +136,18 @@ import {
   BrowserMoreIcon,
   BrowserReloadIcon,
   BrowserScreenshotIcon,
+  CheckmarkIcon,
+  CloseIcon,
   StopIcon,
   FolderOpenIcon,
+  HistoryIcon,
+  InfoIcon,
+  OpenInIcon,
+  PauseIcon,
+  PlayIcon,
   PlusIcon,
+  ResetIcon,
+  SettingsGeneralIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownButtonTrigger,
@@ -1596,7 +1598,7 @@ function BrowserSiteInfoMenu({
           disabled={disabled}
           onMouseDown={(event) => event.preventDefault()}
         >
-          {secure ? <LockKeyhole className="icon-xs" /> : <Info className="icon-xs" />}
+          {secure ? <LockKeyhole className="icon-xs" /> : <InfoIcon className="icon-xs" />}
         </button>
       }
     >
@@ -1935,7 +1937,7 @@ function BrowserOverflowMenu({
           onClick={onResetZoom}
           aria-label="Reset zoom"
         >
-          <RotateCcw className="icon-xs" />
+          <ResetIcon className="icon-xs" />
         </button>
       </div>
       <NodexDropdownSeparator />
@@ -1962,7 +1964,7 @@ function BrowserOverflowMenu({
         Contact info
       </NodexDropdownItem>
       <NodexDropdownItem
-        leftSlot={<History className="icon-xs" />}
+        leftSlot={<HistoryIcon className="icon-xs" />}
         onSelect={() => onOpenSettings("history")}
       >
         History
@@ -1974,7 +1976,7 @@ function BrowserOverflowMenu({
         Extensions
       </NodexDropdownItem>
       <NodexDropdownItem
-        leftSlot={<Settings2 className="icon-xs" />}
+        leftSlot={<SettingsGeneralIcon className="icon-xs" />}
         onSelect={() => onOpenSettings("browser")}
       >
         Browser settings
@@ -2124,7 +2126,7 @@ export function BrowserDownloadsPage({
           aria-label="Close downloads"
           onClick={onClose}
         >
-          <X className="icon-sm" />
+          <CloseIcon className="icon-sm" />
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -2193,13 +2195,13 @@ function BrowserDownloadRow({
               onClick={() => action(download.status === "paused" ? "resume" : "pause")}
             >
               {download.status === "paused" ? (
-                <Play className="icon-xs" />
+                <PlayIcon className="icon-xs" />
               ) : (
-                <Pause className="icon-xs" />
+                <PauseIcon className="icon-xs" />
               )}
             </BrowserDownloadActionButton>
             <BrowserDownloadActionButton label="Cancel" onClick={() => action("cancel")}>
-              <X className="icon-xs" />
+              <CloseIcon className="icon-xs" />
             </BrowserDownloadActionButton>
           </>
         ) : (
@@ -2207,7 +2209,7 @@ function BrowserDownloadRow({
             {download.status === "completed" ? (
               <>
                 <BrowserDownloadActionButton label="Open" onClick={() => action("open")}>
-                  <Play className="icon-xs" />
+                  <OpenInIcon className="icon-xs" />
                 </BrowserDownloadActionButton>
                 <BrowserDownloadActionButton
                   label="Show in folder"
@@ -2304,7 +2306,9 @@ export function BrowserDeviceToolbar({
         {BROWSER_SIDEBAR_DEVICE_PRESETS.map((preset) => (
           <NodexDropdownItem
             key={preset.id}
-            rightSlot={preset.id === selectedPreset.id ? <Check className="icon-xs" /> : null}
+            rightSlot={
+              preset.id === selectedPreset.id ? <CheckmarkIcon className="icon-xs" /> : null
+            }
             onSelect={() =>
               onViewportChange({
                 width: preset.width,
@@ -2373,7 +2377,7 @@ export function BrowserDeviceToolbar({
         aria-label="Close device toolbar"
         onClick={onClose}
       >
-        <X className="icon-xs" />
+        <CloseIcon className="icon-xs" />
       </button>
     </div>
   );
@@ -2725,19 +2729,25 @@ export function BrowserNewTabState({
               }
             >
               <NodexDropdownItem
-                rightSlot={settings.showMode === "online" ? <Check className="icon-xs" /> : null}
+                rightSlot={
+                  settings.showMode === "online" ? <CheckmarkIcon className="icon-xs" /> : null
+                }
                 onSelect={() => setShowMode("online")}
               >
                 Online
               </NodexDropdownItem>
               <NodexDropdownItem
-                rightSlot={settings.showMode === "all" ? <Check className="icon-xs" /> : null}
+                rightSlot={
+                  settings.showMode === "all" ? <CheckmarkIcon className="icon-xs" /> : null
+                }
                 onSelect={() => setShowMode("all")}
               >
                 All
               </NodexDropdownItem>
               <NodexDropdownItem
-                rightSlot={settings.showMode === "hidden" ? <Check className="icon-xs" /> : null}
+                rightSlot={
+                  settings.showMode === "hidden" ? <CheckmarkIcon className="icon-xs" /> : null
+                }
                 onSelect={() => setShowMode("hidden")}
               >
                 Hidden
@@ -2745,14 +2755,18 @@ export function BrowserNewTabState({
               <NodexDropdownSeparator />
               <NodexDropdownItem
                 rightSlot={
-                  settings.sortMode === "recently-used" ? <Check className="icon-xs" /> : null
+                  settings.sortMode === "recently-used" ? (
+                    <CheckmarkIcon className="icon-xs" />
+                  ) : null
                 }
                 onSelect={() => setSortMode("recently-used")}
               >
                 Recently used
               </NodexDropdownItem>
               <NodexDropdownItem
-                rightSlot={settings.sortMode === "origin" ? <Check className="icon-xs" /> : null}
+                rightSlot={
+                  settings.sortMode === "origin" ? <CheckmarkIcon className="icon-xs" /> : null
+                }
                 onSelect={() => setSortMode("origin")}
               >
                 Origin
@@ -2935,7 +2949,7 @@ function LocalServerCard({
                   aria-label={`Remove route ${route.path}`}
                   onClick={() => onRemoveRoute(route.path)}
                 >
-                  <X className="icon-2xs" />
+                  <CloseIcon className="icon-2xs" />
                 </button>
               </div>
             ))
@@ -2949,7 +2963,11 @@ function LocalServerCard({
           aria-label={hiddenMode ? `Unhide ${server.origin}` : `Hide ${server.origin}`}
           onClick={hiddenMode ? onUnhide : onHide}
         >
-          {hiddenMode ? <Check className="icon-xs" /> : <BrowserHideIcon className="icon-xs" />}
+          {hiddenMode ? (
+            <CheckmarkIcon className="icon-xs" />
+          ) : (
+            <BrowserHideIcon className="icon-xs" />
+          )}
         </button>
       </div>
     </div>
@@ -3083,7 +3101,7 @@ export function BrowserAnnotationComposer({
                     ? `Region ${index + 1}`
                     : anchor.selector || `Element ${index + 1}`}
               </span>
-              <X className="icon-xs shrink-0" />
+              <CloseIcon className="icon-xs shrink-0" />
             </button>
           </NodexTooltip>
         ))}

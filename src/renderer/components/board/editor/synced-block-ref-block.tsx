@@ -1,4 +1,4 @@
-import { RefreshCw } from "@/components/shared/icons/generic-icons";
+import { RefreshIcon } from "@/components/shared/icons";
 import { createReactBlockSpec } from "@blocknote/react";
 import { syncedBlockRefBlockConfig } from "../../../../shared/block-documents/blocknote-schema-config";
 import { DocumentBearingShellBlock } from "./document-bearing-shell-block";
@@ -11,7 +11,7 @@ import { DocumentBearingShellBlock } from "./document-bearing-shell-block";
 export const createSyncedBlockRefBlockSpec = createReactBlockSpec(syncedBlockRefBlockConfig, {
   render: ({ block }) => (
     <DocumentBearingShellBlock
-      icon={RefreshCw}
+      icon={RefreshIcon}
       label="Synced block"
       detail={block.props.sourceBlockId || "Shared content"}
       identity={block.props.sourceBlockId}

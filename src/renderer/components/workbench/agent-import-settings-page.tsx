@@ -1,5 +1,9 @@
-import { ActivitySpinnerIcon, FolderOpenIcon } from "@/components/shared/icons";
-import { Check, RefreshCw } from "@/components/shared/icons/generic-icons";
+import {
+  ActivitySpinnerIcon,
+  CheckmarkIcon,
+  FolderOpenIcon,
+  RefreshIcon,
+} from "@/components/shared/icons";
 import { useCallback, useEffect, useState } from "react";
 import type {
   AgentImportProgress,
@@ -91,7 +95,7 @@ function ImportItemCheckbox({
       role="checkbox"
       type="button"
     >
-      <Check className="icon-xxs shrink-0" />
+      <CheckmarkIcon className="icon-xxs shrink-0" />
     </button>
   );
 }
@@ -203,9 +207,9 @@ export function AgentImportSettingsPage({
               variant="secondary"
             >
               {scanningSource === source.kind ? (
-                <ActivitySpinnerIcon className="icon-2xs shrink-0" icon={RefreshCw} />
+                <ActivitySpinnerIcon className="icon-2xs shrink-0" icon={RefreshIcon} />
               ) : (
-                <RefreshCw className="icon-2xs shrink-0" />
+                <RefreshIcon className="icon-2xs shrink-0" />
               )}
               {scanningSource === source.kind ? "Scanning…" : "Scan"}
             </NodexButton>

@@ -10,7 +10,7 @@ import {
   ActivitySpinnerIcon,
   CloseIcon,
   PendingWorktreeLocalIcon,
-  PendingWorktreeRetryIcon,
+  RetryIcon,
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -219,7 +219,7 @@ export function PendingWorktreeRouteView({
         ) : null}
         {availableActions.canRetry ? (
           <PendingWorktreeActionButton tone="ghost" onClick={onRetry}>
-            <PendingWorktreeRetryIcon />
+            <RetryIcon />
             Retry
           </PendingWorktreeActionButton>
         ) : null}

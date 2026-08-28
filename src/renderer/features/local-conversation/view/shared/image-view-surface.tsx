@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ImageIcon, LoaderCircleIcon } from "@/components/shared/icons/generic-icons";
+import { ImageEditorTabIcon, LoadingIcon } from "@/components/shared/icons";
 import {
   ImagePreviewDialog,
   resolveImageDisplaySource,
@@ -54,7 +54,7 @@ function ResolvedInspectedImageThumbnail({
         className="flex size-20 items-center justify-center rounded-lg border border-token-border-heavy text-token-description-foreground"
         role="status"
       >
-        <LoaderCircleIcon aria-hidden="true" className="icon-xs animate-spin" />
+        <LoadingIcon aria-hidden="true" className="icon-xs animate-spin" />
       </div>
     );
   }
@@ -128,7 +128,7 @@ export function ImageViewSurface({ imagePaths }: { imagePaths: readonly string[]
           <ThreadRichActivityHeader
             status="completed"
             icon={
-              <ImageIcon
+              <ImageEditorTabIcon
                 aria-hidden="true"
                 className="icon-xs shrink-0 text-token-conversation-body"
               />

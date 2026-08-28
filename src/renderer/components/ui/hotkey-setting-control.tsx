@@ -5,7 +5,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { DeleteIcon, EditIcon, ShortcutResetIcon } from "../shared/icons";
+import { DeleteIcon, EditIcon, ResetIcon } from "../shared/icons";
 import {
   formatAcceleratorLabel,
   keyboardEventToAccelerator,
@@ -388,7 +388,7 @@ export function HotkeySettingControl({
             disabled={disabled}
             onClick={onReset}
           >
-            <ShortcutResetIcon />
+            <ResetIcon />
           </button>
         ) : null}
       </div>

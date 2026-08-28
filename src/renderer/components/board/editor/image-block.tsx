@@ -8,7 +8,7 @@ import {
   type ReactCustomBlockRenderProps,
 } from "@blocknote/react";
 import { useEffect, useState, type ReactNode } from "react";
-import { FileImage } from "@/components/shared/icons/generic-icons";
+import { NfmImageBlockIcon } from "@/components/shared/icons";
 import { readManagedImageByteLength } from "@/lib/assets";
 import { parseAssetSource } from "../../../../shared/assets";
 import { parsePageFileSource } from "../../../../shared/page-files";
@@ -174,7 +174,7 @@ function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) 
       contentEditable={false}
       draggable={false}
     >
-      <FileImage className="size-5 shrink-0 text-token-foreground" />
+      <NfmImageBlockIcon className="size-5 text-token-foreground" />
       <span className="min-w-0 truncate text-[15px] leading-5 text-token-foreground">{name}</span>
       {fileSize !== null ? (
         <span className="shrink-0 text-[15px] leading-5 text-token-text-secondary">
@@ -221,7 +221,7 @@ function NfmImageBlock(props: ImageBlockRenderProps) {
       <div className="nfm-image-file-block-content-wrapper flex w-full flex-col">
         <AddFileButton
           {...(props as unknown as Parameters<typeof AddFileButton>[0])}
-          buttonIcon={<FileImage className="size-6" />}
+          buttonIcon={<NfmImageBlockIcon className="size-6" />}
         />
       </div>
     );
@@ -238,7 +238,7 @@ function NfmImageBlock(props: ImageBlockRenderProps) {
   return (
     <ResizableFileBlockWrapper
       {...(props as unknown as Parameters<typeof ResizableFileBlockWrapper>[0])}
-      buttonIcon={<FileImage className="size-6" />}
+      buttonIcon={<NfmImageBlockIcon className="size-6" />}
     >
       <ImagePreview {...props} />
     </ResizableFileBlockWrapper>

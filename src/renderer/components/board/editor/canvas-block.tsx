@@ -1,4 +1,4 @@
-import { CanvasIcon, EditIcon } from "@/components/shared/icons";
+import { CanvasIcon, EditIcon, OpenInIcon } from "@/components/shared/icons";
 import {
   lazy,
   Suspense,
@@ -10,7 +10,6 @@ import {
   type RefCallback,
 } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
-import { ExternalLink } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 
 import { CanvasDocumentState } from "@/components/board/canvas-document-state";
@@ -167,7 +166,7 @@ export function CanvasBlockFrame({
               aria-label={`Open ${title}`}
               onClick={onOpen}
             >
-              <ExternalLink className="size-3.5" aria-hidden="true" />
+              <OpenInIcon className="size-3.5" aria-hidden="true" />
             </button>
           </NodexTooltip>
         ) : null}

@@ -1,13 +1,13 @@
-import { PlusIcon } from "@/components/shared/icons";
 import { useEffect, useState } from "react";
 import {
-  ArrowDown,
-  ArrowUp,
-  Eye,
-  EyeOff,
-  RotateCcw,
-  X,
-} from "@/components/shared/icons/generic-icons";
+  CloseIcon,
+  PlusIcon,
+  VisibilityIcon,
+  VisibilityOffIcon,
+  MoveDownIcon,
+  MoveUpIcon,
+  ResetIcon,
+} from "@/components/shared/icons";
 import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
 import { NodexSwitch } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -280,7 +280,7 @@ export function ToggleListRulesBody({
                     setDslText(formatRulesV2AsJsonLogic(settings.rulesV2));
                   }}
                 >
-                  <RotateCcw className="size-3 shrink-0" />
+                  <ResetIcon className="size-3 shrink-0" />
                   Revert
                 </button>
                 <button
@@ -533,7 +533,7 @@ function SortSection({
                   onClick={() => moveSort(index, -1)}
                   disabled={index === 0}
                 >
-                  <ArrowUp className="size-3" />
+                  <MoveUpIcon className="size-3" />
                 </button>
               </NodexTooltip>
               <NodexTooltip tooltipContent="Move down">
@@ -543,7 +543,7 @@ function SortSection({
                   onClick={() => moveSort(index, 1)}
                   disabled={index === settings.rulesV2.sort.length - 1}
                 >
-                  <ArrowDown className="size-3" />
+                  <MoveDownIcon className="size-3" />
                 </button>
               </NodexTooltip>
               <NodexTooltip tooltipContent="Remove sort">
@@ -553,7 +553,7 @@ function SortSection({
                   onClick={() => removeSort(index)}
                   disabled={settings.rulesV2.sort.length <= 1}
                 >
-                  <X className="size-3" />
+                  <CloseIcon className="size-3" />
                 </button>
               </NodexTooltip>
             </div>
@@ -620,7 +620,11 @@ function PropertiesSection({
                       updateSettings((prev) => toggleToggleListHiddenProperty(prev, property))
                     }
                   >
-                    {hidden ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                    {hidden ? (
+                      <VisibilityOffIcon className="size-3" />
+                    ) : (
+                      <VisibilityIcon className="size-3" />
+                    )}
                   </button>
                 </NodexTooltip>
                 <NodexTooltip tooltipContent="Move up">
@@ -632,7 +636,7 @@ function PropertiesSection({
                     }
                     disabled={index === 0}
                   >
-                    <ArrowUp className="size-3" />
+                    <MoveUpIcon className="size-3" />
                   </button>
                 </NodexTooltip>
                 <NodexTooltip tooltipContent="Move down">
@@ -644,7 +648,7 @@ function PropertiesSection({
                     }
                     disabled={index === settings.propertyOrder.length - 1}
                   >
-                    <ArrowDown className="size-3" />
+                    <MoveDownIcon className="size-3" />
                   </button>
                 </NodexTooltip>
                 {showEmpty !== null && onToggleShowEmpty && (
@@ -790,7 +794,7 @@ function GroupEditor({
             className={cn(ICON_BTN, "absolute -top-0.5 -right-0.5")}
             onClick={onRemove}
           >
-            <X className="size-3" />
+            <CloseIcon className="size-3" />
           </button>
         </NodexTooltip>
       )}

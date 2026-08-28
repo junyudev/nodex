@@ -1,12 +1,4 @@
-import {
-  ExternalLink,
-  ImageIcon,
-  ListTree,
-  PictureInPicture2,
-  Slash,
-  SquareTerminal,
-  X,
-} from "@/components/shared/icons/generic-icons";
+import { ListTree, PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
@@ -14,6 +6,7 @@ import {
   FileIcon,
   ChevronDownIcon,
   ClockIcon,
+  CloseIcon,
   ComposerPlanModeIcon,
   SidePanelSideChatIcon,
   LocalStatusIcon,
@@ -22,6 +15,9 @@ import {
   ThreadSummaryCommitIcon,
   ThreadSummaryCreatePullRequestIcon,
   ThreadSummaryPushIcon,
+  OpenInIcon,
+  TerminalIcon,
+  NfmImageBlockIcon,
 } from "@/components/shared/icons";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -605,7 +601,7 @@ function BackgroundSubagentRowTrailing({
 
 function SummaryOutputIcon({ row }: { row: ThreadSummaryPanelOutputRow }) {
   if (row.kind === "generated-image" || row.kind === "image") {
-    return <ImageIcon className="size-3.5" />;
+    return <NfmImageBlockIcon className="size-3.5" />;
   }
 
   if (row.kind === "website") {
@@ -629,7 +625,7 @@ function SummaryOutputLabel({ row }: { row: ThreadSummaryPanelOutputRow }) {
   return (
     <span className="flex min-w-0 items-center gap-1">
       <span className="truncate">{row.label}</span>
-      <ExternalLink
+      <OpenInIcon
         className="icon-xs shrink-0 opacity-0 group-focus-visible/summary-panel-row:opacity-100 group-hover/summary-panel-row:opacity-100"
         aria-hidden={true}
       />
@@ -1509,7 +1505,7 @@ export function ThreadSummaryPanelSurface({
                                 handleCancelGitAction(commitOrPushWorkflow.operationId);
                               }}
                             >
-                              <X className="icon-xs" aria-hidden="true" />
+                              <CloseIcon className="icon-xs" aria-hidden="true" />
                             </button>
                           </NodexTooltip>
                         ) : undefined
@@ -1560,7 +1556,7 @@ export function ThreadSummaryPanelSurface({
                                 handleCancelGitAction(createPullRequestWorkflow.operationId);
                               }}
                             >
-                              <X className="icon-xs" aria-hidden="true" />
+                              <CloseIcon className="icon-xs" aria-hidden="true" />
                             </button>
                           </NodexTooltip>
                         ) : undefined
@@ -1705,7 +1701,7 @@ export function ThreadSummaryPanelSurface({
                         key={row.id}
                         label={row.command}
                         title={row.command}
-                        icon={<SquareTerminal className="icon-sm shrink-0" />}
+                        icon={<TerminalIcon className="icon-sm shrink-0" />}
                         interactive={Boolean(onOpenBackgroundTerminalOutput)}
                         onClick={
                           onOpenBackgroundTerminalOutput

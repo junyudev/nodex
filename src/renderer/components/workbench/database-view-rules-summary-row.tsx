@@ -1,9 +1,5 @@
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronDown,
-} from "@/components/shared/icons/generic-icons";
+import { ArrowUpDown } from "@/components/shared/icons/generic-icons";
+import { ChevronDownIcon, SortAscendingIcon, SortDescendingIcon } from "@/components/shared/icons";
 import {
   databaseViewSortFieldLabel,
   hasCustomDatabaseViewSort,
@@ -58,20 +54,20 @@ export function DatabaseViewRulesSummaryRow({
           {effective.presentation.sort.length === 1 && primarySort ? (
             <>
               {primarySort.direction === "asc" ? (
-                <ArrowUp className="size-3.5" />
+                <SortAscendingIcon className="size-3.5" />
               ) : (
-                <ArrowDown className="size-3.5" />
+                <SortDescendingIcon className="size-3.5" />
               )}
               <span className="max-w-44 truncate">
                 {databaseViewSortFieldLabel(primarySort, properties)}
               </span>
-              <ChevronDown className="size-3.5" />
+              <ChevronDownIcon className="size-3.5" />
             </>
           ) : (
             <>
               <ArrowUpDown className="size-3.5" />
               <span>{effective.presentation.sort.length} sorts</span>
-              <ChevronDown className="size-3.5" />
+              <ChevronDownIcon className="size-3.5" />
             </>
           )}
         </button>

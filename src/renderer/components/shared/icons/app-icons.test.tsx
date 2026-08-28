@@ -6,6 +6,7 @@ import {
   CalendarIcon,
   CalendarOverdueIcon,
   CanvasIcon,
+  CheckmarkIcon,
   ClockIcon,
   CodeIcon,
   ComposerResumeIcon,
@@ -13,18 +14,25 @@ import {
   DeleteIcon,
   DownloadIcon,
   EditIcon,
+  ExpandPanelIcon,
   FileIcon,
   FileTabIconSvg,
   FolderIcon,
   FolderOpenIcon,
+  NfmLinkToolbarOpenIcon,
   NewChatIcon,
+  OpenInIcon,
   PageIcon,
+  PanelRightHiddenIcon,
+  PanelRightVisibleIcon,
   QueueFailureIcon,
   QueuePauseIcon,
   QueuePendingInfoIcon,
   QueueSteerIcon,
   QueuedFollowUpIcon,
+  RepeatIcon,
   ReplaceIcon,
+  RestorePanelIcon,
   SettingsBrowserIcon,
   SettingsComputerUseIcon,
   SettingsGitIcon,
@@ -34,6 +42,10 @@ import {
   SidebarManualOrderIcon,
   WorktreeSetupStatusIcon,
 } from "./app-icons";
+
+function pathSignature(container: HTMLElement) {
+  return [...container.querySelectorAll("path")].map((path) => path.getAttribute("d"));
+}
 
 describe("shared icon intrinsic geometry", () => {
   test.each([
@@ -89,6 +101,18 @@ describe("code identity icons", () => {
   });
 });
 
+describe("decorative icon accessibility", () => {
+  test("hides an unlabelled checkmark without overriding an accessible name", () => {
+    const decorative = render(<CheckmarkIcon />).container.querySelector("svg");
+    const labelled = render(<CheckmarkIcon aria-label="Selected" />).container.querySelector("svg");
+    const explicit = render(<CheckmarkIcon aria-hidden={false} />).container.querySelector("svg");
+
+    expect(decorative?.getAttribute("aria-hidden")).toBe("true");
+    expect(labelled?.hasAttribute("aria-hidden")).toBe(false);
+    expect(explicit?.getAttribute("aria-hidden")).toBe("false");
+  });
+});
+
 describe("settings identity icons", () => {
   test.each([
     ["import", SettingsImportIcon, "0 0 20 20"],
@@ -121,6 +145,33 @@ describe("shared action icon geometry", () => {
     expect(svg?.getAttribute("viewBox")).toBe(viewBox);
     expect(firstPath?.getAttribute("d")?.startsWith(pathPrefix)).toBe(true);
     expect(paintOwner?.getAttribute(paintAttribute)).toBe("currentColor");
+  });
+
+  test("uses the reviewed link-toolbar geometry for open-in actions", () => {
+    const openIn = render(<OpenInIcon />);
+    const linkToolbarOpen = render(<NfmLinkToolbarOpenIcon />);
+
+    expect(pathSignature(openIn.container)).toEqual(pathSignature(linkToolbarOpen.container));
+  });
+
+  test("preserves the reviewed repeat glyph", () => {
+    const view = render(<RepeatIcon />);
+    const svg = view.container.querySelector("svg");
+    const path = svg?.querySelector("path");
+
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 24 24");
+    expect(path?.getAttribute("d")?.startsWith("m2 9")).toBe(true);
+    expect(path?.getAttribute("stroke")).toBe("currentColor");
+  });
+
+  test("keeps panel visibility and expand controls visually distinct", () => {
+    const panelVisible = render(<PanelRightVisibleIcon />);
+    const panelHidden = render(<PanelRightHiddenIcon />);
+    const expand = render(<ExpandPanelIcon />);
+    const restore = render(<RestorePanelIcon />);
+
+    expect(pathSignature(panelVisible.container)).not.toEqual(pathSignature(panelHidden.container));
+    expect(pathSignature(expand.container)).not.toEqual(pathSignature(restore.container));
   });
 });
 

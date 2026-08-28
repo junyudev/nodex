@@ -1,4 +1,4 @@
-import { BellIcon, SearchIcon } from "@/components/shared/icons";
+import { BellIcon, FilterIcon, OpenExternalIcon, SearchIcon } from "@/components/shared/icons";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { NodexButton as Button } from "@/components/ui/button";
@@ -27,8 +27,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { CodexPermissionMode } from "@/lib/types";
 import {
-  ArrowUpRight,
-  Filter,
   Layers3,
   LayoutGrid,
   PanelTopOpen,
@@ -350,7 +348,7 @@ export function GeneralDevStoryPage({
                   <Button variant="outline">Outline</Button>
                   <Button variant="ghost">Ghost</Button>
                   <Button size="icon-sm" variant="outline" aria-label="Open detail">
-                    <ArrowUpRight className="size-4" />
+                    <OpenExternalIcon className="size-4" />
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -611,7 +609,7 @@ export function GeneralDevStoryPage({
                       variant="outline"
                       className="border-transparent bg-foreground-5 text-(--foreground-secondary)"
                     >
-                      <Filter className="mr-1 size-3" />
+                      <FilterIcon className="mr-1 size-3" />
                       Filters
                     </Badge>
                     <Button size="sm">

@@ -3,7 +3,7 @@ import {
   ActivitySpinnerIcon,
   BranchStatusIcon,
   CheckmarkIcon,
-  RefreshIcon,
+  RetryIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownButtonTrigger,
@@ -222,7 +222,7 @@ export function WorktreeStartingStatePopover({
                 className="text-token-description-foreground"
                 onClick={() => void refresh()}
               >
-                <RefreshIcon className="icon-xxs" />
+                <RetryIcon className="icon-xxs" />
               </NodexButton>
             </div>
           ) : (

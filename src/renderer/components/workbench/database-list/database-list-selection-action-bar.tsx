@@ -1,4 +1,4 @@
-import { ChevronDown, X } from "@/components/shared/icons/generic-icons";
+import { ChevronDownIcon, CloseIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import { NodexDropdown } from "@/components/ui/dropdown";
 import {
@@ -36,7 +36,7 @@ export function DatabaseListSelectionActionBar({
         triggerButton={
           <NodexButton size="xs" variant="ghost" aria-label="Open selected page actions">
             Actions
-            <ChevronDown className="icon-2xs" />
+            <ChevronDownIcon className="icon-2xs" />
           </NodexButton>
         }
       >
@@ -53,7 +53,7 @@ export function DatabaseListSelectionActionBar({
           </NodexDropdown.Item>
         ))}
       </NodexDropdown.Menu>
-      <NodexIconButton icon={X} size="xs" ariaLabel="Clear selection" onClick={onClear} />
+      <NodexIconButton icon={CloseIcon} size="xs" ariaLabel="Clear selection" onClick={onClear} />
     </div>
   );
 }

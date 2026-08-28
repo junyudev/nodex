@@ -1,6 +1,6 @@
-import { ArchiveIcon, ChevronRightIcon } from "@/components/shared/icons";
+import { ArchiveIcon, ChevronRightIcon, OpenInIcon } from "@/components/shared/icons";
 import { useId, type ReactNode } from "react";
-import { ExternalLink, Rows3, TriangleAlert } from "@/components/shared/icons/generic-icons";
+import { Rows3, TriangleAlert } from "@/components/shared/icons/generic-icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { DatabaseViewReadModel } from "../../../shared/database-views";
 import { isInlineCardCycle } from "./block-reference-runtime-context";
@@ -184,7 +184,7 @@ export function ReferencedCardRow({
                 })
               }
             >
-              <ExternalLink aria-hidden="true" className="size-3.5 shrink-0" />
+              <OpenInIcon aria-hidden="true" className="size-3.5 shrink-0" />
             </button>
           </NodexTooltip>
         ) : null}

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEve
 import {
   ChevronDownIcon,
   ContentSearchDiffIcon,
-  ShortcutResetIcon,
+  UndoIcon,
   ReviewRefreshIcon,
 } from "@/components/shared/icons";
 import {
@@ -117,7 +117,7 @@ function TurnDiffToolbarButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
-  const Icon = icon === "undo" ? ShortcutResetIcon : icon === "reapply" ? ReviewRefreshIcon : null;
+  const Icon = icon === "undo" ? UndoIcon : icon === "reapply" ? ReviewRefreshIcon : null;
 
   return (
     <button

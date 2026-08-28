@@ -1,9 +1,12 @@
 import { useRef, useState } from "react";
-import { Check, Copy, Ellipsis, Maximize2 } from "@/components/shared/icons/generic-icons";
 import {
   CodeAndPreviewIcon,
   CodeIcon,
   DownloadIcon,
+  CheckmarkIcon,
+  CopyIcon,
+  ExpandPanelIcon,
+  MoreActionsIcon,
   PreviewOnlyIcon,
 } from "@/components/shared/icons";
 import { useTransientFeedback } from "@/components/shared/use-transient-feedback";
@@ -269,7 +272,7 @@ export function NfmCodeBlockActionBar({
                   className={codeBlockActionButtonClassName}
                   onClick={(event) => mermaid.onExpand(event.currentTarget)}
                 >
-                  <Maximize2 />
+                  <ExpandPanelIcon />
                 </button>
               </NodexTooltip>
               <NodexTooltip tooltipContent="Download diagram as JPEG" disabled={tooltipsDisabled}>
@@ -298,7 +301,7 @@ export function NfmCodeBlockActionBar({
             className={codeBlockActionButtonClassName}
             onClick={() => void copyCode()}
           >
-            {copyFeedback.visible ? <Check /> : <Copy />}
+            {copyFeedback.visible ? <CheckmarkIcon /> : <CopyIcon />}
           </button>
         </NodexTooltip>
       )}
@@ -309,7 +312,7 @@ export function NfmCodeBlockActionBar({
           className={cn(codeBlockActionButtonClassName, mode === "more_only" && "size-6")}
           onClick={(event) => onMore(event.currentTarget)}
         >
-          <Ellipsis />
+          <MoreActionsIcon />
         </button>
       </NodexTooltip>
     </div>

@@ -1,6 +1,6 @@
-import { DeleteIcon, DownloadIcon, SearchIcon } from "@/components/shared/icons";
+import { DeleteIcon, DownloadIcon, RefreshIcon, SearchIcon } from "@/components/shared/icons";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Puzzle, RotateCcw } from "@/components/shared/icons/generic-icons";
+import { Puzzle } from "@/components/shared/icons/generic-icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexDropdownItem,
@@ -1232,7 +1232,7 @@ function UnavailableCapability({ capability }: { capability: BrowserCapabilitySt
         label="Unavailable"
         description={capability.reason ?? "This provider is not available in the current runtime."}
       >
-        <RotateCcw className="size-4 text-token-text-tertiary" />
+        <RefreshIcon className="size-4 text-token-text-tertiary" />
       </NodexSettingsRow>
     </NodexSettingsSection>
   );

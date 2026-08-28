@@ -1,8 +1,8 @@
 import {
-  GitBranch,
-  GitCommitHorizontal,
-  UploadCloud,
-} from "@/components/shared/icons/generic-icons";
+  BranchStatusIcon,
+  ReviewCommitOrPushIcon,
+  ThreadSummaryCommitIcon,
+} from "@/components/shared/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
@@ -349,7 +349,7 @@ export function ThreadSummaryGitActionDialog({
         <NodexDialogDescription className="sr-only">{statusMessage}</NodexDialogDescription>
         <div className="flex h-9 items-center justify-between gap-3 px-3 text-sm text-token-description-foreground">
           <span className="flex min-w-0 items-center gap-2">
-            <GitBranch className="icon-xs shrink-0" />
+            <BranchStatusIcon className="icon-xs shrink-0" />
             <span className="truncate">{status?.currentBranch ?? "-"}</span>
           </span>
           <span className="shrink-0 text-size-chat">
@@ -402,7 +402,7 @@ export function ThreadSummaryGitActionDialog({
           {mode === "push" ? (
             <ThreadSummaryGitActionCommand
               disabled={busy || loading || !canPush}
-              icon={<UploadCloud className="icon-xs" />}
+              icon={<ReviewCommitOrPushIcon className="icon-xs" />}
               onClick={() => void runPush()}
             >
               Push
@@ -411,21 +411,21 @@ export function ThreadSummaryGitActionDialog({
             <>
               <ThreadSummaryGitActionCommand
                 disabled={busy || loading || !canCommit}
-                icon={<GitCommitHorizontal className="icon-xs" />}
+                icon={<ThreadSummaryCommitIcon className="icon-xs" />}
                 onClick={() => void runCommit("commit")}
               >
                 Commit
               </ThreadSummaryGitActionCommand>
               <ThreadSummaryGitActionCommand
                 disabled={busy || loading || !canCommitAndPush}
-                icon={<UploadCloud className="icon-xs" />}
+                icon={<ReviewCommitOrPushIcon className="icon-xs" />}
                 onClick={() => void runCommit("commit-and-push")}
               >
                 Commit and push
               </ThreadSummaryGitActionCommand>
               <ThreadSummaryGitActionCommand
                 disabled={busy || loading || !canPush}
-                icon={<UploadCloud className="icon-xs" />}
+                icon={<ReviewCommitOrPushIcon className="icon-xs" />}
                 onClick={() => void runPush()}
               >
                 Push

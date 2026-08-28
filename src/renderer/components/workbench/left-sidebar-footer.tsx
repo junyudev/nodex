@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings } from "@/components/shared/icons/generic-icons";
+import { SettingsGeneralIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { AccountRateLimitRing } from "@/features/local-conversation/view/shared/account-rate-limit-ring";
 import { AuthPopover } from "@/features/local-conversation/view/shared/auth-controls";
@@ -98,7 +98,7 @@ export function LeftSidebarFooter({
           className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-(--sidebar-foreground-secondary) hover:bg-(--sidebar-accent) hover:text-(--sidebar-foreground)"
           aria-label="Settings"
         >
-          <Settings className="size-3.5" />
+          <SettingsGeneralIcon className="size-3.5" />
         </button>
       </NodexTooltip>
       {showQuotaRing && connection && onRefreshAccount && onLogout ? (

@@ -8,12 +8,31 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
-import type { CodexReasoningEffort, WorktreeEnvironmentActionIcon } from "@/lib/types";
+import type { WorktreeEnvironmentActionIcon } from "@/lib/types";
 import type { ProjectMarkerIcon } from "../../../../shared/project-appearance";
+import {
+  ARCHIVE_BOX_PATH,
+  ARCHIVE_RULE_PATH,
+  GLOBE_PATH,
+  TERMINAL_BOX_PATH,
+  TERMINAL_PROMPT_PATH,
+  TERMINAL_SEPARATOR_PATH,
+} from "../../../../shared/icon-geometry";
 import {
   SESSION_PIN_FILLED_ICON_PATH,
   SESSION_PIN_ICON_PATH,
 } from "../../../../shared/session-context-menu-icons";
+import {
+  BackIcon,
+  ConversationIcon,
+  CopyIcon,
+  FilterIcon,
+  ImageIcon,
+  LoadingIcon,
+  MoreActionsIcon,
+  OpenExternalIcon,
+  TerminalIcon,
+} from "./canonical-icons";
 
 type IconProps = {
   className?: string;
@@ -81,7 +100,7 @@ const SETTINGS_WORKTREE_PATH =
 const SETTINGS_LOCAL_ENV_DOCK_PATH =
   "M13.7 4.65906H6.70001C5.29988 4.65906 4.59982 4.65906 4.06504 4.93154C3.59463 5.17122 3.21218 5.55368 2.9725 6.02408C2.70001 6.55886 2.70001 7.25893 2.70001 8.65906V13.1591C2.70001 14.5592 2.70001 15.2593 2.9725 15.794C3.21218 16.2644 3.59463 16.6469 4.06504 16.8866C4.59982 17.1591 5.29988 17.1591 6.70001 17.1591H13.7C15.1001 17.1591 15.8002 17.1591 16.335 16.8866C16.8054 16.6469 17.1878 16.2644 17.4275 15.794C17.7 15.2593 17.7 14.5592 17.7 13.1591V8.65906C17.7 7.25893 17.7 6.55886 17.4275 6.02408C17.1878 5.55368 16.8054 5.17122 16.335 4.93154C15.8002 4.65906 15.1001 4.65906 13.7 4.65906Z";
 const SETTINGS_LOCAL_ENV_RULE_PATH = "M6.86676 14.5691H13.5334";
-const SETTINGS_IMPORT_PATH =
+const DOWNLOAD_IMPORT_PATH =
   "M2.66831 12.6664V12.5004C2.66831 12.1331 2.96607 11.8353 3.33334 11.8353C3.70061 11.8353 3.99838 12.1331 3.99838 12.5004V12.6664C3.99838 13.3773 3.99929 13.8708 4.03061 14.2543C4.0613 14.6299 4.11812 14.8414 4.19858 14.9994L4.26889 15.1263C4.4452 15.4138 4.69823 15.6482 5.00034 15.8021L5.13022 15.8578C5.27399 15.9092 5.4635 15.9471 5.74545 15.9701C6.12897 16.0014 6.62231 16.0013 7.33334 16.0013H12.6664C13.3772 16.0013 13.8708 16.0014 14.2542 15.9701C14.6296 15.9394 14.8414 15.8825 14.9994 15.8021L15.1263 15.7308C15.4137 15.5545 15.6482 15.3014 15.8021 14.9994L15.8578 14.8695C15.9092 14.7258 15.947 14.5361 15.9701 14.2543C16.0014 13.8708 16.0013 13.3772 16.0013 12.6664V12.5004C16.0013 12.1332 16.2992 11.8355 16.6664 11.8353C17.0336 11.8353 17.3314 12.1331 17.3314 12.5004V12.6664C17.3314 13.3554 17.332 13.9125 17.2953 14.3627C17.2625 14.7636 17.1975 15.1248 17.0531 15.4613L16.9867 15.6039C16.7212 16.1248 16.3173 16.5606 15.8216 16.8646L15.6039 16.9867C15.2271 17.1787 14.8206 17.2579 14.3626 17.2953C13.9124 17.3321 13.3554 17.3314 12.6664 17.3314H7.33334C6.64425 17.3314 6.0873 17.3321 5.63706 17.2953C5.23651 17.2626 4.87562 17.1982 4.5394 17.0541L4.39682 16.9867C3.8757 16.7212 3.4392 16.3175 3.1351 15.8217L3.01303 15.6039C2.82106 15.2271 2.74186 14.8207 2.70444 14.3627C2.66767 13.9125 2.66831 13.3554 2.66831 12.6664ZM9.3353 3.33337C9.3353 2.9661 9.63307 2.66833 10.0003 2.66833C10.3675 2.66851 10.6654 2.96621 10.6654 3.33337V10.8939L12.8626 8.69666L12.9671 8.61169C13.2253 8.44097 13.5767 8.4693 13.804 8.69666C14.0634 8.95633 14.0635 9.37748 13.804 9.63708L10.4701 12.9701C10.3454 13.0947 10.1766 13.1653 10.0003 13.1654C9.82397 13.1654 9.65434 13.0948 9.52963 12.9701L6.19663 9.63708L6.11166 9.53259C5.9411 9.27445 5.96934 8.92394 6.19663 8.69666C6.42392 8.46937 6.77442 8.44113 7.03256 8.61169L7.13705 8.69666L9.3353 10.8949V3.33337Z";
 const SETTINGS_BROWSER_DOT_PATH =
   "M5.13802 4.65365C5.51357 4.65365 5.81771 4.95778 5.81771 5.33333C5.8177 5.70888 5.51357 6.01302 5.13802 6.01302C4.76258 6.0129 4.45834 5.7088 4.45833 5.33333C4.45833 4.95786 4.76257 4.65377 5.13802 4.65365Z";
@@ -136,12 +155,6 @@ const AUTOMATIONS_PATH =
   "M9 1.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Zm0 1.2a6.3 6.3 0 1 1 0 12.6A6.3 6.3 0 0 1 9 2.7ZM8.4 4.8c0-.331.269-.6.6-.6s.6.269.6.6v3.344l2.106 1.149a.6.6 0 0 1-.576 1.054l-2.478-1.35A.6.6 0 0 1 8.4 8.4V4.8Z";
 const AUTOMATION_ACTIVE_STATUS_RING_PATH =
   "M10 2.9032C14.3713 2.9032 17.915 6.4469 17.915 10.8182C17.915 15.1896 14.3713 18.7333 10 18.7333C5.62867 18.7333 2.08496 15.1896 2.08496 10.8182C2.08496 6.4469 5.62867 2.9032 10 2.9032ZM10 4.23328C6.3632 4.23328 3.41504 7.18144 3.41504 10.8182C3.41504 14.455 6.3632 17.4032 10 17.4032C13.6368 17.4032 16.585 14.455 16.585 10.8182C16.585 7.18144 13.6368 4.23328 10 4.23328Z";
-const AUTOMATION_RUN_NOW_PATH =
-  "M3.82422 4.74933C3.82427 3.32901 5.39273 2.46804 6.59102 3.23058L13.2698 7.48185C14.3813 8.18917 14.3813 9.81116 13.2698 10.5185L6.59102 14.7689C5.39281 15.5314 3.82448 14.6711 3.82422 13.251V4.74933ZM5.17422 13.251C5.17448 13.6058 5.56646 13.8211 5.86592 13.6307L12.5456 9.37941C12.8232 9.20249 12.8234 8.79681 12.5456 8.62004L5.86592 4.36964C5.56636 4.17902 5.17427 4.39428 5.17422 4.74933V13.251Z";
-const SPINNER_FADED_PATH =
-  "M18 12C18 8.68629 15.3137 6 12 6C8.68629 6 6 8.68629 6 12C6 15.3137 8.68629 18 12 18C15.3137 18 18 15.3137 18 12ZM20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12Z";
-const SPINNER_ACTIVE_PATH =
-  "M12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12H6C6 15.3137 8.68629 18 12 18C15.3137 18 18 15.3137 18 12C18 8.68629 15.3137 6 12 6V4Z";
 const AUTOMATION_TEMPLATE_ICON_URIS = {
   "bar-chart":
     "data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20fill='none'%20viewBox='0%200%2024%2024'%20%3e%3cpath%20fill='%23FFD400'%20d='M3%2013.5A2.5%202.5%200%200%201%205.5%2011H9v10H5.5A2.5%202.5%200%200%201%203%2018.5v-5Z'%20/%3e%3cpath%20fill='%23F75858'%20d='M15%207h3.5A2.5%202.5%200%200%201%2021%209.5v9a2.5%202.5%200%200%201-2.5%202.5H15V7Z'%20/%3e%3cpath%20fill='%23FFA43D'%20d='M9%205.5A2.5%202.5%200%200%201%2011.5%203h1A2.5%202.5%200%200%201%2015%205.5V21H9V5.5Z'%20/%3e%3c/svg%3e",
@@ -189,8 +202,6 @@ const PROJECT_FOLDER_ACTION_PATHS = {
   move: "M5 10.5H11M9 8.5L11 10.5L9 12.5",
   removed: "M8.25 10.5H11.75",
 } as const;
-const PROJECT_TASK_PATH =
-  "M13.4746 8.00098C13.4746 5.18918 11.0524 2.85938 8 2.85938C4.94756 2.85938 2.52539 5.18918 2.52539 8.00098C2.52548 9.13438 2.98018 9.88391 3.55176 11.0156C3.62017 11.1511 3.63938 11.3067 3.60645 11.4551L3.34277 12.6416L4.62598 12.3096L4.74023 12.29C4.81669 12.2841 4.89333 12.2922 4.9668 12.3125L5.0752 12.3525L5.44238 12.5225C6.29248 12.9002 7.09158 13.1426 8 13.1426C11.0523 13.1426 13.4744 10.8126 13.4746 8.00098ZM14.5254 8.00098C14.5252 11.4483 11.5749 14.1924 8 14.1924C6.78477 14.1924 5.75932 13.8299 4.75488 13.3604L2.9873 13.8193C2.5113 13.9426 2.07317 13.5191 2.17969 13.0391L2.5498 11.3643C2.03641 10.3607 1.4747 9.38268 1.47461 8.00098C1.47461 4.55354 4.42502 1.80859 8 1.80859C11.575 1.80859 14.5254 4.55354 14.5254 8.00098Z";
 const PROJECT_REPOSITORY_PATHS = [
   "M13.7334 8.52213C14.3227 8.52239 14.8008 9.00017 14.8008 9.58951C14.8006 9.97146 14.5986 10.3053 14.2969 10.4938V11.0036C14.2967 12.0295 13.4653 12.8616 12.4395 12.862H10.0625V13.4821C10.3859 13.6654 10.6044 14.0126 10.6045 14.4108C10.6045 15.0002 10.1265 15.478 9.53711 15.4782C8.94761 15.4782 8.46973 15.0003 8.46973 14.4108C8.46983 14.0124 8.68816 13.6654 9.01172 13.4821V10.5172C8.6884 10.3339 8.46989 9.9877 8.46973 9.58951C8.46973 9.00001 8.94761 8.52213 9.53711 8.52213C10.1265 8.52226 10.6045 9.00009 10.6045 9.58951C10.6043 9.98754 10.3856 10.3339 10.0625 10.5172V11.8112H12.4395C12.8854 11.8108 13.2469 11.4496 13.2471 11.0036V10.5387C12.9022 10.3619 12.6662 10.0037 12.666 9.58951C12.666 9.00001 13.1439 8.52213 13.7334 8.52213Z",
   "M5.33301 2.14127C5.89499 2.14127 6.33856 2.23567 6.71387 2.38834C7.08397 2.53892 7.3668 2.73882 7.60059 2.90884C8.05797 3.24149 8.35199 3.47525 9 3.47525H12C13.3944 3.47525 14.5252 4.6053 14.5254 5.99966V6.41666C14.5254 6.67074 14.4028 6.88106 14.2666 7.01724C14.1305 7.15323 13.9207 7.27495 13.667 7.27505H2.52539V11.3336C2.52557 12.1481 3.18549 12.8083 4 12.8083H6.44043C6.73024 12.8084 6.96484 13.0438 6.96484 13.3336C6.96467 13.6234 6.73014 13.8579 6.44043 13.8581H4C2.60559 13.8581 1.47478 12.728 1.47461 11.3336V4.66666C1.47461 3.27214 2.60548 2.14127 4 2.14127H5.33301ZM4 3.19205C3.18538 3.19205 2.52539 3.85204 2.52539 4.66666V6.22525H13.4746V5.99966C13.4744 5.18519 12.8145 4.52506 12 4.52505H9C7.9814 4.52505 7.44162 4.09144 6.98242 3.75748C6.75814 3.59437 6.56156 3.46032 6.31738 3.36099C6.07817 3.26376 5.77074 3.19205 5.33301 3.19205H4Z",
@@ -213,21 +224,6 @@ const PIN_OFF_PATHS = [
   "M10.9372 2.70723C11.8014 1.63068 13.4235 1.53079 14.4137 2.52071L17.4792 5.58614L17.5719 5.68379C18.4618 6.68016 18.3344 8.22636 17.2926 9.0627L17.1852 9.14375L14.2799 11.218L13.3268 10.2648L16.4118 8.06172L16.5016 7.98946C16.8967 7.63429 16.9467 7.02804 16.6159 6.6125L16.5387 6.52657L13.4733 3.46114C13.0597 3.04787 12.391 3.07483 12.0104 3.49825L11.9381 3.58809L9.73502 6.67208L8.78092 5.71895L10.8561 2.81465L10.9372 2.70723Z",
 ];
 
-const ARCHIVE_RULE_PATH =
-  "M11.8008 10.1816C12.1035 10.2438 12.3309 10.5119 12.3311 10.833C12.3311 11.1542 12.1036 11.4222 11.8008 11.4844L11.666 11.498H8.33301C7.96589 11.4979 7.66797 11.2002 7.66797 10.833C7.66814 10.466 7.966 10.1682 8.33301 10.168H11.666L11.8008 10.1816Z";
-const ARCHIVE_BOX_PATH =
-  "M15.417 2.66797C16.7045 2.66815 17.7489 3.71251 17.749 5V5.83301C17.749 6.33171 17.59 6.79271 17.3232 7.17188C17.3263 7.19763 17.3311 7.22343 17.3311 7.25V12.667C17.3311 13.3559 17.3317 13.9131 17.2949 14.3633C17.2622 14.7639 17.197 15.1246 17.0527 15.4609L16.9863 15.6035C16.7209 16.1245 16.3169 16.5602 15.8213 16.8643L15.6035 16.9863C15.2268 17.1782 14.8202 17.2575 14.3623 17.2949C13.9121 17.3317 13.3549 17.332 12.666 17.332H7.33301C6.64407 17.332 6.08689 17.3317 5.63672 17.2949C5.23627 17.2622 4.87521 17.1979 4.53906 17.0537L4.39648 16.9863C3.8754 16.7208 3.43882 16.3171 3.13477 15.8213L3.0127 15.6035C2.82089 15.227 2.74153 14.821 2.7041 14.3633C2.66732 13.9131 2.66797 13.3559 2.66797 12.667V7.25C2.66797 7.22312 2.67268 7.19694 2.67578 7.1709C2.4096 6.79197 2.25195 6.33115 2.25195 5.83301V5C2.25212 3.7124 3.29634 2.66797 4.58398 2.66797H15.417ZM16.001 8.08789C15.8141 8.13621 15.619 8.16501 15.417 8.16504H4.58398C4.38146 8.16504 4.18541 8.13644 3.99805 8.08789V12.667C3.99805 13.3778 3.99895 13.8714 4.03027 14.2549C4.06097 14.6303 4.11779 14.8421 4.19824 15L4.26855 15.126C4.44482 15.4134 4.69792 15.6478 5 15.8018L5.12988 15.8574C5.27361 15.9089 5.4633 15.9467 5.74512 15.9697C6.12858 16.0011 6.62215 16.002 7.33301 16.002H12.666C13.3767 16.002 13.8705 16.001 14.2539 15.9697C14.6292 15.9391 14.8411 15.8821 14.999 15.8018L15.126 15.7305C15.4132 15.5542 15.6479 15.3019 15.8018 15L15.8574 14.8691C15.9088 14.7255 15.9467 14.5363 15.9697 14.2549C16.0011 13.8714 16.001 13.3779 16.001 12.667V8.08789ZM4.58398 3.99805C4.03088 3.99805 3.5822 4.44693 3.58203 5V5.83301C3.58203 6.38621 4.03078 6.83496 4.58398 6.83496H15.417C15.97 6.83478 16.4189 6.3861 16.4189 5.83301V5C16.4188 4.44705 15.9699 3.99823 15.417 3.99805H4.58398Z";
-const PROJECT_HOVER_PATH =
-  "M1.3812 8.27413V4.75577C1.3812 4.32969 1.38061 3.98381 1.40346 3.70408C1.42674 3.41945 1.47636 3.16514 1.59688 2.92852L1.67323 2.79173C1.86352 2.4815 2.13672 2.22875 2.46279 2.06261L2.5525 2.02062C2.76355 1.93013 2.98935 1.88955 3.23835 1.86919C3.51808 1.84634 3.86396 1.84693 4.29004 1.84693H4.74304C4.83633 1.84692 4.90121 1.84681 4.96508 1.85074L5.1305 1.86792C5.51249 1.92388 5.87119 2.09044 6.1612 2.34891L6.32089 2.50479C6.39392 2.57845 6.4179 2.6024 6.44114 2.62313L6.51367 2.6823C6.68734 2.81274 6.89613 2.89025 7.11427 2.9037L7.28351 2.90561H8.91989C9.28374 2.90561 9.57891 2.90537 9.81889 2.92215C10.0629 2.93924 10.2824 2.97524 10.4907 3.06403L10.6625 3.14738C11.0519 3.35977 11.3607 3.69801 11.5361 4.10936L11.5927 4.26715C11.6409 4.42714 11.6644 4.59509 11.6773 4.77677C11.6942 5.01512 11.6945 5.30802 11.6945 5.66813C11.6945 5.78286 11.6489 5.89296 11.5679 5.97415C11.4866 6.0554 11.3761 6.1014 11.2612 6.1014H2.24774V8.27413C2.24774 8.71449 2.24816 9.01893 2.26747 9.25519C2.28636 9.48629 2.32126 9.61398 2.36926 9.70819L2.41189 9.78517C2.51891 9.95962 2.67262 10.1015 2.85598 10.1949L2.93424 10.2286C3.02069 10.2595 3.1358 10.2825 3.30897 10.2967C3.54523 10.316 3.84967 10.3164 4.29004 10.3164H6.13002L6.21782 10.3253C6.41513 10.3658 6.56329 10.5404 6.56329 10.7497C6.56329 10.959 6.41513 11.1336 6.21782 11.1741L6.13002 11.183H4.29004C3.86396 11.183 3.51808 11.1836 3.23835 11.1607C2.98935 11.1403 2.76355 11.0998 2.5525 11.0093L2.46279 10.9673C2.13672 10.8011 1.86352 10.5484 1.67323 10.2382L1.59688 10.1014C1.47636 9.86476 1.42674 9.61044 1.40346 9.32581C1.38061 9.04609 1.3812 8.70021 1.3812 8.27413ZM2.24774 5.23485H10.826C10.8244 5.0787 10.8212 4.94989 10.8133 4.83848C10.8029 4.6911 10.7856 4.59201 10.7631 4.51718L10.7389 4.44911C10.6402 4.21783 10.4666 4.02778 10.2477 3.90831L10.151 3.86123C10.0685 3.82607 9.95714 3.8007 9.75844 3.78679C9.55573 3.77261 9.29595 3.77216 8.91989 3.77216H7.28351L7.06083 3.76834C6.673 3.74442 6.30198 3.60706 5.99323 3.37515L5.86471 3.27017C5.81684 3.2275 5.77151 3.18072 5.70566 3.1143L5.58477 2.99596C5.42152 2.85042 5.2196 2.75635 5.00453 2.72492L4.91228 2.71538C4.88114 2.71346 4.84701 2.71347 4.74304 2.71347H4.29004C3.84967 2.71347 3.54523 2.71389 3.30897 2.73319C3.1358 2.74735 3.02069 2.77037 2.93424 2.80127L2.85598 2.83499C2.67262 2.92843 2.51891 3.07028 2.41189 3.24472L2.36926 3.32171C2.32126 3.41592 2.28636 3.54361 2.26747 3.7747C2.24816 4.01096 2.24774 4.3154 2.24774 4.75577V5.23485Z";
-const PROJECT_HOVER_DOTS_PATH =
-  "M9.51822 12.2436C9.51822 12.0609 9.37009 11.9127 9.18736 11.9127C9.00463 11.9127 8.8565 12.0609 8.8565 12.2436C8.8565 12.4263 9.00463 12.5745 9.18736 12.5745C9.37009 12.5745 9.51822 12.4263 9.51822 12.2436ZM9.51822 9.50914C9.51822 9.3264 9.37009 9.17828 9.18736 9.17828C9.00463 9.17828 8.8565 9.3264 8.8565 9.50914C8.8565 9.69187 9.00463 9.84 9.18736 9.84C9.37009 9.84 9.51822 9.69187 9.51822 9.50914ZM12.0249 9.50914C12.0249 9.32643 11.8767 9.17833 11.694 9.17828C11.5113 9.17828 11.3632 9.3264 11.3632 9.50914C11.3632 9.69187 11.5113 9.84 11.694 9.84C11.8767 9.83995 12.0249 9.69184 12.0249 9.50914ZM12.3886 9.50914C12.3886 9.85195 12.14 10.1361 11.8134 10.1928H11.8759V10.4205C11.8759 10.7727 11.5903 11.0582 11.2382 11.0582H9.64319C9.49192 11.0582 9.36921 11.1809 9.36921 11.3322V11.5739C9.6645 11.6539 9.88192 11.923 9.88192 12.2436C9.88192 12.6272 9.57095 12.9382 9.18736 12.9382C8.80377 12.9382 8.4928 12.6272 8.4928 12.2436C8.4928 11.923 8.71022 11.6539 9.00551 11.5739V10.1786C8.71025 10.0986 8.4928 9.82971 8.4928 9.50914C8.4928 9.12555 8.80377 8.81458 9.18736 8.81458C9.57095 8.81458 9.88192 9.12555 9.88192 9.50914C9.88192 9.82971 9.66447 10.0986 9.36921 10.1786V10.757C9.45227 10.7174 9.54503 10.6945 9.64319 10.6945H11.2382C11.3895 10.6945 11.5122 10.5718 11.5122 10.4205V10.1928H11.5747C11.248 10.1361 10.9995 9.85201 10.9995 9.50914C10.9995 9.12555 11.3104 8.81458 11.694 8.81458C12.0776 8.81462 12.3886 9.12558 12.3886 9.50914Z";
-const PROJECT_HOVER_STROKE_PATH =
-  "M11.694 8.75989C12.1078 8.75994 12.4438 9.09507 12.444 9.50891C12.444 9.8398 12.2286 10.1186 11.9313 10.2179V10.421C11.931 10.8033 11.6203 11.1134 11.2379 11.1134H9.64319C9.52231 11.1134 9.42446 11.2113 9.42444 11.3322V11.5353C9.72159 11.6346 9.937 11.9125 9.93713 12.2433C9.93713 12.6573 9.6011 12.9933 9.18713 12.9933C8.77327 12.9932 8.43811 12.6572 8.43811 12.2433C8.43824 11.9122 8.65326 11.6334 8.95081 11.5343V10.2169C8.65342 10.1177 8.43811 9.84 8.43811 9.50891C8.43823 9.09512 8.77335 8.76001 9.18713 8.75989C9.60102 8.75989 9.93701 9.09505 9.93713 9.50891C9.93713 9.83972 9.72143 10.1165 9.42444 10.2159V10.6759C9.49314 10.6528 9.56654 10.6398 9.64319 10.6398H11.2379C11.3586 10.6398 11.4574 10.5417 11.4576 10.421V10.2179C11.1599 10.1188 10.9449 9.84013 10.9449 9.50891C10.9451 9.09507 11.2801 8.75992 11.694 8.75989ZM9.18713 11.9679C9.03498 11.968 8.91191 12.0911 8.91174 12.2433C8.91174 12.3956 9.03488 12.5195 9.18713 12.5197C9.33949 12.5197 9.4635 12.3956 9.4635 12.2433C9.46334 12.0911 9.33939 11.9679 9.18713 11.9679ZM9.18713 9.23352C9.03496 9.23364 8.91187 9.35673 8.91174 9.50891C8.91174 9.66119 9.03488 9.78516 9.18713 9.78528C9.33949 9.78528 9.4635 9.66127 9.4635 9.50891C9.46338 9.35666 9.33942 9.23352 9.18713 9.23352ZM11.694 9.23352C11.5417 9.23356 11.4187 9.35668 11.4186 9.50891C11.4186 9.66125 11.5416 9.78524 11.694 9.78528C11.8463 9.78524 11.9703 9.66123 11.9703 9.50891C11.9702 9.3567 11.8462 9.23356 11.694 9.23352Z";
-const PROJECT_ACTIONS_PATHS = [
-  "M15.6981 9.04712C16.5255 9.04712 17.1959 9.71781 17.1961 10.5452C17.1961 11.3727 16.5256 12.0442 15.6981 12.0442C14.8706 12.0442 14.2 11.3727 14.2 10.5452C14.2002 9.71781 14.8707 9.04712 15.6981 9.04712Z",
-  "M4.69806 9.04712C5.52546 9.04712 6.19691 9.71781 6.19708 10.5452C6.19708 11.3727 5.52557 12.0442 4.69806 12.0442C3.8707 12.044 3.20001 11.3726 3.20001 10.5452C3.20019 9.71792 3.87081 9.04729 4.69806 9.04712Z",
-  "M10.2003 9.04712C11.0276 9.0473 11.6982 9.71792 11.6984 10.5452C11.6984 11.3726 11.0277 12.044 10.2003 12.0442C9.37284 12.0442 8.70132 11.3727 8.70132 10.5452C8.7015 9.71781 9.37295 9.04712 10.2003 9.04712Z",
-] as const;
 const QUEUED_FOLLOW_UP_PATH =
   "M2.66797 11V3.33301C2.66797 2.96574 2.96574 2.66797 3.33301 2.66797C3.70028 2.66797 3.99805 2.96574 3.99805 3.33301V11C3.99805 11.7109 3.99894 12.2044 4.03027 12.5879C4.06098 12.9634 4.11776 13.175 4.19824 13.333L4.26856 13.459C4.44487 13.7465 4.69781 13.9808 5 14.1348L5.12988 14.1904C5.27366 14.2419 5.46311 14.2797 5.74512 14.3027C6.12864 14.3341 6.62197 14.335 7.33301 14.335H15L15.0674 14.3418L14.1123 13.3867L14.0273 13.2822C13.8571 13.0242 13.8854 12.6735 14.1123 12.4463C14.3397 12.2189 14.6911 12.1906 14.9492 12.3613L15.0537 12.4463L17.1367 14.5293C17.3964 14.7889 17.3963 15.21 17.1367 15.4697L15.0537 17.5537C14.794 17.8134 14.372 17.8134 14.1123 17.5537C13.8526 17.294 13.8526 16.872 14.1123 16.6123L15.0664 15.6582L15 15.665H7.33301C6.64392 15.665 6.08696 15.6647 5.63672 15.6279C5.23614 15.5952 4.87531 15.5309 4.53906 15.3867L4.39649 15.3193C3.87528 15.0538 3.43887 14.6502 3.13477 14.1543L3.0127 13.9365C2.82084 13.5599 2.74153 13.1541 2.7041 12.6963C2.66732 12.2461 2.66797 11.6889 2.66797 11ZM15.665 15C15.665 15.0226 15.6594 15.0444 15.6572 15.0664L15.7256 14.999L15.6572 14.9316C15.6595 14.9541 15.665 14.9769 15.665 15ZM11.666 8.91797L11.8008 8.93164C12.1036 8.99381 12.3311 9.2618 12.3311 9.58301C12.3311 9.90422 12.1036 10.1722 11.8008 10.2344L11.666 10.248H7.5C7.13273 10.248 6.83496 9.95028 6.83496 9.58301C6.83496 9.21574 7.13273 8.91797 7.5 8.91797H11.666ZM14.166 4.33496L14.3008 4.34863C14.6036 4.41083 14.8311 4.67881 14.8311 5C14.8309 5.32109 14.6035 5.58924 14.3008 5.65137L14.166 5.66504H7.5C7.13284 5.66504 6.83514 5.36712 6.83496 5C6.83496 4.63273 7.13273 4.33496 7.5 4.33496H14.166Z";
 const QUEUE_STEER_PATH =
@@ -251,8 +247,6 @@ const PROJECT_REOPEN_PREVIOUS_PATH =
   "M4.33496 11C4.33496 10.6327 4.63273 10.335 5 10.335C5.36727 10.335 5.66504 10.6327 5.66504 11V14.335H9L9.13379 14.3486C9.43692 14.4106 9.66504 14.6786 9.66504 15C9.66504 15.3214 9.43692 15.5894 9.13379 15.6514L9 15.665H5C4.63273 15.665 4.33496 15.3673 4.33496 15V11ZM14.335 9V5.66504H11C10.6327 5.66504 10.335 5.36727 10.335 5C10.335 4.63273 10.6327 4.33496 11 4.33496H15L15.1338 4.34863C15.4369 4.41057 15.665 4.67857 15.665 5V9C15.665 9.36727 15.3673 9.66504 15 9.66504C14.6327 9.66504 14.335 9.36727 14.335 9Z";
 const PLAN_SIDE_PANEL_CLOSE_PATH =
   "M7.33496 16V12.665H4C3.63273 12.665 3.33496 12.3673 3.33496 12C3.33496 11.6327 3.63273 11.335 4 11.335H8C8.36727 11.335 8.66504 11.6327 8.66504 12V16C8.66504 16.3673 8.36727 16.665 8 16.665C7.63273 16.665 7.33496 16.3673 7.33496 16ZM11.335 4C11.335 3.63273 11.6327 3.33496 12 3.33496C12.3673 3.33496 12.665 3.63273 12.665 4V7.33496H16L16.1338 7.34863C16.4369 7.41057 16.665 7.67857 16.665 8C16.665 8.32143 16.4369 8.58943 16.1338 8.65137L16 8.66504H12C11.6327 8.66504 11.335 8.36727 11.335 8V4Z";
-const ACTION_DOWNLOAD_PATH =
-  "M2.66831 12.6664V12.5004C2.66831 12.1331 2.96607 11.8353 3.33334 11.8353C3.70061 11.8353 3.99838 12.1331 3.99838 12.5004V12.6664C3.99838 13.3773 3.99929 13.8708 4.03061 14.2543C4.0613 14.6299 4.11812 14.8414 4.19858 14.9994L4.26889 15.1263C4.4452 15.4138 4.69823 15.6482 5.00034 15.8021L5.13022 15.8578C5.27399 15.9092 5.4635 15.9471 5.74545 15.9701C6.12897 16.0014 6.62231 16.0013 7.33334 16.0013H12.6664C13.3772 16.0013 13.8708 16.0014 14.2542 15.9701C14.6296 15.9394 14.8414 15.8825 14.9994 15.8021L15.1263 15.7308C15.4137 15.5545 15.6482 15.3014 15.8021 14.9994L15.8578 14.8695C15.9092 14.7258 15.947 14.5361 15.9701 14.2543C16.0014 13.8708 16.0013 13.3772 16.0013 12.6664V12.5004C16.0013 12.1332 16.2992 11.8355 16.6664 11.8353C17.0336 11.8353 17.3314 12.1331 17.3314 12.5004V12.6664C17.3314 13.3554 17.332 13.9125 17.2953 14.3627C17.2625 14.7636 17.1975 15.1248 17.0531 15.4613L16.9867 15.6039C16.7212 16.1248 16.3173 16.5606 15.8216 16.8646L15.6039 16.9867C15.2271 17.1787 14.8206 17.2579 14.3626 17.2953C13.9124 17.3321 13.3554 17.3314 12.6664 17.3314H7.33334C6.64425 17.3314 6.0873 17.3321 5.63706 17.2953C5.23651 17.2626 4.87562 17.1982 4.5394 17.0541L4.39682 16.9867C3.8757 16.7212 3.4392 16.3175 3.1351 15.8217L3.01303 15.6039C2.82106 15.2271 2.74186 14.8207 2.70444 14.3627C2.66767 13.9125 2.66831 13.3554 2.66831 12.6664ZM9.3353 3.33337C9.3353 2.9661 9.63307 2.66833 10.0003 2.66833C10.3675 2.66851 10.6654 2.96621 10.6654 3.33337V10.8939L12.8626 8.69666L12.9671 8.61169C13.2253 8.44097 13.5767 8.4693 13.804 8.69666C14.0634 8.95633 14.0635 9.37748 13.804 9.63708L10.4701 12.9701C10.3454 13.0947 10.1766 13.1653 10.0003 13.1654C9.82397 13.1654 9.65434 13.0948 9.52963 12.9701L6.19663 9.63708L6.11166 9.53259C5.9411 9.27445 5.96934 8.92394 6.19663 8.69666C6.42392 8.46937 6.77442 8.44113 7.03256 8.61169L7.13705 8.69666L9.3353 10.8949V3.33337Z";
 const THREAD_SUMMARY_COMMIT_RING_PATH =
   "M13.5013 10.0003C13.5013 8.06653 11.9341 6.49856 10.0003 6.49838C8.06641 6.49838 6.49837 8.06642 6.49837 10.0003C6.49855 11.9341 8.06652 13.5013 10.0003 13.5013C11.934 13.5011 13.5011 11.934 13.5013 10.0003ZM14.8314 10.0003C14.8312 12.6685 12.6685 14.8312 10.0003 14.8314C7.33198 14.8314 5.16847 12.6686 5.16829 10.0003C5.16829 7.33188 7.33187 5.1683 10.0003 5.1683C12.6686 5.16848 14.8314 7.33199 14.8314 10.0003Z";
 const THREAD_SUMMARY_COMMIT_LEFT_PATH =
@@ -379,13 +373,13 @@ export function GoalTargetIcon({ className }: IconProps) {
   );
 }
 
-export function GoalClearIcon({ className }: IconProps) {
+function ClearGlyph({ className }: IconProps) {
   return (
     <svg
       width="21"
       height="21"
       viewBox="0 0 21 21"
-      className={className ?? "icon-xs"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -393,6 +387,10 @@ export function GoalClearIcon({ className }: IconProps) {
       <path fillRule="evenodd" clipRule="evenodd" d={GOAL_CLEAR_CIRCLE_PATH} fill="currentColor" />
     </svg>
   );
+}
+
+export function GoalClearIcon({ className }: IconProps) {
+  return <ClearGlyph className={className ?? "icon-xs"} />;
 }
 
 export function GoalResumeIcon({ className }: IconProps) {
@@ -440,13 +438,13 @@ export function GoalPauseIcon({ className }: IconProps) {
   );
 }
 
-export function GoalChevronRightIcon({ className }: IconProps) {
+function ChevronRightGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={className ?? "icon-2xs"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -456,7 +454,11 @@ export function GoalChevronRightIcon({ className }: IconProps) {
   );
 }
 
-export function ShortcutResetIcon({ className }: IconProps) {
+export function GoalChevronRightIcon({ className }: IconProps) {
+  return <ChevronRightGlyph className={className ?? "icon-2xs"} />;
+}
+
+export function UndoIcon({ className }: IconProps) {
   return (
     <svg
       width="20"
@@ -507,19 +509,7 @@ export function ContentSearchDiffIcon({ className }: IconProps) {
 }
 
 export function ThreadSummaryChangesIcon({ className }: IconProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      fill="currentColor"
-      viewBox="0 0 20 20"
-      className={className ?? "icon-sm shrink-0"}
-    >
-      <path d={CONTENT_SEARCH_DIFF_RULE_PATH} />
-      <path fillRule="evenodd" d={CONTENT_SEARCH_DIFF_BOX_PATH} clipRule="evenodd" />
-    </svg>
-  );
+  return <ReviewChangesGlyph className={className ?? "icon-sm shrink-0"} />;
 }
 
 export function ThreadSummaryCommitIcon({ className }: IconProps) {
@@ -539,13 +529,13 @@ export function ThreadSummaryCommitIcon({ className }: IconProps) {
   );
 }
 
-export function ThreadSummaryPushIcon({ className }: IconProps) {
+function PushGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={className ?? "icon-sm shrink-0"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
@@ -574,6 +564,10 @@ export function ThreadSummaryPushIcon({ className }: IconProps) {
   );
 }
 
+export function ThreadSummaryPushIcon({ className }: IconProps) {
+  return <PushGlyph className={className ?? "icon-sm shrink-0"} />;
+}
+
 export function ThreadSummaryCreatePullRequestIcon({ className }: IconProps) {
   return (
     <svg
@@ -589,49 +583,27 @@ export function ThreadSummaryCreatePullRequestIcon({ className }: IconProps) {
   );
 }
 
-export function PanelLeftVisibleIcon({ className }: IconProps) {
+function PanelVisibleGlyph({ className }: IconProps) {
   return (
     <svg
+      width="20"
+      height="20"
       viewBox="0 0 20 20"
-      className={cn("size-5", className)}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
     >
       <path d={PANEL_VISIBLE_PATH} fill="currentColor" />
-    </svg>
-  );
-}
-
-export function PanelLeftHiddenIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d={PANEL_HIDDEN_PATH} fill="currentColor" />
     </svg>
   );
 }
 
 export function SidebarVisibleIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={className}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={PANEL_VISIBLE_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <PanelVisibleGlyph className={className} />;
 }
 
-export function SidebarHiddenIcon({ className }: IconProps) {
+function PanelHiddenGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
@@ -645,6 +617,10 @@ export function SidebarHiddenIcon({ className }: IconProps) {
       <path d={PANEL_HIDDEN_PATH} fill="currentColor" />
     </svg>
   );
+}
+
+export function SidebarHiddenIcon({ className }: IconProps) {
+  return <PanelHiddenGlyph className={className} />;
 }
 
 export function PanelBottomHiddenIcon({ className }: IconProps) {
@@ -679,13 +655,13 @@ export function PanelBottomVisibleIcon({ className }: IconProps) {
   );
 }
 
-export function CloseIcon({ className }: IconProps) {
+function CloseGlyph({ className }: IconProps) {
   return (
     <svg
       width="21"
       height="21"
       viewBox="0 0 21 21"
-      className={className ?? "icon-xs"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -693,6 +669,10 @@ export function CloseIcon({ className }: IconProps) {
       <path d={CLOSE_PATH} fill="currentColor" />
     </svg>
   );
+}
+
+export function CloseIcon({ className }: IconProps) {
+  return <CloseGlyph className={className ?? "icon-xs"} />;
 }
 
 export function SettingsGeneralIcon({ className }: IconProps) {
@@ -733,13 +713,13 @@ export function SettingsAppearanceIcon({ className }: IconProps) {
   );
 }
 
-export function SettingsAgentIcon({ className }: IconProps) {
+function AgentPolicyGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={className ?? "icon-sm inline-block align-middle"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -756,13 +736,17 @@ export function SettingsAgentIcon({ className }: IconProps) {
   );
 }
 
-export function SettingsWorktreeIcon({ className }: IconProps) {
+export function SettingsAgentIcon({ className }: IconProps) {
+  return <AgentPolicyGlyph className={className ?? "icon-sm inline-block align-middle"} />;
+}
+
+function WorktreeGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={className ?? "icon-sm inline-block align-middle"}
+      className={className}
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -770,6 +754,10 @@ export function SettingsWorktreeIcon({ className }: IconProps) {
       <path d={SETTINGS_WORKTREE_PATH} />
     </svg>
   );
+}
+
+export function SettingsWorktreeIcon({ className }: IconProps) {
+  return <WorktreeGlyph className={className ?? "icon-sm inline-block align-middle"} />;
 }
 
 export function SettingsLocalEnvironmentsIcon({ className }: IconProps) {
@@ -801,13 +789,13 @@ export function SettingsLocalEnvironmentsIcon({ className }: IconProps) {
   );
 }
 
-function ToolActionIcon({ className }: IconProps) {
+function ToolGlyph({ className }: IconProps) {
   return (
     <svg
       width="21"
       height="21"
       viewBox="0 0 21 21"
-      className={className ?? "icon-sm"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -820,13 +808,17 @@ function ToolActionIcon({ className }: IconProps) {
   );
 }
 
-function RunActionIcon({ className }: IconProps) {
+function ToolActionIcon({ className }: IconProps) {
+  return <ToolGlyph className={className ?? "icon-sm"} />;
+}
+
+function RunGlyph({ className }: IconProps) {
   return (
     <svg
       width="18"
       height="18"
       viewBox="0 0 18 18"
-      className={className ?? "icon-sm"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -837,6 +829,10 @@ function RunActionIcon({ className }: IconProps) {
       />
     </svg>
   );
+}
+
+function RunActionIcon({ className }: IconProps) {
+  return <RunGlyph className={className ?? "icon-sm"} />;
 }
 
 function DebugActionIcon({ className }: IconProps) {
@@ -923,20 +919,24 @@ export function LocalEnvironmentActionIcon({
   return <Icon className={cn("icon-sm", className)} />;
 }
 
-export function SettingsImportIcon({ className }: IconProps) {
+function DownloadImportGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={className ?? "icon-sm inline-block align-middle"}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <path d={SETTINGS_IMPORT_PATH} fill="currentColor" />
+      <path d={DOWNLOAD_IMPORT_PATH} fill="currentColor" />
     </svg>
   );
+}
+
+export function SettingsImportIcon({ className }: IconProps) {
+  return <DownloadImportGlyph className={className ?? "icon-sm inline-block align-middle"} />;
 }
 
 export function SettingsPasswordsIcon({ className }: IconProps) {
@@ -1131,26 +1131,14 @@ export function AutomationActiveStatusIcon({ className }: IconProps) {
 }
 
 export function AutomationRunNowIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      className={className ?? "icon-sm"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={AUTOMATION_RUN_NOW_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <RunGlyph className={className ?? "icon-sm"} />;
 }
 
 export function ActivitySpinnerIcon({
   as: Wrapper = "span",
   className,
   containerClassName,
-  icon: Icon = ActivitySpinnerGlyph,
+  icon: Icon = LoadingIcon,
   animationDurationMs,
 }: IconProps & {
   as?: ElementType;
@@ -1181,22 +1169,6 @@ export function ActivitySpinnerIcon({
   );
 }
 
-function ActivitySpinnerGlyph({ className }: IconProps) {
-  return (
-    <svg
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      className={className ?? "icon-sm"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path opacity="0.3" d={SPINNER_FADED_PATH} fill="currentColor" />
-      <path d={SPINNER_ACTIVE_PATH} fill="currentColor" />
-    </svg>
-  );
-}
-
 export function AutomationLoadingIcon({ className }: IconProps) {
   return <ActivitySpinnerIcon className={className ?? "icon-sm"} />;
 }
@@ -1214,21 +1186,7 @@ export function AutomationArchiveIcon({ className }: IconProps) {
 }
 
 export function AutomationMoreIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="21"
-      height="21"
-      viewBox="0 0 21 21"
-      className={className ?? "icon-xs"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      {PROJECT_ACTIONS_PATHS.map((path) => (
-        <path key={path} d={path} fill="currentColor" />
-      ))}
-    </svg>
-  );
+  return <MoreActionsIcon className={className ?? "icon-xs"} />;
 }
 
 export function AutomationTemplateColorIcon({
@@ -1451,19 +1409,7 @@ export function ProjectFolderIcon({ className }: IconProps) {
 }
 
 export function ProjectTaskIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      className={cn("icon-xs shrink-0", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={PROJECT_TASK_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <ConversationIcon className={cn("icon-xs shrink-0", className)} />;
 }
 
 export function ProjectRepositoryIcon({ className }: IconProps) {
@@ -1559,54 +1505,17 @@ export function ProjectFolderOpenIcon({ className }: IconProps) {
   );
 }
 
-export function ProjectHoverIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
-      className={cn("icon-xs shrink-0", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={PROJECT_HOVER_PATH} fill="currentColor" />
-      <path d={PROJECT_HOVER_DOTS_PATH} fill="currentColor" />
-      <path
-        d={PROJECT_HOVER_STROKE_PATH}
-        stroke="currentColor"
-        strokeWidth="0.11"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 export function ProjectActionsIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="21"
-      height="21"
-      viewBox="0 0 21 21"
-      className={cn("icon-xs", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      {PROJECT_ACTIONS_PATHS.map((path) => (
-        <path key={path} d={path} fill="currentColor" />
-      ))}
-    </svg>
-  );
+  return <MoreActionsIcon className={cn("icon-xs", className)} />;
 }
 
-export function ProjectCollapseAllIcon({ className }: IconProps) {
+function ExpandCollapseGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={cn("icon-xs", className)}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -1616,13 +1525,17 @@ export function ProjectCollapseAllIcon({ className }: IconProps) {
   );
 }
 
-export function ProjectReopenPreviousIcon({ className }: IconProps) {
+export function ProjectCollapseAllIcon({ className }: IconProps) {
+  return <ExpandCollapseGlyph className={cn("icon-xs", className)} />;
+}
+
+function RestoreOpenGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={cn("icon-xs", className)}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -1632,20 +1545,12 @@ export function ProjectReopenPreviousIcon({ className }: IconProps) {
   );
 }
 
+export function ProjectReopenPreviousIcon({ className }: IconProps) {
+  return <RestoreOpenGlyph className={cn("icon-xs", className)} />;
+}
+
 export function PlanSidePanelOpenIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={className ?? "icon-xs"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={PROJECT_REOPEN_PREVIOUS_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <RestoreOpenGlyph className={className ?? "icon-xs"} />;
 }
 
 export function PlanSidePanelCloseIcon({ className }: IconProps) {
@@ -1665,19 +1570,7 @@ export function PlanSidePanelCloseIcon({ className }: IconProps) {
 }
 
 export function DownloadIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={className ?? "icon-xs"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={ACTION_DOWNLOAD_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <DownloadImportGlyph className={className ?? "icon-xs"} />;
 }
 
 export function SidebarSortClockIcon({ className }: IconProps) {
@@ -1723,13 +1616,13 @@ export function SidebarManualOrderIcon({ className }: IconProps) {
   );
 }
 
-export function SidebarCreatedIcon({ className }: IconProps) {
+function SideChatGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={cn("icon-xs", className)}
+      className={className}
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -1738,6 +1631,10 @@ export function SidebarCreatedIcon({ className }: IconProps) {
       <path d={SIDEBAR_CREATED_PLUS_PATH} />
     </svg>
   );
+}
+
+export function SidebarCreatedIcon({ className }: IconProps) {
+  return <SideChatGlyph className={cn("icon-xs", className)} />;
 }
 
 export function SidebarUpdatedIcon({ className }: IconProps) {
@@ -1806,20 +1703,7 @@ export function SidePanelFilesIcon({ className }: IconProps) {
 }
 
 export function SidePanelSideChatIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn(className ?? "icon-md")}
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d="M3.165 10c0-3.51 3.024-6.418 6.835-6.418S16.835 6.49 16.835 10a6.138 6.138 0 0 1-1.388 3.877.667.667 0 0 0-.136.54c.095.508.23 1.003.384 1.487a12.883 12.883 0 0 1-1.823-.376l-.126-.022a.664.664 0 0 0-.369.076 7.145 7.145 0 0 1-3.377.837c-3.811 0-6.835-2.91-6.835-6.42Zm-1.33 0c0 4.314 3.692 7.749 8.165 7.749a8.487 8.487 0 0 0 3.766-.873c.92.242 1.865.393 2.86.455a.665.665 0 0 0 .661-.903l-.207-.565c-.162-.468-.3-.933-.402-1.402A7.45 7.45 0 0 0 18.165 10c0-4.315-3.692-7.748-8.165-7.748-4.473 0-8.165 3.433-8.165 7.748Z" />
-      <path d="M10 6.335A.665.665 0 0 0 9.335 7v2.335L7 9.349l-.134.013a.665.665 0 0 0 0 1.303L7 10.68l2.335-.014V13a.665.665 0 0 0 1.33 0v-2.335L13 10.68a.665.665 0 0 0 0-1.33l-2.335-.014V7A.665.665 0 0 0 10 6.335Z" />
-    </svg>
-  );
+  return <SideChatGlyph className={className ?? "icon-md"} />;
 }
 
 export function SidePanelBrowserIcon({ className }: IconProps) {
@@ -1833,28 +1717,13 @@ export function SidePanelBrowserIcon({ className }: IconProps) {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <path d="M10 2.125C14.3492 2.125 17.875 5.65076 17.875 10C17.875 14.3492 14.3492 17.875 10 17.875C5.65076 17.875 2.125 14.3492 2.125 10C2.125 5.65076 5.65076 2.125 10 2.125ZM7.88672 10.625C7.94334 12.3161 8.22547 13.8134 8.63965 14.9053C8.87263 15.5194 9.1351 15.9733 9.39453 16.2627C9.65437 16.5524 9.86039 16.625 10 16.625C10.1396 16.625 10.3456 16.5524 10.6055 16.2627C10.8649 15.9733 11.1274 15.5194 11.3604 14.9053C11.7745 13.8134 12.0567 12.3161 12.1133 10.625H7.88672ZM3.40527 10.625C3.65313 13.2734 5.45957 15.4667 7.89844 16.2822C7.7409 15.997 7.5977 15.6834 7.4707 15.3486C6.99415 14.0923 6.69362 12.439 6.63672 10.625H3.40527ZM13.3633 10.625C13.3064 12.439 13.0059 14.0923 12.5293 15.3486C12.4022 15.6836 12.2582 15.9969 12.1006 16.2822C14.5399 15.467 16.3468 13.2737 16.5947 10.625H13.3633ZM12.1006 3.7168C12.2584 4.00235 12.4021 4.31613 12.5293 4.65137C13.0059 5.90775 13.3064 7.56102 13.3633 9.375H16.5947C16.3468 6.72615 14.54 4.53199 12.1006 3.7168ZM10 3.375C9.86039 3.375 9.65437 3.44756 9.39453 3.7373C9.1351 4.02672 8.87263 4.48057 8.63965 5.09473C8.22547 6.18664 7.94334 7.68388 7.88672 9.375H12.1133C12.0567 7.68388 11.7745 6.18664 11.3604 5.09473C11.1274 4.48057 10.8649 4.02672 10.6055 3.7373C10.3456 3.44756 10.1396 3.375 10 3.375ZM7.89844 3.7168C5.45942 4.53222 3.65314 6.72647 3.40527 9.375H6.63672C6.69362 7.56102 6.99415 5.90775 7.4707 4.65137C7.59781 4.31629 7.74073 4.00224 7.89844 3.7168Z" />
+      <path d={GLOBE_PATH} />
     </svg>
   );
 }
 
 export function BrowserBackIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={className ?? "icon-xs"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M8.8011 3.611C9.05912 3.44087 9.40989 3.46898 9.63703 3.69596C9.89673 3.95566 9.89673 4.37767 9.63703 4.63737L4.93977 9.33463H16.6663L16.8011 9.34831C17.1038 9.41043 17.3312 9.67859 17.3314 9.99967C17.3314 10.3209 17.1039 10.5888 16.8011 10.651L16.6663 10.6647H4.93879L9.63703 15.363L9.722 15.4674C9.89241 15.7255 9.86413 16.0761 9.63703 16.3034C9.40981 16.5306 9.05921 16.5587 8.8011 16.3883L8.69661 16.3034L2.86262 10.4704C2.60319 10.2108 2.6033 9.78962 2.86262 9.52995L8.69661 3.69596L8.8011 3.611Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <BackIcon className={className ?? "icon-xs"} />;
 }
 
 export function BrowserReloadIcon({ className }: IconProps) {
@@ -1877,22 +1746,7 @@ export function BrowserReloadIcon({ className }: IconProps) {
 }
 
 export function BrowserExternalIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      className={cn("icon-xs", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M11.949 3.47949C12.0997 3.46465 12.2553 3.51279 12.3709 3.62793C12.4863 3.74328 12.5338 3.89898 12.5193 4.0498C12.5206 4.06633 12.5251 4.08275 12.5252 4.09961V10.667C12.525 10.9565 12.2902 11.191 12.0007 11.1914C11.7109 11.1914 11.4755 10.9568 11.4754 10.667V5.2666L4.37184 12.376C4.16684 12.5807 3.83365 12.5808 3.62867 12.376C3.42385 12.1711 3.42396 11.8388 3.62867 11.6338L10.7332 4.52539H5.33375C5.0438 4.52539 4.80836 4.28995 4.80836 4C4.80836 3.71005 5.0438 3.47461 5.33375 3.47461H11.9002C11.9167 3.47462 11.9328 3.47822 11.949 3.47949Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <OpenExternalIcon className={cn("icon-xs", className)} />;
 }
 
 export function BrowserScreenshotIcon({ className }: IconProps) {
@@ -1972,58 +1826,20 @@ export function BrowserMoreIcon({ className }: IconProps) {
 }
 
 export function BrowserLocalServerFilterIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn("icon-xs", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M12.5 14.0049C12.8673 14.0049 13.165 14.3027 13.165 14.6699C13.165 15.0372 12.8673 15.335 12.5 15.335H7.5C7.13273 15.335 6.83496 15.0372 6.83496 14.6699C6.83496 14.3027 7.13273 14.0049 7.5 14.0049H12.5Z"
-        fill="currentColor"
-      />
-      <path
-        d="M15 9.33496C15.3673 9.33496 15.665 9.63273 15.665 10C15.665 10.3673 15.3673 10.665 15 10.665H5C4.63273 10.665 4.33496 10.3673 4.33496 10C4.33496 9.63273 4.63273 9.33496 5 9.33496H15Z"
-        fill="currentColor"
-      />
-      <path
-        d="M17.5 4.66504C17.8673 4.66504 18.165 4.96281 18.165 5.33008C18.165 5.69735 17.8673 5.99512 17.5 5.99512H2.5C2.13273 5.99512 1.83496 5.69735 1.83496 5.33008C1.83496 4.96281 2.13273 4.66504 2.5 4.66504H17.5Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <FilterIcon className={cn("icon-xs", className)} />;
 }
 
 export function BrowserHideIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="21"
-      height="21"
-      viewBox="0 0 21 21"
-      className={cn("icon-xs", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M14.6549 5.57307C14.9283 5.2997 15.3718 5.2997 15.6451 5.57307C15.9185 5.84643 15.9185 6.28993 15.6451 6.5633L11.3903 10.8182L15.6451 15.0731L15.735 15.1834C15.9141 15.4551 15.8842 15.8242 15.6451 16.0633C15.4061 16.3024 15.0369 16.3322 14.7653 16.1531L14.6549 16.0633L10.4 11.8084L6.14515 16.0633C5.87178 16.3367 5.42828 16.3367 5.15492 16.0633C4.88155 15.7899 4.88155 15.3464 5.15492 15.0731L9.4098 10.8182L5.15492 6.5633L5.06507 6.45295C4.88597 6.18128 4.91584 5.81214 5.15492 5.57307C5.39399 5.33399 5.76313 5.30413 6.0348 5.48322L6.14515 5.57307L10.4 9.82795L14.6549 5.57307Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <CloseGlyph className={cn("icon-xs", className)} />;
 }
 
-export function SidePanelReviewIcon({ className }: IconProps) {
+function ReviewChangesGlyph({ className }: IconProps) {
   return (
     <svg
       width="20"
       height="20"
       viewBox="0 0 20 20"
-      className={cn(className ?? "icon-md")}
+      className={className}
       fill="currentColor"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
@@ -2038,91 +1854,28 @@ export function SidePanelReviewIcon({ className }: IconProps) {
   );
 }
 
+export function SidePanelReviewIcon({ className }: IconProps) {
+  return <ReviewChangesGlyph className={className ?? "icon-md"} />;
+}
+
 export function SidePanelTerminalIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn(className ?? "icon-md")}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M6.19629 7.86231C6.42357 7.63534 6.7752 7.60692 7.0332 7.77734L7.1377 7.86231L8.80371 9.5293C9.06329 9.78889 9.06307 10.21 8.80371 10.4697L7.1377 12.1367C6.878 12.3964 6.45599 12.3964 6.19629 12.1367C5.93686 11.8771 5.93697 11.456 6.19629 11.1963L7.39258 9.99902L6.19629 8.80371L6.11133 8.69922C5.94087 8.4411 5.96904 8.08955 6.19629 7.86231Z"
-        fill="currentColor"
-      />
-      <path
-        d="M13.4668 11.0156C13.7699 11.0776 13.998 11.3456 13.998 11.667C13.9979 11.9883 13.7698 12.2564 13.4668 12.3184L13.333 12.332H10.833C10.466 12.3319 10.1682 12.034 10.168 11.667C10.168 11.2998 10.4659 11.0021 10.833 11.002H13.333L13.4668 11.0156Z"
-        fill="currentColor"
-      />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M12.6602 2.66504C13.3492 2.66504 13.9062 2.66439 14.3564 2.70117C14.8142 2.73859 15.2201 2.81796 15.5967 3.00977C16.1922 3.31321 16.677 3.79805 16.9805 4.39356C17.1722 4.77014 17.2517 5.17604 17.2891 5.63379C17.3258 6.08402 17.3252 6.64102 17.3252 7.33008V12.6602C17.3252 13.3492 17.3258 13.9062 17.2891 14.3564C17.2516 14.8142 17.1723 15.2201 16.9805 15.5967C16.677 16.1922 16.1922 16.677 15.5967 16.9805C15.2201 17.1723 14.8142 17.2516 14.3564 17.2891C13.9062 17.3258 13.3492 17.3252 12.6602 17.3252H7.33008C6.64102 17.3252 6.08402 17.3258 5.63379 17.2891C5.17604 17.2517 4.77014 17.1722 4.39356 16.9805C3.79805 16.677 3.31321 16.1922 3.00977 15.5967C2.81796 15.2201 2.73859 14.8142 2.70117 14.3564C2.66439 13.9062 2.66504 13.3492 2.66504 12.6602V7.33008C2.66504 6.64101 2.66439 6.08402 2.70117 5.63379C2.73858 5.17601 2.81797 4.77016 3.00977 4.39356C3.31321 3.79802 3.79802 3.31321 4.39356 3.00977C4.77016 2.81797 5.17601 2.73858 5.63379 2.70117C6.08402 2.66439 6.64101 2.66504 7.33008 2.66504H12.6602ZM7.33008 3.99512C6.61907 3.99512 6.1257 3.99601 5.74219 4.02734C5.3665 4.05804 5.15508 4.11481 4.99707 4.19531C4.65183 4.37124 4.37124 4.65183 4.19531 4.99707C4.11481 5.15508 4.05805 5.3665 4.02734 5.74219C3.99601 6.1257 3.99512 6.61908 3.99512 7.33008V12.6602C3.99512 13.3711 3.99601 13.8646 4.02734 14.248C4.05805 14.6237 4.11481 14.8352 4.19531 14.9932C4.37124 15.3384 4.65186 15.619 4.99707 15.7949C5.15507 15.8754 5.36654 15.9322 5.74219 15.9629C6.1257 15.9942 6.61908 15.9951 7.33008 15.9951H12.6602C13.3711 15.9951 13.8646 15.9942 14.248 15.9629C14.6237 15.9322 14.8352 15.8754 14.9932 15.7949C15.3384 15.619 15.619 15.3384 15.7949 14.9932C15.8754 14.8352 15.9322 14.6237 15.9629 14.248C15.9942 13.8646 15.9951 13.3711 15.9951 12.6602V7.33008C15.9951 6.61908 15.9942 6.1257 15.9629 5.74219C15.9322 5.36654 15.8754 5.15507 15.7949 4.99707C15.619 4.65186 15.3384 4.37124 14.9932 4.19531C14.8352 4.11481 14.6237 4.05805 14.248 4.02734C13.8646 3.99601 13.3711 3.99512 12.6602 3.99512H7.33008Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <TerminalIcon className={className ?? "icon-md"} />;
 }
 
 export function PanelRightVisibleIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 rotate-180", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d={PANEL_HIDDEN_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <PanelHiddenGlyph className={cn("size-5 rotate-180", className)} />;
 }
 
 export function PanelRightHiddenIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 rotate-180", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d={PANEL_VISIBLE_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <PanelVisibleGlyph className={cn("size-5 rotate-180", className)} />;
 }
 
 export function ExpandPanelIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M16.0299 3.0293C16.2896 2.76996 16.7107 2.76988 16.9703 3.0293C17.23 3.28899 17.23 3.711 16.9703 3.9707L13.2731 7.66797H16.9996L17.1344 7.68164C17.4372 7.74375 17.6645 8.01192 17.6647 8.33301C17.6647 8.65421 17.4372 8.92219 17.1344 8.98438L16.9996 8.99805H11.6666C11.2994 8.99801 11.0016 8.70026 11.0016 8.33301V3C11.0016 2.63275 11.2994 2.33499 11.6666 2.33496C12.0339 2.33496 12.3317 2.63273 12.3317 3V6.72754L16.0299 3.0293ZM8.99475 17C8.99475 17.3673 8.69698 17.665 8.32971 17.665C7.96258 17.6649 7.66467 17.3672 7.66467 17V13.2725L3.96741 16.9707C3.70771 17.2304 3.2857 17.2304 3.026 16.9707C2.7663 16.711 2.7663 16.289 3.026 16.0293L6.72424 12.332H2.9967C2.62955 12.332 2.33185 12.0341 2.33167 11.667C2.33167 11.2997 2.62943 11.002 2.9967 11.002H8.32971C8.69698 11.002 8.99475 11.2997 8.99475 11.667V17Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <ExpandCollapseGlyph className={cn("size-5", className)} />;
 }
 
 export function RestorePanelIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M4.33496 11C4.33496 10.6327 4.63273 10.335 5 10.335C5.36727 10.335 5.66504 10.6327 5.66504 11V14.335H9L9.13379 14.3486C9.43692 14.4106 9.66504 14.6786 9.66504 15C9.66504 15.3214 9.43692 15.5894 9.13379 15.6514L9 15.665H5C4.63273 15.665 4.33496 15.3673 4.33496 15V11ZM14.335 9V5.66504H11C10.6327 5.66504 10.335 5.36727 10.335 5C10.335 4.63273 10.6327 4.33496 11 4.33496H15L15.1338 4.34863C15.4369 4.41057 15.665 4.67857 15.665 5V9C15.665 9.36727 15.3673 9.66504 15 9.66504C14.6327 9.66504 14.335 9.36727 14.335 9Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <RestoreOpenGlyph className={cn("size-5", className)} />;
 }
 
 export function NodexLogoMarkIcon({ className }: IconProps) {
@@ -2313,15 +2066,27 @@ export function QueuePendingInfoIcon({ className }: IconProps) {
   );
 }
 
-export function CheckmarkIcon({ className }: IconProps) {
+export function CheckmarkIcon({
+  className,
+  "aria-hidden": ariaHidden,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+  ...props
+}: SVGProps<SVGSVGElement>) {
+  const hasAccessibleName = ariaLabel !== undefined || ariaLabelledBy !== undefined;
+
   return (
     <svg
+      {...props}
       width="14"
       height="14"
       viewBox="0 0 17 17"
       className={cn("shrink-0", className)}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+      aria-hidden={hasAccessibleName ? ariaHidden : (ariaHidden ?? true)}
     >
       <path
         d="M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z"
@@ -2365,24 +2130,7 @@ export function ComposerPlanModeIcon({ className }: IconProps) {
 }
 
 export function ComposerPlanModeCloseIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="21"
-      height="21"
-      viewBox="0 0 21 21"
-      className={cn("shrink-0", className ?? "icon-xs")}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M10.7997 2.48486C15.4019 2.48486 19.1335 6.21565 19.1337 10.8179C19.1337 15.4202 15.4021 19.1519 10.7997 19.1519C6.19746 19.1517 2.46667 15.4201 2.46667 10.8179C2.46685 6.21576 6.19757 2.48504 10.7997 2.48486ZM8.97253 8.05029C8.71284 7.79059 8.29083 7.79059 8.03113 8.05029C7.77189 8.31002 7.77162 8.73117 8.03113 8.99072L9.85925 10.8179L8.03113 12.646C7.77173 12.9056 7.77178 13.3268 8.03113 13.5864C8.29083 13.8461 8.71284 13.8461 8.97253 13.5864L10.7997 11.7583L12.6278 13.5864C12.8875 13.8461 13.3085 13.8461 13.5682 13.5864C13.8279 13.3267 13.8279 12.9057 13.5682 12.646L11.7401 10.8179L13.5682 8.99072L13.6532 8.88623C13.8237 8.62817 13.7953 8.27758 13.5682 8.05029C13.341 7.82301 12.9904 7.79478 12.7323 7.96533L12.6278 8.05029L10.7997 9.87744L8.97253 8.05029Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <ClearGlyph className={cn("shrink-0", className ?? "icon-xs")} />;
 }
 
 export function FastModeIcon({ className }: IconProps) {
@@ -2487,22 +2235,7 @@ export function SlashMemoriesIcon({ className }: IconProps) {
 }
 
 export function SlashModelIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="10"
-      height="10"
-      viewBox="0 0 10 10"
-      className={className ?? "icon-xs shrink-0"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M8.13037 3.71927L5.33252 5.20023V8.42289L7.89697 6.94242L7.94873 6.90775C8.06253 6.82002 8.13037 6.68363 8.13037 6.53763V3.71927ZM5.23389 1.52005C5.10743 1.44704 4.95515 1.43799 4.82227 1.49271L4.7666 1.52005L2.16309 3.0225L5.00488 4.62113L7.92383 3.07572L7.89697 3.05765L5.23389 1.52005ZM1.86963 6.53763C1.86963 6.70452 1.95852 6.85894 2.10303 6.94242L4.66748 8.4224V5.19437L1.86963 3.62015V6.53763ZM8.79541 6.53763C8.79541 6.91694 8.60593 7.26936 8.29346 7.47855L8.22949 7.5181L5.56641 9.0557C5.23795 9.24533 4.83786 9.2573 4.50049 9.09134L4.43408 9.0557L1.77051 7.5181C1.42032 7.31582 1.20459 6.94206 1.20459 6.53763V3.46244C1.20459 3.05801 1.42032 2.68425 1.77051 2.48197L4.43408 0.94437L4.50049 0.908726C4.83786 0.742764 5.23795 0.754738 5.56641 0.94437L8.22949 2.48197L8.29346 2.52152C8.60593 2.7307 8.79541 3.08313 8.79541 3.46244V6.53763Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <ModelStatusGlyph className={className ?? "icon-xs shrink-0"} />;
 }
 
 export function SlashPersonalityIcon({ className }: IconProps) {
@@ -2576,20 +2309,7 @@ export function SlashReasoningIcon({ className }: IconProps) {
 }
 
 export function SlashSideIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={className ?? "icon-xs shrink-0"}
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={SIDEBAR_CREATED_PATH} />
-      <path d={SIDEBAR_CREATED_PLUS_PATH} />
-    </svg>
-  );
+  return <SideChatGlyph className={className ?? "icon-xs shrink-0"} />;
 }
 
 export function SlashStatusIcon({ className }: IconProps) {
@@ -2609,25 +2329,6 @@ export function SlashStatusIcon({ className }: IconProps) {
       />
       <path
         d="M16.585 10.25C16.585 6.6132 13.6368 3.66504 10 3.66504C6.3632 3.66504 3.41504 6.6132 3.41504 10.25C3.41504 12.4001 4.44494 14.31 6.04102 15.5127L6.36719 15.7432L6.47168 15.8291C6.68974 16.0482 6.73203 16.3973 6.55469 16.665C6.3772 16.9328 6.03875 17.0306 5.75195 16.915L5.63281 16.8516L5.24023 16.5752C3.32482 15.1316 2.08496 12.8355 2.08496 10.25C2.08496 5.87867 5.62867 2.33496 10 2.33496C14.3713 2.33496 17.915 5.87867 17.915 10.25C17.915 13.0079 16.5037 15.4356 14.3672 16.8516L14.248 16.915C13.9612 17.0306 13.6228 16.9328 13.4453 16.665C13.2425 16.3589 13.3267 15.946 13.6328 15.7432L13.959 15.5127C15.5551 14.31 16.585 12.4001 16.585 10.25Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-export function SlashSkillIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={className ?? "icon-xs shrink-0"}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M9.79 18.5102C9.48333 18.6969 9.15333 18.7869 8.8 18.7802C8.45333 18.7736 8.13 18.6669 7.83 18.4602L4.35 16.0802C4.07666 15.8936 3.86333 15.6569 3.71 15.3702C3.55666 15.0836 3.48 14.7802 3.48 14.4602V6.53024C3.48 6.20358 3.55333 5.90691 3.7 5.64024C3.85333 5.37358 4.07333 5.15358 4.36 4.98024L10.08 1.46024C10.4067 1.26024 10.76 1.16358 11.14 1.17024C11.52 1.17024 11.87 1.27691 12.19 1.49024L15.71 3.89024C15.97 4.07691 16.17 4.30024 16.31 4.56024C16.45 4.81358 16.52 5.09358 16.52 5.40024V13.2902C16.52 13.6236 16.4367 13.9402 16.27 14.2402C16.1033 14.5402 15.8733 14.7769 15.58 14.9502L9.79 18.5102ZM14.38 4.66024L11.42 2.64024C11.3267 2.57358 11.2233 2.54024 11.11 2.54024C11.0033 2.53358 10.9033 2.56024 10.81 2.62024L5.5 5.89024L8.77 8.11024L14.38 4.66024ZM8.14 9.33025L4.86 7.11024V10.2102L8.14 12.4502V9.33025ZM8.14 14.0402L4.86 11.8002V14.4602C4.86 14.5602 4.88 14.6536 4.92 14.7402C4.96 14.8202 5.02333 14.8902 5.11 14.9502L8.14 17.0202V14.0402ZM15.14 8.89024V5.81024L9.52 9.26025V12.3502L15.14 8.89024ZM14.86 13.7902C14.9533 13.7302 15.0233 13.6602 15.07 13.5802C15.1167 13.4936 15.14 13.3969 15.14 13.2902V10.4802L9.52 13.9402V17.0702L14.86 13.7902Z"
         fill="currentColor"
       />
     </svg>
@@ -2689,67 +2390,6 @@ export function ComposerPluginsIcon({ className }: IconProps) {
       />
     </svg>
   );
-}
-
-export function ReasoningEffortIcon({
-  effort,
-  className,
-}: {
-  effort: CodexReasoningEffort;
-  className?: string;
-}) {
-  const props = {
-    width: 20,
-    height: 20,
-    viewBox: "0 0 20 20",
-    fill: "none",
-    xmlns: "http://www.w3.org/2000/svg",
-    className: cn("icon-2xs shrink-0", className),
-    "aria-hidden": true as const,
-  };
-
-  switch (effort) {
-    case "minimal":
-    case "low":
-      return (
-        <svg {...props}>
-          <path
-            d="M3.57715 9.14006L4.04365 9.61398C4.17064 9.48898 4.24215 9.31824 4.24215 9.14006C4.24215 8.96187 4.17064 8.79114 4.04365 8.66614L3.57715 9.14006ZM5.15176 5.1067L5.2463 5.76495C5.57512 5.71772 5.81866 5.43507 5.81675 5.10288L5.15176 5.1067ZM5.15159 5.07797L4.48658 5.07797L4.4866 5.08179L5.15159 5.07797ZM14.843 5.07797L15.508 5.08179V5.07797H14.843ZM14.8429 5.1067L14.1779 5.10288C14.176 5.43508 14.4195 5.71772 14.7483 5.76495L14.8429 5.1067ZM16.4175 9.14006L15.951 8.66614C15.824 8.79114 15.7525 8.96187 15.7525 9.14006C15.7525 9.31824 15.824 9.48898 15.951 9.61398L16.4175 9.14006ZM15.4402 14.6301L15.2037 14.0085C14.9894 14.0901 14.8322 14.2762 14.7878 14.5012L15.4402 14.6301ZM4.55443 14.6301L5.20682 14.5012C5.16237 14.2762 5.00519 14.0901 4.79089 14.0085L4.55443 14.6301ZM3.09513 8.71956C2.83286 8.97666 2.82866 9.39769 3.08576 9.65997C3.34287 9.92224 3.7639 9.92643 4.02617 9.66933L3.56065 9.19444L3.09513 8.71956ZM5.53312 9.05389C5.90039 9.05389 6.19812 8.75616 6.19812 8.38889C6.19812 8.02162 5.90039 7.72389 5.53312 7.72389V8.38889V9.05389ZM17.915 12.0141C17.915 11.6468 17.6173 11.3491 17.25 11.3491C16.8827 11.3491 16.585 11.6468 16.585 12.0141H17.25H17.915ZM13.5092 13.9616C13.1774 13.804 12.7807 13.9451 12.6231 14.2768C12.4655 14.6085 12.6066 15.0052 12.9383 15.1629L13.2237 14.5622L13.5092 13.9616ZM15.4949 5.16667C15.4949 4.7994 15.1972 4.50167 14.8299 4.50167C14.4626 4.50167 14.1649 4.7994 14.1649 5.16667H14.8299H15.4949ZM13.1847 6.74014C12.8551 6.90215 12.7192 7.30068 12.8813 7.63029C13.0433 7.9599 13.4418 8.09576 13.7714 7.93376L13.4781 7.33695L13.1847 6.74014ZM5.15159 5.07797L4.4866 5.08179L4.48677 5.11052L5.15176 5.1067L5.81675 5.10288L5.81658 5.07415L5.15159 5.07797ZM14.8429 5.1067L15.5078 5.11052L15.508 5.08179L14.843 5.07797L14.178 5.07415L14.1779 5.10288L14.8429 5.1067ZM9.9973 5.14295H9.3323V14.8441H9.9973H10.6623V5.14295H9.9973ZM4.55443 14.6301L3.90204 14.759C4.25458 16.5434 5.63923 17.7323 7.12511 17.8958C7.87456 17.9783 8.64869 17.7972 9.29719 17.2971C9.94516 16.7974 10.4185 16.0183 10.6466 14.9878L9.9973 14.8441L9.34802 14.7004C9.17348 15.4889 8.83979 15.9703 8.48503 16.2439C8.13082 16.517 7.70652 16.6218 7.27056 16.5738C6.38561 16.4764 5.45144 15.7394 5.20682 14.5012L4.55443 14.6301ZM9.9973 14.8441L9.34802 14.9878C9.57611 16.0183 10.0494 16.7974 10.6974 17.2971C11.3459 17.7972 12.12 17.9783 12.8695 17.8958C14.3554 17.7323 15.74 16.5434 16.0926 14.759L15.4402 14.6301L14.7878 14.5012C14.5432 15.7394 13.609 16.4764 12.7241 16.5738C12.2881 16.6218 11.8638 16.517 11.5096 16.2439C11.1548 15.9703 10.8211 15.4889 10.6466 14.7004L9.9973 14.8441ZM3.57715 9.14006L3.11064 8.66614C2.18346 9.57881 1.94764 11.0213 2.15573 12.2555C2.36341 13.4872 3.06063 14.7733 4.31796 15.2516L4.55443 14.6301L4.79089 14.0085C4.14357 13.7623 3.63207 13.0121 3.46722 12.0344C3.3028 11.0592 3.53066 10.1189 4.04365 9.61398L3.57715 9.14006ZM5.15176 5.1067L5.05722 4.44845C3.73212 4.63877 2.69942 5.3659 2.28198 6.39944C1.85534 7.45575 2.141 8.6595 3.11064 9.61398L3.57715 9.14006L4.04365 8.66614C3.39287 8.02554 3.32155 7.37696 3.51519 6.89753C3.71803 6.39533 4.28285 5.90332 5.2463 5.76495L5.15176 5.1067ZM16.4175 9.14006L16.884 9.61398C17.8536 8.6595 18.1393 7.45575 17.7126 6.39944C17.2952 5.3659 16.2625 4.63877 14.9374 4.44846L14.8429 5.1067L14.7483 5.76495C15.7118 5.90332 16.2766 6.39533 16.4794 6.89753C16.6731 7.37696 16.6017 8.02554 15.951 8.66614L16.4175 9.14006ZM15.4402 14.6301L15.6766 15.2516C16.934 14.7733 17.6312 13.4872 17.8389 12.2555C18.047 11.0213 17.8111 9.57881 16.884 8.66614L16.4175 9.14006L15.951 9.61398C16.464 10.1189 16.6918 11.0592 16.5274 12.0344C16.3625 13.0121 15.851 13.7623 15.2037 14.0085L15.4402 14.6301ZM14.843 5.07797H15.508C15.508 4.10693 15.1251 3.33444 14.5176 2.81595C13.9241 2.30945 13.1557 2.07735 12.4131 2.08519C11.6702 2.09304 10.9049 2.34143 10.3156 2.85907C9.71327 3.38814 9.3323 4.1672 9.3323 5.14295H9.9973H10.6623C10.6623 4.53827 10.8871 4.12733 11.1933 3.85831C11.5126 3.57787 11.9587 3.42007 12.4272 3.41512C12.896 3.41017 13.3391 3.55865 13.6542 3.82759C13.9552 4.08455 14.178 4.48236 14.178 5.07797H14.843ZM9.9973 5.14295H10.6623C10.6623 4.1672 10.2813 3.38814 9.67903 2.85907C9.08973 2.34143 8.32438 2.09304 7.58147 2.08519C6.83888 2.07735 6.07048 2.30945 5.47703 2.81595C4.86953 3.33444 4.48659 4.10693 4.48659 5.07797H5.15159H5.81659C5.81659 4.48236 6.03937 4.08455 6.34044 3.82759C6.65556 3.55865 7.09859 3.41017 7.56742 3.41512C8.03594 3.42007 8.48203 3.57787 8.80129 3.85831C9.10756 4.12733 9.3323 4.53827 9.3323 5.14295H9.9973ZM3.56065 9.19444L4.02617 9.66933C4.41526 9.28791 4.94623 9.05389 5.53312 9.05389V8.38889V7.72389C4.58414 7.72389 3.7227 8.10436 3.09513 8.71956L3.56065 9.19444ZM17.25 12.0141H16.585C16.585 13.2042 15.6207 14.1686 14.4316 14.1686V14.8336V15.4986C16.3557 15.4986 17.915 13.9383 17.915 12.0141H17.25ZM14.4316 14.8336V14.1686C14.1002 14.1686 13.788 14.0941 13.5092 13.9616L13.2237 14.5622L12.9383 15.1629C13.3917 15.3783 13.8985 15.4986 14.4316 15.4986V14.8336ZM14.8299 5.16667H14.1649C14.1649 5.85639 13.7666 6.45415 13.1847 6.74014L13.4781 7.33695L13.7714 7.93376C14.791 7.43261 15.4949 6.38243 15.4949 5.16667H14.8299Z"
-            fill="currentColor"
-          />
-        </svg>
-      );
-    case "medium":
-      return (
-        <svg {...props}>
-          <path
-            d="M3.57746 9.14006L4.04387 9.61406C4.17091 9.48906 4.24246 9.31829 4.24246 9.14006C4.24246 8.96183 4.17091 8.79106 4.04387 8.66605L3.57746 9.14006ZM5.15265 5.1067L5.24716 5.76495C5.576 5.71774 5.81955 5.43508 5.81764 5.10288L5.15265 5.1067ZM5.15249 5.07797L4.48747 5.07797L4.4875 5.08179L5.15249 5.07797ZM14.8475 5.07797L15.5125 5.08179V5.07797H14.8475ZM14.8473 5.1067L14.1824 5.10288C14.1805 5.43509 14.424 5.71774 14.7528 5.76495L14.8473 5.1067ZM16.4225 9.14006L15.9561 8.66605C15.8291 8.79106 15.7575 8.96183 15.7575 9.14006C15.7575 9.31829 15.8291 9.48906 15.9561 9.61406L16.4225 9.14006ZM15.4449 14.6301L15.2085 14.0085C14.9942 14.09 14.837 14.2762 14.7925 14.5011L15.4449 14.6301ZM4.5551 14.6301L5.20748 14.5011C5.16302 14.2762 5.00581 14.09 4.79149 14.0085L4.5551 14.6301ZM3.08743 8.71947C2.82511 8.97653 2.82084 9.39756 3.07789 9.65988C3.33494 9.9222 3.75597 9.92647 4.01829 9.66942L3.55286 9.19444L3.08743 8.71947ZM5.52606 9.05389C5.89333 9.05389 6.19106 8.75616 6.19106 8.38889C6.19106 8.02162 5.89333 7.72389 5.52606 7.72389V8.38889V9.05389ZM17.9123 12.0141C17.9123 11.6468 17.6146 11.3491 17.2473 11.3491C16.88 11.3491 16.5823 11.6468 16.5823 12.0141H17.2473H17.9123ZM14.4279 14.1686C14.0606 14.1686 13.7629 14.4663 13.7629 14.8336C13.7629 15.2008 14.0606 15.4986 14.4279 15.4986V14.8336V14.1686ZM7.86868 11.5445C7.53694 11.3869 7.14026 11.5281 6.98267 11.8598C6.82507 12.1915 6.96625 12.5882 7.29799 12.7458L7.58333 12.1452L7.86868 11.5445ZM10.2853 12.7458C10.6171 12.5882 10.7583 12.1915 10.6007 11.8598C10.4431 11.5281 10.0464 11.3869 9.71465 11.5445L10 12.1452L10.2853 12.7458ZM15.4994 5.16667C15.4994 4.7994 15.2017 4.50167 14.8344 4.50167C14.4671 4.50167 14.1694 4.7994 14.1694 5.16667H14.8344H15.4994ZM13.1888 6.7401C12.8592 6.90206 12.7232 7.30057 12.8852 7.6302C13.0472 7.95983 13.4457 8.09576 13.7753 7.9338L13.482 7.33695L13.1888 6.7401ZM11.3077 10.009C11.675 10.009 11.9727 9.71123 11.9727 9.34396C11.9727 8.97669 11.675 8.67896 11.3077 8.67896L11.3077 9.34396L11.3077 10.009ZM5.15249 5.07797L4.4875 5.08179L4.48766 5.11052L5.15265 5.1067L5.81764 5.10288L5.81747 5.07414L5.15249 5.07797ZM14.8473 5.1067L15.5123 5.11052L15.5125 5.08179L14.8475 5.07797L14.1825 5.07415L14.1824 5.10288L14.8473 5.1067ZM4.5551 14.6301L3.90272 14.759C4.25542 16.5436 5.64061 17.7324 7.12679 17.8958C7.8764 17.9783 8.6507 17.7972 9.29938 17.2972C9.94755 16.7975 10.4211 16.0184 10.6493 14.9879L10 14.8441L9.35073 14.7003C9.17613 15.4888 8.84234 15.9702 8.48741 16.2438C8.133 16.517 7.70844 16.6218 7.27219 16.5738C6.38665 16.4764 5.45217 15.7392 5.20748 14.5011L4.5551 14.6301ZM10 14.8441L9.35073 14.9879C9.57891 16.0184 10.0524 16.7975 10.7006 17.2972C11.3493 17.7972 12.1236 17.9783 12.8732 17.8958C14.3594 17.7324 15.7446 16.5436 16.0973 14.759L15.4449 14.6301L14.7925 14.5011C14.5478 15.7392 13.6134 16.4764 12.7278 16.5738C12.2916 16.6218 11.867 16.517 11.5126 16.2438C11.1577 15.9702 10.8239 15.4888 10.6493 14.7003L10 14.8441ZM3.57746 9.14006L3.11104 8.66605C2.18352 9.57872 1.94758 11.0213 2.15576 12.2556C2.36354 13.4874 3.06106 14.7733 4.31871 15.2516L4.5551 14.6301L4.79149 14.0085C4.14378 13.7622 3.63213 13.0119 3.46724 12.0343C3.30276 11.0592 3.53068 10.119 4.04387 9.61406L3.57746 9.14006ZM5.15265 5.1067L5.05814 4.44845C3.73273 4.63874 2.69968 5.36578 2.28207 6.39936C1.85523 7.45578 2.14106 8.65961 3.11104 9.61406L3.57746 9.14006L4.04387 8.66605C3.39282 8.02542 3.32155 7.37692 3.51522 6.89761C3.71811 6.39545 4.28317 5.90335 5.24716 5.76495L5.15265 5.1067ZM16.4225 9.14006L16.889 9.61406C17.8589 8.65961 18.1448 7.45578 17.7179 6.39936C17.3003 5.36578 16.2673 4.63874 14.9419 4.44845L14.8473 5.1067L14.7528 5.76495C15.7168 5.90335 16.2819 6.39545 16.4848 6.89761C16.6785 7.37692 16.6072 8.02543 15.9561 8.66605L16.4225 9.14006ZM15.4449 14.6301L15.6813 15.2516C16.9389 14.7733 17.6365 13.4874 17.8442 12.2556C18.0524 11.0213 17.8165 9.57872 16.889 8.66605L16.4225 9.14006L15.9561 9.61406C16.4693 10.119 16.6972 11.0592 16.5328 12.0343C16.3679 13.0119 15.8562 13.7622 15.2085 14.0085L15.4449 14.6301ZM14.8475 5.07797H15.5125C15.5125 4.10684 15.1294 3.33433 14.5217 2.81587C13.9281 2.30941 13.1595 2.07735 12.4167 2.08519C11.6737 2.09304 10.9081 2.34139 10.3186 2.85899C9.71615 3.38803 9.335 4.16712 9.335 5.14295H10H10.665C10.665 4.53836 10.8898 4.12744 11.1962 3.85839C11.5156 3.57791 11.962 3.42007 12.4308 3.41512C12.8999 3.41017 13.3432 3.55869 13.6585 3.82767C13.9597 4.08466 14.1825 4.48245 14.1825 5.07797H14.8475ZM10 5.14295H10.665C10.665 4.16711 10.2839 3.38803 9.68135 2.85899C9.09187 2.34138 8.32633 2.09304 7.58327 2.08519C6.84051 2.07735 6.07193 2.30941 5.4783 2.81587C4.87061 3.33433 4.48749 4.10684 4.48749 5.07797H5.15249H5.81749C5.81749 4.48245 6.0403 4.08466 6.34152 3.82767C6.6568 3.55869 7.1001 3.41016 7.56922 3.41512C8.03803 3.42007 8.48437 3.57791 8.8038 3.85839C9.11021 4.12744 9.335 4.53836 9.335 5.14295H10ZM3.55286 9.19444L4.01829 9.66942C4.40755 9.28797 4.93881 9.05389 5.52606 9.05389V8.38889V7.72389C4.57687 7.72389 3.71521 8.1043 3.08743 8.71947L3.55286 9.19444ZM17.2473 12.0141H16.5823C16.5823 13.204 15.6177 14.1686 14.4279 14.1686V14.8336V15.4986C16.3523 15.4986 17.9123 13.9385 17.9123 12.0141H17.2473ZM8.79167 12.4165V11.7515C8.46002 11.7515 8.14763 11.677 7.86868 11.5445L7.58333 12.1452L7.29799 12.7458C7.75149 12.9613 8.25847 13.0815 8.79167 13.0815V12.4165ZM10 12.1452L9.71465 11.5445C9.4357 11.677 9.12331 11.7515 8.79167 11.7515V12.4165V13.0815C9.32487 13.0815 9.83184 12.9613 10.2853 12.7458L10 12.1452ZM14.8344 5.16667H14.1694C14.1694 5.85626 13.771 6.45405 13.1888 6.7401L13.482 7.33695L13.7753 7.9338C14.7951 7.43272 15.4994 6.38256 15.4994 5.16667H14.8344ZM10 5.14295H9.335V9.99353H10H10.665V5.14295H10ZM10 9.99353H9.335V14.8441H10H10.665V9.99353H10ZM10 9.99353L10.5453 10.3741C10.566 10.3445 10.6529 10.245 10.7997 10.1558C10.9392 10.0709 11.1103 10.009 11.3077 10.009L11.3077 9.34396L11.3077 8.67896C10.3455 8.67896 9.69036 9.27525 9.45467 9.61295L10 9.99353Z"
-            fill="currentColor"
-          />
-        </svg>
-      );
-    case "high":
-      return (
-        <svg {...props}>
-          <path
-            d="M3.57746 9.14006L4.04387 9.61406C4.17091 9.48906 4.24246 9.31829 4.24246 9.14006C4.24246 8.96183 4.17091 8.79106 4.04387 8.66605L3.57746 9.14006ZM5.15265 5.1067L5.24716 5.76495C5.576 5.71774 5.81955 5.43508 5.81764 5.10288L5.15265 5.1067ZM5.15249 5.07797L4.48747 5.07797L4.4875 5.08179L5.15249 5.07797ZM14.8475 5.07797L15.5125 5.08179V5.07797H14.8475ZM14.8473 5.1067L14.1824 5.10288C14.1805 5.43509 14.424 5.71774 14.7528 5.76495L14.8473 5.1067ZM16.4225 9.14006L15.9561 8.66605C15.8291 8.79106 15.7575 8.96183 15.7575 9.14006C15.7575 9.31829 15.8291 9.48906 15.9561 9.61406L16.4225 9.14006ZM15.4449 14.6301L15.2085 14.0085C14.9942 14.09 14.837 14.2762 14.7925 14.5011L15.4449 14.6301ZM4.5551 14.6301L5.20748 14.5011C5.16302 14.2762 5.00581 14.09 4.79149 14.0085L4.5551 14.6301ZM3.08743 8.71947C2.82511 8.97653 2.82084 9.39756 3.07789 9.65988C3.33494 9.9222 3.75597 9.92647 4.01829 9.66941L3.55286 9.19444L3.08743 8.71947ZM5.52606 9.05389C5.89333 9.05389 6.19106 8.75616 6.19106 8.38889C6.19106 8.02162 5.89333 7.72389 5.52606 7.72389V8.38889V9.05389ZM9.53457 10.3306C9.27225 10.5876 9.26798 11.0087 9.52503 11.271C9.78208 11.5333 10.2031 11.5376 10.4654 11.2805L10 10.8056L9.53457 10.3306ZM11.9732 10.665C12.3405 10.665 12.6382 10.3673 12.6382 10C12.6382 9.63273 12.3405 9.335 11.9732 9.335V10V10.665ZM17.9123 12.0141C17.9123 11.6468 17.6146 11.3491 17.2473 11.3491C16.88 11.3491 16.5823 11.6468 16.5823 12.0141H17.2473H17.9123ZM13.5049 13.9616C13.1731 13.804 12.7764 13.9451 12.6189 14.2769C12.4613 14.6086 12.6024 15.0053 12.9342 15.1629L13.2195 14.5622L13.5049 13.9616ZM7.86868 11.5445C7.53694 11.3869 7.14026 11.5281 6.98267 11.8598C6.82507 12.1915 6.96625 12.5882 7.29799 12.7458L7.58333 12.1452L7.86868 11.5445ZM10.2853 12.7458C10.6171 12.5882 10.7583 12.1915 10.6007 11.8598C10.4431 11.5281 10.0464 11.3869 9.71465 11.5445L10 12.1452L10.2853 12.7458ZM8.10085 6.17688C7.76911 6.33448 7.62793 6.73116 7.78552 7.0629C7.94312 7.39464 8.3398 7.53581 8.67154 7.37822L8.38619 6.77755L8.10085 6.17688ZM9.59453 7.17123C9.96179 7.17123 10.2595 6.8735 10.2595 6.50623C10.2595 6.13896 9.96179 5.84123 9.59453 5.84123V6.50623V7.17123ZM15.4994 5.16667C15.4994 4.7994 15.2017 4.50167 14.8344 4.50167C14.4671 4.50167 14.1694 4.7994 14.1694 5.16667H14.8344H15.4994ZM13.1888 6.7401C12.8592 6.90206 12.7232 7.30057 12.8852 7.6302C13.0472 7.95983 13.4457 8.09576 13.7753 7.9338L13.4821 7.33695L13.1888 6.7401ZM5.15249 5.07797L4.4875 5.08179L4.48766 5.11052L5.15265 5.1067L5.81764 5.10288L5.81747 5.07414L5.15249 5.07797ZM14.8473 5.1067L15.5123 5.11052L15.5125 5.08179L14.8475 5.07797L14.1825 5.07415L14.1824 5.10288L14.8473 5.1067ZM10 5.14295H9.335V14.8441H10H10.665V5.14295H10ZM4.5551 14.6301L3.90272 14.759C4.25542 16.5436 5.64061 17.7324 7.12679 17.8958C7.8764 17.9783 8.6507 17.7972 9.29938 17.2972C9.94755 16.7975 10.4211 16.0184 10.6493 14.9879L10 14.8441L9.35073 14.7003C9.17613 15.4888 8.84234 15.9702 8.48741 16.2438C8.133 16.517 7.70844 16.6218 7.27219 16.5738C6.38665 16.4764 5.45217 15.7392 5.20748 14.5011L4.5551 14.6301ZM10 14.8441L9.35073 14.9879C9.57891 16.0184 10.0524 16.7975 10.7006 17.2972C11.3493 17.7972 12.1236 17.9783 12.8732 17.8958C14.3594 17.7324 15.7446 16.5436 16.0973 14.759L15.4449 14.6301L14.7925 14.5011C14.5478 15.7392 13.6134 16.4764 12.7278 16.5738C12.2916 16.6218 11.867 16.517 11.5126 16.2438C11.1577 15.9702 10.8239 15.4888 10.6493 14.7003L10 14.8441ZM3.57746 9.14006L3.11104 8.66605C2.18352 9.57872 1.94758 11.0213 2.15576 12.2555C2.36354 13.4874 3.06106 14.7733 4.31871 15.2516L4.5551 14.6301L4.79149 14.0085C4.14378 13.7622 3.63213 13.0119 3.46724 12.0343C3.30276 11.0592 3.53068 10.119 4.04387 9.61406L3.57746 9.14006ZM5.15265 5.1067L5.05814 4.44845C3.73273 4.63874 2.69968 5.36578 2.28207 6.39936C1.85523 7.45578 2.14106 8.65961 3.11104 9.61406L3.57746 9.14006L4.04387 8.66605C3.39282 8.02542 3.32155 7.37692 3.51521 6.89761C3.71811 6.39545 4.28317 5.90335 5.24716 5.76495L5.15265 5.1067ZM16.4225 9.14006L16.889 9.61406C17.8589 8.65961 18.1448 7.45578 17.7179 6.39936C17.3003 5.36578 16.2673 4.63874 14.9419 4.44845L14.8473 5.1067L14.7528 5.76495C15.7168 5.90335 16.2819 6.39545 16.4848 6.89761C16.6785 7.37692 16.6072 8.02542 15.9561 8.66605L16.4225 9.14006ZM15.4449 14.6301L15.6813 15.2516C16.9389 14.7733 17.6365 13.4874 17.8442 12.2556C18.0524 11.0213 17.8165 9.57872 16.889 8.66605L16.4225 9.14006L15.9561 9.61406C16.4693 10.119 16.6972 11.0592 16.5328 12.0343C16.3679 13.0119 15.8562 13.7622 15.2085 14.0085L15.4449 14.6301ZM14.8475 5.07797H15.5125C15.5125 4.10684 15.1294 3.33433 14.5217 2.81587C13.9281 2.30941 13.1595 2.07735 12.4167 2.08519C11.6737 2.09304 10.9081 2.34139 10.3186 2.85899C9.71615 3.38803 9.335 4.16711 9.335 5.14295H10H10.665C10.665 4.53836 10.8898 4.12744 11.1962 3.85839C11.5156 3.57791 11.962 3.42007 12.4308 3.41512C12.8999 3.41017 13.3432 3.55869 13.6585 3.82767C13.9597 4.08466 14.1825 4.48245 14.1825 5.07797H14.8475ZM10 5.14295H10.665C10.665 4.16711 10.2839 3.38803 9.68135 2.85899C9.09187 2.34138 8.32633 2.09304 7.58327 2.08519C6.84051 2.07735 6.07193 2.30941 5.4783 2.81587C4.87061 3.33433 4.48749 4.10684 4.48749 5.07797H5.15249H5.81749C5.81749 4.48245 6.0403 4.08466 6.34152 3.82767C6.6568 3.55869 7.1001 3.41016 7.56922 3.41512C8.03803 3.42007 8.48437 3.57791 8.8038 3.85839C9.11021 4.12744 9.335 4.53836 9.335 5.14295H10ZM3.55286 9.19444L4.01829 9.66941C4.40755 9.28797 4.93881 9.05389 5.52606 9.05389V8.38889V7.72389C4.57687 7.72389 3.71521 8.1043 3.08743 8.71947L3.55286 9.19444ZM10 10.8056L10.4654 11.2805C10.8547 10.8991 11.3859 10.665 11.9732 10.665V10V9.335C11.024 9.335 10.1624 9.71541 9.53457 10.3306L10 10.8056ZM17.2473 12.0141H16.5823C16.5823 13.204 15.6177 14.1686 14.4279 14.1686V14.8336V15.4986C16.3523 15.4986 17.9123 13.9385 17.9123 12.0141H17.2473ZM14.4279 14.8336V14.1686C14.0962 14.1686 13.7838 14.0941 13.5049 13.9616L13.2195 14.5622L12.9342 15.1629C13.3877 15.3783 13.8947 15.4986 14.4279 15.4986V14.8336ZM8.79167 12.4165V11.7515C8.46002 11.7515 8.14763 11.677 7.86868 11.5445L7.58333 12.1452L7.29799 12.7458C7.75149 12.9613 8.25847 13.0815 8.79167 13.0815V12.4165ZM10 12.1452L9.71465 11.5445C9.4357 11.677 9.12331 11.7515 8.79167 11.7515V12.4165V13.0815C9.32487 13.0815 9.83184 12.9613 10.2853 12.7458L10 12.1452ZM8.38619 6.77755L8.67154 7.37822C8.95049 7.24571 9.26288 7.17123 9.59453 7.17123V6.50623V5.84123C9.06133 5.84123 8.55435 5.96145 8.10085 6.17688L8.38619 6.77755ZM14.8344 5.16667H14.1694C14.1694 5.85626 13.771 6.45405 13.1888 6.7401L13.4821 7.33695L13.7753 7.9338C14.7951 7.43272 15.4994 6.38256 15.4994 5.16667H14.8344Z"
-            fill="currentColor"
-          />
-        </svg>
-      );
-    case "xhigh":
-      return (
-        <svg {...props}>
-          <path
-            d="M5.15265 5.1067L5.15249 5.07797C5.15249 1.94468 10 1.98209 10 5.14295M5.15265 5.1067C2.86325 5.43539 1.95642 7.54498 3.57746 9.14006C2.13674 10.5577 2.64974 13.9055 4.5551 14.6301M5.15265 5.1067C5.65427 5.10296 6.07518 5.23205 6.5 5.5M10 5.14295V14.8441M10 5.14295C10 1.98209 14.8475 1.94468 14.8475 5.07797L14.8473 5.1067C17.1367 5.43539 18.0436 7.54498 16.4225 9.14006M16.4225 9.14006C17.8633 10.5577 17.3503 13.9055 15.4449 14.6301M16.4225 9.14006C16.0155 9.55318 15.5515 9.8173 15 10M15.4449 14.6301C14.8475 17.6527 10.8056 18.4821 10 14.8441M15.4449 14.6301C14.7053 14.8875 13.936 14.9026 13.2195 14.5622M10 14.8441C9.19444 18.4821 5.15249 17.6527 4.5551 14.6301M4.5551 14.6301C5.30044 14.872 5.97165 14.8815 6.71286 14.6301M3.55286 9.19444C4.06138 8.69613 4.75784 8.38889 5.52606 8.38889M10 10.8056C10.5085 10.3072 11.2318 10 12 10M7 11C7.5 12.5 9.02282 12.6094 10 12.1452M8 7C8.5 6.5 9.59453 6.50623 9.59453 6.50623M14.8344 5.16667C14.8344 6.11941 14.2831 6.94338 13.482 7.33695"
-            stroke="currentColor"
-            strokeWidth="1.33"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      );
-  }
 }
 
 export function PlusIcon({ className }: IconProps) {
@@ -2858,37 +2498,26 @@ export function RemoteStatusIcon({
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden={resolveAriaHidden(ariaHidden, ariaHiddenAttr)}
     >
-      <path d="M10 2.125C14.3492 2.125 17.875 5.65076 17.875 10C17.875 14.3492 14.3492 17.875 10 17.875C5.65076 17.875 2.125 14.3492 2.125 10C2.125 5.65076 5.65076 2.125 10 2.125ZM7.88672 10.625C7.94334 12.3161 8.22547 13.8134 8.63965 14.9053C8.87263 15.5194 9.1351 15.9733 9.39453 16.2627C9.65437 16.5524 9.86039 16.625 10 16.625C10.1396 16.625 10.3456 16.5524 10.6055 16.2627C10.8649 15.9733 11.1274 15.5194 11.3604 14.9053C11.7745 13.8134 12.0567 12.3161 12.1133 10.625H7.88672ZM3.40527 10.625C3.65313 13.2734 5.45957 15.4667 7.89844 16.2822C7.7409 15.997 7.5977 15.6834 7.4707 15.3486C6.99415 14.0923 6.69362 12.439 6.63672 10.625H3.40527ZM13.3633 10.625C13.3064 12.439 13.0059 14.0923 12.5293 15.3486C12.4022 15.6836 12.2582 15.9969 12.1006 16.2822C14.5399 15.467 16.3468 13.2737 16.5947 10.625H13.3633ZM12.1006 3.7168C12.2584 4.00235 12.4021 4.31613 12.5293 4.65137C13.0059 5.90775 13.3064 7.56102 13.3633 9.375H16.5947C16.3468 6.72615 14.54 4.53199 12.1006 3.7168ZM10 3.375C9.86039 3.375 9.65437 3.44756 9.39453 3.7373C9.1351 4.02672 8.87263 4.48057 8.63965 5.09473C8.22547 6.18664 7.94334 7.68388 7.88672 9.375H12.1133C12.0567 7.68388 11.7745 6.18664 11.3604 5.09473C11.1274 4.48057 10.8649 4.02672 10.6055 3.7373C10.3456 3.44756 10.1396 3.375 10 3.375ZM7.89844 3.7168C5.45942 4.53222 3.65314 6.72647 3.40527 9.375H6.63672C6.69362 7.56102 6.99415 5.90775 7.4707 4.65137C7.59781 4.31629 7.74073 4.00224 7.89844 3.7168Z" />
+      <path d={GLOBE_PATH} />
     </svg>
   );
 }
 
 export function WorktreeStatusIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn(className ?? "size-3.5")}
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M15.8 11.535c.367 0 .665.298.665.665v5a.665.665 0 0 1-.665.665h-5a.665.665 0 1 1 0-1.33h3.394l-3.565-3.564a.666.666 0 0 1 .942-.942l3.564 3.565V12.2c0-.367.298-.665.665-.665Zm0-9.4c.367 0 .665.298.665.665v5a.665.665 0 0 1-1.33 0V4.405l-5.128 5.128c-.323.324-.558.565-.842.74a2.668 2.668 0 0 1-.771.319c-.324.078-.662.073-1.12.073H1.93a.665.665 0 1 1 0-1.33h5.345c.52 0 .673-.005.809-.037.136-.033.266-.086.385-.16.12-.072.23-.177.598-.545l5.128-5.128H10.8a.665.665 0 0 1 0-1.33h5Z" />
-    </svg>
-  );
+  return <WorktreeGlyph className={cn(className ?? "size-3.5")} />;
 }
 
-export function WorktreeSetupStatusIcon({
-  className,
-  ariaHidden,
-  "aria-hidden": ariaHiddenAttr,
-}: IconProps) {
+export function ForkIcon({ className }: IconProps) {
+  return <WorktreeGlyph className={cn(className ?? "icon-xs")} />;
+}
+
+function ModelStatusGlyph({ className, ariaHidden, "aria-hidden": ariaHiddenAttr }: IconProps) {
   return (
     <svg
       width="10"
       height="10"
       viewBox="0 0 10 10"
-      className={cn(className ?? "size-2.5")}
+      className={className}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden={resolveAriaHidden(ariaHidden, ariaHiddenAttr)}
@@ -2901,48 +2530,16 @@ export function WorktreeSetupStatusIcon({
   );
 }
 
+export function WorktreeSetupStatusIcon(props: IconProps) {
+  return <ModelStatusGlyph {...props} className={props.className ?? "size-2.5"} />;
+}
+
 export function ConfigStatusIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 21 21"
-      className={cn(className ?? "size-4")}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M10.7228 2.53564C11.5515 2.53564 12.3183 2.97502 12.7374 3.68994L13.5587 5.09033L13.6124 5.15967C13.6736 5.22007 13.7566 5.2556 13.8448 5.25635L15.4601 5.26904L15.6144 5.27588C16.3826 5.33292 17.0775 5.76649 17.465 6.43994L17.7931 7.01123L17.8663 7.14697C18.1815 7.78943 18.1843 8.54208 17.8741 9.18701L17.8028 9.32275L17.0001 10.7446C16.9427 10.8467 16.9426 10.9717 17.0001 11.0737L17.8028 12.4946L17.8741 12.6313C18.1842 13.2763 18.1816 14.029 17.8663 14.6714L17.7931 14.8071L17.465 15.3784C17.0774 16.0517 16.3825 16.4855 15.6144 16.5425L15.4601 16.5483L13.8448 16.562C13.7565 16.5628 13.6736 16.5982 13.6124 16.6587L13.5587 16.7271L12.7374 18.1284C12.3183 18.8432 11.5514 19.2827 10.7228 19.2827H10.0763C9.29958 19.2826 8.57714 18.8964 8.14465 18.2593L8.06261 18.1284L7.24133 16.7271C7.1966 16.6509 7.12417 16.5966 7.04113 16.5737L6.95519 16.562L5.33996 16.5483C4.56297 16.542 3.84347 16.1503 3.41613 15.5093L3.33508 15.3784L3.00695 14.8071C2.59564 14.0921 2.59168 13.2129 2.99719 12.4946L3.79894 11.0737L3.83215 10.9937C3.84657 10.9383 3.84652 10.88 3.83215 10.8247L3.79894 10.7446L2.99719 9.32275C2.59184 8.60451 2.59571 7.72612 3.00695 7.01123L3.33508 6.43994L3.41613 6.30908C3.84345 5.66796 4.56288 5.27538 5.33996 5.26904L6.95519 5.25635L7.04113 5.24463C7.12427 5.22177 7.1966 5.16664 7.24133 5.09033L8.06261 3.68994L8.14465 3.55908C8.57712 2.92179 9.29949 2.5358 10.0763 2.53564H10.7228ZM10.0763 3.86572C9.76448 3.86587 9.47308 4.01039 9.28429 4.25244L9.21008 4.36279L8.38879 5.76318C8.12941 6.20571 7.68297 6.49995 7.18273 6.56982L6.96594 6.58643L5.3507 6.59912C5.03877 6.60167 4.74854 6.74903 4.56164 6.99268L4.48742 7.10303L4.15929 7.67432C3.98236 7.98202 3.98089 8.36033 4.15539 8.66943L4.95715 10.0903L5.05187 10.2856C5.21318 10.6851 5.21302 11.1323 5.05187 11.5317L4.95715 11.728L4.15539 13.1489C3.98092 13.4581 3.98228 13.8363 4.15929 14.144L4.48742 14.7144L4.56164 14.8247C4.74853 15.0686 5.03859 15.2157 5.3507 15.2183L6.96594 15.2319L7.18273 15.2476C7.68301 15.3174 8.12939 15.6126 8.38879 16.0552L9.21008 17.4556L9.28429 17.5649C9.47307 17.8072 9.76431 17.9525 10.0763 17.9526H10.7228C11.0794 17.9526 11.4096 17.7632 11.59 17.4556L12.4112 16.0552L12.5333 15.8745C12.8433 15.4758 13.3212 15.2361 13.8341 15.2319L15.4493 15.2183L15.5812 15.2085C15.8855 15.1657 16.1569 14.985 16.3126 14.7144L16.6407 14.144L16.6984 14.0259C16.7984 13.7835 16.8 13.5113 16.7023 13.2681L16.6446 13.1489L15.8419 11.728C15.5551 11.2201 15.5552 10.5983 15.8419 10.0903L16.6446 8.66943L16.7023 8.55029C16.8001 8.30708 16.7983 8.03486 16.6984 7.79248L16.6407 7.67432L16.3126 7.10303C16.1569 6.8324 15.8856 6.65166 15.5812 6.60889L15.4493 6.59912L13.8341 6.58643C13.3213 6.58224 12.8433 6.34243 12.5333 5.94385L12.4112 5.76318L11.59 4.36279C11.4096 4.05506 11.0795 3.86572 10.7228 3.86572H10.0763ZM11.9855 10.9087C11.9853 10.0336 11.2755 9.32399 10.4005 9.32373C9.52524 9.32373 8.81474 10.0335 8.81457 10.9087C8.81457 11.7841 9.52513 12.4937 10.4005 12.4937C11.2757 12.4934 11.9855 11.7839 11.9855 10.9087ZM13.3146 10.9087C13.3146 12.5184 12.0102 13.8235 10.4005 13.8237C8.7906 13.8237 7.48547 12.5186 7.48547 10.9087C7.48564 9.29893 8.7907 7.99365 10.4005 7.99365C12.0101 7.99391 13.3144 9.29909 13.3146 10.9087Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <ToolGlyph className={className ?? "size-4"} />;
 }
 
 export function PermissionDefaultIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn(className ?? "size-4")}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M9.06543 1.95123C9.66107 1.69076 10.3389 1.69071 10.9346 1.95123L15.9346 4.13873C16.7832 4.51008 17.3311 5.34917 17.3311 6.27545V10.5528C17.3309 14.6017 14.0489 17.8847 10 17.8848C5.95108 17.8846 2.66813 14.6017 2.66797 10.5528V6.27545C2.66797 5.34924 3.21695 4.51012 4.06543 4.13873L9.06543 1.95123ZM10.4014 3.16998C10.1456 3.05814 9.85444 3.05819 9.59863 3.16998L4.59863 5.35748C4.23427 5.51708 3.99805 5.87764 3.99805 6.27545V10.5528C3.99821 13.8671 6.68563 16.5546 10 16.5547C13.3144 16.5546 16.0008 13.8671 16.001 10.5528V6.27545C16.001 5.87756 15.7658 5.51703 15.4014 5.35748L10.4014 3.16998Z"
-        fill="currentColor"
-      />
-      <path
-        d="M13.4678 11.4318L13.333 11.4182H10.833C10.466 11.4183 10.1682 11.7162 10.168 12.0832C10.168 12.4504 10.4659 12.7481 10.833 12.7482H13.333L13.4678 12.7346C13.7706 12.6724 13.9981 12.4044 13.9981 12.0832C13.9979 11.7621 13.7706 11.494 13.4678 11.4318Z"
-        fill="currentColor"
-      />
-      <path
-        d="M7.65336 12.426C7.46431 12.7406 7.05607 12.8424 6.74125 12.6535C6.42646 12.4646 6.32395 12.0563 6.51274 11.7414L7.55668 10.0002L6.51274 8.25899C6.32395 7.94412 6.42646 7.53583 6.74125 7.34688C7.05607 7.15799 7.46431 7.25975 7.65336 7.57442L8.90336 9.6584C9.0296 9.86893 9.0296 10.1315 8.90336 10.342L7.65336 12.426Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <AgentPolicyGlyph className={cn(className ?? "size-4")} />;
 }
 
 export function PermissionAskForApprovalIcon({ className }: IconProps) {
@@ -3148,39 +2745,7 @@ export function ReviewJumpToFileIcon({ className }: IconProps) {
 }
 
 export function ReviewCommitOrPushIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn("icon-xs", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M15.0001 14.9967C16.841 14.9967 18.3334 13.5044 18.3334 11.6634C18.3334 9.82246 16.841 8.33008 15.0001 8.33008C15.0001 5.56865 12.7615 3.33008 10.0001 3.33008C7.80904 3.33008 5.94715 4.73939 5.27148 6.70098C3.23605 6.97537 1.66675 8.71946 1.66675 10.8301C1.66675 12.8458 3.09817 14.5273 5 14.9134"
-        stroke="currentColor"
-        strokeWidth="1.33"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M7.5 12.5L10 10L12.5 12.5"
-        stroke="currentColor"
-        strokeWidth="1.33"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M10 10.5V17"
-        stroke="currentColor"
-        strokeWidth="1.33"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <PushGlyph className={cn("icon-xs", className)} />;
 }
 
 export function ReviewCreatePrIcon({ className }: IconProps) {
@@ -3213,41 +2778,11 @@ export function ReviewCreatePrIcon({ className }: IconProps) {
 }
 
 export function ReviewFileToggleChevronIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn("icon-2xs", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M7.52925 3.7793C7.75652 3.55203 8.10803 3.52383 8.36616 3.69434L8.47065 3.7793L14.2207 9.5293C14.4804 9.789 14.4804 10.211 14.2207 10.4707L8.47065 16.2207C8.21095 16.4804 7.78895 16.4804 7.52925 16.2207C7.26955 15.961 7.26955 15.539 7.52925 15.2793L12.8085 10L7.52925 4.7207L7.44429 4.61621C7.27378 4.35808 7.30198 4.00657 7.52925 3.7793Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <ChevronRightGlyph className={cn("icon-2xs", className)} />;
 }
 
 export function OpenInIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="21"
-      height="21"
-      viewBox="0 0 21 21"
-      className={cn("icon-xs shrink-0", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path
-        d="M4.30164 12.197V8.53003C4.30164 7.84109 4.30099 7.28391 4.33777 6.83374C4.3752 6.37598 4.45451 5.9701 4.64636 5.59351L4.76843 5.37573C5.07254 4.8798 5.50895 4.47626 6.03015 4.21069L6.17273 4.14331C6.50897 3.99911 6.86981 3.93484 7.27039 3.9021C7.72063 3.86531 8.27758 3.86499 8.96668 3.86499H9.13367L9.26746 3.87866C9.57036 3.94067 9.79855 4.20883 9.79871 4.53003C9.79871 4.85133 9.5704 5.11932 9.26746 5.1814L9.13367 5.19507H8.96668C8.25564 5.19507 7.7623 5.19596 7.37878 5.22729C7.09678 5.25034 6.90733 5.28812 6.76355 5.3396L6.63367 5.39526C6.33147 5.54924 6.07854 5.7835 5.90222 6.07104L5.83191 6.19702C5.75142 6.35498 5.69465 6.56664 5.66394 6.94214C5.63261 7.3256 5.63171 7.81917 5.63171 8.53003V12.197C5.63171 12.9081 5.63261 13.4014 5.66394 13.7849C5.69464 14.1606 5.7514 14.372 5.83191 14.53L5.90222 14.656C6.07854 14.9436 6.33141 15.1778 6.63367 15.3318L6.76355 15.3884C6.9073 15.4399 7.09693 15.4767 7.37878 15.4998C7.7623 15.5311 8.25564 15.532 8.96668 15.532H12.6337C13.3445 15.532 13.8381 15.5311 14.2216 15.4998C14.5971 15.469 14.8087 15.4123 14.9667 15.3318L15.0927 15.2615C15.3802 15.0852 15.6145 14.8322 15.7684 14.53L15.8241 14.4001C15.8756 14.2564 15.9134 14.0669 15.9364 13.7849C15.9677 13.4014 15.9686 12.9081 15.9686 12.197V12.03C15.9688 11.6629 16.2665 11.365 16.6337 11.365C17.0007 11.3652 17.2985 11.663 17.2987 12.03V12.197C17.2987 12.8861 17.2984 13.4431 17.2616 13.8933C17.2289 14.2939 17.1646 14.6547 17.0204 14.991L16.953 15.1335C16.6874 15.6547 16.2839 16.0912 15.788 16.3953L15.5702 16.5173C15.1936 16.7092 14.7877 16.7885 14.33 16.8259C13.8798 16.8627 13.3226 16.8621 12.6337 16.8621H8.96668C8.27758 16.8621 7.72063 16.8627 7.27039 16.8259C6.86974 16.7932 6.50902 16.728 6.17273 16.5837L6.03015 16.5173C5.50912 16.2519 5.07253 15.848 4.76843 15.3523L4.64636 15.1335C4.45456 14.7569 4.37518 14.3511 4.33777 13.8933C4.30098 13.4431 4.30164 12.8861 4.30164 12.197ZM12.1034 10.0007C11.8437 10.2603 11.4226 10.2604 11.163 10.0007C10.9033 9.74109 10.9034 9.32001 11.163 9.0603L12.1034 10.0007ZM18.1317 7.86401C18.1315 8.23113 17.8338 8.52905 17.4667 8.52905C17.0995 8.52905 16.8018 8.23113 16.8016 7.86401V5.30249L12.1034 10.0007L11.6337 9.53003L11.163 9.0603L15.8602 4.36206H13.2997C12.9326 4.36188 12.6346 4.06418 12.6346 3.69702C12.6346 3.32986 12.9326 3.03216 13.2997 3.03198H17.4667L17.6005 3.04565C17.9036 3.10759 18.1317 3.37559 18.1317 3.69702V7.86401Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
+  return <NfmLinkToolbarOpenIcon className={cn("icon-xs shrink-0", className)} />;
 }
 
 export const ReviewOpenInIcon = OpenInIcon;
@@ -3264,23 +2799,6 @@ export function RefreshIcon({ className }: IconProps) {
       aria-hidden="true"
     >
       <path d="M9.99984 3.16669C6.59408 3.16669 3.83317 5.9276 3.83317 9.33335C3.83317 9.70061 3.5354 9.99839 3.16813 9.99839C2.80087 9.99839 2.50309 9.70061 2.50309 9.33335C2.50309 5.19223 5.85872 1.83661 9.99984 1.83661C11.9854 1.83661 13.7913 2.60769 15.1286 3.86623V2.99766C15.1286 2.6304 15.4264 2.33262 15.7936 2.33262C16.1609 2.33262 16.4587 2.6304 16.4587 2.99766V5.66669C16.4587 6.03396 16.1609 6.33173 15.7936 6.33173H13.1246C12.7573 6.33173 12.4596 6.03396 12.4596 5.66669C12.4596 5.29943 12.7573 5.00165 13.1246 5.00165H14.3342C13.2397 4.06105 11.8165 3.49677 10.2628 3.49677L9.99984 3.16669ZM16.8315 10.0016C17.1987 10.0016 17.4965 10.2994 17.4965 10.6667C17.4965 14.8078 14.1409 18.1634 9.99984 18.1634C7.96879 18.1634 6.12408 17.3554 4.77888 16.0466V17.0024C4.77888 17.3696 4.48111 17.6674 4.11384 17.6674C3.74658 17.6674 3.4488 17.3696 3.4488 17.0024V14.3334C3.4488 13.9661 3.74658 13.6683 4.11384 13.6683H6.78288C7.15014 13.6683 7.44792 13.9661 7.44792 14.3334C7.44792 14.7006 7.15014 14.9984 6.78288 14.9984H5.5764C6.66873 15.9394 8.11274 16.5033 9.73792 16.5033C13.1437 16.5033 15.9046 13.7424 15.9046 10.3366C15.9046 9.96935 16.2024 9.67157 16.5697 9.67157L16.8315 10.0016Z" />
-    </svg>
-  );
-}
-
-/** Compact retry glyph used by pending worktree recovery actions. */
-export function PendingWorktreeRetryIcon({ className }: IconProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      fill="currentColor"
-      viewBox="0 0 20 20"
-      className={cn("icon-xs shrink-0", className)}
-      aria-hidden="true"
-    >
-      <path d="M16.4183 9.99967C16.4181 6.45518 13.5448 3.58188 10.0003 3.58171C7.96895 3.58171 6.15935 4.52712 4.98273 6.00163H7.50031L7.6341 6.0153C7.93707 6.07735 8.16535 6.34535 8.16535 6.66667C8.16535 6.98799 7.93707 7.25598 7.6341 7.31803L7.50031 7.33171H3.75031C3.73055 7.33171 3.71104 7.32656 3.69172 7.32487C3.68913 7.32464 3.68649 7.32513 3.68391 7.32487C3.64304 7.32082 3.60409 7.31254 3.56574 7.30143C3.56188 7.30031 3.55788 7.2997 3.55402 7.2985C3.51366 7.286 3.47546 7.27023 3.43879 7.25065L3.43586 7.24967C3.43444 7.24891 3.43337 7.24752 3.43195 7.24675C3.35757 7.20587 3.29219 7.15262 3.23859 7.08757C3.23505 7.08329 3.23128 7.07923 3.22785 7.07487C3.20549 7.04631 3.1858 7.01609 3.16828 6.98405C3.16491 6.97791 3.16169 6.97173 3.15852 6.9655C3.14408 6.93698 3.13265 6.90732 3.12238 6.87663C3.11744 6.86205 3.11264 6.84757 3.10871 6.83268C3.10316 6.81117 3.09843 6.78955 3.09504 6.76725C3.09108 6.74233 3.08833 6.71738 3.08723 6.69206C3.08691 6.68361 3.08527 6.67519 3.08527 6.66667V2.91667C3.08527 2.5494 3.38304 2.25163 3.75031 2.25163C4.11743 2.2518 4.41535 2.54951 4.41535 2.91667V4.62956C5.82462 3.16447 7.80565 2.25163 10.0003 2.25163C14.2793 2.2518 17.7482 5.72065 17.7484 9.99967C17.7484 14.2789 14.2794 17.7485 10.0003 17.7487C6.02899 17.7487 2.75629 14.7612 2.305 10.9108L2.96516 10.8337L3.62531 10.7555C3.99895 13.9437 6.7115 16.4186 10.0003 16.4186C13.5449 16.4184 16.4183 13.5443 16.4183 9.99967ZM2.88801 10.1725C3.25252 10.13 3.58237 10.3911 3.62531 10.7555L2.305 10.9108C2.26225 10.546 2.52323 10.2153 2.88801 10.1725Z" />
     </svg>
   );
 }
@@ -3516,24 +3034,12 @@ export function ReviewWordDiffsIcon({ className }: IconProps) {
   );
 }
 
+function ReviewDisableGlyph({ className }: IconProps) {
+  return <ReviewChangesGlyph className={className} />;
+}
+
 export function ReviewDisableWordDiffsIcon({ className }: IconProps) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      fill="currentColor"
-      viewBox="0 0 20 20"
-      className={cn("icon-xs", className)}
-    >
-      <path d="M12.084 12.668a.666.666 0 0 1 0 1.33H7.917a.665.665 0 1 1 0-1.33h4.167ZM10 5.585c.367 0 .665.298.665.665v1.418h1.419a.666.666 0 0 1 0 1.33h-1.419v1.419a.666.666 0 0 1-1.33 0V8.998H7.917a.665.665 0 0 1 0-1.33h1.418V6.25c0-.367.298-.665.665-.665Z" />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M12.667 2.668c.689 0 1.246 0 1.696.036.458.038.865.117 1.242.309a3.163 3.163 0 0 1 1.382 1.383c.192.377.272.783.309 1.24.037.45.036 1.008.036 1.697v5.333c0 .689 0 1.246-.036 1.696-.037.458-.117.865-.309 1.242a3.166 3.166 0 0 1-1.382 1.382c-.377.192-.784.271-1.242.309-.45.037-1.007.036-1.696.036H7.334c-.689 0-1.246 0-1.696-.036-.458-.038-.864-.117-1.24-.309a3.166 3.166 0 0 1-1.384-1.383c-.192-.376-.271-.783-.309-1.24-.037-.45-.036-1.008-.036-1.697V7.333c0-.689 0-1.246.036-1.696.038-.458.117-.864.309-1.24a3.17 3.17 0 0 1 1.383-1.384c.377-.192.783-.272 1.24-.309.45-.037 1.008-.036 1.697-.036h5.333Zm-5.333 1.33c-.71 0-1.204.001-1.588.032-.375.03-.587.088-.745.168A1.836 1.836 0 0 0 4.199 5c-.08.158-.137.37-.168.745C4 6.13 4 6.622 4 7.333v5.333c0 .71.001 1.204.032 1.588.03.375.088.587.168.745.176.345.457.627.802.803.158.08.37.137.745.168.384.031.877.031 1.588.031h5.333c.71 0 1.204 0 1.588-.031.375-.031.587-.088.745-.168a1.84 1.84 0 0 0 .803-.803c.08-.158.137-.37.168-.745.031-.383.031-.877.031-1.588V7.333c0-.71 0-1.204-.031-1.588-.031-.375-.088-.587-.168-.745A1.838 1.838 0 0 0 15 4.198c-.158-.08-.37-.137-.745-.168-.384-.031-.877-.032-1.588-.032H7.334Z"
-      />
-    </svg>
-  );
+  return <ReviewDisableGlyph className={className} />;
 }
 
 export function ReviewHideWhitespaceIcon({ className }: IconProps) {
@@ -3577,22 +3083,6 @@ export function FileTreeChevronIcon({ className }: IconProps) {
         d="M12.4697 5.46973C12.7626 5.17684 13.2374 5.17684 13.5303 5.46973C13.8232 5.76262 13.8232 6.23738 13.5303 6.53028L8.53028 11.5303C8.23738 11.8232 7.76262 11.8232 7.46973 11.5303L2.46973 6.53028C2.17684 6.23738 2.17684 5.76262 2.46973 5.46973C2.76262 5.17684 3.23738 5.17684 3.53028 5.46973L8 9.93946L12.4697 5.46973Z"
         fill="currentColor"
       />
-    </svg>
-  );
-}
-
-export function FileTreeDotIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="6"
-      height="6"
-      viewBox="0 0 6 6"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={cn("shrink-0", className)}
-      aria-hidden="true"
-    >
-      <circle cx="3" cy="3" r="3" fill="currentColor" />
     </svg>
   );
 }
@@ -3652,19 +3142,6 @@ export function EstimateIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
         fillRule="evenodd"
         clipRule="evenodd"
         d="M3.741 14.5h8.521c1.691 0 2.778-1.795 1.993-3.293l-4.26-8.134c-.842-1.608-3.144-1.608-3.986 0l-4.26 8.134C.962 12.705 2.05 14.5 3.74 14.5ZM8 3.368a.742.742 0 0 0-.663.402l-4.26 8.134A.75.75 0 0 0 3.741 13H8V3.367Z"
-      />
-    </svg>
-  );
-}
-
-export function StatusLinesIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 16 16" className={cn("size-3.5", className)} fill="none" aria-hidden="true">
-      <path
-        d="M3 5h10M3 8h10M3 11h6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
       />
     </svg>
   );
@@ -3736,28 +3213,8 @@ export function PinOffIcon({ className }: IconProps) {
   );
 }
 
-export function PlusSmallIcon({ className }: IconProps) {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={className}>
-      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 export function ChevronRightIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 20 20"
-      className={cn("shrink-0", className)}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <path d={CHEVRON_RIGHT_PATH} fill="currentColor" />
-    </svg>
-  );
+  return <ChevronRightGlyph className={cn("shrink-0", className)} />;
 }
 
 export function CodeIcon({ className }: IconProps) {
@@ -3846,7 +3303,24 @@ export function ReplaceIcon({ className }: IconProps) {
 }
 
 export function RepeatIcon({ className }: IconProps) {
-  return <SwapArrowsGlyph className={className} />;
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={cn("icon-xs shrink-0", className)}
+      aria-hidden="true"
+    >
+      <path
+        d="m2 9 3-3 3 3M13 18H7a2 2 0 0 1-2-2V6m17 9-3 3-3-3M11 6h6a2 2 0 0 1 2 2v10"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export function BellIcon({ className }: IconProps) {
@@ -3884,19 +3358,6 @@ export function GlobeIcon({ className }: IconProps) {
         strokeWidth="1.2"
         strokeLinecap="round"
       />
-    </svg>
-  );
-}
-
-export function LinkToolbarGlobeIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="1.95 0 12.11 16"
-      className={cn("shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M8 1.95a6.05 6.05 0 1 1 0 12.1 6.05 6.05 0 0 1 0-12.1m-1.438 6.6c.048 1.194.25 2.247.539 3.016.167.445.353.766.532.967s.304.234.367.234.188-.033.367-.234c.179-.2.365-.522.532-.967.29-.77.491-1.822.54-3.016zm-3.481 0a4.95 4.95 0 0 0 3.326 4.137 5.4 5.4 0 0 1-.336-.734c-.343-.912-.562-2.1-.61-3.403zm7.458 0c-.048 1.303-.267 2.491-.61 3.403q-.15.396-.337.734a4.95 4.95 0 0 0 3.327-4.137zM6.407 3.312A4.95 4.95 0 0 0 3.081 7.45h2.38c.048-1.303.267-2.491.61-3.403q.149-.396.336-.734M8 3.234c-.063 0-.188.033-.367.234-.179.2-.365.523-.532.968-.29.77-.491 1.821-.54 3.015h2.877c-.048-1.194-.25-2.246-.539-3.015-.167-.445-.353-.767-.532-.968S8.063 3.233 8 3.233m1.592.08q.188.336.337.734c.343.912.562 2.1.61 3.403h2.38a4.95 4.95 0 0 0-3.327-4.137" />
     </svg>
   );
 }
@@ -3947,20 +3408,7 @@ export function NfmLinkToolbarClearIcon({ className }: IconProps) {
 }
 
 export function NfmLinkToolbarCopyIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      className={cn("shrink-0", className)}
-      fill="currentColor"
-      fillRule="evenodd"
-      clipRule="evenodd"
-      aria-hidden="true"
-    >
-      <path d="M15.1 1.785a3.065 3.065 0 0 1 3.065 3.066v6.033a3.065 3.065 0 0 1-3.064 3.064h-1.103v1.103a3.065 3.065 0 0 1-3.064 3.064H4.9a3.066 3.066 0 0 1-3.065-3.064V9.018A3.066 3.066 0 0 1 4.9 5.952h1.102V4.851a3.066 3.066 0 0 1 3.065-3.066zM4.9 7.282c-.958 0-1.735.777-1.735 1.736v6.033c0 .958.777 1.734 1.735 1.734h6.034c.957 0 1.734-.776 1.734-1.734V9.018c0-.959-.776-1.736-1.734-1.736zm4.167-4.167c-.958 0-1.735.777-1.735 1.736v1.101h3.602a3.065 3.065 0 0 1 3.064 3.066v3.6h1.103c.957 0 1.734-.776 1.734-1.734V4.85c0-.958-.777-1.735-1.734-1.736z" />
-    </svg>
-  );
+  return <CopyIcon className={cn("shrink-0", className)} />;
 }
 
 export function NfmLinkToolbarOpenIcon({ className }: IconProps) {
@@ -3994,11 +3442,13 @@ export function NfmLinkToolbarApplyIcon({ className }: IconProps) {
   );
 }
 
-export function LinkToolbarDeleteIcon({ className }: IconProps) {
+function DeleteGlyph({ className }: IconProps) {
   return (
     <svg
+      width="20"
+      height="20"
       viewBox="0 0 20 20"
-      className={cn("shrink-0", className)}
+      className={className}
       fill="currentColor"
       aria-hidden="true"
     >
@@ -4021,122 +3471,10 @@ export function FormattingToolbarLinkIcon({ className }: IconProps) {
   );
 }
 
-export function TextActionNormalTextIcon({ className }: IconProps) {
+function TextBlockGlyph({ className }: IconProps) {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
       <path d="M4.875 4.825c0-.345.28-.625.625-.625h9c.345 0 .625.28.625.625v1.8a.625.625 0 1 1-1.25 0V5.45h-3.25v9.1h.725a.625.625 0 1 1 0 1.25h-2.7a.625.625 0 1 1 0-1.25h.725v-9.1h-3.25v1.175a.625.625 0 1 1-1.25 0z" />
-    </svg>
-  );
-}
-
-export function TextActionHeadingBlockIcon({ level, className }: IconProps & { level: 1 | 2 | 3 }) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <text
-        x="2"
-        y="14"
-        fontFamily="ui-sans-serif, system-ui, sans-serif"
-        fontSize="11"
-        fontWeight="600"
-        letterSpacing="0"
-      >
-        H{level}
-      </text>
-    </svg>
-  );
-}
-
-export function TextActionQuoteBlockIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M5 5.25v9.5" />
-      <path d="M8.25 6.5h7" />
-      <path d="M8.25 10h7" />
-      <path d="M8.25 13.5h5" />
-    </svg>
-  );
-}
-
-export function TextActionBulletedListBlockIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <circle cx="4.5" cy="5.5" r="1" />
-      <circle cx="4.5" cy="10" r="1" />
-      <circle cx="4.5" cy="14.5" r="1" />
-      <path d="M8 4.75h8.25a.75.75 0 0 1 0 1.5H8a.75.75 0 0 1 0-1.5M8 9.25h8.25a.75.75 0 0 1 0 1.5H8a.75.75 0 0 1 0-1.5M8 13.75h8.25a.75.75 0 0 1 0 1.5H8a.75.75 0 0 1 0-1.5" />
-    </svg>
-  );
-}
-
-export function TextActionNumberedListBlockIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M4.15 4.15h1.2v4.2h-1.2V5.3l-.85.28-.3-.95zM3.15 10.05c.23-.75.84-1.2 1.73-1.2.96 0 1.62.52 1.62 1.31 0 .5-.24.89-.84 1.32l-.88.62h1.83v.95H3.11v-.77l1.8-1.31c.32-.23.43-.4.43-.65 0-.29-.2-.48-.52-.48-.35 0-.56.2-.67.6zM3.24 14.1c.2-.65.75-1.02 1.55-1.02.9 0 1.51.44 1.51 1.1 0 .39-.2.7-.57.87.48.16.74.51.74.96 0 .74-.66 1.24-1.67 1.24-.9 0-1.52-.42-1.72-1.15l1.02-.24c.09.31.33.49.7.49.36 0 .58-.18.58-.45 0-.31-.26-.47-.75-.47h-.45v-.82h.42c.43 0 .66-.15.66-.42 0-.24-.19-.39-.5-.39-.32 0-.53.17-.61.47z" />
-      <path d="M8 5.05h8.25a.75.75 0 0 1 0 1.5H8a.75.75 0 0 1 0-1.5M8 9.75h8.25a.75.75 0 0 1 0 1.5H8a.75.75 0 0 1 0-1.5M8 14.45h8.25a.75.75 0 0 1 0 1.5H8a.75.75 0 0 1 0-1.5" />
-    </svg>
-  );
-}
-
-export function TextActionCheckListBlockIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m3.35 5.4 1.05 1.05 1.9-2.05" />
-      <path d="m3.35 10 1.05 1.05L6.3 9" />
-      <path d="m3.35 14.6 1.05 1.05 1.9-2.05" />
-      <path d="M8.25 5.55h7.75" />
-      <path d="M8.25 10.15h7.75" />
-      <path d="M8.25 14.75h7.75" />
-    </svg>
-  );
-}
-
-export function TextActionToggleListBlockIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M3.6 4.15a.45.45 0 0 1 .67-.39l3 1.85a.45.45 0 0 1 0 .78l-3 1.85a.45.45 0 0 1-.67-.39z" />
-      <path d="M9.25 5.25h6.95a.75.75 0 0 1 0 1.5H9.25a.75.75 0 0 1 0-1.5M4.35 10.05h11.85a.75.75 0 0 1 0 1.5H4.35a.75.75 0 0 1 0-1.5M4.35 14.55h9.85a.75.75 0 0 1 0 1.5H4.35a.75.75 0 0 1 0-1.5" />
     </svg>
   );
 }
@@ -4250,17 +3588,7 @@ export function TextActionEllipsisIcon({ className }: IconProps) {
 }
 
 export function TextActionCommentIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M5.875 7.505c0-.345.28-.625.625-.625h7a.625.625 0 1 1 0 1.25h-7a.625.625 0 0 1-.625-.625m0 3c0-.345.28-.625.625-.625h5a.625.625 0 1 1 0 1.25h-5a.625.625 0 0 1-.625-.625" />
-      <path d="M17.625 5.255A2.125 2.125 0 0 0 15.5 3.13h-11a2.125 2.125 0 0 0-2.125 2.125v7.5c0 1.173.951 2.125 2.125 2.125h1.188v2.482a.625.625 0 0 0 1.006.496l3.87-2.978H15.5a2.125 2.125 0 0 0 2.125-2.125zM15.5 4.38c.483 0 .875.392.875.875v7.5a.875.875 0 0 1-.875.875h-5.148a.63.63 0 0 0-.38.13l-3.034 2.333v-1.838a.625.625 0 0 0-.625-.625H4.5a.875.875 0 0 1-.875-.875v-7.5c0-.483.392-.875.875-.875z" />
-    </svg>
-  );
+  return <CommentGlyph className={cn("size-5 shrink-0", className)} />;
 }
 
 export function TextActionReactionIcon({ className }: IconProps) {
@@ -4278,17 +3606,7 @@ export function TextActionReactionIcon({ className }: IconProps) {
 }
 
 export function TextActionCommentPencilIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M12.728 4.015H4.5a.875.875 0 0 0-.875.875v7.5l.005.09a.875.875 0 0 0 .87.784h1.813a.625.625 0 0 1 .625.626v1.838l3.034-2.334a.63.63 0 0 1 .38-.13H15.5l.09-.004a.875.875 0 0 0 .78-.78l.005-.09V6.089l1.247-1.248.003.049v7.5l-.01.216a2.126 2.126 0 0 1-2.115 1.909h-4.935l-3.872 2.977a.625.625 0 0 1-1.005-.495v-2.482H4.5l-.217-.011a2.126 2.126 0 0 1-1.908-2.114v-7.5c0-1.174.951-2.125 2.125-2.125h9.48z" />
-      <path d="M17.294 1.223a.77.77 0 0 1 1.084 0 .77.77 0 0 1 0 1.083v.012l-7.986 7.987a.87.87 0 0 1-.387.232l-.916.283c-.18.065-.361-.116-.31-.31l.284-.915a1.1 1.1 0 0 1 .232-.387z" />
-    </svg>
-  );
+  return <SuggestEditsGlyph className={cn("size-5 shrink-0", className)} />;
 }
 
 export function TextActionSlidersIcon({ className }: IconProps) {
@@ -4318,19 +3636,6 @@ export function TextActionPencilSmallIcon({ className }: IconProps) {
       aria-hidden="true"
     >
       <path d="M11.243 3.457a.803.803 0 0 0-1.13 0l-.554.552a.075.075 0 0 0 0 .106l1.03 1.03a.075.075 0 0 0 .107 0l.547-.546a.1.1 0 0 0 .019-.032.804.804 0 0 0-.02-1.11m-2.246 1.22a.075.075 0 0 0-.106 0l-6.336 6.326a1.1 1.1 0 0 0-.237.393l-.27.87v.002c-.062.232.153.466.389.383l.863-.267q.221-.061.397-.239l6.332-6.331a.075.075 0 0 0 0-.106zm-3.355 6.898a.08.08 0 0 0-.053.022l-1.1 1.1a.075.075 0 0 0 .053.128h9.06a.625.625 0 1 0 0-1.25z" />
-    </svg>
-  );
-}
-
-export function TextActionBlockColorIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 30 30"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M25 5c0-2.2-1.8-4-4-4H6C3.8 1 2 2.8 2 5H1v2h1c0 2.2 1.8 4 4 4h15c2.2 0 4-1.8 4-4h2v6H14v4h-2v9c0 1.657 1.344 3 3 3s3-1.343 3-3v-9h-2v-2h13V5zM23 7c0 1.103-.896 2-2 2H6C4.896 9 4 8.103 4 7V5c0-1.103.896-2 2-2h15c1.104 0 2 .897 2 2zM16 26c0 .552-.449 1-1 1s-1-.448-1-1v-7h2z" />
     </svg>
   );
 }
@@ -4446,45 +3751,33 @@ export function NfmSideMenuAiFaceIcon({ className }: IconProps) {
 }
 
 export function NfmSideMenuDeleteIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M8.806 8.505a.55.55 0 0 0-1.1 0v5.979a.55.55 0 1 0 1.1 0zm3.488 0a.55.55 0 0 0-1.1 0v5.979a.55.55 0 1 0 1.1 0z" />
-      <path d="M6.386 3.925v1.464H3.523a.625.625 0 1 0 0 1.25h.897l.393 8.646A2.425 2.425 0 0 0 7.236 17.6h5.528a2.425 2.425 0 0 0 2.422-2.315l.393-8.646h.898a.625.625 0 1 0 0-1.25h-2.863V3.925c0-.842-.683-1.525-1.525-1.525H7.91c-.842 0-1.524.683-1.524 1.525M7.91 3.65h4.18c.15 0 .274.123.274.275v1.464H7.636V3.925c0-.152.123-.275.274-.275m-.9 2.99h7.318l-.39 8.588a1.175 1.175 0 0 1-1.174 1.122H7.236a1.175 1.175 0 0 1-1.174-1.122l-.39-8.589z" />
-    </svg>
-  );
+  return <DeleteGlyph className={cn("size-5 shrink-0", className)} />;
 }
 
-export function NfmSideMenuCommentIcon({ className }: IconProps) {
+function CommentGlyph({ className }: IconProps) {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
       <path d="M5.875 7.505c0-.345.28-.625.625-.625h7a.625.625 0 1 1 0 1.25h-7a.625.625 0 0 1-.625-.625m0 3c0-.345.28-.625.625-.625h5a.625.625 0 1 1 0 1.25h-5a.625.625 0 0 1-.625-.625" />
       <path d="M17.625 5.255A2.125 2.125 0 0 0 15.5 3.13h-11a2.125 2.125 0 0 0-2.125 2.125v7.5c0 1.173.951 2.125 2.125 2.125h1.188v2.482a.625.625 0 0 0 1.006.496l3.87-2.978H15.5a2.125 2.125 0 0 0 2.125-2.125zM15.5 4.38c.483 0 .875.392.875.875v7.5a.875.875 0 0 1-.875.875h-5.148a.63.63 0 0 0-.38.13l-3.034 2.333v-1.838a.625.625 0 0 0-.625-.625H4.5a.875.875 0 0 1-.875-.875v-7.5c0-.483.392-.875.875-.875z" />
     </svg>
   );
 }
 
-export function NfmSideMenuSuggestEditsIcon({ className }: IconProps) {
+export function NfmSideMenuCommentIcon({ className }: IconProps) {
+  return <CommentGlyph className={cn("size-5 shrink-0", className)} />;
+}
+
+function SuggestEditsGlyph({ className }: IconProps) {
   return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 20 20" className={className} fill="currentColor" aria-hidden="true">
       <path d="M12.728 4.015H4.5a.875.875 0 0 0-.875.875v7.5l.005.09a.875.875 0 0 0 .87.784h1.813a.625.625 0 0 1 .625.626v1.838l3.034-2.334a.63.63 0 0 1 .38-.13H15.5l.09-.004a.875.875 0 0 0 .78-.78l.005-.09V6.089l1.247-1.248.003.049v7.5l-.01.216a2.126 2.126 0 0 1-2.115 1.909h-4.935l-3.872 2.977a.625.625 0 0 1-1.005-.495v-2.482H4.5l-.217-.011a2.126 2.126 0 0 1-1.908-2.114v-7.5c0-1.174.951-2.125 2.125-2.125h9.48z" />
       <path d="M17.294 1.223a.77.77 0 0 1 1.084 0 .77.77 0 0 1 0 1.083v.012l-7.986 7.987a.87.87 0 0 1-.387.232l-.916.283c-.18.065-.361-.116-.31-.31l.284-.915a1.1 1.1 0 0 1 .232-.387z" />
     </svg>
   );
+}
+
+export function NfmSideMenuSuggestEditsIcon({ className }: IconProps) {
+  return <SuggestEditsGlyph className={cn("size-5 shrink-0", className)} />;
 }
 
 export function NfmSideMenuChevronRightIcon({ className }: IconProps) {
@@ -4501,16 +3794,7 @@ export function NfmSideMenuChevronRightIcon({ className }: IconProps) {
 }
 
 export function NfmSideMenuTextBlockIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M4.875 4.825c0-.345.28-.625.625-.625h9c.345 0 .625.28.625.625v1.8a.625.625 0 1 1-1.25 0V5.45h-3.25v9.1h.725a.625.625 0 1 1 0 1.25h-2.7a.625.625 0 1 1 0-1.25h.725v-9.1h-3.25v1.175a.625.625 0 1 1-1.25 0z" />
-    </svg>
-  );
+  return <TextBlockGlyph className={cn("size-5 shrink-0", className)} />;
 }
 
 export function NfmSideMenuHeadingBlockIcon({
@@ -4638,22 +3922,7 @@ export function NfmTableBlockIcon({ className }: IconProps) {
 }
 
 export function NfmImageBlockIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="3.25" y="3.5" width="13.5" height="13" rx="1.75" />
-      <circle cx="7.25" cy="7.25" r="1.15" fill="currentColor" stroke="none" />
-      <path d="m4.5 14.25 3.55-3.55a.75.75 0 0 1 1.06 0l1.7 1.7 1.45-1.45a.75.75 0 0 1 1.06 0l2.18 2.18" />
-    </svg>
-  );
+  return <ImageIcon className={cn("size-5 shrink-0", className)} />;
 }
 
 export function NfmCalloutBlockIcon({ className }: IconProps) {
@@ -4691,27 +3960,6 @@ export function NfmSideMenuPageInIcon({ className }: IconProps) {
     >
       <path d="M6.25 2.375A2.125 2.125 0 0 0 4.125 4.5v11c0 1.174.951 2.125 2.125 2.125h1.453c.04-.45.217-.89.533-1.25H6.25a.875.875 0 0 1-.875-.875v-11c0-.483.392-.875.875-.875h3.7V6.25A2.05 2.05 0 0 0 12 8.3h2.625v1.208h1.25V8.12c0-.563-.224-1.104-.622-1.502L11.63 2.997a2.13 2.13 0 0 0-1.502-.622zM14.066 7.2H12a.95.95 0 0 1-.95-.95V4.184z" />
       <path d="M11.636 11.046h4.37c.361 0 .655.294.655.656v4.369a.656.656 0 1 1-1.311 0v-2.786l-4.998 4.997a.656.656 0 0 1-.927-.927l4.997-4.997h-2.786a.656.656 0 0 1 0-1.312" />
-    </svg>
-  );
-}
-
-export function NfmSideMenuSendBlocksIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className={cn("size-5 shrink-0", className)}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.45"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4.25 5.25h7.5" />
-      <path d="M4.25 9.75h5.5" />
-      <path d="M4.25 14.25h4.25" />
-      <path d="M11.75 13.75h4" />
-      <path d="m14 11.5 2.25 2.25L14 16" />
     </svg>
   );
 }
@@ -4869,24 +4117,6 @@ export function CheckboxSquareIcon({ className }: IconProps) {
     >
       <path
         d="M3 3v13.2h13.2V3H3Zm5.7 10.272L5.4 9.972l1.272-1.271 2.028 2.028 4.128-4.128 1.272 1.272-5.4 5.4Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
-export function DescriptionIcon({ className }: IconProps) {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 20 20"
-      fill="none"
-      className={cn("shrink-0", className)}
-      aria-hidden="true"
-    >
-      <path
-        d="M16.8 3.9v1.8H2.4V3.9h14.4ZM2.4 10.5h14.4V8.7H2.4v1.8Zm0 4.8h7.56v-1.8H2.4v1.8Z"
         fill="currentColor"
       />
     </svg>
@@ -6423,14 +5653,14 @@ const FILE_TAB_ICON_DEFINITIONS = {
       {
         type: "path",
         props: {
-          d: "M6.19629 7.86231C6.42357 7.63534 6.7752 7.60692 7.0332 7.77734L7.1377 7.86231L8.80371 9.5293C9.06329 9.78889 9.06307 10.21 8.80371 10.4697L7.1377 12.1367C6.878 12.3964 6.45599 12.3964 6.19629 12.1367C5.93686 11.8771 5.93697 11.456 6.19629 11.1963L7.39258 9.99902L6.19629 8.80371L6.11133 8.69922C5.94087 8.4411 5.96904 8.08955 6.19629 7.86231Z",
+          d: TERMINAL_PROMPT_PATH,
           fill: "currentColor",
         },
       },
       {
         type: "path",
         props: {
-          d: "M13.4668 11.0156C13.7699 11.0776 13.998 11.3456 13.998 11.667C13.9979 11.9883 13.7698 12.2564 13.4668 12.3184L13.333 12.332H10.833C10.466 12.3319 10.1682 12.034 10.168 11.667C10.168 11.2998 10.4659 11.0021 10.833 11.002H13.333L13.4668 11.0156Z",
+          d: TERMINAL_SEPARATOR_PATH,
           fill: "currentColor",
         },
       },
@@ -6439,7 +5669,7 @@ const FILE_TAB_ICON_DEFINITIONS = {
         props: {
           fillRule: "evenodd",
           clipRule: "evenodd",
-          d: "M12.6602 2.66504C13.3492 2.66504 13.9062 2.66439 14.3564 2.70117C14.8142 2.73859 15.2201 2.81796 15.5967 3.00977C16.1922 3.31321 16.677 3.79805 16.9805 4.39356C17.1722 4.77014 17.2517 5.17604 17.2891 5.63379C17.3258 6.08402 17.3252 6.64102 17.3252 7.33008V12.6602C17.3252 13.3492 17.3258 13.9062 17.2891 14.3564C17.2516 14.8142 17.1723 15.2201 16.9805 15.5967C16.677 16.1922 16.1922 16.677 15.5967 16.9805C15.2201 17.1723 14.8142 17.2516 14.3564 17.2891C13.9062 17.3258 13.3492 17.3252 12.6602 17.3252H7.33008C6.64102 17.3252 6.08402 17.3258 5.63379 17.2891C5.17604 17.2517 4.77014 17.1722 4.39356 16.9805C3.79805 16.677 3.31321 16.1922 3.00977 15.5967C2.81796 15.2201 2.73859 14.8142 2.70117 14.3564C2.66439 13.9062 2.66504 13.3492 2.66504 12.6602V7.33008C2.66504 6.64101 2.66439 6.08402 2.70117 5.63379C2.73858 5.17601 2.81797 4.77016 3.00977 4.39356C3.31321 3.79802 3.79802 3.31321 4.39356 3.00977C4.77016 2.81797 5.17601 2.73858 5.63379 2.70117C6.08402 2.66439 6.64101 2.66504 7.33008 2.66504H12.6602ZM7.33008 3.99512C6.61907 3.99512 6.1257 3.99601 5.74219 4.02734C5.3665 4.05804 5.15508 4.11481 4.99707 4.19531C4.65183 4.37124 4.37124 4.65183 4.19531 4.99707C4.11481 5.15508 4.05805 5.3665 4.02734 5.74219C3.99601 6.1257 3.99512 6.61908 3.99512 7.33008V12.6602C3.99512 13.3711 3.99601 13.8646 4.02734 14.248C4.05805 14.6237 4.11481 14.8352 4.19531 14.9932C4.37124 15.3384 4.65186 15.619 4.99707 15.7949C5.15507 15.8754 5.36654 15.9322 5.74219 15.9629C6.1257 15.9942 6.61908 15.9951 7.33008 15.9951H12.6602C13.3711 15.9951 13.8646 15.9942 14.248 15.9629C14.6237 15.9322 14.8352 15.8754 14.9932 15.7949C15.3384 15.619 15.619 15.3384 15.7949 14.9932C15.8754 14.8352 15.9322 14.6237 15.9629 14.248C15.9942 13.8646 15.9951 13.3711 15.9951 12.6602V7.33008C15.9951 6.61908 15.9942 6.1257 15.9629 5.74219C15.9322 5.36654 15.8754 5.15507 15.7949 4.99707C15.619 4.65186 15.3384 4.37124 14.9932 4.19531C14.8352 4.11481 14.6237 4.05805 14.248 4.02734C13.8646 3.99601 13.3711 3.99512 12.6602 3.99512H7.33008Z",
+          d: TERMINAL_BOX_PATH,
           fill: "currentColor",
         },
       },

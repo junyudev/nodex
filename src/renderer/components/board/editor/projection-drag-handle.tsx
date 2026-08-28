@@ -1,5 +1,5 @@
 import { SideMenuExtension } from "@blocknote/core/extensions";
-import { GripVertical } from "@/components/shared/icons/generic-icons";
+import { DragHandleDotsIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { DragEvent } from "react";
 import { cn } from "../../../lib/utils";
@@ -104,7 +104,7 @@ export function ProjectionDragHandleButton({
         contentEditable={false}
         aria-label={title}
       >
-        <GripVertical className="size-3.5" />
+        <DragHandleDotsIcon className="size-3.5" />
       </button>
     </NodexTooltip>
   );

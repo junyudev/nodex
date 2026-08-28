@@ -1,11 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
-  ExternalLink,
   ListTree,
   MessageSquare,
   PictureInPicture2,
   Slash,
-  SquareTerminal,
 } from "@/components/shared/icons/generic-icons";
 import { MotionConfig } from "motion/react";
 import type { CSSProperties } from "react";
@@ -20,6 +18,8 @@ import {
   ThreadSummaryCreatePullRequestIcon,
   GlobeIcon,
   FileIcon,
+  OpenInIcon,
+  TerminalIcon,
 } from "@/components/shared/icons";
 import { CODEX_SUMMARY_PANEL_WIDTH } from "@/lib/codex-panel-motion";
 import type {
@@ -285,7 +285,7 @@ function SummaryPanelSurfaceStory({ noGit = false }: { noGit?: boolean }) {
               label={
                 <span className="flex min-w-0 items-center gap-1">
                   <span className="truncate">Story app</span>
-                  <ExternalLink
+                  <OpenInIcon
                     className="icon-xs shrink-0 opacity-0 group-hover/summary-panel-row:opacity-100"
                     aria-hidden={true}
                   />
@@ -330,7 +330,7 @@ function SummaryPanelSurfaceStory({ noGit = false }: { noGit?: boolean }) {
           >
             <ThreadSummaryPanelRow
               label="bun test"
-              icon={<SquareTerminal className="icon-sm shrink-0" />}
+              icon={<TerminalIcon className="icon-sm shrink-0" />}
               trailing={<span className="text-size-chat text-token-text-tertiary">3 pass</span>}
               trailingVisible
             />

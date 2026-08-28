@@ -2,13 +2,13 @@ import { useState } from "react";
 import type { FeedbackUploadParams, McpServerStatus } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import {
-  CheckIcon,
   ClipboardListIcon,
   MessageCirclePlusIcon,
   MessagesSquareIcon,
   SendIcon,
   SplitIcon,
 } from "@/components/shared/icons/generic-icons";
+import { CheckmarkIcon } from "@/components/shared/icons";
 import {
   FastModeIcon,
   GoalTargetIcon,
@@ -666,7 +666,7 @@ function CommandPanelRow({
       onClick={onClick}
     >
       <span className="icon-xs shrink-0 text-token-description-foreground">
-        {selected ? <CheckIcon className={iconClassName} /> : <span className="block size-3" />}
+        {selected ? <CheckmarkIcon className={iconClassName} /> : <span className="block size-3" />}
       </span>
       <span className="min-w-0 flex-1 truncate">{title}</span>
       {description ? (
