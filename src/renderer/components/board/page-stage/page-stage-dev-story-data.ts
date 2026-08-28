@@ -1,4 +1,3 @@
-import type { PageStageCollapsibleProperty } from "../../../lib/page-stage-collapsed-properties";
 import type { DatabasePage } from "../../../lib/types";
 import { plainTextToPortableRichText } from "../../../../shared/block-documents";
 import type { PageStageRelatedChat } from "./types";
@@ -10,8 +9,6 @@ export interface PageStageStoryControls {
   chatDensity: PageStageStoryChatDensity;
   showNewChatAction: boolean;
   enableOpenChat: boolean;
-  collapseChatsByDefault: boolean;
-  collapseSecondaryProperties: boolean;
   historyPanelActive: boolean;
 }
 
@@ -37,8 +34,6 @@ export const PAGE_STAGE_STORY_PRESETS: PageStageStoryPreset[] = [
       chatDensity: "few",
       showNewChatAction: true,
       enableOpenChat: true,
-      collapseChatsByDefault: false,
-      collapseSecondaryProperties: false,
       historyPanelActive: false,
     },
   },
@@ -50,8 +45,6 @@ export const PAGE_STAGE_STORY_PRESETS: PageStageStoryPreset[] = [
       chatDensity: "many",
       showNewChatAction: true,
       enableOpenChat: true,
-      collapseChatsByDefault: false,
-      collapseSecondaryProperties: true,
       historyPanelActive: false,
     },
   },
@@ -63,22 +56,7 @@ export const PAGE_STAGE_STORY_PRESETS: PageStageStoryPreset[] = [
       chatDensity: "none",
       showNewChatAction: true,
       enableOpenChat: true,
-      collapseChatsByDefault: false,
-      collapseSecondaryProperties: false,
       historyPanelActive: false,
-    },
-  },
-  {
-    id: "collapsed-chats",
-    name: "Collapsed Chats",
-    description: "Collapsed relation state for inspecting the hidden-property affordance.",
-    controls: {
-      chatDensity: "few",
-      showNewChatAction: true,
-      enableOpenChat: false,
-      collapseChatsByDefault: true,
-      collapseSecondaryProperties: true,
-      historyPanelActive: true,
     },
   },
 ];
@@ -150,22 +128,6 @@ export function buildPageStageStoryPage(): DatabasePage {
     created: new Date("2026-03-04T09:30:00.000Z"),
     order: 0,
   };
-}
-
-export function buildPageStageStoryCollapsedProperties(
-  controls: Pick<PageStageStoryControls, "collapseChatsByDefault" | "collapseSecondaryProperties">,
-): PageStageCollapsibleProperty[] {
-  const properties: PageStageCollapsibleProperty[] = [];
-
-  if (controls.collapseSecondaryProperties) {
-    properties.unshift("tags", "assignee");
-  }
-
-  if (controls.collapseChatsByDefault) {
-    properties.push("threads");
-  }
-
-  return properties;
 }
 
 export function resolvePageStageStoryPreset(id: string): PageStageStoryPreset {

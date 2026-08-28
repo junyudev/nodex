@@ -24,16 +24,8 @@ import {
 import { Input } from "../ui/input";
 import { invoke } from "./workbench-settings-overlay-deps";
 import { handleFormSubmit, resolveFormErrorMessage, resolveZodErrorMessage } from "../../lib/forms";
-import type { CardPropertyPosition } from "../../lib/card-property-position";
 import { FILE_LINK_OPENER_ICON_URLS } from "../../lib/file-link-opener-icons";
-import {
-  PAGE_STAGE_COLLAPSIBLE_PROPERTIES,
-  PAGE_STAGE_COLLAPSIBLE_PROPERTY_LABELS,
-  type PageStageCollapsibleProperty,
-} from "../../lib/page-stage-collapsed-properties";
-import { useCardPropertyPosition } from "../../lib/use-card-property-position";
 import { useFileLinkOpener } from "../../lib/use-file-link-opener";
-import { usePageStageCollapsedProperties } from "../../lib/use-page-stage-collapsed-properties";
 import { DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX } from "../../lib/worktree-branch-prefix";
 import {
   DEFAULT_CODE_FONT_SIZE,
@@ -175,17 +167,6 @@ interface SegmentedControlProps<T extends string> {
   options: SegmentedOption<T>[];
 }
 
-interface ToggleGroupOption<T extends string> {
-  value: T;
-  label: string;
-}
-
-interface ToggleGroupProps<T extends string> {
-  selectedValues: readonly T[];
-  onToggle: (value: T) => void;
-  options: ToggleGroupOption<T>[];
-}
-
 function SegmentedControl<T extends string>({
   value,
   onChange,
@@ -213,36 +194,6 @@ function SegmentedControl<T extends string>({
           >
             {Icon ? <Icon className="size-4" /> : null}
             <span className="text-sm">{option.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ToggleGroup<T extends string>({ selectedValues, onToggle, options }: ToggleGroupProps<T>) {
-  const selected = new Set(selectedValues);
-
-  return (
-    <div className="flex max-w-72 flex-wrap justify-end gap-1">
-      {options.map((option) => {
-        const isSelected = selected.has(option.value);
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onToggle(option.value)}
-            aria-pressed={isSelected}
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-sm/4.5 transition-colors",
-              "outline-none focus-visible:ring-2 focus-visible:ring-(--accent-blue)/30",
-              isSelected
-                ? "border-transparent bg-foreground-5 text-(--foreground)"
-                : "border-(--border) text-(--foreground-secondary) hover:bg-foreground-5",
-            )}
-          >
-            {option.label}
           </button>
         );
       })}
@@ -1135,37 +1086,6 @@ export function FileLinkOpenerSettingControl() {
         </NodexDropdownItem>
       ))}
     </NodexDropdownMenu>
-  );
-}
-
-export function CardPropertyPositionSettingControl() {
-  const { position, setPosition } = useCardPropertyPosition();
-
-  return (
-    <SegmentedControl<CardPropertyPosition>
-      value={position}
-      onChange={setPosition}
-      options={[
-        { value: "top", label: "Top" },
-        { value: "inline", label: "Inline" },
-        { value: "bottom", label: "Bottom" },
-      ]}
-    />
-  );
-}
-
-export function PageStageCollapsedPropertiesSettingControl() {
-  const { collapsedProperties, toggleCollapsedProperty } = usePageStageCollapsedProperties();
-
-  return (
-    <ToggleGroup<PageStageCollapsibleProperty>
-      selectedValues={collapsedProperties}
-      onToggle={toggleCollapsedProperty}
-      options={PAGE_STAGE_COLLAPSIBLE_PROPERTIES.map((property) => ({
-        value: property,
-        label: PAGE_STAGE_COLLAPSIBLE_PROPERTY_LABELS[property],
-      }))}
-    />
   );
 }
 

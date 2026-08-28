@@ -42,7 +42,6 @@ describe("workbench settings search catalog", () => {
     expect(hasSectionResult("danger-full-access", "agent")).toBe(true);
     expect(hasSectionResult("materialize inflating note", "general-settings")).toBe(true);
     expect(hasSectionResult("task shorthand", "page")).toBe(true);
-    expect(hasSectionResult("more-properties toggle", "page")).toBe(true);
     expect(hasSectionResult("auto-create branch detached", "worktrees")).toBe(true);
     expect(hasSectionResult("CODEX_SOURCE_TREE_PATH", "local-environments")).toBe(true);
     expect(hasSectionResult("locked computer", "computer-use")).toBe(true);
@@ -59,5 +58,10 @@ describe("workbench settings search catalog", () => {
 
   test("does not index the retired sidebar section preferences", () => {
     expect(searchCatalog("Sidebar sections")).toEqual([]);
+  });
+
+  test("does not index retired global Page presentation preferences", () => {
+    expect(searchCatalog("Board card properties")).toEqual([]);
+    expect(searchCatalog("more-properties toggle")).toEqual([]);
   });
 });

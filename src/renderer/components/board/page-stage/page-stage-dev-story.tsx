@@ -3,7 +3,6 @@ import { XIcon } from "@/components/shared/icons/generic-icons";
 import { PageIcon } from "@/components/shared/icons";
 import { PageStage } from "./page-stage-dev-story-deps";
 import { ReadonlyNfmBlockNotePreview } from "../editor/readonly-nfm-blocknote-preview";
-import { usePageStageCollapsedProperties } from "../../../lib/use-page-stage-collapsed-properties";
 import type { PageInput } from "../../../lib/types";
 import {
   projectPageDetailToStageModel,
@@ -11,7 +10,6 @@ import {
 } from "../../../lib/page-stage-page";
 import {
   buildPageStageStoryPage,
-  buildPageStageStoryCollapsedProperties,
   buildPageStageStoryChats,
   PAGE_STAGE_STORY_PROJECT_ID,
   PAGE_STAGE_STORY_WORKSPACE_PATH,
@@ -78,8 +76,6 @@ export function PageStageDevStoryPage({
   chatDensity,
   showNewChatAction,
   enableOpenChat,
-  collapseChatsByDefault,
-  collapseSecondaryProperties,
   historyPanelActive: initialHistoryPanelActive,
   renderPreview = true,
   descriptionVariant = "default",
@@ -88,14 +84,11 @@ export function PageStageDevStoryPage({
 }: PageStageDevStoryPageProps) {
   const [extraChatCount, setExtraChatCount] = useState(0);
   const [historyPanelActive, setHistoryPanelActive] = useState(initialHistoryPanelActive);
-  const { setCollapsedProperties } = usePageStageCollapsedProperties();
 
   useEffect(() => {
     setExtraChatCount(0);
     setHistoryPanelActive(initialHistoryPanelActive);
   }, [
-    collapseSecondaryProperties,
-    collapseChatsByDefault,
     enableOpenChat,
     initialHistoryPanelActive,
     descriptionVariant,
@@ -104,15 +97,6 @@ export function PageStageDevStoryPage({
     schemaVariant,
     chatDensity,
   ]);
-
-  useEffect(() => {
-    setCollapsedProperties(
-      buildPageStageStoryCollapsedProperties({
-        collapseChatsByDefault,
-        collapseSecondaryProperties,
-      }),
-    );
-  }, [collapseChatsByDefault, collapseSecondaryProperties, setCollapsedProperties]);
 
   const page = useMemo(() => buildPageStageStoryPage(), []);
   const displayPage = useMemo(() => {
@@ -256,9 +240,6 @@ export function PageStageDevStoryPage({
             <div className="flex max-w-sm flex-wrap justify-end gap-2">
               <span className="rounded-full border border-(--border) bg-(--background) px-2.5 py-1 text-xs text-(--foreground-secondary)">
                 {threadCountLabel}
-              </span>
-              <span className="rounded-full border border-(--border) bg-(--background) px-2.5 py-1 text-xs text-(--foreground-secondary)">
-                {collapseChatsByDefault ? "chats collapsed" : "chats expanded"}
               </span>
               <span className="rounded-full border border-(--border) bg-(--background) px-2.5 py-1 text-xs text-(--foreground-secondary)">
                 {historyPanelActive ? "history active" : "history idle"}

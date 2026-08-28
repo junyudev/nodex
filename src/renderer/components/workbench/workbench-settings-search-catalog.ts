@@ -1,8 +1,4 @@
 import type { SettingsSearchContext } from "@/lib/settings-search";
-import {
-  PAGE_STAGE_COLLAPSIBLE_PROPERTIES,
-  PAGE_STAGE_COLLAPSIBLE_PROPERTY_LABELS,
-} from "../../lib/page-stage-collapsed-properties";
 import { DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX } from "../../lib/worktree-branch-prefix";
 import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
 
@@ -381,25 +377,8 @@ const SETTINGS_SEARCH_PANELS = {
   },
   page: {
     title: "Pages",
-    subtitle: "Board card and page-stage presentation.",
+    subtitle: "Page creation and import behavior.",
     groups: [
-      {
-        title: "Cards & Page Stage",
-        entries: [
-          entry(
-            "Board card properties",
-            "Choose whether priority, estimate, tags, assignee, and run-in metadata render above the title, inline with it, or below the card body.",
-            ["Top", "Inline", "Bottom"],
-          ),
-          entry(
-            "Page Stage collapsed properties",
-            "Choose which page-stage property rows start behind the more-properties toggle.",
-            PAGE_STAGE_COLLAPSIBLE_PROPERTIES.map(
-              (property) => PAGE_STAGE_COLLAPSIBLE_PROPERTY_LABELS[property],
-            ),
-          ),
-        ],
-      },
       {
         title: "Block import",
         entries: [

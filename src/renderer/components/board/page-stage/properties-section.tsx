@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 
 import { ThreadsIcon } from "@/components/workbench/threads-icon";
 import { NodexDropdown } from "@/components/ui/dropdown";
@@ -20,11 +20,21 @@ import {
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
 import { XIcon } from "@/components/shared/icons/generic-icons";
 import { presentPageChatItemActivity } from "@/lib/page-chat-activity-presentation";
+import {
+  advancePageStageQuietPropertiesState,
+  createPageStageQuietPropertiesState,
+  formatPageStageQuietPropertyCountLabel,
+  resolveLinkedChatsPropertySignal,
+  resolvePageFilesPropertySignal,
+  type PageStageQuietPropertiesInput,
+} from "@/lib/page-stage-quiet-properties";
+import { usePageFiles } from "@/lib/use-page-files";
 import { cn } from "@/lib/utils";
 import { PageStageDataSourcePropertyControl } from "./data-source-property-control";
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStageRelatedChat } from "./types";
 import { PageFilesRow } from "./page-files-row";
+import { pageStagePropertyAddControl } from "./property-value-styles";
 
 interface PageStagePropertiesSectionProps {
   readonly controller: PageStageController;
@@ -133,7 +143,7 @@ function RelatedChatAddControl({
       type="button"
       aria-label="Add chat"
       disabled={saving}
-      className="flex size-5 shrink-0 items-center justify-center rounded-sm text-(--foreground-tertiary) opacity-60 hover:bg-(--background-tertiary) hover:text-(--foreground-secondary) hover:opacity-100 focus-visible:outline-2 focus-visible:outline-token-focus focus-visible:opacity-100 disabled:opacity-40"
+      className={cn(pageStagePropertyAddControl, "disabled:opacity-40")}
     >
       <PlusIcon className="icon-2xs shrink-0" />
     </button>
@@ -307,12 +317,68 @@ function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps
 }
 
 export function PageStagePropertiesSection({ controller }: PageStagePropertiesSectionProps) {
+  const pageId = controller.page?.id ?? "";
+  const baseFiles = usePageFiles(controller.contentAccessContext, pageId, { subscribe: true });
+  const filesSignal = resolvePageFilesPropertySignal({
+    hasManifest: baseFiles.manifest !== null,
+    unplacedTotal: baseFiles.manifest?.unplacedTotal ?? 0,
+    hasError: baseFiles.error !== null,
+  });
+  const linkedChatsSignal = resolveLinkedChatsPropertySignal({
+    count: controller.relatedChats.length,
+    loading: controller.relatedChatsLoading,
+    hasError: controller.relatedChatsError !== null,
+  });
+  const filesManifestRevision = baseFiles.manifest?.revision ?? null;
+  const quietPropertiesInput: PageStageQuietPropertiesInput = {
+    pageId,
+    files: {
+      signal: filesSignal,
+      manifestRevision: filesManifestRevision,
+    },
+    linkedChats: { signal: linkedChatsSignal },
+  };
+  const [quietPropertiesState, setQuietPropertiesState] = useState(() =>
+    createPageStageQuietPropertiesState(quietPropertiesInput),
+  );
+  const currentQuietPropertiesState =
+    quietPropertiesState.pageId === pageId
+      ? quietPropertiesState
+      : createPageStageQuietPropertiesState(quietPropertiesInput);
+  const [expandedState, setExpandedState] = useState({ pageId, expanded: false });
+  const propertiesExpanded = expandedState.pageId === pageId ? expandedState.expanded : false;
+
+  useLayoutEffect(() => {
+    setQuietPropertiesState((current) =>
+      advancePageStageQuietPropertiesState(current, {
+        pageId,
+        files: {
+          signal: filesSignal,
+          manifestRevision: filesManifestRevision,
+        },
+        linkedChats: { signal: linkedChatsSignal },
+      }),
+    );
+  }, [filesManifestRevision, filesSignal, linkedChatsSignal, pageId]);
+
   if (!controller.page) return null;
   const { propertyControls } = controller;
-  const isCollapsed = (propertyId: string): boolean => {
-    if (propertyId === "tags") return controller.collapseTagsByDefault;
-    if (propertyId === "assignee") return controller.collapseAssigneeByDefault;
-    return false;
+  const filesCollapsed = !currentQuietPropertiesState.files.visible;
+  const relatedChatsCollapsed =
+    controller.hasRelatedChatsRow &&
+    linkedChatsSignal !== "attention" &&
+    !currentQuietPropertiesState.linkedChats.visible;
+  const collapsedPropertyCount = [filesCollapsed, relatedChatsCollapsed].filter(Boolean).length;
+  const collapsedPropertyLabel = formatPageStageQuietPropertyCountLabel(
+    collapsedPropertyCount,
+    propertiesExpanded,
+  );
+
+  const togglePropertiesExpanded = (): void => {
+    setExpandedState((current) => ({
+      pageId,
+      expanded: !(current.pageId === pageId ? current.expanded : false),
+    }));
   };
 
   return (
@@ -322,12 +388,13 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
       </div>
 
       <div className="flex flex-col pb-1">
-        <PageFilesRow controller={controller} />
+        <PageFilesRow
+          baseFiles={baseFiles}
+          controller={controller}
+          hidden={!propertiesExpanded && filesCollapsed}
+        />
 
         {propertyControls.sectionProperties.map((item) => {
-          if (!controller.showCollapsedProperties && isCollapsed(item.property.propertyId)) {
-            return null;
-          }
           const Icon = dataSourcePropertyIcon(item.property);
           return (
             <div key={item.property.propertyId} className="flex min-h-7.5 items-center">
@@ -348,31 +415,29 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
           );
         })}
 
-        {controller.hasRelatedChatsRow &&
-        (controller.showCollapsedProperties || !controller.collapseThreadsByDefault) ? (
+        {controller.hasRelatedChatsRow && (propertiesExpanded || !relatedChatsCollapsed) ? (
           <RelatedChatsPropertyRow controller={controller} />
         ) : null}
 
-        {propertyControls.hasScheduleCapability &&
-        controller.schedulePage &&
-        (controller.showCollapsedProperties || !controller.collapseScheduleByDefault) ? (
+        {propertyControls.hasScheduleCapability && controller.schedulePage ? (
           <SchedulePopover schedule={controller.schedule} page={controller.schedulePage} />
         ) : null}
       </div>
 
-      {controller.collapsedPropertyCount > 0 ? (
+      {collapsedPropertyCount > 0 ? (
         <button
           type="button"
-          onClick={() => controller.setPropertiesExpanded((current) => !current)}
-          className="flex h-8 items-center gap-1.5 rounded-sm px-1.5 text-sm text-(--foreground-tertiary) hover:bg-(--background-tertiary)"
+          aria-expanded={propertiesExpanded}
+          onClick={togglePropertiesExpanded}
+          className="flex h-8 items-center gap-1.5 rounded-sm px-1.5 text-sm text-(--foreground-tertiary) hover:bg-token-foreground/5"
         >
           <ChevronDownIcon
             className={cn(
               "icon-2xs shrink-0 transition-transform duration-150",
-              controller.propertiesExpanded ? "rotate-180" : "-rotate-90",
+              propertiesExpanded && "rotate-180",
             )}
           />
-          {controller.collapsedPropertyLabel}
+          {collapsedPropertyLabel}
         </button>
       ) : null}
     </section>

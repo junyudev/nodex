@@ -152,6 +152,10 @@ test("persists Page-related Chats and projects their activity across Board, List
       const relatedChatRows = pageStage.locator("[data-page-stage-related-chat-session-id]");
       await expect(relatedChatRows).toHaveCount(2);
       await pageStage
+        .locator('[data-page-stage-related-chat-chip="true"]')
+        .filter({ hasText: "Review relationship model" })
+        .hover();
+      await pageStage
         .getByRole("button", { name: "Remove relation to Review relationship model" })
         .click();
       await expect(relatedChatRows).toHaveCount(1);

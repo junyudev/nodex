@@ -29,17 +29,20 @@ its own direct Files; the parent Files surface never flattens descendants.
 
 ## Page Stage
 
-Every Page Stage Properties section contains one compact `Files` row. The row
-avoids repeating Files that are already visible as placements in the Page body.
-It shows `Empty` only when the Page owns no live Files. Otherwise it shows up to
-two unplaced File chips and a compact summary when more inventory exists. When
-every live File is placed, the summary reads `N in page`; mixed overflow uses
-one combined `+N` summary whose tooltip distinguishes additional unplaced Files
-from Files shown in the body. Each File chip uses the same path/MIME-derived
-format icon as other exact-format File surfaces and opens that File directly.
-The summary and add controls open the Page Files surface. Opening the Page or
-rendering the closed row never loads File bytes. The Page Files list, deleted
-rows, and preview header use the same File icon projection.
+Every Page Stage can expose one compact `Files` row through its shared
+Properties disclosure. A Page with no live Files, or with every live File
+already represented in its body, starts with Files behind `N more properties`.
+Expanding that disclosure shows the truthful `Empty` or `N in page` value and
+retains the add and complete-inventory entry points. A Page with any unplaced
+File shows Files directly. The row then avoids repeating Files already visible
+as placements in the Page body: it shows up to two unplaced File chips and a
+compact summary when more inventory exists. Mixed overflow uses one combined
+`+N` summary whose tooltip distinguishes additional unplaced Files from Files
+shown in the body. Each File chip uses the same path/MIME-derived format icon as
+other exact-format File surfaces and opens that File directly. The summary and
+add controls open the Page Files surface. Opening the Page or rendering the
+closed row never loads File bytes. The Page Files list, deleted rows, and
+preview header use the same File icon projection.
 
 The open Files surface remains the complete direct-ownership inventory. Files
 not placed in their owner Page appear first. Direct Files placed in that Page
@@ -99,7 +102,12 @@ usage. Rename and replace also publish an exact current-content invalidation to
 every foreign placement Page without advancing that Page's Files manifest or
 body-usage revision. Ordinary text, Property, focus, and selection changes
 advance none of these authorities. Background refresh retains the last rendered
-manifest instead of replacing it with an empty or loading state.
+manifest instead of replacing it with an empty or loading state. Automatic
+Property visibility is stable for the mounted Page session: a new unplaced File
+may promote Files from the disclosure, while a body-placement-only change never
+reorders the Properties section. Once promoted, Files stays visible until the
+Page surface remounts. A quiet row shown only because the shared disclosure is
+open hides again when the user closes that disclosure.
 
 ## Placements
 

@@ -45,10 +45,13 @@ import type { PreparedPickedPageFile } from "../../../../shared/page-files";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { cn } from "@/lib/utils";
 import type { PageStageController } from "./use-page-stage-controller";
-import { usePageFiles } from "@/lib/use-page-files";
+import { usePageFiles, type PageFilesReadModel } from "@/lib/use-page-files";
+import { pageStagePropertyAddControl } from "./property-value-styles";
 
 interface PageFilesRowProps {
   readonly controller: PageStageController;
+  readonly baseFiles: PageFilesReadModel;
+  readonly hidden?: boolean;
 }
 
 interface FilePreview {
@@ -145,7 +148,7 @@ function FilePreviewSurface({
   );
 }
 
-export function PageFilesRow({ controller }: PageFilesRowProps) {
+export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFilesRowProps) {
   const { contentAccessContext, page, storeEpoch } = controller;
   const [open, setOpen] = useState(false);
   const [mutating, setMutating] = useState(false);
@@ -163,7 +166,6 @@ export function PageFilesRow({ controller }: PageFilesRowProps) {
   const previewRequestRef = useRef(0);
   const normalizedQuery = query.trim();
   const searchActive = normalizedQuery.length > 0;
-  const baseFiles = usePageFiles(contentAccessContext, pageId, { subscribe: true });
   const filteredFiles = usePageFiles(contentAccessContext, pageId, {
     query: normalizedQuery,
     enabled: open && searchActive,
@@ -172,6 +174,7 @@ export function PageFilesRow({ controller }: PageFilesRowProps) {
   const rowManifest = baseFiles.manifest ?? EMPTY_MANIFEST(pageId);
   const manifest = inventory.manifest ?? EMPTY_MANIFEST(pageId);
   const loading = inventory.loading;
+  const rowUnavailable = baseFiles.error !== null && baseFiles.manifest === null;
 
   useEffect(() => {
     if (baseFiles.error) toast.danger("Couldn’t load Page Files");
@@ -661,7 +664,7 @@ export function PageFilesRow({ controller }: PageFilesRowProps) {
 
   return (
     <>
-      <div className="grid min-h-7.5 grid-cols-[10rem_minmax(0,1fr)] items-start">
+      <div hidden={hidden} className="grid min-h-7.5 grid-cols-[10rem_minmax(0,1fr)] items-start">
         <div className="flex min-h-7.5 min-w-0 items-center gap-1.5 pl-1.5">
           <div className="flex w-5 shrink-0 items-center justify-center text-(--foreground-secondary)">
             <FileIcon className="size-4" />
@@ -669,7 +672,21 @@ export function PageFilesRow({ controller }: PageFilesRowProps) {
           <span className="min-w-0 truncate text-sm/5 text-(--foreground-secondary)">Files</span>
         </div>
         <div className={cn("min-w-0 px-2", rowManifest.liveTotal === 0 && "self-center")}>
-          {baseFiles.loading ? (
+          {rowUnavailable ? (
+            <div className="flex min-h-7 items-center gap-2 text-xs text-(--red-text)">
+              <span className="min-w-0 flex-1 truncate">Couldn’t load files</span>
+              <button
+                type="button"
+                className="shrink-0 text-(--foreground-secondary) hover:text-(--foreground)"
+                onClick={() => {
+                  void baseFiles.refresh().catch(() => toast.danger("Couldn’t load Page Files"));
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          ) : null}
+          {baseFiles.loading && !rowUnavailable ? (
             <div
               role="status"
               aria-label="Loading Page Files"
@@ -678,7 +695,7 @@ export function PageFilesRow({ controller }: PageFilesRowProps) {
               <ActivitySpinnerIcon className="size-3.5" />
             </div>
           ) : null}
-          {!baseFiles.loading && rowManifest.liveTotal === 0 ? (
+          {!baseFiles.loading && !rowUnavailable && rowManifest.liveTotal === 0 ? (
             <button
               type="button"
               className={cn(
@@ -692,7 +709,7 @@ export function PageFilesRow({ controller }: PageFilesRowProps) {
               <PropertyEmptyValue className="truncate" />
             </button>
           ) : null}
-          {!baseFiles.loading && rowManifest.liveTotal > 0 ? (
+          {!baseFiles.loading && !rowUnavailable && rowManifest.liveTotal > 0 ? (
             <div className="flex min-h-7 flex-wrap items-center gap-1 py-0.5" aria-busy="false">
               {rowFiles.map((file) => (
                 <button
@@ -736,7 +753,7 @@ export function PageFilesRow({ controller }: PageFilesRowProps) {
               <button
                 type="button"
                 aria-label="Add Page Files"
-                className="flex size-5 shrink-0 items-center justify-center rounded-sm text-(--foreground-tertiary) opacity-60 hover:bg-(--background-tertiary) hover:text-(--foreground-secondary) hover:opacity-100 focus-visible:outline-2 focus-visible:outline-token-focus focus-visible:opacity-100"
+                className={pageStagePropertyAddControl}
                 onClick={() => openFiles()}
               >
                 <PlusIcon className="icon-2xs shrink-0" />

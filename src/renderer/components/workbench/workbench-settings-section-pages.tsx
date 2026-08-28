@@ -19,7 +19,6 @@ import type { CodexGitSettings, CodexPermissionState } from "../../lib/types";
 import { invoke } from "./workbench-settings-overlay-deps";
 import {
   BackupSettingsControl,
-  CardPropertyPositionSettingControl,
   CodeFontSizeSettingControl,
   ComposerEnterBehaviorControl,
   ConfigValueDropdown,
@@ -30,7 +29,6 @@ import {
   NfmAutolinkBareDomainsSettingControl,
   NfmAutolinkPasteSettingControl,
   NfmAutolinkTypingSettingControl,
-  PageStageCollapsedPropertiesSettingControl,
   PasteResourceDescriptionSoftLimitSettingControl,
   PasteResourceTextThresholdSettingControl,
   ReducedMotionSettingControl,
@@ -433,21 +431,7 @@ export function PageSettingsPage({
   taskShorthandPagePromotionEnabled,
 }: SettingsSectionPageProps) {
   return (
-    <SettingsPageSurface title="Pages" subtitle="Board card and page-stage presentation.">
-      <SectionBlock id="cards-and-page-stage" title="Cards & Page Stage">
-        <SettingRow
-          label="Board card properties"
-          description="Choose whether priority, estimate, tags, assignee, and run-in metadata render above the title, inline with it, or below the card body."
-        >
-          <CardPropertyPositionSettingControl />
-        </SettingRow>
-        <SettingRow
-          label="Page Stage collapsed properties"
-          description="Choose which page-stage property rows start behind the more-properties toggle."
-        >
-          <PageStageCollapsedPropertiesSettingControl />
-        </SettingRow>
-      </SectionBlock>
+    <SettingsPageSurface title="Pages" subtitle="Page creation and import behavior.">
       <SectionBlock id="block-import" title="Block import">
         <SettingRow
           label="Task shorthand on Block → Page"

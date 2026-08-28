@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { formatPageStageCollapsedPropertyCountLabel } from "@/lib/page-stage-collapsed-properties";
 import {
   readPageStageContentWidthPreference,
   readPageStageShowRawContentPreference,
@@ -19,7 +18,6 @@ import {
   pageStageSemanticValues,
 } from "@/lib/page-stage-properties";
 import { useScheduleState, type PageScheduleSource } from "@/lib/use-schedule-state";
-import { usePageStageCollapsedProperties } from "@/lib/use-page-stage-collapsed-properties";
 import {
   contentAccessContextKey,
   projectIdFromContentAccessContext,
@@ -43,7 +41,6 @@ interface UsePageStageControllerResult {
   propertyControls: PageStagePropertyControls;
   title: string;
   saving: boolean;
-  propertiesExpanded: boolean;
   limitMainContentWidth: boolean;
   showRawContent: boolean;
   historyPanelActive: boolean;
@@ -55,12 +52,6 @@ interface UsePageStageControllerResult {
   relatedChatCandidates: NonNullable<PageStageProps["relatedChatCandidates"]>;
   hasRelatedChatsRow: boolean;
   currentSessionId: string | null;
-  collapseTagsByDefault: boolean;
-  collapseAssigneeByDefault: boolean;
-  collapseThreadsByDefault: boolean;
-  collapseScheduleByDefault: boolean;
-  collapsedPropertyCount: number;
-  showCollapsedProperties: boolean;
   contentBodyClassName: string;
   contentShellClassName: string;
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -73,7 +64,6 @@ interface UsePageStageControllerResult {
   onRemoveRelatedChat?: (sessionId: string) => Promise<void>;
   onRetryRelatedChats?: () => Promise<void> | void;
   onLoadMoreRelatedChats?: () => Promise<void> | void;
-  setPropertiesExpanded: React.Dispatch<React.SetStateAction<boolean>>;
   handleClose: () => Promise<void>;
   handleDelete: () => Promise<void>;
   handleToggleContentWidth: () => void;
@@ -82,7 +72,6 @@ interface UsePageStageControllerResult {
   handleDocumentTitleChange: (value: string) => void;
   handleOpenRelatedChat: (sessionId: string) => Promise<void>;
   handleRemoveRelatedChat: (sessionId: string) => Promise<void>;
-  collapsedPropertyLabel: string;
 }
 
 export interface PageStageControllerDependencies {
@@ -201,15 +190,12 @@ export function usePageStageController(
   const [title, setTitle] = useState(page?.title ?? "");
   const [savingCount, setSavingCount] = useState(0);
   const saving = savingCount > 0;
-  const [propertiesExpanded, setPropertiesExpanded] = useState(false);
   const [limitMainContentWidth, setLimitMainContentWidth] = useState(() =>
     readPageStageContentWidthPreference(),
   );
   const [showRawContent, setShowRawContent] = useState(() =>
     readPageStageShowRawContentPreference(),
   );
-  const { collapsedProperties } = usePageStageCollapsedProperties();
-
   const currentPageIdRef = useRef<string | null>(null);
   const appliedMetadataSourceVersionRef = useRef<PageStageMetadataSourceVersion | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -554,26 +540,6 @@ export function usePageStageController(
     Boolean(onCreateRelatedChat) ||
     Boolean(onLinkRelatedChat);
 
-  const collapseTagsByDefault =
-    databaseSemantic?.tags !== null &&
-    databaseSemantic?.tags !== undefined &&
-    collapsedProperties.includes("tags");
-  const collapseAssigneeByDefault =
-    databaseSemantic?.assignee !== null &&
-    databaseSemantic?.assignee !== undefined &&
-    collapsedProperties.includes("assignee");
-  const collapseThreadsByDefault = hasRelatedChatsRow && collapsedProperties.includes("threads");
-  const collapseScheduleByDefault = scheduleCapability && collapsedProperties.includes("schedule");
-
-  const collapsedPropertyCount = [
-    collapseTagsByDefault,
-    collapseAssigneeByDefault,
-    collapseThreadsByDefault,
-    collapseScheduleByDefault,
-  ].filter(Boolean).length;
-
-  const showCollapsedProperties = propertiesExpanded || collapsedPropertyCount === 0;
-
   const contentBodyClassName = [
     "mx-auto w-full px-(--page-stage-body-gutter-inline)",
     limitMainContentWidth ? "max-w-(--page-stage-body-max-width)" : "",
@@ -581,11 +547,6 @@ export function usePageStageController(
     .filter(Boolean)
     .join(" ");
   const contentShellClassName = "w-full";
-
-  const collapsedPropertyLabel = formatPageStageCollapsedPropertyCountLabel(
-    collapsedPropertyCount,
-    propertiesExpanded,
-  );
 
   return {
     page,
@@ -595,7 +556,6 @@ export function usePageStageController(
     propertyControls,
     title,
     saving,
-    propertiesExpanded,
     limitMainContentWidth,
     showRawContent,
     historyPanelActive,
@@ -607,12 +567,6 @@ export function usePageStageController(
     relatedChatCandidates,
     hasRelatedChatsRow,
     currentSessionId: sessionId,
-    collapseTagsByDefault,
-    collapseAssigneeByDefault,
-    collapseThreadsByDefault,
-    collapseScheduleByDefault,
-    collapsedPropertyCount,
-    showCollapsedProperties,
     contentBodyClassName,
     contentShellClassName,
     scrollContainerRef,
@@ -625,7 +579,6 @@ export function usePageStageController(
     onRemoveRelatedChat,
     onRetryRelatedChats,
     onLoadMoreRelatedChats,
-    setPropertiesExpanded,
     handleClose,
     handleDelete,
     handleToggleContentWidth,
@@ -634,7 +587,6 @@ export function usePageStageController(
     handleDocumentTitleChange,
     handleOpenRelatedChat,
     handleRemoveRelatedChat,
-    collapsedPropertyLabel,
   };
 }
 

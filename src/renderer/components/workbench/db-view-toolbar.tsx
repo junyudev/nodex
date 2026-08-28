@@ -109,8 +109,8 @@ export function DbViewToolbar({
                       "text-sm font-medium leading-none whitespace-nowrap outline-none",
                       "focus-visible:ring-2 focus-visible:ring-(--ring)/35",
                       isActive
-                        ? "bg-[color-mix(in_srgb,var(--foreground)_6%,transparent)] px-3 text-(--foreground)"
-                        : "w-8 text-(--foreground-secondary) hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground)",
+                        ? "bg-token-foreground/5 px-3 text-(--foreground)"
+                        : "w-8 text-(--foreground-secondary) hover:bg-token-foreground/5 hover:text-(--foreground)",
                     )}
                   >
                     {Icon ? (
@@ -150,7 +150,7 @@ export function DbViewToolbar({
                   className={cn(
                     "group/view mx-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full",
                     "text-(--foreground-secondary) outline-none",
-                    "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground)",
+                    "hover:bg-token-foreground/5 hover:text-(--foreground)",
                     "focus-visible:ring-2 focus-visible:ring-(--ring)/35",
                   )}
                   onClick={item.onSelect}
@@ -222,7 +222,7 @@ export function DbViewToolbar({
                         aria-label={hasActiveSearchQuery ? "Clear search" : "Close search"}
                         className={cn(
                           "inline-flex size-6 shrink-0 items-center justify-center rounded-full",
-                          "text-(--foreground-tertiary) hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground-secondary)",
+                          "text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary)",
                         )}
                       >
                         <XCircle className="size-4" />

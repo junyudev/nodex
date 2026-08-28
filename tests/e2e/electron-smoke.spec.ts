@@ -3825,6 +3825,7 @@ test.describe("parallel functional Electron smoke", () => {
         }, savedClipboard);
       }
       const placedFileUrl = requireString(sourceFileUrl, "Source image File URL");
+      await sourcePanel.getByRole("button", { name: /\d+ more propert(?:y|ies)/u }).click();
       await expect(
         sourcePanel.getByRole("button", { name: "Open 1 File shown in Page" }),
       ).toBeVisible();
@@ -3869,6 +3870,7 @@ test.describe("parallel functional Electron smoke", () => {
         /^data:image\/png;base64,/u,
         { timeout: 15_000 },
       );
+      await promotedPanel.getByRole("button", { name: /\d+ more propert(?:y|ies)/u }).click();
       await expect(
         promotedPanel.getByRole("button", { name: "Add Page Files" }).getByText("Empty", {
           exact: true,

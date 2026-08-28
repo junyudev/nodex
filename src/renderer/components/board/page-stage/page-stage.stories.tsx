@@ -32,12 +32,6 @@ const meta = {
     enableOpenChat: {
       control: "boolean",
     },
-    collapseChatsByDefault: {
-      control: "boolean",
-    },
-    collapseSecondaryProperties: {
-      control: "boolean",
-    },
     historyPanelActive: {
       control: "boolean",
     },
@@ -88,12 +82,6 @@ export const EmptyChats: Story = {
   },
 };
 
-export const CollapsedChats: Story = {
-  args: {
-    ...resolvePageStageStoryPreset("collapsed-chats").controls,
-  },
-};
-
 export const NestedPageWithoutProperties: Story = {
   args: {
     ...resolvePageStageStoryPreset("overview").controls,
@@ -101,8 +89,6 @@ export const NestedPageWithoutProperties: Story = {
     chatDensity: "none",
     showNewChatAction: false,
     enableOpenChat: false,
-    collapseChatsByDefault: false,
-    collapseSecondaryProperties: false,
   },
   parameters: {
     docs: {
@@ -226,7 +212,7 @@ export const HeadingRailFullWidth: Story = {
 
 export const HeadingRailDark: Story = {
   args: {
-    ...resolvePageStageStoryPreset("collapsed-chats").controls,
+    ...resolvePageStageStoryPreset("overview").controls,
     descriptionVariant: "heading-rail",
   },
   parameters: {

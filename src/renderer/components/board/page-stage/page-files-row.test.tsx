@@ -2,6 +2,7 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { TestQueryProvider } from "@/test/query";
+import { usePageFiles } from "@/lib/use-page-files";
 import type { PageStageController } from "./use-page-stage-controller";
 
 const api = vi.hoisted(() => ({
@@ -68,8 +69,14 @@ const controller = {
   storeEpoch: "store-1",
 } as PageStageController;
 
-const renderPageFilesRow = () =>
-  render(<PageFilesRow controller={controller} />, { wrapper: TestQueryProvider });
+function PageFilesRowHarness() {
+  const baseFiles = usePageFiles(controller.contentAccessContext, controller.page?.id ?? "", {
+    subscribe: true,
+  });
+  return <PageFilesRow baseFiles={baseFiles} controller={controller} />;
+}
+
+const renderPageFilesRow = () => render(<PageFilesRowHarness />, { wrapper: TestQueryProvider });
 
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;

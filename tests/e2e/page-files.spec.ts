@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../scripts/scenarios/scenarios/board-dense";
@@ -12,6 +12,12 @@ const PNG_DATA_URL =
 
 const primaryShortcut = (key: string): string =>
   `${process.platform === "darwin" ? "Meta" : "Control"}+${key}`;
+
+const revealQuietPageProperties = async (stage: Locator): Promise<void> => {
+  const moreProperties = stage.getByRole("button", { name: /\d+ more propert(?:y|ies)/u });
+  await expect(moreProperties).toBeVisible();
+  await moreProperties.click();
+};
 
 test("pastes an image and refreshes Files only for body placement changes", async () => {
   test.setTimeout(180_000);
@@ -28,6 +34,8 @@ test("pastes an image and refreshes Files only for body placement changes", asyn
       await focusBoardDenseUi(page, manifest);
 
       const stage = page.locator('[data-page-stage-surface="true"]:visible');
+      await expect(stage.getByRole("button", { name: "Add Page Files" })).toHaveCount(0);
+      await revealQuietPageProperties(stage);
       const files = stage.getByRole("button", { name: "Add Page Files" });
       await expect(files).toHaveAttribute("aria-busy", "false");
 
@@ -146,6 +154,7 @@ test("imports native files and folders with canonical identities", async () => {
       }, fixturePaths);
 
       const stage = page.locator('[data-page-stage-surface="true"]:visible');
+      await revealQuietPageProperties(stage);
       await stage.getByRole("button", { name: "Add Page Files" }).click();
       const dialog = page.getByRole("dialog", { name: "Files" });
       await expect(dialog).toBeVisible();
@@ -231,6 +240,7 @@ test("imports native files and folders with canonical identities", async () => {
 
       await page.keyboard.press("Escape");
       await expect(dialog).not.toBeVisible();
+      await stage.getByRole("button", { name: "Hide 1 property" }).click();
       await expect(stage.locator('[data-page-file-chip="true"]')).toHaveCount(2);
       await expect(stage.getByRole("button", { name: "Open 4 more Page Files" })).toBeVisible();
       await expect(stage.locator('[data-page-file-chip="true"] [data-file-tab-icon]')).toHaveCount(
