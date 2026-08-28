@@ -3746,6 +3746,143 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
+  test("promotes an image-bearing Block into Board without cloning its File @page-file-placement", async () => {
+    test.setTimeout(120_000);
+    const harness = await ElectronScenarioHarness.create({ label: "page-file-placement" });
+    const workspace = harness.profile.initialProjectsDirectory;
+    try {
+      const page = await harness.launch();
+      const project = await createConvergenceProject(page, "Page File placement", workspace);
+      await createConvergenceBoardPage(page, project, "Image fixture", "Existing Board Page");
+      const source = await createConvergenceBoardPage(
+        page,
+        project,
+        "Image source Page",
+        "Page containing an image-bearing Block",
+      );
+      await seedConvergenceDocument(
+        page,
+        project,
+        source,
+        ["Before image sibling", "Image placement promotion", "\tImage placement child"].join("\n"),
+      );
+
+      await page.getByRole("button", { name: "Open Page File placement", exact: true }).click();
+      const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
+      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
+      await openBoardPageFromCard({ card: sourceCard, page, tabName: "Image source Page" });
+
+      const sourcePanel = page.getByRole("tabpanel", { name: /Image source Page$/ });
+      const sourceEditor = sourcePanel.locator(".nfm-editor");
+      const sourceSurface = sourceEditor.locator('.ProseMirror[contenteditable="true"]');
+      const sourceBlock = sourceSurface
+        .locator(".bn-block[data-id]")
+        .filter({ hasText: "Image placement promotion" })
+        .first();
+      const childContent = sourceSurface
+        .locator(".bn-block-content")
+        .filter({ hasText: /^Image placement child$/u });
+      await expect(childContent).toHaveCount(1);
+      await childContent.click();
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+
+      const savedClipboard = await harness.application.evaluate(({ clipboard }) => ({
+        html: clipboard.readHTML(),
+        image: clipboard.readImage().toDataURL(),
+        text: clipboard.readText(),
+      }));
+      let sourceFileUrl: string | null = null;
+      try {
+        await harness.application.evaluate(({ clipboard, nativeImage }) => {
+          clipboard.writeImage(
+            nativeImage.createFromDataURL(
+              "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            ),
+          );
+        });
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
+        const sourceImage = sourceBlock.locator(
+          '[data-content-type="image"][data-url^="nodex://files/"]',
+        );
+        await expect(sourceImage.locator("img")).toHaveAttribute(
+          "src",
+          /^data:image\/png;base64,/u,
+          { timeout: 15_000 },
+        );
+        sourceFileUrl = requireString(
+          await sourceImage.getAttribute("data-url"),
+          "Source image File URL",
+        );
+      } finally {
+        await harness.application.evaluate(({ clipboard, nativeImage }, saved) => {
+          clipboard.write({
+            html: saved.html,
+            image: nativeImage.createFromDataURL(saved.image),
+            text: saved.text,
+          });
+        }, savedClipboard);
+      }
+      const placedFileUrl = requireString(sourceFileUrl, "Source image File URL");
+      await expect(
+        sourcePanel.getByRole("button", { name: "Open 1 File shown in Page" }),
+      ).toBeVisible();
+
+      const triageHeader = page
+        .locator('[data-database-board-column-header="true"]')
+        .filter({ hasText: "Triage" });
+      await triageHeader.hover();
+      await triageHeader.getByRole("button", { name: "More options for Triage" }).click();
+      await page.getByRole("button", { name: "Collapse", exact: true }).click();
+      const collapsedTriageRail = triageColumn.getByRole("button", { name: "Expand Triage" });
+      await dragBlockFromEditorWithMouse({
+        page,
+        sourceBlock,
+        sourceEditor,
+        target: collapsedTriageRail,
+        expectedFeedback: triageHeader.locator('[data-board-collapsed-drop-indicator="true"]'),
+      });
+      await expect
+        .poll(async () => await readConvergenceBoardTotal(page, project), { timeout: 15_000 })
+        .toBe(3);
+      await collapsedTriageRail.focus();
+      await page.keyboard.press("Enter");
+
+      const promotedCard = triageColumn
+        .locator(`[data-board-uuid-v7]:not([data-board-uuid-v7="${source.pageId}"])`)
+        .filter({ hasText: "Image placement promotion" });
+      await expect(promotedCard).toHaveCount(1, { timeout: 15_000 });
+      await expect(sourceBlock).toHaveCount(0, { timeout: 15_000 });
+      await openBoardPageFromCard({
+        card: promotedCard,
+        page,
+        tabName: "Image placement promotion",
+      });
+      const promotedPanel = page.getByRole("tabpanel", { name: /Image placement promotion$/ });
+      const promotedImage = promotedPanel.locator(
+        '[data-content-type="image"][data-url^="nodex://files/"]',
+      );
+      await expect(promotedImage).toHaveAttribute("data-url", placedFileUrl);
+      await expect(promotedImage.locator("img")).toHaveAttribute(
+        "src",
+        /^data:image\/png;base64,/u,
+        { timeout: 15_000 },
+      );
+      await expect(
+        promotedPanel.getByRole("button", { name: "Add Page Files" }).getByText("Empty", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Page Document references a File", { exact: false })).toHaveCount(
+        0,
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
   test("opens and pointer-reorders a nested List subtree without changing its internal parent @list-dnd-smoke", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "list-dnd" });

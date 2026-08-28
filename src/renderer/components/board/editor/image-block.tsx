@@ -113,7 +113,7 @@ function useImageFileSize(source: string): number | null {
   return fileSize;
 }
 
-function ImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
+function ResolvedImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
   const resolved = useResolveUrl(block.props.url);
 
   if (resolved.loadingState !== "loaded") {
@@ -134,6 +134,16 @@ function ImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
       draggable={false}
     />
   );
+}
+
+function ImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
+  const { block } = props;
+  const pageFileRuntime = usePageFilePlacementRuntime();
+  const authorityVersion = parsePageFileSource(block.props.url)
+    ? pageFileRuntime?.authorityVersion
+    : null;
+
+  return <ResolvedImagePreview key={authorityVersion} {...props} />;
 }
 
 function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {

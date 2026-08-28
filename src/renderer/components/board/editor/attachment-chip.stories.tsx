@@ -67,7 +67,7 @@ function AttachmentPopoverStory({ previewState }: { previewState: AttachmentPrev
               attachment={attachment}
               previewState={previewState}
               isOwnedFile
-              stateLabel="Owned by this Page"
+              stateLabel="Saved in Nodex"
               sizeLabel="1.0 KB"
               onPrimaryOpen={async () => undefined}
               onReveal={null}

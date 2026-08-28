@@ -41,12 +41,14 @@ The summary and add controls open the Page Files surface. Opening the Page or
 rendering the closed row never loads File bytes. The Page Files list, deleted
 rows, and preview header use the same File icon projection.
 
-The open Files surface remains the complete ownership inventory. Unplaced Files
-appear first. Placed Files live in a default-collapsed `In page · N` disclosure;
-opening from an `N in page` summary expands it immediately. Path filtering
-searches the complete inventory through bounded Core pages and reveals matching
-placed Files without creating a persistent view mode. Placement is presentation,
-not a File type or visibility state.
+The open Files surface remains the complete direct-ownership inventory. Files
+not placed in their owner Page appear first. Direct Files placed in that Page
+live in a default-collapsed `In page · N` disclosure; opening from an `N in
+page` summary expands it immediately. Foreign Files placed in the body remain
+visible at their placement and do not enter the containing Page's Files
+inventory. Path filtering searches the complete inventory through bounded Core
+pages and reveals matching placed Files without creating a persistent view mode.
+Placement is presentation, not a File type or visibility state.
 
 The Files surface supports:
 
@@ -93,38 +95,46 @@ The closed row and an open Files surface refresh only when Core announces a new
 manifest revision or body-usage revision for that exact Page. Manifest and
 body-usage revisions are independent: File mutations advance only the manifest,
 while a changed Page File reference set or placement count advances only body
-usage. Ordinary text, Property, focus, and selection changes advance neither
-Files projection. Background refresh retains the last rendered manifest instead
-of replacing it with an empty or loading state.
+usage. Rename and replace also publish an exact current-content invalidation to
+every foreign placement Page without advancing that Page's Files manifest or
+body-usage revision. Ordinary text, Property, focus, and selection changes
+advance none of these authorities. Background refresh retains the last rendered
+manifest instead of replacing it with an empty or loading state.
 
 ## Placements
 
-An image or attachment in a Page body may reference a direct live File using:
+An image or attachment in a Page body may reference any live File in the same
+Library using:
 
 ```text
 nodex://files/<file-id>
 ```
 
 The URI stores stable identity, not a path or blob hash. Presentation resolves
-the current logical basename and bytes from the owner Page, so rename and
-replace do not rewrite the body. A Page Document cannot persist a reference to
-a deleted, missing, or foreign-owner File.
+the current logical basename and bytes through the containing Page's canonical
+placement, so rename and replace do not rewrite the body. The File keeps its
+single owner Page. A placement does not grant access to the owner Page, direct
+Files manifest, version history, rename, replace, delete, or restore authority.
+A Page Document cannot persist a reference to a deleted, missing, cross-Library,
+or otherwise unauthorized File.
 
 Removing a placement leaves the File intact. Deleting a File that still has
 placements is refused; the user removes those placements explicitly before
 deleting it. This keeps placement editing and File ownership understandable
 without a hidden cascade.
 
-Placement usage is derived by Core from canonical `block_asset_refs.page_file_id`
-rows. Each File summary reports either `not_in_body` or a positive placement
-count. Nodex does not persist an embedded, hidden, or Artifact classification on
-the File itself.
+Placement usage is derived by Core from canonical
+`block_asset_refs.page_file_id` rows. Each direct File summary reports either
+`not_in_body` or its positive placement count in the owner Page body; foreign
+placements do not make the owner inventory appear embedded locally. Nodex does
+not persist an embedded, hidden, or Artifact classification on the File itself.
 
-Within one Page, Block move/copy preserves File IDs. Across Pages, Core creates
-fresh target File IDs, reuses immutable bytes, and rewrites only the transferred
-Blocks in the same Library transaction. Source Files are not implicitly
-deleted. Moving a whole Page preserves its File IDs; copying a Page closure
-creates new IDs for every copied Page's direct live Files.
+Block move and copy preserve placed File IDs both within and across Pages. A
+typed Core structural transfer carries the placement with the subtree; it does
+not create a hidden File clone or mutate either Page's direct Files manifest.
+Moving a whole Page likewise preserves its File IDs. Copying a Page closure
+creates new IDs for every copied Page's direct live Files, while placements of
+Files owned outside that closure keep their existing identities.
 
 Legacy `nodex://assets/*` references remain compatibility locators for content
 created by non-Page surfaces. New Page uploads, pasted materialized resources,
@@ -144,7 +154,10 @@ with actor, optional Turn, operation identity, and time. Restore is a forward
 mutation from a retained version. Deleted Files leave the live path namespace
 but remain visible and restorable while their history is retained.
 
-Page archive/delete/restore keeps direct Files and versions. Whole-Page copy
+Page archive/delete/restore keeps direct Files and versions. If another Page
+still places one of those Files, the deleted owner closure remains retained and
+the placement continues to resolve. Physical collection becomes eligible only
+after no external placement or other retention root remains. Whole-Page copy
 copies only each live current state into version 1 of a fresh identity; it does
 not fork source history.
 
@@ -159,10 +172,11 @@ put/replace, rename, delete, inspect versions, and restore Files. Page draft
 projection includes the direct File manifest eagerly; bytes stay lazy and are
 read through explicit File commands. Deleted Files can be included explicitly
 when listing and remain selectable by identity or exact path for versions and
-restore. The manifest remains complete for Agents
-and reports placement counts; row-level de-duplication is solely renderer
-presentation. Neither renderer nor Agent receives a Profile path or a
-read-by-hash capability.
+restore. The owner manifest remains complete for Agents and reports owner-body
+placement counts; row-level de-duplication is solely renderer presentation.
+Reading Page content may resolve current bytes for that Page's canonical foreign
+placements, but does not reveal the foreign owner manifest or history. Neither
+renderer nor Agent receives a Profile path or a read-by-hash capability.
 
 ## Reliability and authorization
 
@@ -173,13 +187,20 @@ consumes that receipt. A failed semantic commit may leave an unreachable blob,
 but it cannot leave committed metadata pointing to missing bytes.
 
 Page read/write access covers its direct Files and follows the existing Page
-ownership closure for descendants. A body reference never grants access to a
-foreign File. Backups include every retained reachable File blob and restore
-validates size and SHA-256 before switching Profiles. Garbage collection is
-serialized against backup snapshots and never removes bytes protected by a live
-prepared receipt or retained File version.
+ownership closure for descendants. Page read access also covers the current
+presentation metadata and bytes of Files canonically placed in that exact Page;
+the opaque File ID alone grants nothing. Generic collaborative persistence may
+introduce a foreign placement only when its Project can already read the owner
+Page or another canonical placement. Typed Core structural compilers may carry
+an already-authorized placement even when moving its source projection in the
+same transaction. Owner-only manifest, mutation, version-history, and lifecycle
+operations still require owner Page authority. Backups include every retained
+reachable File blob and restore validates size and SHA-256 before switching
+Profiles. Garbage collection is serialized against backup snapshots and never
+removes bytes protected by a live prepared receipt or retained File version.
 
 The architecture decision is recorded in
-[ADR 0051](../adr/0051-page-owned-files-and-immutable-bytes.md). Attachment
-authoring details are owned by
+[ADR 0051](../adr/0051-page-owned-files-and-immutable-bytes.md) and
+[ADR 0052](../adr/0052-file-placement-is-independent-of-ownership.md).
+Attachment authoring details are owned by
 [NFM Editor Attachment Chip Behavior](nfm-editor-attachment-chip-behavior.md).

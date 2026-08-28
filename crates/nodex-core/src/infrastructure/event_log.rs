@@ -582,6 +582,8 @@ struct LibraryMetadata {
     affected_parent_keys: Vec<String>,
     #[serde(default)]
     page_file_manifest_revisions: std::collections::BTreeMap<String, i64>,
+    #[serde(default)]
+    page_file_content_revisions: std::collections::BTreeMap<String, i64>,
 }
 
 #[derive(Deserialize)]
@@ -1081,6 +1083,12 @@ fn reconstruct_event(
                     return Err(corrupt("Page File manifest revision is invalid"));
                 }
             }
+            for (page_id, revision) in &metadata.page_file_content_revisions {
+                validate_identity(page_id, "Page File content Page")?;
+                if *revision < 0 {
+                    return Err(corrupt("Page File content revision is invalid"));
+                }
+            }
             CoreModuleEventPayload::Library(LibraryEvent {
                 kind: LibraryEventKind::LibraryChanged,
                 page_ids: metadata.affected_page_ids,
@@ -1089,6 +1097,7 @@ fn reconstruct_event(
                 parent_keys: metadata.affected_parent_keys,
                 page_file_manifest_revisions: metadata.page_file_manifest_revisions,
                 page_file_body_usage_revisions: std::collections::BTreeMap::new(),
+                page_file_content_revisions: metadata.page_file_content_revisions,
             })
         }
         "database.changed" => {
@@ -1274,6 +1283,7 @@ fn decode_library_metadata(row: &ChangeLogRow) -> Result<LibraryMetadata, StoreE
                 affected_view_ids: Vec::new(),
                 affected_parent_keys: Vec::new(),
                 page_file_manifest_revisions: std::collections::BTreeMap::new(),
+                page_file_content_revisions: std::collections::BTreeMap::new(),
             })
         }
         Err(_) => Err(corrupt("Library event payload is invalid")),

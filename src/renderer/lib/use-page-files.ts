@@ -59,7 +59,8 @@ export function usePageFiles(
 
   useEffect(() => {
     if (!options.subscribe || !pageId) return;
-    return subscribePageFileChanges(pageId, () => {
+    return subscribePageFileChanges(pageId, ({ bodyUsageRevision, manifestRevision }) => {
+      if (manifestRevision === null && bodyUsageRevision === null) return;
       void queryClient.invalidateQueries({
         queryKey: queryKeys.library.pageFiles(accessContext, pageId),
       });

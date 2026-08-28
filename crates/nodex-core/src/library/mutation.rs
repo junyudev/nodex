@@ -3505,6 +3505,19 @@ fn build_mutation_result(
         "pageFileManifestRevisions".to_owned(),
         json!(page_file_manifest_revisions),
     );
+    let page_file_content_revisions = effects
+        .committed_revisions
+        .iter()
+        .filter_map(|(key, revision)| {
+            key.strip_prefix("pageFileContent:")
+                .filter(|page_id| !page_id.is_empty())
+                .map(|page_id| (page_id.to_owned(), *revision))
+        })
+        .collect::<BTreeMap<_, _>>();
+    payload_object.insert(
+        "pageFileContentRevisions".to_owned(),
+        json!(page_file_content_revisions),
+    );
     let data_source_ids = effects
         .affected_parent_keys
         .iter()

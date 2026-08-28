@@ -76,13 +76,20 @@ Every active Page has exactly one `library | page | data_source` parent. Page ow
 Each Page also directly owns an independent Files manifest. A File's stable
 identity and logical path belong to the Library Module; exact bytes are
 immutable Core-managed blobs shared by content hash. Body attachments and
-images are non-owning placements, and child Page Files compose through the
-existing Page ownership forest instead of flattening into their parent. Core is
-the only publication, authorization, metadata-mutation, copy/transfer, backup,
-restore, and garbage-collection authority. Electron and CLI may stream or save
-explicit user-selected bytes but never receive the physical blob locator. See
-[Page Files Behavior](product-specs/page-files-behavior.md) and
-[ADR 0051](adr/0051-page-owned-files-and-immutable-bytes.md).
+images are non-owning placements that may preserve the same File identity
+across Page Documents in one Library. A containing Page can resolve only the
+current presentation metadata and bytes of its canonical placements; owner
+manifest, version history, mutation, and lifecycle authority do not travel with
+the placement. File changes publish exact placement-Page content invalidation
+without coupling foreign Pages to the owner manifest revision. Child Page Files
+compose through the existing Page ownership forest instead of flattening into
+their parent. Core is the only publication,
+authorization, metadata-mutation, copy/transfer, backup, restore, and
+garbage-collection authority. Electron and CLI may stream or save explicit
+user-selected bytes but never receive the physical blob locator. See
+[Page Files Behavior](product-specs/page-files-behavior.md),
+[ADR 0051](adr/0051-page-owned-files-and-immutable-bytes.md), and
+[ADR 0052](adr/0052-file-placement-is-independent-of-ownership.md).
 
 A top-level Canvas is authorized by an explicit generic Canvas resource grant. An embedded Canvas inherits the host Page authorization path and has no active direct Canvas grant. Moving between Library and Page placement changes that grant state atomically with the host shell and never rehomes content.
 

@@ -5,8 +5,8 @@ import type { LibraryPageFileSummary } from "../../../../shared/library-module";
 import {
   createOwnedPageFile,
   pageFileImageDataUrl,
-  readOwnedPageFile,
-  readOwnedPageFileMetadata,
+  readPlacedPageFile,
+  readPlacedPageFileMetadata,
   saveOwnedPageFile,
   type PageFileAuthority,
   type PageFileUploadSource,
@@ -30,8 +30,8 @@ export const createPageFilePlacementRuntime = (
   authorityVersion,
   upload: async (source, preferredLogicalPath) =>
     (await createOwnedPageFile(authority, source, preferredLogicalPath)).source,
-  read: (source) => readOwnedPageFile(authority, source),
-  metadata: (source) => readOwnedPageFileMetadata(authority, source),
+  read: (source) => readPlacedPageFile(authority, source),
+  metadata: (source) => readPlacedPageFileMetadata(authority, source),
   readImageDataUrl: (source) => pageFileImageDataUrl(authority, source),
   save: (source, logicalPath) => saveOwnedPageFile(authority, source, logicalPath),
 });

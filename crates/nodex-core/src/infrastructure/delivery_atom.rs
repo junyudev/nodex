@@ -93,6 +93,7 @@ pub(crate) fn payload_claims(
                     .iter()
                     .chain(event.page_file_manifest_revisions.keys())
                     .chain(event.page_file_body_usage_revisions.keys())
+                    .chain(event.page_file_content_revisions.keys())
                     .cloned()
                     .map(|page_id| ResourceKey::Page { page_id }),
             );
@@ -243,6 +244,7 @@ fn compile_library(
         .iter()
         .chain(event.page_file_manifest_revisions.keys())
         .chain(event.page_file_body_usage_revisions.keys())
+        .chain(event.page_file_content_revisions.keys())
         .collect::<BTreeSet<_>>();
     for page_id in page_ids {
         let page_ids = if event.page_ids.contains(page_id) {
@@ -257,6 +259,11 @@ fn compile_library(
             .unwrap_or_default();
         let page_file_body_usage_revisions = event
             .page_file_body_usage_revisions
+            .get(page_id)
+            .map(|revision| BTreeMap::from([(page_id.clone(), *revision)]))
+            .unwrap_or_default();
+        let page_file_content_revisions = event
+            .page_file_content_revisions
             .get(page_id)
             .map(|revision| BTreeMap::from([(page_id.clone(), *revision)]))
             .unwrap_or_default();
@@ -278,6 +285,7 @@ fn compile_library(
                     parent_keys: Vec::new(),
                     page_file_manifest_revisions,
                     page_file_body_usage_revisions,
+                    page_file_content_revisions,
                 },
             },
         ));
@@ -301,6 +309,7 @@ fn compile_library(
                     parent_keys: Vec::new(),
                     page_file_manifest_revisions: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
+                    page_file_content_revisions: BTreeMap::new(),
                 },
             },
         ));
@@ -324,6 +333,7 @@ fn compile_library(
                     parent_keys: Vec::new(),
                     page_file_manifest_revisions: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
+                    page_file_content_revisions: BTreeMap::new(),
                 },
             },
         ));
@@ -346,6 +356,7 @@ fn compile_library(
                     parent_keys: vec![parent_key.clone()],
                     page_file_manifest_revisions: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
+                    page_file_content_revisions: BTreeMap::new(),
                 },
             },
         ));
@@ -364,6 +375,7 @@ fn compile_library(
                     parent_keys: Vec::new(),
                     page_file_manifest_revisions: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
+                    page_file_content_revisions: BTreeMap::new(),
                 },
             },
         ));
@@ -634,6 +646,7 @@ fn compile_page_file_body_usage(
             parent_keys: Vec::new(),
             page_file_manifest_revisions: BTreeMap::new(),
             page_file_body_usage_revisions: BTreeMap::from([(page_id, revision)]),
+            page_file_content_revisions: BTreeMap::new(),
         },
     )
 }
@@ -854,6 +867,10 @@ mod tests {
                     ("page:hidden".to_owned(), 3),
                 ]),
                 page_file_body_usage_revisions: BTreeMap::new(),
+                page_file_content_revisions: BTreeMap::from([
+                    ("page:visible".to_owned(), 11),
+                    ("page:hidden".to_owned(), 12),
+                ]),
             }),
         )
         .expect("compile Page File atoms");
@@ -865,6 +882,7 @@ mod tests {
             };
             assert_eq!(event.page_ids.len(), 1);
             assert_eq!(event.page_file_manifest_revisions.len(), 1);
+            assert_eq!(event.page_file_content_revisions.len(), 1);
             assert_eq!(
                 event.page_file_manifest_revisions.get(&event.page_ids[0]),
                 Some(if event.page_ids[0] == "page:visible" {
@@ -872,6 +890,11 @@ mod tests {
                 } else {
                     &3
                 }),
+            );
+            assert!(
+                event
+                    .page_file_content_revisions
+                    .contains_key(&event.page_ids[0])
             );
             assert_eq!(
                 payload_claims(&atom.payload).expect("atom claims"),

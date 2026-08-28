@@ -138,7 +138,8 @@ pub(super) fn list(
                       )) AS blob_hash, file.created_by_actor_id, file.created_by_turn_id, \
                       file.created_at, file.updated_at, file.path_key, \
                       (SELECT COUNT(*) FROM block_asset_refs reference \
-                       WHERE reference.page_file_id = file.file_id) AS placement_count \
+                       WHERE reference.page_file_id = file.file_id \
+                         AND reference.owner_block_id = file.owner_page_id) AS placement_count \
                FROM page_files file \
                JOIN page_file_versions current_version \
                  ON current_version.file_id = file.file_id \
@@ -211,7 +212,8 @@ pub(super) fn list(
     ) = connection.query_row(
         "WITH inventory AS ( \
            SELECT file.state, (SELECT COUNT(*) FROM block_asset_refs reference \
-             WHERE reference.page_file_id = file.file_id) AS placement_count \
+             WHERE reference.page_file_id = file.file_id \
+               AND reference.owner_block_id = file.owner_page_id) AS placement_count \
            FROM page_files file \
            WHERE file.library_id = ?1 AND file.owner_page_id = ?2 \
              AND (?4 IS NULL OR LOWER(file.logical_path) LIKE ?4 ESCAPE '\\') \
@@ -293,6 +295,30 @@ pub(super) fn metadata(
 ) -> Result<LibraryPageFileSummary, StoreError> {
     validate_id(page_id, "Page")?;
     validate_id(file_id, "Page File")?;
+    require_current_file_access(connection, library_id, page_id, file_id)?;
+    metadata_by_id(connection, library_id, file_id)
+}
+
+fn owned_metadata(
+    connection: &Connection,
+    library_id: &str,
+    owner_page_id: &str,
+    file_id: &str,
+) -> Result<LibraryPageFileSummary, StoreError> {
+    validate_id(owner_page_id, "Page")?;
+    validate_id(file_id, "Page File")?;
+    let summary = metadata_by_id(connection, library_id, file_id)?;
+    if summary.owner_page_id == owner_page_id {
+        return Ok(summary);
+    }
+    Err(not_found("Page File is unavailable"))
+}
+
+fn metadata_by_id(
+    connection: &Connection,
+    library_id: &str,
+    file_id: &str,
+) -> Result<LibraryPageFileSummary, StoreError> {
     connection
         .query_row(
             "SELECT file.file_id, file.owner_page_id, file.logical_path, file.mime_type, \
@@ -304,17 +330,75 @@ pub(super) fn metadata(
                     )), file.created_by_actor_id, file.created_by_turn_id, \
                     file.created_at, file.updated_at, file.path_key, \
                     (SELECT COUNT(*) FROM block_asset_refs reference \
-                     WHERE reference.page_file_id = file.file_id) \
+                     WHERE reference.page_file_id = file.file_id \
+                       AND reference.owner_block_id = file.owner_page_id) \
              FROM page_files file \
              JOIN page_file_versions current_version \
                ON current_version.file_id = file.file_id \
               AND current_version.version = file.current_version \
-             WHERE file.library_id = ?1 AND file.owner_page_id = ?2 AND file.file_id = ?3",
-            params![library_id, page_id, file_id],
+             WHERE file.library_id = ?1 AND file.file_id = ?2",
+            params![library_id, file_id],
             summary_from_row,
         )
         .optional()?
         .ok_or_else(|| not_found("Page File is unavailable"))
+}
+
+/// Resolves current File content through either its owner Page or a canonical
+/// placement in the Page named by the caller. The placement grants only the
+/// current presentation surface; manifest mutations and version history remain
+/// owner-authorized operations.
+pub(super) fn require_current_file_access(
+    connection: &Connection,
+    library_id: &str,
+    access_page_id: &str,
+    file_id: &str,
+) -> Result<(), StoreError> {
+    validate_id(access_page_id, "Page")?;
+    validate_id(file_id, "Page File")?;
+    let accessible = connection.query_row(
+        "SELECT EXISTS( \
+           SELECT 1 FROM page_files file \
+           JOIN page_file_versions version \
+             ON version.file_id = file.file_id AND version.version = file.current_version \
+           WHERE file.file_id = ?1 AND file.library_id = ?2 AND file.state = 'live' \
+             AND version.blob_hash IS NOT NULL \
+             AND (file.owner_page_id = ?3 OR EXISTS( \
+               SELECT 1 FROM block_asset_refs reference \
+               WHERE reference.page_file_id = file.file_id \
+                 AND reference.owner_block_id = ?3 \
+             )) \
+         )",
+        params![file_id, library_id, access_page_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if accessible {
+        return Ok(());
+    }
+    Err(not_found("Page File is unavailable"))
+}
+
+pub(super) fn require_owned_file_access(
+    connection: &Connection,
+    library_id: &str,
+    owner_page_id: &str,
+    file_id: &str,
+) -> Result<(), StoreError> {
+    validate_id(owner_page_id, "Page")?;
+    validate_id(file_id, "Page File")?;
+    let owned = connection.query_row(
+        "SELECT EXISTS( \
+           SELECT 1 FROM page_files file \
+           WHERE file.file_id = ?1 AND file.library_id = ?2 \
+             AND file.owner_page_id = ?3 \
+         )",
+        params![file_id, library_id, owner_page_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if owned {
+        return Ok(());
+    }
+    Err(not_found("Page File is unavailable"))
 }
 
 pub(super) fn versions(
@@ -325,7 +409,7 @@ pub(super) fn versions(
     requested_cursor: Option<&str>,
     requested_limit: Option<u32>,
 ) -> Result<LibraryPageFileVersionPage, StoreError> {
-    metadata(connection, library_id, page_id, file_id)?;
+    owned_metadata(connection, library_id, page_id, file_id)?;
     let limit = read_limit(requested_limit)?;
     let subject = vec![
         "page_file_versions".to_owned(),
@@ -487,6 +571,24 @@ pub(super) fn apply(
                     ));
                 }
             }
+            let placement_page_ids = foreign_placement_page_ids(
+                connection,
+                library_id,
+                page_id,
+                &receipt.updated_file_ids,
+            )?;
+            let mut affected_page_ids = vec![page_id.to_owned()];
+            affected_page_ids.extend(placement_page_ids.iter().cloned());
+            let mut committed_revisions = BTreeMap::from([(
+                format!("pageFiles:{page_id}"),
+                receipt.manifest_revision,
+            )]);
+            committed_revisions.extend(placement_page_ids.into_iter().map(|placement_page_id| {
+                (
+                    format!("pageFileContent:{placement_page_id}"),
+                    scope.evidence().commit_seq(),
+                )
+            }));
             seal_mutation(
                 scope,
                 context,
@@ -499,14 +601,11 @@ pub(super) fn apply(
                     created_target: None,
                     affected_parent_keys: Vec::new(),
                     affected_block_ids: Vec::new(),
-                    affected_page_ids: vec![page_id.to_owned()],
+                    affected_page_ids,
                     affected_database_ids: Vec::new(),
                     affected_view_ids: Vec::new(),
                     affected_document_ids: Vec::new(),
-                    committed_revisions: BTreeMap::from([(
-                        format!("pageFiles:{page_id}"),
-                        receipt.manifest_revision,
-                    )]),
+                    committed_revisions,
                     page_create: None,
                     page_copy: None,
                     page_files: Some(receipt.clone()),
@@ -568,6 +667,29 @@ pub(super) fn put(
         }],
         turn_id,
     )
+}
+
+fn foreign_placement_page_ids(
+    connection: &Connection,
+    library_id: &str,
+    owner_page_id: &str,
+    file_ids: &[String],
+) -> Result<Vec<String>, StoreError> {
+    let file_ids_json = json!(file_ids).to_string();
+    connection
+        .prepare(
+            "SELECT DISTINCT reference.owner_block_id \
+             FROM block_asset_refs reference \
+             WHERE reference.library_id = ?1 \
+               AND reference.owner_block_id <> ?2 \
+               AND reference.page_file_id IN (SELECT value FROM json_each(?3)) \
+             ORDER BY reference.owner_block_id",
+        )?
+        .query_map(params![library_id, owner_page_id, file_ids_json], |row| {
+            row.get::<_, String>(0)
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 /// Replaces the changed part of a Page's path namespace before advancing File
@@ -895,7 +1017,7 @@ fn reject_referenced_file_deletion(
     }
     Err(StoreError::new(
         StoreErrorCode::ProtectedOwnerDeletion,
-        "Page File is still placed in the Page body",
+        "Page File is still placed in a Page body",
         false,
     ))
 }
@@ -1089,278 +1211,9 @@ pub(super) struct PageFileCopyClosure {
     pub(super) file_ids: BTreeMap<String, String>,
 }
 
-pub(super) struct PreparedPageFileTransfer {
-    source_page_id: String,
-    target_page_id: String,
-    expected_target_manifest_revision: i64,
-    files: Vec<PreparedPageFileTransferEntry>,
-}
-
-struct PreparedPageFileTransferEntry {
-    source_file_id: String,
-    source_version: i64,
-    target_file_id: String,
-    logical_path: String,
-    path_key: String,
-    mime_type: String,
-    byte_length: i64,
-    blob_hash: String,
-}
-
-impl PreparedPageFileTransfer {
-    pub(super) fn file_ids(&self) -> BTreeMap<String, String> {
-        self.files
-            .iter()
-            .map(|file| (file.source_file_id.clone(), file.target_file_id.clone()))
-            .collect()
-    }
-}
-
-pub(super) fn block_transfer_references_page_files(
-    connection: &Connection,
-    source_document_id: &str,
-    source_block_ids: &BTreeSet<String>,
-) -> Result<bool, StoreError> {
-    let mut statement = connection.prepare(
-        "SELECT block_id FROM block_asset_refs \
-         WHERE document_id = ?1 AND page_file_id IS NOT NULL",
-    )?;
-    let mut rows = statement.query([source_document_id])?;
-    while let Some(row) = rows.next()? {
-        if source_block_ids.contains(&row.get::<_, String>(0)?) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-/// Plans the File part of an ordinary cross-Page Block transfer. Only Files
-/// actually placed by the selected subtree are cloned; bytes remain shared.
-pub(super) fn prepare_block_transfer(
-    connection: &Connection,
-    library_id: &str,
-    operation_id: &str,
-    source_document_id: &str,
-    source_page_id: &str,
-    target_page_id: &str,
-    source_block_ids: &BTreeSet<String>,
-) -> Result<Option<PreparedPageFileTransfer>, StoreError> {
-    if source_page_id == target_page_id {
-        return Ok(None);
-    }
-    let source_file_ids = connection
-        .prepare(
-            "SELECT block_id, page_file_id FROM block_asset_refs \
-             WHERE document_id = ?1 AND page_file_id IS NOT NULL \
-             ORDER BY page_file_id, block_id",
-        )?
-        .query_map([source_document_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?
-        .into_iter()
-        .filter_map(|(block_id, file_id)| source_block_ids.contains(&block_id).then_some(file_id))
-        .collect::<BTreeSet<_>>();
-    if source_file_ids.is_empty() {
-        return Ok(None);
-    }
-
-    let expected_target_manifest_revision =
-        read_manifest_revision(connection, library_id, target_page_id)?;
-    let mut occupied_path_keys = connection
-        .prepare(
-            "SELECT path_key FROM page_files \
-             WHERE library_id = ?1 AND owner_page_id = ?2 AND state = 'live'",
-        )?
-        .query_map(params![library_id, target_page_id], |row| {
-            row.get::<_, String>(0)
-        })?
-        .collect::<rusqlite::Result<BTreeSet<_>>>()?;
-    let mut files = Vec::with_capacity(source_file_ids.len());
-    for source_file_id in source_file_ids {
-        let source = load_live_file(connection, library_id, source_page_id, &source_file_id)?;
-        let (logical_path, path_key) = allocate_transfer_path(
-            &source.logical_path,
-            &source_file_id,
-            &mut occupied_path_keys,
-        )?;
-        files.push(PreparedPageFileTransferEntry {
-            target_file_id: stable_uuid_v7(
-                operation_id,
-                "block_transfer_page_file",
-                &format!("{source_file_id}:{target_page_id}"),
-            ),
-            source_file_id,
-            source_version: source.current_version,
-            logical_path,
-            path_key,
-            mime_type: source.mime_type,
-            byte_length: i64::try_from(source.byte_length)
-                .map_err(|_| corrupt("Page File byte length exceeds Store bounds"))?,
-            blob_hash: source
-                .blob_hash
-                .ok_or_else(|| corrupt("Live Page File has no Blob"))?,
-        });
-    }
-    Ok(Some(PreparedPageFileTransfer {
-        source_page_id: source_page_id.to_owned(),
-        target_page_id: target_page_id.to_owned(),
-        expected_target_manifest_revision,
-        files,
-    }))
-}
-
-pub(super) fn apply_block_transfer(
-    connection: &Connection,
-    library_id: &str,
-    operation_id: &str,
-    actor_id: &str,
-    now: &str,
-    prepared: &PreparedPageFileTransfer,
-) -> Result<LibraryPageFileMutationReceipt, StoreError> {
-    let manifest_revision = prepared.expected_target_manifest_revision + 1;
-    let advanced = connection.execute(
-        "UPDATE page_file_manifests SET revision = ?1, updated_at = ?2 \
-         WHERE page_id = ?3 AND library_id = ?4 AND revision = ?5",
-        params![
-            manifest_revision,
-            now,
-            prepared.target_page_id,
-            library_id,
-            prepared.expected_target_manifest_revision,
-        ],
-    )?;
-    if advanced != 1 {
-        return Err(revision_conflict("Target Page File manifest changed"));
-    }
-
-    let mut created_file_ids = Vec::with_capacity(prepared.files.len());
-    for file in &prepared.files {
-        let source_matches = connection
-            .query_row(
-                "SELECT 1 FROM page_files current \
-                 JOIN page_file_versions version ON version.file_id = current.file_id \
-                   AND version.version = current.current_version \
-                 WHERE current.file_id = ?1 AND current.library_id = ?2 \
-                   AND current.owner_page_id = ?3 AND current.current_version = ?4 \
-                   AND current.state = 'live' AND version.blob_hash = ?5",
-                params![
-                    file.source_file_id,
-                    library_id,
-                    prepared.source_page_id,
-                    file.source_version,
-                    file.blob_hash,
-                ],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        if !source_matches {
-            return Err(revision_conflict("Source Page File changed"));
-        }
-        validate_new_file_id(connection, &file.target_file_id)?;
-        connection.execute(
-            "INSERT INTO page_file_namespace(owner_page_id, library_id, path_key, file_id) \
-             VALUES (?1, ?2, ?3, ?4)",
-            params![
-                prepared.target_page_id,
-                library_id,
-                file.path_key,
-                file.target_file_id
-            ],
-        )?;
-        connection.execute(
-            "INSERT INTO page_file_versions( \
-               file_id, version, library_id, owner_page_id, manifest_revision, change_kind, \
-               logical_path, path_key, mime_type, blob_hash, byte_length, actor_id, turn_id, \
-               operation_id, occurred_at \
-             ) VALUES (?1, 1, ?2, ?3, ?4, 'clone', ?5, ?6, ?7, ?8, ?9, ?10, NULL, ?11, ?12)",
-            params![
-                file.target_file_id,
-                library_id,
-                prepared.target_page_id,
-                manifest_revision,
-                file.logical_path,
-                file.path_key,
-                file.mime_type,
-                file.blob_hash,
-                file.byte_length,
-                actor_id,
-                operation_id,
-                now,
-            ],
-        )?;
-        connection.execute(
-            "INSERT INTO page_files( \
-               file_id, library_id, owner_page_id, logical_path, path_key, mime_type, \
-               byte_length, current_version, state, created_by_actor_id, created_by_turn_id, \
-               created_at, updated_at \
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 'live', ?8, NULL, ?9, ?9)",
-            params![
-                file.target_file_id,
-                library_id,
-                prepared.target_page_id,
-                file.logical_path,
-                file.path_key,
-                file.mime_type,
-                file.byte_length,
-                actor_id,
-                now,
-            ],
-        )?;
-        created_file_ids.push(file.target_file_id.clone());
-    }
-    Ok(LibraryPageFileMutationReceipt {
-        page_id: prepared.target_page_id.clone(),
-        manifest_revision,
-        created_file_ids,
-        updated_file_ids: Vec::new(),
-        deleted_file_ids: Vec::new(),
-        consumed_blob_receipt_ids: Vec::new(),
-    })
-}
-
-fn read_manifest_revision(
-    connection: &Connection,
-    library_id: &str,
-    page_id: &str,
-) -> Result<i64, StoreError> {
-    connection
-        .query_row(
-            "SELECT revision FROM page_file_manifests \
-             WHERE page_id = ?1 AND library_id = ?2",
-            params![page_id, library_id],
-            |row| row.get(0),
-        )
-        .optional()?
-        .ok_or_else(|| corrupt("Page File manifest is unavailable"))
-}
-
-fn allocate_transfer_path(
-    source_path: &str,
-    source_file_id: &str,
-    occupied: &mut BTreeSet<String>,
-) -> Result<(String, String), StoreError> {
-    if let Some(path) = allocate_numbered_path(source_path, occupied)? {
-        return Ok(path);
-    }
-    let fallback = PortablePageFilePath::parse(&format!(
-        "transferred/{}",
-        &source_file_id[..source_file_id.len().min(32)]
-    ))?;
-    if !occupied.insert(fallback.collision_key().to_owned()) {
-        return Err(invalid("Target Page File namespace is exhausted"));
-    }
-    Ok((
-        fallback.display().to_owned(),
-        fallback.collision_key().to_owned(),
-    ))
-}
-
 /// Starts copied Pages with fresh File identities and one current-state
-/// history entry while reusing immutable Blob bytes. The returned identity map
-/// is used to rewrite `nodex://files/` references before copied Documents are
-/// persisted, so File ownership and Document projection advance atomically.
+/// history entry while reusing immutable Blob bytes. Only directly owned Files
+/// receive new identities; foreign placements keep their existing identity.
 pub(super) fn clone_for_page_copy(
     connection: &Connection,
     library_id: &str,
@@ -2022,6 +1875,8 @@ fn corrupt(message: impl Into<String>) -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use nodex_core_contracts::library::{
         LIBRARY_CONTRACT_VERSION, LibraryIntent, LibraryRead, LibraryReadValue, LibraryWriteParent,
     };
@@ -2130,6 +1985,30 @@ mod tests {
                 })
             })
             .expect("seed prepared Blob receipt");
+    }
+
+    fn create_page(
+        module: &super::super::LibraryModule,
+        operation_id: &str,
+        page_id: &str,
+        document_id: &str,
+    ) {
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation_id.to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::CreatePage {
+                        page_id: page_id.to_owned(),
+                        document_id: document_id.to_owned(),
+                        title: page_id.to_owned(),
+                        parent: LibraryWriteParent::Library { before: None },
+                    },
+                },
+            )
+            .expect("create Page");
     }
 
     fn apply_request(
@@ -2607,5 +2486,172 @@ mod tests {
         let renamed = manifest(&module, false);
         assert_eq!(renamed.revision, 2);
         assert_eq!(renamed.body_usage_revision, 1);
+    }
+
+    #[test]
+    fn current_file_content_is_readable_through_a_foreign_page_placement() {
+        let (_directory, kernel, module) = seeded_library();
+        create_page(
+            &module,
+            "operation:create-placement-page",
+            "page-2",
+            "document-2",
+        );
+        create_page(
+            &module,
+            "operation:create-unrelated-page",
+            "page-3",
+            "document-3",
+        );
+        seed_receipt(&kernel, "operation:create-file", "receipt-a", 'a');
+        fs::create_dir_all(module.page_file_blob_root().expect("Blob root"))
+            .expect("create Blob root");
+        fs::write(
+            module
+                .page_file_blob_root()
+                .expect("Blob root")
+                .join("a".repeat(64)),
+            b"data",
+        )
+        .expect("write Blob");
+        module
+            .apply(
+                &context(),
+                apply_request(
+                    "operation:create-file",
+                    0,
+                    vec![LibraryPageFileChange::Create {
+                        file_id: "file-a".to_owned(),
+                        logical_path: "diagram.png".to_owned(),
+                        mime_type: "image/png".to_owned(),
+                        prepared_blob_receipt_id: "receipt-a".to_owned(),
+                        collision_policy: LibraryPageFileCollisionPolicy::Reject,
+                    }],
+                ),
+            )
+            .expect("create File");
+
+        kernel
+            .writer()
+            .call(|connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    let (block_id, projected_seq) = transaction.query_row(
+                        "SELECT block_id, projected_seq FROM document_block_index \
+                         WHERE document_id = 'document-2' ORDER BY ordinal LIMIT 1",
+                        [],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO block_asset_refs( \
+                           document_id, block_id, owner_block_id, library_id, document_generation, \
+                           projected_seq, projection_version, role, ordinal, asset_uri, asset_hash, \
+                           page_file_id, updated_at \
+                         ) VALUES( \
+                           'document-2', ?1, 'page-2', 'library-1', 1, ?2, 1, \
+                           'image', 0, 'nodex://files/file-a', ?3, 'file-a', ?4 \
+                         )",
+                        params![block_id, projected_seq, "a".repeat(64), NOW],
+                    )?;
+                    Ok(())
+                })
+            })
+            .expect("place File in another Page");
+
+        let metadata = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageFileMetadata {
+                        page_id: "page-2".to_owned(),
+                        file_id: "file-a".to_owned(),
+                    },
+                },
+            )
+            .expect("read placement metadata");
+        let LibraryReadValue::PageFileMetadata { value } = metadata.value else {
+            panic!("Page File metadata value");
+        };
+        assert_eq!(value.owner_page_id, "page-1");
+        assert_eq!(value.logical_path, "diagram.png");
+        assert_eq!(
+            manifest(&module, false).files[0].body_usage,
+            LibraryPageFileBodyUsage::NotInBody,
+        );
+
+        let blob = module
+            .resolve_page_file_blob(&context(), "page-2", "file-a", None)
+            .expect("resolve current Blob through placement");
+        assert_eq!(fs::read(blob.physical_path).expect("read Blob"), b"data");
+
+        let renamed = module
+            .apply(
+                &context(),
+                apply_request(
+                    "operation:rename-placed-file",
+                    1,
+                    vec![LibraryPageFileChange::Rename {
+                        file_id: "file-a".to_owned(),
+                        expected_version: 1,
+                        logical_path: "renamed.png".to_owned(),
+                    }],
+                ),
+            )
+            .expect("rename placed File");
+        assert!(
+            renamed.committed.receipt.committed_revisions["pageFileContent:page-2"] > 0
+        );
+        let renamed_metadata = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageFileMetadata {
+                        page_id: "page-2".to_owned(),
+                        file_id: "file-a".to_owned(),
+                    },
+                },
+            )
+            .expect("read renamed placement metadata");
+        let LibraryReadValue::PageFileMetadata {
+            value: renamed_metadata,
+        } = renamed_metadata.value
+        else {
+            panic!("renamed Page File metadata value");
+        };
+        assert_eq!(renamed_metadata.logical_path, "renamed.png");
+
+        let unrelated = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageFileMetadata {
+                        page_id: "page-3".to_owned(),
+                        file_id: "file-a".to_owned(),
+                    },
+                },
+            )
+            .expect_err("an unrelated Page must not resolve the File");
+        assert_eq!(
+            unrelated.code,
+            nodex_core_contracts::CoreErrorCode::NotFound
+        );
+
+        let history = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageFileVersions {
+                        page_id: "page-2".to_owned(),
+                        file_id: "file-a".to_owned(),
+                        cursor: None,
+                        limit: Some(10),
+                    },
+                },
+            )
+            .expect_err("a placement must not expose owner history");
+        assert_eq!(history.code, nodex_core_contracts::CoreErrorCode::NotFound);
     }
 }

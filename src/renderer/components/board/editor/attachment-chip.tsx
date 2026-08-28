@@ -65,7 +65,7 @@ function AttachmentPopover({
 
   const sizeLabel = getAttachmentSizeLabel(props);
   const stateLabel = isOwnedFile
-    ? "Owned by this Page"
+    ? "Saved in Nodex"
     : props.mode === "materialized"
       ? "Saved in Nodex"
       : "Linked to the original";

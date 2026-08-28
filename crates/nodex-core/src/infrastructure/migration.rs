@@ -129,6 +129,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 139,
         apply: migrate_v138_to_v139,
     },
+    MigrationStep {
+        from_revision: 139,
+        to_revision: 140,
+        apply: migrate_v139_to_v140,
+    },
 ];
 
 fn resolve_migration_path(
@@ -1189,6 +1194,30 @@ fn migrate_v138_to_v139(
     Ok(())
 }
 
+fn migrate_v139_to_v140(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v139_to_v140.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history( \
+           source_revision, target_revision, source_schema_fingerprint, \
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object('page_file_placements', \
+           (SELECT count(*) FROM block_asset_refs WHERE page_file_id IS NOT NULL)))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn install_fresh_profile(connection: &mut Connection, now: u64) -> Result<(), StoreError> {
     install_fresh_profile_with(connection, |transaction| {
         initialize_fresh_profile(transaction, now)
@@ -1793,7 +1822,7 @@ mod tests {
             .expect("migration history")
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("migration history rows");
-        assert_eq!(history.len(), 9);
+        assert_eq!(history.len(), 10);
         assert_eq!((history[0].0, history[0].1), (130, 131));
         assert_eq!((history[1].0, history[1].1), (131, 132));
         assert_eq!((history[2].0, history[2].1), (132, 133));
@@ -1803,6 +1832,7 @@ mod tests {
         assert_eq!((history[6].0, history[6].1), (136, 137));
         assert_eq!((history[7].0, history[7].1), (137, 138));
         assert_eq!((history[8].0, history[8].1), (138, 139));
+        assert_eq!((history[9].0, history[9].1), (139, 140));
         assert_eq!(
             history[0].2,
             published_format(130)
@@ -1864,13 +1894,13 @@ mod tests {
                 .schema_fingerprint
         );
         assert_eq!(
-            history[8].3,
-            published_format(139)
-                .expect("v139 format")
+            history[9].3,
+            published_format(140)
+                .expect("v140 format")
                 .schema_fingerprint
         );
         assert!(history.iter().all(|row| row.4 == history[0].4));
-        assert!(history[0].4.starts_with("v130-to-v139-"));
+        assert!(history[0].4.starts_with("v130-to-v140-"));
         assert!(history[0].4.ends_with(".db"));
         assert!(history.iter().all(|row| row.5 > 0));
         let backup_path = directory
@@ -1902,7 +1932,7 @@ mod tests {
                     |row| { row.get::<_, i64>(0) }
                 )
                 .expect("stable history"),
-            9
+            10
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -1937,7 +1967,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            9
+            10
         );
     }
 
@@ -1967,7 +1997,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            7
+            8
         );
         assert_eq!(
             connection
@@ -2065,8 +2095,8 @@ mod tests {
                 },
             )
             .expect("v136 migration history");
-        assert_eq!((source_revision, target_revision), (138, 139));
-        assert!(backup_name.starts_with("v136-to-v139-"));
+        assert_eq!((source_revision, target_revision), (139, 140));
+        assert!(backup_name.starts_with("v136-to-v140-"));
         let backup_path = directory
             .path()
             .join("backups/core-migrations")
@@ -2086,7 +2116,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("stable history"),
-            3
+            4
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -2331,7 +2361,7 @@ mod tests {
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
         fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(backup_directory.join(".v130-to-v139.pending.db"))
+        fs::create_dir(backup_directory.join(".v130-to-v140.pending.db"))
             .expect("non-file pending candidate");
         let mut connection = open_writer(&non_file.path().join("nodex.db")).expect("writer");
         let error = prepare_profile_store(&mut connection, non_file.path())
@@ -2341,7 +2371,7 @@ mod tests {
 
     #[test]
     fn migration_registry_is_contiguous_and_forward_only() {
-        assert_eq!(MIGRATION_STEPS.len(), 9);
+        assert_eq!(MIGRATION_STEPS.len(), 10);
         for (index, step) in MIGRATION_STEPS.iter().enumerate() {
             assert!(step.from_revision < step.to_revision);
             if let Some(next) = MIGRATION_STEPS.get(index + 1) {

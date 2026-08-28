@@ -37,7 +37,8 @@ Not included:
 
 - `attachment chip`: the inline visual token inserted into paragraph-like content
 - `Page File attachment`: an attachment with `mode="materialized"` that points
-  to a direct `nodex://files/<file-id>` resource of the containing Page
+  to a `nodex://files/<file-id>` resource owned or canonically placed by the
+  containing Page
 - `legacy saved attachment`: a materialized `nodex://assets/...` attachment
   created by a non-Page or older authoring surface
 - `linked attachment`: an attachment with `mode="link"` that points to an original absolute local path

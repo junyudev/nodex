@@ -1,6 +1,6 @@
 # ADR 0051: Page owns File identity; immutable bytes remain separate
 
-- Status: Accepted
+- Status: Accepted; placement semantics amended by ADR 0052
 - Date: 2026-08-28
 
 ## Context
@@ -38,12 +38,13 @@ version; restore is another forward version. Page copy creates fresh File
 identities and version-1 heads while reusing identical blobs.
 
 Page body images and attachments are non-owning placements represented by
-`nodex://files/<file-id>`. Persistence accepts a placement only when the File is
-live and directly owned by the containing Page. Removing a placement never
-deletes the File; ordinary File deletion is rejected while placements remain.
-Across Pages, Block transfer atomically clones each referenced File into the
-target Page, reuses bytes, and rewrites transferred references. Moving a whole
-Page keeps File identities because the owner Page does not change.
+`nodex://files/<file-id>`. A placement may occur in any Page Document in the
+same Library while the File retains exactly one owner Page. Removing a placement
+never deletes the File; ordinary File deletion is rejected while placements
+remain. Block transfer preserves placed File identity across Pages. Moving a
+whole Page also keeps File identities because the owner Page does not change.
+The authorization, retention, and transfer consequences are specified by
+[ADR 0052](0052-file-placement-is-independent-of-ownership.md).
 
 Direct File manifests never flatten child Page Files. Recursive closure is
 composition over the existing Page ownership tree. Project grants, Page
@@ -69,8 +70,7 @@ File and Document revisions remain independent authorities. Creating a File and
 then placing it is intentionally safe as two semantic steps: interruption may
 leave a valid unplaced File, never a dangling body reference. Deleting a placed
 File requires explicit placement removal first. Cross-Page structural transfer
-is the narrow case that must compose both authorities atomically because the
-operation would otherwise persist a foreign-owner reference.
+moves or copies only the placement; it does not advance a Files manifest.
 
 Content-addressed publication can leave an unreachable blob after interruption,
 so maintenance must collect unreachable bytes. It cannot produce committed

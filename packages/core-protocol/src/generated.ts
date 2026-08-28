@@ -3739,6 +3739,9 @@ export interface components {
             readonly page_file_body_usage_revisions: {
                 readonly [key: string]: number;
             };
+            readonly page_file_content_revisions: {
+                readonly [key: string]: number;
+            };
             readonly page_file_manifest_revisions: {
                 readonly [key: string]: number;
             };

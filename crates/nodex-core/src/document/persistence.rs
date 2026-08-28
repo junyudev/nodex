@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
@@ -92,6 +92,7 @@ pub(crate) struct DocumentPlacementEvidence<'a> {
     reorder_attribution: DocumentReorderAttribution<'a>,
     allow_last_document_reactivation: bool,
     tombstone_reactivation: Option<DocumentTombstoneReactivation<'a>>,
+    page_file_placements_prevalidated: bool,
 }
 
 impl<'a> DocumentPlacementEvidence<'a> {
@@ -105,6 +106,7 @@ impl<'a> DocumentPlacementEvidence<'a> {
         reorder_attribution: DocumentReorderAttribution::Conservative,
         allow_last_document_reactivation: true,
         tombstone_reactivation: None,
+        page_file_placements_prevalidated: false,
     };
 
     /// Typed structural updates name their exact move and authority evidence.
@@ -116,6 +118,7 @@ impl<'a> DocumentPlacementEvidence<'a> {
         reorder_attribution: DocumentReorderAttribution::Exact(&[]),
         allow_last_document_reactivation: false,
         tombstone_reactivation: None,
+        page_file_placements_prevalidated: false,
     };
 
     /// Blocks intentionally detached by the surrounding structural mutation.
@@ -148,6 +151,14 @@ impl<'a> DocumentPlacementEvidence<'a> {
     /// Exact moved roots emitted by a typed Document compiler.
     pub(crate) const fn with_exact_moves(mut self, block_ids: &'a [String]) -> Self {
         self.reorder_attribution = DocumentReorderAttribution::Exact(block_ids);
+        self
+    }
+
+    /// The typed compiler derived every new File placement from an authorized
+    /// source Document. This is narrower than generic structural persistence:
+    /// callers that accept fresh content must still prove File read access.
+    pub(crate) const fn with_prevalidated_page_file_placements(mut self) -> Self {
+        self.page_file_placements_prevalidated = true;
         self
     }
 
@@ -383,9 +394,13 @@ fn persist_yjs_commit_inner(
             )
         })?;
     let now = sqlite_now(connection)?;
-    let page_file_body_usage_changed = input.authority.owner_type == "page"
-        && page_file_body_usage_counts(input.base_materialization)
-            != page_file_body_usage_counts(input.materialization);
+    let page_file_body_usage_changed = if input.authority.owner_type == "page" {
+        let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
+        page_file_body_usage_counts(input.base_materialization, &owned_file_ids)
+            != page_file_body_usage_counts(input.materialization, &owned_file_ids)
+    } else {
+        false
+    };
     let placement_delta =
         derive_document_placement_delta(input.base_materialization, input.materialization);
     let derived_touched_block_ids = derive_touched_block_ids(
@@ -400,6 +415,14 @@ fn persist_yjs_commit_inner(
         input.actor_project_id,
         input.materialization,
         false,
+    )?;
+    validate_page_file_placements(
+        connection,
+        input.authority,
+        input.actor_project_id,
+        Some(input.base_materialization),
+        input.materialization,
+        input.placement.page_file_placements_prevalidated,
     )?;
     let reconciled_blocks = reconcile_document_blocks(
         connection,
@@ -672,14 +695,26 @@ fn persist_yjs_genesis_inner(
         ));
     }
     let now = sqlite_now(connection)?;
-    let page_file_body_usage_changed = input.authority.owner_type == "page"
-        && !page_file_body_usage_counts(input.materialization).is_empty();
+    let page_file_body_usage_changed = if input.authority.owner_type == "page" {
+        let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
+        !page_file_body_usage_counts(input.materialization, &owned_file_ids).is_empty()
+    } else {
+        false
+    };
     validate_document_references(
         connection,
         &input.authority.head.library_id,
         input.actor_project_id,
         input.materialization,
         false,
+    )?;
+    validate_page_file_placements(
+        connection,
+        input.authority,
+        input.actor_project_id,
+        None,
+        input.materialization,
+        input.placement.page_file_placements_prevalidated,
     )?;
     reconcile_document_blocks(
         connection,
@@ -1766,16 +1801,133 @@ fn page_reference_target_impact(reference_sets: &[&[BlockDocumentReference]]) ->
     }
 }
 
-fn page_file_body_usage_counts(materialization: &DocumentMaterialization) -> BTreeMap<&str, usize> {
+fn owned_page_file_ids(
+    connection: &Connection,
+    authority: &DocumentAuthorityRow,
+) -> Result<BTreeSet<String>, StoreError> {
+    connection
+        .prepare(
+            "SELECT file_id FROM page_files \
+             WHERE library_id = ?1 AND owner_page_id = ?2",
+        )?
+        .query_map(
+            params![authority.head.library_id, authority.owner_block_id],
+            |row| row.get::<_, String>(0),
+        )?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()
+        .map_err(Into::into)
+}
+
+fn page_file_body_usage_counts(
+    materialization: &DocumentMaterialization,
+    owned_file_ids: &BTreeSet<String>,
+) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for file_id in materialization
         .asset_refs
         .iter()
         .filter_map(|reference| reference.file_id.as_deref())
     {
-        *counts.entry(file_id).or_insert(0) += 1;
+        if owned_file_ids.contains(file_id) {
+            *counts.entry(file_id.to_owned()).or_insert(0) += 1;
+        }
     }
     counts
+}
+
+fn validate_page_file_placements(
+    connection: &Connection,
+    authority: &DocumentAuthorityRow,
+    actor_project_id: &str,
+    base_materialization: Option<&DocumentMaterialization>,
+    materialization: &DocumentMaterialization,
+    prevalidated: bool,
+) -> Result<(), StoreError> {
+    let existing_file_ids = base_materialization
+        .into_iter()
+        .flat_map(|base| base.asset_refs.iter())
+        .filter_map(|reference| reference.file_id.as_deref())
+        .collect::<BTreeSet<_>>();
+    let file_ids = materialization
+        .asset_refs
+        .iter()
+        .filter_map(|reference| reference.file_id.as_deref())
+        .filter(|file_id| !existing_file_ids.contains(file_id))
+        .collect::<BTreeSet<_>>();
+    if file_ids.is_empty() {
+        return Ok(());
+    }
+    if authority.owner_type != "page" {
+        return Err(invalid(
+            "Page File placements require a containing Page Document".to_owned(),
+        ));
+    }
+    for file_id in file_ids {
+        let owner_page_id = connection
+            .query_row(
+                "SELECT owner_page_id FROM page_files \
+                 WHERE file_id = ?1 AND library_id = ?2 AND state = 'live'",
+                params![file_id, authority.head.library_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or_else(|| invalid("Page Document references an unavailable File".to_owned()))?;
+        if owner_page_id == authority.owner_block_id
+            || prevalidated
+            || project_can_read_page(
+                connection,
+                &authority.head.library_id,
+                actor_project_id,
+                &owner_page_id,
+            )?
+            || project_can_read_existing_file_placement(
+                connection,
+                &authority.head.library_id,
+                actor_project_id,
+                file_id,
+            )?
+        {
+            continue;
+        }
+        return Err(invalid(
+            "Page Document references a File unavailable to this Page context".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn project_can_read_page(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    page_id: &str,
+) -> Result<bool, StoreError> {
+    Ok(
+        crate::library::page_read_authorization_roots(connection, library_id, project_id, page_id)?
+            .is_some(),
+    )
+}
+
+fn project_can_read_existing_file_placement(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    file_id: &str,
+) -> Result<bool, StoreError> {
+    let placement_page_ids = connection
+        .prepare(
+            "SELECT DISTINCT owner_block_id FROM block_asset_refs \
+             WHERE library_id = ?1 AND page_file_id = ?2 \
+             ORDER BY owner_block_id",
+        )?
+        .query_map(params![library_id, file_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for page_id in placement_page_ids {
+        if project_can_read_page(connection, library_id, project_id, &page_id)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn advance_page_file_body_usage_revision(
@@ -1876,16 +2028,16 @@ pub(super) fn replace_secondary_projections(
                          JOIN page_file_versions version ON version.file_id = file.file_id \
                            AND version.version = file.current_version \
                          WHERE file.file_id = ?1 AND file.library_id = ?2 \
-                           AND file.owner_page_id = ?3 AND file.state = 'live' \
+                           AND file.state = 'live' \
                            AND version.blob_hash IS NOT NULL",
-                        params![file_id, authority.head.library_id, authority.owner_block_id],
+                        params![file_id, authority.head.library_id],
                         |row| row.get::<_, String>(0),
                     )
                     .optional()?
                     .ok_or_else(|| {
                         StoreError::new(
                             StoreErrorCode::InvalidInput,
-                            "Page Document references a File outside its direct ownership",
+                            "Page Document references an unavailable File",
                             false,
                         )
                     })

@@ -391,6 +391,12 @@ impl LibraryModule {
             .read_default(move |connection| {
                 authorize_page_read(connection, &context, &library_id, &queried_page_id)?;
                 let row = if let Some(version) = version {
+                    super::page_files::require_owned_file_access(
+                        connection,
+                        &library_id,
+                        &queried_page_id,
+                        &queried_file_id,
+                    )?;
                     connection
                         .query_row(
                             "SELECT version.version, version.logical_path, version.mime_type, \
@@ -406,6 +412,12 @@ impl LibraryModule {
                         )
                         .optional()?
                 } else {
+                    super::page_files::require_current_file_access(
+                        connection,
+                        &library_id,
+                        &queried_page_id,
+                        &queried_file_id,
+                    )?;
                     connection
                         .query_row(
                             "SELECT version.version, version.logical_path, version.mime_type, \
@@ -415,9 +427,9 @@ impl LibraryModule {
                                AND version.version = file.current_version \
                              JOIN managed_blobs blob ON blob.content_hash = version.blob_hash \
                                AND blob.byte_length = version.byte_length \
-                             WHERE file.library_id = ?1 AND file.owner_page_id = ?2 \
-                               AND file.file_id = ?3 AND file.state = 'live'",
-                            params![library_id, queried_page_id, queried_file_id],
+                             WHERE file.library_id = ?1 AND file.file_id = ?2 \
+                               AND file.state = 'live'",
+                            params![library_id, queried_file_id],
                             blob_row,
                         )
                         .optional()?

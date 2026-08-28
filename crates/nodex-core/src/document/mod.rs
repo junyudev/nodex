@@ -49,7 +49,6 @@ pub(crate) use module::require_owned_document_read_access;
 pub use module::{
     CanvasSceneSyncSnapshot, DocumentCacheMetrics, OwnedDocumentApplyOutcome, OwnedDocumentModule,
 };
-pub(crate) use operations::prepare_document_snapshot_restore_update;
 pub use operations::{
     DocumentBlockOperation, DocumentBlockUpdatePatch, DocumentOperationError,
     DocumentOperationErrorCode, ExactNfmPatch, MAX_DOCUMENT_OPERATION_BATCH_SIZE,

@@ -1074,7 +1074,8 @@ fn persist_copy_documents(
                 store_epoch,
                 operation_id: &update_id,
                 placement: DocumentPlacementEvidence::STRUCTURAL
-                    .with_genesis(&placement_genesis_block_ids),
+                    .with_genesis(&placement_genesis_block_ids)
+                    .with_prevalidated_page_file_placements(),
                 emit_event: false,
             },
             commit_context,

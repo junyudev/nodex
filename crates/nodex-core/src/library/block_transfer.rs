@@ -37,9 +37,8 @@ use crate::document::{
     PreparedDocumentOperationUpdate, YrsDocumentEngine, decode_block_document,
     insert_document_checkpoint, materialize_decoded_document, persist_yjs_commit_with_local_commit,
     persist_yjs_genesis_with_local_commit, prepare_document_operation_update,
-    prepare_document_snapshot_restore_update, prepare_page_yjs_genesis_with_content,
-    prepare_portable_subtree_transfer_updates, prepare_yjs_clone_genesis, read_document_authority,
-    reconstruct_yjs_engine, sha256,
+    prepare_page_yjs_genesis_with_content, prepare_portable_subtree_transfer_updates,
+    prepare_yjs_clone_genesis, read_document_authority, reconstruct_yjs_engine, sha256,
 };
 use crate::domain::block_materialization::MaterializedBlockNode;
 use crate::domain::block_to_page::{
@@ -143,7 +142,6 @@ pub(super) struct PreparedTransfer {
     source_materialization: DocumentMaterialization,
     target_materialization: DocumentMaterialization,
     prepared: crate::document::PreparedPortableSubtreeTransfer,
-    page_files: Option<super::page_files::PreparedPageFileTransfer>,
     expected_location_revisions: BTreeMap<String, i64>,
 }
 
@@ -1034,20 +1032,6 @@ fn apply_with_authority(
                 )?;
                 document_commits.push(commit);
             }
-            let page_file_receipt = prepared
-                .page_files
-                .as_ref()
-                .map(|page_files| {
-                    super::page_files::apply_block_transfer(
-                        connection,
-                        library_id,
-                        operation_id,
-                        bound_project_id(context)?,
-                        &now,
-                        page_files,
-                    )
-                })
-                .transpose()?;
             let target_update_id = if moves_between_documents {
                 format!("relocation:{request_hash}:target")
             } else {
@@ -1135,12 +1119,6 @@ fn apply_with_authority(
                         commit.public.head_seq,
                     )
                 }))
-                .chain(page_file_receipt.iter().map(|receipt| {
-                    (
-                        format!("pageFiles:{}", receipt.page_id),
-                        receipt.manifest_revision,
-                    )
-                }))
                 .collect();
             seal_mutation_with(
                 scope,
@@ -1165,7 +1143,7 @@ fn apply_with_authority(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: page_file_receipt,
+                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: Some(result.clone()),
                     block_transfer_undo: None,
@@ -1311,7 +1289,7 @@ fn prepare_transfer(
         insertion,
     };
     let mut allocate = |source_id: &str| stable_uuid_v7(operation_id, "block_transfer", source_id);
-    let mut prepared = prepare_portable_subtree_transfer_updates(&request, &mut allocate)
+    let prepared = prepare_portable_subtree_transfer_updates(&request, &mut allocate)
         .map_err(|error| invalid(error.to_string()))?;
     for block_id in &prepared.source_forest.block_ids {
         if is_typed_resource(connection, block_id)? {
@@ -1319,54 +1297,6 @@ fn prepare_transfer(
                 "This native slice transfers ordinary Blocks only; Page ownership uses Library or Database semantics",
             ));
         }
-    }
-    let selected_block_ids = prepared
-        .source_forest
-        .block_ids
-        .iter()
-        .cloned()
-        .collect::<BTreeSet<_>>();
-    let source_page_id =
-        (source_authority.owner_type == "page").then_some(source_authority.owner_block_id.as_str());
-    let target_page_id =
-        (target_authority.owner_type == "page").then_some(target_authority.owner_block_id.as_str());
-    let page_files = match (source_page_id, target_page_id) {
-        (Some(source_page_id), Some(target_page_id)) => super::page_files::prepare_block_transfer(
-            connection,
-            library_id,
-            operation_id,
-            &source_authority.head.id,
-            source_page_id,
-            target_page_id,
-            &selected_block_ids,
-        )?,
-        (Some(_), None)
-            if super::page_files::block_transfer_references_page_files(
-                connection,
-                &source_authority.head.id,
-                &selected_block_ids,
-            )? =>
-        {
-            return Err(invalid(
-                "Blocks containing Page File placements can only transfer into a Page Document",
-            ));
-        }
-        _ => None,
-    };
-    if let Some(page_files) = &page_files {
-        let remapped_blocks = remap_page_file_references_in_blocks(
-            &prepared.target.materialization.block_tree,
-            &page_files.file_ids(),
-        );
-        prepared.target = prepare_document_snapshot_restore_update(
-            &request.target.document_id,
-            request.target.schema,
-            &request.target.full_state_v1,
-            &request.target.expected_state_vector_v1,
-            &remapped_blocks,
-            None,
-        )
-        .map_err(|error| invalid(error.to_string()))?;
     }
     Ok(PreparedTransfer {
         source_authority,
@@ -1376,65 +1306,8 @@ fn prepare_transfer(
         source_materialization,
         target_materialization,
         prepared,
-        page_files,
         expected_location_revisions,
     })
-}
-
-fn remap_page_file_references_in_blocks(
-    blocks: &[MaterializedBlockNode],
-    file_ids: &BTreeMap<String, String>,
-) -> Vec<MaterializedBlockNode> {
-    blocks
-        .iter()
-        .map(|block| MaterializedBlockNode {
-            id: block.id.clone(),
-            block_type: block.block_type.clone(),
-            props: block
-                .props
-                .iter()
-                .map(|(key, value)| {
-                    (
-                        key.clone(),
-                        remap_page_file_reference_value(value, file_ids),
-                    )
-                })
-                .collect(),
-            content: block
-                .content
-                .as_ref()
-                .map(|value| remap_page_file_reference_value(value, file_ids)),
-            children: remap_page_file_references_in_blocks(&block.children, file_ids),
-        })
-        .collect()
-}
-
-fn remap_page_file_reference_value(value: &Value, file_ids: &BTreeMap<String, String>) -> Value {
-    match value {
-        Value::String(value) => value
-            .strip_prefix("nodex://files/")
-            .and_then(|file_id| file_ids.get(file_id))
-            .map(|file_id| Value::String(format!("nodex://files/{file_id}")))
-            .unwrap_or_else(|| Value::String(value.clone())),
-        Value::Array(values) => Value::Array(
-            values
-                .iter()
-                .map(|value| remap_page_file_reference_value(value, file_ids))
-                .collect(),
-        ),
-        Value::Object(values) => Value::Object(
-            values
-                .iter()
-                .map(|(key, value)| {
-                    (
-                        key.clone(),
-                        remap_page_file_reference_value(value, file_ids),
-                    )
-                })
-                .collect(),
-        ),
-        _ => value.clone(),
-    }
 }
 
 fn clone_runtime_engine(
@@ -4281,7 +4154,8 @@ fn persist_page_parent_genesis(
             // entries were detached during staging, but their placement
             // revisions still advance exactly once here at the new authority.
             placement: DocumentPlacementEvidence::STRUCTURAL
-                .with_advances(&stage.placement_mutation_block_ids),
+                .with_advances(&stage.placement_mutation_block_ids)
+                .with_prevalidated_page_file_placements(),
             emit_event: true,
         },
         attached_commit,
@@ -4572,7 +4446,8 @@ fn persist_prepared_update(
             .with_genesis(placement_genesis_block_ids)
             .with_preapplied(placement_preapplied_block_ids)
             .with_advances(placement_advance_block_ids)
-            .with_exact_moves(exact_moved_block_ids),
+            .with_exact_moves(exact_moved_block_ids)
+            .with_prevalidated_page_file_placements(),
     };
     let persisted = persist_yjs_commit_with_local_commit(connection, input, attached_commit)?;
     Ok(PersistedTransferCommit {

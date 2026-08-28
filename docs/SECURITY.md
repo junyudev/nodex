@@ -48,12 +48,18 @@ Nodex is local-first. Main risks are malformed local inputs, accidental data los
 
 ## Page File boundaries
 
-Page File access is authorized by canonical owner Page and Project scope on
-every metadata and byte request. File references carry opaque stable File IDs;
-they do not grant access, expose content hashes, or reveal Profile paths. Core
-rejects a Page Document that references a missing, deleted, or foreign-owner
-File. Prepared upload receipts are Store-, Project-, operation-, size-, and
-expiry-bound and are single-use except for exact idempotent replay.
+Owner Files manifests, mutations, lifecycle, and version history are authorized
+by the canonical owner Page and Project scope. A containing Page may resolve
+only current metadata and bytes for a File in its canonical placement
+projection. File references carry opaque stable IDs, but the ID alone grants no
+access, exposes no content hash, and reveals no Profile path. Core verifies the
+requesting Page placement on every current-content read and rejects missing,
+deleted, cross-Library, or unauthorized references before Document commit.
+Typed structural compilers may carry an already-authorized placement within one
+transaction; generic collaborative writes must prove existing owner or
+placement read access. Prepared upload receipts are Store-, Project-,
+operation-, size-, and expiry-bound and are single-use except for exact
+idempotent replay.
 
 Logical paths are normalized and must be portable relative paths. Core rejects
 absolute paths, traversal, empty segments, reserved Windows names, Unicode/case

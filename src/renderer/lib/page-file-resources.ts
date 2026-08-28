@@ -159,7 +159,8 @@ export async function createOwnedPageFile(
   };
 }
 
-export async function readOwnedPageFile(
+/** Read current File bytes through the Page that owns or canonically places it. */
+export async function readPlacedPageFile(
   authority: Pick<PageFileAuthority, "contentAccessContext" | "pageId">,
   source: string,
 ): Promise<PageFileBytes> {
@@ -171,7 +172,8 @@ export async function readOwnedPageFile(
   });
 }
 
-export async function readOwnedPageFileMetadata(
+/** Read current File metadata through the Page that owns or canonically places it. */
+export async function readPlacedPageFileMetadata(
   authority: Pick<PageFileAuthority, "contentAccessContext" | "pageId">,
   source: string,
 ): Promise<LibraryPageFileSummary> {
@@ -212,7 +214,7 @@ export async function pageFileImageDataUrl(
   authority: Pick<PageFileAuthority, "contentAccessContext" | "pageId">,
   source: string,
 ): Promise<string> {
-  const file = await readOwnedPageFile(authority, source);
+  const file = await readPlacedPageFile(authority, source);
   const blob = new Blob([file.bytes.slice().buffer as ArrayBuffer], { type: file.mimeType });
   return await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();

@@ -15166,7 +15166,8 @@
           "view_ids",
           "parent_keys",
           "page_file_manifest_revisions",
-          "page_file_body_usage_revisions"
+          "page_file_body_usage_revisions",
+          "page_file_content_revisions"
         ],
         "properties": {
           "database_ids": {
@@ -15179,6 +15180,16 @@
             "$ref": "#/components/schemas/LibraryEventKind"
           },
           "page_file_body_usage_revisions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "page_file_content_revisions": {
             "type": "object",
             "additionalProperties": {
               "type": "integer",

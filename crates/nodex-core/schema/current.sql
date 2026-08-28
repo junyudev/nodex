@@ -3688,7 +3688,6 @@ WHEN NOT EXISTS (
       ON version.file_id = file.file_id AND version.version = file.current_version
     WHERE file.file_id = NEW.page_file_id
       AND file.library_id = NEW.library_id
-      AND file.owner_page_id = NEW.owner_block_id
       AND file.state = 'live'
       AND version.blob_hash = NEW.asset_hash
   )
@@ -3714,7 +3713,6 @@ WHEN NOT EXISTS (
       ON version.file_id = file.file_id AND version.version = file.current_version
     WHERE file.file_id = NEW.page_file_id
       AND file.library_id = NEW.library_id
-      AND file.owner_page_id = NEW.owner_block_id
       AND file.state = 'live'
       AND version.blob_hash = NEW.asset_hash
   )
@@ -4627,4 +4625,4 @@ CREATE TABLE operational_journal_state (
   ),
   CHECK (length(operation_identity_cutover_at) > 0)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 139;
+PRAGMA user_version = 140;
