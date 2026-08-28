@@ -90,7 +90,9 @@ All 3 clipboard payloads are derived from the same resolved clipboard target:
 
 For a non-empty selection, the helper starts from `editor.getSelectionCutBlocks(false)` and rebuilds a normalized selected block tree. For a collapsed caret, it reads `editor.getTextCursorPosition().block` and keeps that Block's complete descendant tree. Both paths then export:
 
-- `clipboardHTML` from `editor.blocksToFullHTML(...)`
+- `clipboardHTML` from the editor's lossless clipboard serializer. Custom inline
+  content uses canonical schema wrappers rather than mounted NodeView UI, so
+  browser HTML normalization cannot split the surrounding inline sequence.
 - `externalHTML` from `editor.blocksToHTMLLossy(...)`
 - `structuredText` from `blockNoteToNfm(...)` plus `serializeClipboardText(...)`
 

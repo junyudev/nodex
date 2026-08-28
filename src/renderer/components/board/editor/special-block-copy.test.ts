@@ -102,6 +102,26 @@ describe("special block copy", () => {
     });
   });
 
+  test("prefers canonical clipboard HTML over rendered full HTML", () => {
+    const current = {
+      id: "current",
+      type: "paragraph",
+      props: {},
+      content: [{ type: "text", text: "Current", styles: {} }],
+      children: [],
+    };
+    const editor = {
+      ...createSelectionEditorStub({ blocks: [] }),
+      blocksToClipboardHTML: () => "<clipboard>canonical</clipboard>",
+      blocksToFullHTML: () => "<full>interactive UI</full>",
+    } satisfies SelectionEditorLike;
+
+    const payload = createCopiedBlockPayload(editor, [current]);
+
+    expect(payload.clipboardHTML).toBe("<clipboard>canonical</clipboard>");
+    expect(payload.externalHTML).toBe("<external>Current</external>");
+  });
+
   test("resolveStructuredPlainTextForSelection returns fallback when no block selection exists", () => {
     const fallback = "- fallback";
     const value = resolveStructuredPlainTextForSelection(

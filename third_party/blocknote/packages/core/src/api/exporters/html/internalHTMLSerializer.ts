@@ -160,23 +160,31 @@ export const createInternalHTMLSerializer = <
     addTrailingBreakToEmptyInlineContent,
   ];
 
+  const serializeBlocks = (
+    blocks: PartialBlock<BSchema, I, S>[],
+    options: { document?: Document },
+    canonicalInlineContent: boolean,
+  ): string => {
+    let element = serializeBlocksInternalHTML(editor, blocks, serializer, {
+      ...options,
+      canonicalInlineContent,
+    });
+
+    for (const transform of transforms) {
+      element = transform(element);
+    }
+
+    return element.outerHTML;
+  };
+
   return {
     serializeBlocks: (
       blocks: PartialBlock<BSchema, I, S>[],
       options: { document?: Document },
-    ) => {
-      let element = serializeBlocksInternalHTML(
-        editor,
-        blocks,
-        serializer,
-        options,
-      );
-
-      for (const transform of transforms) {
-        element = transform(element);
-      }
-
-      return element.outerHTML;
-    },
+    ) => serializeBlocks(blocks, options, false),
+    serializeBlocksForClipboard: (
+      blocks: PartialBlock<BSchema, I, S>[],
+      options: { document?: Document },
+    ) => serializeBlocks(blocks, options, true),
   };
 };

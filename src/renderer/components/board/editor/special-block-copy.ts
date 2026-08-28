@@ -75,6 +75,7 @@ export interface SelectionEditorLike {
   getSelection?: () => SelectionLike | undefined;
   getParentBlock?: (id: string) => SelectionBlockLike | undefined;
   blocksToFullHTML?: (blocks: SelectionBlockLike[]) => string;
+  blocksToClipboardHTML?: (blocks: SelectionBlockLike[]) => string;
   blocksToHTMLLossy?: (blocks: SelectionBlockLike[]) => string;
 }
 
@@ -651,11 +652,25 @@ export function resolveStructuredPlainTextForSelection(
 
 function canSerializeSelectionHtml(
   editor: SelectionEditorLike,
-): editor is SelectionEditorLike &
-  Required<Pick<SelectionEditorLike, "blocksToFullHTML" | "blocksToHTMLLossy">> {
+): editor is SelectionEditorLike & Required<Pick<SelectionEditorLike, "blocksToHTMLLossy">> {
   return (
-    typeof editor.blocksToFullHTML === "function" && typeof editor.blocksToHTMLLossy === "function"
+    typeof editor.blocksToHTMLLossy === "function" &&
+    (typeof editor.blocksToClipboardHTML === "function" ||
+      typeof editor.blocksToFullHTML === "function")
   );
+}
+
+function serializeBlocksToClipboardHTML(
+  editor: SelectionEditorLike,
+  blocks: SelectionBlockLike[],
+): string {
+  if (typeof editor.blocksToClipboardHTML === "function") {
+    return editor.blocksToClipboardHTML(blocks);
+  }
+  if (typeof editor.blocksToFullHTML === "function") {
+    return editor.blocksToFullHTML(blocks);
+  }
+  throw new Error("Failed to serialize copied Blocks to clipboard HTML");
 }
 
 export function createCopiedSelectionPayloadFromSelection(
@@ -670,7 +685,7 @@ export function createCopiedSelectionPayloadFromSelection(
         normalizedBlocks,
       );
       return {
-        clipboardHTML: editor.blocksToFullHTML(normalizedBlocks),
+        clipboardHTML: serializeBlocksToClipboardHTML(editor, normalizedBlocks),
         externalHTML: editor.blocksToHTMLLossy(normalizedBlocks),
         structuredText:
           literalCodeSelection ?? serializeSelectionToStructuredPlainText(normalizedBlocks),
@@ -702,7 +717,7 @@ export function createCopiedBlockPayload(
   }
 
   return {
-    clipboardHTML: editor.blocksToFullHTML(normalizedBlocks),
+    clipboardHTML: serializeBlocksToClipboardHTML(editor, normalizedBlocks),
     externalHTML: editor.blocksToHTMLLossy(normalizedBlocks),
     structuredText: serializeSelectionToStructuredPlainText(normalizedBlocks),
   };

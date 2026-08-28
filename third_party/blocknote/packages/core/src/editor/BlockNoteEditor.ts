@@ -1348,6 +1348,17 @@ export class BlockNoteEditor<
   }
 
   /**
+   * Serializes blocks into lossless HTML for editor clipboard round trips.
+   * Custom inline content is represented by canonical schema wrappers rather
+   * than its interactive NodeView DOM.
+   */
+  public blocksToClipboardHTML(
+    blocks: PartialBlock<BSchema, ISchema, SSchema>[] = this.document,
+  ): string {
+    return this._exportManager.blocksToClipboardHTML(blocks);
+  }
+
+  /**
    * Parses blocks from an HTML string. Tries to create `Block` objects out of any HTML block-level elements, and
    * `InlineNode` objects from any HTML inline elements, though not all element types are recognized. If BlockNote
    * doesn't recognize an HTML element's tag, it will parse it as a paragraph or plain text.

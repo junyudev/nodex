@@ -122,6 +122,61 @@ function typeString(editor: BlockNoteEditor<any, any, any>, text: string) {
 }
 
 describe("NFM Equation surface in Chromium", () => {
+  test.each([
+    ["a collapsed Block caret", "caret"],
+    ["a selected inline range", "range"],
+  ] as const)("round-trips content after an Inline Equation from %s", async (_label, mode) => {
+    const { editor } = await mountInlineMath("E = mc^2");
+    editor.insertBlocks(
+      [{ id: "paste-target", type: "paragraph", content: "Paste target" }],
+      editor.document[0]!,
+      "after",
+    );
+    const view = editor.prosemirrorView!;
+    if (mode === "caret") {
+      editor.setTextCursorPosition(editor.document[0]!.id, "end");
+    } else {
+      const position = getNodeById(editor.document[0]!.id, view.state.doc);
+      const inlineContent = position?.node.firstChild;
+      if (!position || !inlineContent) throw new Error("Inline Equation Block did not mount");
+      const from = position.posBeforeNode + 2;
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, from, from + inlineContent.content.size),
+        ),
+      );
+    }
+    editor.focus();
+
+    const clipboardData = new DataTransfer();
+    await act(async () => {
+      view.dom.dispatchEvent(
+        new ClipboardEvent("copy", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      );
+      editor.setTextCursorPosition("paste-target", "end");
+      view.dom.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData,
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(clipboardData.getData("blocknote/html")).not.toContain("bn-source-block-popup");
+    expect(clipboardData.getData("blocknote/html")).toContain('data-inline-content-type="math"');
+    expect(editor.getBlock("paste-target")?.content).toEqual([
+      { type: "text", text: "Paste targetInline energy is ", styles: {} },
+      { type: "math", props: {}, content: "E = mc^2" },
+      { type: "text", text: ".", styles: {} },
+    ]);
+  });
+
   test("converts a complete double-dollar expression inline without opening the popup", async () => {
     const { editor, host } = await mountParagraph();
 

@@ -7,6 +7,7 @@ import {
   InlineContentSchema,
   StyleSchema,
 } from "../../../../schema/index.js";
+import { addInlineContentAttributes } from "../../../../schema/inlineContent/internal.js";
 import { UnreachableCaseError } from "../../../../util/typescript.js";
 import {
   inlineContentToNodes,
@@ -14,6 +15,135 @@ import {
 } from "../../../nodeConversions/blockToNode.js";
 
 import { nodeToCustomInlineContent } from "../../../nodeConversions/nodeToBlock.js";
+
+type InternalHTMLSerializationOptions = {
+  document?: Document;
+  /**
+   * Emits schema-owned inline wrappers instead of rendered NodeView UI. The
+   * canonical form remains valid phrasing content when browsers normalize
+   * clipboard HTML.
+   */
+  canonicalInlineContent?: boolean;
+};
+
+function serializeCanonicalInlineContent<
+  I extends InlineContentSchema,
+  S extends StyleSchema,
+>(
+  editor: BlockNoteEditor<any, I, S>,
+  node: Node,
+  serializer: DOMSerializer,
+  options: InternalHTMLSerializationOptions,
+): HTMLElement {
+  const doc = options.document ?? document;
+  const spec = editor.schema.inlineContentSpecs[node.type.name];
+  const inlineContent = nodeToCustomInlineContent(
+    node,
+    editor.schema.inlineContentSchema,
+    editor.schema.styleSchema,
+  );
+  const dom = doc.createElement("span");
+  dom.className = "bn-inline-content-section";
+
+  const contentDOM = spec.config.content === "none" ? undefined : doc.createElement("span");
+  if (contentDOM) {
+    dom.appendChild(contentDOM);
+    contentDOM.appendChild(serializeNodesInternalHTML(editor, node.content, serializer, options));
+  }
+
+  return addInlineContentAttributes(
+    { dom, contentDOM },
+    node.type.name,
+    inlineContent.props,
+    spec.config.propSchema,
+  ).dom;
+}
+
+function serializeNodesInternalHTML<I extends InlineContentSchema, S extends StyleSchema>(
+  editor: BlockNoteEditor<any, I, S>,
+  nodes: Fragment,
+  serializer: DOMSerializer,
+  options: InternalHTMLSerializationOptions,
+): DocumentFragment {
+  const doc = options.document ?? document;
+  const fragment = doc.createDocumentFragment();
+
+  nodes.forEach((node) => {
+    if (
+      options.canonicalInlineContent &&
+      node.type.name !== "text" &&
+      editor.schema.inlineContentSchema[node.type.name]
+    ) {
+      fragment.appendChild(serializeCanonicalInlineContent(editor, node, serializer, options));
+      return;
+    }
+
+    if (node.type.name !== "text" && editor.schema.inlineContentSchema[node.type.name]) {
+      const inlineContentImplementation =
+        editor.schema.inlineContentSpecs[node.type.name].implementation;
+
+      if (inlineContentImplementation) {
+        const inlineContent = nodeToCustomInlineContent(
+          node,
+          editor.schema.inlineContentSchema,
+          editor.schema.styleSchema,
+        );
+        const output = inlineContentImplementation.render.call(
+          {
+            renderType: "dom",
+            props: undefined,
+          },
+          inlineContent as any,
+          () => {
+            // No-op
+          },
+          editor as any,
+        );
+
+        if (output) {
+          fragment.appendChild(output.dom);
+          if (output.contentDOM) {
+            output.contentDOM.dataset.editable = "";
+            output.contentDOM.appendChild(
+              serializeNodesInternalHTML(editor, node.content, serializer, options),
+            );
+          }
+          return;
+        }
+      }
+    } else if (node.type.name === "text") {
+      // Text is serialized manually because style implementations, rather than
+      // ProseMirror's mark DOM, own BlockNote's HTML representation.
+      let dom: globalThis.Node | Text = doc.createTextNode(node.textContent);
+      for (const mark of node.marks.toReversed()) {
+        if (mark.type.name in editor.schema.styleSpecs) {
+          const newDom = editor.schema.styleSpecs[mark.type.name].implementation.render(
+            mark.attrs["stringValue"],
+            editor,
+          );
+          newDom.contentDOM!.appendChild(dom);
+          dom = newDom.dom;
+        } else {
+          const domOutputSpec = mark.type.spec.toDOM!(mark, true);
+          const newDom = DOMSerializer.renderSpec(doc, domOutputSpec);
+          newDom.contentDOM!.appendChild(dom);
+          dom = newDom.dom;
+        }
+      }
+      fragment.appendChild(dom);
+      return;
+    } else {
+      fragment.appendChild(
+        serializer.serializeFragment(Fragment.from([node]), {
+          document: doc,
+        }),
+      );
+    }
+  });
+
+  return fragment;
+}
+
 export function serializeInlineContentInternalHTML<
   BSchema extends BlockSchema,
   I extends InlineContentSchema,
@@ -23,7 +153,7 @@ export function serializeInlineContentInternalHTML<
   blockContent: PartialBlock<BSchema, I, S>["content"],
   serializer: DOMSerializer,
   blockType?: string,
-  options?: { document?: Document },
+  options: InternalHTMLSerializationOptions = {},
 ) {
   let nodes: Node[];
 
@@ -40,90 +170,7 @@ export function serializeInlineContentInternalHTML<
     throw new UnreachableCaseError(blockContent.type);
   }
 
-  // Check if any of the nodes are custom inline content with toExternalHTML
-  const doc = options?.document ?? document;
-  const fragment = doc.createDocumentFragment();
-
-  for (const node of nodes) {
-    // Check if this is a custom inline content node with toExternalHTML
-    if (
-      node.type.name !== "text" &&
-      editor.schema.inlineContentSchema[node.type.name]
-    ) {
-      const inlineContentImplementation =
-        editor.schema.inlineContentSpecs[node.type.name].implementation;
-
-      if (inlineContentImplementation) {
-        // Convert the node to inline content format
-        const inlineContent = nodeToCustomInlineContent(
-          node,
-          editor.schema.inlineContentSchema,
-          editor.schema.styleSchema,
-        );
-
-        // Use the custom toExternalHTML method
-        const output = inlineContentImplementation.render.call(
-          {
-            renderType: "dom",
-            props: undefined,
-          },
-          inlineContent as any,
-          () => {
-            // No-op
-          },
-          editor as any,
-        );
-
-        if (output) {
-          fragment.appendChild(output.dom);
-
-          // If contentDOM exists, render the inline content into it
-          if (output.contentDOM) {
-            const contentFragment = serializer.serializeFragment(
-              node.content,
-              options,
-            );
-            output.contentDOM.dataset.editable = "";
-            output.contentDOM.appendChild(contentFragment);
-          }
-          continue;
-        }
-      }
-    } else if (node.type.name === "text") {
-      // We serialize text nodes manually as we need to serialize the styles/
-      // marks using `styleSpec.implementation.render`. When left up to
-      // ProseMirror, it'll use `toDOM` which is incorrect.
-      let dom: globalThis.Node | Text = document.createTextNode(
-        node.textContent,
-      );
-      // Reverse the order of marks to maintain the correct priority.
-      for (const mark of node.marks.toReversed()) {
-        if (mark.type.name in editor.schema.styleSpecs) {
-          const newDom = editor.schema.styleSpecs[
-            mark.type.name
-          ].implementation.render(mark.attrs["stringValue"], editor);
-          newDom.contentDOM!.appendChild(dom);
-          dom = newDom.dom;
-        } else {
-          const domOutputSpec = mark.type.spec.toDOM!(mark, true);
-          const newDom = DOMSerializer.renderSpec(document, domOutputSpec);
-          newDom.contentDOM!.appendChild(dom);
-          dom = newDom.dom;
-        }
-      }
-
-      fragment.appendChild(dom);
-    } else {
-      // Fall back to default serialization for this node
-      const nodeFragment = serializer.serializeFragment(
-        Fragment.from([node]),
-        options,
-      );
-      fragment.appendChild(nodeFragment);
-    }
-  }
-
-  return fragment;
+  return serializeNodesInternalHTML(editor, Fragment.from(nodes), serializer, options);
 }
 
 function serializeBlock<
@@ -134,7 +181,7 @@ function serializeBlock<
   editor: BlockNoteEditor<BSchema, I, S>,
   block: PartialBlock<BSchema, I, S>,
   serializer: DOMSerializer,
-  options?: { document?: Document },
+  options?: InternalHTMLSerializationOptions,
 ) {
   const BC_NODE = editor.pmSchema.nodes["blockContainer"];
 
@@ -215,7 +262,7 @@ function serializeBlocks<
   editor: BlockNoteEditor<BSchema, I, S>,
   blocks: PartialBlock<BSchema, I, S>[],
   serializer: DOMSerializer,
-  options?: { document?: Document },
+  options?: InternalHTMLSerializationOptions,
 ) {
   const doc = options?.document ?? document;
   const fragment = doc.createDocumentFragment();
@@ -236,7 +283,7 @@ export const serializeBlocksInternalHTML = <
   editor: BlockNoteEditor<BSchema, I, S>,
   blocks: PartialBlock<BSchema, I, S>[],
   serializer: DOMSerializer,
-  options?: { document?: Document },
+  options?: InternalHTMLSerializationOptions,
 ) => {
   const BG_NODE = editor.pmSchema.nodes["blockGroup"];
 

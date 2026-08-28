@@ -23,6 +23,7 @@ const testFiles = selectTieredTestFiles({
     "third_party/blocknote/packages/core/src/api/parsers/markdown/markdownToHtml.security.test.ts",
     "third_party/blocknote/packages/core/src/blocks/Code/block.test.ts",
     "third_party/blocknote/packages/core/src/blocks/Code/indentation.test.ts",
+    "third_party/blocknote/packages/core/src/schema/inlineContent/createSpec.test.ts",
     "third_party/blocknote/packages/core/src/extensions/Versioning/Versioning.test.ts",
     "third_party/blocknote/packages/core/src/extensions/Versioning/inMemoryVersioning.test.ts",
     "third_party/blocknote/packages/core/src/extensions/tiptap-extensions/KeyboardShortcuts/KeyboardShortcutsExtension.test.ts",

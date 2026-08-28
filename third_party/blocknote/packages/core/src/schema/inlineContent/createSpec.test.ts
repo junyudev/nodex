@@ -21,8 +21,45 @@ const customPlainIC = createInlineContentSpec(
     parse: (el) => (el.classList?.contains("custom-plain-ic") ? {} : undefined),
     render: () => {
       const dom = document.createElement("span");
+      const editorUI = document.createElement("div");
+      editorUI.className = "custom-plain-editor-ui";
       const contentDOM = document.createElement("span");
-      dom.append(contentDOM);
+      dom.append(editorUI, contentDOM);
+      return { dom, contentDOM };
+    },
+  },
+);
+
+const customAtomicIC = createInlineContentSpec(
+  {
+    type: "customAtomicIC",
+    propSchema: { label: { default: "" } },
+    content: "none",
+  },
+  {
+    render: () => {
+      const dom = document.createElement("span");
+      const editorUI = document.createElement("div");
+      editorUI.className = "custom-atomic-editor-ui";
+      dom.append(editorUI);
+      return { dom };
+    },
+  },
+);
+
+const customStyledIC = createInlineContentSpec(
+  {
+    type: "customStyledIC",
+    propSchema: {},
+    content: "styled",
+  },
+  {
+    render: () => {
+      const dom = document.createElement("span");
+      const editorUI = document.createElement("div");
+      editorUI.className = "custom-styled-editor-ui";
+      const contentDOM = document.createElement("span");
+      dom.append(editorUI, contentDOM);
       return { dom, contentDOM };
     },
   },
@@ -35,6 +72,8 @@ const createEditor = () =>
       inlineContentSpecs: {
         ...defaultInlineContentSpecs,
         customPlainIC,
+        customAtomicIC,
+        customStyledIC,
       },
     }),
   });
@@ -112,6 +151,67 @@ describe("plain inline content", () => {
     const inlineContent = (blocks[0] as any).content[0];
     expect(inlineContent.type).toBe("customPlainIC");
     expect(inlineContent.content).toBe("first\nsecond");
+
+    editor._tiptapEditor.destroy();
+  });
+
+  it("uses canonical inline HTML for lossless clipboard round trips", () => {
+    const editor = createEditor();
+    editor.replaceBlocks(editor.document, [
+      {
+        type: "paragraph",
+        content: [
+          "before ",
+          {
+            type: "customPlainIC",
+            props: {},
+            content: "plain source",
+          } as any,
+          " between ",
+          {
+            type: "customAtomicIC",
+            props: { label: "atomic value" },
+          } as any,
+          " between ",
+          {
+            type: "customStyledIC",
+            props: {},
+            content: [{ type: "text", text: "styled source", styles: { bold: true } }],
+          } as any,
+          " after",
+        ],
+      },
+    ]);
+
+    expect(editor.blocksToFullHTML()).toContain("custom-plain-editor-ui");
+    expect(editor.blocksToFullHTML()).toContain("custom-atomic-editor-ui");
+    expect(editor.blocksToFullHTML()).toContain("custom-styled-editor-ui");
+
+    const clipboardHTML = editor.blocksToClipboardHTML();
+    expect(clipboardHTML).not.toContain("custom-plain-editor-ui");
+    expect(clipboardHTML).not.toContain("custom-atomic-editor-ui");
+    expect(clipboardHTML).not.toContain("custom-styled-editor-ui");
+
+    const normalized = document.createElement("div");
+    normalized.innerHTML = clipboardHTML;
+    expect(normalized.querySelector(".bn-inline-content")?.textContent).toBe(
+      "before plain source between  between styled source after",
+    );
+
+    const content = editor.tryParseHTMLToBlocks(clipboardHTML)[0]?.content as any[];
+    expect(content).toEqual([
+      { type: "text", text: "before ", styles: {} },
+      { type: "customPlainIC", props: {}, content: "plain source" },
+      { type: "text", text: " between ", styles: {} },
+      { type: "customAtomicIC", props: { label: "atomic value" } },
+      { type: "text", text: " between ", styles: {} },
+      {
+        type: "customStyledIC",
+        props: {},
+        content: [{ type: "text", text: "styled source", styles: { bold: true } }],
+      },
+      { type: "text", text: " after", styles: {} },
+    ]);
 
     editor._tiptapEditor.destroy();
   });
