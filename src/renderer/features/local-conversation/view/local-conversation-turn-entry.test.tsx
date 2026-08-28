@@ -175,6 +175,34 @@ describe("LocalConversationTurnEntry", () => {
     expect(host?.textContent?.includes("1 file changed") ?? false).toBe(true);
   });
 
+  test("renders a resolved timestamp separator before the owning turn", async () => {
+    const stableRequests: [] = [];
+    const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+    const sentAtMs = Date.now() - 2 * 60 * 60 * 1_000;
+    const entry = buildVisibleTurnEntry(
+      buildTurn("turn_timestamp_separator", "Continue the audit", "Done"),
+      stableRequests,
+      true,
+    );
+    entry.timestampSeparatorAtMs = sentAtMs;
+    const view = render(
+      createElement(LocalConversationTurnEntry, {
+        conversationId: "thread_1",
+        entry,
+        cwd: "/tmp/project",
+        canEditTurnUserPrefix: false,
+        canForkTurn: false,
+      }),
+    );
+
+    const separator = view.getByRole("separator");
+    const turnContent = view.container.querySelector("[data-virtualized-turn-content]");
+    expect(separator.querySelector("time")?.dateTime).toBe(new Date(sentAtMs).toISOString());
+    expect(
+      separator.compareDocumentPosition(turnContent as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
   test("renders user copy time and optional edit without a user fork action", async () => {
     const stableRequests: [] = [];
     const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");

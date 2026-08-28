@@ -12,6 +12,7 @@ import { ThreadTurn } from "./local-conversation-thread-turn";
 import { LocalConversationAboveComposerPortal } from "./local-conversation-above-composer-portal";
 import { useMcpServerStatuses } from "../../../lib/use-mcp-queries";
 import { useCodexMcpApps } from "../use-codex-mcp-apps";
+import { ThreadTimestampSeparator } from "./shared/thread-timestamp-separator";
 
 interface LocalConversationTurnEntryProps {
   conversationId: string;
@@ -127,6 +128,9 @@ function LocalConversationTurnEntryComponent({
         planSidePanelState={planSidePanelState}
         turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
       />
+      {entry.timestampSeparatorAtMs == null ? null : (
+        <ThreadTimestampSeparator sentAtMs={entry.timestampSeparatorAtMs} />
+      )}
       <div data-content-search-turn-key={entry.turnSearchKey} data-virtualized-turn-content="true">
         <ThreadTurn
           turn={turnModel}
@@ -169,6 +173,7 @@ export const LocalConversationTurnEntry = memo(
     left.entry.requests === right.entry.requests &&
     left.entry.turnKey === right.entry.turnKey &&
     left.entry.turnSearchKey === right.entry.turnSearchKey &&
+    left.entry.timestampSeparatorAtMs === right.entry.timestampSeparatorAtMs &&
     left.entry.isMostRecentTurn === right.entry.isMostRecentTurn &&
     left.cwd === right.cwd &&
     left.persistedCollapsed === right.persistedCollapsed &&

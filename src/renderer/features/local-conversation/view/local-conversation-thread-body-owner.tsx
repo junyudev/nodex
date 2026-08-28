@@ -36,6 +36,7 @@ import type {
 } from "../thread-stage-types";
 import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
 import { buildThreadUserMessageNavigationItems } from "../projection/thread-user-message-navigation-items";
+import { resolveConversationTurnTimestampSeparators } from "../projection/conversation-turn-timestamps";
 import type { ProjectlessOutputScope } from "../projection/projectless-output-scope";
 import {
   LocalConversationVirtualizedTurnList,
@@ -466,10 +467,19 @@ export function LocalConversationThreadBodyOwner({
       }),
     [conversation, parentTurns],
   );
-  const virtualizedEntries = useMemo<LocalConversationVirtualizedTurnListEntry[]>(
-    () => turnEntries,
-    [turnEntries],
-  );
+  const virtualizedEntries = useMemo<LocalConversationVirtualizedTurnListEntry[]>(() => {
+    const timestamps = resolveConversationTurnTimestampSeparators(
+      turnEntries.map((entry) => entry.turn),
+      {
+        startsAfterHistoryBoundary:
+          turnPagination?.hasLoadedOldest === false || parentTurns.length > 0,
+      },
+    );
+    return turnEntries.map((entry, index) => ({
+      ...entry,
+      timestampSeparatorAtMs: timestamps[index] ?? null,
+    }));
+  }, [parentTurns.length, turnEntries, turnPagination?.hasLoadedOldest]);
   const userMessageNavigationItems = useMemo(
     () =>
       buildThreadUserMessageNavigationItems(turnEntries, {

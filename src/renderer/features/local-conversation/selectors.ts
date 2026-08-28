@@ -32,6 +32,8 @@ export interface VisibleConversationTurnEntry {
   turnId: string | null;
   turnKey: string;
   turnSearchKey: string;
+  /** Centered timestamp shown before this turn when transcript adjacency warrants it. */
+  timestampSeparatorAtMs?: number | null;
   requests: CodexTurnScopedConversationRequest[];
   isMostRecentTurn: boolean;
   /**
