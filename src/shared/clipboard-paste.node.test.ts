@@ -2,12 +2,13 @@ import { describe, expect, test } from "vite-plus/test";
 
 import {
   attachNodexClipboardEnvelope,
+  attachNodexClipboardWriteClaim,
   attachNodexStructuralClipboardWriteClaim,
   encodeNodexClipboardEnvelope,
   hasNodexStructuralClipboardFallback,
   hasUntrustedTypedOwnerHtml,
   inspectNodexClipboardHtml,
-  readNodexStructuralClipboardWriteClaim,
+  readNodexClipboardWriteClaim,
   sanitizeUntrustedTypedOwnerHtml,
   type NodexClipboardEnvelopeV1,
 } from "./clipboard-paste";
@@ -44,7 +45,7 @@ describe("Nodex structural clipboard sidecar", () => {
 
     expect(inspected.envelope).toEqual(envelope);
     expect(inspected.writeClaim).toBe(writeClaim);
-    expect(readNodexStructuralClipboardWriteClaim(html)).toBe(writeClaim);
+    expect(readNodexClipboardWriteClaim(html)).toBe(writeClaim);
   });
 
   test("removes typed-owner semantics from portable HTML", () => {
@@ -72,14 +73,23 @@ describe("Nodex structural clipboard sidecar", () => {
     const inspected = inspectNodexClipboardHtml(html);
 
     expect(inspected.writeClaim).toBe(writeClaim);
-    expect(readNodexStructuralClipboardWriteClaim(html)).toBe(writeClaim);
+    expect(readNodexClipboardWriteClaim(html)).toBe(writeClaim);
     expect(inspected.envelope).toBeNull();
     expect(hasUntrustedTypedOwnerHtml(inspected.fallbackHtml)).toBe(false);
 
     const replacement = "0199134e-cbb0-7000-8000-000000000007";
     const replaced = attachNodexStructuralClipboardWriteClaim(html, replacement);
-    expect(replaced.match(/data-nodex-structural-write-claim=/gu)).toHaveLength(1);
-    expect(readNodexStructuralClipboardWriteClaim(replaced)).toBe(replacement);
+    expect(replaced.match(/data-nodex-clipboard-write-claim=/gu)).toHaveLength(1);
+    expect(readNodexClipboardWriteClaim(replaced)).toBe(replacement);
+  });
+
+  test("claims ordinary presentation without marking it as structural fallback", () => {
+    const html = attachNodexClipboardWriteClaim("<p>Portable</p>", writeClaim);
+    const inspected = inspectNodexClipboardHtml(html);
+
+    expect(inspected.writeClaim).toBe(writeClaim);
+    expect(inspected.hasStructuralFallback).toBe(false);
+    expect(inspected.fallbackHtml).toContain("<p>Portable</p>");
   });
 
   test("replaces an existing marker instead of emitting ambiguous capabilities", () => {

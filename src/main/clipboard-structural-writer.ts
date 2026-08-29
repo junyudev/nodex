@@ -3,17 +3,18 @@ import { createRequire } from "node:module";
 import {
   attachNodexClipboardEnvelope,
   decodeNodexClipboardEnvelope,
-  readNodexStructuralClipboardWriteClaim,
+  readNodexClipboardWriteClaim,
   type StructuralClipboardWriteInput,
   type StructuralClipboardWriteResult,
 } from "../shared/clipboard-paste";
+import {
+  writeClaimedClipboardPresentation,
+  type ClaimedClipboardPresentationTarget,
+} from "./clipboard-claimed-presentation-writer";
+
+export type StructuralClipboardTarget = ClaimedClipboardPresentationTarget;
 
 const require = createRequire(import.meta.url);
-
-export interface StructuralClipboardTarget {
-  write(data: { readonly html?: string; readonly text?: string }): void;
-  readHTML(): string;
-}
 
 function resolveClipboardTarget(
   target: StructuralClipboardTarget | undefined,
@@ -35,25 +36,18 @@ export function writeStructuralClipboard(
   }
 
   const clipboard = resolveClipboardTarget(target);
-  try {
-    if (readNodexStructuralClipboardWriteClaim(clipboard.readHTML()) !== input.writeClaim) {
-      return { ok: false, failure: "superseded" };
-    }
-  } catch {
-    return { ok: false, failure: "write_failed" };
-  }
-  try {
-    clipboard.write({ html, text: input.text });
-  } catch {
-    return { ok: false, failure: "write_failed" };
-  }
+  const clipboardWrite = writeClaimedClipboardPresentation(
+    { writeClaim: input.writeClaim, html, text: input.text },
+    clipboard,
+  );
+  if (!clipboardWrite.ok) return clipboardWrite;
 
   let readback: ReturnType<typeof decodeNodexClipboardEnvelope>;
   let readbackWriteClaim: string | null;
   try {
     const readbackHtml = clipboard.readHTML();
     readback = decodeNodexClipboardEnvelope(readbackHtml);
-    readbackWriteClaim = readNodexStructuralClipboardWriteClaim(readbackHtml);
+    readbackWriteClaim = readNodexClipboardWriteClaim(readbackHtml);
   } catch {
     return { ok: false, failure: "readback_mismatch" };
   }

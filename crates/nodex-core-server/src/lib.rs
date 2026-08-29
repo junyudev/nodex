@@ -351,6 +351,20 @@ mod commit_wake_tests {
     }
 }
 
+#[cfg(test)]
+mod managed_blob_tests {
+    use super::managed_blob_file_name;
+
+    #[test]
+    fn physical_name_is_the_content_hash_with_a_blob_extension() {
+        let content_hash = "a".repeat(64);
+        assert_eq!(
+            managed_blob_file_name(&content_hash),
+            format!("{content_hash}.blob")
+        );
+    }
+}
+
 fn descriptor_snapshot(state: &ServerState) -> RuntimeDescriptor {
     state
         .descriptor
@@ -1035,6 +1049,10 @@ struct PublishedPageFileBlob {
     byte_length: u64,
 }
 
+fn managed_blob_file_name(content_hash: &str) -> String {
+    format!("{content_hash}.blob")
+}
+
 async fn publish_page_file_blob(
     assets_root: PathBuf,
     mut body: Body,
@@ -1049,7 +1067,7 @@ async fn publish_page_file_blob(
         .and_then(|()| std::fs::set_permissions(&staging_root, fs::Permissions::from_mode(0o700)))
         .map_err(blob_io_error)?;
     let temporary_name = format!(
-        ".page-file-{}.{}.tmp",
+        ".blob-{}.{}.tmp",
         std::process::id(),
         random_hex(16).map_err(blob_io_error)?
     );
@@ -1091,7 +1109,7 @@ async fn publish_page_file_blob(
             .await
             .map_err(blob_io_error)?;
         let content_hash = hex::encode(hasher.finalize());
-        let physical_asset_name = format!("page-file-{content_hash}.blob");
+        let physical_asset_name = managed_blob_file_name(&content_hash);
         let target_path = assets_root.join(&physical_asset_name);
         match tokio::fs::hard_link(&temporary_path, &target_path).await {
             Ok(()) => {}

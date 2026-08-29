@@ -90,6 +90,7 @@ export interface NfmStructuralEditingRuntime {
   };
   readonly participant: BlockDocumentStructuralMutationParticipant;
   readonly getContainer: () => HTMLElement | null;
+  readonly resolveClipboardText?: (portableText: string) => Promise<string>;
   readonly onError?: (message: string) => void;
   readonly onFileOwnershipMoves?: (moves: readonly LibraryPageFileOwnershipMove[]) => void;
 }
@@ -508,11 +509,14 @@ export class NfmStructuralEditingSession {
           manifestHash: clipboard.manifestHash,
           actionHint,
         };
+        const text = this.boundRuntime.resolveClipboardText
+          ? await this.boundRuntime.resolveClipboardText(presentation.text)
+          : presentation.text;
         const written = await this.writeClipboard({
           envelope,
           writeClaim,
           html: presentation.html,
-          text: presentation.text,
+          text,
         });
         if (!written.ok) {
           if (written.failure === "superseded") return;

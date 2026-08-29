@@ -91,7 +91,10 @@ compose through the existing Page ownership forest instead of flattening into
 their parent. Core is the only publication,
 authorization, metadata-mutation, copy/transfer, backup, restore, and
 garbage-collection authority. Electron and CLI may stream or save explicit
-user-selected bytes but never receive the physical blob locator. See
+user-selected bytes. Electron may resolve one authorized current File version
+to its physical blob locator only for the opt-in local-path clipboard
+presentation; the locator is never stored as File identity or returned through
+the general renderer/Agent File interfaces. See
 [Page Files Behavior](product-specs/page-files-behavior.md),
 [ADR 0051](adr/0051-page-owned-files-and-immutable-bytes.md), and
 [ADR 0052](adr/0052-file-placement-is-independent-of-ownership.md).

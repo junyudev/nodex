@@ -3,8 +3,7 @@ export const CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL = "clipboard:inspect-paste-syn
 export const NODEX_CLIPBOARD_ENVELOPE_META_NAME = "nodex-clipboard-envelope-v1" as const;
 export const NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE =
   "data-nodex-structural-fallback" as const;
-export const NODEX_STRUCTURAL_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE =
-  "data-nodex-structural-write-claim" as const;
+export const NODEX_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE = "data-nodex-clipboard-write-claim" as const;
 export const NODEX_CLIPBOARD_ENVELOPE_MAX_BYTES = 4 * 1024;
 const NODEX_CLIPBOARD_ENVELOPE_SCAN_BYTES = NODEX_CLIPBOARD_ENVELOPE_MAX_BYTES * 2;
 const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
@@ -27,12 +26,20 @@ export interface StructuralClipboardWriteInput {
   readonly text: string;
 }
 
-export type StructuralClipboardWriteResult =
+export interface ClaimedClipboardPresentationWriteInput {
+  readonly writeClaim: string;
+  readonly html: string;
+  readonly text: string;
+}
+
+export type ClaimedClipboardPresentationWriteResult =
   | { readonly ok: true }
   | {
       readonly ok: false;
       readonly failure: "superseded" | "write_failed" | "readback_mismatch";
     };
+
+export type StructuralClipboardWriteResult = ClaimedClipboardPresentationWriteResult;
 
 const ENVELOPE_STRING_KEYS = [
   "profileId",
@@ -91,11 +98,11 @@ function stripNodexClipboardMetaTags(html: string): string {
 
 const TYPED_OWNER_HTML_ATTRIBUTE_PATTERN =
   /\sdata-content-type\s*=\s*(?:"(page|database|canvas)"|'(page|database|canvas)'|(page|database|canvas)(?=\s|\/?>))/giu;
-const STRUCTURAL_WRITE_CLAIM_HTML_ATTRIBUTE_PATTERN =
-  /\sdata-nodex-structural-write-claim\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/giu;
+const CLIPBOARD_WRITE_CLAIM_HTML_ATTRIBUTE_PATTERN =
+  /\sdata-nodex-clipboard-write-claim\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/giu;
 
-function stripNodexStructuralClipboardWriteClaims(html: string): string {
-  return html.replace(STRUCTURAL_WRITE_CLAIM_HTML_ATTRIBUTE_PATTERN, "");
+function stripNodexClipboardWriteClaims(html: string): string {
+  return html.replace(CLIPBOARD_WRITE_CLAIM_HTML_ATTRIBUTE_PATTERN, "");
 }
 
 /** Generic HTML is presentation only and must never materialize owner authority. */
@@ -140,10 +147,10 @@ export function attachNodexClipboardEnvelope(
   }
   const sidecar = encodeNodexClipboardEnvelope(envelope);
   const fallback = sanitizeUntrustedTypedOwnerHtml(
-    stripNodexStructuralClipboardWriteClaims(stripNodexClipboardMetaTags(html)),
+    stripNodexClipboardWriteClaims(stripNodexClipboardMetaTags(html)),
   );
   const claimAttribute = writeClaim
-    ? ` ${NODEX_STRUCTURAL_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}="${writeClaim}"`
+    ? ` ${NODEX_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}="${writeClaim}"`
     : "";
   return `<!doctype html><html><head>${sidecar}</head><body><div ${NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE}="1"${claimAttribute}>${fallback}</div></body></html>`;
 }
@@ -154,14 +161,23 @@ export function attachNodexStructuralClipboardWriteClaim(html: string, writeClai
     throw new Error("Invalid structural clipboard write claim.");
   }
   const fallback = sanitizeUntrustedTypedOwnerHtml(
-    stripNodexStructuralClipboardWriteClaims(stripNodexClipboardMetaTags(html)),
+    stripNodexClipboardWriteClaims(stripNodexClipboardMetaTags(html)),
   );
-  return `<!doctype html><html><head></head><body><div ${NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE}="1" ${NODEX_STRUCTURAL_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}="${writeClaim}">${fallback}</div></body></html>`;
+  return `<!doctype html><html><head></head><body><div ${NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE}="1" ${NODEX_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}="${writeClaim}">${fallback}</div></body></html>`;
 }
 
-export function readNodexStructuralClipboardWriteClaim(html: string): string | null {
+/** Claims ordinary rich clipboard presentation without changing its authority semantics. */
+export function attachNodexClipboardWriteClaim(html: string, writeClaim: string): string {
+  if (!UUID_V7_PATTERN.test(writeClaim)) {
+    throw new Error("Invalid clipboard write claim.");
+  }
+  const fallback = stripNodexClipboardWriteClaims(stripNodexClipboardMetaTags(html));
+  return `<!doctype html><html><head></head><body><div ${NODEX_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}="${writeClaim}">${fallback}</div></body></html>`;
+}
+
+export function readNodexClipboardWriteClaim(html: string): string | null {
   const match = new RegExp(
-    `\\b${NODEX_STRUCTURAL_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}\\s*=\\s*(?:"([^"]+)"|'([^']+)'|([^\\s>]+))`,
+    `\\b${NODEX_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}\\s*=\\s*(?:"([^"]+)"|'([^']+)'|([^\\s>]+))`,
     "iu",
   ).exec(html);
   const value = match?.[1] ?? match?.[2] ?? match?.[3];
@@ -202,6 +218,6 @@ export function inspectNodexClipboardHtml(html: string): NodexClipboardHtmlInspe
     envelope: decodeNodexClipboardEnvelope(html),
     fallbackHtml: stripNodexClipboardMetaTags(html),
     hasStructuralFallback: hasNodexStructuralClipboardFallback(html),
-    writeClaim: readNodexStructuralClipboardWriteClaim(html),
+    writeClaim: readNodexClipboardWriteClaim(html),
   };
 }

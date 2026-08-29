@@ -32,6 +32,7 @@ import type { CodexDesktopMessageFromView } from "../shared/remote-hosted-pip";
 import {
   FILE_PATH_INSPECT_SYNC_CHANNEL,
   MANAGED_ASSET_RESOLVE_PATH_SYNC_CHANNEL,
+  MANAGED_BLOB_RESOLVE_PATH_SYNC_CHANNEL,
 } from "../shared/preload-file-access";
 import {
   GIT_WORKER_MESSAGE_FOR_VIEW_CHANNEL,
@@ -93,6 +94,10 @@ window.addEventListener("message", (event) => {
 
 function resolveManagedAssetPath(source: string): string | null {
   return ipcRenderer.sendSync(MANAGED_ASSET_RESOLVE_PATH_SYNC_CHANNEL, source) as string | null;
+}
+
+function resolveManagedBlobPath(contentHash: string): string | null {
+  return ipcRenderer.sendSync(MANAGED_BLOB_RESOLVE_PATH_SYNC_CHANNEL, contentHash) as string | null;
 }
 
 // Multiple editor resource Blocks may each subscribe to
@@ -206,6 +211,7 @@ contextBridge.exposeInMainWorld("api", {
     };
   },
   resolveManagedAssetPath,
+  resolveManagedBlobPath,
   inspectPasteClipboard: () =>
     ipcRenderer.sendSync(CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL) as ClipboardPasteInspectionResult,
   readPasteClipboard: () =>

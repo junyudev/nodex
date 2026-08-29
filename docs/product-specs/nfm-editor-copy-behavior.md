@@ -98,13 +98,28 @@ For a non-empty selection, the helper starts from `editor.getSelectionCutBlocks(
 
 If the cut-aware range path is unavailable or throws, the helper falls back to BlockNote's `selectedFragmentToHTML(...)` output and keeps the existing HTML-parse fallback for `text/plain`. A collapsed-caret Block target never degrades into an empty text-range payload.
 
-### Plain-text asset rewriting
+### Plain-text File references
 
-Before writing to the clipboard, standard copy/cut rewrites `nodex://assets/...` URIs only inside `text/plain`.
+Standard copy/cut keeps `nodex://assets/...` and `nodex://files/...` locators
+portable by default. The `Copy file references as local paths` setting is off
+by default. When enabled, Nodex resolves both locator families to their current
+absolute local files only inside `text/plain`. A Page File resolves to the
+immutable `.blob` backing its current version; the logical File name and rich
+HTML presentation remain unchanged.
 
-`blocknote/html` and `text/html` are left unchanged so BlockNote's internal clipboard round-trip payload stays lossless and Chromium custom clipboard data is not mutated.
+Legacy managed assets resolve synchronously. Page File identity resolves through
+the Page's authorized current metadata and a hash-only preload capability. For
+ordinary selections, Nodex synchronously writes a portable rich fallback with a
+bounded native clipboard claim, resolves the local paths, and asks Main to
+replace that claimed HTML/plain presentation. Main writes only when the claim
+still owns the system clipboard, so a newer copy from Nodex or another app is
+never overwritten. The portable payload remains usable while resolution is in
+flight or if it fails. Structural copy uses the same claim/CAS writer after Core
+prepares its authoritative clipboard capability.
 
-In Electron, the plain-text rewrite is synchronous and uses the preload-exposed asset path prefix so it can run safely inside the browser `copy` / `cut` event.
+Local-path rewriting is all-or-nothing for one copied payload. If any Nodex File
+reference cannot be resolved, every reference remains portable instead of
+producing mixed local and portable locators.
 
 After replacement, `text/plain` additionally converts `<image ...>caption</image>` lines into Markdown image syntax:
 
@@ -119,7 +134,9 @@ If an image tag line does not match the expected pattern or has no usable source
 
 ### Image examples
 
-These examples are specifically about the exported `text/plain` payload. `blocknote/html` and `text/html` stay unchanged and continue to carry the original serialized BlockNote image markup.
+These examples assume `Copy file references as local paths` is enabled and are
+specifically about the exported `text/plain` payload. `text/html` stays
+unchanged and continues to carry the original serialized image presentation.
 
 ```text
 # selection:
@@ -464,8 +481,9 @@ On success, the editor is focused again.
 - treats a collapsed host-editor caret as its complete current Block subtree without changing selection presentation
 - can write `blocknote/html`, `text/html`, `text/plain`
 - uses structure-preserving `text/plain`
-- preserves `blocknote/html` and `text/html` exactly as serialized
-- rewrites `nodex://assets/...` paths only in `text/plain` when the sync asset-path prefix is available
+- preserves `blocknote/html` and `text/html` exactly as serialized for portable standard copy
+- preserves the serialized `text/html` presentation when opt-in local-path resolution completes
+- keeps Nodex File locators portable by default and optionally resolves both Page Files and legacy managed assets only in `text/plain`
 - rewrites image lines in `text/plain` to Markdown image syntax after plain-text asset resolution
 - cut deletes the resolved range or current Block only after successful copy handling
 

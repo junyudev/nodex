@@ -5,11 +5,11 @@ import {
   createCopiedBlockPayload,
   createCopiedSelectionPayloadFromSelection,
   createStructuredPlainTextPayload,
+  preparePortableCopiedSelectionPayload,
   resolveNormalizedSelectionBlocks,
   resolveStructuredPlainTextForSelection,
-  rewriteAssetSources,
-  rewriteCopiedSelectionAssetSources,
-  rewriteCopiedSelectionAssetSourcesSync,
+  rewriteCopiedSelectionFileReferences,
+  rewriteFileReferences,
   writeCopiedSelectionToClipboard,
   type CopiedSelectionPayload,
   type SelectionEditorLike,
@@ -1094,18 +1094,18 @@ describe("special block copy", () => {
     expect(payload.externalHTML).toBe("<external>inside toggle\nafter</external>");
   });
 
-  test("rewriteAssetSources replaces all nodex asset URLs", async () => {
+  test("rewriteFileReferences replaces all Nodex File references", async () => {
     const source = "nodex://assets/a.png";
     const resolved = "/workspace/.nodex/assets/a.png";
     const input = `before ${source} middle ${source} after`;
-    const output = await rewriteAssetSources(input, async () => resolved);
+    const output = await rewriteFileReferences(input, async () => resolved);
 
     expect(output).toBe(`before ${resolved} middle ${resolved} after`);
   });
 
-  test("rewriteCopiedSelectionAssetSources only resolves unique URLs once", async () => {
+  test("rewriteCopiedSelectionFileReferences resolves unique asset and Page File URLs once", async () => {
     const a = "nodex://assets/a.png";
-    const b = "nodex://assets/b.png";
+    const b = "nodex://files/0199134e-cbb0-7000-8000-000000000006";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${a}" /><img src="${b}" />`,
       externalHTML: `<img src="${a}" />`,
@@ -1113,9 +1113,9 @@ describe("special block copy", () => {
     };
 
     const calls: string[] = [];
-    const rewritten = await rewriteCopiedSelectionAssetSources(payload, async (source) => {
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async (source) => {
       calls.push(source);
-      return `/workspace/.nodex/assets/${source.endsWith("a.png") ? "a.png" : "b.png"}`;
+      return `/workspace/.nodex/assets/${source.endsWith("a.png") ? "a.png" : "blob.blob"}`;
     });
 
     expect(calls.length).toBe(2);
@@ -1123,10 +1123,10 @@ describe("special block copy", () => {
     expect(calls.includes(b)).toBe(true);
     expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
     expect(rewritten.externalHTML).toBe(payload.externalHTML);
-    expect(rewritten.structuredText.includes("nodex://assets/")).toBe(false);
+    expect(rewritten.structuredText.includes("nodex://")).toBe(false);
   });
 
-  test("rewriteCopiedSelectionAssetSourcesSync preserves rich clipboard payloads and rewrites plain text only", () => {
+  test("preparePortableCopiedSelectionPayload preserves rich payloads and portable references", () => {
     const source = "nodex://assets/diagram.png";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
@@ -1134,16 +1134,30 @@ describe("special block copy", () => {
       structuredText: `<image source="${source}">diagram</image>`,
     };
 
-    const rewritten = rewriteCopiedSelectionAssetSourcesSync(payload, () => {
-      return "/workspace/.nodex/assets/diagram.png";
-    });
+    const rewritten = preparePortableCopiedSelectionPayload(payload);
 
     expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
     expect(rewritten.externalHTML).toBe(payload.externalHTML);
-    expect(rewritten.structuredText).toBe("![diagram](/workspace/.nodex/assets/diagram.png)");
+    expect(rewritten.structuredText).toBe("![diagram](nodex://assets/diagram.png)");
   });
 
-  test("rewriteCopiedSelectionAssetSources converts NFM image lines to markdown image syntax", async () => {
+  test("keeps every reference portable when one local path cannot be resolved", async () => {
+    const asset = "nodex://assets/diagram.png";
+    const file = "nodex://files/0199134e-cbb0-7000-8000-000000000006";
+    const payload: CopiedSelectionPayload = {
+      clipboardHTML: "<p>internal</p>",
+      externalHTML: "<p>external</p>",
+      structuredText: `${asset}\n${file}`,
+    };
+
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async (source) =>
+      source === asset ? "/profile/assets/diagram.png" : null,
+    );
+
+    expect(rewritten.structuredText).toBe(payload.structuredText);
+  });
+
+  test("rewriteCopiedSelectionFileReferences converts NFM image lines to markdown image syntax", async () => {
     const source = "nodex://assets/image.png";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
@@ -1151,7 +1165,7 @@ describe("special block copy", () => {
       structuredText: `<image source="${source}">diagram</image>`,
     };
 
-    const rewritten = await rewriteCopiedSelectionAssetSources(payload, async () => {
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
       return "/workspace/.nodex/assets/image.png";
     });
 
@@ -1160,7 +1174,7 @@ describe("special block copy", () => {
     expect(rewritten.structuredText).toBe("![diagram](/workspace/.nodex/assets/image.png)");
   });
 
-  test("rewriteCopiedSelectionAssetSources preserves indentation and escapes markdown image destinations", async () => {
+  test("rewriteCopiedSelectionFileReferences preserves indentation and escapes markdown image destinations", async () => {
     const source = "nodex://assets/plan.png";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
@@ -1168,14 +1182,14 @@ describe("special block copy", () => {
       structuredText: `\t<image source="${source}"></image>`,
     };
 
-    const rewritten = await rewriteCopiedSelectionAssetSources(payload, async () => {
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
       return "/workspace/my files/plan (v2).png";
     });
 
     expect(rewritten.structuredText).toBe("\t![image](</workspace/my files/plan (v2).png>)");
   });
 
-  test("rewriteCopiedSelectionAssetSources supports space-indented NFM image lines", async () => {
+  test("rewriteCopiedSelectionFileReferences supports space-indented NFM image lines", async () => {
     const source = "nodex://assets/diagram.png";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
@@ -1183,14 +1197,14 @@ describe("special block copy", () => {
       structuredText: `    <image source="${source}">diagram</image>`,
     };
 
-    const rewritten = await rewriteCopiedSelectionAssetSources(payload, async () => {
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
       return "/workspace/.nodex/assets/diagram.png";
     });
 
     expect(rewritten.structuredText).toBe("    ![diagram](/workspace/.nodex/assets/diagram.png)");
   });
 
-  test("rewriteCopiedSelectionAssetSources escapes markdown image alt text without generic NFM escaping", async () => {
+  test("rewriteCopiedSelectionFileReferences escapes markdown image alt text without generic NFM escaping", async () => {
     const source = "nodex://assets/diagram.png";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
@@ -1198,14 +1212,14 @@ describe("special block copy", () => {
       structuredText: `<image source="${source}">a[b]*\`</image>`,
     };
 
-    const rewritten = await rewriteCopiedSelectionAssetSources(payload, async () => {
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
       return "/workspace/.nodex/assets/diagram.png";
     });
 
     expect(rewritten.structuredText).toBe("![a\\[b\\]*`](/workspace/.nodex/assets/diagram.png)");
   });
 
-  test("rewriteCopiedSelectionAssetSources keeps all inline markers in markdown image alt text", async () => {
+  test("rewriteCopiedSelectionFileReferences keeps all inline markers in markdown image alt text", async () => {
     const source = "nodex://assets/diagram.png";
     const payload: CopiedSelectionPayload = {
       clipboardHTML: `<img src="${source}" />`,
@@ -1213,7 +1227,7 @@ describe("special block copy", () => {
       structuredText: `<image source="${source}">**bold** *italic* ~~strike~~ <span underline="true">under</span> <span color="blue">blue</span> \`code\` [link](https://example.com)</image>`,
     };
 
-    const rewritten = await rewriteCopiedSelectionAssetSources(payload, async () => {
+    const rewritten = await rewriteCopiedSelectionFileReferences(payload, async () => {
       return "/workspace/.nodex/assets/diagram.png";
     });
 

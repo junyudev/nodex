@@ -22,6 +22,7 @@ import {
   CodeFontSizeSettingControl,
   ComposerEnterBehaviorControl,
   ConfigValueDropdown,
+  CopyFileReferencesAsLocalPathsSettingControl,
   DiagnosticsSettingControl,
   FileLinkOpenerSettingControl,
   formatApprovalPolicyLabel,
@@ -279,6 +280,12 @@ export function GeneralSettingsPage({
       </SectionBlock>
 
       <SectionBlock id="files-and-links" title="Files & links">
+        <SettingRow
+          label="Copy file references as local paths"
+          description="Use absolute local paths in copied plain text; Page Files resolve to this Profile’s immutable .blob files."
+        >
+          <CopyFileReferencesAsLocalPathsSettingControl />
+        </SettingRow>
         <SettingRow
           label="Markdown file links"
           description="Choose which desktop app handles absolute local file links in rendered markdown."

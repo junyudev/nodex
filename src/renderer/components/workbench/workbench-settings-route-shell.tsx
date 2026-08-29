@@ -38,6 +38,7 @@ import {
   MIN_SANS_FONT_SIZE,
 } from "../../lib/sans-font-size";
 import { useCodeFontSize } from "../../lib/use-code-font-size";
+import { useCopyFileReferenceSettings } from "../../lib/use-copy-file-reference-settings";
 import { useNfmAutolinkSettings } from "../../lib/use-nfm-autolink-settings";
 import {
   DEFAULT_DESCRIPTION_SOFT_LIMIT,
@@ -1086,6 +1087,18 @@ export function FileLinkOpenerSettingControl() {
         </NodexDropdownItem>
       ))}
     </NodexDropdownMenu>
+  );
+}
+
+export function CopyFileReferencesAsLocalPathsSettingControl() {
+  const { copyAsLocalPaths, setCopyAsLocalPaths } = useCopyFileReferenceSettings();
+
+  return (
+    <TogglePill
+      ariaLabel="Copy file references as local paths"
+      value={copyAsLocalPaths}
+      onChange={setCopyAsLocalPaths}
+    />
   );
 }
 

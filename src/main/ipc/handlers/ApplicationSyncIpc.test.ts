@@ -38,6 +38,7 @@ it.effect("owns synchronous preload ingress with the Main Scope", () =>
 
     assert.deepEqual([...channels].sort(), [
       "asset:resolve-path-sync",
+      "blob:resolve-path-sync",
       "clipboard:inspect-paste-sync",
       "file-path:inspect-sync",
     ]);

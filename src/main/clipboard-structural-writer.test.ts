@@ -4,7 +4,7 @@ import {
   attachNodexStructuralClipboardWriteClaim,
   decodeNodexClipboardEnvelope,
   encodeNodexClipboardEnvelope,
-  readNodexStructuralClipboardWriteClaim,
+  readNodexClipboardWriteClaim,
   type NodexClipboardEnvelopeV1,
 } from "../shared/clipboard-paste";
 import { writeStructuralClipboard } from "./clipboard-structural-writer";
@@ -41,6 +41,7 @@ describe("structural clipboard writer", () => {
           writtenText = text ?? "";
         },
         readHTML: () => writtenHtml,
+        readText: () => writtenText,
       },
     );
 
@@ -48,7 +49,7 @@ describe("structural clipboard writer", () => {
     expect(writtenText).toBe("Subpage title");
     expect(writtenHtml).toContain("<p>Subpage title</p>");
     expect(decodeNodexClipboardEnvelope(writtenHtml)).toEqual(envelope);
-    expect(readNodexStructuralClipboardWriteClaim(writtenHtml)).toBe(writeClaim);
+    expect(readNodexClipboardWriteClaim(writtenHtml)).toBe(writeClaim);
   });
 
   test("rejects a final readback that retained the capability but lost its write claim", () => {
@@ -62,9 +63,10 @@ describe("structural clipboard writer", () => {
       },
       {
         write: ({ html: nextHtml }) => {
-          html = nextHtml?.replace(/\sdata-nodex-structural-write-claim="[^"]+"/u, "") ?? "";
+          html = nextHtml?.replace(/\sdata-nodex-clipboard-write-claim="[^"]+"/u, "") ?? "";
         },
         readHTML: () => html,
+        readText: () => "Subpage title",
       },
     );
 
@@ -85,6 +87,7 @@ describe("structural clipboard writer", () => {
           html = encodeNodexClipboardEnvelope({ ...envelope, capability: "c".repeat(64) });
         },
         readHTML: () => html,
+        readText: () => "Subpage title",
       },
     );
 
@@ -105,6 +108,7 @@ describe("structural clipboard writer", () => {
           writeCount += 1;
         },
         readHTML: () => "<p>Newer copy</p>",
+        readText: () => "Newer copy",
       },
     );
 
@@ -128,6 +132,7 @@ describe("structural clipboard writer", () => {
           if (readCount === 1) return pendingHtml();
           throw new Error("clipboard unavailable");
         },
+        readText: () => "Subpage title",
       },
     );
 
@@ -147,6 +152,7 @@ describe("structural clipboard writer", () => {
           throw new Error("clipboard unavailable");
         },
         readHTML: () => pendingHtml(),
+        readText: () => "Subpage title",
       },
     );
 
@@ -160,6 +166,7 @@ describe("structural clipboard writer", () => {
         writeCount += 1;
       },
       readHTML: () => "",
+      readText: () => "",
     };
 
     expect(

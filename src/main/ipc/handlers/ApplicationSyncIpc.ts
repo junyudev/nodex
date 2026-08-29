@@ -8,11 +8,13 @@ import { CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL } from "../../../shared/clipboard-
 import {
   FILE_PATH_INSPECT_SYNC_CHANNEL,
   MANAGED_ASSET_RESOLVE_PATH_SYNC_CHANNEL,
+  MANAGED_BLOB_RESOLVE_PATH_SYNC_CHANNEL,
   PRELOAD_FILE_PATH_MAX_LENGTH,
 } from "../../../shared/preload-file-access";
 import { MainConfig } from "../../app/MainConfig";
 import { inspectClipboardPasteItems } from "../../clipboard-paste-inspector";
 import { resolveAssetPath } from "../../local-store/assets";
+import { resolveManagedBlobPath } from "../../local-store/managed-blob-path";
 import { captureMainException } from "../../observability/sentry-main";
 import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -52,6 +54,17 @@ export const live: Layer.Layer<never, never, ElectronSyncIpc | MainConfig | Wind
           }
           const parsed = parseAssetSource(source);
           event.returnValue = parsed ? resolveAssetPath(parsed.fileName) : null;
+        } catch {
+          event.returnValue = null;
+        }
+      });
+      yield* ipc.on(MANAGED_BLOB_RESOLVE_PATH_SYNC_CHANNEL, (event, contentHash: unknown) => {
+        try {
+          authorize(event, "Managed Blob path access");
+          event.returnValue =
+            typeof contentHash === "string"
+              ? resolveManagedBlobPath(config.nodexHome, contentHash)
+              : null;
         } catch {
           event.returnValue = null;
         }

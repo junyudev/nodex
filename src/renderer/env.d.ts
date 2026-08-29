@@ -68,6 +68,7 @@ declare global {
         callback: (invocation: WorkbenchCommandInvocation) => void,
       ) => () => void;
       resolveManagedAssetPath?: (source: string) => string | null;
+      resolveManagedBlobPath?: (contentHash: string) => string | null;
       inspectPasteClipboard?: () => ClipboardPasteInspectionResult;
       readPasteClipboard?: () => Promise<ClipboardPastePayload>;
       writeStructuralClipboard?: (

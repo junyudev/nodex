@@ -22,6 +22,10 @@ are intrinsic Page content, not a Data Source Property. A File has:
 Renaming, replacing content, or moving ownership preserves File identity.
 Deleting a body placement does not delete the File. Copying a Page creates
 fresh File identities for the copy while reusing identical immutable bytes.
+New immutable bytes are published at
+`<profile-home>/assets/<sha256>.blob`. This physical content-addressed path is
+neither File identity nor logical path and does not change when another File
+version reuses the same bytes.
 
 Logical folder rows are derived from slash-separated path prefixes. They have no
 identity, metadata, permissions, empty state, or lifecycle. A child Page owns
@@ -227,8 +231,11 @@ when listing and remain selectable by identity or exact path for versions and
 restore. The owner manifest remains complete for Agents and reports owner-body
 placement counts; row-level de-duplication is solely renderer presentation.
 Reading Page content may resolve current bytes for that Page's canonical foreign
-placements, but does not reveal the foreign owner manifest or history. Neither
-renderer nor Agent receives a Profile path or a read-by-hash capability.
+placements, but does not reveal the foreign owner manifest or history. Agents
+receive neither a Profile path nor a read-by-hash capability. The trusted app
+renderer receives a current physical path only for the explicit user action of
+copying plain text while `Copy file references as local paths` is enabled; the
+setting is off by default and never changes stored NFM or Agent output.
 
 ## Reliability and authorization
 

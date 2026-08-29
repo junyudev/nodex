@@ -8,7 +8,7 @@ import { getNfmBlockSelectionIds } from "./nfm-block-selection";
 import {
   createCopiedBlockPayload,
   createCopiedSelectionPayloadFromSelection,
-  rewriteCopiedSelectionAssetSourcesSync,
+  preparePortableCopiedSelectionPayload,
   type CopiedSelectionPayload,
   type SelectionBlockLike,
   type SelectionEditorLike,
@@ -96,7 +96,7 @@ function createSelectedRangePayload(
   editor: BlockNoteEditor,
 ): CopiedSelectionPayload | null {
   try {
-    return rewriteCopiedSelectionAssetSourcesSync(
+    return preparePortableCopiedSelectionPayload(
       createCopiedSelectionPayloadFromSelection(
         editor as unknown as SelectionEditorLike,
         selectedFragmentToHTML(view, editor),
@@ -113,7 +113,7 @@ function createCurrentBlockPayload(
   block: SelectionBlockLike,
 ): CopiedSelectionPayload | null {
   try {
-    return rewriteCopiedSelectionAssetSourcesSync(
+    return preparePortableCopiedSelectionPayload(
       createCopiedBlockPayload(editor as unknown as SelectionEditorLike, [block]),
     );
   } catch (error) {

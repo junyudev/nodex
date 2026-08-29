@@ -527,6 +527,8 @@ import type {
 } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import type {
+  ClaimedClipboardPresentationWriteInput,
+  ClaimedClipboardPresentationWriteResult,
   StructuralClipboardWriteInput,
   StructuralClipboardWriteResult,
 } from "./clipboard-paste";
@@ -1226,6 +1228,10 @@ export interface IpcApi {
   "clipboard:write-structural": {
     args: [input: StructuralClipboardWriteInput];
     result: StructuralClipboardWriteResult;
+  };
+  "clipboard:write-claimed-presentation": {
+    args: [input: ClaimedClipboardPresentationWriteInput];
+    result: ClaimedClipboardPresentationWriteResult;
   };
   "clipboard:read-paste": {
     args: [];

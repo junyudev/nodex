@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test, type Locator } from "@playwright/test";
@@ -107,6 +108,71 @@ test("pastes an image and refreshes Files only for body placement changes", asyn
       await expect(
         dialog.getByRole("button", { name: /^Preview /u }).locator('[data-file-tab-icon="image"]'),
       ).toBeVisible();
+    },
+  );
+});
+
+test("copies portable File references by default and local blob paths when enabled", async () => {
+  test.setTimeout(180_000);
+  await withElectronScenario(
+    {
+      label: "page-files-copy-local-path",
+      scenarioId: BOARD_DENSE_SCENARIO_ID,
+    },
+    async ({ application, page, manifest, profile }) => {
+      if (!manifest) throw new Error("board/dense did not materialize");
+      await application.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1440, height: 960 });
+      });
+      await focusBoardDenseUi(page, manifest);
+
+      const stage = page.locator('[data-page-stage-surface="true"]:visible');
+      const editor = stage.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
+      await editor.click();
+      await application.evaluate(({ clipboard, nativeImage }, dataUrl) => {
+        clipboard.writeImage(nativeImage.createFromDataURL(dataUrl));
+      }, PNG_DATA_URL);
+      await page.keyboard.press(primaryShortcut("v"));
+
+      const imageBlock = stage
+        .locator('[data-content-type="image"][data-url^="nodex://files/"]')
+        .last();
+      await expect(imageBlock.locator("img")).toBeVisible({ timeout: 15_000 });
+      await imageBlock.click();
+      await page.keyboard.press(primaryShortcut("c"));
+      await expect
+        .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
+        .toMatch(/nodex:\/\/files\//u);
+
+      await page.getByRole("button", { name: "Settings" }).click();
+      const localPathSwitch = page.getByRole("switch", {
+        name: "Copy file references as local paths",
+      });
+      await expect(localPathSwitch).toHaveAttribute("aria-checked", "false");
+      await localPathSwitch.click();
+      await expect(localPathSwitch).toHaveAttribute("aria-checked", "true");
+      await page.getByRole("button", { name: "Back to app" }).click();
+
+      await imageBlock.click();
+      await page.keyboard.press(primaryShortcut("c"));
+      await expect
+        .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
+        .toMatch(/\/assets\/[0-9a-f]{64}\.blob/u);
+      const resolvedText = await application.evaluate(({ clipboard }) => clipboard.readText());
+      const blobPath = resolvedText.match(/(\/[^\n()<>]*\/assets\/[0-9a-f]{64}\.blob)/u)?.[1];
+      if (!blobPath) throw new Error(`Copied text has no local Blob path: ${resolvedText}`);
+      expect(path.dirname(blobPath)).toBe(path.join(profile.nodexHome, "assets"));
+      expect((await stat(blobPath)).isFile()).toBe(true);
+      const bytes = await readFile(blobPath);
+      expect(path.basename(blobPath)).toBe(
+        `${createHash("sha256").update(bytes).digest("hex")}.blob`,
+      );
+
+      const imageBlocks = stage.locator('[data-content-type="image"][data-url^="nodex://files/"]');
+      const imageBlockCount = await imageBlocks.count();
+      await editor.click();
+      await page.keyboard.press(primaryShortcut("v"));
+      await expect(imageBlocks).toHaveCount(imageBlockCount + 1);
     },
   );
 });

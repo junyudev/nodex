@@ -188,6 +188,11 @@ const SETTINGS_SEARCH_PANELS = {
         title: "Files & links",
         entries: [
           entry(
+            "Copy file references as local paths",
+            "Use absolute local paths in copied plain text; Page Files resolve to this Profile’s immutable .blob files.",
+            ["absolute path", "portable file reference", "NFM copy"],
+          ),
+          entry(
             "Markdown file links",
             "Choose which desktop app handles absolute local file links in rendered markdown.",
             [

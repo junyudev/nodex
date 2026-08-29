@@ -31,6 +31,8 @@ from path prefixes and have no identity or lifecycle.
 
 File metadata and bytes are separate. Core stores exact bytes as immutable
 SHA-256-addressed managed blobs and may share one blob among many File versions.
+New blobs use the physical name `<sha256>.blob` under the Profile `assets`
+directory; that path is storage representation rather than File identity.
 Clients upload bytes first through an authenticated bounded stream and receive
 an opaque Project/store/operation-bound prepared receipt. A manifest mutation
 consumes the receipt. Rename changes only the logical path; replace appends a
@@ -51,8 +53,10 @@ composition over the existing Page ownership tree. Project grants, Page
 lifecycle, backup, restore, and copy therefore follow one ownership relation.
 Core owns metadata, blob publication/read, authorization, copy/transfer,
 integrity validation, and garbage collection. Main and CLI adapt explicit
-user-selected streams and destinations but never expose Profile paths or
-read-by-hash capability.
+user-selected streams and destinations. The trusted renderer may resolve an
+authorized current File hash to its regular physical blob only for an explicit
+opt-in plain-text clipboard presentation; general renderer and Agent interfaces
+expose neither Profile paths nor read-by-hash capability.
 
 Nodex-native plans, notes, and design documents remain ordinary child Pages
 with visible Owning Page Shells. Their exact-format resources are Files of that

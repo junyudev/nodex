@@ -190,8 +190,10 @@ describe("NFM structural editing session", () => {
       return receipt(structuralEdit({ operationKind: command.kind, resumeBlockId: "after" }));
     };
     let supersedeNextWrite = false;
+    const writtenTexts: string[] = [];
     const writeClipboard: typeof writeStructuralClipboard = async (input) => {
       events.push(`write:${input.envelope.actionHint}`);
+      writtenTexts.push(input.text);
       if (supersedeNextWrite) {
         supersedeNextWrite = false;
         return { ok: false, failure: "superseded" };
@@ -217,6 +219,7 @@ describe("NFM structural editing session", () => {
           },
         },
         getContainer: () => null,
+        resolveClipboardText: async (portableText) => `local:${portableText}`,
         onFileOwnershipMoves: (moves) => ownershipMoves.push(moves),
       },
       apply,
@@ -243,6 +246,7 @@ describe("NFM structural editing session", () => {
         "fence",
         "replace_selection",
       ]);
+      expect(writtenTexts[0]).toBe("local:Fallback");
       expect(commands.at(-1)).toMatchObject({
         command: {
           kind: "replace_selection",

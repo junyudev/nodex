@@ -3,7 +3,8 @@ import { blockNoteToNfm, serializeClipboardText } from "../../../lib/nfm";
 import { decodeXmlCharacterReferences } from "../../../../shared/xml-character-references";
 import { TextSelection } from "@tiptap/pm/state";
 
-const NODEX_ASSET_SOURCE_PATTERN = /nodex:\/\/assets\/[A-Za-z0-9._%-]+/g;
+const NODEX_FILE_REFERENCE_SOURCE_PATTERN =
+  /nodex:\/\/(?:assets\/[A-Za-z0-9._%-]+|files\/[A-Za-z0-9._~-]+)/g;
 const NFM_IMAGE_LINE_PATTERN = /^([ \t]*)<image(?:\s+([^>]*))?>([\s\S]*?)<\/image>$/;
 const NFM_IMAGE_SOURCE_ATTRIBUTE_PATTERN = /\bsource="([^"]*)"/;
 
@@ -85,27 +86,8 @@ function getClipboardItemCtor(clipboardItemCtor?: ClipboardItemCtor): ClipboardI
   return ClipboardItem;
 }
 
-function resolveAssetSourceToAbsolutePathSync(source: string): string {
-  if (typeof window === "undefined") return source;
-  return window.api?.resolveManagedAssetPath?.(source) ?? source;
-}
-
-async function resolveAssetSourceToAbsolutePath(source: string): Promise<string> {
-  const syncResolved = resolveAssetSourceToAbsolutePathSync(source);
-  if (syncResolved !== source) return syncResolved;
-
-  try {
-    const resolved = await invoke("asset:resolve-path", source);
-    if (typeof resolved !== "string") return source;
-    if (resolved.trim().length === 0) return source;
-    return resolved;
-  } catch {
-    return source;
-  }
-}
-
-function collectAssetSources(value: string): string[] {
-  const matches = value.match(NODEX_ASSET_SOURCE_PATTERN);
+function collectFileReferenceSources(value: string): string[] {
+  const matches = value.match(NODEX_FILE_REFERENCE_SOURCE_PATTERN);
   if (!matches) return [];
   return Array.from(new Set(matches));
 }
@@ -117,6 +99,26 @@ function applySourceReplacements(value: string, replacements: Map<string, string
     next = next.split(source).join(replacement);
   }
   return next;
+}
+
+async function resolveFileReferenceReplacements(
+  sources: readonly string[],
+  resolveSource: (source: string) => Promise<string | null>,
+): Promise<Map<string, string> | null> {
+  let resolved: readonly (readonly [string, string | null])[];
+  try {
+    resolved = await Promise.all(
+      sources.map(async (source) => [source, await resolveSource(source)] as const),
+    );
+  } catch {
+    return null;
+  }
+  const replacements = new Map<string, string>();
+  for (const [source, localPath] of resolved) {
+    if (!localPath?.trim()) return null;
+    replacements.set(source, localPath);
+  }
+  return replacements;
 }
 
 function escapeMarkdownImageAltText(value: string): string {
@@ -167,68 +169,63 @@ function convertNfmImageTagsToMarkdown(value: string): string {
   return value.split("\n").map(convertNfmImageLineToMarkdown).join("\n");
 }
 
-export async function rewriteAssetSources(
+export async function rewriteFileReferences(
   value: string,
-  resolveSource: (source: string) => Promise<string>,
+  resolveSource: (source: string) => Promise<string | null>,
 ): Promise<string> {
-  const sources = collectAssetSources(value);
+  const sources = collectFileReferenceSources(value);
   if (sources.length === 0) return value;
 
-  const replacements = new Map<string, string>();
-  await Promise.all(
-    sources.map(async (source) => {
-      const resolved = await resolveSource(source);
-      replacements.set(source, resolved);
-    }),
-  );
+  const replacements = await resolveFileReferenceReplacements(sources, resolveSource);
+  if (!replacements) return value;
 
   return applySourceReplacements(value, replacements);
 }
 
-export async function rewriteCopiedSelectionAssetSources(
+export function copiedSelectionHasFileReferences(payload: CopiedSelectionPayload): boolean {
+  return collectFileReferenceSources(payload.structuredText).length > 0;
+}
+
+export function preparePortableCopiedSelectionPayload(
   payload: CopiedSelectionPayload,
-  resolveSource: (source: string) => Promise<string> = resolveAssetSourceToAbsolutePath,
-): Promise<CopiedSelectionPayload> {
-  const replacements = new Map<string, string>();
-  const sources = new Set<string>(collectAssetSources(payload.structuredText));
-
-  await Promise.all(
-    Array.from(sources).map(async (source) => {
-      replacements.set(source, await resolveSource(source));
-    }),
-  );
-
-  const structuredText = convertNfmImageTagsToMarkdown(
-    applySourceReplacements(payload.structuredText, replacements),
-  );
-
+): CopiedSelectionPayload {
   return {
     clipboardHTML: payload.clipboardHTML,
     externalHTML: payload.externalHTML,
-    structuredText,
+    structuredText: convertNfmImageTagsToMarkdown(payload.structuredText),
   };
 }
 
-export function rewriteCopiedSelectionAssetSourcesSync(
+export async function rewriteCopiedSelectionFileReferences(
   payload: CopiedSelectionPayload,
-  resolveSource: (source: string) => string = resolveAssetSourceToAbsolutePathSync,
-): CopiedSelectionPayload {
-  const replacements = new Map<string, string>();
-  const sources = new Set<string>(collectAssetSources(payload.structuredText));
-
-  for (const source of sources) {
-    replacements.set(source, resolveSource(source));
-  }
-
-  const structuredText = convertNfmImageTagsToMarkdown(
-    applySourceReplacements(payload.structuredText, replacements),
-  );
+  resolveSource: (source: string) => Promise<string | null>,
+): Promise<CopiedSelectionPayload> {
+  const portable = preparePortableCopiedSelectionPayload(payload);
+  const sources = collectFileReferenceSources(payload.structuredText);
+  const replacements = await resolveFileReferenceReplacements(sources, resolveSource);
+  if (!replacements) return portable;
 
   return {
-    clipboardHTML: payload.clipboardHTML,
-    externalHTML: payload.externalHTML,
-    structuredText,
+    clipboardHTML: portable.clipboardHTML,
+    externalHTML: portable.externalHTML,
+    structuredText: convertNfmImageTagsToMarkdown(
+      applySourceReplacements(payload.structuredText, replacements),
+    ),
   };
+}
+
+export async function resolveManagedAssetReference(source: string): Promise<string | null> {
+  if (typeof window !== "undefined") {
+    const syncResolved = window.api?.resolveManagedAssetPath?.(source)?.trim();
+    if (syncResolved) return syncResolved;
+  }
+
+  try {
+    const resolved = await invoke("asset:resolve-path", source);
+    return typeof resolved === "string" && resolved.trim() ? resolved : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function writeCopiedSelectionToClipboard(

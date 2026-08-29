@@ -7,6 +7,7 @@ import { parseAssetSource } from "../../../shared/assets";
 import { MainConfig } from "../../app/MainConfig";
 import { readClipboardPastePayload } from "../../clipboard-paste-inspector";
 import { writeImageToClipboard } from "../../clipboard-image-writer";
+import { writeClaimedClipboardPresentation } from "../../clipboard-claimed-presentation-writer";
 import { writeStructuralClipboard } from "../../clipboard-structural-writer";
 import {
   COMPOSER_IMAGE_FILE_EXTENSIONS,
@@ -122,6 +123,15 @@ export const live: Layer.Layer<
     yield* handle("clipboard:write-structural", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(run("write-structural-clipboard", () => writeStructuralClipboard(input))),
+      ),
+    );
+    yield* handle("clipboard:write-claimed-presentation", (event, input) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          run("write-claimed-clipboard-presentation", () =>
+            writeClaimedClipboardPresentation(input),
+          ),
+        ),
       ),
     );
     yield* handle("clipboard:read-paste", (event) =>

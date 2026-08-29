@@ -169,6 +169,7 @@ import type { LibraryPageFileOwnershipMove } from "../../../../shared/library-mo
 import { useSpellcheck } from "@/lib/use-spellcheck";
 import { useTheme } from "@/lib/use-theme";
 import { usePasteResourceSettings } from "@/lib/use-paste-resource-settings";
+import { readCopyFileReferencesAsLocalPaths } from "@/lib/copy-file-reference-settings";
 import { resolvePageDeepLinkPasteIntent } from "@/lib/page-reference-paste";
 import { cn } from "@/lib/utils";
 import { useCommandPaletteThreadItems } from "@/lib/command-palette-chat-search";
@@ -219,6 +220,12 @@ import {
 import { NfmStructuralEditingController } from "./nfm-structural-editing-extension";
 import { nfmStructuralClipboardCoordinator } from "./nfm-structural-clipboard-coordinator";
 import { applyLocalNfmTurnInto, type NfmTurnBlocksIntoInput } from "@/lib/nfm-turn-into-targets";
+import {
+  copiedSelectionHasFileReferences,
+  resolveManagedAssetReference,
+  rewriteCopiedSelectionFileReferences,
+  type CopiedSelectionPayload,
+} from "./special-block-copy";
 
 interface NfmEditorCommonProps {
   contentAccessContext: ContentAccessContext;
@@ -562,6 +569,44 @@ function NfmEditorInstance({
         : null,
     [contentAccessContext, pageFileReadAuthorityEpoch, source.storeEpoch, sourcePageId],
   );
+  const resolveLocalClipboardFileReference = useCallback(
+    async (fileReference: string): Promise<string | null> => {
+      if (!parsePageFileSource(fileReference)) {
+        return await resolveManagedAssetReference(fileReference);
+      }
+      if (!pageFileRuntime) return null;
+
+      try {
+        const metadata = await pageFileRuntime.metadata(fileReference);
+        return window.api?.resolveManagedBlobPath?.(metadata.blobEtag)?.trim() || null;
+      } catch {
+        return null;
+      }
+    },
+    [pageFileRuntime],
+  );
+  const resolveCopiedFileReferences = useCallback(
+    (payload: CopiedSelectionPayload): Promise<CopiedSelectionPayload> | null => {
+      if (!readCopyFileReferencesAsLocalPaths()) return null;
+      if (!copiedSelectionHasFileReferences(payload)) return null;
+      return rewriteCopiedSelectionFileReferences(payload, resolveLocalClipboardFileReference);
+    },
+    [resolveLocalClipboardFileReference],
+  );
+  const resolveClipboardText = useCallback(
+    async (portableText: string): Promise<string> => {
+      const payload: CopiedSelectionPayload = {
+        clipboardHTML: "",
+        externalHTML: "",
+        structuredText: portableText,
+      };
+      const resolved = resolveCopiedFileReferences(payload);
+      return resolved ? (await resolved).structuredText : portableText;
+    },
+    [resolveCopiedFileReferences],
+  );
+  const resolveCopiedFileReferencesRef = useRef(resolveCopiedFileReferences);
+  resolveCopiedFileReferencesRef.current = resolveCopiedFileReferences;
 
   const threadMentionSummaryMap = useMemo(
     () => ({
@@ -693,6 +738,7 @@ function NfmEditorInstance({
   const extensions = useMemo(
     () =>
       createNfmEditorExtensions({
+        resolveCopiedFileReferences: (payload) => resolveCopiedFileReferencesRef.current(payload),
         onStructuralClipboard: (action, { rootBlockIds, presentation }) =>
           structuralEditingController.current?.handleClipboard(
             action,
@@ -1612,6 +1658,7 @@ function NfmEditorInstance({
       },
       participant: structuralMutationParticipant,
       getContainer: () => containerRef.current,
+      resolveClipboardText,
       onError: (message) => toast.danger(message),
       onFileOwnershipMoves: reportPageFileOwnershipMoveCollisions,
     });
@@ -1621,6 +1668,7 @@ function NfmEditorInstance({
     source.documentId,
     source.generation,
     source.storeEpoch,
+    resolveClipboardText,
     structuralEditingController,
     structuralEditingSession,
     surfaceMutationBarrier,

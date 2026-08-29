@@ -21,18 +21,21 @@ import {
   cutOrdinaryNfmClipboardSelection,
   resolveNfmClipboardSelection,
 } from "./nfm-clipboard-selection";
-import type { CopiedSelectionPayload } from "./special-block-copy";
+import { type CopiedSelectionPayload } from "./special-block-copy";
 import { createEmptyThreadSectionBlock } from "./thread-section";
 import { canvasCreatePendingExtension } from "./canvas-create-pending-extension";
 import { mentionChipKeyboardNavigationExtension } from "./mention-chip-keyboard-navigation";
 import { nfmTaskShorthandPreviewExtension } from "./nfm-task-shorthand-preview-extension";
 import {
+  attachNodexClipboardWriteClaim,
   attachNodexStructuralClipboardWriteClaim,
   hasUntrustedTypedOwnerHtml,
   inspectNodexClipboardHtml,
   sanitizeUntrustedTypedOwnerHtml,
   type NodexClipboardEnvelopeV1,
 } from "../../../../shared/clipboard-paste";
+import { createUuidV7 } from "../../../../shared/uuid-v7";
+import { writeClaimedClipboardPresentation } from "../../../lib/api";
 import type {
   NfmStructuralClipboardPresentation,
   NfmStructuralReplacementBlockLike,
@@ -178,6 +181,30 @@ function writeStructuralSelectionClaimToClipboard(
   clipboardEvent.preventDefault();
 }
 
+function writeFileReferenceSelectionClaimToClipboard(
+  clipboardEvent: ClipboardEvent,
+  payload: CopiedSelectionPayload,
+  writeClaim: string,
+): boolean {
+  const clipboardData = clipboardEvent.clipboardData;
+  if (!clipboardData) return false;
+
+  try {
+    clipboardData.setData("blocknote/html", payload.clipboardHTML);
+    clipboardData.setData(
+      "text/html",
+      attachNodexClipboardWriteClaim(payload.externalHTML, writeClaim),
+    );
+    clipboardData.setData("text/plain", payload.structuredText);
+  } catch (error) {
+    console.warn("Failed to claim the clipboard while local File paths were prepared", error);
+    return false;
+  }
+
+  clipboardEvent.preventDefault();
+  return true;
+}
+
 function blockUnavailableStructuralClipboard(
   clipboardEvent: ClipboardEvent,
   onUnavailable: (() => void) | undefined,
@@ -194,6 +221,8 @@ function handleNfmClipboardCommand(
   editor: BlockNoteEditor,
   options: NfmEditorExtensionOptions,
   clipboardEvent: ClipboardEvent,
+  writeRevision: number,
+  currentWriteRevision: () => number,
 ): boolean {
   const selection = resolveNfmClipboardSelection(view, editor, clipboardEvent.target);
   if (!selection) return false;
@@ -234,7 +263,35 @@ function handleNfmClipboardCommand(
     blockUnavailableStructuralClipboard(clipboardEvent, options.onStructuralClipboardUnavailable);
     return true;
   }
-  if (!writeStructuredSelectionToClipboard(clipboardEvent, payload)) return false;
+  const resolvedPayload = options.resolveCopiedFileReferences?.(payload);
+  if (!resolvedPayload) {
+    if (!writeStructuredSelectionToClipboard(clipboardEvent, payload)) return false;
+  } else {
+    const writeClaim = createUuidV7();
+    if (!writeFileReferenceSelectionClaimToClipboard(clipboardEvent, payload, writeClaim)) {
+      return false;
+    }
+    void resolvedPayload
+      .then((resolved) => {
+        if (currentWriteRevision() !== writeRevision) {
+          throw new DOMException("Clipboard write was superseded", "AbortError");
+        }
+        return resolved;
+      })
+      .then(async (resolved) => {
+        const result = await writeClaimedClipboardPresentation({
+          writeClaim,
+          html: resolved.externalHTML,
+          text: resolved.structuredText,
+        });
+        if (result.ok || result.failure === "superseded") return;
+        throw new Error(`Native clipboard ${result.failure}`);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.warn("Failed to copy local File paths; kept portable references", error);
+      });
+  }
 
   if (command === "cut" && view.editable) {
     cutOrdinaryNfmClipboardSelection(view, editor, selection);
@@ -245,13 +302,23 @@ function handleNfmClipboardCommand(
 export const NfmStructuredClipboardExtension = createExtension(
   ({ editor, options }: ExtensionOptions<NfmEditorExtensionOptions | undefined>) => {
     const clipboardOptions = options ?? {};
+    let clipboardWriteRevision = 0;
     const execute = (
       command: NfmClipboardCommand,
       clipboardEvent: ClipboardEvent,
       view = editor.prosemirrorView,
     ): boolean => {
       if (!view) return false;
-      return handleNfmClipboardCommand(command, view, editor, clipboardOptions, clipboardEvent);
+      clipboardWriteRevision += 1;
+      return handleNfmClipboardCommand(
+        command,
+        view,
+        editor,
+        clipboardOptions,
+        clipboardEvent,
+        clipboardWriteRevision,
+        () => clipboardWriteRevision,
+      );
     };
 
     return {
@@ -451,6 +518,9 @@ export interface NfmEditorExtensionOptions {
       readonly presentation: NfmStructuralClipboardPresentation;
     },
   ) => string | null;
+  readonly resolveCopiedFileReferences?: (
+    payload: CopiedSelectionPayload,
+  ) => Promise<CopiedSelectionPayload> | null;
 }
 
 export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {}) {

@@ -116,6 +116,8 @@ import { GitWorkerClient } from "./git-worker-client";
 import { admitLocalCommitApply } from "./local-commit-ingress";
 import type { PageSearchInput, PageSearchSnapshot } from "../../shared/types";
 import type {
+  ClaimedClipboardPresentationWriteInput,
+  ClaimedClipboardPresentationWriteResult,
   StructuralClipboardWriteInput,
   StructuralClipboardWriteResult,
 } from "../../shared/clipboard-paste";
@@ -266,6 +268,12 @@ export function writeStructuralClipboard(
   input: StructuralClipboardWriteInput,
 ): Promise<StructuralClipboardWriteResult> {
   return invoke("clipboard:write-structural", input);
+}
+
+export function writeClaimedClipboardPresentation(
+  input: ClaimedClipboardPresentationWriteInput,
+): Promise<ClaimedClipboardPresentationWriteResult> {
+  return invoke("clipboard:write-claimed-presentation", input);
 }
 
 export async function searchPages(
