@@ -2,16 +2,21 @@ export type NativeContextMenuIconKey =
   | "pin"
   | "unpin"
   | "rename"
+  | "edit"
   | "archive"
   | "unread"
+  | "markRead"
   | "folder"
+  | "folderOpen"
   | "project"
   | "section"
   | "share"
   | "copy"
   | "fork"
   | "openIn"
-  | "window";
+  | "window"
+  | "worktree"
+  | "remove";
 
 export interface NativeContextMenuBaseItem {
   id: string;
@@ -20,6 +25,7 @@ export interface NativeContextMenuBaseItem {
   tooltip?: string;
   accelerator?: string;
   iconKey?: NativeContextMenuIconKey;
+  iconUrl?: string;
 }
 
 export interface NativeContextMenuActionItem extends NativeContextMenuBaseItem {

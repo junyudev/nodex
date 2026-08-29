@@ -6,7 +6,8 @@ import {
   normalizeFileLinkPosition,
   resolveDirectoryOpenPath,
 } from "./file-link-launch-plan";
-import { shouldPreferFileManagerForTarget } from "./file-link-opener";
+import { listAvailableFileLinkOpeners, shouldPreferFileManagerForTarget } from "./file-link-opener";
+import { FILE_LINK_OPENER_OPTIONS } from "../shared/file-link-openers";
 
 const parserPath = path.join(process.cwd(), "src/renderer/lib/nfm/parser.ts");
 const parserDirectory = path.dirname(parserPath);
@@ -54,5 +55,14 @@ describe("file link opener", () => {
   test("prefers the file manager for document-like files only when the target is implicit", () => {
     expect(shouldPreferFileManagerForTarget(vscodeIconPath, "vscode", false, false)).toBe(true);
     expect(shouldPreferFileManagerForTarget(vscodeIconPath, "vscode", true, false)).toBe(false);
+  });
+
+  test("lists only supported openers that are available on this host", () => {
+    const openers = listAvailableFileLinkOpeners();
+    const supportedOpeners = new Set(FILE_LINK_OPENER_OPTIONS.map((option) => option.id));
+
+    expect(new Set(openers).size).toBe(openers.length);
+    expect(openers.every((opener) => supportedOpeners.has(opener))).toBe(true);
+    if (process.platform === "darwin") expect(openers).toContain("fileManager");
   });
 });

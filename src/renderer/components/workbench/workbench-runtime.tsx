@@ -1922,7 +1922,6 @@ export function WorkbenchRuntime({
     activeSessions,
     pendingSessionOpen,
     pendingWorktreeClientThreadId,
-    windowSessionId,
     catalog: sessionCatalog,
     window: workbenchWindow,
     panelController,

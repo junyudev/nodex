@@ -1165,6 +1165,7 @@ export interface IpcApi {
     args: [items: NativeContextMenuItem[], options?: NativeContextMenuOptions];
     result: string | null;
   };
+  "shell:file-link-openers:list-available": { args: []; result: FileLinkOpenerId[] };
   "settings:app-updates:get": { args: []; result: AppUpdateSettings };
   "settings:app-updates:update": {
     args: [input: UpdateAppUpdateSettingsInput];

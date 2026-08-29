@@ -1485,6 +1485,8 @@ function SidebarThreadOrganizerSections({
         onArchiveThreadItem={onArchiveThreadItem}
         onMarkThreadItemRead={onMarkThreadItemRead}
         onThreadsChanged={onThreadsChanged}
+        sectionCatalog={sectionCatalog}
+        currentSectionId={currentSectionId}
         sectionActions={
           <SidebarProjectSectionMenu
             projectId={project.id}

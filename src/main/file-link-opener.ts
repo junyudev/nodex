@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  FILE_LINK_OPENER_OPTIONS,
   normalizeFileLinkOpenerId,
   type FileLinkOpenerId,
   type FileLinkTarget,
@@ -521,6 +522,93 @@ async function openInTerminalDirectory(appName: string, path: string): Promise<b
 
 async function openInFileManager(path: string): Promise<boolean> {
   return runSpawn("open", ["-R", path]);
+}
+
+const AVAILABLE_FILE_LINK_OPENERS_CACHE_TTL_MS = 60_000;
+let availableFileLinkOpenersCache: {
+  readonly expiresAt: number;
+  readonly openers: readonly FileLinkOpenerId[];
+} | null = null;
+
+export function listAvailableFileLinkOpeners(): FileLinkOpenerId[] {
+  if (process.platform !== "darwin") return [];
+  if (availableFileLinkOpenersCache && availableFileLinkOpenersCache.expiresAt > Date.now()) {
+    return [...availableFileLinkOpenersCache.openers];
+  }
+
+  const isAvailable = (openerId: FileLinkOpenerId): boolean => {
+    switch (openerId) {
+      case "vscode":
+        return Boolean(
+          firstExistingPath([
+            "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+            "/Applications/Code.app/Contents/Resources/app/bin/code",
+          ]),
+        );
+      case "vscodeInsiders":
+        return Boolean(
+          firstExistingPath([
+            "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/bin/code",
+            "/Applications/Code - Insiders.app/Contents/Resources/app/bin/code",
+          ]),
+        );
+      case "cursor":
+        return detectCursorCliPaths() !== null;
+      case "bbedit":
+        return findBundleByPrefix("BBEdit") !== null;
+      case "sublimeText":
+        return Boolean(
+          runWhich("subl") ??
+          firstExistingPath(["/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"]),
+        );
+      case "windsurf":
+        return Boolean(
+          firstExistingPath(["/Applications/Windsurf.app/Contents/Resources/app/bin/windsurf"]),
+        );
+      case "antigravity":
+        return Boolean(
+          firstExistingPath([
+            "/Applications/Antigravity.app/Contents/Resources/app/bin/antigravity",
+          ]),
+        );
+      case "fileManager":
+        return true;
+      case "terminal":
+        return existsSync("/System/Applications/Utilities/Terminal.app");
+      case "iterm2":
+        return Boolean(firstExistingPath(["/Applications/iTerm.app", "/Applications/iTerm2.app"]));
+      case "ghostty":
+        return Boolean(firstExistingPath(["/Applications/Ghostty.app"]));
+      case "warp":
+        return Boolean(firstExistingPath(["/Applications/Warp.app"]));
+      case "xcode":
+        return detectXcodePaths() !== null;
+      case "androidStudio":
+      case "intellij":
+      case "goland":
+      case "rustrover":
+      case "pycharm":
+      case "webstorm": {
+        const config = JETBRAINS_APP_CONFIG[openerId];
+        return Boolean(
+          detectJetBrainsExecutable(config.fixedPaths, config.bundlePrefix, config.executableName),
+        );
+      }
+      case "zed":
+        return detectZedExecutable() !== null;
+      case "textmate":
+        return findBundleByPrefix("TextMate") !== null;
+    }
+  };
+
+  const openers = FILE_LINK_OPENER_OPTIONS.flatMap((option) =>
+    isAvailable(option.id) ? [option.id] : [],
+  );
+  availableFileLinkOpenersCache = {
+    expiresAt: Date.now() + AVAILABLE_FILE_LINK_OPENERS_CACHE_TTL_MS,
+    openers,
+  };
+  return [...openers];
 }
 
 export async function openFileLinkTarget(

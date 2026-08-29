@@ -6,6 +6,10 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { openNodexMenu, renderWithMaitai, textContent } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
+import type {
+  NativeContextMenuItem,
+  NativeContextMenuOptions,
+} from "../../../shared/native-context-menu";
 
 let SidebarProjectsSection: (typeof import("./left-sidebar-projects-section"))["SidebarProjectsSection"];
 let CodexProjectRow: (typeof import("./codex-sidebar"))["CodexProjectRow"];
@@ -608,6 +612,62 @@ describe("SidebarProjectsSection", () => {
 
     expect(getByText("Edit project").textContent).toBe("Edit project");
     expect(queryByText(/Reveal in Finder|Open in Explorer|Open in File Manager/)).toBe(null);
+  });
+
+  test("opens the Project row context menu through the native bridge", async () => {
+    const previousBridge = Object.getOwnPropertyDescriptor(window, "electronBridge");
+    const showContextMenu = vi.fn(
+      async (_items: NativeContextMenuItem[], _options?: NativeContextMenuOptions) => null,
+    );
+    Object.defineProperty(window, "electronBridge", {
+      configurable: true,
+      value: { showContextMenu },
+    });
+
+    try {
+      const view = renderProjectsSection(
+        <CodexProjectRow
+          project={PROJECTS[1] as Project}
+          active={false}
+          expanded
+          onActivate={() => undefined}
+          onUpdateProject={async () => null}
+          onArchiveProject={async () => ({ kind: "not-found" })}
+          onSetProjectPinned={async () => null}
+        />,
+      );
+      const row = view.container.querySelector<HTMLElement>(
+        "[data-app-action-sidebar-project-row]",
+      );
+      if (!row) throw new Error("Expected Project row");
+
+      await act(async () => {
+        fireEvent.contextMenu(row, { clientX: 120, clientY: 80 });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(showContextMenu).toHaveBeenCalledTimes(1));
+      const [items, options] = showContextMenu.mock.calls[0] ?? [];
+      expect(
+        (items ?? []).map((item) => (item.type === "separator" ? "separator" : item.id)),
+      ).toEqual([
+        "project.togglePin",
+        "project.edit",
+        "separator",
+        "project.reveal",
+        "separator",
+        "project.archiveChats",
+        "separator",
+        "project.remove",
+      ]);
+      expect(options).toBeUndefined();
+    } finally {
+      if (previousBridge) {
+        Object.defineProperty(window, "electronBridge", previousBridge);
+      } else {
+        Reflect.deleteProperty(window, "electronBridge");
+      }
+    }
   });
 
   test("unmounts project session children when collapsed", () => {

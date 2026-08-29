@@ -4,7 +4,6 @@ import { settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { getBoardProjectStore } from "@/lib/board-store";
 import { MotionGlobalConfig } from "motion";
-import { LOCAL_ENVIRONMENT_SELECTIONS_STORAGE_KEY } from "./local-environment-selection";
 import { type CodexSidebarThreadItem } from "@/lib/types";
 import { __getNodexToastSnapshotForTests } from "@/components/ui/toast";
 import {
@@ -33,8 +32,6 @@ import {
   setMockInvokeImpl,
   setRequestThreadStreamSnapshotImpl,
 } from "./workbench-testkit/workbench-shell-harness";
-import type { ProjectSession } from "./workbench-testkit/workbench-shell-fixtures";
-
 describe("workbench session shell / sidebar-core", () => {
   test("settles Motion without impersonating reduced-motion preferences", () => {
     expect(window.matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(false);
@@ -598,102 +595,6 @@ describe("workbench session shell / sidebar-core", () => {
     const updatedButton = updatedRow.querySelector("[data-app-action-sidebar-thread-pin-session]");
     expect(updatedButton?.getAttribute("aria-label")).toBe("Unpin chat");
     expect(updatedButton?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 24 24");
-  });
-
-  test("forks a projectless chat using the exact cwd environment selection", async () => {
-    const sourceCwd = "/Users/asc/repo/projectless/packages/desktop";
-    const selectedConfigPath = `${sourceCwd}/.codex/environments/dev.toml`;
-    const baseSession = makeAttachedSession({
-      id: "session:projectless:fork",
-      projectId: null,
-      threadId: "thread-projectless-fork",
-      title: "Projectless fork",
-      tabs: [],
-    });
-    const projectlessSession: ProjectSession = {
-      ...baseSession,
-      thread: baseSession.thread ? { ...baseSession.thread, cwd: sourceCwd } : null,
-    };
-    const screen = renderWorkbench({
-      projectlessSessions: [projectlessSession],
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    localStorage.setItem(
-      LOCAL_ENVIRONMENT_SELECTIONS_STORAGE_KEY,
-      JSON.stringify({ [`local:${sourceCwd}`]: selectedConfigPath }),
-    );
-    const renderInvoke = mockInvokeImpl;
-    if (!renderInvoke) throw new Error("Expected the workbench invoke mock");
-    setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "branch-metadata") {
-        return { currentBranch: "main", defaultBranch: "main", branches: ["main"] };
-      }
-      if (channel === "worktrees:environments:configs:list-for-workspace") {
-        return [{ configPath: selectedConfigPath, state: "success" }];
-      }
-      if (channel === "project-sessions:fork") {
-        return {
-          pendingWorktreeId: "local:pending-projectless-fork",
-          clientThreadId: "client-new-thread:projectless-fork",
-        };
-      }
-      return await renderInvoke(channel, ...args);
-    });
-
-    const originalElectronBridge = window.electronBridge;
-    Object.defineProperty(window, "electronBridge", {
-      configurable: true,
-      writable: true,
-      value: {
-        showContextMenu: async () => "session.forkNewWorktree",
-      },
-    });
-
-    try {
-      await act(async () => {
-        fireEvent.contextMenu(getThreadRow(screen.container, "Projectless fork"));
-        await Promise.resolve();
-      });
-      await waitFor(() => {
-        expect(invokeCalls.some((call) => call[0] === "project-sessions:fork")).toBe(true);
-      });
-
-      expect(
-        invokeCalls.some(
-          (call) =>
-            call[0] === "worktrees:environments:configs:list-for-workspace" &&
-            call[1] === "local" &&
-            call[2] === sourceCwd,
-        ),
-      ).toBe(true);
-      expect(
-        invokeCalls.some((call) => {
-          if (call[0] !== "project-sessions:fork" || call[1] !== projectlessSession.id) {
-            return false;
-          }
-          const input = call[2] as {
-            target?: string;
-            localEnvironmentConfigPath?: string | null;
-          };
-          return (
-            input.target === "newWorktree" &&
-            input.localEnvironmentConfigPath === selectedConfigPath
-          );
-        }),
-      ).toBe(true);
-    } finally {
-      if (originalElectronBridge === undefined) {
-        Reflect.deleteProperty(window, "electronBridge");
-      } else {
-        Object.defineProperty(window, "electronBridge", {
-          configurable: true,
-          writable: true,
-          value: originalElectronBridge,
-        });
-      }
-    }
   });
 
   test("does not keep a session fork action pending on destination snapshot hydration", async () => {

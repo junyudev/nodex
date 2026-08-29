@@ -1,7 +1,7 @@
 import { useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ensureFreshDatabaseViewBoard } from "@/lib/board-store";
-import { getGitWorkerClient, invoke, invokeCoreResult } from "@/lib/api";
+import { invoke, invokeCoreResult } from "@/lib/api";
 import { listAllSidebarSections } from "@/lib/sidebar-sections-api";
 import { buildSessionDeepLink } from "@/lib/page-deeplink";
 import { documentSessionRegistry } from "@/lib/document-session-registry";
@@ -14,17 +14,15 @@ import type { ScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import {
   buildSessionContextMenuItems,
-  canForkSessionLocally,
   readSessionMoveToProjectActionId,
   readSessionMoveToSectionActionId,
-  resolveSessionRevealPath,
+  readSessionOpenInActionId,
   resolveSessionProjectMoveContainers,
   SESSION_CONTEXT_MENU_ACTION_IDS,
 } from "./session-context-menu-model";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
 import { toast } from "@/components/ui/toast";
 import { writeTextToClipboard } from "@/lib/clipboard";
-import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
 import { presentWorkbenchSessionDomainWithScene } from "@/lib/workbench-scene-presentation";
 import {
   presentWorkbenchSession,
@@ -52,8 +50,13 @@ import {
 } from "../../../shared/codex-sidebar-thread-move";
 import { RenameChatDialog } from "./rename-chat-dialog";
 import { SidebarThreadMoveConfirmationDialog } from "./sidebar-thread-move-confirmation-dialog";
-import { SIDEBAR_SECTIONS_QUERY_KEY, SidebarSectionNameDialog } from "./sidebar-custom-sections";
+import { SIDEBAR_SECTIONS_QUERY_KEY } from "./sidebar-custom-sections";
+import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
 import type { SidebarThreadDropCommit, SidebarThreadDropRequest } from "./sidebar-thread-reorder";
+import { copyConversationMarkdown } from "@/features/local-conversation/copy-conversation-markdown";
+import { readFileLinkOpener } from "@/lib/file-link-opener-settings";
+import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
+import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SidebarState = Pick<
@@ -81,7 +84,6 @@ interface WorkbenchSidebarControllerInput {
     readonly sessionId: string;
   } | null;
   readonly pendingWorktreeClientThreadId: string | null;
-  readonly windowSessionId: string;
   readonly catalog: WorkbenchSessionCatalog;
   readonly window: WorkbenchSessionCatalogWindowPort;
   readonly panelController: WorkbenchPanelController;
@@ -97,15 +99,6 @@ interface WorkbenchSidebarControllerInput {
   readonly setLocalEnvironmentSettingsInitial: (value: null) => void;
   readonly closePendingWorktreeRoute: () => void;
   readonly onOpenProjectSessionInNewWindow?: (session: ProjectSession) => Promise<void>;
-}
-
-function readRendererPlatform(): NodeJS.Platform | "browser" {
-  if (typeof navigator === "undefined") return "browser";
-  const platform = navigator.platform.toUpperCase();
-  if (platform.includes("MAC")) return "darwin";
-  if (platform.includes("WIN")) return "win32";
-  if (platform.includes("LINUX")) return "linux";
-  return "browser";
 }
 
 function listSessionDbViewTargets(
@@ -143,7 +136,6 @@ export function useWorkbenchSidebarController({
   activeSessions,
   pendingSessionOpen,
   pendingWorktreeClientThreadId,
-  windowSessionId,
   catalog,
   window: workbenchWindow,
   panelController,
@@ -305,26 +297,6 @@ export function useWorkbenchSidebarController({
     if (!catalog.active) return;
     warmProjectSessionDbViewBoards(catalog.active.domain);
   }, [catalog.active, warmProjectSessionDbViewBoards]);
-
-  const resolveSessionHasGitRepository = useCallback(
-    async (session: ProjectSession): Promise<boolean> => {
-      if (!canForkSessionLocally(session)) return false;
-      const cwd = session.thread?.cwd?.trim();
-      if (!cwd) return false;
-      try {
-        const state = await getGitWorkerClient().request({
-          method: "branch-metadata",
-          params: { cwd },
-        });
-        return Boolean(
-          state.currentBranch || state.defaultBranch || (state.branches?.length ?? 0) > 0,
-        );
-      } catch {
-        return false;
-      }
-    },
-    [],
-  );
 
   const resolveForkLocalEnvironmentConfigPath = useCallback(
     async (workspaceRoot: string | null | undefined): Promise<string | null> => {
@@ -736,28 +708,6 @@ export function useWorkbenchSidebarController({
     [catalog, codexControl, mergeSessionInState],
   );
 
-  const revealSession = useCallback(
-    async (session: ProjectSession) => {
-      const project = projects.find((candidate) => candidate.id === session.projectId) ?? null;
-      const revealPath = resolveSessionRevealPath({
-        session,
-        projectWorkspacePath: projectWorkspaceRootOrNull(project),
-      });
-      if (!revealPath) return;
-      try {
-        const opened = (await invoke(
-          "shell:open-file-link",
-          { path: revealPath },
-          "fileManager",
-        )) as boolean;
-        if (!opened) toast.danger("Failed to reveal chat folder");
-      } catch {
-        toast.danger("Failed to reveal chat folder");
-      }
-    },
-    [projects],
-  );
-
   const copySessionText = useCallback(
     async (text: string, successMessage: string, errorMessage: string) => {
       const copied = await writeTextToClipboard(text);
@@ -768,40 +718,6 @@ export function useWorkbenchSidebarController({
       toast.danger(errorMessage);
     },
     [],
-  );
-
-  const forkSession = useCallback(
-    async (session: ProjectSession, target: "local" | "newWorktree") => {
-      try {
-        const localEnvironmentConfigPath =
-          target === "newWorktree"
-            ? await resolveForkLocalEnvironmentConfigPath(session.thread?.cwd)
-            : null;
-        const result = await catalog.fork(session, {
-          target,
-          localEnvironmentConfigPath,
-          browserViewScopeId: windowSessionId,
-        });
-        if ("pendingWorktreeId" in result) {
-          setPendingWorktreeClientThreadId(result.clientThreadId);
-          return;
-        }
-        selectSession(result.session);
-      } catch {
-        toast.danger(
-          target === "newWorktree"
-            ? "Failed to fork chat into new worktree"
-            : "Failed to fork chat",
-        );
-      }
-    },
-    [
-      catalog,
-      resolveForkLocalEnvironmentConfigPath,
-      selectSession,
-      setPendingWorktreeClientThreadId,
-      windowSessionId,
-    ],
   );
 
   const handleSessionContextMenuAction = useCallback(
@@ -869,20 +785,12 @@ export function useWorkbenchSidebarController({
         await toggleSessionUnread(session);
         return;
       }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.reveal) {
-        await revealSession(session);
-        return;
-      }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory) {
         await copySessionText(
           session.thread?.cwd ?? "",
           "Copied working directory",
           "Failed to copy working directory",
         );
-        return;
-      }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copySessionId) {
-        await copySessionText(session.id, "Copied session ID", "Failed to copy session ID");
         return;
       }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink) {
@@ -893,12 +801,22 @@ export function useWorkbenchSidebarController({
         );
         return;
       }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkLocal) {
-        await forkSession(session, "local");
+      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown) {
+        const conversationId = session.thread?.threadId;
+        if (!conversationId) return;
+        await copyConversationMarkdown({
+          conversationId,
+          title: session.displayTitle || session.noThreadFallbackTitle,
+        });
         return;
       }
-      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkNewWorktree) {
-        await forkSession(session, "newWorktree");
+      const openerId = readSessionOpenInActionId(actionId);
+      if (openerId) {
+        if (!FILE_LINK_OPENER_OPTIONS.some((option) => option.id === openerId)) return;
+        const cwd = session.thread?.cwd?.trim();
+        if (!cwd) return;
+        const opened = await invoke("shell:open-file-link", { path: cwd }, openerId);
+        if (!opened) toast.danger("Failed to open working directory");
         return;
       }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow) {
@@ -909,12 +827,10 @@ export function useWorkbenchSidebarController({
       archiveSessionWithSidebarPendingState,
       appHandle,
       copySessionText,
-      forkSession,
       moveSidebarThreadInputForSidebar,
       onOpenProjectSessionInNewWindow,
       openRenameSessionDialog,
       queryClient,
-      revealSession,
       toggleSessionPin,
       toggleSessionUnread,
     ],
@@ -924,34 +840,39 @@ export function useWorkbenchSidebarController({
     async (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => {
       event.preventDefault();
       event.stopPropagation();
-      const rect = event.currentTarget.getBoundingClientRect();
-      const x = event.clientX > 0 ? event.clientX : rect.right;
-      const y = event.clientY > 0 ? event.clientY : rect.bottom;
-      const project = projects.find((candidate) => candidate.id === session.projectId) ?? null;
-      const isGitRepository = await resolveSessionHasGitRepository(session);
-      const [sections, directSectionId] = await Promise.all([
+      const [sections, directSectionId, availableOpeners] = await Promise.all([
         listAllSidebarSections().catch(() => []),
         invoke("sidebar-sections:item:placement", {
           kind: "session",
           sessionId: session.id,
         }).catch(() => null),
+        invoke("shell:file-link-openers:list-available").catch(() => []),
       ]);
       const customSections = sections.filter(
         (section) => section.kind === "custom" && section.lifecycle === "active",
       );
+      const preferredOpener = readFileLinkOpener();
+      const discoveredOpeners = Array.isArray(availableOpeners) ? availableOpeners : [];
+      const openInIds = discoveredOpeners.includes(preferredOpener)
+        ? [preferredOpener, ...discoveredOpeners.filter((id) => id !== preferredOpener)]
+        : discoveredOpeners;
+      const openInTargets = openInIds.flatMap((id) => {
+        const option = FILE_LINK_OPENER_OPTIONS.find((candidate) => candidate.id === id);
+        return option
+          ? [{ id: option.id, label: option.label, iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id] }]
+          : [];
+      });
       const items = buildSessionContextMenuItems({
         session,
         projects,
-        projectWorkspacePath: projectWorkspaceRootOrNull(project),
-        platform: readRendererPlatform(),
-        isGitRepository,
         sections: customSections,
         directSectionId,
+        openInTargets,
       });
 
       beginContextMenu(session.id);
       try {
-        const selectedId = await showNativeContextMenu(items, { x, y });
+        const selectedId = await showNativeContextMenu(items);
         if (!selectedId) return;
         await handleSessionContextMenuAction(session, selectedId);
       } catch {
@@ -960,13 +881,7 @@ export function useWorkbenchSidebarController({
         finishContextMenu();
       }
     },
-    [
-      beginContextMenu,
-      finishContextMenu,
-      handleSessionContextMenuAction,
-      projects,
-      resolveSessionHasGitRepository,
-    ],
+    [beginContextMenu, finishContextMenu, handleSessionContextMenuAction, projects],
   );
 
   return {

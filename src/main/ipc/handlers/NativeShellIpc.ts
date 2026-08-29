@@ -1,15 +1,24 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { nativeImage, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
+import {
+  nativeImage,
+  screen,
+  type IpcMainInvokeEvent,
+  type MenuItemConstructorOptions,
+  type WebContents,
+} from "electron";
 import { homedir } from "node:os";
 import { isAbsolute, sep } from "node:path";
 import type { IpcApi } from "../../../shared/ipc-api";
 import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
-import { buildSessionContextMenuIconSvg } from "../../../shared/session-context-menu-icons";
+import {
+  buildSessionContextMenuIconSvg,
+  getNativeContextMenuIconSvg,
+} from "../../../shared/session-context-menu-icons";
 import { MainConfig } from "../../app/MainConfig";
 import { parseExternalNavigationUrl } from "../../external-navigation";
-import { openFileLinkTarget } from "../../file-link-opener";
+import { listAvailableFileLinkOpeners, openFileLinkTarget } from "../../file-link-opener";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -28,26 +37,38 @@ type Handler<Channel extends keyof IpcApi> = (
 const menuTemplate = (
   items: readonly NativeContextMenuItem[],
   onSelect: (id: string) => void,
+  rasterizedIcons: ReadonlyMap<string, string>,
+  scaleFactor: number,
 ): MenuItemConstructorOptions[] =>
   items.map((item) => {
     if (item.type === "separator") return { type: "separator" };
     const enabled = item.enabled !== false;
-    const icon = item.iconKey
-      ? nativeImage.createFromDataURL(
-          `data:image/svg+xml;charset=utf-8,${encodeURIComponent(buildSessionContextMenuIconSvg(item.iconKey))}`,
-        )
-      : undefined;
-    icon?.setTemplateImage(true);
+    const rasterizedIcon = rasterizedIcons.get(menuIconId(item) ?? "");
+    const icon =
+      item.iconKey || item.iconUrl
+        ? rasterizedIcon
+          ? createRasterizedMenuIcon(rasterizedIcon, scaleFactor)
+          : item.iconKey
+            ? nativeImage.createFromDataURL(
+                `data:image/svg+xml;charset=utf-8,${encodeURIComponent(buildSessionContextMenuIconSvg(item.iconKey))}`,
+              )
+            : undefined
+        : undefined;
+    if (process.platform === "darwin" && item.iconKey) icon?.setTemplateImage(true);
     const base = {
       id: item.id,
       label: item.label,
       enabled,
       accelerator: item.accelerator,
+      registerAccelerator: false,
       toolTip: item.tooltip,
       icon,
     } satisfies MenuItemConstructorOptions;
     if (item.type === "submenu") {
-      return { ...base, submenu: menuTemplate(item.submenu, onSelect) };
+      return {
+        ...base,
+        submenu: menuTemplate(item.submenu, onSelect, rasterizedIcons, scaleFactor),
+      };
     }
     if (item.type === "checkbox") {
       return {
@@ -66,6 +87,90 @@ const menuTemplate = (
       },
     };
   });
+
+function createRasterizedMenuIcon(dataUrl: string, scaleFactor: number) {
+  if (scaleFactor <= 1) return nativeImage.createFromDataURL(dataUrl);
+  const icon = nativeImage.createEmpty();
+  icon.addRepresentation({ scaleFactor, dataURL: dataUrl });
+  return icon;
+}
+
+interface MenuIconSource {
+  readonly id: string;
+  readonly source: string;
+  readonly template: boolean;
+}
+
+function menuIconId(item: Exclude<NativeContextMenuItem, { type: "separator" }>): string | null {
+  if (item.iconKey) return `key:${item.iconKey}`;
+  if (item.iconUrl) return `url:${item.iconUrl}`;
+  return null;
+}
+
+function collectMenuIconSources(items: readonly NativeContextMenuItem[]): MenuIconSource[] {
+  const sources = new Map<string, MenuIconSource>();
+  const visit = (menuItems: readonly NativeContextMenuItem[]) => {
+    for (const item of menuItems) {
+      if (item.type === "separator") continue;
+      const id = menuIconId(item);
+      if (id && !sources.has(id)) {
+        sources.set(
+          id,
+          item.iconKey
+            ? { id, source: getNativeContextMenuIconSvg(item.iconKey), template: true }
+            : { id, source: item.iconUrl!, template: false },
+        );
+      }
+      if (item.type === "submenu") visit(item.submenu);
+    }
+  };
+  visit(items);
+  return [...sources.values()];
+}
+
+/** Rasterizes against the renderer's live foreground color so macOS receives crisp 16 pt assets. */
+async function rasterizeMenuIcons(
+  sender: WebContents,
+  items: readonly NativeContextMenuItem[],
+  scaleFactor: number,
+): Promise<Map<string, string>> {
+  const iconEntries = collectMenuIconSources(items);
+  if (iconEntries.length === 0) return new Map();
+
+  const script = `(async function () {
+    const entries = ${JSON.stringify(iconEntries)};
+    const color = getComputedStyle(document.documentElement).color;
+    const size = Math.max(1, Math.round(16 * ${JSON.stringify(scaleFactor)}));
+    return await Promise.all(entries.map(async ({ id, source, template }) => {
+      const image = new Image();
+      image.src = template
+        ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source.replaceAll("currentColor", color))
+        : source;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Unable to rasterize native menu icon");
+      context.drawImage(image, 0, 0, size, size);
+      return [id, canvas.toDataURL("image/png")];
+    }));
+  })()`;
+
+  try {
+    const result = (await sender.executeJavaScript(script, true)) as unknown;
+    if (!Array.isArray(result)) return new Map();
+    return new Map(
+      result.filter(
+        (entry): entry is [string, string] =>
+          Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "string",
+      ),
+    );
+  } catch {
+    // The SVG fallback below keeps menus usable if a renderer is already being torn down.
+    return new Map();
+  }
+}
 
 export const live: Layer.Layer<
   never,
@@ -97,30 +202,51 @@ export const live: Layer.Layer<
 
     yield* handle("native-context-menu:show", (event, items, options) =>
       authorize(event).pipe(
-        Effect.andThen(
-          Effect.callback<string | null>((resume) => {
-            let selectedId: string | null = null;
-            const owner = windows.get(event.sender.id);
-            const menu = desktop.menu.buildFromTemplate(
-              menuTemplate(items, (id) => {
-                selectedId = id;
+        Effect.andThen(() => {
+          const owner = windows.get(event.sender.id);
+          const scaleFactor = owner
+            ? Math.max(1, screen.getDisplayMatching(owner.getBounds()).scaleFactor)
+            : 1;
+          return run("rasterize-context-menu-icons", () =>
+            rasterizeMenuIcons(event.sender, items, scaleFactor),
+          ).pipe(
+            Effect.andThen((rasterizedIcons) =>
+              Effect.callback<string | null>((resume) => {
+                let selectedId: string | null = null;
+                const menu = desktop.menu.buildFromTemplate(
+                  menuTemplate(
+                    items,
+                    (id) => {
+                      selectedId = id;
+                    },
+                    rasterizedIcons,
+                    scaleFactor,
+                  ),
+                );
+                menu.popup({
+                  window: owner ?? undefined,
+                  x: typeof options?.x === "number" ? Math.round(options.x) : undefined,
+                  y: typeof options?.y === "number" ? Math.round(options.y) : undefined,
+                  positioningItem: options?.positioningItem,
+                  callback: () => resume(Effect.succeed(selectedId)),
+                });
+                return Effect.sync(() => menu.closePopup(owner ?? undefined));
               }),
-            );
-            menu.popup({
-              window: owner ?? undefined,
-              x: typeof options?.x === "number" ? Math.round(options.x) : undefined,
-              y: typeof options?.y === "number" ? Math.round(options.y) : undefined,
-              positioningItem: options?.positioningItem,
-              callback: () => resume(Effect.succeed(selectedId)),
-            });
-            return Effect.sync(() => menu.closePopup(owner ?? undefined));
-          }),
-        ),
+            ),
+          );
+        }),
       ),
     );
     yield* handle("shell:open-file-link", (event, target, openerId) =>
       authorize(event).pipe(
         Effect.andThen(run("open-file-link", () => openFileLinkTarget(target, openerId))),
+      ),
+    );
+    yield* handle("shell:file-link-openers:list-available", (event) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          run("list-available-file-link-openers", async () => listAvailableFileLinkOpeners()),
+        ),
       ),
     );
     yield* handle("open-file", (event, target, openerId) =>

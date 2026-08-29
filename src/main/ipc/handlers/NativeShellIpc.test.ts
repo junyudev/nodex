@@ -39,9 +39,10 @@ it.effect("owns native menu and shell ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(channels.size, 6);
+    assert.strictEqual(channels.size, 7);
     assert.isTrue(channels.has("native-context-menu:show"));
     assert.isTrue(channels.has("shell:open-external-url"));
+    assert.isTrue(channels.has("shell:file-link-openers:list-available"));
     assert.isTrue(channels.has("shell:path-context:get"));
 
     yield* Scope.close(scope, Exit.void);

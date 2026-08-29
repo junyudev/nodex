@@ -208,7 +208,7 @@ uses local state and a submit-time guard.
   each portalled descendant's next layer through React context, including
   recursively nested surfaces. Feature callers do not assign child-menu
   z-indexes or move them into clipping ancestors.
-- Context menus are constructed only through the deep module in
+- Content-owned context menus are constructed only through the deep module in
   `src/renderer/components/ui/context-menu.tsx`; feature code does not compose
   third-party context-menu parts directly. That module owns immediate pointer
   activation, same-level submenu coordination, pointer grace, lazy content
@@ -218,7 +218,12 @@ uses local state and a submit-time guard.
   target from the context-menu event; they do not mount a complete Root and
   binding tree per row or card. Content or SubContent owns overflow, ring,
   radius, and shadow, so feature content never nests a second fixed-width
-  dropdown Surface inside it.
+  dropdown Surface inside it. OS-integrated app-shell menus instead define one
+  typed declarative action model and pass it through the shared native menu
+  bridge. Existing app-owned overflow menus remain browser fallbacks instead of
+  being deleted. Renderer features never import Electron APIs directly, and row
+  context-click plus overflow triggers must share the same action builder and
+  execution path.
 - Use the named layer constants in `src/renderer/lib/app-shell-layers.ts` and
   shared portal primitives. Exact layer values are executable code, not prose.
 - Base UI is the interaction engine behind Nodex-owned buttons, menus, dialogs,

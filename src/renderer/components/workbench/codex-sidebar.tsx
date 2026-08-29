@@ -7,7 +7,7 @@ import type {
   Ref,
   ReactNode,
 } from "react";
-import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -34,7 +34,7 @@ import { NodexHoverCard } from "@/components/ui/hover-card";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { toast } from "@/components/ui/toast";
-import { getGitWorkerClient, invoke } from "@/lib/api";
+import { getGitWorkerClient, invoke, invokeCoreResult } from "@/lib/api";
 import { CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION } from "@/lib/codex-panel-motion";
 import { formatElapsedSince, getNextElapsedTimeUpdateDelay } from "@/lib/elapsed-time";
 import { CODEX_SIDEBAR_PAGER_BUTTON_CLASS } from "@/lib/codex-sidebar-pagination";
@@ -80,6 +80,19 @@ import { ProjectEditDialog } from "./project-edit-dialog";
 import { ProjectHoverCard } from "./project-hover-card";
 import { ProjectMarker } from "./project-marker";
 import { ProjectRemoveDialog } from "./project-remove-dialog";
+import {
+  PROJECT_CONTEXT_MENU_ACTION_IDS,
+  buildProjectContextMenuItems,
+  projectMoveToSectionActionId,
+  readProjectMoveToSectionActionId,
+} from "./project-context-menu-model";
+import { canShowNativeContextMenu, showNativeContextMenu } from "@/lib/native-context-menu";
+import type {
+  NativeContextMenuItem,
+  NativeContextMenuOptions,
+} from "../../../shared/native-context-menu";
+import type { SidebarSectionsCatalog } from "./sidebar-custom-sections";
+import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
 
 type SidebarRowActionEvent =
   | MouseEvent<HTMLElement>
@@ -402,22 +415,11 @@ const EMPTY_SIDEBAR_THREAD_ITEMS: readonly CodexSidebarThreadItem[] = [];
 const EMPTY_WORKSPACE_ROOT_OPTIONS: readonly string[] = [];
 const EMPTY_WORKSPACE_ROOT_LABELS: Readonly<Record<string, string | undefined>> = {};
 
-export function CodexProjectActionsMenu({
-  project,
-  threadItems = EMPTY_SIDEBAR_THREAD_ITEMS,
-  onUpdateProject,
-  onArchiveProject,
-  onSetProjectPinned,
-  onCreateStableWorktree,
-  canCreateStableWorktree = false,
-  stableWorktreeWorkspaceRootOptions = EMPTY_WORKSPACE_ROOT_OPTIONS,
-  stableWorktreeWorkspaceRootLabels = EMPTY_WORKSPACE_ROOT_LABELS,
-  onArchiveThreadItem,
-  onMarkThreadItemRead,
-  onThreadsChanged,
-  onOpenChange,
-  sectionActions,
-}: {
+export interface CodexProjectActionsMenuHandle {
+  openNativeMenu: (options?: NativeContextMenuOptions) => Promise<boolean>;
+}
+
+interface CodexProjectActionsMenuProps {
   project: Project;
   threadItems?: readonly CodexSidebarThreadItem[];
   onUpdateProject: (projectId: string, updates: ProjectUpdateInput) => Promise<Project | null>;
@@ -432,13 +434,41 @@ export function CodexProjectActionsMenu({
   onThreadsChanged?: () => Promise<unknown> | void;
   onOpenChange?: (open: boolean) => void;
   sectionActions?: ReactNode;
-}) {
+  sectionCatalog?: SidebarSectionsCatalog;
+  currentSectionId?: string | null;
+}
+
+export const CodexProjectActionsMenu = forwardRef<
+  CodexProjectActionsMenuHandle,
+  CodexProjectActionsMenuProps
+>(function CodexProjectActionsMenu(
+  {
+    project,
+    threadItems = EMPTY_SIDEBAR_THREAD_ITEMS,
+    onUpdateProject,
+    onArchiveProject,
+    onSetProjectPinned,
+    onCreateStableWorktree,
+    canCreateStableWorktree = false,
+    stableWorktreeWorkspaceRootOptions = EMPTY_WORKSPACE_ROOT_OPTIONS,
+    stableWorktreeWorkspaceRootLabels = EMPTY_WORKSPACE_ROOT_LABELS,
+    onArchiveThreadItem,
+    onMarkThreadItemRead,
+    onThreadsChanged,
+    onOpenChange,
+    sectionActions,
+    sectionCatalog,
+    currentSectionId = null,
+  }: CodexProjectActionsMenuProps,
+  ref,
+) {
   const appHandle = useScopeHandle(appScope);
   const [open, setOpen] = useState(false);
   const [archiveChatsOpen, setArchiveChatsOpen] = useState(false);
   const [createStableWorktreeOpen, setCreateStableWorktreeOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const openEditAfterMenuCloseRef = useRef(false);
+  const nativeMenuOpenRef = useRef(false);
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
   const sourceRoots = normalizeProjectSources(project);
   const initialStableWorktreeProjectName = suggestStableWorktreeProjectName({
@@ -472,6 +502,162 @@ export function CodexProjectActionsMenu({
     await onThreadsChanged?.();
   };
 
+  const openProjectEditor = async () => {
+    const editableProject = await waitForProjectCatalogUpdates(project);
+    let expectedBindingRevision = editableProject.bindingRevision;
+    openModal(appHandle, ProjectEditDialog, {
+      project: editableProject,
+      onSubmit: async ({ appearance, name, sources }) => {
+        const updated = await onUpdateProject(editableProject.id, {
+          expectedBindingRevision,
+          appearance,
+          name: name.trim() || editableProject.name,
+          sources,
+        });
+        if (!updated) throw new Error(`Project ${editableProject.id} not found`);
+        expectedBindingRevision = updated.bindingRevision;
+      },
+      onArchiveProject,
+    });
+  };
+
+  const unpinBeforeSectionMove = async () => {
+    if (!project.pinned) return;
+    if (onSetProjectPinned) {
+      await onSetProjectPinned(project.id, { pinned: false });
+      return;
+    }
+    await invoke("projects:set-pinned", project.id, { pinned: false });
+  };
+
+  const moveProjectToSection = async (sectionId: string | null) => {
+    await unpinBeforeSectionMove();
+    await invokeCoreResult("sidebar-sections:item:move", {
+      item: { kind: "project", projectId: project.id },
+      sectionId,
+      placement: { kind: "end" },
+    });
+    await sectionCatalog?.refresh();
+  };
+
+  const sectionItems: NativeContextMenuItem[] | undefined = sectionCatalog
+    ? [
+        ...sectionCatalog.sections.map((section) => ({
+          id: projectMoveToSectionActionId(section.sectionId),
+          label: `${currentSectionId === section.sectionId ? "✓ " : ""}${section.name ?? "Untitled section"}`,
+        })),
+        ...(sectionCatalog.sections.length > 0 ? [{ type: "separator" as const }] : []),
+        {
+          id: PROJECT_CONTEXT_MENU_ACTION_IDS.newSection,
+          label: "New section…",
+        },
+      ]
+    : undefined;
+
+  const handleNativeMenuAction = async (actionId: string) => {
+    const targetSectionId = readProjectMoveToSectionActionId(actionId);
+    if (targetSectionId) {
+      await moveProjectToSection(currentSectionId === targetSectionId ? null : targetSectionId);
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.newSection) {
+      openModal(appHandle, SidebarSectionNameDialog, {
+        title: "New section",
+        description: "Create a section and move this project into it.",
+        allowEmpty: true,
+        onSave: async (name) => {
+          await unpinBeforeSectionMove();
+          await invokeCoreResult("sidebar-sections:create", {
+            name,
+            initialItem: { kind: "project", projectId: project.id },
+          });
+          await sectionCatalog?.refresh();
+        },
+      });
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.togglePin) {
+      await onSetProjectPinned?.(project.id, { pinned: !project.pinned });
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.edit) {
+      await openProjectEditor();
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.reveal) {
+      await openProjectFolder();
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.createStableWorktree) {
+      setCreateStableWorktreeOpen(true);
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.markAllRead) {
+      await markAllThreadsRead();
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.archiveChats) {
+      setArchiveChatsOpen(true);
+      return;
+    }
+    if (actionId === PROJECT_CONTEXT_MENU_ACTION_IDS.remove) setRemoveOpen(true);
+  };
+
+  const openNativeMenu = async (options?: NativeContextMenuOptions): Promise<boolean> => {
+    if (!canShowNativeContextMenu()) return false;
+    if (nativeMenuOpenRef.current) return true;
+    const items = buildProjectContextMenuItems({
+      pinned: project.pinned,
+      showPinAction: Boolean(onSetProjectPinned),
+      sectionItems,
+      revealLabel:
+        primaryWorkspaceRoot && sourceRoots.length === 1 ? revealInFileManagerLabel() : undefined,
+      canCreateStableWorktree: Boolean(
+        primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree,
+      ),
+      canMarkAllRead: Boolean(onMarkThreadItemRead && unreadItems.length > 0),
+      canArchiveChats: Boolean(onArchiveThreadItem && archiveableItems.length > 0),
+    });
+
+    nativeMenuOpenRef.current = true;
+    setMenuOpen(true);
+    try {
+      const actionId = await showNativeContextMenu(items, options);
+      if (actionId) await handleNativeMenuAction(actionId);
+      return true;
+    } catch (error) {
+      toast.danger("Native context menu is unavailable", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+      return false;
+    } finally {
+      nativeMenuOpenRef.current = false;
+      setMenuOpen(false);
+    }
+  };
+
+  useImperativeHandle(ref, () => ({ openNativeMenu }));
+
+  const triggerButton = (
+    <button
+      type="button"
+      className={CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS}
+      aria-label={`Project actions for ${project.name}`}
+      aria-expanded={open}
+      data-app-action-sidebar-project-actions-menu=""
+      onClick={
+        canShowNativeContextMenu()
+          ? (event) => {
+              event.preventDefault();
+              void openNativeMenu();
+            }
+          : undefined
+      }
+    >
+      <ProjectActionsIcon />
+    </button>
+  );
+
   return (
     <div
       className={open ? "opacity-100" : "opacity-0 group-hover/folder-row:opacity-100"}
@@ -479,124 +665,101 @@ export function CodexProjectActionsMenu({
       onKeyDown={stopCodexSidebarRowActionKeyPropagation}
       onClick={stopCodexSidebarRowActionPropagation}
     >
-      <NodexDropdownMenu
-        open={open}
-        onOpenChange={setMenuOpen}
-        finalFocus={() => {
-          if (!openEditAfterMenuCloseRef.current) return true;
-          openEditAfterMenuCloseRef.current = false;
-          void waitForProjectCatalogUpdates(project).then((editableProject) => {
-            let expectedBindingRevision = editableProject.bindingRevision;
-            openModal(appHandle, ProjectEditDialog, {
-              project: editableProject,
-              onSubmit: async ({ appearance, name, sources }) => {
-                const updated = await onUpdateProject(editableProject.id, {
-                  expectedBindingRevision,
-                  appearance,
-                  name: name.trim() || editableProject.name,
-                  sources,
-                });
-                if (!updated) {
-                  throw new Error(`Project ${editableProject.id} not found`);
-                }
-                expectedBindingRevision = updated.bindingRevision;
-              },
-              onArchiveProject,
-            });
-          });
-          return false;
-        }}
-        side="bottom"
-        align="start"
-        contentWidth="xs"
-        triggerButton={
-          <button
-            type="button"
-            className={CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS}
-            aria-label={`Project actions for ${project.name}`}
-            data-app-action-sidebar-project-actions-menu=""
-          >
-            <ProjectActionsIcon />
-          </button>
-        }
-      >
-        {onSetProjectPinned ? (
+      {canShowNativeContextMenu() ? (
+        triggerButton
+      ) : (
+        <NodexDropdownMenu
+          open={open}
+          onOpenChange={setMenuOpen}
+          finalFocus={() => {
+            if (!openEditAfterMenuCloseRef.current) return true;
+            openEditAfterMenuCloseRef.current = false;
+            void openProjectEditor();
+            return false;
+          }}
+          side="bottom"
+          align="start"
+          contentWidth="xs"
+          triggerButton={triggerButton}
+        >
+          {onSetProjectPinned ? (
+            <NodexDropdownItem
+              leftSlot={
+                project.pinned ? (
+                  <PinOffIcon className="icon-xs" />
+                ) : (
+                  <SessionPinIcon className="icon-xs" />
+                )
+              }
+              onSelect={() => {
+                void onSetProjectPinned(project.id, { pinned: !project.pinned });
+              }}
+            >
+              {project.pinned ? "Unpin project" : "Pin project"}
+            </NodexDropdownItem>
+          ) : null}
+          {sectionActions}
+          {primaryWorkspaceRoot && sourceRoots.length === 1 ? (
+            <NodexDropdownItem
+              leftSlot={<ProjectFolderOpenIcon className="icon-xs" />}
+              onSelect={() => {
+                void openProjectFolder();
+              }}
+            >
+              {revealInFileManagerLabel()}
+            </NodexDropdownItem>
+          ) : null}
+          {primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree ? (
+            <NodexDropdownItem
+              leftSlot={<WorktreeStatusIcon className="icon-xs" />}
+              onSelect={() => {
+                setMenuOpen(false);
+                setCreateStableWorktreeOpen(true);
+              }}
+            >
+              Create permanent worktree
+            </NodexDropdownItem>
+          ) : null}
           <NodexDropdownItem
-            leftSlot={
-              project.pinned ? (
-                <PinOffIcon className="icon-xs" />
-              ) : (
-                <SessionPinIcon className="icon-xs" />
-              )
-            }
+            leftSlot={<SettingsGeneralIcon className="icon-xs" />}
             onSelect={() => {
-              void onSetProjectPinned(project.id, { pinned: !project.pinned });
+              openEditAfterMenuCloseRef.current = true;
             }}
           >
-            {project.pinned ? "Unpin project" : "Pin project"}
+            Edit project
           </NodexDropdownItem>
-        ) : null}
-        {sectionActions}
-        {primaryWorkspaceRoot && sourceRoots.length === 1 ? (
+          {onMarkThreadItemRead && unreadItems.length > 0 ? (
+            <NodexDropdownItem
+              leftSlot={<CheckmarkIcon className="icon-xs" />}
+              onSelect={() => {
+                setMenuOpen(false);
+                void markAllThreadsRead();
+              }}
+            >
+              Mark all as read
+            </NodexDropdownItem>
+          ) : null}
           <NodexDropdownItem
-            leftSlot={<ProjectFolderOpenIcon className="icon-xs" />}
-            onSelect={() => {
-              void openProjectFolder();
-            }}
-          >
-            {revealInFileManagerLabel()}
-          </NodexDropdownItem>
-        ) : null}
-        {primaryWorkspaceRoot && onCreateStableWorktree && canCreateStableWorktree ? (
-          <NodexDropdownItem
-            leftSlot={<WorktreeStatusIcon className="icon-xs" />}
+            leftSlot={<ArchiveIcon className="icon-xs" />}
+            disabled={!onArchiveThreadItem || archiveableItems.length === 0}
             onSelect={() => {
               setMenuOpen(false);
-              setCreateStableWorktreeOpen(true);
+              setArchiveChatsOpen(true);
             }}
           >
-            Create permanent worktree
+            Archive chats
           </NodexDropdownItem>
-        ) : null}
-        <NodexDropdownItem
-          leftSlot={<SettingsGeneralIcon className="icon-xs" />}
-          onSelect={() => {
-            openEditAfterMenuCloseRef.current = true;
-          }}
-        >
-          Edit project
-        </NodexDropdownItem>
-        {onMarkThreadItemRead && unreadItems.length > 0 ? (
           <NodexDropdownItem
-            leftSlot={<CheckmarkIcon className="icon-xs" />}
+            leftSlot={<CloseIcon className="icon-xs" />}
             onSelect={() => {
               setMenuOpen(false);
-              void markAllThreadsRead();
+              setRemoveOpen(true);
             }}
           >
-            Mark all as read
+            Remove
           </NodexDropdownItem>
-        ) : null}
-        <NodexDropdownItem
-          leftSlot={<ArchiveIcon className="icon-xs" />}
-          disabled={!onArchiveThreadItem || archiveableItems.length === 0}
-          onSelect={() => {
-            setMenuOpen(false);
-            setArchiveChatsOpen(true);
-          }}
-        >
-          Archive chats
-        </NodexDropdownItem>
-        <NodexDropdownItem
-          leftSlot={<CloseIcon className="icon-xs" />}
-          onSelect={() => {
-            setMenuOpen(false);
-            setRemoveOpen(true);
-          }}
-        >
-          Remove
-        </NodexDropdownItem>
-      </NodexDropdownMenu>
+        </NodexDropdownMenu>
+      )}
       {archiveChatsOpen && onArchiveThreadItem ? (
         <ProjectArchiveChatsDialog
           open={archiveChatsOpen}
@@ -628,7 +791,7 @@ export function CodexProjectActionsMenu({
       ) : null}
     </div>
   );
-}
+});
 
 function CodexProjectHoverCardContent({
   project,
@@ -777,6 +940,8 @@ export function CodexProjectRow({
   hoverCardOpen,
   onHoverCardOpenChange,
   sectionActions,
+  sectionCatalog,
+  currentSectionId = null,
   children,
 }: {
   project: Project;
@@ -801,6 +966,8 @@ export function CodexProjectRow({
   hoverCardOpen?: boolean;
   onHoverCardOpenChange?: (open: boolean) => void;
   sectionActions?: ReactNode;
+  sectionCatalog?: SidebarSectionsCatalog;
+  currentSectionId?: string | null;
   children?: ReactNode;
 }) {
   const sortableEnabled = dnd !== undefined;
@@ -809,6 +976,7 @@ export function CodexProjectRow({
   const [canCreateStableWorktree, setCanCreateStableWorktree] = useState(false);
   const [uncontrolledHoverCardOpen, setUncontrolledHoverCardOpen] = useState(false);
   const [projectActionsMenuOpen, setProjectActionsMenuOpen] = useState(false);
+  const projectActionsMenuRef = useRef<CodexProjectActionsMenuHandle>(null);
   const {
     gutter: gutterThreadDropTarget,
     icon: iconThreadDropTarget,
@@ -975,6 +1143,13 @@ export function CodexProjectRow({
           className={cn(projectDragActive && "pointer-events-none")}
           onPointerEnter={prefetchProjectHoverCardMetadata}
           onFocusCapture={prefetchProjectHoverCardMetadata}
+          onContextMenu={(event) => {
+            if (!canShowNativeContextMenu()) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setProjectHoverCardOpen(false);
+            void projectActionsMenuRef.current?.openNativeMenu();
+          }}
         >
           <CodexSidebarRowLayout
             leadingRef={iconThreadDropTarget.setNodeRef}
@@ -1019,6 +1194,7 @@ export function CodexProjectRow({
             actions={
               <>
                 <CodexProjectActionsMenu
+                  ref={projectActionsMenuRef}
                   project={project}
                   threadItems={threadItems}
                   onUpdateProject={onUpdateProject}
@@ -1032,6 +1208,8 @@ export function CodexProjectRow({
                   onMarkThreadItemRead={onMarkThreadItemRead}
                   onThreadsChanged={onThreadsChanged}
                   sectionActions={sectionActions}
+                  sectionCatalog={sectionCatalog}
+                  currentSectionId={currentSectionId}
                   onOpenChange={(open) => {
                     setProjectActionsMenuOpen(open);
                     if (open) setProjectHoverCardOpen(false);
