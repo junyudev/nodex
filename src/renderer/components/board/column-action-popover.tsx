@@ -31,7 +31,6 @@ interface ColumnActionPopoverContentProps {
   columnName: string;
   collapsed: boolean;
   width: number;
-  accentColor: string;
   onCollapsedChange: (collapsed: boolean) => void;
   onWidthChange: (width: number) => void;
   onRequestClose: () => void;
@@ -55,7 +54,7 @@ function StepperButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md",
+        "inline-flex h-full min-w-0 items-center justify-center rounded-[6px]",
         "text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground",
         "disabled:pointer-events-none disabled:opacity-40",
       )}
@@ -69,7 +68,6 @@ export function ColumnActionPopoverContent({
   columnName,
   collapsed,
   width,
-  accentColor,
   onCollapsedChange,
   onWidthChange,
   onRequestClose,
@@ -85,13 +83,6 @@ export function ColumnActionPopoverContent({
 
   return (
     <div className="flex flex-col">
-      {/* Header: accent bar + column name */}
-      <div className="flex items-center gap-2 px-[var(--padding-row-x)] pt-[var(--padding-row-y)] pb-0.5">
-        <div className="h-3 w-0.5 shrink-0 rounded-full" style={{ backgroundColor: accentColor }} />
-        <span className="truncate text-sm font-medium text-token-foreground">{columnName}</span>
-      </div>
-
-      {/* Collapse / Expand action */}
       <button
         type="button"
         onClick={() => {
@@ -99,29 +90,35 @@ export function ColumnActionPopoverContent({
           onRequestClose();
         }}
         className={cn(
-          "mx-1 flex items-center gap-2 rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-left text-sm",
+          "flex min-h-8 items-center gap-2 rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-left text-sm",
           "text-token-foreground hover:bg-token-list-hover-background",
         )}
       >
         {collapsed ? (
-          <ChevronsLeftRight className="size-3.5 shrink-0 text-token-description-foreground" />
+          <ChevronsLeftRight className="icon-xs shrink-0 text-token-text-secondary" />
         ) : (
-          <ChevronsRightLeft className="size-3.5 shrink-0 text-token-description-foreground" />
+          <ChevronsRightLeft className="icon-xs shrink-0 text-token-text-secondary" />
         )}
-        <span>{collapsed ? "Expand" : "Collapse"}</span>
+        <span>{collapsed ? "Expand column" : "Collapse column"}</span>
       </button>
 
       <NodexDropdownSeparator />
 
-      {/* Width controls */}
-      <div className="px-[var(--padding-row-x)] pt-0.5 pb-[var(--padding-row-y)]">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-token-description-foreground">Width</span>
-          <span className="text-xs tabular-nums text-token-description-foreground">{width}px</span>
+      <div className="px-2 py-2">
+        <div className="flex items-baseline justify-between gap-3 px-0.5">
+          <span className="truncate text-xs font-medium text-token-text-secondary">
+            Column width
+          </span>
+          <output className="shrink-0 text-xs tabular-nums text-token-description-foreground">
+            {width}px
+          </output>
         </div>
 
-        {/* Stepper + presets row */}
-        <div className="mt-1.5 flex items-center gap-0.5">
+        <div
+          role="group"
+          aria-label={`${columnName} column width`}
+          className="mt-1.5 grid h-8 grid-cols-[28px_repeat(3,minmax(0,1fr))_28px] items-stretch rounded-lg bg-token-foreground/5 p-0.5 ring-[0.5px] ring-inset ring-token-border"
+        >
           <StepperButton
             aria-label={`Decrease ${columnName} width`}
             disabled={!canDecreaseWidth}
@@ -130,27 +127,25 @@ export function ColumnActionPopoverContent({
             <Minus className="size-3" />
           </StepperButton>
 
-          <div className="flex flex-1 items-center justify-center gap-0.5">
-            {BOARD_COLUMN_WIDTH_PRESETS.map((preset) => {
-              const isActive = width === preset.width;
-              return (
-                <button
-                  key={preset.width}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => handleWidthChange(preset.width)}
-                  className={cn(
-                    "flex-1 rounded-md py-1 text-center text-xs font-medium",
-                    isActive
-                      ? "bg-token-foreground/10 text-token-foreground"
-                      : "text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground",
-                  )}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
-          </div>
+          {BOARD_COLUMN_WIDTH_PRESETS.map((preset) => {
+            const isActive = width === preset.width;
+            return (
+              <button
+                key={preset.width}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() => handleWidthChange(preset.width)}
+                className={cn(
+                  "min-w-0 truncate rounded-[6px] px-0.5 text-[11px] leading-none font-medium",
+                  isActive
+                    ? "bg-token-foreground/10 text-token-foreground"
+                    : "text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground",
+                )}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
 
           <StepperButton
             aria-label={`Increase ${columnName} width`}
@@ -201,12 +196,11 @@ export function ColumnActionPopover({
         </NodexPopoverTrigger>
       </NodexTooltip>
 
-      <NodexPopoverContent side="bottom" align="end" className="w-52" initialFocus={false}>
+      <NodexPopoverContent side="bottom" align="end" className="w-56" initialFocus={false}>
         <ColumnActionPopoverContent
           columnName={columnName}
           collapsed={collapsed}
           width={width}
-          accentColor={accentColor}
           onCollapsedChange={onCollapsedChange}
           onWidthChange={onWidthChange}
           onRequestClose={() => setOpen(false)}

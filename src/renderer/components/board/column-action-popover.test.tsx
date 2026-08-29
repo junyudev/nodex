@@ -1,43 +1,74 @@
-import { describe, expect, test } from "vite-plus/test";
+import { fireEvent } from "@testing-library/react";
+import { act } from "react";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { render } from "../../test/dom";
 
 describe("column action popover", () => {
-  test("renders collapse action and width controls for expanded columns", async () => {
+  test("applies collapse, preset, and stepped width actions", async () => {
     const { ColumnActionPopoverContent } = await import("./column-action-popover");
+    const onCollapsedChange = vi.fn();
+    const onWidthChange = vi.fn();
+    const onRequestClose = vi.fn();
 
-    const { getByRole, getByText } = render(
+    const view = render(
       <ColumnActionPopoverContent
         columnName="In Progress"
         collapsed={false}
         width={360}
-        accentColor="#336699"
-        onCollapsedChange={() => undefined}
-        onWidthChange={() => undefined}
-        onRequestClose={() => undefined}
+        onCollapsedChange={onCollapsedChange}
+        onWidthChange={onWidthChange}
+        onRequestClose={onRequestClose}
       />,
     );
 
-    expect(getByText("In Progress").textContent).toBe("In Progress");
-    expect(getByRole("button", { name: "Collapse" }).textContent).toBe("Collapse");
-    expect(getByText("Width").textContent).toBe("Width");
-    expect(getByText("360px").textContent).toBe("360px");
+    expect(view.getByRole("button", { name: "Wide" }).getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Narrow" }));
+      await Promise.resolve();
+    });
+    expect(onWidthChange).toHaveBeenLastCalledWith(240);
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Decrease In Progress width" }));
+      await Promise.resolve();
+    });
+    expect(onWidthChange).toHaveBeenLastCalledWith(328);
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Collapse column" }));
+      await Promise.resolve();
+    });
+    expect(onCollapsedChange).toHaveBeenCalledWith(true);
+    expect(onRequestClose).toHaveBeenCalledOnce();
   });
 
-  test("switches the action label when the column is collapsed", async () => {
+  test("expands collapsed columns and disables stepping below the minimum width", async () => {
     const { ColumnActionPopoverContent } = await import("./column-action-popover");
+    const onCollapsedChange = vi.fn();
+    const onWidthChange = vi.fn();
 
-    const { getByRole } = render(
+    const view = render(
       <ColumnActionPopoverContent
         columnName="Done"
         collapsed
-        width={288}
-        accentColor="#336699"
-        onCollapsedChange={() => undefined}
-        onWidthChange={() => undefined}
+        width={224}
+        onCollapsedChange={onCollapsedChange}
+        onWidthChange={onWidthChange}
         onRequestClose={() => undefined}
       />,
     );
 
-    expect(getByRole("button", { name: "Expand" }).textContent).toBe("Expand");
+    expect(
+      (view.getByRole("button", { name: "Decrease Done width" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Increase Done width" }));
+      fireEvent.click(view.getByRole("button", { name: "Expand column" }));
+      await Promise.resolve();
+    });
+    expect(onWidthChange).toHaveBeenCalledWith(256);
+    expect(onCollapsedChange).toHaveBeenCalledWith(false);
   });
 });
