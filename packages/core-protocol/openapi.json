@@ -3033,6 +3033,34 @@
               "document_id",
               "generation",
               "head_seq",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "head_seq": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_file_references_changed"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "generation",
+              "head_seq",
               "update_id",
               "update_hash",
               "kind"
@@ -28111,6 +28139,7 @@
               "head_seq",
               "update",
               "page_file_body_usage_changed",
+              "page_file_references_changed",
               "kind"
             ],
             "properties": {
@@ -28134,6 +28163,9 @@
               "page_file_body_usage_changed": {
                 "type": "boolean"
               },
+              "page_file_references_changed": {
+                "type": "boolean"
+              },
               "update": {
                 "type": "array",
                 "items": {
@@ -28154,6 +28186,7 @@
               "update_id",
               "update_hash",
               "page_file_body_usage_changed",
+              "page_file_references_changed",
               "kind"
             ],
             "properties": {
@@ -28175,6 +28208,9 @@
                 ]
               },
               "page_file_body_usage_changed": {
+                "type": "boolean"
+              },
+              "page_file_references_changed": {
                 "type": "boolean"
               },
               "update_hash": {
@@ -28270,13 +28306,24 @@
             "type": "object",
             "required": [
               "document_id",
+              "generation",
+              "head_seq",
               "reason",
               "page_file_body_usage_changed",
+              "page_file_references_changed",
               "kind"
             ],
             "properties": {
               "document_id": {
                 "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "head_seq": {
+                "type": "integer",
+                "format": "int64"
               },
               "kind": {
                 "type": "string",
@@ -28285,6 +28332,9 @@
                 ]
               },
               "page_file_body_usage_changed": {
+                "type": "boolean"
+              },
+              "page_file_references_changed": {
                 "type": "boolean"
               },
               "reason": {

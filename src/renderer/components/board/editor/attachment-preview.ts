@@ -75,7 +75,7 @@ const attachmentPreviewKey = (
       pageFileRuntime.authority.storeEpoch,
       contentAccessContextKey(pageFileRuntime.authority.contentAccessContext),
       pageFileRuntime.authority.pageId,
-      pageFileRuntime.authorityVersion,
+      pageFileRuntime.readAuthorityEpoch,
       fileId,
       input.kind,
       input.mimeType ?? "",

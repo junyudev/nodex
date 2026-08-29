@@ -225,7 +225,7 @@ describe("NFM structural editing session", () => {
     });
 
     try {
-      const copyWriteClaim = session.handleCopy({
+      const copyWriteClaim = session.handleClipboard("copy", ["text", "page"], {
         html: "<p>Fallback</p>",
         text: "Fallback",
       });
@@ -253,7 +253,9 @@ describe("NFM structural editing session", () => {
       selectedBlocks = [];
       selectedNodeIds = ["page"];
       expect(session.hasTypedOwnerSelection()).toBe(true);
-      expect(session.handleCopy({ html: "<p>Page</p>", text: "Page" })).toEqual(expect.any(String));
+      expect(
+        session.handleClipboard("copy", ["page"], { html: "<p>Page</p>", text: "Page" }),
+      ).toEqual(expect.any(String));
       await session.whenIdle();
       expect(events).toEqual(["fence", "capture_clipboard", "write:copy"]);
       expect(commands.at(-1)).toMatchObject({
@@ -288,9 +290,12 @@ describe("NFM structural editing session", () => {
       events.length = 0;
       selectedNodeIds = [];
       selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
-      expect(session.handleCut({ html: "<p>Fallback</p>", text: "Fallback" })).toEqual(
-        expect.any(String),
-      );
+      expect(
+        session.handleClipboard("cut", ["text", "page"], {
+          html: "<p>Fallback</p>",
+          text: "Fallback",
+        }),
+      ).toEqual(expect.any(String));
       await session.whenIdle();
       expect(events).toEqual([
         "fence",
@@ -305,9 +310,12 @@ describe("NFM structural editing session", () => {
 
       events.length = 0;
       supersedeNextWrite = true;
-      expect(session.handleCopy({ html: "<p>Fallback</p>", text: "Fallback" })).toEqual(
-        expect.any(String),
-      );
+      expect(
+        session.handleClipboard("copy", ["text", "page"], {
+          html: "<p>Fallback</p>",
+          text: "Fallback",
+        }),
+      ).toEqual(expect.any(String));
       const alreadyClaimed = clipboardCoordinator.readPending();
       expect(alreadyClaimed).not.toBeNull();
       expect(session.handlePendingPaste(alreadyClaimed!.envelope)).toBe(true);

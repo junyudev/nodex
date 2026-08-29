@@ -711,6 +711,14 @@ export interface components {
             /** Format: int64 */
             readonly head_seq: number;
             /** @enum {string} */
+            readonly kind: "page_file_references_changed";
+        } | {
+            readonly document_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            /** Format: int64 */
+            readonly head_seq: number;
+            /** @enum {string} */
             readonly kind: "document_resync_required";
             readonly update_hash: string;
             readonly update_id: string;
@@ -6761,6 +6769,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "document_updated";
             readonly page_file_body_usage_changed: boolean;
+            readonly page_file_references_changed: boolean;
             readonly update: readonly number[];
         } | {
             readonly document_id: string;
@@ -6771,6 +6780,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "document_resync_required";
             readonly page_file_body_usage_changed: boolean;
+            readonly page_file_references_changed: boolean;
             readonly update_hash: string;
             readonly update_id: string;
         } | {
@@ -6800,9 +6810,14 @@ export interface components {
             readonly scene_hash: string;
         } | {
             readonly document_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            /** Format: int64 */
+            readonly head_seq: number;
             /** @enum {string} */
             readonly kind: "document_invalidated";
             readonly page_file_body_usage_changed: boolean;
+            readonly page_file_references_changed: boolean;
             readonly reason: components["schemas"]["DocumentInvalidationReason"];
         };
         /** @enum {string} */

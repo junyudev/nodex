@@ -394,13 +394,19 @@ fn persist_yjs_commit_inner(
             )
         })?;
     let now = sqlite_now(connection)?;
-    let page_file_body_usage_changed = if input.authority.owner_type == "page" {
-        let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
-        page_file_body_usage_counts(input.base_materialization, &owned_file_ids)
-            != page_file_body_usage_counts(input.materialization, &owned_file_ids)
-    } else {
-        false
-    };
+    let (page_file_body_usage_changed, page_file_references_changed) =
+        if input.authority.owner_type == "page" {
+            let base_reference_counts = page_file_reference_counts(input.base_materialization);
+            let reference_counts = page_file_reference_counts(input.materialization);
+            let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
+            (
+                page_file_body_usage_counts(&base_reference_counts, &owned_file_ids)
+                    != page_file_body_usage_counts(&reference_counts, &owned_file_ids),
+                base_reference_counts != reference_counts,
+            )
+        } else {
+            (false, false)
+        };
     let placement_delta =
         derive_document_placement_delta(input.base_materialization, input.materialization);
     let derived_touched_block_ids = derive_touched_block_ids(
@@ -568,6 +574,7 @@ fn persist_yjs_commit_inner(
         "updateByteLength": input.update.len(),
         "localCommitId": input.local_commit_id,
         "pageFileBodyUsageChanged": page_file_body_usage_changed,
+        "pageFileReferencesChanged": page_file_references_changed,
     });
     let page_impact = input.authority.page_impact();
     let owner_projection_impact = impact_for_page_document(
@@ -695,12 +702,17 @@ fn persist_yjs_genesis_inner(
         ));
     }
     let now = sqlite_now(connection)?;
-    let page_file_body_usage_changed = if input.authority.owner_type == "page" {
-        let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
-        !page_file_body_usage_counts(input.materialization, &owned_file_ids).is_empty()
-    } else {
-        false
-    };
+    let (page_file_body_usage_changed, page_file_references_changed) =
+        if input.authority.owner_type == "page" {
+            let reference_counts = page_file_reference_counts(input.materialization);
+            let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
+            (
+                !page_file_body_usage_counts(&reference_counts, &owned_file_ids).is_empty(),
+                !reference_counts.is_empty(),
+            )
+        } else {
+            (false, false)
+        };
     validate_document_references(
         connection,
         &input.authority.head.library_id,
@@ -853,6 +865,7 @@ fn persist_yjs_genesis_inner(
             "updateHash": update_hash,
             "updateByteLength": input.update.len(),
             "pageFileBodyUsageChanged": page_file_body_usage_changed,
+            "pageFileReferencesChanged": page_file_references_changed,
         });
         let page_impact = input.authority.page_impact();
         let projection_impact = impact_for_page_document(
@@ -1818,9 +1831,8 @@ fn owned_page_file_ids(
         .map_err(Into::into)
 }
 
-fn page_file_body_usage_counts(
+fn page_file_reference_counts(
     materialization: &DocumentMaterialization,
-    owned_file_ids: &BTreeSet<String>,
 ) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for file_id in materialization
@@ -1828,11 +1840,20 @@ fn page_file_body_usage_counts(
         .iter()
         .filter_map(|reference| reference.file_id.as_deref())
     {
-        if owned_file_ids.contains(file_id) {
-            *counts.entry(file_id.to_owned()).or_insert(0) += 1;
-        }
+        *counts.entry(file_id.to_owned()).or_insert(0) += 1;
     }
     counts
+}
+
+fn page_file_body_usage_counts(
+    reference_counts: &BTreeMap<String, usize>,
+    owned_file_ids: &BTreeSet<String>,
+) -> BTreeMap<String, usize> {
+    reference_counts
+        .iter()
+        .filter(|(file_id, _)| owned_file_ids.contains(*file_id))
+        .map(|(file_id, count)| (file_id.clone(), *count))
+        .collect()
 }
 
 fn validate_page_file_placements(

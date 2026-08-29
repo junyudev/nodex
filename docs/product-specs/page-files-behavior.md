@@ -95,17 +95,22 @@ collisions, traversal, reserved names, excessive depth, and excessive length
 are rejected.
 
 The closed row and an open Files surface refresh only when Core announces a new
-manifest revision or body-usage revision for that exact Page. One application-
-scoped cache listener invalidates matching retained queries even when their Page
-tabs are currently unmounted, so a later remount cannot present a pre-move Files
-inventory as fresh. Manifest and
-body-usage revisions are independent: File mutations advance only the manifest,
-while a changed Page File reference set or placement count advances only body
-usage. Rename and replace also publish an exact current-content invalidation to
-every foreign placement Page without advancing that Page's Files manifest or
-body-usage revision. Ordinary text, Property, focus, and selection changes
-advance none of these authorities. Background refresh retains the last rendered
-manifest instead of replacing it with an empty or loading state. Automatic
+manifest revision or owner-local body-usage revision for that exact Page. One
+application-scoped cache listener invalidates matching retained queries even
+when their Page tabs are currently unmounted, so a later remount cannot present
+a pre-move Files inventory as fresh. Manifest and body-usage revisions are
+independent: File mutations advance only the manifest, while an owner-local
+placement-count change advances only body usage. Separately, Core compares the
+complete Page File reference multiset of every Page Document commit and emits an
+exact Document-scoped reference-change signal when it changes. Image and
+attachment reads observe that signal so a newly authorized foreign placement
+resolves immediately; it does not change File ownership, Files inventory, or a
+manifest/body-usage revision. Rename and replace also publish an exact
+current-content invalidation to every foreign placement Page without advancing
+that Page's Files manifest or body-usage revision. Ordinary text, Property,
+focus, and selection changes advance none of these authorities. Background
+refresh retains the last rendered manifest instead of replacing it with an
+empty or loading state. Automatic
 Property visibility is stable for the mounted Page session: a new unplaced File
 may promote Files from the disclosure, while a body-placement-only change never
 reorders the Properties section. Once promoted, Files stays visible until the
@@ -163,14 +168,18 @@ target namespace receives the same deterministic ` (N)` suffix used by upload.
 Only the initiating surface reports a collision-driven path change, using one
 bounded success message; ownership changes without a rename are silent.
 
-The first valid paste of a cut structural capability is an identity-preserving
-move and follows the same rule. Later pastes are copies and do not rehome the
-original File. Ordinary move Undo and Redo are fresh semantic moves evaluated
-against their new canonical post-state. Promotion Undo first proves that the
-generated Page's File heads, namespace, placements, and target state still
-match its guarded recipe; one atomic transaction reverses every required
-ownership move, restores placements, and removes the generated Page. A conflict
-changes nothing and keeps the history entry available.
+Copy and Cut of complete Block roots use the Structural Clipboard, including
+ordinary image, attachment, and parent subtrees. The first valid paste of a cut
+capability is an identity-preserving move and follows the same rule whether it
+inserts at a caret or replaces selected content. Later pastes and every Copy
+paste are copies and do not rehome the original File. Move Undo and Redo are
+fresh semantic moves evaluated against their new canonical post-state;
+replacement Undo and Redo also restore or reapply the replaced target closure in
+the same transaction. Promotion Undo first proves that the generated Page's
+File heads, namespace, placements, and target state still match its guarded
+recipe; one atomic transaction reverses every required ownership move, restores
+placements, and removes the generated Page. A conflict changes nothing and
+keeps the history entry available.
 
 Copying a Page closure creates new IDs for every copied Page's direct live
 Files, while placements of Files owned outside that closure keep their existing

@@ -312,6 +312,18 @@ enum StructuralRecipeAction {
         deleted: OwnershipClosureSnapshot,
         direction: LibraryStructuralDeleteDirection,
     },
+    UndoMovedReplacement {
+        active: OwnershipClosureSnapshot,
+        replaced: OwnershipClosureSnapshot,
+        return_target: StructuralLocation,
+        direction: LibraryStructuralDeleteDirection,
+    },
+    RedoMovedReplacement {
+        moved: OwnershipClosureSnapshot,
+        replaced: OwnershipClosureSnapshot,
+        target: StructuralLocation,
+        direction: LibraryStructuralDeleteDirection,
+    },
     RestoreTurnedSelection {
         state: TurnedSelectionState,
     },
@@ -454,6 +466,28 @@ fn normalize_stored_recipe_action(action: &mut StructuralRecipeAction) -> Result
         } => {
             *active = normalize_stored_snapshot(active.clone())?.0;
             *deleted = normalize_stored_snapshot(deleted.clone())?.0;
+        }
+        StructuralRecipeAction::UndoMovedReplacement {
+            active,
+            replaced,
+            return_target,
+            ..
+        } => {
+            let (normalized, expansion, _) = normalize_stored_snapshot(active.clone())?;
+            *active = normalized;
+            *replaced = normalize_stored_snapshot(replaced.clone())?.0;
+            normalize_stored_location(return_target, &expansion)?;
+        }
+        StructuralRecipeAction::RedoMovedReplacement {
+            moved,
+            replaced,
+            target,
+            ..
+        } => {
+            let (normalized, expansion, _) = normalize_stored_snapshot(moved.clone())?;
+            *moved = normalized;
+            *replaced = normalize_stored_snapshot(replaced.clone())?.0;
+            normalize_stored_location(target, &expansion)?;
         }
         StructuralRecipeAction::RestoreTurnedSelection { state } => {
             let (original, _, document_expansions) =
@@ -1070,59 +1104,22 @@ fn paste_clipboard(
         },
         |scope| {
             let (applied, copied_block_ids, copied_document_ids, superseded) =
-                if let Some(claim) = &authority.cut_claim {
-                    let source_page_id = authority.snapshot.source.host_page_id.clone();
-                    let candidate_file_ids = authority.snapshot.host_page_file_ids.clone();
-                    let mut applied = restore_snapshot(
-                        StructuralWriteContext {
-                            connection,
-                            context,
-                            operation_id,
-                            store_epoch,
-                            commit: scope.evidence(),
-                        },
-                        &mut target_parent,
-                        authority.snapshot.clone(),
-                        target_location.clone(),
-                        LibraryStructuralDeleteDirection::Backward,
-                    )?;
-                    applied.file_ownership_effects = move_exclusively_placed_files(
-                        connection,
-                        library_id,
-                        operation_id,
-                        project_id,
-                        &now,
-                        &[PageFilePlacementMove {
-                            source_page_id,
-                            target_page_id: target_location.host_page_id.clone(),
-                            candidate_file_ids,
-                        }],
-                    )?;
-                    let inverse = StructuralRecipeAction::MoveActive {
-                        snapshot: applied.snapshot.clone(),
-                        source: target_location.clone(),
-                        target: authority.snapshot.source.clone(),
-                    };
-                    (
-                        AppliedTransition { inverse, ..applied },
-                        BTreeMap::new(),
-                        BTreeMap::new(),
-                        vec![claim.delete_recipe_operation_id.clone()],
-                    )
-                } else {
-                    clone_snapshot_into_target(
+                materialize_clipboard_into_target(
+                    StructuralWriteContext {
                         connection,
                         context,
                         operation_id,
                         store_epoch,
-                        scope.evidence(),
-                        &mut target_parent,
-                        &authority.snapshot,
-                        target_location.clone(),
-                        assets_root,
-                        &now,
-                    )?
-                };
+                        commit: scope.evidence(),
+                    },
+                    library_id,
+                    project_id,
+                    &authority,
+                    &mut target_parent,
+                    target_location.clone(),
+                    assets_root,
+                    &now,
+                )?;
             let inverse_recipe = StructuralHistoryRecipe {
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
@@ -1207,6 +1204,66 @@ fn paste_clipboard(
         },
     )?;
     library_commit_result(connection, commit_result)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn materialize_clipboard_into_target(
+    write: StructuralWriteContext<'_>,
+    library_id: &str,
+    actor_project_id: &str,
+    authority: &BundleAuthority,
+    target_parent: &mut ResolvedParentDocument,
+    target: StructuralLocation,
+    assets_root: &Path,
+    now: &str,
+) -> Result<CloneTransition, StoreError> {
+    let Some(claim) = &authority.cut_claim else {
+        return clone_snapshot_into_target(
+            write.connection,
+            write.context,
+            write.operation_id,
+            write.store_epoch,
+            write.commit,
+            target_parent,
+            &authority.snapshot,
+            target,
+            assets_root,
+            now,
+        );
+    };
+
+    let source_page_id = authority.snapshot.source.host_page_id.clone();
+    let candidate_file_ids = authority.snapshot.host_page_file_ids.clone();
+    let mut applied = restore_snapshot(
+        write,
+        target_parent,
+        authority.snapshot.clone(),
+        target.clone(),
+        LibraryStructuralDeleteDirection::Backward,
+    )?;
+    applied.file_ownership_effects = move_exclusively_placed_files(
+        write.connection,
+        library_id,
+        write.operation_id,
+        actor_project_id,
+        now,
+        &[PageFilePlacementMove {
+            source_page_id,
+            target_page_id: target.host_page_id.clone(),
+            candidate_file_ids,
+        }],
+    )?;
+    let inverse = StructuralRecipeAction::MoveActive {
+        snapshot: applied.snapshot.clone(),
+        source: target,
+        target: authority.snapshot.source.clone(),
+    };
+    Ok((
+        AppliedTransition { inverse, ..applied },
+        BTreeMap::new(),
+        BTreeMap::new(),
+        vec![claim.delete_recipe_operation_id.clone()],
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1527,40 +1584,22 @@ fn replace_selection(
             authorize_parent_write(connection, context, &target_parent)?;
             let (mut inserted, copied_block_ids, copied_document_ids, superseded) =
                 if let Some(authority) = &bundle {
-                    if let Some(claim) = &authority.cut_claim {
-                        let applied = restore_snapshot(
-                            StructuralWriteContext {
-                                connection,
-                                context,
-                                operation_id,
-                                store_epoch,
-                                commit: scope.evidence(),
-                            },
-                            &mut target_parent,
-                            authority.snapshot.clone(),
-                            target.clone(),
-                            LibraryStructuralDeleteDirection::Backward,
-                        )?;
-                        (
-                            applied,
-                            BTreeMap::new(),
-                            BTreeMap::new(),
-                            vec![claim.delete_recipe_operation_id.clone()],
-                        )
-                    } else {
-                        clone_snapshot_into_target(
+                    materialize_clipboard_into_target(
+                        StructuralWriteContext {
                             connection,
                             context,
                             operation_id,
                             store_epoch,
-                            scope.evidence(),
-                            &mut target_parent,
-                            &authority.snapshot,
-                            target.clone(),
-                            assets_root,
-                            &now,
-                        )?
-                    }
+                            commit: scope.evidence(),
+                        },
+                        library_id,
+                        project_id,
+                        authority,
+                        &mut target_parent,
+                        target.clone(),
+                        assets_root,
+                        &now,
+                    )?
                 } else {
                     let blocks = ordinary_blocks
                         .as_ref()
@@ -1588,10 +1627,21 @@ fn replace_selection(
             inserted
                 .document_commits
                 .splice(0..0, deleted.document_commits);
-            inserted.inverse = StructuralRecipeAction::SwapActiveWithDeleted {
-                active: active_snapshot,
-                deleted: deleted_snapshot.clone(),
-                direction: LibraryStructuralDeleteDirection::Backward,
+            inserted.inverse = if let Some(authority) = &bundle
+                && authority.cut_claim.is_some()
+            {
+                StructuralRecipeAction::UndoMovedReplacement {
+                    active: active_snapshot,
+                    replaced: deleted_snapshot.clone(),
+                    return_target: authority.snapshot.source.clone(),
+                    direction: LibraryStructuralDeleteDirection::Backward,
+                }
+            } else {
+                StructuralRecipeAction::SwapActiveWithDeleted {
+                    active: active_snapshot,
+                    deleted: deleted_snapshot.clone(),
+                    direction: LibraryStructuralDeleteDirection::Backward,
+                }
             };
             inserted.additional_snapshots.push(deleted_snapshot);
             let inverse_recipe = StructuralHistoryRecipe {
@@ -1608,7 +1658,7 @@ fn replace_selection(
                 }
             };
             let snapshots = transition_snapshot_refs(&inserted);
-            let result = structural_result(
+            let mut result = structural_result(
                 operation_kind,
                 inserted.source_root_ids.clone(),
                 inserted.result_root_ids.clone(),
@@ -1621,7 +1671,14 @@ fn replace_selection(
                 superseded,
                 inserted.resume.clone(),
             );
-            let effects = structural_effects(project_id, operation_kind, &snapshots, &result, &now);
+            let mut effects =
+                structural_effects(project_id, operation_kind, &snapshots, &result, &now);
+            attach_page_file_ownership_effects(
+                &mut result,
+                &mut effects,
+                &inserted.file_ownership_effects,
+                scope.evidence().commit_seq(),
+            );
             seal_mutation_with(
                 scope,
                 context,
@@ -3212,6 +3269,18 @@ fn apply_recipe_action(
             deleted,
             direction,
         } => swap_active_with_deleted(write, active, deleted, direction),
+        StructuralRecipeAction::UndoMovedReplacement {
+            active,
+            replaced,
+            return_target,
+            direction,
+        } => undo_moved_replacement(write, active, replaced, return_target, direction),
+        StructuralRecipeAction::RedoMovedReplacement {
+            moved,
+            replaced,
+            target,
+            direction,
+        } => redo_moved_replacement(write, moved, replaced, target, direction),
         StructuralRecipeAction::RestoreTurnedSelection { state } => {
             restore_turned_selection(write, state)
         }
@@ -5382,6 +5451,219 @@ fn swap_active_with_deleted(
     };
     restored.additional_snapshots.push(removed_snapshot);
     Ok(restored)
+}
+
+fn undo_moved_replacement(
+    write: StructuralWriteContext<'_>,
+    active: OwnershipClosureSnapshot,
+    replaced: OwnershipClosureSnapshot,
+    return_target: StructuralLocation,
+    direction: LibraryStructuralDeleteDirection,
+) -> Result<AppliedTransition, StoreError> {
+    let target_page_id = active.source.host_page_id.clone();
+    let moved_target = active.source.clone();
+    let source_page_id = return_target.host_page_id.clone();
+    let candidate_file_ids = active.host_page_file_ids.clone();
+    let now = sqlite_now(write.connection)?;
+
+    // Each Document commit needs a distinct structural-barrier identity while
+    // the enclosing history reversal remains one durable mutation/LocalCommit.
+    let target_delete_operation_id = stable_uuid_v7(
+        write.operation_id,
+        "undo_moved_replacement_target_delete",
+        &active.source.document_id,
+    );
+    let mut target_parent = load_parent_document(write.connection, &active.source.document_id)?;
+    authorize_parent_write(write.connection, write.context, &target_parent)?;
+    let library_id = target_parent.authority.head.library_id.clone();
+    let removed_active = delete_snapshot(
+        StructuralWriteContext {
+            operation_id: &target_delete_operation_id,
+            ..write
+        },
+        &mut target_parent,
+        active,
+        direction,
+    )?;
+
+    let mut replaced_target = replaced.source.clone();
+    replaced_target.placeholder_block_id =
+        removed_active.snapshot.source.placeholder_block_id.clone();
+    let target_restore_operation_id = stable_uuid_v7(
+        write.operation_id,
+        "undo_moved_replacement_target_restore",
+        &replaced_target.document_id,
+    );
+    let mut current_target_parent =
+        load_parent_document(write.connection, &replaced_target.document_id)?;
+    authorize_parent_write(write.connection, write.context, &current_target_parent)?;
+    let restored_replaced = restore_snapshot(
+        StructuralWriteContext {
+            operation_id: &target_restore_operation_id,
+            ..write
+        },
+        &mut current_target_parent,
+        replaced,
+        replaced_target,
+        direction,
+    )?;
+
+    let source_restore_operation_id = stable_uuid_v7(
+        write.operation_id,
+        "undo_moved_replacement_source_restore",
+        &return_target.document_id,
+    );
+    let mut source_parent = load_parent_document(write.connection, &return_target.document_id)?;
+    authorize_parent_write(write.connection, write.context, &source_parent)?;
+    let mut restored_moved = restore_snapshot(
+        StructuralWriteContext {
+            operation_id: &source_restore_operation_id,
+            ..write
+        },
+        &mut source_parent,
+        removed_active.snapshot,
+        return_target,
+        direction,
+    )?;
+    restored_moved.file_ownership_effects = move_exclusively_placed_files(
+        write.connection,
+        &library_id,
+        write.operation_id,
+        bound_project_id(write.context)?,
+        &now,
+        &[PageFilePlacementMove {
+            source_page_id: target_page_id,
+            target_page_id: source_page_id,
+            candidate_file_ids,
+        }],
+    )?;
+    let restored_replaced_snapshot = restored_replaced.snapshot.clone();
+    restored_moved.inverse = StructuralRecipeAction::RedoMovedReplacement {
+        moved: restored_moved.snapshot.clone(),
+        replaced: restored_replaced_snapshot.clone(),
+        target: moved_target,
+        direction,
+    };
+    restored_moved.document_commits = removed_active
+        .document_commits
+        .into_iter()
+        .chain(restored_replaced.document_commits)
+        .chain(restored_moved.document_commits)
+        .collect();
+    restored_moved
+        .additional_snapshots
+        .push(restored_replaced_snapshot);
+    restored_moved.resume =
+        restored_replaced
+            .result_root_ids
+            .first()
+            .map(|block_id| LibraryEditorResumeTarget {
+                block_id: block_id.clone(),
+                edge: LibraryEditorResumeEdge::Start,
+                fallback_before_block_id: None,
+                fallback_after_block_id: None,
+            });
+    Ok(restored_moved)
+}
+
+fn redo_moved_replacement(
+    write: StructuralWriteContext<'_>,
+    moved: OwnershipClosureSnapshot,
+    replaced: OwnershipClosureSnapshot,
+    mut target: StructuralLocation,
+    direction: LibraryStructuralDeleteDirection,
+) -> Result<AppliedTransition, StoreError> {
+    let source_page_id = moved.source.host_page_id.clone();
+    let target_page_id = replaced.source.host_page_id.clone();
+    let candidate_file_ids = moved.host_page_file_ids.clone();
+    let now = sqlite_now(write.connection)?;
+
+    let source_delete_operation_id = stable_uuid_v7(
+        write.operation_id,
+        "redo_moved_replacement_source_delete",
+        &moved.source.document_id,
+    );
+    let mut source_parent = load_parent_document(write.connection, &moved.source.document_id)?;
+    authorize_parent_write(write.connection, write.context, &source_parent)?;
+    let library_id = source_parent.authority.head.library_id.clone();
+    let removed_moved = delete_snapshot(
+        StructuralWriteContext {
+            operation_id: &source_delete_operation_id,
+            ..write
+        },
+        &mut source_parent,
+        moved,
+        direction,
+    )?;
+
+    let target_delete_operation_id = stable_uuid_v7(
+        write.operation_id,
+        "redo_moved_replacement_target_delete",
+        &replaced.source.document_id,
+    );
+    let mut target_parent = load_parent_document(write.connection, &replaced.source.document_id)?;
+    authorize_parent_write(write.connection, write.context, &target_parent)?;
+    let removed_replaced = delete_snapshot(
+        StructuralWriteContext {
+            operation_id: &target_delete_operation_id,
+            ..write
+        },
+        &mut target_parent,
+        replaced,
+        direction,
+    )?;
+
+    target.placeholder_block_id = removed_replaced
+        .snapshot
+        .source
+        .placeholder_block_id
+        .clone();
+    let target_restore_operation_id = stable_uuid_v7(
+        write.operation_id,
+        "redo_moved_replacement_target_restore",
+        &target.document_id,
+    );
+    let mut current_target_parent = load_parent_document(write.connection, &target.document_id)?;
+    authorize_parent_write(write.connection, write.context, &current_target_parent)?;
+    let mut restored_moved = restore_snapshot(
+        StructuralWriteContext {
+            operation_id: &target_restore_operation_id,
+            ..write
+        },
+        &mut current_target_parent,
+        removed_moved.snapshot.clone(),
+        target,
+        direction,
+    )?;
+    restored_moved.file_ownership_effects = move_exclusively_placed_files(
+        write.connection,
+        &library_id,
+        write.operation_id,
+        bound_project_id(write.context)?,
+        &now,
+        &[PageFilePlacementMove {
+            source_page_id,
+            target_page_id,
+            candidate_file_ids,
+        }],
+    )?;
+    let removed_replaced_snapshot = removed_replaced.snapshot.clone();
+    restored_moved.inverse = StructuralRecipeAction::UndoMovedReplacement {
+        active: restored_moved.snapshot.clone(),
+        replaced: removed_replaced_snapshot.clone(),
+        return_target: removed_moved.snapshot.source,
+        direction,
+    };
+    restored_moved.document_commits = removed_moved
+        .document_commits
+        .into_iter()
+        .chain(removed_replaced.document_commits)
+        .chain(restored_moved.document_commits)
+        .collect();
+    restored_moved
+        .additional_snapshots
+        .push(removed_replaced_snapshot);
+    Ok(restored_moved)
 }
 
 fn validate_snapshot_authorities(

@@ -2336,6 +2336,27 @@ mod tests {
             target_event.page_file_content_revisions.get("page-2"),
             Some(&moved.committed.receipt.commit_seq)
         );
+        let reference_change_documents = delivery
+            .atoms
+            .iter()
+            .filter_map(|atom| {
+                let DeliveryAtomPayload::OwnedDocument { event, .. } = &atom.payload else {
+                    return None;
+                };
+                let nodex_core_contracts::AuthorizedOwnedDocumentEvent::PageFileReferencesChanged {
+                    document_id,
+                    ..
+                } = event
+                else {
+                    return None;
+                };
+                Some(document_id.clone())
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            reference_change_documents,
+            BTreeSet::from(["document-1".to_owned(), "document-2".to_owned()])
+        );
 
         kernel
             .writer()
@@ -2718,6 +2739,257 @@ mod tests {
             .expect("foreign placement owner File");
         assert_eq!(stable_file.owner_page_id, "page-2");
         assert_eq!(stable_file.version, 4);
+    }
+
+    #[test]
+    fn clipboard_replacement_rehomes_an_exclusively_moved_page_file() {
+        let (_directory, kernel, module) = seeded_library();
+        create_page(
+            &module,
+            "operation:create-replacement-target",
+            "page-2",
+            "document-2",
+        );
+        seed_receipt(
+            &kernel,
+            "operation:create-replacement-file",
+            "receipt-replacement",
+            'c',
+        );
+        module
+            .apply(
+                &context(),
+                apply_request(
+                    "operation:create-replacement-file",
+                    0,
+                    vec![LibraryPageFileChange::Create {
+                        file_id: "file-replacement".to_owned(),
+                        logical_path: "replacement.png".to_owned(),
+                        mime_type: "image/png".to_owned(),
+                        prepared_blob_receipt_id: "receipt-replacement".to_owned(),
+                        collision_policy: LibraryPageFileCollisionPolicy::Reject,
+                    }],
+                ),
+            )
+            .expect("create replacement File");
+
+        let document_state = |document_id: &str| {
+            kernel
+                .readers()
+                .read_default(|connection| {
+                    let root = connection.query_row(
+                        "SELECT block_id FROM document_block_index \
+                         WHERE document_id = ?1 AND parent_block_id IS NULL ORDER BY ordinal LIMIT 1",
+                        [document_id],
+                        |row| row.get::<_, String>(0),
+                    )?;
+                    let head = connection.query_row(
+                        "SELECT generation, head_seq FROM documents WHERE id = ?1",
+                        [document_id],
+                        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                    )?;
+                    Ok((root, head))
+                })
+                .expect("Document state")
+        };
+        let (source_placeholder, source_head) = document_state("document-1");
+        let placed = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:place-replacement-file".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::ReplaceSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![source_placeholder],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                            replacement: LibraryStructuralReplacement::Blocks {
+                                blocks: vec![LibraryStructuralReplacementBlock {
+                                    block_type: "image".to_owned(),
+                                    props: BTreeMap::from([
+                                        (
+                                            "url".to_owned(),
+                                            serde_json::json!("nodex://files/file-replacement"),
+                                        ),
+                                        ("name".to_owned(), serde_json::json!("replacement.png")),
+                                        ("caption".to_owned(), serde_json::json!("")),
+                                    ]),
+                                    content: None,
+                                    children: Vec::new(),
+                                }],
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("place replacement File");
+        let image_block_id = placed
+            .committed
+            .value
+            .structural_edit
+            .expect("placement result")
+            .result_root_block_ids[0]
+            .clone();
+
+        let (_, source_head) = document_state("document-1");
+        let captured = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:capture-replacement-cut".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::CaptureClipboard {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![image_block_id.clone()],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("capture replacement cut");
+        let clipboard = captured
+            .committed
+            .value
+            .structural_edit
+            .expect("capture result")
+            .clipboard
+            .expect("clipboard token");
+        let (_, cut_head) = document_state("document-1");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:delete-replacement-cut".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::DeleteSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![image_block_id.clone()],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: cut_head.0,
+                                    head_seq: cut_head.1,
+                                },
+                            },
+                            reason: LibraryStructuralDeleteReason::Cut {
+                                bundle: clipboard.clone(),
+                            },
+                            direction: LibraryStructuralDeleteDirection::Backward,
+                        }),
+                    },
+                },
+            )
+            .expect("delete replacement cut");
+
+        let (target_placeholder, target_head) = document_state("document-2");
+        let replaced = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:paste-replacement-cut".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::ReplaceSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-2".to_owned(),
+                                root_block_ids: vec![target_placeholder.clone()],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-2".to_owned(),
+                                    generation: target_head.0,
+                                    head_seq: target_head.1,
+                                },
+                            },
+                            replacement: LibraryStructuralReplacement::Clipboard {
+                                bundle: clipboard,
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("replace target from cut clipboard");
+        let result = replaced
+            .committed
+            .value
+            .structural_edit
+            .expect("replacement result");
+        assert_eq!(result.result_root_block_ids, [image_block_id.as_str()]);
+        assert_eq!(result.file_ownership_moves.len(), 1);
+        assert_eq!(result.file_ownership_moves[0].file_id, "file-replacement");
+        assert_eq!(
+            result.file_ownership_moves[0].previous_owner_page_id,
+            "page-1"
+        );
+        assert_eq!(result.file_ownership_moves[0].owner_page_id, "page-2");
+        assert!(manifest_for(&module, "page-1", false).files.is_empty());
+        let target = manifest_for(&module, "page-2", false);
+        assert_eq!(target.files.len(), 1);
+        assert_eq!(target.files[0].file_id, "file-replacement");
+
+        let undone = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:undo-replacement-cut".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ReverseStructuralEdit {
+                        token: result.history.expect("replacement history"),
+                    },
+                },
+            )
+            .expect("undo replacement cut");
+        let undo_result = undone
+            .committed
+            .value
+            .structural_edit
+            .expect("replacement Undo result");
+        assert_eq!(undo_result.file_ownership_moves.len(), 1);
+        assert_eq!(document_state("document-1").0, image_block_id);
+        assert_eq!(document_state("document-2").0, target_placeholder);
+        assert_eq!(manifest_for(&module, "page-1", false).files.len(), 1);
+        assert!(manifest_for(&module, "page-2", false).files.is_empty());
+
+        let redone = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:redo-replacement-cut".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ReverseStructuralEdit {
+                        token: undo_result.history.expect("replacement Redo history"),
+                    },
+                },
+            )
+            .expect("redo replacement cut");
+        let redo_result = redone
+            .committed
+            .value
+            .structural_edit
+            .expect("replacement Redo result");
+        assert_eq!(redo_result.file_ownership_moves.len(), 1);
+        assert_eq!(document_state("document-2").0, image_block_id);
+        assert!(manifest_for(&module, "page-1", false).files.is_empty());
+        assert_eq!(manifest_for(&module, "page-2", false).files.len(), 1);
     }
 
     #[test]

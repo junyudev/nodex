@@ -3964,7 +3964,7 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
-  test("moves an exclusively placed image File with its Block and resolves target path collisions @page-file-placement", async () => {
+  test("cuts and pastes an image subtree across Pages with stable File identity @page-file-placement", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-file-exclusive-move" });
     const workspace = harness.profile.initialProjectsDirectory;
@@ -4082,23 +4082,26 @@ test.describe("parallel functional Electron smoke", () => {
         expect(targetBefore.liveTotal).toBe(1);
         const sourceFileId = requireString(sourceBefore.files[0]?.fileId, "Source File id");
 
+        const sourceImageBlockId = requireString(
+          await sourceImage.evaluate((image) =>
+            image.closest<HTMLElement>(".bn-block[data-id]")?.getAttribute("data-id"),
+          ),
+          "Cut source image Block id",
+        );
         await sourceParent.locator(":scope > .bn-block-content").click();
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+/`);
-        await page.getByRole("dialog", { name: "Block actions" }).waitFor();
-        await page.getByRole("option", { name: /^Move to/u }).click();
-        const moveSearch = page.getByRole("combobox", { name: "Move blocks to" });
-        await moveSearch.waitFor();
-        await moveSearch.fill("Collision target Page");
-        await page
-          .locator(
-            `[data-nfm-move-to-row-kind="page"]` +
-              `[data-nfm-move-to-project-id="${project.projectId}"]`,
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+x`);
+        await expect
+          .poll(
+            async () => await harness.application.evaluate(({ clipboard }) => clipboard.readHTML()),
+            { timeout: 15_000 },
           )
-          .filter({ hasText: "Collision target Page" })
-          .click();
+          .toContain('name="nodex-clipboard-envelope-v1"');
+        await page.getByRole("tab", { name: "Collision target Page" }).click();
+        await targetParent.locator(":scope > .bn-block-content").click();
+        await page.keyboard.press("End");
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
 
         await expect(sourceParent).toHaveCount(0, { timeout: 15_000 });
-        await expect(page.getByText("Moved as image (2).png", { exact: true })).toBeVisible();
         await expect
           .poll(
             async () => ({
@@ -4122,15 +4125,22 @@ test.describe("parallel functional Electron smoke", () => {
           ]),
         );
 
-        await page.getByRole("tab", { name: "Collision target Page" }).click();
-        const movedImage = targetPanel.locator(
+        const movedImages = targetPanel.locator(
           `[data-content-type="image"][data-url="${sourceFileUrl}"]`,
         );
-        await expect(movedImage.locator("img")).toHaveAttribute(
+        await expect(movedImages).toHaveCount(1);
+        await expect(movedImages.locator("img")).toHaveAttribute(
           "src",
           /^data:image\/png;base64,/u,
           { timeout: 15_000 },
         );
+        const movedBlockId = requireString(
+          await movedImages.evaluate((image) =>
+            image.closest<HTMLElement>(".bn-block[data-id]")?.getAttribute("data-id"),
+          ),
+          "Pasted source Block id",
+        );
+        expect(movedBlockId).toBe(sourceImageBlockId);
         const moreTargetProperties = targetPanel.getByRole("button", {
           name: /\d+ more propert(?:y|ies)/u,
         });
@@ -4138,6 +4148,74 @@ test.describe("parallel functional Electron smoke", () => {
         await expect(
           targetPanel.getByRole("button", { name: "Open 2 Files shown in Page" }),
         ).toBeVisible();
+        await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
+
+        const movedParent = targetSurface
+          .locator(".bn-block[data-id]")
+          .filter({ hasText: "Source image owner" })
+          .first();
+        await movedParent.locator(":scope > .bn-block-content").click();
+        await page.keyboard.press("End");
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
+        await expect(movedImages).toHaveCount(2, { timeout: 15_000 });
+        const pastedBlockIds = await movedImages.evaluateAll((images) =>
+          images.map((image) => image.closest<HTMLElement>(".bn-block[data-id]")?.dataset.id ?? ""),
+        );
+        expect(pastedBlockIds).toContain(sourceImageBlockId);
+        expect(pastedBlockIds.every(Boolean)).toBe(true);
+        expect(new Set(pastedBlockIds).size).toBe(2);
+        const afterSecondPaste = await readConvergencePageFiles(
+          page,
+          project.projectId,
+          target.pageId,
+        );
+        expect(afterSecondPaste.liveTotal).toBe(2);
+        expect(afterSecondPaste.files).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              fileId: sourceFileId,
+              ownerPageId: target.pageId,
+              bodyUsage: { kind: "placed", placementCount: 2 },
+            }),
+          ]),
+        );
+
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
+        await expect(movedImages).toHaveCount(1, { timeout: 15_000 });
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
+        await expect(movedImages).toHaveCount(0, { timeout: 15_000 });
+        await page.getByRole("tab", { name: "Exclusive source Page" }).click();
+        await expect(sourceParent).toHaveCount(1, { timeout: 15_000 });
+        const restoredImage = sourceParent.locator(
+          `[data-content-type="image"][data-url="${sourceFileUrl}"]`,
+        );
+        await expect(restoredImage.locator("img")).toHaveAttribute(
+          "src",
+          /^data:image\/png;base64,/u,
+          { timeout: 15_000 },
+        );
+        await expect
+          .poll(
+            async () => ({
+              source: await readConvergencePageFiles(page, project.projectId, source.pageId),
+              target: await readConvergencePageFiles(page, project.projectId, target.pageId),
+            }),
+            { timeout: 15_000 },
+          )
+          .toMatchObject({
+            source: {
+              liveTotal: 1,
+              files: [
+                {
+                  fileId: sourceFileId,
+                  ownerPageId: source.pageId,
+                  logicalPath: "image (2).png",
+                  bodyUsage: { kind: "placed", placementCount: 1 },
+                },
+              ],
+            },
+            target: { liveTotal: 1 },
+          });
         await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
       } finally {
         await harness.application.evaluate(({ clipboard, nativeImage }, saved) => {

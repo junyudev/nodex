@@ -52,6 +52,8 @@ struct DocumentEventMetadata {
     local_commit_id: Option<String>,
     #[serde(default)]
     page_file_body_usage_changed: bool,
+    #[serde(default)]
+    page_file_references_changed: bool,
 }
 
 pub(crate) fn reconstruct_document_event(
@@ -108,6 +110,7 @@ pub(crate) fn reconstruct_document_event(
                         head_seq: metadata.head_seq,
                         update,
                         page_file_body_usage_changed: metadata.page_file_body_usage_changed,
+                        page_file_references_changed: metadata.page_file_references_changed,
                     }
                 }
                 None => OwnedDocumentEvent::DocumentResyncRequired {
@@ -121,6 +124,7 @@ pub(crate) fn reconstruct_document_event(
                         .filter(|hash| is_sha256(hash))
                         .ok_or_else(|| corrupt("Yjs event update hash is invalid"))?,
                     page_file_body_usage_changed: metadata.page_file_body_usage_changed,
+                    page_file_references_changed: metadata.page_file_references_changed,
                 },
             }
         }
@@ -223,8 +227,11 @@ pub(crate) fn reconstruct_document_event(
         }
         "document_restored" => OwnedDocumentEvent::DocumentInvalidated {
             document_id: metadata.document_id,
+            generation: metadata.generation,
+            head_seq: metadata.head_seq,
             reason: DocumentInvalidationReason::Restored,
             page_file_body_usage_changed: metadata.page_file_body_usage_changed,
+            page_file_references_changed: metadata.page_file_references_changed,
         },
         "document_invalidated" => {
             let reason = match metadata.reason.as_deref() {
@@ -235,8 +242,11 @@ pub(crate) fn reconstruct_document_event(
             };
             OwnedDocumentEvent::DocumentInvalidated {
                 document_id: metadata.document_id,
+                generation: metadata.generation,
+                head_seq: metadata.head_seq,
                 reason,
                 page_file_body_usage_changed: metadata.page_file_body_usage_changed,
+                page_file_references_changed: metadata.page_file_references_changed,
             }
         }
         _ => return Err(corrupt("Owned Document event kind is unsupported")),

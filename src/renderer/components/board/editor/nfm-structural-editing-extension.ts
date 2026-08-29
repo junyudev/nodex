@@ -386,12 +386,12 @@ export class NfmStructuralEditingSession {
     });
   }
 
-  handleCopy(presentation: NfmStructuralClipboardPresentation): string | null {
-    return this.captureClipboard("copy", presentation);
-  }
-
-  handleCut(presentation: NfmStructuralClipboardPresentation): string | null {
-    return this.captureClipboard("cut", presentation);
+  handleClipboard(
+    action: "copy" | "cut",
+    rootBlockIds: readonly string[],
+    presentation: NfmStructuralClipboardPresentation,
+  ): string | null {
+    return this.captureClipboard(action, rootBlockIds, presentation);
   }
 
   handlePaste(envelope: NodexClipboardEnvelopeV1): boolean {
@@ -465,12 +465,15 @@ export class NfmStructuralEditingSession {
 
   private captureClipboard(
     actionHint: "copy" | "cut",
+    rootBlockIds: readonly string[],
     presentation: NfmStructuralClipboardPresentation,
   ): string | null {
     if (this.disposed) return null;
+    const roots = rootBlockIds
+      .map((blockId) => this.editor.getBlock(blockId) as StructuralEditorBlock | undefined)
+      .filter((block): block is StructuralEditorBlock => Boolean(block));
+    if (roots.length === 0 || roots.length !== rootBlockIds.length) return null;
     this.clipboardCoordinator.supersedePending();
-    const roots = structuralRoots(this.editor);
-    if (!hasTypedOwnerBlock(roots)) return null;
     const writeClaim = createUuidV7();
     const pendingCapture = this.clipboardCoordinator.beginCapture({
       libraryId: this.boundRuntime.libraryId,

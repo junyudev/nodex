@@ -1262,6 +1262,7 @@ describe("Library Module transport", () => {
             documentCommits: [],
             affectedPageIds: ["page:one"],
             affectedDatabaseIds: [],
+            fileOwnershipMoves: [],
             clipboard: null,
             history: {
               recipeOperationId: "recipe:one",

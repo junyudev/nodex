@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Pages can now own and manage exact-format Files through native file and folder drops or explicit selection, while Agents can attach generated file outputs to the Page that owns them; Files keep their identity through Block moves and follow the move when every placement leaves its owner for one destination.
+- Pages can now own and manage exact-format Files through native file and folder drops or explicit selection, while Agents can attach generated file outputs to the Page that owns them; Files keep their identity through Block moves and keyboard cut/paste, and follow the move when every placement leaves its owner for one destination.
 - Equations now support first-class block and inline TeX authoring, while Mermaid Code Blocks add secure local code, preview, and split views with fullscreen, copy, and image export.
 - Code Blocks now offer a compact hover Action Bar, an exact searchable language catalog, plain-code copy, local line wrapping, and on-demand formatting, with matching read-only previews and no document changes from presentation state.
 - Pages can now keep durable relationships to one or more chats, show working and unread activity directly in Board and List, and manage those chats from Page Stage across restarts.

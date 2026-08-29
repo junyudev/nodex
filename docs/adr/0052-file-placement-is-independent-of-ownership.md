@@ -90,9 +90,13 @@ derives the narrow exclusive consequence from canonical post-state placements
 and composes it into each identity-preserving move path. Copy-like and ambiguous
 paths continue to mutate only Documents and placement projections.
 
-The first valid paste of a cut capability is a move and may rehome; later pastes
-are copies. Ordinary Undo and Redo are new semantic moves and re-evaluate
-exclusivity against their resulting canonical placement set. Promotion Undo is
+Copy and Cut of every complete Block-root forest enter the Structural Clipboard,
+so keyboard movement of an ordinary image, attachment, or parent subtree reaches
+this rule without a File-specific renderer path. The first valid paste of a cut
+capability is a move and may rehome, including when paste replaces a target
+selection; later pastes and Copy are copies. Undo and Redo are new semantic
+moves and re-evaluate exclusivity against their resulting canonical placement
+set. Promotion Undo is
 stricter because it removes the generated Page: it preflights current File
 heads, namespace, placements, and target guard. One transaction reverses
 required rehomes, restores the source placement, and purges the generated Page.
@@ -102,8 +106,11 @@ Rename and replace remain owner actions and immediately affect every placement
 of that identity. This is consistent with mentions and other stable references:
 the occurrence presents the current target rather than a snapshot. Core emits
 Page-scoped content invalidations for foreign placements without pretending
-their Files manifests or body-usage revisions changed. Users who need an
-independent File use whole-Page copy or an explicit future File-copy operation.
+their Files manifests or body-usage revisions changed. It also emits an exact
+Document-scoped derived signal when the Page File reference multiset changes;
+this invalidates placement-based reads without creating File state or exposing
+inventory. Users who need an independent File use whole-Page copy or an explicit
+future File-copy operation.
 
 The containing Page's Files dialog does not list foreign placements because it
 is an ownership inventory. The body still presents and can save the placed

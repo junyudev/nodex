@@ -133,12 +133,19 @@ export function encodeNodexClipboardEnvelope(envelope: NodexClipboardEnvelopeV1)
 export function attachNodexClipboardEnvelope(
   html: string,
   envelope: NodexClipboardEnvelopeV1,
+  writeClaim?: string,
 ): string {
+  if (writeClaim !== undefined && !UUID_V7_PATTERN.test(writeClaim)) {
+    throw new Error("Invalid structural clipboard write claim.");
+  }
   const sidecar = encodeNodexClipboardEnvelope(envelope);
   const fallback = sanitizeUntrustedTypedOwnerHtml(
     stripNodexStructuralClipboardWriteClaims(stripNodexClipboardMetaTags(html)),
   );
-  return `<!doctype html><html><head>${sidecar}</head><body><div ${NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE}="1">${fallback}</div></body></html>`;
+  const claimAttribute = writeClaim
+    ? ` ${NODEX_STRUCTURAL_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE}="${writeClaim}"`
+    : "";
+  return `<!doctype html><html><head>${sidecar}</head><body><div ${NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE}="1"${claimAttribute}>${fallback}</div></body></html>`;
 }
 
 /** Claims the native clipboard synchronously while Core prepares the authoritative snapshot. */

@@ -26,7 +26,7 @@ const createPageFileRuntime = (
     pageId: "page-1",
     storeEpoch: "store-1",
   },
-  authorityVersion: 1,
+  readAuthorityEpoch: 1,
   upload: async () => "nodex://files/file-1",
   read,
   metadata: async () => {

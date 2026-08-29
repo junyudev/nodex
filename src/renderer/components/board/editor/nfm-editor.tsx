@@ -208,7 +208,7 @@ import {
   type NfmEditorStructuralMutationRuntime,
 } from "./nfm-editor-relocation";
 import { createPageFilePlacementRuntime, PageFileRuntimeProvider } from "./page-file-runtime";
-import { subscribePageFileChanges } from "@/lib/page-library-changes";
+import { subscribePageFileReadAuthority } from "@/lib/page-file-read-authority";
 import { moveNfmBlocks } from "@/lib/nfm-block-move-runtime";
 import { summarizePageFileOwnershipMoveCollisions } from "@/lib/page-file-ownership-move-feedback";
 import {
@@ -468,7 +468,7 @@ function NfmEditorInstance({
   const [replaceQuery, setReplaceQuery] = useState("");
   const [searchMatchCount, setSearchMatchCount] = useState(0);
   const [searchActiveIndex, setSearchActiveIndex] = useState(-1);
-  const [pageFileAuthorityVersion, setPageFileAuthorityVersion] = useState(0);
+  const [pageFileReadAuthorityEpoch, setPageFileReadAuthorityEpoch] = useState(0);
   const [pasteResourceDialog, setPasteResourceDialog] = useState<PasteResourceDialogState | null>(
     null,
   );
@@ -540,13 +540,12 @@ function NfmEditorInstance({
 
   useEffect(() => {
     const pageId = sourcePageContext?.pageId;
-    setPageFileAuthorityVersion(0);
+    setPageFileReadAuthorityEpoch(0);
     if (!pageId) return;
-    return subscribePageFileChanges(pageId, ({ contentRevision, manifestRevision }) => {
-      if (manifestRevision === null && contentRevision === null) return;
-      setPageFileAuthorityVersion((version) => version + 1);
+    return subscribePageFileReadAuthority(pageId, source.documentId, () => {
+      setPageFileReadAuthorityEpoch((epoch) => epoch + 1);
     });
-  }, [sourcePageContext?.pageId]);
+  }, [source.documentId, sourcePageContext?.pageId]);
 
   const sourcePageId = sourcePageContext?.pageId;
   const pageFileRuntime = useMemo(
@@ -558,10 +557,10 @@ function NfmEditorInstance({
               pageId: sourcePageId,
               storeEpoch: source.storeEpoch,
             },
-            pageFileAuthorityVersion,
+            pageFileReadAuthorityEpoch,
           )
         : null,
-    [contentAccessContext, pageFileAuthorityVersion, source.storeEpoch, sourcePageId],
+    [contentAccessContext, pageFileReadAuthorityEpoch, source.storeEpoch, sourcePageId],
   );
 
   const threadMentionSummaryMap = useMemo(
@@ -694,11 +693,13 @@ function NfmEditorInstance({
   const extensions = useMemo(
     () =>
       createNfmEditorExtensions({
-        onCopyTypedBlocks: (_editor, presentation) =>
-          structuralEditingController.current?.handleCopy(presentation) ?? null,
-        onCutTypedBlocks: (_editor, presentation) =>
-          structuralEditingController.current?.handleCut(presentation) ?? null,
-        onTypedBlocksUnavailable: () =>
+        onStructuralClipboard: (action, { rootBlockIds, presentation }) =>
+          structuralEditingController.current?.handleClipboard(
+            action,
+            rootBlockIds,
+            presentation,
+          ) ?? null,
+        onStructuralClipboardUnavailable: () =>
           toast.danger("Structural editing is initializing. Try the action again."),
       }),
     [structuralEditingController],

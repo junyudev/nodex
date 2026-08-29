@@ -16,27 +16,61 @@ import {
 
 export type NfmClipboardSelection =
   | {
-      readonly kind: "selected-range";
-      readonly hasTypedOwner: boolean;
+      readonly kind: "block-roots";
+      readonly rootBlockIds: readonly string[];
+      readonly blocks: readonly SelectionBlockLike[];
+      readonly containsTypedOwner: boolean;
       readonly payload: CopiedSelectionPayload | null;
+      readonly portableCut: "selection" | "current-block";
     }
   | {
-      readonly kind: "current-block";
-      readonly block: SelectionBlockLike;
-      readonly hasTypedOwner: boolean;
+      readonly kind: "inline-range";
+      readonly intersectsTypedOwner: boolean;
       readonly payload: CopiedSelectionPayload | null;
     };
 
-function selectedRangeHasTypedOwner(view: EditorView, editor: BlockNoteEditor): boolean {
+function topLevelBlocks(
+  editor: BlockNoteEditor,
+  blocks: readonly SelectionBlockLike[],
+): readonly SelectionBlockLike[] {
+  const selectedIds = new Set(blocks.map((block) => block.id));
+  return blocks.filter((block) => {
+    let parent = editor.getParentBlock(block.id) as SelectionBlockLike | undefined;
+    while (parent) {
+      if (selectedIds.has(parent.id)) return false;
+      parent = editor.getParentBlock(parent.id) as SelectionBlockLike | undefined;
+    }
+    return true;
+  });
+}
+
+function selectedRangeBlocks(
+  view: EditorView,
+  editor: BlockNoteEditor,
+): {
+  readonly blockSelection: boolean;
+  readonly blocks: readonly SelectionBlockLike[];
+  readonly containsTypedOwner: boolean;
+} {
   const blockSelectionIds = getNfmBlockSelectionIds(view.state.selection);
   if (blockSelectionIds.length === 0) {
-    return hasTypedOwnerBlock(editor.getSelection()?.blocks ?? []);
+    const blocks = (editor.getSelection()?.blocks ?? []) as readonly SelectionBlockLike[];
+    return {
+      blockSelection: false,
+      blocks: topLevelBlocks(editor, blocks),
+      containsTypedOwner: hasTypedOwnerBlock(blocks),
+    };
   }
 
   const selectedBlocks = blockSelectionIds
-    .map((blockId) => editor.getBlock(blockId))
-    .filter((block) => block !== undefined);
-  return selectedBlocks.length !== blockSelectionIds.length || hasTypedOwnerBlock(selectedBlocks);
+    .map((blockId) => editor.getBlock(blockId) as SelectionBlockLike | undefined)
+    .filter((block): block is SelectionBlockLike => Boolean(block));
+  return {
+    blockSelection: true,
+    blocks: topLevelBlocks(editor, selectedBlocks),
+    containsTypedOwner:
+      selectedBlocks.length !== blockSelectionIds.length || hasTypedOwnerBlock(selectedBlocks),
+  };
 }
 
 function eventTargetElement(target: EventTarget | null): Element | null {
@@ -99,9 +133,20 @@ export function resolveNfmClipboardSelection(
   eventTarget: EventTarget | null,
 ): NfmClipboardSelection | null {
   if (!view.state.selection.empty) {
+    const selected = selectedRangeBlocks(view, editor);
+    if (selected.blockSelection || selected.containsTypedOwner) {
+      return {
+        kind: "block-roots",
+        rootBlockIds: selected.blocks.map((block) => block.id),
+        blocks: selected.blocks,
+        containsTypedOwner: selected.containsTypedOwner,
+        payload: createSelectedRangePayload(view, editor),
+        portableCut: "selection",
+      };
+    }
     return {
-      kind: "selected-range",
-      hasTypedOwner: selectedRangeHasTypedOwner(view, editor),
+      kind: "inline-range",
+      intersectsTypedOwner: false,
       payload: createSelectedRangePayload(view, editor),
     };
   }
@@ -110,10 +155,12 @@ export function resolveNfmClipboardSelection(
   try {
     const block = editor.getTextCursorPosition().block as SelectionBlockLike;
     return {
-      kind: "current-block",
-      block,
-      hasTypedOwner: hasTypedOwnerBlock([block]),
+      kind: "block-roots",
+      rootBlockIds: [block.id],
+      blocks: [block],
+      containsTypedOwner: hasTypedOwnerBlock([block]),
       payload: createCurrentBlockPayload(editor, block),
+      portableCut: "current-block",
     };
   } catch {
     return null;
@@ -175,13 +222,14 @@ export function cutOrdinaryNfmClipboardSelection(
   selection: NfmClipboardSelection,
 ): void {
   if (!view.editable) return;
-  if (selection.kind === "selected-range") {
+  if (selection.kind === "inline-range" || selection.portableCut === "selection") {
     view.dispatch(view.state.tr.deleteSelection().scrollIntoView().setMeta("uiEvent", "cut"));
     return;
   }
 
   try {
-    cutCurrentOrdinaryBlock(editor, selection.block.id);
+    const blockId = selection.rootBlockIds[0];
+    if (blockId) cutCurrentOrdinaryBlock(editor, blockId);
   } catch (error) {
     console.error("Failed to cut current Block", error);
   }

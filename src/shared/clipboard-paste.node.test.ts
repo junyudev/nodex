@@ -37,6 +37,16 @@ describe("Nodex structural clipboard sidecar", () => {
     expect(hasNodexStructuralClipboardFallback(inspected.fallbackHtml)).toBe(true);
   });
 
+  test("keeps the exact write claim beside the final envelope until cut preparation settles", () => {
+    const html = attachNodexClipboardEnvelope("<p>Shareable fallback</p>", envelope, writeClaim);
+
+    const inspected = inspectNodexClipboardHtml(html);
+
+    expect(inspected.envelope).toEqual(envelope);
+    expect(inspected.writeClaim).toBe(writeClaim);
+    expect(readNodexStructuralClipboardWriteClaim(html)).toBe(writeClaim);
+  });
+
   test("removes typed-owner semantics from portable HTML", () => {
     const unsafe = [
       '<div data-content-type="page">Page</div>',

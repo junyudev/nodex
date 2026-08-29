@@ -29,7 +29,7 @@ export function writeStructuralClipboard(
 ): StructuralClipboardWriteResult {
   let html: string;
   try {
-    html = attachNodexClipboardEnvelope(input.html, input.envelope);
+    html = attachNodexClipboardEnvelope(input.html, input.envelope, input.writeClaim);
   } catch {
     return { ok: false, failure: "write_failed" };
   }
@@ -49,12 +49,18 @@ export function writeStructuralClipboard(
   }
 
   let readback: ReturnType<typeof decodeNodexClipboardEnvelope>;
+  let readbackWriteClaim: string | null;
   try {
-    readback = decodeNodexClipboardEnvelope(clipboard.readHTML());
+    const readbackHtml = clipboard.readHTML();
+    readback = decodeNodexClipboardEnvelope(readbackHtml);
+    readbackWriteClaim = readNodexStructuralClipboardWriteClaim(readbackHtml);
   } catch {
     return { ok: false, failure: "readback_mismatch" };
   }
-  if (readback?.capability !== input.envelope.capability) {
+  if (
+    readback?.capability !== input.envelope.capability ||
+    readbackWriteClaim !== input.writeClaim
+  ) {
     return { ok: false, failure: "readback_mismatch" };
   }
 

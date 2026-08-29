@@ -500,12 +500,29 @@ fn compile_owned_document(
     library_id: &str,
     event: nodex_core_contracts::document::OwnedDocumentEvent,
 ) -> Result<Vec<DeliveryAtomDraft>, StoreError> {
-    let (event, document_id, page_file_body_usage_changed) = match event {
+    let (
+        event,
+        document_id,
+        generation,
+        head_seq,
+        page_file_body_usage_changed,
+        page_file_references_changed,
+    ) = match event {
         nodex_core_contracts::document::OwnedDocumentEvent::DocumentUpdated {
             document_id,
+            generation,
+            head_seq,
             page_file_body_usage_changed,
+            page_file_references_changed,
             ..
-        } => (None, document_id, page_file_body_usage_changed),
+        } => (
+            None,
+            document_id,
+            generation,
+            head_seq,
+            page_file_body_usage_changed,
+            page_file_references_changed,
+        ),
         nodex_core_contracts::document::OwnedDocumentEvent::DocumentResyncRequired {
             document_id,
             generation,
@@ -513,6 +530,7 @@ fn compile_owned_document(
             update_id,
             update_hash,
             page_file_body_usage_changed,
+            page_file_references_changed,
         } => (
             Some(AuthorizedOwnedDocumentEvent::DocumentResyncRequired {
                 document_id: document_id.clone(),
@@ -522,7 +540,10 @@ fn compile_owned_document(
                 update_hash,
             }),
             document_id,
+            generation,
+            head_seq,
             page_file_body_usage_changed,
+            page_file_references_changed,
         ),
         nodex_core_contracts::document::OwnedDocumentEvent::CanvasUpdated {
             document_id,
@@ -541,6 +562,9 @@ fn compile_owned_document(
                 mutation,
             }),
             document_id,
+            generation,
+            head_seq,
+            false,
             false,
         ),
         nodex_core_contracts::document::OwnedDocumentEvent::CanvasGenerationChanged {
@@ -560,19 +584,28 @@ fn compile_owned_document(
                 scene_hash,
             }),
             document_id,
+            generation,
+            head_seq,
+            false,
             false,
         ),
         nodex_core_contracts::document::OwnedDocumentEvent::DocumentInvalidated {
             document_id,
+            generation,
+            head_seq,
             reason,
             page_file_body_usage_changed,
+            page_file_references_changed,
         } => (
             Some(AuthorizedOwnedDocumentEvent::DocumentInvalidated {
                 document_id: document_id.clone(),
                 reason,
             }),
             document_id,
+            generation,
+            head_seq,
             page_file_body_usage_changed,
+            page_file_references_changed,
         ),
     };
     let mut atoms = if page_file_body_usage_changed {
@@ -580,41 +613,70 @@ fn compile_owned_document(
     } else {
         Vec::new()
     };
-    let Some(event) = event else {
-        return Ok(atoms);
-    };
-    let canvas_id = connection
-        .query_row(
-            "SELECT ownership.block_id
-             FROM block_documents ownership
-             JOIN blocks block ON block.id = ownership.block_id
-             JOIN canvas_owners canvas ON canvas.block_id = ownership.block_id
-             WHERE ownership.document_id = ?1 AND canvas.library_id = ?2
-               AND block.type = 'canvas'",
-            [&document_id, library_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
-    let mut requirements = vec![
-        library(library_id),
-        ResourceKey::Document {
+    let mut events = Vec::new();
+    if page_file_references_changed {
+        events.push(AuthorizedOwnedDocumentEvent::PageFileReferencesChanged {
             document_id: document_id.clone(),
-        },
-    ];
-    if let Some(canvas_id) = &canvas_id {
-        requirements.push(ResourceKey::Canvas {
-            canvas_id: canvas_id.clone(),
+            generation,
+            head_seq,
         });
     }
-    atoms.push(atom(
-        DeliveryAtomKind::OwnedDocumentChanged,
-        requirements,
-        DeliveryAtomPayload::OwnedDocument {
-            library_id: library_id.to_owned(),
-            canvas_id,
+    if let Some(event) = event {
+        events.push(event);
+    }
+    if events.is_empty() {
+        return Ok(atoms);
+    }
+    let needs_canvas_authority = events.iter().any(|event| {
+        !matches!(
             event,
-        },
-    ));
+            AuthorizedOwnedDocumentEvent::PageFileReferencesChanged { .. }
+        )
+    });
+    let canvas_id = if needs_canvas_authority {
+        connection
+            .query_row(
+                "SELECT ownership.block_id
+                 FROM block_documents ownership
+                 JOIN blocks block ON block.id = ownership.block_id
+                 JOIN canvas_owners canvas ON canvas.block_id = ownership.block_id
+                 WHERE ownership.document_id = ?1 AND canvas.library_id = ?2
+                   AND block.type = 'canvas'",
+                [&document_id, library_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+    } else {
+        None
+    };
+    atoms.extend(events.into_iter().map(|event| {
+        let event_canvas_id = (!matches!(
+            &event,
+            AuthorizedOwnedDocumentEvent::PageFileReferencesChanged { .. }
+        ))
+        .then(|| canvas_id.clone())
+        .flatten();
+        let mut requirements = vec![
+            library(library_id),
+            ResourceKey::Document {
+                document_id: document_id.clone(),
+            },
+        ];
+        if let Some(canvas_id) = &event_canvas_id {
+            requirements.push(ResourceKey::Canvas {
+                canvas_id: canvas_id.clone(),
+            });
+        }
+        atom(
+            DeliveryAtomKind::OwnedDocumentChanged,
+            requirements,
+            DeliveryAtomPayload::OwnedDocument {
+                library_id: library_id.to_owned(),
+                canvas_id: event_canvas_id,
+                event,
+            },
+        )
+    }));
     Ok(atoms)
 }
 
@@ -823,7 +885,8 @@ fn parent_resource(parent_key: &str, library_id: &str) -> Result<Option<Resource
 
 fn owned_document_id(event: &AuthorizedOwnedDocumentEvent) -> &str {
     match event {
-        AuthorizedOwnedDocumentEvent::DocumentResyncRequired { document_id, .. }
+        AuthorizedOwnedDocumentEvent::PageFileReferencesChanged { document_id, .. }
+        | AuthorizedOwnedDocumentEvent::DocumentResyncRequired { document_id, .. }
         | AuthorizedOwnedDocumentEvent::CanvasUpdated { document_id, .. }
         | AuthorizedOwnedDocumentEvent::CanvasGenerationChanged { document_id, .. }
         | AuthorizedOwnedDocumentEvent::DocumentInvalidated { document_id, .. } => document_id,
@@ -904,7 +967,7 @@ mod tests {
     }
 
     #[test]
-    fn page_file_body_usage_change_becomes_one_page_scoped_library_atom() {
+    fn page_file_placement_change_becomes_inventory_and_document_atoms() {
         let connection = Connection::open_in_memory().expect("in-memory compiler store");
         connection
             .execute_batch(
@@ -935,12 +998,13 @@ mod tests {
                     head_seq: 9,
                     update: vec![1],
                     page_file_body_usage_changed: true,
+                    page_file_references_changed: true,
                 },
             ),
         )
-        .expect("compile Page File body usage atom");
+        .expect("compile Page File placement atoms");
 
-        assert_eq!(atoms.len(), 1);
+        assert_eq!(atoms.len(), 2);
         let DeliveryAtomPayload::Library { event, .. } = &atoms[0].payload else {
             panic!("expected Library atom");
         };
@@ -952,6 +1016,26 @@ mod tests {
         assert_eq!(
             payload_claims(&atoms[0].payload).expect("atom claims"),
             atoms[0].required_resources,
+        );
+        let DeliveryAtomPayload::OwnedDocument { event, .. } = &atoms[1].payload else {
+            panic!("expected Owned Document atom");
+        };
+        assert_eq!(
+            event,
+            &AuthorizedOwnedDocumentEvent::PageFileReferencesChanged {
+                document_id: "document:test".to_owned(),
+                generation: 2,
+                head_seq: 9,
+            }
+        );
+        assert_eq!(
+            atoms[1].required_resources,
+            [
+                library("library:test"),
+                ResourceKey::Document {
+                    document_id: "document:test".to_owned(),
+                },
+            ]
         );
     }
 

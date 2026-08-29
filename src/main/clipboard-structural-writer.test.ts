@@ -4,6 +4,7 @@ import {
   attachNodexStructuralClipboardWriteClaim,
   decodeNodexClipboardEnvelope,
   encodeNodexClipboardEnvelope,
+  readNodexStructuralClipboardWriteClaim,
   type NodexClipboardEnvelopeV1,
 } from "../shared/clipboard-paste";
 import { writeStructuralClipboard } from "./clipboard-structural-writer";
@@ -47,6 +48,27 @@ describe("structural clipboard writer", () => {
     expect(writtenText).toBe("Subpage title");
     expect(writtenHtml).toContain("<p>Subpage title</p>");
     expect(decodeNodexClipboardEnvelope(writtenHtml)).toEqual(envelope);
+    expect(readNodexStructuralClipboardWriteClaim(writtenHtml)).toBe(writeClaim);
+  });
+
+  test("rejects a final readback that retained the capability but lost its write claim", () => {
+    let html = pendingHtml();
+    const result = writeStructuralClipboard(
+      {
+        envelope,
+        writeClaim,
+        html: "<p>Subpage title</p>",
+        text: "Subpage title",
+      },
+      {
+        write: ({ html: nextHtml }) => {
+          html = nextHtml?.replace(/\sdata-nodex-structural-write-claim="[^"]+"/u, "") ?? "";
+        },
+        readHTML: () => html,
+      },
+    );
+
+    expect(result).toEqual({ ok: false, failure: "readback_mismatch" });
   });
 
   test("does not treat a successful write with a mismatched readback as a cut acknowledgement", () => {

@@ -178,7 +178,7 @@ function writeStructuralSelectionClaimToClipboard(
   clipboardEvent.preventDefault();
 }
 
-function blockUnavailableTypedOwnerClipboard(
+function blockUnavailableStructuralClipboard(
   clipboardEvent: ClipboardEvent,
   onUnavailable: (() => void) | undefined,
 ): void {
@@ -198,34 +198,40 @@ function handleNfmClipboardCommand(
   const selection = resolveNfmClipboardSelection(view, editor, clipboardEvent.target);
   if (!selection) return false;
 
-  const { hasTypedOwner: hasTypedOwnerSelection, payload } = selection;
+  const { payload } = selection;
   if (!payload) {
-    if (!hasTypedOwnerSelection) return false;
-    blockUnavailableTypedOwnerClipboard(clipboardEvent, options.onTypedBlocksUnavailable);
+    if (selection.kind === "inline-range" && !selection.intersectsTypedOwner) return false;
+    blockUnavailableStructuralClipboard(clipboardEvent, options.onStructuralClipboardUnavailable);
     return true;
   }
 
-  const writeClaim =
-    command === "copy"
-      ? options.onCopyTypedBlocks?.(editor, {
-          html: payload.externalHTML,
-          text: payload.structuredText,
-        })
-      : options.onCutTypedBlocks?.(editor, {
-          html: payload.externalHTML,
-          text: payload.structuredText,
-        });
-  if (writeClaim) {
-    writeStructuralSelectionClaimToClipboard(clipboardEvent, payload, writeClaim);
+  if (selection.kind === "block-roots" && options.onStructuralClipboard) {
+    const writeClaim = options.onStructuralClipboard(command, {
+      rootBlockIds: selection.rootBlockIds,
+      presentation: {
+        html: payload.externalHTML,
+        text: payload.structuredText,
+      },
+    });
+    if (writeClaim) {
+      writeStructuralSelectionClaimToClipboard(clipboardEvent, payload, writeClaim);
+      return true;
+    }
+
+    blockUnavailableStructuralClipboard(clipboardEvent, options.onStructuralClipboardUnavailable);
     return true;
   }
 
+  const containsTypedOwner =
+    selection.kind === "block-roots"
+      ? selection.containsTypedOwner
+      : selection.intersectsTypedOwner;
   if (
-    hasTypedOwnerSelection ||
+    containsTypedOwner ||
     hasUntrustedTypedOwnerHtml(payload.clipboardHTML) ||
     hasUntrustedTypedOwnerHtml(payload.externalHTML)
   ) {
-    blockUnavailableTypedOwnerClipboard(clipboardEvent, options.onTypedBlocksUnavailable);
+    blockUnavailableStructuralClipboard(clipboardEvent, options.onStructuralClipboardUnavailable);
     return true;
   }
   if (!writeStructuredSelectionToClipboard(clipboardEvent, payload)) return false;
@@ -437,14 +443,13 @@ export type NfmPasteHandler = (context: {
 }) => boolean | undefined;
 
 export interface NfmEditorExtensionOptions {
-  readonly onTypedBlocksUnavailable?: () => void;
-  readonly onCopyTypedBlocks?: (
-    editor: BlockNoteEditor,
-    presentation: NfmStructuralClipboardPresentation,
-  ) => string | null;
-  readonly onCutTypedBlocks?: (
-    editor: BlockNoteEditor,
-    presentation: NfmStructuralClipboardPresentation,
+  readonly onStructuralClipboardUnavailable?: () => void;
+  readonly onStructuralClipboard?: (
+    action: NfmClipboardCommand,
+    request: {
+      readonly rootBlockIds: readonly string[];
+      readonly presentation: NfmStructuralClipboardPresentation;
+    },
   ) => string | null;
 }
 

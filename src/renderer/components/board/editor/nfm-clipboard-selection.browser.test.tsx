@@ -13,7 +13,6 @@ import { act, render } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { NfmStructuredClipboardExtension } from "./nfm-editor-extensions";
-import type { NfmStructuralClipboardPresentation } from "./nfm-structural-editing-extension";
 
 const typedOwnerConfig = {
   type: "page",
@@ -333,10 +332,7 @@ describe("current Block clipboard behavior in Chromium", () => {
   });
 
   test("routes a current Block with an owning descendant through structural capture", async () => {
-    const onCopyTypedBlocks = vi.fn(
-      (_editor: AnyBlockNoteEditor, _presentation: NfmStructuralClipboardPresentation) =>
-        "0199134e-cbb0-7000-8000-000000000006",
-    );
+    const onStructuralClipboard = vi.fn(() => "0199134e-cbb0-7000-8000-000000000006");
     const editor = BlockNoteEditor.create({
       schema: clipboardSchema,
       initialContent: [
@@ -347,7 +343,7 @@ describe("current Block clipboard behavior in Chromium", () => {
           children: [{ id: "page", type: "page" }],
         },
       ],
-      extensions: [NfmStructuredClipboardExtension({ onCopyTypedBlocks })],
+      extensions: [NfmStructuredClipboardExtension({ onStructuralClipboard })],
     });
     const rendered = renderClipboardEditor(editor);
 
@@ -358,10 +354,55 @@ describe("current Block clipboard behavior in Chromium", () => {
       const copied = await dispatchClipboardEvent(requireView(editor), "copy");
 
       expect(copied.dispatched).toBe(false);
-      expect(onCopyTypedBlocks).toHaveBeenCalledOnce();
-      expect(onCopyTypedBlocks.mock.calls[0]![1].text).toContain("Current");
+      expect(onStructuralClipboard).toHaveBeenCalledOnce();
+      expect(onStructuralClipboard).toHaveBeenCalledWith(
+        "copy",
+        expect.objectContaining({
+          rootBlockIds: ["current"],
+          presentation: expect.objectContaining({ text: expect.stringContaining("Current") }),
+        }),
+      );
       expect(editor.getBlock("current")).toBeDefined();
       expect(editor.getBlock("page")).toBeDefined();
+    } finally {
+      rendered.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
+  test("routes an ordinary current Block subtree through the same structural capture", async () => {
+    const onStructuralClipboard = vi.fn(() => "0199134e-cbb0-7000-8000-000000000006");
+    const editor = BlockNoteEditor.create({
+      schema: clipboardSchema,
+      initialContent: [
+        {
+          id: "current",
+          type: "paragraph",
+          content: "Current",
+          children: [{ id: "child", type: "paragraph", content: "Child" }],
+        },
+        { id: "outside", type: "paragraph", content: "Outside" },
+      ],
+      extensions: [NfmStructuredClipboardExtension({ onStructuralClipboard })],
+    });
+    const rendered = renderClipboardEditor(editor);
+
+    try {
+      await act(settleEditor);
+      await setTextSelection(editor, "current", 3);
+
+      const cut = await dispatchClipboardEvent(requireView(editor), "cut");
+
+      expect(cut.dispatched).toBe(false);
+      expect(onStructuralClipboard).toHaveBeenCalledWith(
+        "cut",
+        expect.objectContaining({
+          rootBlockIds: ["current"],
+          presentation: expect.objectContaining({ text: "Current\n\tChild" }),
+        }),
+      );
+      expect(editor.getBlock("current")).toBeDefined();
+      expect(editor.getBlock("child")).toBeDefined();
     } finally {
       rendered.unmount();
       editor._tiptapEditor.destroy();

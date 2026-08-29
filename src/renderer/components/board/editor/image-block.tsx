@@ -139,11 +139,11 @@ function ResolvedImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef
 function ImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
   const { block } = props;
   const pageFileRuntime = usePageFilePlacementRuntime();
-  const authorityVersion = parsePageFileSource(block.props.url)
-    ? pageFileRuntime?.authorityVersion
+  const readAuthorityEpoch = parsePageFileSource(block.props.url)
+    ? pageFileRuntime?.readAuthorityEpoch
     : null;
 
-  return <ResolvedImagePreview key={authorityVersion} {...props} />;
+  return <ResolvedImagePreview key={readAuthorityEpoch} {...props} />;
 }
 
 function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {

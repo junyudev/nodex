@@ -14,7 +14,7 @@ import {
 
 export interface PageFilePlacementRuntime {
   readonly authority: PageFileAuthority;
-  readonly authorityVersion: number;
+  readonly readAuthorityEpoch: number;
   upload(source: PageFileUploadSource, preferredLogicalPath?: string): Promise<string>;
   read(source: string): Promise<PageFileBytes>;
   metadata(source: string): Promise<LibraryPageFileSummary>;
@@ -24,10 +24,10 @@ export interface PageFilePlacementRuntime {
 
 export const createPageFilePlacementRuntime = (
   authority: PageFileAuthority,
-  authorityVersion = 0,
+  readAuthorityEpoch = 0,
 ): PageFilePlacementRuntime => ({
   authority,
-  authorityVersion,
+  readAuthorityEpoch,
   upload: async (source, preferredLogicalPath) =>
     (await createOwnedPageFile(authority, source, preferredLogicalPath)).source,
   read: (source) => readPlacedPageFile(authority, source),

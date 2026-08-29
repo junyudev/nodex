@@ -108,6 +108,11 @@ impl DeliveryAtomPayload {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AuthorizedOwnedDocumentEvent {
+    PageFileReferencesChanged {
+        document_id: String,
+        generation: i64,
+        head_seq: i64,
+    },
     DocumentResyncRequired {
         document_id: String,
         generation: i64,
