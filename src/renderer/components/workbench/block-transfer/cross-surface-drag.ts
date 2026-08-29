@@ -244,6 +244,14 @@ export const summarizeBlockPagePromotionReceipt = (
   return null;
 };
 
+export const summarizeBlockPageTransferSuccess = (
+  mode: BlockTransferMode,
+  rootCount: number,
+): string => {
+  const verb = mode === "copy" ? "Copied" : "Moved";
+  return rootCount === 1 ? `${verb} as a Page` : `${verb} ${rootCount} blocks as Pages`;
+};
+
 export interface RegisterLocalBlockDragDropTarget {
   readonly surfaceId: string;
   readonly element: HTMLElement;

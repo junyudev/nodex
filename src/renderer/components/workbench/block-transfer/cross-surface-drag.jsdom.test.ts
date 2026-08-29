@@ -11,6 +11,7 @@ import {
   resolveCrossSurfaceTransferMode,
   summarizeBlockPagePromotionPreview,
   summarizeBlockPagePromotionReceipt,
+  summarizeBlockPageTransferSuccess,
   shouldBlockNoteYieldManagedDrag,
 } from "./cross-surface-drag";
 
@@ -115,6 +116,11 @@ describe("cross-surface Block transfer drag", () => {
         literal: true,
       }),
     ).toBe("Copy 2 as Pages · Literal");
+  });
+
+  test("summarizes completed Block promotions by mode and root count", () => {
+    expect(summarizeBlockPageTransferSuccess("move", 1)).toBe("Moved as a Page");
+    expect(summarizeBlockPageTransferSuccess("copy", 3)).toBe("Copied 3 blocks as Pages");
   });
 
   test("compiles an editor session into one Database-parent transfer", () => {

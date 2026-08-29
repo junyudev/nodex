@@ -1,7 +1,7 @@
 # NFM Editor Move-To Popover Behavior
 
 Status: Active  
-Last Updated: 2026-08-14
+Last Updated: 2026-08-29
 
 ## Contract
 
@@ -50,5 +50,6 @@ The `Page in` row inside the side-menu `Turn into` submenu uses the same popover
 - Page and DB destinations share one renderer move runtime. The editor first releases focus and flushes its source mutation barrier; the runtime then validates the source fence, resolves the destination authority, and commits one idempotent `BlockTransfer` intent.
 - Page destinations prepare the target Document and include exact source and target heads. DB destinations resolve the canonical Project-default Database descriptor and choose a real active View grouped by the built-in `status` Property rather than deriving Data Source identity from UI state.
 - Source and target epoch mismatches fail closed. Core commits source detachment, target attachment or Page promotion, typed membership values, Document updates, projections, receipt, and local delivery atomically.
+- When Move detaches every root Block, Core creates one stable-ID empty paragraph in the source Document within that same commit. The source Page remains blank and editable, while Undo removes the placeholder and restores the exact original roots.
 - The picker exposes only the source Project. Cross-Project movement requires a future Core command that authorizes both source and target contexts in the same transaction; the renderer must not emulate it with two mutations or advertise an unexecutable destination.
 - Structured Database, Document, and BlockTransfer failures preserve their code, retryability, reload requirement, and operation ID for diagnostics. The picker shows the safe command message and keeps the failed destination available for retry.

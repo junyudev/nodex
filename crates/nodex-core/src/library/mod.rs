@@ -4372,6 +4372,21 @@ mod tests {
             moved.committed.receipt.affected_page_ids,
             vec![SOURCE_PAGE.to_owned(), TARGET_PAGE.to_owned()]
         );
+        let source_remainder = kernel
+            .readers()
+            .read_default(|connection| {
+                let mut statement = connection.prepare(
+                    "SELECT block_id FROM document_block_index \
+                     WHERE document_id = ?1 ORDER BY ordinal",
+                )?;
+                statement
+                    .query_map([SOURCE_DOCUMENT], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .map_err(Into::into)
+            })
+            .expect("source editable remainder");
+        assert_eq!(source_remainder.len(), 1);
+        assert_ne!(source_remainder[0], source_root);
         let transfer_document_event_kinds = kernel
             .readers()
             .read_default(|connection| {
@@ -4840,10 +4855,12 @@ mod tests {
         const WRAP_PAGE: &str = "018f0000-0000-7000-8000-000000000302";
         const ANCHOR_PAGE: &str = "018f0000-0000-7000-8000-000000000303";
         const MOVE_WRAP_PAGE: &str = "018f0000-0000-7000-8000-000000000304";
+        const SOLE_PAGE: &str = "018f0000-0000-7000-8000-000000000305";
         const PROMOTE_DOCUMENT: &str = "document:promotion-source";
         const WRAP_DOCUMENT: &str = "document:wrapper-source";
         const ANCHOR_DOCUMENT: &str = "document:promotion-anchor";
         const MOVE_WRAP_DOCUMENT: &str = "document:move-wrapper-source";
+        const SOLE_DOCUMENT: &str = "document:sole-block-source";
         const PROMOTE_SIBLING: &str = "018f0000-0000-7000-8000-000000000311";
         const PROMOTE_CHILD: &str = "018f0000-0000-7000-8000-000000000314";
         const SHORTHAND_ROOT: &str = "018f0000-0000-7000-8000-000000000317";
@@ -4911,6 +4928,12 @@ mod tests {
                 MOVE_WRAP_PAGE,
                 MOVE_WRAP_DOCUMENT,
                 "Move wrapper",
+            ),
+            (
+                "create-sole-block-source",
+                SOLE_PAGE,
+                SOLE_DOCUMENT,
+                "Sole block",
             ),
         ] {
             library
@@ -4987,6 +5010,7 @@ mod tests {
                     root(PROMOTE_DOCUMENT)?,
                     root(WRAP_DOCUMENT)?,
                     root(MOVE_WRAP_DOCUMENT)?,
+                    root(SOLE_DOCUMENT)?,
                 ))
             })
             .expect("source roots");
@@ -7215,6 +7239,135 @@ mod tests {
             Some(LocalProjectionPatch::DatabaseRowUpsert { row, .. })
                 if &row.page_id == promoted_page_id
         ));
+
+        documents
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                    operation_id: "shape-sole-block-source".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: OwnedDocumentIntent::ApplyOperationBatch {
+                        document_id: SOLE_DOCUMENT.to_owned(),
+                        generation: 1,
+                        expected_head_seq: 1,
+                        operations: vec![ContractDocumentBlockOperation::UpdateBlock {
+                            block_id: roots.3.clone(),
+                            patch: DocumentBlockUpdatePatch {
+                                block_type: None,
+                                props: None,
+                                content: DocumentOptionalValue::Value {
+                                    value: serde_json::json!([{
+                                        "type": "text",
+                                        "text": "Only task",
+                                        "styles": {}
+                                    }]),
+                                },
+                                unset_content: false,
+                            },
+                        }],
+                        actor: serde_json::json!({ "kind": "test" }),
+                    },
+                },
+            )
+            .expect("shape sole Block source");
+        let sole_transfer = library
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "move-sole-block-to-data-source".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::TransferBlocks {
+                        intent: LibraryBlockTransferLogicalIntent {
+                            actor: serde_json::json!({ "kind": "test" }),
+                            mode: LibraryBlockTransferMode::Move,
+                            root_block_ids: vec![roots.3.clone()],
+                            causal_dependencies: document_heads(&kernel, &[SOLE_DOCUMENT]),
+                            source: LibraryBlockTransferSource::Page {
+                                page_id: SOLE_PAGE.to_owned(),
+                            },
+                            target: LibraryBlockTransferTarget::DataSource {
+                                data_source_id: DATA_SOURCE.to_owned(),
+                                placement: Box::new(
+                                    LibraryBlockTransferDataSourcePlacement::Direct {
+                                        view_id: VIEW.to_owned(),
+                                        presentation_override: Default::default(),
+                                        group_key: Some("ship".to_owned()),
+                                        before_page_id: None,
+                                        sorted_property_values: Vec::new(),
+                                    },
+                                ),
+                            },
+                            promotion_policy:
+                                nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
+                        },
+                    },
+                },
+            )
+            .expect("move the sole source Block to the Data Source");
+        let sole_result = sole_transfer
+            .committed
+            .value
+            .block_transfer
+            .as_ref()
+            .expect("sole Block transfer result");
+        let sole_placeholder = kernel
+            .readers()
+            .read_default(|connection| {
+                let mut statement = connection.prepare(
+                    "SELECT block_id FROM document_block_index \
+                     WHERE document_id = ?1 ORDER BY ordinal",
+                )?;
+                statement
+                    .query_map([SOLE_DOCUMENT], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .map_err(Into::into)
+            })
+            .expect("sole source editable remainder");
+        assert_eq!(sole_placeholder.len(), 1);
+        assert_ne!(sole_placeholder[0], roots.3);
+
+        let sole_undo = library
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo-sole-block-transfer".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoBlockTransfer {
+                        token: sole_result
+                            .undo_token
+                            .clone()
+                            .expect("sole Block transfer Undo token"),
+                    },
+                },
+            )
+            .expect("undo sole Block transfer");
+        assert_eq!(
+            sole_undo
+                .committed
+                .value
+                .block_transfer_undo
+                .as_ref()
+                .expect("sole Block transfer Undo result")
+                .restored_source_root_ids,
+            vec![roots.3.clone()]
+        );
+        let restored_source_roots = kernel
+            .readers()
+            .read_default(|connection| {
+                let mut statement = connection.prepare(
+                    "SELECT block_id FROM document_block_index \
+                     WHERE document_id = ?1 ORDER BY ordinal",
+                )?;
+                statement
+                    .query_map([SOLE_DOCUMENT], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+                    .map_err(Into::into)
+            })
+            .expect("restored sole source roots");
+        assert_eq!(restored_source_roots, vec![roots.3.clone()]);
     }
 
     #[test]

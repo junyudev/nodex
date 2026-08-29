@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 
 import { type BlockTransferIntent } from "../../shared/block-transfer";
 import { createCoreBlockTransferAdapter } from "./block-transfer-adapter";
+import { CoreModuleResponseError } from "./core-client";
 import { FakeCoreClient } from "./testing/fake-core-client";
 import type { LibraryApplyResult } from "./types";
 
@@ -441,5 +442,27 @@ describe("Core Block Transfer Adapter", () => {
       error: { code: "invalid_transfer_request" },
     });
     expect(client.applies).toHaveLength(0);
+  });
+
+  test("keeps Core implementation errors out of transfer feedback", async () => {
+    const client = new FakeCoreClient();
+    const adapter = createCoreBlockTransferAdapter({ client, ...identity });
+    vi.spyOn(client, "libraryApply").mockRejectedValueOnce(
+      new CoreModuleResponseError({
+        code: "invalid_input",
+        message:
+          "document operation InvalidOperation: BlockNote-backed Documents must retain one editable root Block",
+        retryable: false,
+        recovery: { kind: "none" },
+      }),
+    );
+
+    await expect(adapter.commit(intent)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "unsupported_transfer",
+        message: "These blocks can’t be transferred to that destination.",
+      },
+    });
   });
 });

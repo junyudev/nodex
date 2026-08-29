@@ -729,8 +729,10 @@ fn compile_preflight(
             prepared_transfers.push(prepared);
         }
     }
-    let batch_documents =
-        super::block_transfer::extract_agent_page_document_batch(&mut prepared_transfers)?;
+    let batch_documents = super::block_transfer::extract_agent_page_document_batch(
+        &mut prepared_transfers,
+        operation_id,
+    )?;
     for (index, prepared) in prepared_indexes.into_iter().zip(prepared_transfers) {
         steps[index].read_set = prepared.read_set();
         steps[index].prepared_transfer = Some(prepared);

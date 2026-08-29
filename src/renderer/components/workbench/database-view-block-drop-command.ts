@@ -13,6 +13,7 @@ import {
   endLocalBlockDragSession,
   resolvePagePromotionPolicy,
   summarizeBlockPagePromotionReceipt,
+  summarizeBlockPageTransferSuccess,
   type LocalBlockDragSession,
 } from "./block-transfer/cross-surface-drag";
 import { undoDatabaseViewBlockTransfer } from "./database-view-block-transfer-undo";
@@ -110,51 +111,41 @@ export const commitDatabaseViewBlockDrop = async (
   }
   const shorthandFeedback = summarizeBlockPagePromotionReceipt(result.value);
   const fileFeedback = summarizePageFileOwnershipMoveCollisions(result.value.fileOwnershipMoves);
-  const feedbackOptions =
-    result.value.undoToken || fileFeedback
-      ? {
-          id: `block-transfer:${result.value.operationId}`,
-          ...(fileFeedback
-            ? {
-                description: `${fileFeedback.title}. ${fileFeedback.description}`,
-              }
-            : {}),
-          ...(result.value.undoToken
-            ? {
-                action: {
-                  label: "Undo",
-                  onClick: () => {
-                    void input.mutationHistory.undoLast({
-                      listMove: async () => false,
-                      blockTransfer: async (token) =>
-                        await undoDatabaseViewBlockTransfer({
-                          projectId,
-                          storeEpoch: input.storeEpoch,
-                          token,
-                          onCommitted: input.onCommitted
-                            ? async () => await input.onCommitted?.()
-                            : undefined,
-                        }),
-                    });
-                    return false;
-                  },
-                },
-              }
-            : {}),
-        }
-      : undefined;
-  if (shorthandFeedback) {
-    if (shorthandFeedback.tone === "info") {
-      toast.info(shorthandFeedback.message, feedbackOptions);
-    } else {
-      toast.success(shorthandFeedback.message, feedbackOptions);
-    }
-  } else if (fileFeedback) {
-    toast.info(fileFeedback.title, {
-      ...feedbackOptions,
-      description: fileFeedback.description,
-    });
-  }
+  const feedbackDescription = [
+    shorthandFeedback?.message,
+    fileFeedback ? `${fileFeedback.title}. ${fileFeedback.description}` : null,
+  ]
+    .filter((message): message is string => Boolean(message))
+    .join(" ");
+  toast.success(
+    summarizeBlockPageTransferSuccess(input.altKey ? "copy" : "move", payload.rootBlockIds.length),
+    {
+      id: `block-transfer:${result.value.operationId}`,
+      ...(feedbackDescription ? { description: feedbackDescription } : {}),
+      ...(result.value.undoToken
+        ? {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                void input.mutationHistory.undoLast({
+                  listMove: async () => false,
+                  blockTransfer: async (token) =>
+                    await undoDatabaseViewBlockTransfer({
+                      projectId,
+                      storeEpoch: input.storeEpoch,
+                      token,
+                      onCommitted: input.onCommitted
+                        ? async () => await input.onCommitted?.()
+                        : undefined,
+                    }),
+                });
+                return false;
+              },
+            },
+          }
+        : {}),
+    },
+  );
   const cursor =
     result.localCommit.status === "committed"
       ? {

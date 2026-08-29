@@ -172,6 +172,7 @@ pub(super) struct PreparedPageParentTransfer {
     source_engine: YrsDocumentEngine,
     source_materialization: DocumentMaterialization,
     source_update: Option<PreparedDocumentOperationUpdate>,
+    source_placeholder_block_id: Option<String>,
     roots: Vec<PreparedPageParentRoot>,
     expected_location_revisions: BTreeMap<String, i64>,
     copied_block_ids: BTreeMap<String, String>,
@@ -194,6 +195,8 @@ struct BlockTransferUndoRecipeV1 {
     source_generation: i64,
     source_post_head_seq: Option<i64>,
     source_pre_materialization: Option<DocumentMaterialization>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_placeholder_block_id: Option<String>,
     roots: Vec<BlockTransferUndoRootV1>,
     file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
     target_guard_hash: String,
@@ -454,6 +457,7 @@ impl PreparedAgentPageDocumentBatch {
 
 pub(super) fn extract_agent_page_document_batch(
     transfers: &mut [PreparedBlockTransfer],
+    operation_id: &str,
 ) -> Result<PreparedAgentPageDocumentBatch, StoreError> {
     let mut batch = PreparedAgentPageDocumentBatch::empty();
     for transfer in transfers {
@@ -498,7 +502,11 @@ pub(super) fn extract_agent_page_document_batch(
     }
     for entry in batch.documents.values_mut() {
         check_request_interruption()?;
-        recompile_page_ownership_document_update(&mut entry.document, &entry.operations)?;
+        recompile_page_ownership_document_update(
+            &mut entry.document,
+            &entry.operations,
+            operation_id,
+        )?;
     }
     Ok(batch)
 }
@@ -1331,7 +1339,7 @@ fn prepare_transfer(
         insertion,
     };
     let mut allocate = |source_id: &str| stable_uuid_v7(operation_id, "block_transfer", source_id);
-    let prepared = prepare_portable_subtree_transfer_updates(&request, &mut allocate)
+    let mut prepared = prepare_portable_subtree_transfer_updates(&request, &mut allocate)
         .map_err(|error| invalid(error.to_string()))?;
     for block_id in &prepared.source_forest.block_ids {
         if is_typed_resource(connection, block_id)? {
@@ -1339,6 +1347,19 @@ fn prepare_transfer(
                 "This native slice transfers ordinary Blocks only; Page ownership uses Library or Database semantics",
             ));
         }
+    }
+    if intent.mode == LibraryBlockTransferMode::Move {
+        prepared.source = Some(
+            prepare_block_transfer_source_update(
+                &request.source.document_id,
+                request.source.schema,
+                &request.source.full_state_v1,
+                &request.source.expected_state_vector_v1,
+                &intent.root_block_ids,
+                operation_id,
+            )?
+            .update,
+        );
     }
     Ok(PreparedTransfer {
         source_authority,
@@ -1349,6 +1370,92 @@ fn prepare_transfer(
         target_materialization,
         prepared,
         expected_location_revisions,
+    })
+}
+
+struct PreparedBlockTransferSourceUpdate {
+    update: PreparedDocumentOperationUpdate,
+    placeholder_block_id: Option<String>,
+}
+
+/// Compile the destructive side of a cross-surface move while preserving the
+/// editable-root invariant of every persisted BlockNote-backed Document.
+fn prepare_block_transfer_source_update(
+    document_id: &str,
+    schema: BlockDocumentSchema,
+    full_state: &[u8],
+    state_vector: &[u8],
+    root_block_ids: &[String],
+    operation_id: &str,
+) -> Result<PreparedBlockTransferSourceUpdate, StoreError> {
+    let operations = root_block_ids
+        .iter()
+        .map(|block_id| DocumentBlockOperation::DeleteBlock {
+            block_id: block_id.clone(),
+        })
+        .collect::<Vec<_>>();
+    prepare_block_transfer_update_with_editable_remainder(
+        document_id,
+        schema,
+        full_state,
+        state_vector,
+        operations,
+        operation_id,
+    )
+}
+
+fn prepare_block_transfer_update_with_editable_remainder(
+    document_id: &str,
+    schema: BlockDocumentSchema,
+    full_state: &[u8],
+    state_vector: &[u8],
+    mut operations: Vec<DocumentBlockOperation>,
+    operation_id: &str,
+) -> Result<PreparedBlockTransferSourceUpdate, StoreError> {
+    let provisional = prepare_document_operation_update(
+        document_id,
+        schema,
+        full_state,
+        state_vector,
+        &operations,
+        true,
+    )
+    .map_err(|error| invalid(error.to_string()))?;
+    if !provisional.materialization.block_tree.is_empty() {
+        return Ok(PreparedBlockTransferSourceUpdate {
+            update: provisional,
+            placeholder_block_id: None,
+        });
+    }
+
+    let placeholder_block_id = stable_uuid_v7(
+        operation_id,
+        "block_transfer_source_placeholder",
+        document_id,
+    );
+    operations.push(DocumentBlockOperation::InsertBlock {
+        block: MaterializedBlockNode {
+            id: placeholder_block_id.clone(),
+            block_type: "paragraph".to_owned(),
+            props: BTreeMap::new(),
+            content: Some(Value::Array(Vec::new())),
+            children: Vec::new(),
+        },
+        parent_block_id: None,
+        before_block_id: None,
+    });
+    let update = prepare_document_operation_update(
+        document_id,
+        schema,
+        full_state,
+        state_vector,
+        &operations,
+        false,
+    )
+    .map_err(|error| invalid(error.to_string()))?;
+    Ok(PreparedBlockTransferSourceUpdate {
+        update,
+        placeholder_block_id: Some(placeholder_block_id),
     })
 }
 
@@ -1495,19 +1602,45 @@ fn prepare_page_ownership_document_update(
     })
 }
 
+fn prepare_page_ownership_source_document_update(
+    base: PageOwnershipDocumentBase,
+    root_block_ids: &[String],
+    operation_id: &str,
+) -> Result<PreparedPageOwnershipDocument, StoreError> {
+    let update = prepare_block_transfer_source_update(
+        &base.authority.head.id,
+        base.schema,
+        &base.full_state,
+        &base.authority.head.state_vector,
+        root_block_ids,
+        operation_id,
+    )?
+    .update;
+    Ok(PreparedPageOwnershipDocument {
+        authority: base.authority,
+        engine: base.engine,
+        full_state: base.full_state,
+        base_materialization: base.base_materialization,
+        schema: base.schema,
+        update,
+    })
+}
+
 fn recompile_page_ownership_document_update(
     document: &mut PreparedPageOwnershipDocument,
     operations: &[DocumentBlockOperation],
+    operation_id: &str,
 ) -> Result<(), StoreError> {
-    document.update = prepare_document_operation_update(
+    document.update = prepare_block_transfer_update_with_editable_remainder(
         &document.authority.head.id,
         document.schema,
         &document.full_state,
         &document.authority.head.state_vector,
-        operations,
-        false,
+        operations.to_vec(),
+        operation_id,
     )
-    .map_err(|error| invalid(format!("Page parent update is invalid: {error}")))?;
+    .map_err(|error| invalid(format!("Page parent update is invalid: {error}")))?
+    .update;
     Ok(())
 }
 
@@ -1969,13 +2102,11 @@ fn prepare_page_ownership_transfer(
     let (source_document, target_document) = if intent.mode == LibraryBlockTransferMode::Move {
         let source_document = source_document_base
             .map(|base| {
-                let operations = roots
+                let root_block_ids = roots
                     .iter()
-                    .map(|root| DocumentBlockOperation::DeleteBlock {
-                        block_id: root.page_id.clone(),
-                    })
+                    .map(|root| root.page_id.clone())
                     .collect::<Vec<_>>();
-                prepare_page_ownership_document_update(base, &operations)
+                prepare_page_ownership_source_document_update(base, &root_block_ids, operation_id)
             })
             .transpose()?;
         let target_document = target_document_base
@@ -3057,27 +3188,22 @@ fn prepare_page_parent_transfer(
     assert_fresh_copy_identities(connection, &new_block_ids)?;
     let transform_duration = transform_started_at.elapsed();
     let encode_started_at = Instant::now();
-    let source_update = if intent.mode == LibraryBlockTransferMode::Move {
-        Some(
-            prepare_document_operation_update(
-                &source_authority.head.id,
-                source_schema,
-                &source_full_state,
-                &source_authority.head.state_vector,
-                &intent
-                    .root_block_ids
-                    .iter()
-                    .map(|block_id| DocumentBlockOperation::DeleteBlock {
-                        block_id: block_id.clone(),
-                    })
-                    .collect::<Vec<_>>(),
-                false,
-            )
-            .map_err(|error| invalid(error.to_string()))?,
-        )
+    let source_preparation = if intent.mode == LibraryBlockTransferMode::Move {
+        Some(prepare_block_transfer_source_update(
+            &source_authority.head.id,
+            source_schema,
+            &source_full_state,
+            &source_authority.head.state_vector,
+            &intent.root_block_ids,
+            operation_id,
+        )?)
     } else {
         None
     };
+    let source_placeholder_block_id = source_preparation
+        .as_ref()
+        .and_then(|prepared| prepared.placeholder_block_id.clone());
+    let source_update = source_preparation.map(|prepared| prepared.update);
     let encode_duration = encode_started_at.elapsed();
     record_page_parent_prepare(
         prepare_started_at.elapsed(),
@@ -3091,6 +3217,7 @@ fn prepare_page_parent_transfer(
         source_engine,
         source_materialization,
         source_update,
+        source_placeholder_block_id,
         roots,
         expected_location_revisions,
         copied_block_ids,
@@ -3493,6 +3620,7 @@ fn build_page_parent_undo_recipe(
         source_post_head_seq,
         source_pre_materialization: (intent.mode == LibraryBlockTransferMode::Move)
             .then(|| prepared.source_materialization.clone()),
+        source_placeholder_block_id: prepared.source_placeholder_block_id.clone(),
         roots,
         file_ownership_moves: file_ownership_moves.to_vec(),
         target_guard_hash,
@@ -5827,7 +5955,11 @@ pub(super) fn undo(
             .source_pre_materialization
             .as_ref()
             .ok_or_else(|| corrupt("Move Undo recipe has no source snapshot"))?;
-        let operations = source_restore_operations(target, &recipe.roots)?;
+        let operations = source_restore_operations(
+            target,
+            &recipe.roots,
+            recipe.source_placeholder_block_id.as_deref(),
+        )?;
         let update = prepare_document_operation_update(
             &authority.head.id,
             schema,
@@ -6028,6 +6160,7 @@ pub(super) fn undo(
 fn source_restore_operations(
     source_before_transfer: &DocumentMaterialization,
     roots: &[BlockTransferUndoRootV1],
+    placeholder_block_id: Option<&str>,
 ) -> Result<Vec<DocumentBlockOperation>, StoreError> {
     let moved = roots
         .iter()
@@ -6106,6 +6239,14 @@ fn source_restore_operations(
     // A selected root may use the next selected sibling as its anchor. Apply
     // right-to-left so every such anchor exists before it is referenced.
     traversal.operations.reverse();
+    if let Some(block_id) = placeholder_block_id {
+        traversal.operations.insert(
+            0,
+            DocumentBlockOperation::DeleteBlock {
+                block_id: block_id.to_owned(),
+            },
+        );
+    }
     Ok(traversal.operations)
 }
 
@@ -6215,7 +6356,7 @@ mod tests {
             source_root_properties: Vec::new(),
         }];
 
-        let operations = source_restore_operations(&source_before_transfer, &roots)
+        let operations = source_restore_operations(&source_before_transfer, &roots, None)
             .expect("restore normalized source components");
         let restored = operations
             .iter()

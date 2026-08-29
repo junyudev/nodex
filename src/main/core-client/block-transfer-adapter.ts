@@ -337,7 +337,13 @@ const coreFailure = (
   };
   switch (error.coreError.code) {
     case "invalid_input":
-      return blockTransferFailure("unsupported_transfer", error.message, options);
+      return blockTransferFailure(
+        "unsupported_transfer",
+        intent.token === undefined
+          ? "These blocks can’t be transferred to that destination."
+          : "This block move can’t be undone.",
+        options,
+      );
     case "unauthorized":
       return blockTransferFailure("invalid_transfer_request", error.message, options);
     case "not_found":

@@ -71,7 +71,7 @@ describe("Database View Block drop command", () => {
     );
   });
 
-  test("keeps ordinary literal promotions silent after Core reports no shorthand match", async () => {
+  test("confirms ordinary literal promotions and exposes their Undo action", async () => {
     const unregister = registerBlockDocumentStructuralMutationParticipant(session.sourceSurfaceId, {
       prepareAndFence: async () => ({
         documentId: "document-source",
@@ -84,7 +84,11 @@ describe("Database View Block drop command", () => {
       ok: true,
       value: {
         operationId: "operation:promotion",
-        undoToken: null,
+        undoToken: {
+          transferOperationId: "operation:promotion",
+          recipeHash: "recipe:promotion",
+          storeEpoch: "epoch-1",
+        },
         fileOwnershipMoves: [],
         transformationEvidence: [{ promotion: { kind: "no_match" } }],
       },
@@ -95,6 +99,7 @@ describe("Database View Block drop command", () => {
     });
 
     try {
+      const mutationHistory = createDatabaseViewMutationHistory("view-1");
       const committed = await commitDatabaseViewBlockDrop({
         session,
         projectId: "project-1",
@@ -108,12 +113,19 @@ describe("Database View Block drop command", () => {
         },
         altKey: false,
         shiftKey: false,
-        mutationHistory: createDatabaseViewMutationHistory("view-1"),
+        mutationHistory,
       });
 
       expect(committed).toBe(true);
       expect(mocks.toastInfo).not.toHaveBeenCalled();
-      expect(mocks.toastSuccess).not.toHaveBeenCalled();
+      expect(mutationHistory.size()).toBe(1);
+      expect(mocks.toastSuccess).toHaveBeenCalledWith(
+        "Moved as a Page",
+        expect.objectContaining({
+          id: "block-transfer:operation:promotion",
+          action: expect.objectContaining({ label: "Undo" }),
+        }),
+      );
     } finally {
       unregister();
     }

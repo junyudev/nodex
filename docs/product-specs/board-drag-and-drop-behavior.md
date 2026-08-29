@@ -144,6 +144,7 @@ This post-removal contract must stay identical across:
 - Task shorthand interpretation, literal fallback, modifiers, and authoring feedback follow [Task Shorthand Page Promotion Behavior](task-shorthand-page-promotion-behavior.md).
 - Native block drag from Card Stage and independently mounted owning/reference editors into Board or List targets the Database parent, not a serialized row snapshot. The custom side-menu starts one window-local drag session only after BlockNote has established the exact root Block selection. The default operation is move; holding Alt/Option at drop time copies instead.
 - Move submits one logical `BlockTransfer`: text-like roots promote to Cards in place, while non-convertible roots receive deterministic wrapper Cards. Copy recursively clones ownership with fresh IDs and leaves the source unchanged. Neither path serializes NFM nor mutates a Card description projection.
+- If Move detaches every root Block from the source Document, Core inserts one stable-ID empty paragraph in the same atomic transfer. The source Page therefore becomes semantically blank but remains immediately editable; the placeholder is not promoted, and Undo removes it while restoring the exact original roots.
 - Images and attachments retain their stable File IDs. On Move, any File
   exclusively placed by the transferred forest and currently owned by the
   source host is rehomed to the promoted target Page in the same Core
@@ -152,6 +153,7 @@ This post-removal contract must stay identical across:
   ownership-only consequences add no extra toast.
 - Multi-block order follows the selected top-level document order. Nested selected blocks are represented only once through their selected ancestor.
 - Board and List interpret pointer geometry into their own raw placement intent, while one shared renderer command owns session validation, source fencing, transfer, receipt feedback, and Undo registration. Core resolves the final placement and Property adoption atomically.
+- A completed drop emits one concise Move/Copy confirmation with Undo when available. Task-shorthand preservation and File collision details are folded into that same feedback; rejected transfers show a safe product message rather than a Core implementation error.
 - A mounted source editor must finish its native drag state and return a fresh
   causal Document head before the command is submitted. If that exact source
   participant has unmounted or changed, the drop fails and asks the user to
@@ -172,6 +174,7 @@ This post-removal contract must stay identical across:
 
 - An explicit side-menu drag between different Card Documents carries stable root Block IDs and logical Document coordinates through the same window-local session. The destination renders the horizontal block insertion line and suppresses ProseMirror's vertical text caret.
 - The target does not insert a serialized ProseMirror/HTML slice, and the source does not later delete its selection. One `BlockTransfer` commits both Document updates and Block locations or leaves both unchanged. That same transaction may rehome an exclusively moved Page File; a partial or foreign placement remains owned by its existing Page without blocking the Block transfer.
+- Moving the final root out of the source uses the same stable empty-paragraph remainder as Database promotion, so every persisted source stays editable without changing Copy semantics.
 - Both mounted editors settle transient drag/focus state and supply causal
   Document heads before the transfer. A missing source or target participant
   fails closed.
