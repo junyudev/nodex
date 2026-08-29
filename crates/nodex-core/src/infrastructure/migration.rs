@@ -134,6 +134,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 140,
         apply: migrate_v139_to_v140,
     },
+    MigrationStep {
+        from_revision: 140,
+        to_revision: 141,
+        apply: migrate_v140_to_v141,
+    },
 ];
 
 fn resolve_migration_path(
@@ -1218,6 +1223,31 @@ fn migrate_v139_to_v140(
     Ok(())
 }
 
+fn migrate_v140_to_v141(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v140_to_v141.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history( \
+           source_revision, target_revision, source_schema_fingerprint, \
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object( \
+           'page_file_versions', (SELECT count(*) FROM page_file_versions), \
+           'page_files', (SELECT count(*) FROM page_files)))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn install_fresh_profile(connection: &mut Connection, now: u64) -> Result<(), StoreError> {
     install_fresh_profile_with(connection, |transaction| {
         initialize_fresh_profile(transaction, now)
@@ -1604,6 +1634,223 @@ mod tests {
         );
     }
 
+    #[test]
+    fn v140_page_file_history_survives_rehome_and_previous_owner_deletion() {
+        let directory = tempdir().expect("Profile");
+        install_baseline_fixture(directory.path());
+        let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            for step in MIGRATION_STEPS
+                .iter()
+                .take_while(|step| step.to_revision <= 140)
+            {
+                let source = published_format(step.from_revision)?;
+                let target = published_format(step.to_revision)?;
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        backup_name: "v140-page-file-history.db".to_owned(),
+                        source_schema_fingerprint: source.schema_fingerprint,
+                        target_schema_fingerprint: target.schema_fingerprint,
+                        completed_at_unix_ms: 1,
+                    },
+                )?;
+            }
+            Ok(())
+        })
+        .expect("install v140 schema");
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .expect("maintenance writes");
+        let library_id = connection
+            .query_row("SELECT id FROM libraries LIMIT 1", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("fixture Library");
+        with_immediate_transaction(&mut connection, |transaction| {
+            for (page_id, document_id) in [
+                ("page:file-old-owner", "document:file-old-owner"),
+                ("page:file-new-owner", "document:file-new-owner"),
+            ] {
+                transaction.execute(
+                    "INSERT INTO blocks(id, library_id, type, lifecycle, placement_revision, \
+                       metadata_revision, created_at, updated_at) \
+                     VALUES (?1, ?2, 'page', 'active', 1, 1, 'now', 'now')",
+                    params![page_id, library_id],
+                )?;
+                transaction.execute(
+                    "INSERT INTO documents(id, library_id, generation, head_seq, schema_key, \
+                       schema_version, state_vector, state_hash, readiness, authority, created_at, \
+                       updated_at, sync_engine) \
+                     VALUES (?1, ?2, 1, 0, 'nodex.page', 3, X'', '', 'pending_genesis', \
+                       'legacy_shadow', 'now', 'now', 'yjs')",
+                    params![document_id, library_id],
+                )?;
+                transaction.execute(
+                    "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
+                     VALUES (?1, ?2, ?3, 'now')",
+                    params![page_id, document_id, library_id],
+                )?;
+                transaction.execute(
+                    "INSERT INTO pages(block_id, library_id, document_id, parent_kind, parent_id, \
+                       created_at, updated_at) VALUES (?1, ?2, ?3, 'library', ?2, 'now', 'now')",
+                    params![page_id, library_id, document_id],
+                )?;
+                if page_id == "page:file-old-owner" {
+                    transaction.execute(
+                        "UPDATE page_file_manifests SET revision = 1, updated_at = 'now' \
+                         WHERE page_id = ?1 AND library_id = ?2",
+                        params![page_id, library_id],
+                    )?;
+                }
+            }
+            let blob_hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+            transaction.execute(
+                "INSERT INTO managed_blobs(content_hash, physical_asset_name, byte_length, \
+                   created_at) VALUES (?1, 'fixture.bin', 1, 'now')",
+                [blob_hash],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_versions(file_id, version, library_id, owner_page_id, \
+                   manifest_revision, change_kind, logical_path, path_key, mime_type, blob_hash, \
+                   byte_length, actor_id, operation_id, occurred_at) VALUES \
+                   ('file:history', 1, ?1, 'page:file-old-owner', 1, 'create', 'original.txt', \
+                    'original.txt', 'text/plain', ?2, 1, 'actor', 'operation:create', 'now')",
+                params![library_id, blob_hash],
+            )?;
+            transaction.execute(
+                "UPDATE page_file_manifests SET revision = 2, updated_at = 'later' \
+                 WHERE page_id = 'page:file-old-owner' AND library_id = ?1",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_namespace(owner_page_id, library_id, path_key, file_id) \
+                 VALUES ('page:file-old-owner', ?1, 'renamed.txt', 'file:history')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_versions(file_id, version, library_id, owner_page_id, \
+                   manifest_revision, change_kind, logical_path, path_key, mime_type, blob_hash, \
+                   byte_length, actor_id, operation_id, occurred_at) VALUES \
+                   ('file:history', 2, ?1, 'page:file-old-owner', 2, 'rename', 'renamed.txt', \
+                    'renamed.txt', 'text/plain', ?2, 1, 'actor', 'operation:rename', 'now')",
+                params![library_id, blob_hash],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_files(file_id, library_id, owner_page_id, logical_path, path_key, \
+                   mime_type, byte_length, current_version, state, created_by_actor_id, created_at, \
+                   updated_at) VALUES ('file:history', ?1, 'page:file-old-owner', 'renamed.txt', \
+                   'renamed.txt', 'text/plain', 1, 2, 'live', 'actor', 'now', 'now')",
+                [&library_id],
+            )?;
+            Ok(())
+        })
+        .expect("seed v140 Page File history");
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v140_to_v141(
+                transaction,
+                &MigrationContext {
+                    source_revision: 140,
+                    target_revision: 141,
+                    backup_name: "v140-page-file-history.db".to_owned(),
+                    source_schema_fingerprint: published_format(140)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(141)?.schema_fingerprint,
+                    completed_at_unix_ms: 2,
+                },
+            )
+        })
+        .expect("migrate Page File history");
+
+        with_immediate_transaction(&mut connection, |transaction| {
+            transaction.execute(
+                "UPDATE page_file_manifests SET revision = revision + 1 \
+                 WHERE page_id IN ('page:file-old-owner', 'page:file-new-owner')",
+                [],
+            )?;
+            transaction.execute(
+                "DELETE FROM page_file_namespace WHERE file_id = 'file:history'",
+                [],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_namespace(owner_page_id, library_id, path_key, file_id) \
+                 VALUES ('page:file-new-owner', ?1, 'renamed.txt', 'file:history')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_versions(file_id, version, library_id, owner_page_id, \
+                   manifest_revision, change_kind, logical_path, path_key, mime_type, blob_hash, \
+                   byte_length, actor_id, operation_id, occurred_at) VALUES \
+                   ('file:history', 3, ?1, 'page:file-new-owner', 1, 'rehome', 'renamed.txt', \
+                    'renamed.txt', 'text/plain', \
+                    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 1, \
+                    'actor', 'operation:rehome', 'now')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "UPDATE page_files SET owner_page_id = 'page:file-new-owner', current_version = 3, \
+                   updated_at = 'later' WHERE file_id = 'file:history'",
+                [],
+            )?;
+            transaction.execute(
+                "DELETE FROM block_documents WHERE block_id = 'page:file-old-owner'",
+                [],
+            )?;
+            transaction.execute("DELETE FROM blocks WHERE id = 'page:file-old-owner'", [])?;
+            Ok(())
+        })
+        .expect("rehome and remove previous owner");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM page_file_versions WHERE file_id = 'file:history'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("history count"),
+            3
+        );
+        assert_eq!(
+            connection
+                .prepare(
+                    "SELECT owner_page_id FROM page_file_versions WHERE file_id = 'file:history' \
+                     ORDER BY version",
+                )
+                .expect("history owners")
+                .query_map([], |row| row.get::<_, String>(0))
+                .expect("history owner rows")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("history owners"),
+            vec![
+                "page:file-old-owner".to_owned(),
+                "page:file-old-owner".to_owned(),
+                "page:file-new-owner".to_owned(),
+            ]
+        );
+        connection
+            .execute(
+                "DELETE FROM block_documents WHERE block_id = 'page:file-new-owner'",
+                [],
+            )
+            .expect("detach current owner Document");
+        connection
+            .execute("DELETE FROM blocks WHERE id = 'page:file-new-owner'", [])
+            .expect("remove current owner");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM page_file_versions WHERE file_id = 'file:history'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("deleted history count"),
+            0
+        );
+    }
+
     fn install_baseline_fixture(home: &Path) {
         fs::write(
             home.join("nodex.db"),
@@ -1822,7 +2069,7 @@ mod tests {
             .expect("migration history")
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("migration history rows");
-        assert_eq!(history.len(), 10);
+        assert_eq!(history.len(), 11);
         assert_eq!((history[0].0, history[0].1), (130, 131));
         assert_eq!((history[1].0, history[1].1), (131, 132));
         assert_eq!((history[2].0, history[2].1), (132, 133));
@@ -1833,6 +2080,7 @@ mod tests {
         assert_eq!((history[7].0, history[7].1), (137, 138));
         assert_eq!((history[8].0, history[8].1), (138, 139));
         assert_eq!((history[9].0, history[9].1), (139, 140));
+        assert_eq!((history[10].0, history[10].1), (140, 141));
         assert_eq!(
             history[0].2,
             published_format(130)
@@ -1894,13 +2142,13 @@ mod tests {
                 .schema_fingerprint
         );
         assert_eq!(
-            history[9].3,
-            published_format(140)
-                .expect("v140 format")
+            history[10].3,
+            published_format(141)
+                .expect("v141 format")
                 .schema_fingerprint
         );
         assert!(history.iter().all(|row| row.4 == history[0].4));
-        assert!(history[0].4.starts_with("v130-to-v140-"));
+        assert!(history[0].4.starts_with("v130-to-v141-"));
         assert!(history[0].4.ends_with(".db"));
         assert!(history.iter().all(|row| row.5 > 0));
         let backup_path = directory
@@ -1932,7 +2180,7 @@ mod tests {
                     |row| { row.get::<_, i64>(0) }
                 )
                 .expect("stable history"),
-            10
+            11
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -1967,7 +2215,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            10
+            11
         );
     }
 
@@ -1997,7 +2245,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            8
+            9
         );
         assert_eq!(
             connection
@@ -2095,8 +2343,8 @@ mod tests {
                 },
             )
             .expect("v136 migration history");
-        assert_eq!((source_revision, target_revision), (139, 140));
-        assert!(backup_name.starts_with("v136-to-v140-"));
+        assert_eq!((source_revision, target_revision), (140, 141));
+        assert!(backup_name.starts_with("v136-to-v141-"));
         let backup_path = directory
             .path()
             .join("backups/core-migrations")
@@ -2116,7 +2364,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("stable history"),
-            4
+            5
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -2361,7 +2609,7 @@ mod tests {
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
         fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(backup_directory.join(".v130-to-v140.pending.db"))
+        fs::create_dir(backup_directory.join(".v130-to-v141.pending.db"))
             .expect("non-file pending candidate");
         let mut connection = open_writer(&non_file.path().join("nodex.db")).expect("writer");
         let error = prepare_profile_store(&mut connection, non_file.path())
@@ -2371,7 +2619,7 @@ mod tests {
 
     #[test]
     fn migration_registry_is_contiguous_and_forward_only() {
-        assert_eq!(MIGRATION_STEPS.len(), 10);
+        assert_eq!(MIGRATION_STEPS.len(), 11);
         for (index, step) in MIGRATION_STEPS.iter().enumerate() {
             assert!(step.from_revision < step.to_revision);
             if let Some(next) = MIGRATION_STEPS.get(index + 1) {

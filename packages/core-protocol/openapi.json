@@ -14205,7 +14205,8 @@
           "page_keys",
           "page_etags",
           "move_etags",
-          "page_view_placements"
+          "page_view_placements",
+          "file_ownership_moves"
         ],
         "properties": {
           "affected_database_ids": {
@@ -14227,6 +14228,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
+            }
+          },
+          "file_ownership_moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "final_location_revisions": {
@@ -14574,13 +14581,20 @@
           "transfer_operation_id",
           "restored_source_root_ids",
           "removed_page_ids",
-          "document_commits"
+          "document_commits",
+          "file_ownership_moves"
         ],
         "properties": {
           "document_commits": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
+            }
+          },
+          "file_ownership_moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "removed_page_ids": {
@@ -16547,7 +16561,8 @@
           "rename",
           "delete",
           "restore",
-          "clone"
+          "clone",
+          "rehome"
         ]
       },
       "LibraryPageFileCollisionPolicy": {
@@ -16669,6 +16684,38 @@
           }
         }
       },
+      "LibraryPageFileOwnershipMove": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "previous_owner_page_id",
+          "owner_page_id",
+          "previous_logical_path",
+          "logical_path",
+          "version"
+        ],
+        "properties": {
+          "file_id": {
+            "type": "string"
+          },
+          "logical_path": {
+            "type": "string"
+          },
+          "owner_page_id": {
+            "type": "string"
+          },
+          "previous_logical_path": {
+            "type": "string"
+          },
+          "previous_owner_page_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "LibraryPageFileState": {
         "type": "string",
         "enum": [
@@ -16745,6 +16792,7 @@
         "required": [
           "file_id",
           "version",
+          "owner_page_id",
           "manifest_revision",
           "change_kind",
           "logical_path",
@@ -16789,6 +16837,9 @@
             "type": "string"
           },
           "operation_id": {
+            "type": "string"
+          },
+          "owner_page_id": {
             "type": "string"
           },
           "turn_id": {
@@ -20479,7 +20530,8 @@
           "document_commits",
           "affected_page_ids",
           "affected_database_ids",
-          "superseded_history_recipe_operation_ids"
+          "superseded_history_recipe_operation_ids",
+          "file_ownership_moves"
         ],
         "properties": {
           "affected_database_ids": {
@@ -20526,6 +20578,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
+            }
+          },
+          "file_ownership_moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "history": {

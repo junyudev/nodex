@@ -83,7 +83,9 @@ describe("Database View Block drop command", () => {
     mocks.transferBlocks.mockResolvedValue({
       ok: true,
       value: {
+        operationId: "operation:promotion",
         undoToken: null,
+        fileOwnershipMoves: [],
         transformationEvidence: [{ promotion: { kind: "no_match" } }],
       },
       localCommit: {

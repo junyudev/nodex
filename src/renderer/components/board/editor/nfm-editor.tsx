@@ -165,6 +165,7 @@ import {
   uploadResourceAsset,
 } from "@/lib/assets";
 import { parsePageFileSource } from "../../../../shared/page-files";
+import type { LibraryPageFileOwnershipMove } from "../../../../shared/library-module";
 import { useSpellcheck } from "@/lib/use-spellcheck";
 import { useTheme } from "@/lib/use-theme";
 import { usePasteResourceSettings } from "@/lib/use-paste-resource-settings";
@@ -209,6 +210,7 @@ import {
 import { createPageFilePlacementRuntime, PageFileRuntimeProvider } from "./page-file-runtime";
 import { subscribePageFileChanges } from "@/lib/page-library-changes";
 import { moveNfmBlocks } from "@/lib/nfm-block-move-runtime";
+import { summarizePageFileOwnershipMoveCollisions } from "@/lib/page-file-ownership-move-feedback";
 import {
   hasTypedOwnerBlock,
   hasTypedOwnerType,
@@ -388,6 +390,22 @@ function resolveImagePreview(input: { readonly source: string; readonly alt: str
 } | null {
   const source = resolveAssetSourceToDisplayUrl(input.source);
   return source ? { source, alt: input.alt } : null;
+}
+
+function reportPageFileOwnershipMoveCollisions(
+  moves: readonly LibraryPageFileOwnershipMove[],
+): void {
+  const feedback = summarizePageFileOwnershipMoveCollisions(moves);
+  if (!feedback) return;
+  const receiptKey = moves
+    .filter((move) => move.previousLogicalPath !== move.logicalPath)
+    .map((move) => `${move.fileId}:${move.version}`)
+    .sort()
+    .join(",");
+  toast.info(feedback.title, {
+    id: `page-file-move-collision:${receiptKey}`,
+    description: feedback.description,
+  });
 }
 
 export function NfmEditor(props: NfmEditorProps) {
@@ -1594,6 +1612,7 @@ function NfmEditorInstance({
       participant: structuralMutationParticipant,
       getContainer: () => containerRef.current,
       onError: (message) => toast.danger(message),
+      onFileOwnershipMoves: reportPageFileOwnershipMoveCollisions,
     });
     return () => structuralEditingController.deactivate(structuralEditingSession);
   }, [
@@ -1913,7 +1932,7 @@ function NfmEditorInstance({
       }
       const sourceHead = await structuralMutationParticipant.prepareAndFence();
 
-      await moveNfmBlocks({
+      const receipt = await moveNfmBlocks({
         projectId: executionProjectId,
         storeEpoch: source.storeEpoch,
         sourcePageId: sourcePageContext.pageId,
@@ -1923,6 +1942,7 @@ function NfmEditorInstance({
         sourceHead,
         destination,
       });
+      reportPageFileOwnershipMoveCollisions(receipt.fileOwnershipMoves);
     },
     [executionProjectId, source, sourcePageContext, structuralMutationParticipant],
   );
@@ -2160,6 +2180,7 @@ function NfmEditorInstance({
           );
         },
         reportError: (message: string) => toast.danger(message),
+        reportFileOwnershipMoves: reportPageFileOwnershipMoveCollisions,
       },
     };
   }, [

@@ -70,9 +70,7 @@ const controller = {
 } as PageStageController;
 
 function PageFilesRowHarness() {
-  const baseFiles = usePageFiles(controller.contentAccessContext, controller.page?.id ?? "", {
-    subscribe: true,
-  });
+  const baseFiles = usePageFiles(controller.contentAccessContext, controller.page?.id ?? "");
   return <PageFilesRow baseFiles={baseFiles} controller={controller} />;
 }
 

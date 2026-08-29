@@ -25,6 +25,7 @@ const structuralResult = (
   documentCommits: [],
   affectedPageIds: [],
   affectedDatabaseIds: [],
+  fileOwnershipMoves: [],
   clipboard: null,
   history,
   supersededHistoryRecipeOperationIds,

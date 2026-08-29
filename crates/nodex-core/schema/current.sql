@@ -1470,7 +1470,9 @@ CREATE TABLE page_file_versions (
   owner_page_id TEXT NOT NULL,
   manifest_revision INTEGER NOT NULL CHECK (manifest_revision >= 1),
   change_kind TEXT NOT NULL
-    CHECK (change_kind IN ('create', 'replace', 'rename', 'delete', 'restore', 'clone')),
+    CHECK (change_kind IN (
+      'create', 'replace', 'rename', 'delete', 'restore', 'clone', 'rehome'
+    )),
   logical_path TEXT NOT NULL,
   path_key TEXT NOT NULL,
   mime_type TEXT NOT NULL,
@@ -1481,8 +1483,8 @@ CREATE TABLE page_file_versions (
   operation_id TEXT NOT NULL,
   occurred_at TEXT NOT NULL,
   PRIMARY KEY (file_id, version),
-  FOREIGN KEY (owner_page_id, library_id)
-    REFERENCES pages(block_id, library_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  FOREIGN KEY (file_id) REFERENCES page_files(file_id)
+    ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
   CHECK (length(file_id) BETWEEN 1 AND 512),
   CHECK (length(logical_path) BETWEEN 1 AND 1024),
   CHECK (length(path_key) BETWEEN 1 AND 1024),
@@ -2322,7 +2324,7 @@ CREATE INDEX idx_prepared_blob_receipts_blob
 CREATE INDEX idx_page_file_versions_owner
   ON page_file_versions(owner_page_id, library_id, occurred_at DESC, file_id, version DESC);
 CREATE INDEX idx_page_file_versions_blob
-  ON page_file_versions(blob_hash, owner_page_id, file_id)
+  ON page_file_versions(blob_hash, file_id)
   WHERE blob_hash IS NOT NULL;
 CREATE INDEX idx_page_files_owner_path
   ON page_files(owner_page_id, state, path_key, file_id);
@@ -3587,6 +3589,22 @@ WHEN NOT EXISTS (
     SELECT 1 FROM managed_blobs blob
     WHERE blob.content_hash = NEW.blob_hash AND blob.byte_length = NEW.byte_length
   )
+) OR (
+  NEW.change_kind = 'rehome' AND NOT EXISTS (
+    SELECT 1
+    FROM page_files file
+    JOIN page_file_versions previous
+      ON previous.file_id = file.file_id
+     AND previous.version = file.current_version
+    WHERE file.file_id = NEW.file_id
+      AND file.library_id = NEW.library_id
+      AND file.owner_page_id <> NEW.owner_page_id
+      AND file.state = 'live'
+      AND NEW.version = file.current_version + 1
+      AND previous.blob_hash = NEW.blob_hash
+      AND previous.mime_type = NEW.mime_type
+      AND previous.byte_length = NEW.byte_length
+  )
 )
 BEGIN
   SELECT RAISE(ABORT, 'Page File version authority is invalid');
@@ -3632,7 +3650,6 @@ CREATE TRIGGER page_files_validate_update
 BEFORE UPDATE ON page_files
 WHEN OLD.file_id <> NEW.file_id
   OR OLD.library_id <> NEW.library_id
-  OR OLD.owner_page_id <> NEW.owner_page_id
   OR OLD.created_by_actor_id <> NEW.created_by_actor_id
   OR OLD.created_by_turn_id IS NOT NEW.created_by_turn_id
   OR OLD.created_at <> NEW.created_at
@@ -3647,6 +3664,10 @@ WHEN OLD.file_id <> NEW.file_id
       AND version.path_key = NEW.path_key
       AND version.mime_type = NEW.mime_type
       AND version.byte_length = NEW.byte_length
+      AND (
+        (OLD.owner_page_id <> NEW.owner_page_id AND version.change_kind = 'rehome')
+        OR (OLD.owner_page_id = NEW.owner_page_id AND version.change_kind <> 'rehome')
+      )
       AND (
         (NEW.state = 'live' AND version.change_kind <> 'delete' AND version.blob_hash IS NOT NULL)
         OR (NEW.state = 'deleted' AND version.change_kind = 'delete' AND version.blob_hash IS NULL)
@@ -4625,4 +4646,4 @@ CREATE TABLE operational_journal_state (
   ),
   CHECK (length(operation_identity_cutover_at) > 0)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 140;
+PRAGMA user_version = 141;

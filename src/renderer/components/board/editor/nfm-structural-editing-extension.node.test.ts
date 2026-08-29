@@ -54,6 +54,7 @@ const structuralEdit = (input: {
   readonly clipboard?: typeof clipboard | null;
   readonly resultRootBlockIds?: readonly string[];
   readonly resumeBlockId?: string;
+  readonly fileOwnershipMoves?: LibraryStructuralEditResult["fileOwnershipMoves"];
 }) => ({
   operationKind: input.operationKind,
   sourceRootBlockIds: ["text", "page"],
@@ -63,6 +64,7 @@ const structuralEdit = (input: {
   documentCommits: [],
   affectedPageIds: ["page"],
   affectedDatabaseIds: [],
+  fileOwnershipMoves: input.fileOwnershipMoves ?? [],
   clipboard: input.clipboard ?? null,
   history:
     input.operationKind === "capture_clipboard"
@@ -167,6 +169,24 @@ describe("NFM structural editing session", () => {
           history: null,
         });
       }
+      if (command.kind === "move_selection") {
+        return receipt(
+          structuralEdit({
+            operationKind: command.kind,
+            resumeBlockId: "after",
+            fileOwnershipMoves: [
+              {
+                fileId: "file:image",
+                previousOwnerPageId: "page:source",
+                ownerPageId: "page:target",
+                previousLogicalPath: "image.png",
+                logicalPath: "image (2).png",
+                version: 2,
+              },
+            ],
+          }),
+        );
+      }
       return receipt(structuralEdit({ operationKind: command.kind, resumeBlockId: "after" }));
     };
     let supersedeNextWrite = false;
@@ -178,6 +198,7 @@ describe("NFM structural editing session", () => {
       }
       return { ok: true };
     };
+    const ownershipMoves: LibraryStructuralEditResult["fileOwnershipMoves"][] = [];
     const session = new NfmStructuralEditingSession({
       editor,
       runtime: {
@@ -196,6 +217,7 @@ describe("NFM structural editing session", () => {
           },
         },
         getContainer: () => null,
+        onFileOwnershipMoves: (moves) => ownershipMoves.push(moves),
       },
       apply,
       writeClipboard,
@@ -227,7 +249,6 @@ describe("NFM structural editing session", () => {
           selection: { rootBlockIds: ["text", "page"] },
         },
       });
-
       events.length = 0;
       selectedBlocks = [];
       selectedNodeIds = ["page"];
@@ -426,6 +447,14 @@ describe("NFM structural editing session", () => {
           },
         },
       });
+      expect(ownershipMoves).toEqual([
+        [
+          expect.objectContaining({
+            fileId: "file:image",
+            logicalPath: "image (2).png",
+          }),
+        ],
+      ]);
 
       session.adoptStructuralResult(
         structuralEdit({ operationKind: "move_selection", resultRootBlockIds: ["pasted"] }),

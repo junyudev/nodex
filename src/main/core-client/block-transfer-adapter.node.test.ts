@@ -61,6 +61,7 @@ const coreResult = () => ({
     },
   ],
   affected_database_ids: [],
+  file_ownership_moves: [],
   page_keys: {},
   page_etags: {},
   move_etags: {},
@@ -191,6 +192,7 @@ describe("Core Block Transfer Adapter", () => {
       },
       final_location_revisions: { "page:wrapper": 2 },
       affected_database_ids: ["database:target"],
+      file_ownership_moves: [],
     };
     client.enqueueApply({
       ...committedApply(),
@@ -386,6 +388,7 @@ describe("Core Block Transfer Adapter", () => {
           restored_source_root_ids: ["block:root"],
           removed_page_ids: ["page:promoted"],
           document_commits: [],
+          file_ownership_moves: [],
         },
       },
       receipt: {

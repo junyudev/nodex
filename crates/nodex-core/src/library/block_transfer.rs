@@ -11,8 +11,8 @@ use nodex_core_contracts::library::{
     LibraryBlockTransferTarget, LibraryBlockTransferTransformationEvidence,
     LibraryBlockTransferUndoResult, LibraryBlockTransferUndoToken, LibraryCommitValue,
     LibraryPageCopyDestination, LibraryPageCopyPositionAnchor, LibraryPageCopyValue,
-    LibraryPageCopyViewPlacement, LibraryPagePromotionPolicy, LibraryPageViewPlacementResult,
-    LibraryPlacementAnchor, LibraryReceipt,
+    LibraryPageCopyViewPlacement, LibraryPageFileOwnershipMove, LibraryPagePromotionPolicy,
+    LibraryPageViewPlacementResult, LibraryPlacementAnchor, LibraryReceipt,
 };
 use nodex_core_contracts::{BoundModuleContext, ModuleName};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -68,6 +68,10 @@ use super::mutation::{
 };
 use super::page_copy::{
     PageCopyParentDocumentMode, execute_page_copy, page_copy_closure_document_heads,
+};
+use super::page_file_ownership_move::{
+    PageFilePlacementMove, candidate_file_ids, move_exclusively_placed_files,
+    restore_promoted_page_file_ownership,
 };
 
 const MODULE_NAME: &str = "library";
@@ -176,7 +180,7 @@ pub(super) struct PreparedPageParentTransfer {
     task_shorthand_plan: Option<PageTaskShorthandBatchPlan>,
 }
 
-const BLOCK_TRANSFER_UNDO_RECIPE_VERSION: u32 = 1;
+const BLOCK_TRANSFER_UNDO_RECIPE_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -191,6 +195,7 @@ struct BlockTransferUndoRecipeV1 {
     source_post_head_seq: Option<i64>,
     source_pre_materialization: Option<DocumentMaterialization>,
     roots: Vec<BlockTransferUndoRootV1>,
+    file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
     target_guard_hash: String,
     schema_restore: Option<BlockTransferUndoSchemaRestoreV1>,
 }
@@ -1004,6 +1009,20 @@ fn apply_with_authority(
         |scope| {
             let moves_between_documents = intent.mode == LibraryBlockTransferMode::Move
                 && prepared.source_authority.head.id != prepared.target_authority.head.id;
+            let page_file_move = if moves_between_documents {
+                Some(PageFilePlacementMove {
+                    source_page_id: prepared.source_authority.owner_block_id.clone(),
+                    target_page_id: prepared.target_authority.owner_block_id.clone(),
+                    candidate_file_ids: candidate_file_ids(
+                        connection,
+                        library_id,
+                        &prepared.source_authority.head.id,
+                        &prepared.prepared.source_forest.block_ids,
+                    )?,
+                })
+            } else {
+                None
+            };
             let source_update = prepared.prepared.source.take();
             let target_update = prepared.prepared.target.clone();
             let mut document_commits = Vec::new();
@@ -1063,6 +1082,19 @@ fn apply_with_authority(
                 scope.evidence(),
             )?;
             document_commits.push(target_commit);
+            let file_ownership_effects = page_file_move
+                .map(|page_file_move| {
+                    move_exclusively_placed_files(
+                        connection,
+                        library_id,
+                        operation_id,
+                        bound_project_id(context)?,
+                        &now,
+                        &[page_file_move],
+                    )
+                })
+                .transpose()?
+                .unwrap_or_default();
 
             let result_block_ids = prepared.prepared.inserted_forest.block_ids.clone();
             let result_root_block_ids = prepared.prepared.inserted_forest.root_block_ids.clone();
@@ -1099,9 +1131,13 @@ fn apply_with_authority(
                 page_etags: BTreeMap::new(),
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
+                file_ownership_moves: file_ownership_effects.moves.clone(),
                 undo_token: None,
             };
-            let affected_page_ids = affected_page_ids(&prepared);
+            let mut affected_page_ids = affected_page_ids(&prepared);
+            affected_page_ids.extend(file_ownership_effects.affected_page_ids.iter().cloned());
+            affected_page_ids.sort();
+            affected_page_ids.dedup();
             let is_same_storage_relocation = moves_between_documents
                 && prepared.source_authority.head.library_id
                     == prepared.target_authority.head.library_id;
@@ -1110,7 +1146,7 @@ fn apply_with_authority(
             } else {
                 "block_mutation"
             };
-            let committed_revisions = final_location_revisions
+            let mut committed_revisions = final_location_revisions
                 .iter()
                 .map(|(block_id, revision)| (format!("blockLocation:{block_id}"), *revision))
                 .chain(document_commits.iter().map(|commit| {
@@ -1119,7 +1155,9 @@ fn apply_with_authority(
                         commit.public.head_seq,
                     )
                 }))
-                .collect();
+                .collect::<BTreeMap<_, _>>();
+            committed_revisions
+                .extend(file_ownership_effects.committed_revisions(scope.evidence().commit_seq()));
             seal_mutation_with(
                 scope,
                 context,
@@ -1130,7 +1168,11 @@ fn apply_with_authority(
                     change_kind,
                     did_mutate: true,
                     created_target: None,
-                    affected_parent_keys: Vec::new(),
+                    affected_parent_keys: file_ownership_effects
+                        .affected_page_ids
+                        .iter()
+                        .map(|page_id| format!("page:{page_id}"))
+                        .collect(),
                     affected_block_ids: result_block_ids.clone(),
                     affected_page_ids,
                     affected_database_ids: Vec::new(),
@@ -2416,6 +2458,7 @@ fn apply_page_ownership_transfer(
             page_etags,
             move_etags,
             page_view_placements,
+            file_ownership_moves: Vec::new(),
             undo_token: None,
         };
         committed_revisions.extend(
@@ -2670,6 +2713,7 @@ fn apply_page_ownership_copy(
         page_etags: BTreeMap::new(),
         move_etags: BTreeMap::new(),
         page_view_placements: BTreeMap::new(),
+        file_ownership_moves: Vec::new(),
         undo_token: None,
     };
     let actor_project_id =
@@ -3312,6 +3356,41 @@ fn block_transfer_target_guard_hash(
                 ]))
             })?
             .collect::<Result<Vec<_>, _>>()?;
+        let file_manifest = connection
+            .query_row(
+                "SELECT revision, body_usage_revision FROM page_file_manifests \
+                 WHERE page_id = ?1",
+                [&root.result_page_id],
+                |row| {
+                    Ok(serde_json::json!({
+                        "revision": row.get::<_, i64>(0)?,
+                        "bodyUsageRevision": row.get::<_, i64>(1)?,
+                    }))
+                },
+            )
+            .optional()?;
+        let page_files = connection
+            .prepare(
+                "SELECT file.file_id, file.current_version, file.logical_path, file.path_key, \
+                   file.mime_type, file.byte_length, version.blob_hash, file.state, file.updated_at \
+                 FROM page_files file JOIN page_file_versions version \
+                   ON version.file_id = file.file_id AND version.version = file.current_version \
+                 WHERE file.owner_page_id = ?1 ORDER BY file.file_id",
+            )?
+            .query_map([&root.result_page_id], |row| {
+                Ok(serde_json::json!({
+                    "fileId": row.get::<_, String>(0)?,
+                    "version": row.get::<_, i64>(1)?,
+                    "logicalPath": row.get::<_, String>(2)?,
+                    "pathKey": row.get::<_, String>(3)?,
+                    "mimeType": row.get::<_, String>(4)?,
+                    "byteLength": row.get::<_, i64>(5)?,
+                    "blobHash": row.get::<_, Option<String>>(6)?,
+                    "state": row.get::<_, String>(7)?,
+                    "updatedAt": row.get::<_, String>(8)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
         guarded_pages.push(serde_json::json!({
             "pageId": root.result_page_id,
             "authority": authority,
@@ -3319,6 +3398,8 @@ fn block_transfer_target_guard_hash(
             "values": values,
             "positions": positions,
             "properties": properties,
+            "fileManifest": file_manifest,
+            "pageFiles": page_files,
         }));
     }
     let schema = schema_restore
@@ -3349,15 +3430,29 @@ fn block_transfer_target_guard_hash(
     Ok(sha256(&bytes))
 }
 
+struct PageParentUndoRecipeInput<'a> {
+    operation_id: &'a str,
+    store_epoch: &'a str,
+    intent: &'a LibraryBlockTransferLogicalIntent,
+    prepared: &'a PreparedPageParentTransfer,
+    document_commits: &'a [PersistedTransferCommit],
+    file_ownership_moves: &'a [LibraryPageFileOwnershipMove],
+    schema_restore: Option<BlockTransferUndoSchemaRestoreV1>,
+}
+
 fn build_page_parent_undo_recipe(
     connection: &Connection,
-    operation_id: &str,
-    store_epoch: &str,
-    intent: &LibraryBlockTransferLogicalIntent,
-    prepared: &PreparedPageParentTransfer,
-    document_commits: &[PersistedTransferCommit],
-    schema_restore: Option<BlockTransferUndoSchemaRestoreV1>,
+    input: PageParentUndoRecipeInput<'_>,
 ) -> Result<PendingBlockTransferUndoRecipe, StoreError> {
+    let PageParentUndoRecipeInput {
+        operation_id,
+        store_epoch,
+        intent,
+        prepared,
+        document_commits,
+        file_ownership_moves,
+        schema_restore,
+    } = input;
     let source_post_head_seq = if intent.mode == LibraryBlockTransferMode::Move {
         Some(
             document_commits
@@ -3399,6 +3494,7 @@ fn build_page_parent_undo_recipe(
         source_pre_materialization: (intent.mode == LibraryBlockTransferMode::Move)
             .then(|| prepared.source_materialization.clone()),
         roots,
+        file_ownership_moves: file_ownership_moves.to_vec(),
         target_guard_hash,
         schema_restore,
     };
@@ -3462,6 +3558,26 @@ fn apply_page_parent_transfer(
         },
         |scope| {
             let schema_restore = read_task_shorthand_schema_restore(connection, &prepared)?;
+            let page_file_moves = if intent.mode == LibraryBlockTransferMode::Move {
+                prepared
+                    .roots
+                    .iter()
+                    .map(|root| {
+                        Ok(PageFilePlacementMove {
+                            source_page_id: prepared.source_authority.owner_block_id.clone(),
+                            target_page_id: root.page_id.clone(),
+                            candidate_file_ids: candidate_file_ids(
+                                connection,
+                                library_id,
+                                &prepared.source_authority.head.id,
+                                &root.source_block_ids,
+                            )?,
+                        })
+                    })
+                    .collect::<Result<Vec<_>, StoreError>>()?
+            } else {
+                Vec::new()
+            };
             let mut shorthand_schema_revisions = BTreeMap::new();
             if let Some(plan) = &prepared.task_shorthand_plan
                 && !plan.new_tag_options.is_empty()
@@ -3575,6 +3691,14 @@ fn apply_page_parent_transfer(
                 }
             }
             let target_persistence_elapsed = target_persistence_started_at.elapsed();
+            let file_ownership_effects = move_exclusively_placed_files(
+                connection,
+                library_id,
+                operation_id,
+                bound_project_id(context)?,
+                &now,
+                &page_file_moves,
+            )?;
 
             let result_root_block_ids = prepared
                 .roots
@@ -3603,12 +3727,15 @@ fn apply_page_parent_transfer(
             let page_keys = read_current_page_keys(connection, library_id, &result_root_block_ids)?;
             let pending_undo = build_page_parent_undo_recipe(
                 connection,
-                operation_id,
-                store_epoch,
-                intent,
-                &prepared,
-                &document_commits,
-                schema_restore,
+                PageParentUndoRecipeInput {
+                    operation_id,
+                    store_epoch,
+                    intent,
+                    prepared: &prepared,
+                    document_commits: &document_commits,
+                    file_ownership_moves: &file_ownership_effects.moves,
+                    schema_restore,
+                },
             )?;
             let result = LibraryBlockTransferResult {
                 mode: intent.mode,
@@ -3631,6 +3758,7 @@ fn apply_page_parent_transfer(
                 page_etags: BTreeMap::new(),
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
+                file_ownership_moves: file_ownership_effects.moves.clone(),
                 undo_token: Some(pending_undo.token.clone()),
             };
             let mut committed_revisions = final_location_revisions
@@ -3644,6 +3772,8 @@ fn apply_page_parent_transfer(
                     commit.public.head_seq,
                 );
             }
+            committed_revisions
+                .extend(file_ownership_effects.committed_revisions(scope.evidence().commit_seq()));
             for (page_id, placement) in &data_source_placements {
                 committed_revisions.insert(
                     format!("blockMetadata:{page_id}"),
@@ -3675,12 +3805,28 @@ fn apply_page_parent_transfer(
                         .insert(format!("viewPosition:{}:{page_id}", view.view_id), revision);
                 }
             }
-            let affected_parent_keys = match &prepared.target {
+            let mut affected_parent_keys = match &prepared.target {
                 PreparedPageParentTarget::Library { .. } => vec![format!("library:{library_id}")],
                 PreparedPageParentTarget::DataSource { destination, .. } => {
                     vec![format!("data_source:{}", destination.data_source_id)]
                 }
             };
+            affected_parent_keys.extend(
+                file_ownership_effects
+                    .affected_page_ids
+                    .iter()
+                    .map(|page_id| format!("page:{page_id}")),
+            );
+            affected_parent_keys.sort();
+            affected_parent_keys.dedup();
+            let mut affected_page_ids = prepared
+                .roots
+                .iter()
+                .map(|root| root.page_id.clone())
+                .collect::<Vec<_>>();
+            affected_page_ids.extend(file_ownership_effects.affected_page_ids.iter().cloned());
+            affected_page_ids.sort();
+            affected_page_ids.dedup();
             let sealing_started_at = Instant::now();
             let sealed = seal_mutation_with(
                 scope,
@@ -3694,11 +3840,7 @@ fn apply_page_parent_transfer(
                     created_target: None,
                     affected_parent_keys,
                     affected_block_ids: result_block_ids,
-                    affected_page_ids: prepared
-                        .roots
-                        .iter()
-                        .map(|root| root.page_id.clone())
-                        .collect(),
+                    affected_page_ids,
                     affected_database_ids,
                     affected_view_ids,
                     affected_document_ids: document_commits
@@ -5480,6 +5622,16 @@ fn purge_promoted_page(
         )?
         .query_map([&root.result_document_id], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
+    let owned_file_count = connection.query_row(
+        "SELECT COUNT(*) FROM page_files WHERE library_id = ?1 AND owner_page_id = ?2",
+        params![recipe.library_id, root.result_page_id],
+        |row| row.get::<_, i64>(0),
+    )?;
+    if owned_file_count != 0 {
+        return Err(conflict(
+            "Promoted Page still owns Files and cannot be removed by Undo",
+        ));
+    }
     connection.execute(
         "DELETE FROM database_view_page_positions WHERE page_block_id = ?1",
         [&root.result_page_id],
@@ -5708,6 +5860,36 @@ pub(super) fn undo(
             context,
         },
         |scope| {
+            let reverse_page_file_moves = recipe
+                .file_ownership_moves
+                .iter()
+                .map(|ownership_move| PageFilePlacementMove {
+                    source_page_id: ownership_move.owner_page_id.clone(),
+                    target_page_id: ownership_move.previous_owner_page_id.clone(),
+                    candidate_file_ids: vec![ownership_move.file_id.clone()],
+                })
+                .collect::<Vec<_>>();
+            let file_ownership_effects = restore_promoted_page_file_ownership(
+                connection,
+                library_id,
+                operation_id,
+                &recipe.project_id,
+                &now,
+                &reverse_page_file_moves,
+            )?;
+            let expected_rehomed_file_ids = recipe
+                .file_ownership_moves
+                .iter()
+                .map(|ownership_move| ownership_move.file_id.as_str())
+                .collect::<BTreeSet<_>>();
+            let actual_rehomed_file_ids = file_ownership_effects
+                .moves
+                .iter()
+                .map(|ownership_move| ownership_move.file_id.as_str())
+                .collect::<BTreeSet<_>>();
+            if actual_rehomed_file_ids != expected_rehomed_file_ids {
+                return Err(conflict("Promoted Page File ownership changed before Undo"));
+            }
             for root in &recipe.roots {
                 purge_promoted_page(connection, &recipe, root)?;
             }
@@ -5743,6 +5925,8 @@ pub(super) fn undo(
                     commit.public.head_seq,
                 );
             }
+            committed_revisions
+                .extend(file_ownership_effects.committed_revisions(scope.evidence().commit_seq()));
             let consumed = connection.execute(
                 "UPDATE block_transfer_undo_recipes SET consumed_at = ?1 \
                  WHERE transfer_operation_id = ?2 AND consumed_at IS NULL",
@@ -5771,17 +5955,30 @@ pub(super) fn undo(
                     .iter()
                     .map(|commit| commit.public.clone())
                     .collect(),
+                file_ownership_moves: file_ownership_effects.moves.clone(),
             };
             let affected_database_ids = recipe
                 .schema_restore
                 .as_ref()
                 .map(|schema| vec![schema.data_source_id.clone()])
                 .unwrap_or_default();
-            let affected_parent_keys = recipe
+            let mut affected_parent_keys = recipe
                 .schema_restore
                 .as_ref()
                 .map(|schema| vec![format!("data_source:{}", schema.data_source_id)])
                 .unwrap_or_else(|| vec![format!("library:{library_id}")]);
+            affected_parent_keys.extend(
+                file_ownership_effects
+                    .affected_page_ids
+                    .iter()
+                    .map(|page_id| format!("page:{page_id}")),
+            );
+            affected_parent_keys.sort();
+            affected_parent_keys.dedup();
+            let mut affected_page_ids = result.removed_page_ids.clone();
+            affected_page_ids.extend(file_ownership_effects.affected_page_ids.iter().cloned());
+            affected_page_ids.sort();
+            affected_page_ids.dedup();
             seal_mutation_with(
                 scope,
                 context,
@@ -5794,7 +5991,7 @@ pub(super) fn undo(
                     created_target: None,
                     affected_parent_keys,
                     affected_block_ids: result.restored_source_root_ids.clone(),
-                    affected_page_ids: result.removed_page_ids.clone(),
+                    affected_page_ids,
                     affected_database_ids,
                     affected_view_ids: Vec::new(),
                     affected_document_ids: result

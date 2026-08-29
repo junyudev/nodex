@@ -318,7 +318,7 @@ function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps
 
 export function PageStagePropertiesSection({ controller }: PageStagePropertiesSectionProps) {
   const pageId = controller.page?.id ?? "";
-  const baseFiles = usePageFiles(controller.contentAccessContext, pageId, { subscribe: true });
+  const baseFiles = usePageFiles(controller.contentAccessContext, pageId);
   const filesSignal = resolvePageFilesPropertySignal({
     hasManifest: baseFiles.manifest !== null,
     unplacedTotal: baseFiles.manifest?.unplacedTotal ?? 0,

@@ -7,6 +7,7 @@ import type {
   DocumentCommitRef,
 } from "./block-documents/contracts";
 import type { LocalCommitCommandSuccess } from "./local-commit-delivery";
+import type { LibraryPageFileOwnershipMove } from "./library-module";
 import {
   parseDatabaseViewPresentationOverride,
   type DatabaseViewPresentationOverride,
@@ -233,6 +234,7 @@ export interface BlockTransferReceipt {
   readonly finalLocationRevisions: Readonly<Record<BlockId, number>>;
   readonly documentCommits: readonly DocumentCommitRef[];
   readonly affectedDatabaseBlockIds: readonly BlockId[];
+  readonly fileOwnershipMoves: readonly LibraryPageFileOwnershipMove[];
   readonly commitSeq: number;
   readonly committedAt: string;
   readonly undoToken: BlockTransferUndoToken | null;
@@ -260,6 +262,7 @@ export interface BlockTransferUndoReceipt {
   readonly restoredSourceRootIds: readonly BlockId[];
   readonly removedPageIds: readonly BlockId[];
   readonly documentCommits: readonly DocumentCommitRef[];
+  readonly fileOwnershipMoves: readonly LibraryPageFileOwnershipMove[];
   readonly commitSeq: number;
   readonly committedAt: string;
 }

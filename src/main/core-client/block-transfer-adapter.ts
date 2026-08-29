@@ -32,6 +32,15 @@ export interface CoreBlockTransferAdapter {
 type CoreTransferResult = NonNullable<LibraryApplyResult["outcome"]["block_transfer"]>;
 type CoreTransferIntent = Extract<LibraryIntent, { kind: "transfer_blocks" }>["intent"];
 type CoreUndoTransferResult = NonNullable<LibraryApplyResult["outcome"]["block_transfer_undo"]>;
+
+const fromCoreFileOwnershipMove = (move: CoreTransferResult["file_ownership_moves"][number]) => ({
+  fileId: move.file_id,
+  previousOwnerPageId: move.previous_owner_page_id,
+  ownerPageId: move.owner_page_id,
+  previousLogicalPath: move.previous_logical_path,
+  logicalPath: move.logical_path,
+  version: move.version,
+});
 const toCoreIntent = (intent: BlockTransferIntent): CoreTransferIntent => ({
   actor: intent.actor,
   mode: intent.mode,
@@ -271,6 +280,7 @@ const fromCoreResult = (
       stateVector: Uint8Array.from(commit.state_vector),
     })),
     affectedDatabaseBlockIds: result.affected_database_ids,
+    fileOwnershipMoves: result.file_ownership_moves.map(fromCoreFileOwnershipMove),
     commitSeq,
     committedAt,
     undoToken: result.undo_token
@@ -306,6 +316,7 @@ const fromCoreUndoResult = (
     update: Uint8Array.from(commit.update),
     stateVector: Uint8Array.from(commit.state_vector),
   })),
+  fileOwnershipMoves: result.file_ownership_moves.map(fromCoreFileOwnershipMove),
   commitSeq,
   committedAt,
 });

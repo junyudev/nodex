@@ -16,7 +16,7 @@ use crate::document::DocumentHeadRevision;
 use crate::workspace::{ProjectAppearance, ProjectLifecycle};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 39;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 40;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -558,6 +558,7 @@ pub struct LibraryBlockTransferResult {
     pub page_etags: std::collections::BTreeMap<String, String>,
     pub move_etags: std::collections::BTreeMap<String, String>,
     pub page_view_placements: std::collections::BTreeMap<String, LibraryPageViewPlacementResult>,
+    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub undo_token: Option<LibraryBlockTransferUndoToken>,
 }
@@ -568,6 +569,7 @@ pub struct LibraryBlockTransferUndoResult {
     pub restored_source_root_ids: Vec<String>,
     pub removed_page_ids: Vec<String>,
     pub document_commits: Vec<LibraryBlockTransferDocumentCommit>,
+    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -734,6 +736,7 @@ pub struct LibraryStructuralEditResult {
     pub history: Option<LibraryStructuralHistoryToken>,
     pub superseded_history_recipe_operation_ids: Vec<String>,
     pub resume: Option<LibraryEditorResumeTarget>,
+    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1517,6 +1520,17 @@ pub enum LibraryPageFileChangeKind {
     Delete,
     Restore,
     Clone,
+    Rehome,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageFileOwnershipMove {
+    pub file_id: String,
+    pub previous_owner_page_id: String,
+    pub owner_page_id: String,
+    pub previous_logical_path: String,
+    pub logical_path: String,
+    pub version: i64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1569,6 +1583,7 @@ pub struct LibraryPageFileManifest {
 pub struct LibraryPageFileVersion {
     pub file_id: String,
     pub version: i64,
+    pub owner_page_id: String,
     pub manifest_revision: i64,
     pub change_kind: LibraryPageFileChangeKind,
     pub logical_path: String,

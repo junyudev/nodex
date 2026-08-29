@@ -3504,6 +3504,7 @@ export interface components {
                 readonly [key: string]: string;
             };
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
+            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly final_location_revisions: {
                 readonly [key: string]: number;
             };
@@ -3589,6 +3590,7 @@ export interface components {
         };
         readonly LibraryBlockTransferUndoResult: {
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
+            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly removed_page_ids: readonly string[];
             readonly restored_source_root_ids: readonly string[];
             readonly transfer_operation_id: string;
@@ -4088,7 +4090,7 @@ export interface components {
             readonly target_file_id: string;
         };
         /** @enum {string} */
-        readonly LibraryPageFileChangeKind: "create" | "replace" | "rename" | "delete" | "restore" | "clone";
+        readonly LibraryPageFileChangeKind: "create" | "replace" | "rename" | "delete" | "restore" | "clone" | "rehome";
         /** @enum {string} */
         readonly LibraryPageFileCollisionPolicy: "reject" | "suffix";
         readonly LibraryPageFileManifest: {
@@ -4119,6 +4121,15 @@ export interface components {
             readonly manifest_revision: number;
             readonly page_id: string;
             readonly updated_file_ids: readonly string[];
+        };
+        readonly LibraryPageFileOwnershipMove: {
+            readonly file_id: string;
+            readonly logical_path: string;
+            readonly owner_page_id: string;
+            readonly previous_logical_path: string;
+            readonly previous_owner_page_id: string;
+            /** Format: int64 */
+            readonly version: number;
         };
         /** @enum {string} */
         readonly LibraryPageFileState: "live" | "deleted";
@@ -4152,6 +4163,7 @@ export interface components {
             readonly mime_type: string;
             readonly occurred_at: string;
             readonly operation_id: string;
+            readonly owner_page_id: string;
             readonly turn_id?: string | null;
             /** Format: int64 */
             readonly version: number;
@@ -5008,6 +5020,7 @@ export interface components {
                 readonly [key: string]: string;
             };
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
+            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly history?: null | components["schemas"]["LibraryStructuralHistoryToken"];
             readonly operation_kind: string;
             readonly result_root_block_ids: readonly string[];

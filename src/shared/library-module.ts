@@ -132,7 +132,17 @@ export type LibraryPageFileChangeKind =
   | "rename"
   | "delete"
   | "restore"
-  | "clone";
+  | "clone"
+  | "rehome";
+
+export interface LibraryPageFileOwnershipMove {
+  readonly fileId: string;
+  readonly previousOwnerPageId: string;
+  readonly ownerPageId: string;
+  readonly previousLogicalPath: string;
+  readonly logicalPath: string;
+  readonly version: number;
+}
 
 export type LibraryPageFileBodyUsage =
   | { readonly kind: "not_in_body" }
@@ -171,6 +181,7 @@ export interface LibraryPageFileManifest {
 export interface LibraryPageFileVersion {
   readonly fileId: string;
   readonly version: number;
+  readonly ownerPageId: string;
   readonly manifestRevision: number;
   readonly changeKind: LibraryPageFileChangeKind;
   readonly logicalPath: string;
@@ -847,6 +858,7 @@ export interface LibraryStructuralEditResult {
   readonly documentCommits: readonly DocumentCommitRef[];
   readonly affectedPageIds: readonly string[];
   readonly affectedDatabaseIds: readonly DatabaseId[];
+  readonly fileOwnershipMoves: readonly LibraryPageFileOwnershipMove[];
   readonly clipboard: LibraryStructuralClipboardToken | null;
   readonly history: LibraryStructuralHistoryToken | null;
   readonly supersededHistoryRecipeOperationIds: readonly string[];

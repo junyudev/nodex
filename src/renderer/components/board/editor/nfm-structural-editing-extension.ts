@@ -5,6 +5,7 @@ import type { ContentAccessContext } from "../../../../shared/content-access-con
 import type { NodexClipboardEnvelopeV1 } from "../../../../shared/clipboard-paste";
 import type {
   LibraryModuleApplyResult,
+  LibraryPageFileOwnershipMove,
   LibraryStructuralClipboardToken,
   LibraryStructuralEditResult,
   LibraryStructuralHistoryToken,
@@ -90,6 +91,7 @@ export interface NfmStructuralEditingRuntime {
   readonly participant: BlockDocumentStructuralMutationParticipant;
   readonly getContainer: () => HTMLElement | null;
   readonly onError?: (message: string) => void;
+  readonly onFileOwnershipMoves?: (moves: readonly LibraryPageFileOwnershipMove[]) => void;
 }
 
 const topLevelRoots = (
@@ -208,6 +210,7 @@ export class NfmStructuralEditingSession {
       reverseStructural: async (token) => await this.reverseStructural(token),
       releaseStructural: async (tokens) => await this.releaseStructuralHistory(tokens),
       onStructuralReversed: async (result) => {
+        this.notifyFileOwnershipMoves(result);
         if (this.historyReplayFocusChanged) return;
         await this.restoreSelection(result);
         this.restoreFocusIfUnclaimed();
@@ -289,7 +292,7 @@ export class NfmStructuralEditingSession {
           },
         }),
       );
-      this.history.recordStructural(result);
+      this.recordStructuralResult(result);
       await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
     });
     return true;
@@ -327,7 +330,7 @@ export class NfmStructuralEditingSession {
           },
         }),
       );
-      this.history.recordStructural(result);
+      this.recordStructuralResult(result);
       await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
     });
     return true;
@@ -369,7 +372,7 @@ export class NfmStructuralEditingSession {
           },
         }),
       );
-      this.history.recordStructural(result);
+      this.recordStructuralResult(result);
       await this.restoreSelection(result);
     });
     return true;
@@ -377,7 +380,7 @@ export class NfmStructuralEditingSession {
 
   adoptStructuralResult(result: LibraryStructuralEditResult, preferredBlockId?: string): void {
     if (this.disposed) return;
-    this.history.recordStructural(result);
+    this.recordStructuralResult(result);
     this.start(async () => {
       await this.restoreSelection(result, preferredBlockId ?? result.resultRootBlockIds.at(-1));
     });
@@ -535,7 +538,7 @@ export class NfmStructuralEditingSession {
             },
           }),
         );
-        this.history.recordStructural(deleted);
+        this.recordStructuralResult(deleted);
         await this.restoreSelection(deleted);
       } finally {
         pendingCapture.complete(envelope);
@@ -612,7 +615,7 @@ export class NfmStructuralEditingSession {
           },
         }),
       );
-      this.history.recordStructural(result);
+      this.recordStructuralResult(result);
       await this.restoreSelection(result);
     });
     return true;
@@ -645,7 +648,7 @@ export class NfmStructuralEditingSession {
             },
           }),
         );
-        this.history.recordStructural(result);
+        this.recordStructuralResult(result);
         await this.restoreBackwardMergeSelection(plan, joinOffset, result);
       } finally {
         this.backwardMergePending = false;
@@ -688,6 +691,16 @@ export class NfmStructuralEditingSession {
       await nextAnimationFrame();
     }
     await this.restoreSelection(result, plan.targetBlockId);
+  }
+
+  private recordStructuralResult(result: LibraryStructuralEditResult): void {
+    this.history.recordStructural(result);
+    this.notifyFileOwnershipMoves(result);
+  }
+
+  private notifyFileOwnershipMoves(result: LibraryStructuralEditResult): void {
+    if (result.fileOwnershipMoves.length === 0) return;
+    this.runtime?.onFileOwnershipMoves?.(result.fileOwnershipMoves);
   }
 
   private start(operation: () => Promise<void>): boolean {
@@ -768,7 +781,7 @@ export class NfmStructuralEditingSession {
         },
       }),
     );
-    this.history.recordStructural(result);
+    this.recordStructuralResult(result);
     await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
   }
 
@@ -839,7 +852,7 @@ export class NfmStructuralEditingSession {
           },
         }),
       );
-      this.history.recordStructural(result);
+      this.recordStructuralResult(result);
       await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
     });
     return true;

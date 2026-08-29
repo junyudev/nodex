@@ -27,6 +27,7 @@ import {
   type LibraryMoveDestinationScope,
   type LibraryPageReferenceCandidate,
   type LibraryPageFileBodyUsage,
+  type LibraryPageFileOwnershipMove,
   type LibraryNavigationNode,
   type LibraryNavigationParent,
   type LibraryPlacementAnchor,
@@ -2154,6 +2155,33 @@ const parsePageFileSummary = (value: unknown, label: string) => {
   } as const;
 };
 
+const parsePageFileOwnershipMove = (
+  value: unknown,
+  label: string,
+): LibraryPageFileOwnershipMove => {
+  const move = record(value, label);
+  exactKeys(move, label, [
+    "fileId",
+    "previousOwnerPageId",
+    "ownerPageId",
+    "previousLogicalPath",
+    "logicalPath",
+    "version",
+  ]);
+  return {
+    fileId: string(move.fileId, `${label}.fileId`, MAX_ID_LENGTH),
+    previousOwnerPageId: string(
+      move.previousOwnerPageId,
+      `${label}.previousOwnerPageId`,
+      MAX_ID_LENGTH,
+    ),
+    ownerPageId: string(move.ownerPageId, `${label}.ownerPageId`, MAX_ID_LENGTH),
+    previousLogicalPath: string(move.previousLogicalPath, `${label}.previousLogicalPath`, 1_024),
+    logicalPath: string(move.logicalPath, `${label}.logicalPath`, 1_024),
+    version: revision(move.version, `${label}.version`),
+  };
+};
+
 const parseReadValue = (value: unknown): LibraryReadValue => {
   const readValue = record(value, "libraryModuleReadResult.value.value");
   if (readValue.kind === "metadata") {
@@ -2530,6 +2558,7 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
       exactKeys(version, label, [
         "fileId",
         "version",
+        "ownerPageId",
         "manifestRevision",
         "changeKind",
         "logicalPath",
@@ -2547,13 +2576,15 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
         version.changeKind !== "rename" &&
         version.changeKind !== "delete" &&
         version.changeKind !== "restore" &&
-        version.changeKind !== "clone"
+        version.changeKind !== "clone" &&
+        version.changeKind !== "rehome"
       ) {
         throw new TypeError(`${label}.changeKind is unsupported`);
       }
       return {
         fileId: string(version.fileId, `${label}.fileId`, MAX_ID_LENGTH),
         version: revision(version.version, `${label}.version`),
+        ownerPageId: string(version.ownerPageId, `${label}.ownerPageId`, MAX_ID_LENGTH),
         manifestRevision: revision(version.manifestRevision, `${label}.manifestRevision`),
         changeKind: version.changeKind,
         logicalPath: string(version.logicalPath, `${label}.logicalPath`, 1_024),
@@ -2833,6 +2864,7 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
       "documentCommits",
       "affectedPageIds",
       "affectedDatabaseIds",
+      "fileOwnershipMoves",
       "clipboard",
       "history",
       "supersededHistoryRecipeOperationIds",
@@ -2880,6 +2912,14 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
         edit.affectedDatabaseIds,
         `${label}.affectedDatabaseIds`,
       ).map(parseDatabaseId),
+      fileOwnershipMoves: (() => {
+        if (!Array.isArray(edit.fileOwnershipMoves)) {
+          throw new TypeError(`${label}.fileOwnershipMoves must be an array`);
+        }
+        return edit.fileOwnershipMoves.map((candidate, index) =>
+          parsePageFileOwnershipMove(candidate, `${label}.fileOwnershipMoves[${index}]`),
+        );
+      })(),
       clipboard:
         edit.clipboard === null
           ? null

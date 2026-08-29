@@ -113,9 +113,13 @@ such as `BoardCard` or a generic request-card component.
 
 ### Page File
 
-A Page File is an exact-format durable resource directly owned by one Page. It
-has stable File identity and one Page-relative logical path; rename and content
-replacement preserve identity, while Page copy creates new File identity.
+A Page File is an exact-format durable resource directly owned by one current
+Page. It has stable File identity and one Page-relative logical path; rename,
+content replacement, and an exclusive semantic ownership move preserve
+identity, while Page copy creates new File identity. Ownership follows a Block
+move only when the current owner is the source host and every live placement of
+that File moves to the same target host; ambiguous and copy-like operations
+leave ownership unchanged.
 _Avoid_: Artifact, attachment as ownership, Data Source Files Property.
 
 A child Page owns its own Files. Parent Page Files never flatten descendant

@@ -424,17 +424,17 @@ pub(super) fn versions(
         .map_err(|_| invalid("Page File version limit overflowed"))?;
     let mut entries = connection
         .prepare(
-            "SELECT version.file_id, version.version, version.manifest_revision, \
-                    version.change_kind, version.logical_path, version.mime_type, \
-                    version.byte_length, version.blob_hash, version.actor_id, \
+            "SELECT version.file_id, version.version, version.owner_page_id, \
+                    version.manifest_revision, version.change_kind, version.logical_path, \
+                    version.mime_type, version.byte_length, version.blob_hash, version.actor_id, \
                     version.turn_id, version.operation_id, version.occurred_at \
              FROM page_file_versions version \
-             WHERE version.library_id = ?1 AND version.owner_page_id = ?2 \
-               AND version.file_id = ?3 AND (?4 IS NULL OR version.version < ?4) \
-             ORDER BY version.version DESC LIMIT ?5",
+             WHERE version.library_id = ?1 AND version.file_id = ?2 \
+               AND (?3 IS NULL OR version.version < ?3) \
+             ORDER BY version.version DESC LIMIT ?4",
         )?
         .query_map(
-            params![library_id, page_id, file_id, after_version, query_limit],
+            params![library_id, file_id, after_version, query_limit],
             version_from_row,
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -579,10 +579,8 @@ pub(super) fn apply(
             )?;
             let mut affected_page_ids = vec![page_id.to_owned()];
             affected_page_ids.extend(placement_page_ids.iter().cloned());
-            let mut committed_revisions = BTreeMap::from([(
-                format!("pageFiles:{page_id}"),
-                receipt.manifest_revision,
-            )]);
+            let mut committed_revisions =
+                BTreeMap::from([(format!("pageFiles:{page_id}"), receipt.manifest_revision)]);
             committed_revisions.extend(placement_page_ids.into_iter().map(|placement_page_id| {
                 (
                     format!("pageFileContent:{placement_page_id}"),
@@ -1071,7 +1069,7 @@ fn allocate_created_path(
     Ok((path.display().to_owned(), path.collision_key().to_owned()))
 }
 
-fn allocate_numbered_path(
+pub(super) fn allocate_numbered_path(
     preferred_path: &str,
     occupied: &mut BTreeSet<String>,
 ) -> Result<Option<(String, String)>, StoreError> {
@@ -1782,21 +1780,22 @@ fn current_file_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CurrentFil
 }
 
 fn version_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<LibraryPageFileVersion> {
-    let byte_length = row.get::<_, i64>(6)?;
+    let byte_length = row.get::<_, i64>(7)?;
     Ok(LibraryPageFileVersion {
         file_id: row.get(0)?,
         version: row.get(1)?,
-        manifest_revision: row.get(2)?,
-        change_kind: change_kind_from_name(&row.get::<_, String>(3)?)?,
-        logical_path: row.get(4)?,
-        mime_type: row.get(5)?,
+        owner_page_id: row.get(2)?,
+        manifest_revision: row.get(3)?,
+        change_kind: change_kind_from_name(&row.get::<_, String>(4)?)?,
+        logical_path: row.get(5)?,
+        mime_type: row.get(6)?,
         byte_length: u64::try_from(byte_length)
-            .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(6, byte_length))?,
-        blob_etag: row.get(7)?,
-        actor_id: row.get(8)?,
-        turn_id: row.get(9)?,
-        operation_id: row.get(10)?,
-        occurred_at: row.get(11)?,
+            .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(7, byte_length))?,
+        blob_etag: row.get(8)?,
+        actor_id: row.get(9)?,
+        turn_id: row.get(10)?,
+        operation_id: row.get(11)?,
+        occurred_at: row.get(12)?,
     })
 }
 
@@ -1827,6 +1826,7 @@ fn change_kind_name(kind: LibraryPageFileChangeKind) -> &'static str {
         LibraryPageFileChangeKind::Delete => "delete",
         LibraryPageFileChangeKind::Restore => "restore",
         LibraryPageFileChangeKind::Clone => "clone",
+        LibraryPageFileChangeKind::Rehome => "rehome",
     }
 }
 
@@ -1838,6 +1838,7 @@ fn change_kind_from_name(value: &str) -> rusqlite::Result<LibraryPageFileChangeK
         "delete" => Ok(LibraryPageFileChangeKind::Delete),
         "restore" => Ok(LibraryPageFileChangeKind::Restore),
         "clone" => Ok(LibraryPageFileChangeKind::Clone),
+        "rehome" => Ok(LibraryPageFileChangeKind::Rehome),
         _ => Err(rusqlite::Error::InvalidColumnType(
             0,
             "change_kind".to_owned(),
@@ -1878,16 +1879,23 @@ mod tests {
     use std::fs;
 
     use nodex_core_contracts::library::{
-        LIBRARY_CONTRACT_VERSION, LibraryIntent, LibraryRead, LibraryReadValue, LibraryWriteParent,
+        LIBRARY_CONTRACT_VERSION, LibraryBlockTransferDocumentHead,
+        LibraryBlockTransferLogicalIntent, LibraryBlockTransferMode, LibraryBlockTransferSource,
+        LibraryBlockTransferTarget, LibraryDocumentHead, LibraryIntent, LibraryPagePromotionPolicy,
+        LibraryRead, LibraryReadValue, LibraryStructuralDeleteDirection,
+        LibraryStructuralDeleteReason, LibraryStructuralEditCommand, LibraryStructuralReplacement,
+        LibraryStructuralReplacementBlock, LibraryStructuralSelection, LibraryStructuralTarget,
+        LibraryWriteParent,
     };
     use nodex_core_contracts::{
-        AdapterKind, BoundModuleContext, LibraryId, ModuleApplyRequest, ModuleReadRequest,
-        ProfileId, ProjectId, StoreEpoch,
+        AdapterKind, BoundModuleContext, DeliveryAtomPayload, LibraryId, ModuleApplyRequest,
+        ModuleReadRequest, ProfileId, ProjectId, ResourceKey, StoreEpoch,
     };
     use rusqlite::params;
     use tempfile::tempdir;
 
     use super::*;
+    use crate::infrastructure::event_log::CoreEventLog;
     use crate::infrastructure::sqlite::with_immediate_transaction;
     use crate::infrastructure::store::SqliteStoreKernel;
 
@@ -2016,12 +2024,21 @@ mod tests {
         expected_manifest_revision: i64,
         changes: Vec<LibraryPageFileChange>,
     ) -> ModuleApplyRequest<LibraryIntent> {
+        apply_request_for("page-1", operation_id, expected_manifest_revision, changes)
+    }
+
+    fn apply_request_for(
+        page_id: &str,
+        operation_id: &str,
+        expected_manifest_revision: i64,
+        changes: Vec<LibraryPageFileChange>,
+    ) -> ModuleApplyRequest<LibraryIntent> {
         ModuleApplyRequest {
             contract_version: LIBRARY_CONTRACT_VERSION,
             operation_id: operation_id.to_owned(),
             store_epoch: StoreEpoch("epoch-1".to_owned()),
             intent: LibraryIntent::ApplyPageFileChanges {
-                page_id: "page-1".to_owned(),
+                page_id: page_id.to_owned(),
                 expected_manifest_revision,
                 changes,
                 turn_id: Some("turn-1".to_owned()),
@@ -2033,13 +2050,21 @@ mod tests {
         module: &super::super::LibraryModule,
         include_deleted: bool,
     ) -> LibraryPageFileManifest {
+        manifest_for(module, "page-1", include_deleted)
+    }
+
+    fn manifest_for(
+        module: &super::super::LibraryModule,
+        page_id: &str,
+        include_deleted: bool,
+    ) -> LibraryPageFileManifest {
         let read = module
             .read(
                 &context(),
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::PageFiles {
-                        page_id: "page-1".to_owned(),
+                        page_id: page_id.to_owned(),
                         query: None,
                         cursor: None,
                         limit: Some(100),
@@ -2052,6 +2077,843 @@ mod tests {
             panic!("Page Files value");
         };
         *value
+    }
+
+    #[test]
+    fn exclusive_structural_move_transfers_page_file_ownership() {
+        let (_directory, kernel, module) = seeded_library();
+        create_page(
+            &module,
+            "operation:create-target-page",
+            "page-2",
+            "document-2",
+        );
+        seed_receipt(&kernel, "operation:create-file", "receipt-a", 'a');
+        seed_receipt(
+            &kernel,
+            "operation:create-target-collision",
+            "receipt-target",
+            'b',
+        );
+        module
+            .apply(
+                &context(),
+                apply_request(
+                    "operation:create-file",
+                    0,
+                    vec![LibraryPageFileChange::Create {
+                        file_id: "file-a".to_owned(),
+                        logical_path: "image.png".to_owned(),
+                        mime_type: "image/png".to_owned(),
+                        prepared_blob_receipt_id: "receipt-a".to_owned(),
+                        collision_policy: LibraryPageFileCollisionPolicy::Reject,
+                    }],
+                ),
+            )
+            .expect("create File");
+        module
+            .apply(
+                &context(),
+                apply_request_for(
+                    "page-2",
+                    "operation:create-target-collision",
+                    0,
+                    vec![LibraryPageFileChange::Create {
+                        file_id: "file-target".to_owned(),
+                        logical_path: "image.png".to_owned(),
+                        mime_type: "image/png".to_owned(),
+                        prepared_blob_receipt_id: "receipt-target".to_owned(),
+                        collision_policy: LibraryPageFileCollisionPolicy::Reject,
+                    }],
+                ),
+            )
+            .expect("create target namespace collision");
+
+        let (source_placeholder, source_head) = kernel
+            .readers()
+            .read_default(|connection| {
+                let placeholder = connection.query_row(
+                    "SELECT block_id FROM document_block_index \
+                     WHERE document_id = 'document-1' ORDER BY ordinal LIMIT 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )?;
+                let head = connection.query_row(
+                    "SELECT generation, head_seq FROM documents WHERE id = 'document-1'",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )?;
+                Ok((placeholder, head))
+            })
+            .expect("source Page authority");
+        let inserted = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:place-file".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::ReplaceSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![source_placeholder],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                            replacement: LibraryStructuralReplacement::Blocks {
+                                blocks: vec![
+                                    LibraryStructuralReplacementBlock {
+                                        block_type: "paragraph".to_owned(),
+                                        props: BTreeMap::new(),
+                                        content: Some(serde_json::json!([{
+                                            "type": "text",
+                                            "text": "Promote this",
+                                            "styles": {},
+                                        }])),
+                                        children: vec![LibraryStructuralReplacementBlock {
+                                            block_type: "image".to_owned(),
+                                            props: BTreeMap::from([
+                                                (
+                                                    "url".to_owned(),
+                                                    serde_json::json!("nodex://files/file-a"),
+                                                ),
+                                                ("name".to_owned(), serde_json::json!("image.png")),
+                                                ("caption".to_owned(), serde_json::json!("")),
+                                            ]),
+                                            content: None,
+                                            children: Vec::new(),
+                                        }],
+                                    },
+                                    LibraryStructuralReplacementBlock {
+                                        block_type: "paragraph".to_owned(),
+                                        props: BTreeMap::new(),
+                                        content: Some(serde_json::json!([])),
+                                        children: Vec::new(),
+                                    },
+                                ],
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("place File in source Page");
+        let image_block_id = inserted
+            .committed
+            .value
+            .structural_edit
+            .expect("placement result")
+            .result_root_block_ids[0]
+            .clone();
+        let (source_head, target_head) = kernel
+            .readers()
+            .read_default(|connection| {
+                let read_head = |document_id: &str| {
+                    connection.query_row(
+                        "SELECT generation, head_seq FROM documents WHERE id = ?1",
+                        [document_id],
+                        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                    )
+                };
+                Ok((read_head("document-1")?, read_head("document-2")?))
+            })
+            .expect("move heads");
+
+        let moved = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:move-file-placement".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::MoveSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![image_block_id.clone()],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                            target: LibraryStructuralTarget {
+                                target_document_id: "document-2".to_owned(),
+                                parent_block_id: None,
+                                before_block_id: None,
+                                target_head: LibraryDocumentHead {
+                                    document_id: "document-2".to_owned(),
+                                    generation: target_head.0,
+                                    head_seq: target_head.1,
+                                },
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("move File placement");
+
+        let move_result = moved
+            .committed
+            .value
+            .structural_edit
+            .as_ref()
+            .expect("move result");
+        assert_eq!(move_result.file_ownership_moves.len(), 1);
+        assert_eq!(move_result.file_ownership_moves[0].file_id, "file-a");
+        assert_eq!(
+            move_result.file_ownership_moves[0].previous_owner_page_id,
+            "page-1"
+        );
+        assert_eq!(move_result.file_ownership_moves[0].owner_page_id, "page-2");
+        assert_eq!(
+            move_result.file_ownership_moves[0].logical_path,
+            "image (2).png"
+        );
+        assert_eq!(
+            moved.committed.receipt.committed_revisions["pageFiles:page-1"],
+            2
+        );
+        assert_eq!(
+            moved.committed.receipt.committed_revisions["pageFiles:page-2"],
+            2
+        );
+        assert_eq!(
+            moved.committed.receipt.committed_revisions["pageFileContent:page-2"],
+            moved.committed.receipt.commit_seq
+        );
+
+        let delivery = CoreEventLog::new(kernel.readers())
+            .authorized_packet(
+                moved.committed.receipt.commit_seq,
+                &BoundModuleContext {
+                    project_id: None,
+                    connection_id: "connection:page-files-root".to_owned(),
+                    ..context()
+                },
+                None,
+                true,
+            )
+            .expect("resolve ownership move delivery")
+            .expect("ownership move delivery packet");
+        assert_eq!(delivery.document_effects.len(), 2);
+        let page_file_atoms = delivery
+            .atoms
+            .iter()
+            .filter_map(|atom| {
+                let DeliveryAtomPayload::Library { event, .. } = &atom.payload else {
+                    return None;
+                };
+                (!event.page_file_manifest_revisions.is_empty()).then_some((atom, event))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(page_file_atoms.len(), 2);
+        for (page_id, manifest_revision) in [("page-1", 2), ("page-2", 2)] {
+            let (atom, event) = page_file_atoms
+                .iter()
+                .find(|(_, event)| event.page_file_manifest_revisions.contains_key(page_id))
+                .expect("Page File manifest delivery atom");
+            assert_eq!(
+                event.page_file_manifest_revisions.get(page_id),
+                Some(&manifest_revision)
+            );
+            assert!(
+                atom.descriptor
+                    .required_resources
+                    .contains(&ResourceKey::Page {
+                        page_id: page_id.to_owned(),
+                    })
+            );
+        }
+        let (_, target_event) = page_file_atoms
+            .iter()
+            .find(|(_, event)| event.page_file_manifest_revisions.contains_key("page-2"))
+            .expect("target Page File atom");
+        assert_eq!(
+            target_event.page_file_content_revisions.get("page-2"),
+            Some(&moved.committed.receipt.commit_seq)
+        );
+
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "INSERT INTO projects(id, library_id, name, created, updated) \
+                     VALUES ('project-2', 'library-1', 'Unrelated', ?1, ?1)",
+                    [NOW],
+                )?;
+                Ok(())
+            })
+            .expect("seed unrelated Project");
+        let unauthorized = CoreEventLog::new(kernel.readers())
+            .authorized_packet(
+                moved.committed.receipt.commit_seq,
+                &BoundModuleContext {
+                    project_id: Some(ProjectId("project-2".to_owned())),
+                    connection_id: "connection:unrelated".to_owned(),
+                    ..context()
+                },
+                None,
+                true,
+            )
+            .expect("resolve unrelated delivery");
+        assert!(unauthorized.is_none());
+
+        assert!(manifest_for(&module, "page-1", false).files.is_empty());
+        let target = manifest_for(&module, "page-2", false);
+        assert_eq!(target.files.len(), 2);
+        let moved_file = target
+            .files
+            .iter()
+            .find(|file| file.file_id == "file-a")
+            .expect("moved File");
+        assert_eq!(moved_file.owner_page_id, "page-2");
+        assert_eq!(moved_file.logical_path, "image (2).png");
+        assert_eq!(moved_file.version, 2);
+
+        let undone = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:undo-move-file-placement".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ReverseStructuralEdit {
+                        token: move_result.history.clone().expect("move history"),
+                    },
+                },
+            )
+            .expect("undo File placement move");
+        let undo_result = undone.committed.value.structural_edit.expect("Undo result");
+        assert_eq!(undo_result.file_ownership_moves.len(), 1);
+        assert_eq!(
+            undo_result.file_ownership_moves[0].previous_owner_page_id,
+            "page-2"
+        );
+        assert_eq!(undo_result.file_ownership_moves[0].owner_page_id, "page-1");
+        let source = manifest_for(&module, "page-1", false);
+        assert_eq!(source.files[0].file_id, "file-a");
+        assert_eq!(source.files[0].owner_page_id, "page-1");
+        assert_eq!(source.files[0].logical_path, "image (2).png");
+        assert_eq!(source.files[0].version, 3);
+        assert_eq!(manifest_for(&module, "page-2", false).files.len(), 1);
+
+        let read_head = |document_id: &str| {
+            kernel
+                .readers()
+                .read_default(|connection| {
+                    connection
+                        .query_row(
+                            "SELECT generation, head_seq FROM documents WHERE id = ?1",
+                            [document_id],
+                            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                        )
+                        .map_err(Into::into)
+                })
+                .expect("Document head")
+        };
+        let source_head = read_head("document-1");
+        let captured = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:capture-file-cut".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::CaptureClipboard {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![image_block_id.clone()],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("capture File placement for cut");
+        let clipboard = captured
+            .committed
+            .value
+            .structural_edit
+            .expect("capture result")
+            .clipboard
+            .expect("clipboard token");
+        let cut_head = read_head("document-1");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:cut-file-placement".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::DeleteSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![image_block_id.clone()],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: cut_head.0,
+                                    head_seq: cut_head.1,
+                                },
+                            },
+                            reason: LibraryStructuralDeleteReason::Cut {
+                                bundle: clipboard.clone(),
+                            },
+                            direction: LibraryStructuralDeleteDirection::Backward,
+                        }),
+                    },
+                },
+            )
+            .expect("cut File placement");
+        assert_eq!(manifest_for(&module, "page-1", false).files[0].version, 3);
+        let target_head = read_head("document-2");
+        let pasted = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:paste-cut-file-placement".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::PasteClipboard {
+                            bundle: clipboard,
+                            target: LibraryStructuralTarget {
+                                target_document_id: "document-2".to_owned(),
+                                parent_block_id: None,
+                                before_block_id: None,
+                                target_head: LibraryDocumentHead {
+                                    document_id: "document-2".to_owned(),
+                                    generation: target_head.0,
+                                    head_seq: target_head.1,
+                                },
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("paste cut File placement");
+        let paste_result = pasted
+            .committed
+            .value
+            .structural_edit
+            .expect("paste result");
+        assert_eq!(paste_result.file_ownership_moves.len(), 1);
+        assert_eq!(paste_result.file_ownership_moves[0].owner_page_id, "page-2");
+        let target = manifest_for(&module, "page-2", false);
+        assert_eq!(target.files.len(), 2);
+        assert_eq!(
+            target
+                .files
+                .iter()
+                .find(|file| file.file_id == "file-a")
+                .expect("cut-moved File")
+                .version,
+            4
+        );
+
+        create_page(
+            &module,
+            "operation:create-third-page",
+            "page-3",
+            "document-3",
+        );
+        let (third_placeholder, third_head) = kernel
+            .readers()
+            .read_default(|connection| {
+                let placeholder = connection.query_row(
+                    "SELECT block_id FROM document_block_index \
+                     WHERE document_id = 'document-3' ORDER BY ordinal LIMIT 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )?;
+                let head = connection.query_row(
+                    "SELECT generation, head_seq FROM documents WHERE id = 'document-3'",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )?;
+                Ok((placeholder, head))
+            })
+            .expect("third Page authority");
+        let third_placement = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:place-third-file-reference".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::ReplaceSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-3".to_owned(),
+                                root_block_ids: vec![third_placeholder],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-3".to_owned(),
+                                    generation: third_head.0,
+                                    head_seq: third_head.1,
+                                },
+                            },
+                            replacement: LibraryStructuralReplacement::Blocks {
+                                blocks: vec![LibraryStructuralReplacementBlock {
+                                    block_type: "image".to_owned(),
+                                    props: BTreeMap::from([
+                                        (
+                                            "url".to_owned(),
+                                            serde_json::json!("nodex://files/file-a"),
+                                        ),
+                                        ("name".to_owned(), serde_json::json!("image (2).png")),
+                                        ("caption".to_owned(), serde_json::json!("")),
+                                    ]),
+                                    content: None,
+                                    children: Vec::new(),
+                                }],
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("place third-Page File reference");
+        let third_image_block_id = third_placement
+            .committed
+            .value
+            .structural_edit
+            .expect("third placement result")
+            .result_root_block_ids[0]
+            .clone();
+        let source_head = read_head("document-2");
+        let target_head = read_head("document-1");
+        let ambiguous_move = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:move-with-third-placement".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::MoveSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-2".to_owned(),
+                                root_block_ids: vec![image_block_id.clone()],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-2".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                            target: LibraryStructuralTarget {
+                                target_document_id: "document-1".to_owned(),
+                                parent_block_id: None,
+                                before_block_id: None,
+                                target_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: target_head.0,
+                                    head_seq: target_head.1,
+                                },
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("move File placement with third placement");
+        assert!(
+            ambiguous_move
+                .committed
+                .value
+                .structural_edit
+                .expect("ambiguous move result")
+                .file_ownership_moves
+                .is_empty()
+        );
+        let owner_manifest = manifest_for(&module, "page-2", false);
+        let stable_file = owner_manifest
+            .files
+            .iter()
+            .find(|file| file.file_id == "file-a")
+            .expect("stable owner File");
+        assert_eq!(stable_file.owner_page_id, "page-2");
+        assert_eq!(stable_file.version, 4);
+
+        let third_head = read_head("document-3");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:remove-third-file-reference".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::DeleteSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-3".to_owned(),
+                                root_block_ids: vec![third_image_block_id],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-3".to_owned(),
+                                    generation: third_head.0,
+                                    head_seq: third_head.1,
+                                },
+                            },
+                            reason: LibraryStructuralDeleteReason::Delete,
+                            direction: LibraryStructuralDeleteDirection::Backward,
+                        }),
+                    },
+                },
+            )
+            .expect("remove third-Page File reference");
+        let source_head = read_head("document-1");
+        let target_head = read_head("document-3");
+        let foreign_move = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:move-foreign-file-placement".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::MoveSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![image_block_id],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                            target: LibraryStructuralTarget {
+                                target_document_id: "document-3".to_owned(),
+                                parent_block_id: None,
+                                before_block_id: None,
+                                target_head: LibraryDocumentHead {
+                                    document_id: "document-3".to_owned(),
+                                    generation: target_head.0,
+                                    head_seq: target_head.1,
+                                },
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("move foreign File placement");
+        assert!(
+            foreign_move
+                .committed
+                .value
+                .structural_edit
+                .expect("foreign move result")
+                .file_ownership_moves
+                .is_empty()
+        );
+        let stable_file = manifest_for(&module, "page-2", false)
+            .files
+            .into_iter()
+            .find(|file| file.file_id == "file-a")
+            .expect("foreign placement owner File");
+        assert_eq!(stable_file.owner_page_id, "page-2");
+        assert_eq!(stable_file.version, 4);
+    }
+
+    #[test]
+    fn block_promotion_and_undo_move_exclusive_page_file_ownership() {
+        let (_directory, kernel, module) = seeded_library();
+        seed_receipt(&kernel, "operation:create-file", "receipt-a", 'a');
+        module
+            .apply(
+                &context(),
+                apply_request(
+                    "operation:create-file",
+                    0,
+                    vec![LibraryPageFileChange::Create {
+                        file_id: "file-a".to_owned(),
+                        logical_path: "image.png".to_owned(),
+                        mime_type: "image/png".to_owned(),
+                        prepared_blob_receipt_id: "receipt-a".to_owned(),
+                        collision_policy: LibraryPageFileCollisionPolicy::Reject,
+                    }],
+                ),
+            )
+            .expect("create File");
+        let (placeholder, source_head) = kernel
+            .readers()
+            .read_default(|connection| {
+                let placeholder = connection.query_row(
+                    "SELECT block_id FROM document_block_index \
+                     WHERE document_id = 'document-1' ORDER BY ordinal LIMIT 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )?;
+                let head = connection.query_row(
+                    "SELECT generation, head_seq FROM documents WHERE id = 'document-1'",
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                )?;
+                Ok((placeholder, head))
+            })
+            .expect("source Page authority");
+        let placed = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:place-file".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyStructuralEdit {
+                        command: Box::new(LibraryStructuralEditCommand::ReplaceSelection {
+                            selection: LibraryStructuralSelection {
+                                source_document_id: "document-1".to_owned(),
+                                root_block_ids: vec![placeholder],
+                                source_head: LibraryDocumentHead {
+                                    document_id: "document-1".to_owned(),
+                                    generation: source_head.0,
+                                    head_seq: source_head.1,
+                                },
+                            },
+                            replacement: LibraryStructuralReplacement::Blocks {
+                                blocks: vec![
+                                    LibraryStructuralReplacementBlock {
+                                        block_type: "paragraph".to_owned(),
+                                        props: BTreeMap::new(),
+                                        content: Some(serde_json::json!([{
+                                            "type": "text",
+                                            "text": "Promote this",
+                                            "styles": {},
+                                        }])),
+                                        children: vec![LibraryStructuralReplacementBlock {
+                                            block_type: "image".to_owned(),
+                                            props: BTreeMap::from([
+                                                (
+                                                    "url".to_owned(),
+                                                    serde_json::json!("nodex://files/file-a"),
+                                                ),
+                                                ("name".to_owned(), serde_json::json!("image.png")),
+                                                ("caption".to_owned(), serde_json::json!("")),
+                                            ]),
+                                            content: None,
+                                            children: Vec::new(),
+                                        }],
+                                    },
+                                    LibraryStructuralReplacementBlock {
+                                        block_type: "paragraph".to_owned(),
+                                        props: BTreeMap::new(),
+                                        content: Some(serde_json::json!([])),
+                                        children: Vec::new(),
+                                    },
+                                ],
+                            },
+                        }),
+                    },
+                },
+            )
+            .expect("place File");
+        let promotion_root_id = placed
+            .committed
+            .value
+            .structural_edit
+            .expect("placement result")
+            .result_root_block_ids[0]
+            .clone();
+        let source_head = kernel
+            .readers()
+            .read_default(|connection| {
+                connection
+                    .query_row(
+                        "SELECT generation, head_seq FROM documents WHERE id = 'document-1'",
+                        [],
+                        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                    )
+                    .map_err(Into::into)
+            })
+            .expect("source head");
+        let promoted = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:promote-image".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::TransferBlocks {
+                        intent: LibraryBlockTransferLogicalIntent {
+                            actor: serde_json::json!({ "kind": "test" }),
+                            mode: LibraryBlockTransferMode::Move,
+                            root_block_ids: vec![promotion_root_id],
+                            causal_dependencies: vec![LibraryBlockTransferDocumentHead {
+                                document_id: "document-1".to_owned(),
+                                generation: source_head.0,
+                                expected_head_seq: source_head.1,
+                            }],
+                            source: LibraryBlockTransferSource::Document {
+                                document_id: "document-1".to_owned(),
+                            },
+                            target: LibraryBlockTransferTarget::Library {
+                                library_id: "library-1".to_owned(),
+                                before_block_id: None,
+                            },
+                            promotion_policy: LibraryPagePromotionPolicy::Literal,
+                        },
+                    },
+                },
+            )
+            .expect("promote image Block");
+        let result = promoted
+            .committed
+            .value
+            .block_transfer
+            .expect("promotion result");
+        let promoted_page_id = result.result_root_block_ids[0].clone();
+        assert_eq!(result.file_ownership_moves.len(), 1);
+        assert_eq!(
+            result.file_ownership_moves[0].owner_page_id,
+            promoted_page_id
+        );
+        assert!(manifest_for(&module, "page-1", false).files.is_empty());
+        assert_eq!(
+            manifest_for(&module, &promoted_page_id, false).files[0].file_id,
+            "file-a"
+        );
+
+        let undone = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "operation:undo-promote-image".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoBlockTransfer {
+                        token: result.undo_token.expect("promotion Undo token"),
+                    },
+                },
+            )
+            .expect("undo image promotion");
+        let undo = undone
+            .committed
+            .value
+            .block_transfer_undo
+            .expect("Undo result");
+        assert_eq!(undo.file_ownership_moves.len(), 1);
+        assert_eq!(undo.file_ownership_moves[0].owner_page_id, "page-1");
+        assert_eq!(manifest_for(&module, "page-1", false).files[0].version, 3);
+        assert_eq!(
+            kernel
+                .readers()
+                .read_default(|connection| {
+                    connection
+                        .query_row(
+                            "SELECT count(*) FROM pages WHERE block_id = ?1",
+                            [&promoted_page_id],
+                            |row| row.get::<_, i64>(0),
+                        )
+                        .map_err(Into::into)
+                })
+                .expect("promoted Page count"),
+            0
+        );
     }
 
     #[test]
@@ -2598,9 +3460,7 @@ mod tests {
                 ),
             )
             .expect("rename placed File");
-        assert!(
-            renamed.committed.receipt.committed_revisions["pageFileContent:page-2"] > 0
-        );
+        assert!(renamed.committed.receipt.committed_revisions["pageFileContent:page-2"] > 0);
         let renamed_metadata = module
             .read(
                 &context(),

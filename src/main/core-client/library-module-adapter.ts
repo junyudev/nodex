@@ -1130,6 +1130,7 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
           versions: value.value.versions.map((version) => ({
             fileId: version.file_id,
             version: version.version,
+            ownerPageId: version.owner_page_id,
             manifestRevision: version.manifest_revision,
             changeKind: version.change_kind,
             logicalPath: version.logical_path,
@@ -2118,6 +2119,16 @@ export const createCoreLibraryModuleAdapter = (
                   affectedPageIds: committed.outcome.structural_edit.affected_page_ids,
                   affectedDatabaseIds:
                     committed.outcome.structural_edit.affected_database_ids.map(parseDatabaseId),
+                  fileOwnershipMoves: committed.outcome.structural_edit.file_ownership_moves.map(
+                    (move) => ({
+                      fileId: move.file_id,
+                      previousOwnerPageId: move.previous_owner_page_id,
+                      ownerPageId: move.owner_page_id,
+                      previousLogicalPath: move.previous_logical_path,
+                      logicalPath: move.logical_path,
+                      version: move.version,
+                    }),
+                  ),
                   clipboard: committed.outcome.structural_edit.clipboard
                     ? {
                         bundleId: committed.outcome.structural_edit.clipboard.bundle_id,

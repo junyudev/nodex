@@ -22,6 +22,7 @@ use crate::infrastructure::store::SqliteStoreKernel;
 use crate::infrastructure::writer::{StoreReaders, StoreWriter};
 
 mod page_file_blobs;
+mod page_file_ownership_move;
 mod page_file_path;
 mod page_files;
 mod page_projection;

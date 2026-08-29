@@ -26,6 +26,7 @@ import {
 } from "../../src/shared/page-lifecycle-v2-runtime";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { attachNodexStructuralClipboardWriteClaim } from "../../src/shared/clipboard-paste";
+import type { LibraryPageFileManifest } from "../../src/shared/library-module";
 import {
   ElectronScenarioHarness,
   stopNodexElectronApplication as stopApplication,
@@ -89,6 +90,34 @@ async function invokeIpc(
       await window.api?.invoke(targetChannel, ...targetArgs),
     { channel, args },
   );
+}
+
+async function readConvergencePageFiles(
+  page: Page,
+  projectId: string,
+  pageId: string,
+): Promise<LibraryPageFileManifest> {
+  const snapshot = requireIpcValue<Record<string, unknown>>(
+    await invokeIpc(
+      page,
+      "library-module:read",
+      { kind: "project", projectId },
+      {
+        read: {
+          mode: "page_files",
+          pageId,
+          limit: 100,
+          includeDeleted: false,
+        },
+      },
+    ),
+    `Read Page Files for ${pageId}`,
+  );
+  const value = snapshot.value;
+  if (!isRecord(value) || value.kind !== "page_files" || !isRecord(value.value)) {
+    throw new Error(`Page Files for ${pageId} returned an unexpected value`);
+  }
+  return value.value as unknown as LibraryPageFileManifest;
 }
 
 async function createConvergenceProject(
@@ -3872,14 +3901,253 @@ test.describe("parallel functional Electron smoke", () => {
       );
       await promotedPanel.getByRole("button", { name: /\d+ more propert(?:y|ies)/u }).click();
       await expect(
-        promotedPanel.getByRole("button", { name: "Add Page Files" }).getByText("Empty", {
-          exact: true,
-        }),
+        promotedPanel.getByRole("button", { name: "Open 1 File shown in Page" }),
       ).toBeVisible();
       await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
       await expect(page.getByText("Page Document references a File", { exact: false })).toHaveCount(
         0,
       );
+
+      await triageHeader.hover();
+      await triageHeader.getByRole("button", { name: "More options for Triage" }).focus();
+      await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
+      await expect(promotedCard).toHaveCount(0, { timeout: 15_000 });
+      await page.getByRole("tab", { name: "Image source Page" }).click();
+      await expect(sourceBlock).toHaveCount(1, { timeout: 15_000 });
+      const restoredImage = sourceBlock.locator(
+        '[data-content-type="image"][data-url^="nodex://files/"]',
+      );
+      await expect(restoredImage).toHaveAttribute("data-url", placedFileUrl);
+      await expect(restoredImage.locator("img")).toHaveAttribute(
+        "src",
+        /^data:image\/png;base64,/u,
+        { timeout: 15_000 },
+      );
+      const restoredSourceFiles = requireIpcValue<Record<string, unknown>>(
+        await invokeIpc(
+          page,
+          "library-module:read",
+          { kind: "project", projectId: project.projectId },
+          {
+            read: {
+              mode: "page_files",
+              pageId: source.pageId,
+              limit: 100,
+              includeDeleted: false,
+            },
+          },
+        ),
+        "Read restored source Page Files",
+      );
+      expect(restoredSourceFiles.value).toMatchObject({
+        kind: "page_files",
+        value: {
+          liveTotal: 1,
+          files: [
+            {
+              ownerPageId: source.pageId,
+              bodyUsage: { kind: "placed", placementCount: 1 },
+            },
+          ],
+        },
+      });
+      const moreSourceProperties = sourcePanel.getByRole("button", {
+        name: /\d+ more propert(?:y|ies)/u,
+      });
+      if (await moreSourceProperties.isVisible()) await moreSourceProperties.click();
+      await expect(
+        sourcePanel.getByRole("button", { name: "Open 1 File shown in Page" }),
+      ).toBeVisible();
+      await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("moves an exclusively placed image File with its Block and resolves target path collisions @page-file-placement", async () => {
+    test.setTimeout(120_000);
+    const harness = await ElectronScenarioHarness.create({ label: "page-file-exclusive-move" });
+    const workspace = harness.profile.initialProjectsDirectory;
+    try {
+      const page = await harness.launch();
+      const project = await createConvergenceProject(page, "Page File move", workspace);
+      const target = await createConvergenceBoardPage(
+        page,
+        project,
+        "Collision target Page",
+        "Page with the target namespace collision",
+      );
+      const source = await createConvergenceBoardPage(
+        page,
+        project,
+        "Exclusive source Page",
+        "Page with the File placement to move",
+      );
+      await seedConvergenceDocument(
+        page,
+        project,
+        target,
+        ["Target image owner", "\tTarget image child"].join("\n"),
+      );
+      await seedConvergenceDocument(
+        page,
+        project,
+        source,
+        ["Source image owner", "\tSource image child", "Source sibling"].join("\n"),
+      );
+
+      await page.getByRole("button", { name: "Open Page File move", exact: true }).click();
+      const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
+      await expect(triageColumn).toBeVisible({ timeout: 15_000 });
+      const targetCard = triageColumn.locator(`[data-board-uuid-v7="${target.pageId}"]`);
+      const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
+
+      const savedClipboard = await harness.application.evaluate(({ clipboard }) => ({
+        html: clipboard.readHTML(),
+        image: clipboard.readImage().toDataURL(),
+        text: clipboard.readText(),
+      }));
+      try {
+        await harness.application.evaluate(({ clipboard, nativeImage }) => {
+          clipboard.writeImage(
+            nativeImage.createFromDataURL(
+              "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            ),
+          );
+        });
+
+        await openBoardPageFromCard({
+          card: targetCard,
+          page,
+          tabName: "Collision target Page",
+        });
+        const targetPanel = page.getByRole("tabpanel", { name: /Collision target Page$/ });
+        const targetSurface = targetPanel.locator(
+          '.nfm-editor .ProseMirror[contenteditable="true"]',
+        );
+        const targetParent = targetSurface
+          .locator(".bn-block[data-id]")
+          .filter({ hasText: "Target image owner" })
+          .first();
+        await targetSurface
+          .locator(".bn-block-content")
+          .filter({ hasText: /^Target image child$/u })
+          .click();
+        await page.keyboard.press("End");
+        await page.keyboard.press("Enter");
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
+        const targetImage = targetParent.locator(
+          '[data-content-type="image"][data-url^="nodex://files/"]',
+        );
+        await expect(targetImage.locator("img")).toHaveAttribute(
+          "src",
+          /^data:image\/png;base64,/u,
+          { timeout: 15_000 },
+        );
+
+        await openBoardPageFromCard({
+          card: sourceCard,
+          page,
+          tabName: "Exclusive source Page",
+        });
+        const sourcePanel = page.getByRole("tabpanel", { name: /Exclusive source Page$/ });
+        const sourceEditor = sourcePanel.locator(".nfm-editor");
+        const sourceSurface = sourceEditor.locator('.ProseMirror[contenteditable="true"]');
+        const sourceParent = sourceSurface
+          .locator(".bn-block[data-id]")
+          .filter({ hasText: "Source image owner" })
+          .first();
+        await sourceSurface
+          .locator(".bn-block-content")
+          .filter({ hasText: /^Source image child$/u })
+          .click();
+        await page.keyboard.press("End");
+        await page.keyboard.press("Enter");
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
+        const sourceImage = sourceParent.locator(
+          '[data-content-type="image"][data-url^="nodex://files/"]',
+        );
+        await expect(sourceImage.locator("img")).toHaveAttribute(
+          "src",
+          /^data:image\/png;base64,/u,
+          { timeout: 15_000 },
+        );
+        const sourceFileUrl = requireString(
+          await sourceImage.getAttribute("data-url"),
+          "Exclusive source File URL",
+        );
+        const sourceBefore = await readConvergencePageFiles(page, project.projectId, source.pageId);
+        const targetBefore = await readConvergencePageFiles(page, project.projectId, target.pageId);
+        expect(sourceBefore.liveTotal).toBe(1);
+        expect(targetBefore.liveTotal).toBe(1);
+        const sourceFileId = requireString(sourceBefore.files[0]?.fileId, "Source File id");
+
+        await sourceParent.locator(":scope > .bn-block-content").click();
+        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+/`);
+        await page.getByRole("dialog", { name: "Block actions" }).waitFor();
+        await page.getByRole("option", { name: /^Move to/u }).click();
+        const moveSearch = page.getByRole("combobox", { name: "Move blocks to" });
+        await moveSearch.waitFor();
+        await moveSearch.fill("Collision target Page");
+        await page
+          .locator(
+            `[data-nfm-move-to-row-kind="page"]` +
+              `[data-nfm-move-to-project-id="${project.projectId}"]`,
+          )
+          .filter({ hasText: "Collision target Page" })
+          .click();
+
+        await expect(sourceParent).toHaveCount(0, { timeout: 15_000 });
+        await expect(page.getByText("Moved as image (2).png", { exact: true })).toBeVisible();
+        await expect
+          .poll(
+            async () => ({
+              source: (await readConvergencePageFiles(page, project.projectId, source.pageId))
+                .liveTotal,
+              target: (await readConvergencePageFiles(page, project.projectId, target.pageId))
+                .liveTotal,
+            }),
+            { timeout: 15_000 },
+          )
+          .toEqual({ source: 0, target: 2 });
+        const targetAfter = await readConvergencePageFiles(page, project.projectId, target.pageId);
+        expect(targetAfter.files).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              fileId: sourceFileId,
+              ownerPageId: target.pageId,
+              logicalPath: "image (2).png",
+              bodyUsage: { kind: "placed", placementCount: 1 },
+            }),
+          ]),
+        );
+
+        await page.getByRole("tab", { name: "Collision target Page" }).click();
+        const movedImage = targetPanel.locator(
+          `[data-content-type="image"][data-url="${sourceFileUrl}"]`,
+        );
+        await expect(movedImage.locator("img")).toHaveAttribute(
+          "src",
+          /^data:image\/png;base64,/u,
+          { timeout: 15_000 },
+        );
+        const moreTargetProperties = targetPanel.getByRole("button", {
+          name: /\d+ more propert(?:y|ies)/u,
+        });
+        if (await moreTargetProperties.isVisible()) await moreTargetProperties.click();
+        await expect(
+          targetPanel.getByRole("button", { name: "Open 2 Files shown in Page" }),
+        ).toBeVisible();
+        await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
+      } finally {
+        await harness.application.evaluate(({ clipboard, nativeImage }, saved) => {
+          clipboard.write({
+            html: saved.html,
+            image: nativeImage.createFromDataURL(saved.image),
+            text: saved.text,
+          });
+        }, savedClipboard);
+      }
     } finally {
       await harness.close();
     }

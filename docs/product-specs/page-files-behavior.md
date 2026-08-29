@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last Updated: 2026-08-28
+Last Updated: 2026-08-29
 
 Page Files are exact-format resources owned directly by a Page. They are the
 durable home for images, PDFs, scripts, datasets, reference material, and other
@@ -14,14 +14,14 @@ Artifact type: Agent-created outputs and user uploads use the same File model.
 Every Page has Files, whether or not the Page belongs to a Data Source. Files
 are intrinsic Page content, not a Data Source Property. A File has:
 
-- stable identity and exactly one owner Page;
+- stable identity and exactly one current owner Page;
 - a portable Page-relative logical path;
 - exact MIME, byte length, immutable current bytes, and retained versions;
 - creation and update provenance, including an Agent Turn when applicable.
 
-Renaming or replacing content preserves File identity. Deleting a body
-placement does not delete the File. Copying a Page creates fresh File identities
-for the copy while reusing identical immutable bytes.
+Renaming, replacing content, or moving ownership preserves File identity.
+Deleting a body placement does not delete the File. Copying a Page creates
+fresh File identities for the copy while reusing identical immutable bytes.
 
 Logical folder rows are derived from slash-separated path prefixes. They have no
 identity, metadata, permissions, empty state, or lifecycle. A child Page owns
@@ -95,7 +95,10 @@ collisions, traversal, reserved names, excessive depth, and excessive length
 are rejected.
 
 The closed row and an open Files surface refresh only when Core announces a new
-manifest revision or body-usage revision for that exact Page. Manifest and
+manifest revision or body-usage revision for that exact Page. One application-
+scoped cache listener invalidates matching retained queries even when their Page
+tabs are currently unmounted, so a later remount cannot present a pre-move Files
+inventory as fresh. Manifest and
 body-usage revisions are independent: File mutations advance only the manifest,
 while a changed Page File reference set or placement count advances only body
 usage. Rename and replace also publish an exact current-content invalidation to
@@ -138,11 +141,40 @@ placements do not make the owner inventory appear embedded locally. Nodex does
 not persist an embedded, hidden, or Artifact classification on the File itself.
 
 Block move and copy preserve placed File IDs both within and across Pages. A
-typed Core structural transfer carries the placement with the subtree; it does
-not create a hidden File clone or mutate either Page's direct Files manifest.
-Moving a whole Page likewise preserves its File IDs. Copying a Page closure
-creates new IDs for every copied Page's direct live Files, while placements of
-Files owned outside that closure keep their existing identities.
+typed Core structural transfer carries the placement with the subtree and never
+creates a hidden File clone. Copy, duplicate, ordinary paste, deletion,
+same-Page movement, and moving a whole Page shell do not change File ownership.
+
+For an identity-preserving semantic move, ownership follows the placement only
+when the move is exclusive. Core derives that consequence after persisting the
+complete post-move placement projection: the File's current owner must be the
+source host Page, the moved forest must contain one or more placements of the
+File, and every live placement of that File must now be in the same target host
+Page. If the source, a third Page, or any other Page still has a placement, or
+the moved placement was already foreign to its source, ownership remains
+unchanged and the body move still succeeds.
+
+An exclusive ownership move preserves File ID, current bytes, Blob hash,
+creation provenance, body URI, and complete version history. It appends one
+immutable `rehome` version and advances both owner manifests in the same Core
+transaction as the source and target Documents, projections, receipt, and
+LocalCommit. The logical path is preserved when possible; a collision in the
+target namespace receives the same deterministic ` (N)` suffix used by upload.
+Only the initiating surface reports a collision-driven path change, using one
+bounded success message; ownership changes without a rename are silent.
+
+The first valid paste of a cut structural capability is an identity-preserving
+move and follows the same rule. Later pastes are copies and do not rehome the
+original File. Ordinary move Undo and Redo are fresh semantic moves evaluated
+against their new canonical post-state. Promotion Undo first proves that the
+generated Page's File heads, namespace, placements, and target state still
+match its guarded recipe; one atomic transaction reverses every required
+ownership move, restores placements, and removes the generated Page. A conflict
+changes nothing and keeps the history entry available.
+
+Copying a Page closure creates new IDs for every copied Page's direct live
+Files, while placements of Files owned outside that closure keep their existing
+identities.
 
 Legacy `nodex://assets/*` references remain compatibility locators for content
 created by non-Page surfaces. New Page uploads, pasted materialized resources,
@@ -157,10 +189,13 @@ adapters accept both standard `DataTransfer.files` and image-only
 
 ## Versions and deletion
 
-Create, replace, rename, delete, restore, and clone each append a File version
-with actor, optional Turn, operation identity, and time. Restore is a forward
-mutation from a retained version. Deleted Files leave the live path namespace
-but remain visible and restorable while their history is retained.
+Create, replace, rename, rehome, delete, restore, and clone each append a File
+version with the owner at that point, actor, optional Turn, operation identity,
+and time. Restore is a forward mutation from a retained version. Authorization
+to inspect history follows the current owner, while historical owner IDs remain
+immutable audit facts even if an earlier owner Page is deleted. Deleted Files
+leave the live path namespace but remain visible and restorable while their
+history is retained.
 
 Page archive/delete/restore keeps direct Files and versions. If another Page
 still places one of those Files, the deleted owner closure remains retained and
@@ -189,7 +224,8 @@ renderer nor Agent receives a Profile path or a read-by-hash capability.
 ## Reliability and authorization
 
 Core owns File metadata, authorization, immutable blob publication, reads,
-deduplication, and garbage collection. Upload first publishes verified bytes
+ownership-move derivation, deduplication, and garbage collection. Upload first
+publishes verified bytes
 and returns a Project/store/operation-bound receipt; a semantic mutation then
 consumes that receipt. A failed semantic commit may leave an unreachable blob,
 but it cannot leave committed metadata pointing to missing bytes.
@@ -201,8 +237,11 @@ the opaque File ID alone grants nothing. Generic collaborative persistence may
 introduce a foreign placement only when its Project can already read the owner
 Page or another canonical placement. Typed Core structural compilers may carry
 an already-authorized placement even when moving its source projection in the
-same transaction. Owner-only manifest, mutation, version-history, and lifecycle
-operations still require owner Page authority. Backups include every retained
+same transaction. An ownership move is never a caller-provided flag: only the
+Library Module derives it from a typed semantic move, current ownership, and
+canonical post-state placements. Owner-only manifest, mutation,
+version-history, and lifecycle operations still require owner Page authority.
+Backups include every retained
 reachable File blob and restore validates size and SHA-256 before switching
 Profiles. Garbage collection is serialized against backup snapshots and never
 removes bytes protected by a live prepared receipt or retained File version.

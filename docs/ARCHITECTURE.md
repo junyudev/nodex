@@ -80,7 +80,12 @@ images are non-owning placements that may preserve the same File identity
 across Page Documents in one Library. A containing Page can resolve only the
 current presentation metadata and bytes of its canonical placements; owner
 manifest, version history, mutation, and lifecycle authority do not travel with
-the placement. File changes publish exact placement-Page content invalidation
+the placement. A typed identity-preserving Block move may rehome a File only
+when its current owner is the source host and its complete post-state placement
+set is exclusively in one target host. The Library Module derives and commits
+that consequence together with both Documents, immutable File history,
+manifests, receipt, and LocalCommit; callers cannot request it independently.
+File changes publish exact placement-Page content invalidation
 without coupling foreign Pages to the owner manifest revision. Child Page Files
 compose through the existing Page ownership forest instead of flattening into
 their parent. Core is the only publication,
@@ -798,6 +803,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 19. An active Codex renderer owner is the sole visible conversation writer. Main may validate, relay, and recover its accepted document but cannot emit a competing visible state at the same revision.
 20. Browser and MCP App guests are sandboxed Main-owned runtimes. Renderer-authored preferences, DOM attributes, or URLs cannot create or broaden guest authority.
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
+22. File placement is non-owning. Only a Core-authored exclusive semantic move may rehome a Page File, and it preserves File identity and history in the same transaction as the affected Documents and LocalCommit.
 
 ## Codemap
 

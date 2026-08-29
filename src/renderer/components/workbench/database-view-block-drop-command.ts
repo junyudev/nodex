@@ -3,6 +3,7 @@ import { transferBlocks } from "@/lib/api";
 import { resolveBlockDocumentStructuralMutationParticipant } from "@/lib/block-document-mutation-registry";
 import type { DocumentHeadFence } from "@/lib/block-document-surface-runtime";
 import { readTaskShorthandPagePromotionEnabled } from "@/lib/page-promotion-preference";
+import { summarizePageFileOwnershipMoveCollisions } from "@/lib/page-file-ownership-move-feedback";
 import type { BlockTransferDataSourcePlacement } from "../../../shared/block-transfer";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import {
@@ -108,34 +109,51 @@ export const commitDatabaseViewBlockDrop = async (
     input.mutationHistory.registerBlockTransfer(result.value.undoToken);
   }
   const shorthandFeedback = summarizeBlockPagePromotionReceipt(result.value);
-  const feedbackOptions = result.value.undoToken
-    ? {
-        action: {
-          label: "Undo",
-          onClick: () => {
-            void input.mutationHistory.undoLast({
-              listMove: async () => false,
-              blockTransfer: async (token) =>
-                await undoDatabaseViewBlockTransfer({
-                  projectId,
-                  storeEpoch: input.storeEpoch,
-                  token,
-                  onCommitted: input.onCommitted
-                    ? async () => await input.onCommitted?.()
-                    : undefined,
-                }),
-            });
-            return false;
-          },
-        },
-      }
-    : undefined;
+  const fileFeedback = summarizePageFileOwnershipMoveCollisions(result.value.fileOwnershipMoves);
+  const feedbackOptions =
+    result.value.undoToken || fileFeedback
+      ? {
+          id: `block-transfer:${result.value.operationId}`,
+          ...(fileFeedback
+            ? {
+                description: `${fileFeedback.title}. ${fileFeedback.description}`,
+              }
+            : {}),
+          ...(result.value.undoToken
+            ? {
+                action: {
+                  label: "Undo",
+                  onClick: () => {
+                    void input.mutationHistory.undoLast({
+                      listMove: async () => false,
+                      blockTransfer: async (token) =>
+                        await undoDatabaseViewBlockTransfer({
+                          projectId,
+                          storeEpoch: input.storeEpoch,
+                          token,
+                          onCommitted: input.onCommitted
+                            ? async () => await input.onCommitted?.()
+                            : undefined,
+                        }),
+                    });
+                    return false;
+                  },
+                },
+              }
+            : {}),
+        }
+      : undefined;
   if (shorthandFeedback) {
     if (shorthandFeedback.tone === "info") {
       toast.info(shorthandFeedback.message, feedbackOptions);
     } else {
       toast.success(shorthandFeedback.message, feedbackOptions);
     }
+  } else if (fileFeedback) {
+    toast.info(fileFeedback.title, {
+      ...feedbackOptions,
+      description: fileFeedback.description,
+    });
   }
   const cursor =
     result.localCommit.status === "committed"

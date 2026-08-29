@@ -2133,6 +2133,7 @@ describe("Core Library Module Adapter", () => {
           ],
           affected_page_ids: ["page:host", "page:destination", "page:new"],
           affected_database_ids: [],
+          file_ownership_moves: [],
           clipboard: null,
           history: {
             recipe_operation_id: "recipe:create-page-mention",
@@ -2277,6 +2278,7 @@ describe("Core Library Module Adapter", () => {
           document_commits: [],
           affected_page_ids: ["page:one"],
           affected_database_ids: [],
+          file_ownership_moves: [],
           clipboard: null,
           history: {
             recipe_operation_id: "recipe:delete",
@@ -2394,6 +2396,7 @@ describe("Core Library Module Adapter", () => {
           document_commits: [],
           affected_page_ids: ["page:host", "page:one"],
           affected_database_ids: [],
+          file_ownership_moves: [],
           clipboard: null,
           history: null,
           superseded_history_recipe_operation_ids: [],
@@ -2474,6 +2477,7 @@ describe("Core Library Module Adapter", () => {
           document_commits: [],
           affected_page_ids: ["page:host"],
           affected_database_ids: [],
+          file_ownership_moves: [],
           clipboard: null,
           history: null,
           superseded_history_recipe_operation_ids: [],

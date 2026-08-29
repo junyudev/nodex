@@ -1,10 +1,8 @@
-import { useEffect } from "react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import type { ContentAccessContext } from "../../shared/content-access-context";
 import type { LibraryPageFileManifest } from "../../shared/library-module";
 import { readLibraryModule } from "./api";
-import { subscribePageFileChanges } from "./page-library-changes";
 import { queryKeys } from "./query-keys";
 
 const PAGE_SIZE = 100;
@@ -25,10 +23,8 @@ export function usePageFiles(
   options: {
     readonly query?: string;
     readonly enabled?: boolean;
-    readonly subscribe?: boolean;
   } = {},
 ): PageFilesReadModel {
-  const queryClient = useQueryClient();
   const normalizedQuery = options.query?.trim() ?? "";
   const queryKey = queryKeys.library.pageFilesWindow(accessContext, pageId, normalizedQuery);
   const query = useInfiniteQuery({
@@ -56,16 +52,6 @@ export function usePageFiles(
     staleTime: 5_000,
     refetchOnWindowFocus: true,
   });
-
-  useEffect(() => {
-    if (!options.subscribe || !pageId) return;
-    return subscribePageFileChanges(pageId, ({ bodyUsageRevision, manifestRevision }) => {
-      if (manifestRevision === null && bodyUsageRevision === null) return;
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.library.pageFiles(accessContext, pageId),
-      });
-    });
-  }, [accessContext, options.subscribe, pageId, queryClient]);
 
   const first = query.data?.pages[0] ?? null;
   const files = query.data?.pages.flatMap((page) => page.files) ?? [];

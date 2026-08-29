@@ -180,6 +180,10 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
         )));
     }
 
+    // Yjs materialization rewrites every secondary row at one exact Document
+    // head. Canvas instead updates only changed rows and atomically advances a
+    // collection-level projection head, so unchanged rows may legitimately
+    // retain the sequence at which their value last changed.
     let invalid_secondary_sources: i64 = connection.query_row(
         "SELECT \
            (SELECT count(*) FROM block_asset_refs projection \
@@ -205,13 +209,28 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
             LEFT JOIN document_block_index block_index \
               ON block_index.document_id = projection.document_id \
              AND block_index.block_id = projection.block_id \
+            LEFT JOIN canvas_scene_projection_heads canvas_head \
+              ON canvas_head.document_id = projection.document_id \
             WHERE projection.document_id IS NOT NULL AND ( \
               document.id IS NULL OR ownership.block_id IS NULL \
               OR document.library_id <> projection.library_id \
               OR document.generation <> projection.document_generation \
-              OR document.head_seq <> projection.projected_seq \
-              OR (projection.block_id <> projection.owner_block_id \
-                  AND block_index.block_id IS NULL) \
+              OR (document.sync_engine = 'yjs' AND ( \
+                document.head_seq <> projection.projected_seq \
+                OR (projection.block_id <> projection.owner_block_id \
+                    AND block_index.block_id IS NULL) \
+              )) \
+              OR (document.sync_engine = 'canvas_scene' AND ( \
+                document.readiness <> 'ready' OR document.authority <> 'ydoc_primary' \
+                OR projection.block_id <> projection.owner_block_id \
+                OR projection.source_kind <> 'document_marker' \
+                OR projection.field_key <> 'marker' \
+                OR canvas_head.document_id IS NULL \
+                OR canvas_head.generation <> document.generation \
+                OR canvas_head.projected_head_seq <> document.head_seq \
+                OR projection.projected_seq > canvas_head.projected_head_seq \
+              )) \
+              OR document.sync_engine NOT IN ('yjs', 'canvas_scene') \
             )) + \
            (SELECT count(*) FROM canvas_page_references projection \
             LEFT JOIN documents document ON document.id = projection.document_id \
@@ -220,10 +239,17 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
              AND ownership.block_id = projection.owner_block_id \
              AND ownership.library_id = projection.library_id \
             LEFT JOIN blocks target ON target.id = projection.target_block_id \
+            LEFT JOIN canvas_scene_projection_heads canvas_head \
+              ON canvas_head.document_id = projection.document_id \
             WHERE document.id IS NULL OR ownership.block_id IS NULL OR target.id IS NULL \
               OR document.library_id <> projection.library_id \
+              OR document.readiness <> 'ready' OR document.authority <> 'ydoc_primary' \
+              OR document.sync_engine <> 'canvas_scene' \
               OR document.generation <> projection.document_generation \
-              OR document.head_seq <> projection.projected_seq \
+              OR canvas_head.document_id IS NULL \
+              OR canvas_head.generation <> document.generation \
+              OR canvas_head.projected_head_seq <> document.head_seq \
+              OR projection.projected_seq > canvas_head.projected_head_seq \
               OR target.library_id <> projection.library_id) + \
            (SELECT count(*) FROM scheduled_page_index projection \
             LEFT JOIN blocks block \

@@ -5988,6 +5988,7 @@ mod tests {
         YrsDocumentEngine, prepare_document_operation_update,
     };
     use crate::infrastructure::sqlite::{StoreError, with_immediate_transaction};
+    use crate::infrastructure::store_validation::validate_current_store;
     use crate::library::LibraryModule;
     use crate::workspace::ProjectWorkspaceModule;
 
@@ -6941,6 +6942,104 @@ mod tests {
                 }),
             },
         }
+    }
+
+    #[test]
+    fn current_store_validation_accepts_unchanged_incremental_canvas_projections() {
+        let seeded = canvas_module();
+        seeded
+            .module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                    operation_id: "canvas:projection-validation:prepare".to_owned(),
+                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+                    intent: OwnedDocumentIntent::PrepareOwner {
+                        owner_block_id: OWNER_BLOCK_ID.to_owned(),
+                    },
+                },
+            )
+            .expect("prepare Canvas");
+        seeded
+            .module
+            .apply(
+                &context(),
+                canvas_mutation_request(
+                    "canvas:projection-validation:content",
+                    0,
+                    1,
+                    "Native Canvas",
+                ),
+            )
+            .expect("apply Canvas content edit");
+        seeded
+            .module
+            .apply(
+                &context(),
+                canvas_geometry_mutation_request(
+                    "canvas:projection-validation:geometry".to_owned(),
+                    1,
+                    vec![json!({
+                        "id": "element:page-ref",
+                        "type": "rectangle",
+                        "version": 2,
+                        "versionNonce": 7,
+                        "index": "a0",
+                        "isDeleted": false,
+                        "text": "Native Canvas",
+                        "x": 100,
+                        "y": 200,
+                        "customData": {
+                            "type": "nodex-card",
+                            "cardId": TARGET_PAGE_BLOCK_ID,
+                            "titleHint": "Target"
+                        }
+                    })],
+                ),
+            )
+            .expect("apply geometry-only Canvas edit");
+
+        seeded
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                let (document_head, projection_head, marker_seq, reference_seq):
+                    (i64, i64, i64, i64) = connection.query_row(
+                        "SELECT document.head_seq, head.projected_head_seq, marker.projected_seq, \
+                                reference.projected_seq \
+                         FROM documents document \
+                         JOIN canvas_scene_projection_heads head ON head.document_id = document.id \
+                         JOIN block_search_units marker ON marker.document_id = document.id \
+                         JOIN canvas_page_references reference ON reference.document_id = document.id \
+                         WHERE document.id = ?1 AND marker.source_kind = 'document_marker'",
+                        [DOCUMENT_ID],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                    )?;
+                assert_eq!(
+                    (document_head, projection_head, marker_seq, reference_seq),
+                    (2, 2, 1, 1)
+                );
+                validate_current_store(connection)
+            })
+            .expect("incremental Canvas projections remain Store-ready");
+
+        seeded
+            .kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "UPDATE canvas_scene_projection_heads SET projected_head_seq = 1 \
+                     WHERE document_id = ?1",
+                    [DOCUMENT_ID],
+                )?;
+                let error = validate_current_store(connection)
+                    .expect_err("a stale Canvas collection projection head must fail readiness");
+                assert_eq!(error.code, StoreErrorCode::StoreCorrupt);
+                assert!(error.message.contains("Document secondary"));
+                Ok::<_, StoreError>(())
+            })
+            .expect("reject stale Canvas projection head");
     }
 
     #[test]

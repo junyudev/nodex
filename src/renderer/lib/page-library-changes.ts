@@ -12,6 +12,10 @@ export interface PageFileChange {
   readonly contentRevision: number | null;
 }
 
+export interface PageFileScopedChange extends PageFileChange {
+  readonly pageId: string;
+}
+
 export const pageFileManifestRevisionFromLibraryEvent = (
   event: PageFileLibraryEvent,
   pageId: string,
@@ -37,16 +41,33 @@ export const pageFileContentRevisionFromLibraryEvent = (
 };
 
 /** Subscribe only to authorized commits that changed this Page's File inventory projection. */
-export const subscribePageFileChanges = (
-  pageId: string,
-  listener: (change: PageFileChange) => void,
+export const subscribeAllPageFileChanges = (
+  listener: (change: PageFileScopedChange) => void,
 ): (() => void) =>
   rendererLocalCommitIngress.subscribeAtoms((_packet, atom) => {
     const payload = atom.payload;
     if (payload.module !== "library") return;
-    const manifestRevision = pageFileManifestRevisionFromLibraryEvent(payload.event, pageId);
-    const bodyUsageRevision = pageFileBodyUsageRevisionFromLibraryEvent(payload.event, pageId);
-    const contentRevision = pageFileContentRevisionFromLibraryEvent(payload.event, pageId);
-    if (manifestRevision === null && bodyUsageRevision === null && contentRevision === null) return;
-    listener({ manifestRevision, bodyUsageRevision, contentRevision });
+    const pageIds = new Set([
+      ...Object.keys(payload.event.page_file_manifest_revisions),
+      ...Object.keys(payload.event.page_file_body_usage_revisions),
+      ...Object.keys(payload.event.page_file_content_revisions),
+    ]);
+    for (const pageId of pageIds) {
+      const manifestRevision = pageFileManifestRevisionFromLibraryEvent(payload.event, pageId);
+      const bodyUsageRevision = pageFileBodyUsageRevisionFromLibraryEvent(payload.event, pageId);
+      const contentRevision = pageFileContentRevisionFromLibraryEvent(payload.event, pageId);
+      if (manifestRevision === null && bodyUsageRevision === null && contentRevision === null) {
+        continue;
+      }
+      listener({ pageId, manifestRevision, bodyUsageRevision, contentRevision });
+    }
+  });
+
+export const subscribePageFileChanges = (
+  pageId: string,
+  listener: (change: PageFileChange) => void,
+): (() => void) =>
+  subscribeAllPageFileChanges((change) => {
+    if (change.pageId !== pageId) return;
+    listener(change);
   });

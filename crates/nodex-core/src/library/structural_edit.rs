@@ -38,6 +38,10 @@ use super::mutation::{
     persist_parent_relocation_source_with_placeholder, refresh_page_intrinsic_projection,
     require_project_in_library, seal_mutation_with, sqlite_now,
 };
+use super::page_file_ownership_move::{
+    PageFileOwnershipMoveEffects, PageFilePlacementMove, candidate_file_ids,
+    move_exclusively_placed_files,
+};
 
 const SNAPSHOT_VERSION: u32 = 2;
 const RECIPE_VERSION: u32 = 3;
@@ -240,6 +244,8 @@ struct OwnershipClosureSnapshot {
     documents: Vec<OwnedDocumentSnapshot>,
     pages: Vec<PageAuthoritySnapshot>,
     databases: Vec<DatabaseAuthoritySnapshot>,
+    #[serde(default)]
+    host_page_file_ids: Vec<String>,
     source: StructuralLocation,
 }
 
@@ -512,6 +518,7 @@ struct AppliedTransition {
     snapshot: OwnershipClosureSnapshot,
     additional_snapshots: Vec<OwnershipClosureSnapshot>,
     resume: Option<LibraryEditorResumeTarget>,
+    file_ownership_effects: PageFileOwnershipMoveEffects,
 }
 
 fn transition_snapshot_refs(transition: &AppliedTransition) -> Vec<&OwnershipClosureSnapshot> {
@@ -690,7 +697,7 @@ pub(super) fn reverse(
                 action: applied.inverse.clone(),
             };
             let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
-            let result = structural_result(
+            let mut result = structural_result(
                 "reverse_structural_edit",
                 applied.source_root_ids.clone(),
                 applied.result_root_ids.clone(),
@@ -703,12 +710,18 @@ pub(super) fn reverse(
                 Vec::new(),
                 applied.resume.clone(),
             );
-            let effects = structural_effects(
+            let mut effects = structural_effects(
                 project_id,
                 "reverse_structural_edit",
                 &transition_snapshot_refs(&applied),
                 &result,
                 &now,
+            );
+            attach_page_file_ownership_effects(
+                &mut result,
+                &mut effects,
+                &applied.file_ownership_effects,
+                scope.evidence().commit_seq(),
             );
             seal_mutation_with(
                 scope,
@@ -1058,7 +1071,9 @@ fn paste_clipboard(
         |scope| {
             let (applied, copied_block_ids, copied_document_ids, superseded) =
                 if let Some(claim) = &authority.cut_claim {
-                    let applied = restore_snapshot(
+                    let source_page_id = authority.snapshot.source.host_page_id.clone();
+                    let candidate_file_ids = authority.snapshot.host_page_file_ids.clone();
+                    let mut applied = restore_snapshot(
                         StructuralWriteContext {
                             connection,
                             context,
@@ -1070,6 +1085,18 @@ fn paste_clipboard(
                         authority.snapshot.clone(),
                         target_location.clone(),
                         LibraryStructuralDeleteDirection::Backward,
+                    )?;
+                    applied.file_ownership_effects = move_exclusively_placed_files(
+                        connection,
+                        library_id,
+                        operation_id,
+                        project_id,
+                        &now,
+                        &[PageFilePlacementMove {
+                            source_page_id,
+                            target_page_id: target_location.host_page_id.clone(),
+                            candidate_file_ids,
+                        }],
                     )?;
                     let inverse = StructuralRecipeAction::MoveActive {
                         snapshot: applied.snapshot.clone(),
@@ -1106,7 +1133,7 @@ fn paste_clipboard(
             } else {
                 "paste_structural_clipboard"
             };
-            let result = structural_result(
+            let mut result = structural_result(
                 operation_kind,
                 root_ids(&authority.snapshot.roots),
                 applied.result_root_ids.clone(),
@@ -1119,12 +1146,18 @@ fn paste_clipboard(
                 superseded,
                 applied.resume.clone(),
             );
-            let effects = structural_effects(
+            let mut effects = structural_effects(
                 project_id,
                 operation_kind,
                 &transition_snapshot_refs(&applied),
                 &result,
                 &now,
+            );
+            attach_page_file_ownership_effects(
+                &mut result,
+                &mut effects,
+                &applied.file_ownership_effects,
+                scope.evidence().commit_seq(),
             );
             seal_mutation_with(
                 scope,
@@ -1356,7 +1389,7 @@ fn move_selection(
                 action: applied.inverse.clone(),
             };
             let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
-            let result = structural_result(
+            let mut result = structural_result(
                 "move_structural_selection",
                 root_ids(&snapshot.roots),
                 applied.result_root_ids.clone(),
@@ -1376,10 +1409,12 @@ fn move_selection(
                 &result,
                 &now,
             );
-            let source_parent_key = format!("page:{}", source_location.host_page_id);
-            if !effects.affected_parent_keys.contains(&source_parent_key) {
-                effects.affected_parent_keys.push(source_parent_key);
-            }
+            attach_page_file_ownership_effects(
+                &mut result,
+                &mut effects,
+                &applied.file_ownership_effects,
+                scope.evidence().commit_seq(),
+            );
             seal_mutation_with(
                 scope,
                 context,
@@ -2210,6 +2245,7 @@ fn turn_active_selection(
         snapshot: active,
         additional_snapshots: vec![retained_original],
         resume,
+        file_ownership_effects: PageFileOwnershipMoveEffects::default(),
     })
 }
 
@@ -2451,6 +2487,7 @@ fn restore_turned_selection(
         snapshot: restored,
         additional_snapshots: Vec::new(),
         resume,
+        file_ownership_effects: PageFileOwnershipMoveEffects::default(),
     })
 }
 
@@ -2592,6 +2629,7 @@ fn apply_backward_merge(
             fallback_before_block_id: None,
             fallback_after_block_id: None,
         }),
+        file_ownership_effects: PageFileOwnershipMoveEffects::default(),
     })
 }
 
@@ -2764,6 +2802,7 @@ fn restore_backward_merge(
             fallback_before_block_id: Some(state.target_block_id),
             fallback_after_block_id: None,
         }),
+        file_ownership_effects: PageFileOwnershipMoveEffects::default(),
     })
 }
 
@@ -3402,6 +3441,16 @@ fn capture_snapshot_with_policy(
     if reject_protected_databases {
         reject_primary_databases(connection, &databases)?;
     }
+    let host_page_file_ids = candidate_file_ids(
+        connection,
+        library_id,
+        &parent.authority.head.id,
+        &blocks
+            .values()
+            .filter(|block| block.in_host_document)
+            .map(|block| block.block_id.clone())
+            .collect::<Vec<_>>(),
+    )?;
     Ok(OwnershipClosureSnapshot {
         version: SNAPSHOT_VERSION,
         roots,
@@ -3409,6 +3458,7 @@ fn capture_snapshot_with_policy(
         documents,
         pages: pages.into_values().collect(),
         databases,
+        host_page_file_ids,
         source: StructuralLocation {
             document_id: parent.authority.head.id.clone(),
             document_generation: parent.authority.head.generation,
@@ -4658,6 +4708,7 @@ fn structural_result(
         history,
         superseded_history_recipe_operation_ids,
         resume,
+        file_ownership_moves: Vec::new(),
     }
 }
 
@@ -4675,6 +4726,7 @@ fn empty_structural_result(operation_kind: &str) -> LibraryStructuralEditResult 
         history: None,
         superseded_history_recipe_operation_ids: Vec::new(),
         resume: None,
+        file_ownership_moves: Vec::new(),
     }
 }
 
@@ -4796,6 +4848,32 @@ fn structural_effects(
         change_payload: None,
         committed_at: now.to_owned(),
     }
+}
+
+fn attach_page_file_ownership_effects(
+    result: &mut LibraryStructuralEditResult,
+    effects: &mut MutationEffects,
+    ownership: &PageFileOwnershipMoveEffects,
+    commit_seq: i64,
+) {
+    result.file_ownership_moves = ownership.moves.clone();
+    effects.structural_edit = Some(result.clone());
+    effects
+        .affected_page_ids
+        .extend(ownership.affected_page_ids.iter().cloned());
+    effects.affected_page_ids.sort();
+    effects.affected_page_ids.dedup();
+    effects.affected_parent_keys.extend(
+        ownership
+            .affected_page_ids
+            .iter()
+            .map(|page_id| format!("page:{page_id}")),
+    );
+    effects.affected_parent_keys.sort();
+    effects.affected_parent_keys.dedup();
+    effects
+        .committed_revisions
+        .extend(ownership.committed_revisions(commit_seq));
 }
 
 fn canonical_snapshot_hash(snapshot: &OwnershipClosureSnapshot) -> Result<String, StoreError> {
@@ -5067,6 +5145,7 @@ fn insert_ordinary_replacement(
         snapshot,
         additional_snapshots: Vec::new(),
         resume,
+        file_ownership_effects: PageFileOwnershipMoveEffects::default(),
     })
 }
 
@@ -5146,6 +5225,7 @@ fn delete_snapshot(
         snapshot,
         additional_snapshots: Vec::new(),
         resume,
+        file_ownership_effects: PageFileOwnershipMoveEffects::default(),
     })
 }
 
@@ -5261,6 +5341,7 @@ fn restore_snapshot(
         snapshot,
         additional_snapshots: Vec::new(),
         resume,
+        file_ownership_effects: PageFileOwnershipMoveEffects::default(),
     })
 }
 
@@ -5980,6 +6061,7 @@ fn move_active_snapshot(
             snapshot,
             additional_snapshots: Vec::new(),
             resume: None,
+            file_ownership_effects: PageFileOwnershipMoveEffects::default(),
         });
     }
 
@@ -6017,6 +6099,7 @@ fn move_active_snapshot(
         .filter(|block| block.in_host_document)
         .map(|block| block.block_id.clone())
         .collect::<Vec<_>>();
+    let candidate_file_ids = snapshot.host_page_file_ids.clone();
     let source_commit = persist_parent_relocation_source_with_placeholder(
         connection,
         ParentDocumentWriteContext {
@@ -6066,6 +6149,18 @@ fn move_active_snapshot(
             attachment_advances: &relocated_block_ids,
         },
     )?;
+    let file_ownership_effects = move_exclusively_placed_files(
+        connection,
+        &source_parent.authority.head.library_id,
+        operation_id,
+        bound_project_id(context)?,
+        &moved_at,
+        &[PageFilePlacementMove {
+            source_page_id: source.host_page_id.clone(),
+            target_page_id: target.host_page_id.clone(),
+            candidate_file_ids,
+        }],
+    )?;
     update_host_page_parent_projections(connection, &snapshot, &target.host_page_id, &moved_at)?;
     let current = StructuralLocation {
         placeholder_block_id: None,
@@ -6090,6 +6185,7 @@ fn move_active_snapshot(
         snapshot,
         additional_snapshots: Vec::new(),
         resume: None,
+        file_ownership_effects,
     })
 }
 
@@ -6351,6 +6447,7 @@ fn clone_snapshot_into_target(
             snapshot: cloned_snapshot,
             additional_snapshots: Vec::new(),
             resume: None,
+            file_ownership_effects: PageFileOwnershipMoveEffects::default(),
         },
         block_ids,
         document_ids,
@@ -7163,6 +7260,7 @@ fn remap_snapshot(
         documents,
         pages,
         databases,
+        host_page_file_ids: snapshot.host_page_file_ids.clone(),
         source,
     })
 }
@@ -7272,6 +7370,7 @@ mod tests {
             }],
             pages: Vec::new(),
             databases: Vec::new(),
+            host_page_file_ids: Vec::new(),
             source: StructuralLocation {
                 document_id: "document:source".to_owned(),
                 document_generation: 1,
@@ -7877,6 +7976,7 @@ mod tests {
             documents: Vec::new(),
             pages: Vec::new(),
             databases: Vec::new(),
+            host_page_file_ids: Vec::new(),
             source: StructuralLocation {
                 document_id: "document".to_owned(),
                 document_generation: 1,

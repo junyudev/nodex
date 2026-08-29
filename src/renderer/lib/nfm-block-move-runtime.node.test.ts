@@ -164,6 +164,7 @@ const committed = (intent: PublicBlockTransferIntent): BlockTransferCommandResul
     finalLocationRevisions: {},
     documentCommits: [],
     affectedDatabaseBlockIds: [],
+    fileOwnershipMoves: [],
     commitSeq: 12,
     committedAt: timestamp,
     undoToken: null,

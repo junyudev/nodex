@@ -350,6 +350,7 @@ describe("Board Card Block transfer drop", () => {
           finalLocationRevisions: { "card-target": 2 },
           documentCommits: [],
           affectedDatabaseBlockIds: ["database-a"],
+          fileOwnershipMoves: [],
           commitSeq: 1,
           committedAt: "2026-07-13T00:00:00.000Z",
           undoToken: null,

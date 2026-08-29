@@ -1,7 +1,7 @@
 # NFM Editor Structural Editing Behavior
 
 Status: Active
-Last updated: 2026-08-27
+Last updated: 2026-08-29
 
 ## Purpose
 
@@ -57,6 +57,16 @@ A cloned root title advances one canonical trailing positive-number suffix, or a
 
 Duplicate and drag/copy use the same closure planner without changing the system clipboard. A same-Document drag moves the normalized root forest—including every child subtree—as one operation and keeps root order stable. Dropping at its current location or inside the moved subtree is a no-op. Drag/move otherwise preserves identities and is rejected when the destination is inside the moved ownership closure. Mixed structural selections may move between Page Documents; destinations that would require converting ordinary Blocks into Database rows remain separate typed product actions.
 
+Images and attachments keep their stable Page File IDs through every structural
+operation. After an identity-preserving cross-Page move, Core also moves File
+ownership when the source host is the current owner and the moved forest leaves
+all live placements of that File exclusively in the target host. Partial moves,
+foreign placements, copy, duplicate, ordinary paste, and deletion leave the
+owner unchanged. A target path collision never blocks the Block move: Core
+allocates a deterministic suffix and the initiating editor reports only that
+necessary rename. Undo and Redo repeat the same rule against current canonical
+placements rather than restoring a renderer snapshot.
+
 The center of a collapsed Toggle list or toggle Heading is an append-to-children target. It presents one quiet blue highlight across the toggle header, moves or copies the complete selected root forest to the end of that toggle's children, and keeps the toggle collapsed. The narrow top and bottom edge bands remain before/after targets and present the ordinary insertion line instead. These feedback states are mutually exclusive and come from the same semantic target that is committed, so one gesture produces one fenced structural transaction and one Undo entry. After an append-to-children drop, focus remains on the visible toggle header rather than moving into a hidden child. In nested editors, only the deepest eligible editor owns the feedback and commit.
 
 ## Turn into
@@ -101,7 +111,7 @@ Each mounted editor surface owns one chronological history lane. Local Yjs Stack
 
 The lane follows the editor surface rather than an individual runtime binding. Embedded Page Documents therefore keep structural undo across provider updates and session rebinding just like top-level Page editors, even when no local Yjs UndoManager is available at the instant the surface mounts.
 
-Undoing a structural edit executes a new Core transaction from its single-use inverse token. Core returns a fresh inverse token for redo; it never rewinds SQLite or replays the original command. Deleting and restoring an owner therefore preserves the same owner and Document identities while leaving unrelated collaborator changes intact. Replacement history swaps the currently active closure with the retained opposite closure, so paste and direct typing do not create a separate delete entry. A conflict keeps the entry at the top of history instead of skipping to an earlier action.
+Undoing a structural edit executes a new Core transaction from its single-use inverse token. Core returns a fresh inverse token for redo; it never rewinds SQLite or replays the original command. Deleting and restoring an owner therefore preserves the same owner and Document identities while leaving unrelated collaborator changes intact. Replacement history swaps the currently active closure with the retained opposite closure, so paste and direct typing do not create a separate delete entry. File ownership consequences are part of that same forward transaction and LocalCommit; they are never patched optimistically by the renderer. A conflict keeps the entry at the top of history instead of skipping to an earlier action.
 
 A new local branch clears both kinds of redo entry together. Structural tokens that leave the reachable lane are explicitly released, including when the editor surface ends, so retention does not keep deleted closure state indefinitely. Releasing a cut history token also gives up its move claim; the immutable clipboard snapshot may still be pasted as a copy.
 

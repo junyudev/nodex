@@ -5,6 +5,7 @@ import { queryKeys } from "./query-keys";
 import type { CodexEvent } from "./types";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
 import { ResourceAuthorityQueryCacheBridge } from "./resource-authority-query-cache";
+import { PageFileQueryCacheSync } from "./page-file-query-cache";
 
 const ReactQueryDevtools = lazy(async () => {
   const module = await import("@tanstack/react-query-devtools");
@@ -50,6 +51,14 @@ function CodexHostCatalogQuerySync({ queryClient }: { queryClient: QueryClient }
   return null;
 }
 
+function PageFileQueryCacheBridge({ queryClient }: { queryClient: QueryClient }) {
+  useEffect(() => {
+    const sync = new PageFileQueryCacheSync(queryClient);
+    return sync.start();
+  }, [queryClient]);
+  return null;
+}
+
 function shouldRenderQueryDevtools(): boolean {
   return process.env.NODE_ENV === "development" && window.__NODEX_STORYBOOK__ !== true;
 }
@@ -61,6 +70,7 @@ export function NodexQueryProvider({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ProjectionInvalidationProvider>
         <ResourceAuthorityQueryCacheBridge />
+        <PageFileQueryCacheBridge queryClient={queryClient} />
         {children}
       </ProjectionInvalidationProvider>
       <CodexHostCatalogQuerySync queryClient={queryClient} />

@@ -1,7 +1,7 @@
 # ADR 0052: File placement is independent of ownership
 
 - Status: Accepted
-- Date: 2026-08-28
+- Date: 2026-08-29
 
 ## Context
 
@@ -33,6 +33,28 @@ File ownership and File placement are independent relations:
 - whole-Page copy clones Files directly owned by the copied closure, while a
   placement whose owner is outside the closure keeps its existing File identity.
 
+Placement remains non-owning, but an exclusive semantic move has one derived
+ownership consequence. After Core persists the complete source and target
+placement projections, it rehomes a File only when all of the following hold:
+
+- the operation is an identity-preserving typed move, not copy, duplicate,
+  ordinary paste, deletion, generic Document persistence, or a Page-shell move;
+- the File's current owner is the source host Page;
+- the moved forest originally contained at least one placement of that File;
+- every live post-state placement of the File is in one target host Page.
+
+If another placement survives, or the source placement was already foreign,
+the move remains valid and ownership does not change. The caller expresses only
+the structural move; it cannot request or suppress rehome independently.
+
+Rehome preserves File ID, current bytes, Blob hash, creation provenance, body
+URIs, and the complete immutable version chain. It appends a `rehome` version
+whose owner is an audit fact. The target logical path is preserved unless its
+portable namespace already contains that path, in which case Core allocates the
+same deterministic ` (N)` suffix used for new Files. The source and target
+Documents, placement projections, namespace, both Files manifests, history,
+receipt, and LocalCommit commit or roll back together.
+
 A canonical placement grants a deliberately narrow presentation capability.
 Read access to the containing Page may resolve the File's current logical
 metadata and current bytes. It does not grant access to the owner Page, owner
@@ -62,11 +84,19 @@ to follow retained File versions, not placements or renderer state.
 
 ## Consequences
 
-Block structural operations now mutate only Documents and placement
-projections. They no longer allocate hidden File copies, resolve path
-collisions, advance target manifests, or require each transfer path to compose a
-File-clone protocol. The same behavior covers ordinary cross-Page move/copy and
-Block-to-Page promotion.
+Block structural operations no longer allocate hidden File copies or expose a
+File policy flag at every caller. One Library-internal ownership-move Module
+derives the narrow exclusive consequence from canonical post-state placements
+and composes it into each identity-preserving move path. Copy-like and ambiguous
+paths continue to mutate only Documents and placement projections.
+
+The first valid paste of a cut capability is a move and may rehome; later pastes
+are copies. Ordinary Undo and Redo are new semantic moves and re-evaluate
+exclusivity against their resulting canonical placement set. Promotion Undo is
+stricter because it removes the generated Page: it preflights current File
+heads, namespace, placements, and target guard. One transaction reverses
+required rehomes, restores the source placement, and purges the generated Page.
+A conflict leaves all state and the history entry intact.
 
 Rename and replace remain owner actions and immediately affect every placement
 of that identity. This is consistent with mentions and other stable references:
@@ -80,13 +110,22 @@ is an ownership inventory. The body still presents and can save the placed
 File. Removing that placement does not cause a File to appear in the containing
 Page's Files dialog; the File remains in its owner inventory.
 
+Core reports ownership moves as a post-commit consequence. Only the initiating
+surface may turn a collision-driven path change into one bounded success
+message; ownership-only changes are silent. Other windows converge from exact
+source and target manifest effects. Retained Page File query caches are
+invalidated at application scope, including while a Page tab is unmounted, and
+preserve their previous inventory while refetching. No renderer-owned
+optimistic File model or rollback path exists.
+
 ## Rejected alternatives
 
 Cloning on every cross-Page placement preserves owner-local reads but gives a
 move unexpected copy semantics and forces every structural compiler to
 coordinate two aggregates. Treating `nodex://files/<id>` as unrestricted read
 authority is simpler but turns an opaque identifier into a bearer token and can
-leak bytes across Project grants. Moving File ownership with a Block is
-ambiguous when the File has other placements. Adding a second shared-asset type
-duplicates File identity, versions, and lifecycle without improving the user
-model.
+leak bytes across Project grants. Unconditionally moving ownership with any
+placement would be ambiguous when other placements survive or the moved
+placement is foreign; the exclusive post-state rule avoids that ambiguity.
+Adding a second shared-asset type duplicates File identity, versions, and
+lifecycle without improving the user model.
