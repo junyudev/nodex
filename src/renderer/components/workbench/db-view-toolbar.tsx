@@ -84,84 +84,87 @@ export function DbViewToolbar({
     >
       <div className="pl-4 pr-2 pb-2">
         <div className="flex min-h-11 items-center gap-2">
-          <NodexTabsRoot
-            value={activeItem.id}
-            onValueChange={(value) => {
-              const nextItem = items.find((item) => item.id === value);
-              nextItem?.onSelect();
-            }}
-          >
-            <NodexTabsList
-              aria-label="Database views"
-              className="hide-scrollbar -ml-1 flex min-w-0 items-center overflow-x-auto"
+          <div className="flex min-w-0 shrink items-center">
+            <NodexTabsRoot
+              className="min-w-0"
+              value={activeItem.id}
+              onValueChange={(value) => {
+                const nextItem = items.find((item) => item.id === value);
+                nextItem?.onSelect();
+              }}
             >
-              {items.map((item) => {
-                const isActive = item.id === activeItem.id;
-                const Icon = item.icon;
-                return (
-                  <NodexTabsTab
-                    key={item.id}
-                    value={item.id}
-                    aria-label={item.label}
-                    title={item.label}
-                    className={cn(
-                      "group/view mx-0.5 inline-flex h-8 shrink-0 items-center justify-center rounded-full",
-                      "text-sm font-medium leading-none whitespace-nowrap outline-none",
-                      "focus-visible:ring-2 focus-visible:ring-(--ring)/35",
-                      isActive
-                        ? "bg-token-foreground/5 px-3 text-(--foreground)"
-                        : "w-8 text-(--foreground-secondary) hover:bg-token-foreground/5 hover:text-(--foreground)",
-                    )}
-                  >
-                    {Icon ? (
-                      <Icon
-                        className={cn(
-                          "size-4 shrink-0",
-                          isActive
-                            ? "text-current"
-                            : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] group-hover/view:text-current",
-                        )}
-                      />
-                    ) : null}
-                    <span
-                      aria-hidden={!isActive}
-                      data-tab-label-visible={isActive ? "true" : "false"}
+              <NodexTabsList
+                aria-label="Database views"
+                className="hide-scrollbar -ml-1 flex min-w-0 items-center overflow-x-auto"
+              >
+                {items.map((item) => {
+                  const isActive = item.id === activeItem.id;
+                  const Icon = item.icon;
+                  return (
+                    <NodexTabsTab
+                      key={item.id}
+                      value={item.id}
+                      aria-label={item.label}
+                      title={item.label}
                       className={cn(
-                        "grid min-w-0 overflow-hidden",
-                        isActive ? "grid-cols-[1fr]" : "grid-cols-[0fr]",
+                        "group/view mx-0.5 inline-flex h-8 shrink-0 items-center justify-center rounded-full",
+                        "text-sm font-medium leading-none whitespace-nowrap outline-none",
+                        "focus-visible:ring-2 focus-visible:ring-(--ring)/35",
+                        isActive
+                          ? "bg-token-foreground/5 px-3 text-(--foreground)"
+                          : "w-8 text-(--foreground-secondary) hover:bg-token-foreground/5 hover:text-(--foreground)",
                       )}
                     >
-                      <span className="min-w-0 overflow-hidden">
-                        <span className="block pl-1.5 pt-px text-left">{item.label}</span>
+                      {Icon ? (
+                        <Icon
+                          className={cn(
+                            "size-4 shrink-0",
+                            isActive
+                              ? "text-current"
+                              : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] group-hover/view:text-current",
+                          )}
+                        />
+                      ) : null}
+                      <span
+                        aria-hidden={!isActive}
+                        data-tab-label-visible={isActive ? "true" : "false"}
+                        className={cn(
+                          "grid min-w-0 overflow-hidden",
+                          isActive ? "grid-cols-[1fr]" : "grid-cols-[0fr]",
+                        )}
+                      >
+                        <span className="min-w-0 overflow-hidden">
+                          <span className="block pl-1.5 pt-px text-left">{item.label}</span>
+                        </span>
                       </span>
-                    </span>
-                  </NodexTabsTab>
-                );
-              })}
-            </NodexTabsList>
-          </NodexTabsRoot>
-          {destinationItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NodexTooltip key={item.id} tooltipContent={item.label}>
-                <button
-                  type="button"
-                  aria-label={item.label}
-                  className={cn(
-                    "group/view mx-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full",
-                    "text-(--foreground-secondary) outline-none",
-                    "hover:bg-token-foreground/5 hover:text-(--foreground)",
-                    "focus-visible:ring-2 focus-visible:ring-(--ring)/35",
-                  )}
-                  onClick={item.onSelect}
-                >
-                  {Icon ? (
-                    <Icon className="size-4 text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] group-hover/view:text-current" />
-                  ) : null}
-                </button>
-              </NodexTooltip>
-            );
-          })}
+                    </NodexTabsTab>
+                  );
+                })}
+              </NodexTabsList>
+            </NodexTabsRoot>
+            {destinationItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NodexTooltip key={item.id} tooltipContent={item.label}>
+                  <button
+                    type="button"
+                    aria-label={item.label}
+                    className={cn(
+                      "group/view mx-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full",
+                      "text-(--foreground-secondary) outline-none",
+                      "hover:bg-token-foreground/5 hover:text-(--foreground)",
+                      "focus-visible:ring-2 focus-visible:ring-(--ring)/35",
+                    )}
+                    onClick={item.onSelect}
+                  >
+                    {Icon ? (
+                      <Icon className="size-4 text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] group-hover/view:text-current" />
+                    ) : null}
+                  </button>
+                </NodexTooltip>
+              );
+            })}
+          </div>
 
           {viewContextLabel ? (
             <div className="flex min-w-0 shrink items-center">{viewContextLabel}</div>
