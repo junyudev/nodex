@@ -6,12 +6,17 @@ import type {
   LibraryModuleApplyResult,
   LibraryStructuralEditResult,
 } from "../../../../shared/library-module";
-import type { applyLibraryModule, writeStructuralClipboard } from "../../../lib/api";
+import type {
+  applyLibraryModule,
+  awaitStructuralClipboard,
+  beginStructuralClipboard,
+  publishStructuralClipboard,
+  settleStructuralClipboard,
+} from "../../../lib/api";
 import {
   NfmStructuralEditingController,
   NfmStructuralEditingSession,
 } from "./nfm-structural-editing-extension";
-import { NfmStructuralClipboardCoordinator } from "./nfm-structural-clipboard-coordinator";
 
 const digest = "c".repeat(64);
 const clipboard = {
@@ -20,6 +25,8 @@ const clipboard = {
   manifestHash: digest,
   storeEpoch: "epoch:test",
 } as const;
+const writeClaim = (suffix: number) =>
+  `0199134e-cbb0-7000-8000-${suffix.toString().padStart(12, "0")}`;
 
 const receipt = (structuralEdit: LibraryStructuralEditResult) =>
   ({
@@ -101,7 +108,6 @@ describe("NFM structural editing session", () => {
     let selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
     let selectedNodeIds: string[] = [];
     const cursorPlacements: unknown[] = [];
-    const clipboardCoordinator = new NfmStructuralClipboardCoordinator();
     const editor = {
       document: [blocks.get("text"), blocks.get("page"), blocks.get("after")],
       getSelection: () => (selectedBlocks.length > 0 ? { blocks: selectedBlocks } : undefined),
@@ -191,7 +197,8 @@ describe("NFM structural editing session", () => {
     };
     let supersedeNextWrite = false;
     const writtenTexts: string[] = [];
-    const writeClipboard: typeof writeStructuralClipboard = async (input) => {
+    const beginClipboard: typeof beginStructuralClipboard = async () => ({ ok: true });
+    const publishClipboard: typeof publishStructuralClipboard = async (input) => {
       events.push(`write:${input.envelope.actionHint}`);
       writtenTexts.push(input.text);
       if (supersedeNextWrite) {
@@ -200,6 +207,21 @@ describe("NFM structural editing session", () => {
       }
       return { ok: true };
     };
+    const settleClipboard: typeof settleStructuralClipboard = async () => ({ ok: true });
+    const awaitClipboard: typeof awaitStructuralClipboard = async () => ({
+      kind: "ready",
+      disposition: "structural",
+      envelope: {
+        version: 1,
+        profileId: "profile:test",
+        libraryId: "library:test",
+        storeEpoch: clipboard.storeEpoch,
+        bundleId: clipboard.bundleId,
+        capability: clipboard.capability,
+        manifestHash: clipboard.manifestHash,
+        actionHint: "copy",
+      },
+    });
     const ownershipMoves: LibraryStructuralEditResult["fileOwnershipMoves"][] = [];
     const session = new NfmStructuralEditingSession({
       editor,
@@ -223,20 +245,33 @@ describe("NFM structural editing session", () => {
         onFileOwnershipMoves: (moves) => ownershipMoves.push(moves),
       },
       apply,
-      writeClipboard,
-      clipboardCoordinator,
+      beginClipboard,
+      publishClipboard,
+      settleClipboard,
+      awaitClipboard,
     });
 
     try {
-      const copyWriteClaim = session.handleClipboard("copy", ["text", "page"], {
-        html: "<p>Fallback</p>",
-        text: "Fallback",
-      });
-      expect(copyWriteClaim).toEqual(expect.any(String));
-      const pendingCopy = clipboardCoordinator.readPending();
-      expect(pendingCopy).not.toBeNull();
-      expect(pendingCopy?.writeClaim).toBe(copyWriteClaim);
-      expect(session.handlePendingPaste(pendingCopy!.envelope)).toBe(true);
+      const copyWriteClaim = writeClaim(1);
+      expect(
+        session.handleClipboard(
+          "copy",
+          ["text", "page"],
+          { html: "<p>Fallback</p>", text: "Fallback" },
+          copyWriteClaim,
+        ),
+      ).toBe(true);
+      expect(
+        session.handleStructuralClaimPaste(
+          {
+            version: 1,
+            phase: "preparing",
+            writeClaim: copyWriteClaim,
+            actionHint: "copy",
+          },
+          [{ id: "portable", type: "paragraph", props: {}, content: [], children: [] }],
+        ),
+      ).toBe(true);
       selectedBlocks = [];
       await session.whenIdle();
       expect(events).toEqual([
@@ -258,8 +293,13 @@ describe("NFM structural editing session", () => {
       selectedNodeIds = ["page"];
       expect(session.hasTypedOwnerSelection()).toBe(true);
       expect(
-        session.handleClipboard("copy", ["page"], { html: "<p>Page</p>", text: "Page" }),
-      ).toEqual(expect.any(String));
+        session.handleClipboard(
+          "copy",
+          ["page"],
+          { html: "<p>Page</p>", text: "Page" },
+          writeClaim(2),
+        ),
+      ).toBe(true);
       await session.whenIdle();
       expect(events).toEqual(["fence", "capture_clipboard", "write:copy"]);
       expect(commands.at(-1)).toMatchObject({
@@ -295,11 +335,13 @@ describe("NFM structural editing session", () => {
       selectedNodeIds = [];
       selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
       expect(
-        session.handleClipboard("cut", ["text", "page"], {
-          html: "<p>Fallback</p>",
-          text: "Fallback",
-        }),
-      ).toEqual(expect.any(String));
+        session.handleClipboard(
+          "cut",
+          ["text", "page"],
+          { html: "<p>Fallback</p>", text: "Fallback" },
+          writeClaim(3),
+        ),
+      ).toBe(true);
       await session.whenIdle();
       expect(events).toEqual([
         "fence",
@@ -315,14 +357,34 @@ describe("NFM structural editing session", () => {
       events.length = 0;
       supersedeNextWrite = true;
       expect(
-        session.handleClipboard("copy", ["text", "page"], {
-          html: "<p>Fallback</p>",
-          text: "Fallback",
-        }),
-      ).toEqual(expect.any(String));
-      const alreadyClaimed = clipboardCoordinator.readPending();
-      expect(alreadyClaimed).not.toBeNull();
-      expect(session.handlePendingPaste(alreadyClaimed!.envelope)).toBe(true);
+        session.handleClipboard(
+          "copy",
+          ["text", "page"],
+          { html: "<p>Fallback</p>", text: "Fallback" },
+          writeClaim(4),
+        ),
+      ).toBe(true);
+      expect(
+        session.handleStructuralClaimPaste(
+          {
+            version: 1,
+            phase: "ready",
+            writeClaim: writeClaim(4),
+            actionHint: "copy",
+            envelope: {
+              version: 1,
+              profileId: "profile:test",
+              libraryId: "library:test",
+              storeEpoch: clipboard.storeEpoch,
+              bundleId: clipboard.bundleId,
+              capability: clipboard.capability,
+              manifestHash: clipboard.manifestHash,
+              actionHint: "copy",
+            },
+          },
+          [{ id: "portable", type: "paragraph", props: {}, content: [], children: [] }],
+        ),
+      ).toBe(true);
       await session.whenIdle();
       expect(events).toEqual([
         "fence",

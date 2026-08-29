@@ -20,6 +20,8 @@ import {
 
 export interface PageFileAuthority {
   readonly contentAccessContext: ContentAccessContext;
+  /** Presentation-only identity used to resolve readable owner Page details. */
+  readonly libraryId?: string;
   readonly pageId: string;
   readonly storeEpoch: string;
 }

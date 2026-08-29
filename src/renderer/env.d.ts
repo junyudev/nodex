@@ -13,6 +13,11 @@ import type {
 import type { CodexDesktopMessageFromView } from "../shared/remote-hosted-pip";
 import type { WorkbenchCommandInvocation } from "../shared/workbench-commands";
 import type {
+  StructuralClipboardAwaitInput,
+  StructuralClipboardBeginInput,
+  StructuralClipboardLifecycleResult,
+  StructuralClipboardResolution,
+  StructuralClipboardSettleInput,
   StructuralClipboardWriteInput,
   StructuralClipboardWriteResult,
 } from "../shared/clipboard-paste";
@@ -71,9 +76,18 @@ declare global {
       resolveManagedBlobPath?: (contentHash: string) => string | null;
       inspectPasteClipboard?: () => ClipboardPasteInspectionResult;
       readPasteClipboard?: () => Promise<ClipboardPastePayload>;
-      writeStructuralClipboard?: (
+      beginStructuralClipboard?: (
+        input: StructuralClipboardBeginInput,
+      ) => Promise<StructuralClipboardLifecycleResult>;
+      publishStructuralClipboard?: (
         input: StructuralClipboardWriteInput,
       ) => Promise<StructuralClipboardWriteResult>;
+      settleStructuralClipboard?: (
+        input: StructuralClipboardSettleInput,
+      ) => Promise<StructuralClipboardLifecycleResult>;
+      awaitStructuralClipboard?: (
+        input: StructuralClipboardAwaitInput,
+      ) => Promise<StructuralClipboardResolution>;
       getPathInfoForFile?: (file: File) => ClipboardPasteInspectionItem | null;
       getPathForFile?: (file: File) => string;
       prepareDroppedPageFiles?: (

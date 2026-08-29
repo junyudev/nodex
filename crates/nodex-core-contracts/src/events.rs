@@ -6,7 +6,7 @@ use crate::{
     administration::StoreAdministrationEvent,
     automation::AutomationEvent,
     database::{DatabaseEvent, DatabaseRowSummary},
-    document::{DocumentInvalidationReason, OwnedDocumentEvent},
+    document::{DocumentInvalidationReason, OwnedDocumentEvent, PageFileReferenceChange},
     library::LibraryEvent,
     workspace::ProjectWorkspaceEvent,
 };
@@ -112,6 +112,7 @@ pub enum AuthorizedOwnedDocumentEvent {
         document_id: String,
         generation: i64,
         head_seq: i64,
+        change: PageFileReferenceChange,
     },
     DocumentResyncRequired {
         document_id: String,

@@ -15,6 +15,8 @@ import {
 import {
   attachNodexClipboardEnvelope,
   attachNodexStructuralClipboardWriteClaim,
+  encodeNodexStructuralClipboardDescriptor,
+  NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../shared/clipboard-paste";
 
 const writeClaim = "0199134e-cbb0-7000-8000-000000000005";
@@ -93,8 +95,8 @@ describe("clipboard paste inspector", () => {
 
     const payload = readClipboardPastePayload({
       availableFormats: () => ["text/html", "text/plain"],
-      read: () => "",
-      readHTML: () => html,
+      readFormat: () => "",
+      readHtml: () => html,
       readText: () => "Fallback",
     });
 
@@ -105,8 +107,8 @@ describe("clipboard paste inspector", () => {
 
     const inspection = inspectClipboardPasteItems({
       availableFormats: () => ["text/html", "text/plain"],
-      read: () => "",
-      readHTML: () => html,
+      readFormat: () => "",
+      readHtml: () => html,
       readText: () => "Fallback",
     });
     expect(inspection.structuralEnvelope).toEqual(structuralEnvelope);
@@ -116,8 +118,8 @@ describe("clipboard paste inspector", () => {
     const html = attachNodexStructuralClipboardWriteClaim("<p>Fallback</p>", writeClaim);
     const target = {
       availableFormats: () => ["text/html"],
-      read: () => "",
-      readHTML: () => html,
+      readFormat: () => "",
+      readHtml: () => html,
       readText: () => "Fallback",
     };
 
@@ -127,5 +129,24 @@ describe("clipboard paste inspector", () => {
     const payload = readClipboardPastePayload(target);
     expect(payload.structuralWriteClaim).toBe(writeClaim);
     expect(payload.structuralEnvelope).toBeUndefined();
+  });
+
+  test("carries a bounded private structural descriptor alongside portable formats", () => {
+    const descriptor = {
+      version: 1 as const,
+      phase: "preparing" as const,
+      writeClaim,
+      actionHint: "cut" as const,
+    };
+    const encoded = encodeNodexStructuralClipboardDescriptor(descriptor);
+    const target = {
+      availableFormats: () => [NODEX_STRUCTURAL_CLIPBOARD_MIME, "text/plain"],
+      readFormat: (format: string) => (format === NODEX_STRUCTURAL_CLIPBOARD_MIME ? encoded : ""),
+      readHtml: () => "",
+      readText: () => "Portable",
+    };
+
+    expect(inspectClipboardPasteItems(target).structuralDescriptor).toEqual(descriptor);
+    expect(readClipboardPastePayload(target).structuralDescriptor).toEqual(descriptor);
   });
 });

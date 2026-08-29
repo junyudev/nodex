@@ -1,7 +1,7 @@
 # NFM Editor Copy Behavior
 
 Status: Active
-Last Updated: 2026-08-28
+Last Updated: 2026-08-29
 
 This document describes copy-related behavior inside the NFM / BlockNote editor. It covers ordinary selection copy/cut, structural selection copy/cut, and the separate image-toolbar copy action.
 
@@ -13,7 +13,7 @@ Included:
 
 - Copy and cut of ordinary and structural editor selections
 - Image-block toolbar `Copy image`
-- Clipboard MIME types written by each path
+- Portable clipboard presentations and the private structural MIME descriptor
 - Selection-shape rules that determine whether copied `text/plain` is raw text or structure-preserving text
 
 Detailed structural paste, identity, and undo behavior is owned by [NFM Editor Structural Editing Behavior](nfm-editor-structural-editing-behavior.md).
@@ -35,7 +35,7 @@ They share some helpers, but they are not the same pipeline.
 
 ## Standard Copy And Cut
 
-The editor installs a ProseMirror plugin named `nfm-structured-clipboard` that runs before BlockNote's default `copyToClipboard` extension. It resolves one semantic clipboard target, builds one portable presentation, then chooses the ordinary or structural authority path from that target.
+The editor resolves one semantic clipboard target, builds one portable presentation, then chooses the ordinary or structural authority path from that target. Complete Block roots use the Structural Clipboard. Partial inline ranges and other ordinary text selections stay on the portable editor path.
 
 Target resolution follows this priority:
 
@@ -55,15 +55,30 @@ Standard copy/cut is handled only when all of the following are true:
 
 If any of those fail, the handler returns `false` and the editor falls back to downstream/default copy behavior instead of forcing its own result.
 
-### MIME types written
+### Clipboard presentations
 
-When handled successfully, standard copy writes up to 3 clipboard items:
+Every handled standard copy writes up to 3 rich and text representations:
 
 - `blocknote/html`
 - `text/html`
 - `text/plain`
 
-Each MIME write is attempted independently. A failure to write one type does not abort the others. The copy is treated as successful if at least one of those writes succeeds.
+`text/html` and `text/plain` are the standard portable fallback;
+`blocknote/html` preserves editor-rich structure for compatible consumers. Each
+write is attempted independently, and a failure to write one type does not abort
+the others. A structural copy never treats the private descriptor alone as a
+successful claim: it also requires a usable standard HTML or plain-text
+presentation.
+
+A complete-Block structural copy additionally writes a bounded, versioned descriptor under:
+
+```text
+application/x-nodex-structural-clipboard+json
+```
+
+The private descriptor carries only the structural protocol version, lifecycle phase, exact native write claim, action hint, and a ready capability locator when available. It never contains the copied Block forest, Page content, File bytes, or another copy of the Core bundle. It is routing evidence, not permission to create, move, or read content.
+
+The standard HTML and plain-text presentations are always written alongside the private descriptor. They remain useful in another application, another Profile, after the host runtime has restarted, or whenever private data is missing, malformed, stale, superseded, or unsupported. Portable HTML cannot create an owning Page, Canvas, or Database, and a foreign presentation cannot materialize `nodex://files/...` as a live Page File placement.
 
 On success, the handler calls `preventDefault()`.
 
@@ -78,7 +93,9 @@ For an ordinary target, after a successful clipboard write:
 
 A collapsed-caret cut resumes at the previous editable sibling's end, otherwise the next sibling's start, otherwise the parent or first surviving Block. Cutting the only root replaces it with one empty paragraph so the editor remains writable. The removal and cursor recovery form one undoable local transaction.
 
-For a target containing an owning Page, Canvas, or Database anywhere in its selected forest or current Block subtree, Core first captures an immutable ownership-closure snapshot. Main writes safe HTML/plain presentation plus a bounded capability envelope to the native clipboard and verifies that exact capability by reading it back. Cut submits one structural source deletion only after that verification succeeds. Failure leaves the complete source unchanged.
+For complete Block roots, Core first captures an immutable ownership-closure snapshot. Electron Main publishes the safe portable presentation and private routing descriptor to the native clipboard under one exact write claim. A Cut submits one structural source deletion only after that claim still owns the native clipboard slot. Main does not expose the Cut as ready to another window until the deletion's LocalCommit has been admitted by the source renderer. Failure leaves the complete source unchanged and, when the portable presentation remains current, leaves a safe copy result rather than a half-completed move.
+
+Electron Main owns the application-scoped pending lifecycle for structural copy and cut. A paste in another Nodex window may begin waiting before source capture has registered; both sides still rendezvous by the exact write claim. Main does not require immediate native readback during registration because the browser may not have committed the ClipboardEvent yet. Final publication performs the exact slot comparison, supersedes older sessions, and sender loss, timeout, Profile replacement, or application shutdown settles every waiter without transferring semantic authority to Main.
 
 ### How copy payloads are derived
 
@@ -479,7 +496,8 @@ On success, the editor is focused again.
 
 - browser clipboard event driven
 - treats a collapsed host-editor caret as its complete current Block subtree without changing selection presentation
-- can write `blocknote/html`, `text/html`, `text/plain`
+- writes `blocknote/html`, `text/html`, and `text/plain`; complete Block roots also advertise the bounded private structural descriptor
+- coordinates structural readiness across Nodex windows through the application-scoped host runtime
 - uses structure-preserving `text/plain`
 - preserves `blocknote/html` and `text/html` exactly as serialized for portable standard copy
 - preserves the serialized `text/html` presentation when opt-in local-path resolution completes

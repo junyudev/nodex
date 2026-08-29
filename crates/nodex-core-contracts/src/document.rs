@@ -11,7 +11,7 @@ use crate::{
     ApplyResponse, ModuleMutationReceipt, ModuleName, StoreEpoch, VersionedModuleContract,
 };
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 9;
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 10;
 pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -656,6 +656,16 @@ pub struct OwnedDocumentReceipt {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PageFileReferenceChange {
+    Exact {
+        added_file_ids: Vec<String>,
+        removed_file_ids: Vec<String>,
+    },
+    Reset,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OwnedDocumentEvent {
     DocumentUpdated {
         document_id: String,
@@ -663,7 +673,7 @@ pub enum OwnedDocumentEvent {
         head_seq: i64,
         update: Vec<u8>,
         page_file_body_usage_changed: bool,
-        page_file_references_changed: bool,
+        page_file_reference_change: Option<PageFileReferenceChange>,
     },
     /// The durable document effect remains replayable after Yjs history
     /// compaction, but its original update bytes are no longer retained.
@@ -676,7 +686,7 @@ pub enum OwnedDocumentEvent {
         update_id: String,
         update_hash: String,
         page_file_body_usage_changed: bool,
-        page_file_references_changed: bool,
+        page_file_reference_change: Option<PageFileReferenceChange>,
     },
     CanvasUpdated {
         document_id: String,
@@ -700,7 +710,7 @@ pub enum OwnedDocumentEvent {
         head_seq: i64,
         reason: DocumentInvalidationReason,
         page_file_body_usage_changed: bool,
-        page_file_references_changed: bool,
+        page_file_reference_change: Option<PageFileReferenceChange>,
     },
 }
 

@@ -332,7 +332,7 @@ describe("current Block clipboard behavior in Chromium", () => {
   });
 
   test("routes a current Block with an owning descendant through structural capture", async () => {
-    const onStructuralClipboard = vi.fn(() => "0199134e-cbb0-7000-8000-000000000006");
+    const onStructuralClipboard = vi.fn(() => true);
     const editor = BlockNoteEditor.create({
       schema: clipboardSchema,
       initialContent: [
@@ -371,7 +371,7 @@ describe("current Block clipboard behavior in Chromium", () => {
   });
 
   test("routes an ordinary current Block subtree through the same structural capture", async () => {
-    const onStructuralClipboard = vi.fn(() => "0199134e-cbb0-7000-8000-000000000006");
+    const onStructuralClipboard = vi.fn(() => true);
     const editor = BlockNoteEditor.create({
       schema: clipboardSchema,
       initialContent: [

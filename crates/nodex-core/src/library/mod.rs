@@ -801,9 +801,9 @@ impl LibraryModule {
             database_ids: affected_database_ids,
             view_ids: Vec::new(),
             parent_keys: Vec::new(),
-            page_file_manifest_revisions: BTreeMap::new(),
+            page_file_manifest_invalidations: BTreeMap::new(),
             page_file_body_usage_revisions: BTreeMap::new(),
-            page_file_content_revisions: BTreeMap::new(),
+            page_file_content_invalidations: BTreeMap::new(),
         });
         let projection_impact = match target {
             LibraryResourceTarget::Page { .. } => {

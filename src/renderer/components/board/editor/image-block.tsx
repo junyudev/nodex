@@ -12,7 +12,11 @@ import { NfmImageBlockIcon } from "@/components/shared/icons";
 import { readManagedImageByteLength } from "@/lib/assets";
 import { parseAssetSource } from "../../../../shared/assets";
 import { parsePageFileSource } from "../../../../shared/page-files";
-import { usePageFilePlacementRuntime } from "./page-file-runtime";
+import {
+  usePageFilePlacementRuntime,
+  usePageFileReadSnapshot,
+  type PageFilePlacementRuntime,
+} from "./page-file-runtime";
 
 import { resolveAssetSourceToDisplayUrl, type ManagedAssetPathResolver } from "../../../lib/assets";
 
@@ -72,32 +76,21 @@ export function formatImageFileSize(bytes: number): string {
   return `${formattedValue} ${units[unitIndex]}`;
 }
 
-function useImageFileSize(source: string): number | null {
-  const knownSize = resolveDataUrlByteLength(source);
+function useImageFileSize(source: string, pageFileByteLength: number | null): number | null {
+  const knownSize = pageFileByteLength ?? resolveDataUrlByteLength(source);
   const [fileSize, setFileSize] = useState<number | null>(knownSize);
-  const pageFileRuntime = usePageFilePlacementRuntime();
 
   useEffect(() => {
     let mounted = true;
     setFileSize(knownSize);
 
-    const pageFileId = parsePageFileSource(source);
-    if (knownSize !== null || (parseAssetSource(source) === null && !pageFileId)) {
+    if (knownSize !== null || parseAssetSource(source) === null) {
       return () => {
         mounted = false;
       };
     }
 
-    const readSize = pageFileId
-      ? pageFileRuntime?.read(source).then((file) => file.bytes.byteLength)
-      : readManagedImageByteLength(source);
-    if (!readSize) {
-      return () => {
-        mounted = false;
-      };
-    }
-
-    void readSize
+    void readManagedImageByteLength(source)
       .then((bytes) => {
         if (mounted) setFileSize(bytes);
       })
@@ -108,12 +101,12 @@ function useImageFileSize(source: string): number | null {
     return () => {
       mounted = false;
     };
-  }, [knownSize, pageFileRuntime, source]);
+  }, [knownSize, source]);
 
   return fileSize;
 }
 
-function ResolvedImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
+function ExternalImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
   const resolved = useResolveUrl(block.props.url);
 
   if (resolved.loadingState !== "loaded") {
@@ -136,37 +129,50 @@ function ResolvedImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef
   );
 }
 
+function PageFileImagePreview({
+  block,
+  runtime,
+}: Omit<ImageBlockRenderProps, "contentRef"> & {
+  readonly runtime: PageFilePlacementRuntime;
+}) {
+  const snapshot = usePageFileReadSnapshot(runtime, block.props.url, { objectUrl: true });
+  if (!snapshot.objectUrl) {
+    return (
+      <div className="bn-file-loading-preview">
+        {snapshot.contentError ? "Image unavailable" : "Loading..."}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      className="bn-visual-media"
+      src={snapshot.objectUrl}
+      alt={block.props.name || ""}
+      width={block.props.previewWidth}
+      contentEditable={false}
+      draggable={false}
+    />
+  );
+}
+
 function ImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
   const { block } = props;
   const pageFileRuntime = usePageFilePlacementRuntime();
-  const readAuthorityEpoch = parsePageFileSource(block.props.url)
-    ? pageFileRuntime?.readAuthorityEpoch
-    : null;
+  const isPageFile = parsePageFileSource(block.props.url) !== null;
 
-  return <ResolvedImagePreview key={readAuthorityEpoch} {...props} />;
+  if (!isPageFile) return <ExternalImagePreview {...props} />;
+  if (!pageFileRuntime) return <div className="bn-file-loading-preview">Image unavailable</div>;
+  return <PageFileImagePreview {...props} runtime={pageFileRuntime} />;
 }
 
 function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
   const pageFileRuntime = usePageFilePlacementRuntime();
-  const [logicalPath, setLogicalPath] = useState<string | null>(null);
-  useEffect(() => {
-    if (!parsePageFileSource(block.props.url) || !pageFileRuntime) return;
-    let active = true;
-    void pageFileRuntime
-      .metadata(block.props.url)
-      .then((file) => {
-        if (active) setLogicalPath(file.logicalPath);
-      })
-      .catch(() => {
-        if (active) setLogicalPath(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [block.props.url, pageFileRuntime]);
+  const snapshot = usePageFileReadSnapshot(pageFileRuntime, block.props.url, { metadata: true });
+  const logicalPath = snapshot.metadata?.logicalPath ?? null;
   const name =
     logicalPath?.split("/").at(-1) || resolveImageFileName(block.props.url, block.props.name);
-  const fileSize = useImageFileSize(block.props.url);
+  const fileSize = useImageFileSize(block.props.url, snapshot.metadata?.byteLength ?? null);
 
   return (
     <div

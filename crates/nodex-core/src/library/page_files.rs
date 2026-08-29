@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+#[cfg(test)]
+use nodex_core_contracts::library::LibraryPageFileInvalidation;
 use nodex_core_contracts::library::{
     LibraryPageFileBodyUsage, LibraryPageFileChange, LibraryPageFileChangeKind,
     LibraryPageFileCollisionPolicy, LibraryPageFileManifest, LibraryPageFileMutationReceipt,
@@ -1890,6 +1892,7 @@ mod tests {
     use nodex_core_contracts::{
         AdapterKind, BoundModuleContext, DeliveryAtomPayload, LibraryId, ModuleApplyRequest,
         ModuleReadRequest, ProfileId, ProjectId, ResourceKey, StoreEpoch,
+        document::PageFileReferenceChange,
     };
     use rusqlite::params;
     use tempfile::tempdir;
@@ -2282,6 +2285,10 @@ mod tests {
             2
         );
         assert_eq!(
+            moved.committed.receipt.committed_revisions["pageFileContent:page-1"],
+            moved.committed.receipt.commit_seq
+        );
+        assert_eq!(
             moved.committed.receipt.committed_revisions["pageFileContent:page-2"],
             moved.committed.receipt.commit_seq
         );
@@ -2307,18 +2314,28 @@ mod tests {
                 let DeliveryAtomPayload::Library { event, .. } = &atom.payload else {
                     return None;
                 };
-                (!event.page_file_manifest_revisions.is_empty()).then_some((atom, event))
+                (!event.page_file_manifest_invalidations.is_empty()).then_some((atom, event))
             })
             .collect::<Vec<_>>();
         assert_eq!(page_file_atoms.len(), 2);
         for (page_id, manifest_revision) in [("page-1", 2), ("page-2", 2)] {
             let (atom, event) = page_file_atoms
                 .iter()
-                .find(|(_, event)| event.page_file_manifest_revisions.contains_key(page_id))
+                .find(|(_, event)| event.page_file_manifest_invalidations.contains_key(page_id))
                 .expect("Page File manifest delivery atom");
             assert_eq!(
-                event.page_file_manifest_revisions.get(page_id),
-                Some(&manifest_revision)
+                event.page_file_manifest_invalidations.get(page_id),
+                Some(&LibraryPageFileInvalidation::Exact {
+                    revision: manifest_revision,
+                    file_ids: vec!["file-a".to_owned()],
+                })
+            );
+            assert_eq!(
+                event.page_file_content_invalidations.get(page_id),
+                Some(&LibraryPageFileInvalidation::Exact {
+                    revision: moved.committed.receipt.commit_seq,
+                    file_ids: vec!["file-a".to_owned()],
+                })
             );
             assert!(
                 atom.descriptor
@@ -2328,15 +2345,7 @@ mod tests {
                     })
             );
         }
-        let (_, target_event) = page_file_atoms
-            .iter()
-            .find(|(_, event)| event.page_file_manifest_revisions.contains_key("page-2"))
-            .expect("target Page File atom");
-        assert_eq!(
-            target_event.page_file_content_revisions.get("page-2"),
-            Some(&moved.committed.receipt.commit_seq)
-        );
-        let reference_change_documents = delivery
+        let reference_changes = delivery
             .atoms
             .iter()
             .filter_map(|atom| {
@@ -2345,17 +2354,33 @@ mod tests {
                 };
                 let nodex_core_contracts::AuthorizedOwnedDocumentEvent::PageFileReferencesChanged {
                     document_id,
+                    change,
                     ..
                 } = event
                 else {
                     return None;
                 };
-                Some(document_id.clone())
+                Some((document_id.clone(), change.clone()))
             })
-            .collect::<BTreeSet<_>>();
+            .collect::<BTreeMap<_, _>>();
         assert_eq!(
-            reference_change_documents,
-            BTreeSet::from(["document-1".to_owned(), "document-2".to_owned()])
+            reference_changes,
+            BTreeMap::from([
+                (
+                    "document-1".to_owned(),
+                    PageFileReferenceChange::Exact {
+                        added_file_ids: Vec::new(),
+                        removed_file_ids: vec!["file-a".to_owned()],
+                    },
+                ),
+                (
+                    "document-2".to_owned(),
+                    PageFileReferenceChange::Exact {
+                        added_file_ids: vec!["file-a".to_owned()],
+                        removed_file_ids: Vec::new(),
+                    },
+                ),
+            ])
         );
 
         kernel
@@ -2926,6 +2951,14 @@ mod tests {
                 },
             )
             .expect("replace target from cut clipboard");
+        assert_eq!(
+            replaced.committed.receipt.committed_revisions["pageFileContent:page-1"],
+            replaced.committed.receipt.commit_seq
+        );
+        assert_eq!(
+            replaced.committed.receipt.committed_revisions["pageFileContent:page-2"],
+            replaced.committed.receipt.commit_seq
+        );
         let result = replaced
             .committed
             .value
@@ -3733,6 +3766,47 @@ mod tests {
             )
             .expect("rename placed File");
         assert!(renamed.committed.receipt.committed_revisions["pageFileContent:page-2"] > 0);
+        let delivery = CoreEventLog::new(kernel.readers())
+            .authorized_packet(
+                renamed.committed.receipt.commit_seq,
+                &BoundModuleContext {
+                    project_id: None,
+                    connection_id: "connection:foreign-placement-root".to_owned(),
+                    ..context()
+                },
+                None,
+                true,
+            )
+            .expect("resolve File rename delivery")
+            .expect("File rename delivery packet");
+        let page_events = delivery
+            .atoms
+            .iter()
+            .filter_map(|atom| {
+                let DeliveryAtomPayload::Library { event, .. } = &atom.payload else {
+                    return None;
+                };
+                event.page_ids.first().map(|page_id| (page_id, event))
+            })
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            page_events[&"page-1".to_owned()]
+                .page_file_manifest_invalidations
+                .get("page-1"),
+            Some(&LibraryPageFileInvalidation::Exact {
+                revision: 2,
+                file_ids: vec!["file-a".to_owned()],
+            })
+        );
+        assert_eq!(
+            page_events[&"page-2".to_owned()]
+                .page_file_content_invalidations
+                .get("page-2"),
+            Some(&LibraryPageFileInvalidation::Exact {
+                revision: renamed.committed.receipt.commit_seq,
+                file_ids: vec!["file-a".to_owned()],
+            })
+        );
         let renamed_metadata = module
             .read(
                 &context(),

@@ -470,6 +470,7 @@ fn apply_pages(
     let mut affected_view_ids = BTreeSet::new();
     let mut affected_document_ids = BTreeSet::new();
     let mut committed_revisions = BTreeMap::new();
+    let mut file_ownership_moves = Vec::new();
     affected_parent_keys.insert(destination_parent_key(library_id, &request.destination));
 
     for (index, step) in preflight.steps.iter_mut().enumerate() {
@@ -519,6 +520,7 @@ fn apply_pages(
         }
         document_commits.extend(transfer.document_commits);
         affected_database_ids.extend(transfer.affected_database_ids);
+        file_ownership_moves.extend(transfer.file_ownership_moves);
         affected_page_ids.extend(outcome.committed.receipt.affected_page_ids);
         affected_view_ids.extend(outcome.committed.receipt.affected_view_ids);
         committed_revisions.extend(outcome.committed.receipt.committed_revisions);
@@ -587,6 +589,7 @@ fn apply_pages(
             pages,
             document_commits,
             affected_database_ids: affected_database_ids.into_iter().collect(),
+            file_ownership_moves,
         },
         affected_parent_keys: affected_parent_keys.into_iter().collect(),
         affected_page_ids: affected_page_ids.into_iter().collect(),

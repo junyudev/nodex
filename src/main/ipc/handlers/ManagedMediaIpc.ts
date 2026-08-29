@@ -7,8 +7,6 @@ import { parseAssetSource } from "../../../shared/assets";
 import { MainConfig } from "../../app/MainConfig";
 import { readClipboardPastePayload } from "../../clipboard-paste-inspector";
 import { writeImageToClipboard } from "../../clipboard-image-writer";
-import { writeClaimedClipboardPresentation } from "../../clipboard-claimed-presentation-writer";
-import { writeStructuralClipboard } from "../../clipboard-structural-writer";
 import {
   COMPOSER_IMAGE_FILE_EXTENSIONS,
   prepareComposerPickedFiles,
@@ -23,6 +21,7 @@ import {
   saveUploadedResource,
 } from "../../local-store/assets";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
+import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -40,10 +39,11 @@ type Handler<Channel extends keyof IpcApi> = (
 export const live: Layer.Layer<
   never,
   never,
-  ElectronDesktop | ElectronIpc | MainConfig | WindowRuntime
+  ElectronDesktop | ElectronClipboard | ElectronIpc | MainConfig | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const clipboard = yield* ElectronClipboard;
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
@@ -115,27 +115,24 @@ export const live: Layer.Layer<
       authorize(event).pipe(
         Effect.andThen(
           typeof input?.source === "string"
-            ? run("write-clipboard-image", () => writeImageToClipboard(input.source!))
+            ? run("write-clipboard-image", () => writeImageToClipboard(input.source!, clipboard))
             : Effect.succeed({ ok: false, message: "Could not copy image." } as const),
         ),
-      ),
-    );
-    yield* handle("clipboard:write-structural", (event, input) =>
-      authorize(event).pipe(
-        Effect.andThen(run("write-structural-clipboard", () => writeStructuralClipboard(input))),
       ),
     );
     yield* handle("clipboard:write-claimed-presentation", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(
           run("write-claimed-clipboard-presentation", () =>
-            writeClaimedClipboardPresentation(input),
+            clipboard.replaceClaimedPresentation(input),
           ),
         ),
       ),
     );
     yield* handle("clipboard:read-paste", (event) =>
-      authorize(event).pipe(Effect.andThen(run("read-clipboard-paste", readClipboardPastePayload))),
+      authorize(event).pipe(
+        Effect.andThen(run("read-clipboard-paste", () => readClipboardPastePayload(clipboard))),
+      ),
     );
     yield* handle("composer:pick-files", (event, input) =>
       authorize(event).pipe(

@@ -18,7 +18,10 @@ import { cn } from "@/lib/utils";
 import {
   attachNodexClipboardEnvelope,
   attachNodexStructuralClipboardWriteClaim,
+  decodeNodexStructuralClipboardDescriptor,
+  encodeNodexStructuralClipboardDescriptor,
   inspectNodexClipboardHtml,
+  NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../../../../shared/clipboard-paste";
 import type { ClipboardPastePayload } from "../../../../shared/types";
 
@@ -44,7 +47,7 @@ interface NfmEditorCommandEditor {
 interface NfmEditorContextMenuProps {
   editor: NfmEditorCommandEditor;
   children: ReactNode;
-  onBeforePaste?: (writeClaim?: string) => boolean;
+  onPreparePaste?: () => () => void;
 }
 
 interface NfmEditorContextMenuContentProps {
@@ -74,7 +77,8 @@ function hasClipboardPayload(
     typeof payload?.markdown === "string" ||
     typeof payload?.text === "string" ||
     payload?.structuralEnvelope !== undefined ||
-    payload?.structuralWriteClaim !== undefined
+    payload?.structuralWriteClaim !== undefined ||
+    payload?.structuralDescriptor !== undefined
   );
 }
 
@@ -98,6 +102,16 @@ async function readBrowserClipboardPayload(): Promise<ClipboardPastePayload | nu
       const payload: ClipboardPastePayload = {};
 
       for (const item of items) {
+        if (
+          item.types.includes(NODEX_STRUCTURAL_CLIPBOARD_MIME) &&
+          payload.structuralDescriptor === undefined
+        ) {
+          const encoded = await readClipboardItemText(item, NODEX_STRUCTURAL_CLIPBOARD_MIME);
+          if (encoded) {
+            payload.structuralDescriptor =
+              decodeNodexStructuralClipboardDescriptor(encoded) ?? undefined;
+          }
+        }
         if (item.types.includes("blocknote/html") && payload.blocknoteHtml === undefined) {
           payload.blocknoteHtml = await readClipboardItemText(item, "blocknote/html");
         }
@@ -158,9 +172,19 @@ function dispatchSyntheticPaste(
   if (typeof DataTransfer === "undefined") return false;
 
   const dataTransfer = new DataTransfer();
+  if (payload.structuralDescriptor) {
+    dataTransfer.setData(
+      NODEX_STRUCTURAL_CLIPBOARD_MIME,
+      encodeNodexStructuralClipboardDescriptor(payload.structuralDescriptor),
+    );
+  }
   if (payload.blocknoteHtml) dataTransfer.setData("blocknote/html", payload.blocknoteHtml);
   const html = payload.structuralEnvelope
-    ? attachNodexClipboardEnvelope(payload.html ?? "", payload.structuralEnvelope)
+    ? attachNodexClipboardEnvelope(
+        payload.html ?? "",
+        payload.structuralEnvelope,
+        payload.structuralWriteClaim,
+      )
     : payload.structuralWriteClaim
       ? attachNodexStructuralClipboardWriteClaim(payload.html ?? "", payload.structuralWriteClaim)
       : payload.html;
@@ -179,35 +203,43 @@ function dispatchSyntheticPaste(
 
 async function runPasteCommand(
   editor: NfmEditorCommandEditor,
-  onBeforePaste?: (writeClaim?: string) => boolean,
+  onPreparePaste?: () => () => void,
 ): Promise<boolean> {
-  const payload = (await readNativeClipboardPayload()) ?? (await readBrowserClipboardPayload());
-  if (onBeforePaste?.(payload?.structuralWriteClaim)) return true;
+  const releasePreparedPaste = onPreparePaste?.() ?? (() => undefined);
+  try {
+    const payload = (await readNativeClipboardPayload()) ?? (await readBrowserClipboardPayload());
 
-  if (payload && dispatchSyntheticPaste(editor, payload)) {
-    return true;
+    if (payload && dispatchSyntheticPaste(editor, payload)) {
+      return true;
+    }
+
+    if (payload?.structuralDescriptor) {
+      return payload.text && editor.pasteText ? (editor.pasteText(payload.text) ?? false) : false;
+    }
+
+    if (payload?.blocknoteHtml && editor.pasteHTML) {
+      editor.pasteHTML(payload.blocknoteHtml, true);
+      return true;
+    }
+
+    if (payload?.html && editor.pasteHTML) {
+      editor.pasteHTML(payload.html);
+      return true;
+    }
+
+    if (payload?.markdown && editor.pasteMarkdown) {
+      editor.pasteMarkdown(payload.markdown);
+      return true;
+    }
+
+    if (payload?.text && editor.pasteText) {
+      return editor.pasteText(payload.text) ?? false;
+    }
+
+    return false;
+  } finally {
+    releasePreparedPaste();
   }
-
-  if (payload?.blocknoteHtml && editor.pasteHTML) {
-    editor.pasteHTML(payload.blocknoteHtml, true);
-    return true;
-  }
-
-  if (payload?.html && editor.pasteHTML) {
-    editor.pasteHTML(payload.html);
-    return true;
-  }
-
-  if (payload?.markdown && editor.pasteMarkdown) {
-    editor.pasteMarkdown(payload.markdown);
-    return true;
-  }
-
-  if (payload?.text && editor.pasteText) {
-    return editor.pasteText(payload.text) ?? false;
-  }
-
-  return false;
 }
 
 export async function runNfmEditorContextCommand(
@@ -216,12 +248,12 @@ export async function runNfmEditorContextCommand(
   execCommand: Document["execCommand"] | undefined = typeof document === "undefined"
     ? undefined
     : document.execCommand.bind(document),
-  onBeforePaste?: (writeClaim?: string) => boolean,
+  onPreparePaste?: () => () => void,
 ): Promise<boolean> {
   focusEditor(editor);
 
   if (command === "paste") {
-    return runPasteCommand(editor, onBeforePaste);
+    return runPasteCommand(editor, onPreparePaste);
   }
 
   if (execCommand?.(command)) {
@@ -353,7 +385,7 @@ function NfmEditorContextMenuPreviewItem({
 export function NfmEditorContextMenu({
   editor,
   children,
-  onBeforePaste,
+  onPreparePaste,
 }: NfmEditorContextMenuProps) {
   const [selectionEmpty, setSelectionEmpty] = useState(true);
   const [editable, setEditable] = useState(true);
@@ -369,9 +401,9 @@ export function NfmEditorContextMenu({
 
   const handleCommand = useCallback(
     (command: NfmEditorCommand) => {
-      void runNfmEditorContextCommand(editor, command, undefined, onBeforePaste);
+      void runNfmEditorContextCommand(editor, command, undefined, onPreparePaste);
     },
-    [editor, onBeforePaste],
+    [editor, onPreparePaste],
   );
 
   const content = useMemo(

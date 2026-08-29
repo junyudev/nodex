@@ -15,6 +15,10 @@ import {
   live as computerUseSettingsRuntimeLive,
 } from "../host-runtime/ComputerUseSettingsRuntime";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import {
+  StructuralClipboardRuntime,
+  live as structuralClipboardRuntimeLive,
+} from "../host-runtime/StructuralClipboardRuntime";
 import { AppUpdateRuntime, live as appUpdateRuntimeLive } from "../host-runtime/AppUpdateRuntime";
 import {
   ApplicationHostRuntime,
@@ -58,6 +62,10 @@ import {
 import { NodexAgentResourceAccess } from "../nodex-agent-application/NodexAgentResourceAccess";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
+import {
+  ElectronClipboard,
+  live as electronClipboardLive,
+} from "../platform/electron/ElectronClipboard";
 import { ElectronIpc } from "../platform/electron/ElectronIpc";
 import { ElectronPrivacy, live as electronPrivacyLive } from "../platform/electron/ElectronPrivacy";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
@@ -88,6 +96,9 @@ const dictation = dictationRuntimeLive({
   preloadPath: resolveBundledElectronPreload(__dirname, "global-dictation.js"),
 }).pipe(Layer.provideMerge(Layer.mergeAll(privacy, rendererClients)));
 const databaseNotifier = DatabaseNotifierRuntime.live;
+const structuralClipboard = structuralClipboardRuntimeLive.pipe(
+  Layer.provideMerge(Layer.merge(electronClipboardLive, rendererClients)),
+);
 const mcpAppSandbox = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -207,10 +218,12 @@ export const live: Layer.Layer<
   | DeepLinkRuntime
   | DictationRuntime
   | ElectronPrivacy
+  | ElectronClipboard
   | McpAppSandboxRuntime
   | NodexAgentAuthorizationRuntime
   | RemoteHostedPipRuntime
   | RendererClientRuntime
+  | StructuralClipboardRuntime
   | WindowSessionCatalog.WindowSessionCatalog
   | WindowShutdown,
   ApplicationHostRuntimeError,
@@ -247,5 +260,6 @@ export const live: Layer.Layer<
   deepLinks,
   dictation,
   nodexAgentAuthorization,
+  structuralClipboard,
   windowSessions,
 );

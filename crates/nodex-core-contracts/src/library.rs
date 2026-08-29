@@ -16,7 +16,7 @@ use crate::document::DocumentHeadRevision;
 use crate::workspace::{ProjectAppearance, ProjectLifecycle};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 40;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 41;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -360,6 +360,7 @@ pub struct LibraryAgentMovePagesResult {
     pub pages: Vec<LibraryAgentMovedPage>,
     pub document_commits: Vec<LibraryBlockTransferDocumentCommit>,
     pub affected_database_ids: Vec<String>,
+    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2821,15 +2822,29 @@ pub struct LibraryPageCopyResult {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryPageFileInvalidation {
+    Exact {
+        revision: i64,
+        file_ids: Vec<String>,
+    },
+    Reset {
+        revision: i64,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryEvent {
     pub kind: LibraryEventKind,
     pub page_ids: Vec<String>,
     pub database_ids: Vec<String>,
     pub view_ids: Vec<String>,
     pub parent_keys: Vec<String>,
-    pub page_file_manifest_revisions: std::collections::BTreeMap<String, i64>,
+    pub page_file_manifest_invalidations:
+        std::collections::BTreeMap<String, LibraryPageFileInvalidation>,
     pub page_file_body_usage_revisions: std::collections::BTreeMap<String, i64>,
-    pub page_file_content_revisions: std::collections::BTreeMap<String, i64>,
+    pub page_file_content_invalidations:
+        std::collections::BTreeMap<String, LibraryPageFileInvalidation>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

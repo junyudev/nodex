@@ -4,7 +4,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use nodex_core_contracts::ProjectionImpact;
+use nodex_core_contracts::{ProjectionImpact, document::PageFileReferenceChange};
 
 use crate::domain::derived_records::{BlockDocumentAssetKind, BlockDocumentReference};
 use crate::infrastructure::document_repository::{DocumentHeadRow, DocumentReadRepository};
@@ -31,6 +31,8 @@ pub(super) const TYPED_CREATION_BLOCK_TYPES: &[&str] = &[
     "canvas",
 ];
 const PROJECTION_VERSION: i64 = 1;
+const MAX_EXACT_PAGE_FILE_REFERENCE_IDS: usize = 4_096;
+const MAX_EXACT_PAGE_FILE_REFERENCE_BYTES: usize = 128 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DocumentAuthorityRow {
@@ -394,7 +396,7 @@ fn persist_yjs_commit_inner(
             )
         })?;
     let now = sqlite_now(connection)?;
-    let (page_file_body_usage_changed, page_file_references_changed) =
+    let (page_file_body_usage_changed, page_file_reference_change) =
         if input.authority.owner_type == "page" {
             let base_reference_counts = page_file_reference_counts(input.base_materialization);
             let reference_counts = page_file_reference_counts(input.materialization);
@@ -402,10 +404,10 @@ fn persist_yjs_commit_inner(
             (
                 page_file_body_usage_counts(&base_reference_counts, &owned_file_ids)
                     != page_file_body_usage_counts(&reference_counts, &owned_file_ids),
-                base_reference_counts != reference_counts,
+                page_file_reference_change(&base_reference_counts, &reference_counts)?,
             )
         } else {
-            (false, false)
+            (false, None)
         };
     let placement_delta =
         derive_document_placement_delta(input.base_materialization, input.materialization);
@@ -574,7 +576,7 @@ fn persist_yjs_commit_inner(
         "updateByteLength": input.update.len(),
         "localCommitId": input.local_commit_id,
         "pageFileBodyUsageChanged": page_file_body_usage_changed,
-        "pageFileReferencesChanged": page_file_references_changed,
+        "pageFileReferenceChange": page_file_reference_change,
     });
     let page_impact = input.authority.page_impact();
     let owner_projection_impact = impact_for_page_document(
@@ -702,16 +704,16 @@ fn persist_yjs_genesis_inner(
         ));
     }
     let now = sqlite_now(connection)?;
-    let (page_file_body_usage_changed, page_file_references_changed) =
+    let (page_file_body_usage_changed, page_file_reference_change) =
         if input.authority.owner_type == "page" {
             let reference_counts = page_file_reference_counts(input.materialization);
             let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
             (
                 !page_file_body_usage_counts(&reference_counts, &owned_file_ids).is_empty(),
-                !reference_counts.is_empty(),
+                page_file_reference_change(&BTreeMap::new(), &reference_counts)?,
             )
         } else {
-            (false, false)
+            (false, None)
         };
     validate_document_references(
         connection,
@@ -865,7 +867,7 @@ fn persist_yjs_genesis_inner(
             "updateHash": update_hash,
             "updateByteLength": input.update.len(),
             "pageFileBodyUsageChanged": page_file_body_usage_changed,
-            "pageFileReferencesChanged": page_file_references_changed,
+            "pageFileReferenceChange": page_file_reference_change,
         });
         let page_impact = input.authority.page_impact();
         let projection_impact = impact_for_page_document(
@@ -1845,6 +1847,35 @@ fn page_file_reference_counts(
     counts
 }
 
+fn page_file_reference_change(
+    base_counts: &BTreeMap<String, usize>,
+    next_counts: &BTreeMap<String, usize>,
+) -> Result<Option<PageFileReferenceChange>, StoreError> {
+    let base_ids = base_counts.keys().cloned().collect::<BTreeSet<_>>();
+    let next_ids = next_counts.keys().cloned().collect::<BTreeSet<_>>();
+    let added_file_ids = next_ids.difference(&base_ids).cloned().collect::<Vec<_>>();
+    let removed_file_ids = base_ids.difference(&next_ids).cloned().collect::<Vec<_>>();
+    if added_file_ids.is_empty() && removed_file_ids.is_empty() {
+        return Ok(None);
+    }
+    if added_file_ids.len().saturating_add(removed_file_ids.len())
+        > MAX_EXACT_PAGE_FILE_REFERENCE_IDS
+    {
+        return Ok(Some(PageFileReferenceChange::Reset));
+    }
+    let exact = PageFileReferenceChange::Exact {
+        added_file_ids,
+        removed_file_ids,
+    };
+    let byte_length = serde_json::to_vec(&exact)
+        .map_err(|_| internal("Page File reference change could not be encoded"))?
+        .len();
+    if byte_length > MAX_EXACT_PAGE_FILE_REFERENCE_BYTES {
+        return Ok(Some(PageFileReferenceChange::Reset));
+    }
+    Ok(Some(exact))
+}
+
 fn page_file_body_usage_counts(
     reference_counts: &BTreeMap<String, usize>,
     owned_file_ids: &BTreeSet<String>,
@@ -2376,6 +2407,60 @@ fn corrupt(message: &str) -> StoreError {
 
 fn internal(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Internal, message, false)
+}
+
+#[cfg(test)]
+mod page_file_reference_change_tests {
+    use super::*;
+
+    #[test]
+    fn reports_sorted_exact_file_identity_changes() {
+        let base = BTreeMap::from([("file:b".to_owned(), 2), ("file:removed".to_owned(), 1)]);
+        let next = BTreeMap::from([("file:added".to_owned(), 1), ("file:b".to_owned(), 1)]);
+
+        assert_eq!(
+            page_file_reference_change(&base, &next).expect("reference change"),
+            Some(PageFileReferenceChange::Exact {
+                added_file_ids: vec!["file:added".to_owned()],
+                removed_file_ids: vec!["file:removed".to_owned()],
+            })
+        );
+    }
+
+    #[test]
+    fn ignores_placement_count_changes_when_the_reference_set_is_stable() {
+        let base = BTreeMap::from([("file:stable".to_owned(), 1)]);
+        let next = BTreeMap::from([("file:stable".to_owned(), 3)]);
+
+        assert_eq!(
+            page_file_reference_change(&base, &next).expect("reference change"),
+            None
+        );
+    }
+
+    #[test]
+    fn resets_when_exact_reference_evidence_exceeds_its_identity_bound() {
+        let next = (0..=MAX_EXACT_PAGE_FILE_REFERENCE_IDS)
+            .map(|index| (format!("file:{index:04}"), 1))
+            .collect();
+
+        assert_eq!(
+            page_file_reference_change(&BTreeMap::new(), &next).expect("reference change"),
+            Some(PageFileReferenceChange::Reset)
+        );
+    }
+
+    #[test]
+    fn resets_when_exact_reference_evidence_exceeds_its_byte_bound() {
+        let next = (0..3_000)
+            .map(|index| (format!("file:{index:04}:{}", "x".repeat(48)), 1))
+            .collect();
+
+        assert_eq!(
+            page_file_reference_change(&BTreeMap::new(), &next).expect("reference change"),
+            Some(PageFileReferenceChange::Reset)
+        );
+    }
 }
 
 #[cfg(test)]

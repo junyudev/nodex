@@ -85,13 +85,16 @@ when its current owner is the source host and its complete post-state placement
 set is exclusively in one target host. The Library Module derives and commits
 that consequence together with both Documents, immutable File history,
 manifests, receipt, and LocalCommit; callers cannot request it independently.
-File changes publish exact placement-Page content invalidation
-without coupling foreign Pages to the owner manifest revision. Child Page Files
-compose through the existing Page ownership forest instead of flattening into
-their parent. Core is the only publication,
-authorization, metadata-mutation, copy/transfer, backup, restore, and
-garbage-collection authority. Electron and CLI may stream or save explicit
-user-selected bytes. Electron may resolve one authorized current File version
+File mutations publish exact affected File identities, while Document commits
+publish exact added and removed Page File reference identities; neither signal
+couples foreign Pages to the owner manifest revision. Renderer File reads share
+one authorization-sensitive cache keyed by Store epoch, access context,
+containing Page, and File identity, so invalidation remains exact and cached
+bytes never cross an authority change. Child Page Files compose through the
+existing Page ownership forest instead of flattening into their parent. Core is
+the only publication, authorization, metadata-mutation, copy/transfer, backup,
+restore, and garbage-collection authority. Electron and CLI may stream or save
+explicit user-selected bytes. Electron may resolve one authorized current File version
 to its physical blob locator only for the opt-in local-path clipboard
 presentation; the locator is never stored as File identity or returned through
 the general renderer/Agent File interfaces. See
@@ -122,6 +125,7 @@ The decisions behind this model are recorded in [ADR 0017](docs/adr/0017-library
 | Window layout, owner-scoped Scenes, surface placement                                       | Renderer Window Session App aggregate                                        | Main persists the revisioned Window Session catalog                                                                                              |
 | Browser guests, Browser Use, MCP App guests, Terminal processes                             | Electron Main runtime aggregates                                             | Renderer holds presentation descriptors and host bindings only                                                                                   |
 | Git repository live-read state                                                              | Main-owned Git worker process                                                | Typed Main/preload bus and renderer query projections                                                                                            |
+| Structural clipboard preparing/ready/superseded lifecycle and native slot ownership         | Electron Main Structural Clipboard Runtime                                   | Private MIME routes trusted windows; standard HTML/text stays portable; Core retains durable bundle and cut authority                            |
 | Preferences, non-Page managed assets, logs, OS notifications                                | Electron Main local/OS adapters                                              | Typed renderer IPC; Page File blobs remain Core-owned, while Canvas/queue and other host assets retain their narrow existing adapters            |
 
 Authority and presentation are intentionally different. A Scene can present a Page without owning it; a renderer cache can display a Database window without authorizing it; Main can relay a Codex document without becoming its visible writer.
@@ -169,6 +173,16 @@ Store formats and migration sequences are implementation/recovery contracts, not
 Main is an Adapter, coordinator, and runtime host. It may bind Profile/Library/Project/Session identity, perform host preflight, and coordinate external effects around a Core command. It must not open SQLite, reconstruct a semantic transaction, infer authorization from renderer state, or provide a fallback data authority when Core is unavailable.
 
 Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/MainEntry.ts) is the Main-process Node runtime root; [`MainApp`](../src/main/app/MainApp.ts) owns ready, bootstrap handoff, shutdown admission, and the process Scope; [`MainApplicationLive`](../src/main/app/MainApplicationLive.ts) declaratively composes the pre-Core window state, Core, Codex, post-Core Window activation, renderer-ingress, and host Layer clusters. Pre-Core state creates the canonical BrowserWindow and Window Session, installs only bootstrap IPC and deny-by-default navigation/guest guards, and keeps that outer Scope alive while the full authority graph acquires. Post-Core activation attaches capabilities to the same WebContents and opens its renderer gate; it never replaces the physical window. `MainApp` acquires that graph with one `Effect.provide`, so startup rollback and every normal or authority-driven quit close the same Scope. Physical Core generations, Codex app-server sessions, windows, workers, PTYs, file watchers, and callback fibers are subordinate scoped resources rather than parallel lifecycle owners. Worker and standalone script processes have their own explicitly allowlisted `NodeRuntime.runMain` entries and never share Main's runtime.
+
+Structural clipboard coordination belongs to one application-scoped Main
+runtime because native clipboard ownership and cross-window rendezvous outlive
+an individual renderer. The runtime owns only ephemeral claim state, pending
+waiters, native compare-and-swap publication, sender lifetime, timeout, and
+shutdown settlement. A bounded private MIME descriptor routes trusted windows
+to that runtime while standard HTML and text remain the portable fallback. Core
+alone owns the durable snapshot, capability validation, source deletion, cut
+claim, paste identity, history, and File-rehome consequences. The decision is
+recorded in [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
 
 Native filesystem watching is one scoped Stream Adapter around synchronous `fs.watch`; readiness,
 changes, and typed failure flow through the Stream, and stream finalization closes the native handle.
@@ -530,7 +544,7 @@ autonomous presence scheduler.
 
 Before a structural command consumes a mounted Document's shape, the surface flushes pending durable updates and supplies an exact head token. Core rechecks the token while planning and applying the mutation. Ownership, membership, host-shell changes, Document updates, projections, and the receipt then commit atomically. Response loss is recovered by exact receipt replay or canonical synchronization, not by reconstructing the transaction in Electron.
 
-Any editor selection containing an owning Page, Canvas, or Database is one Library structural edit; the complete selected forest and ownership closure stay outside generic Document mutation. Core owns delete, clipboard capture/paste, duplicate, move, retention, and forward-inverse recipes. Native clipboard data carries only a bounded capability to an immutable Core bundle. Each editor surface merges structural tokens with its own local Yjs history in user-action order and releases tokens when they leave reachable history. The user-visible contract is [NFM Editor Structural Editing Behavior](product-specs/nfm-editor-structural-editing-behavior.md), and the ownership decision is [ADR 0048](adr/0048-typed-owner-structural-editing.md).
+Any editor selection containing an owning Page, Canvas, or Database is one Library structural edit; the complete selected forest and ownership closure stay outside generic Document mutation. Core owns delete, clipboard capture/paste, duplicate, move, retention, and forward-inverse recipes. Native clipboard data carries a bounded private routing descriptor plus standard portable presentation, never the ownership closure; only Core's durable capability and cut claim authorize structural materialization or an identity-preserving move. Main coordinates the ephemeral cross-window lifecycle without becoming semantic authority. A destination freezes its stable target intent and sanitized fallback before waiting, then fences the current Document immediately before commit, so selection drift cannot redirect Paste. Each editor surface merges structural tokens with its own local Yjs history in user-action order and releases tokens when they leave reachable history. The user-visible contract is [NFM Editor Structural Editing Behavior](product-specs/nfm-editor-structural-editing-behavior.md), and the ownership decisions are [ADR 0048](adr/0048-typed-owner-structural-editing.md) and [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
 
 Every current Block type makes one closed-world choice about generic children.
 Renderer commands and local collaborative transactions use that contract for
@@ -807,6 +821,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 20. Browser and MCP App guests are sandboxed Main-owned runtimes. Renderer-authored preferences, DOM attributes, or URLs cannot create or broaden guest authority.
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
 22. File placement is non-owning. Only a Core-authored exclusive semantic move may rehome a Page File, and it preserves File identity and history in the same transaction as the affected Documents and LocalCommit.
+23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.
 
 ## Codemap
 

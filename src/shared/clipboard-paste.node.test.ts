@@ -4,7 +4,9 @@ import {
   attachNodexClipboardEnvelope,
   attachNodexClipboardWriteClaim,
   attachNodexStructuralClipboardWriteClaim,
+  decodeNodexStructuralClipboardDescriptor,
   encodeNodexClipboardEnvelope,
+  encodeNodexStructuralClipboardDescriptor,
   hasNodexStructuralClipboardFallback,
   hasUntrustedTypedOwnerHtml,
   inspectNodexClipboardHtml,
@@ -26,6 +28,49 @@ const envelope: NodexClipboardEnvelopeV1 = {
 const writeClaim = "0199134e-cbb0-7000-8000-000000000004";
 
 describe("Nodex structural clipboard sidecar", () => {
+  test("round-trips strict preparing and ready private descriptors", () => {
+    const preparing = {
+      version: 1,
+      phase: "preparing",
+      writeClaim,
+      actionHint: "cut",
+    } as const;
+    const ready = { ...preparing, phase: "ready", envelope } as const;
+
+    expect(
+      decodeNodexStructuralClipboardDescriptor(encodeNodexStructuralClipboardDescriptor(preparing)),
+    ).toEqual(preparing);
+    expect(
+      decodeNodexStructuralClipboardDescriptor(encodeNodexStructuralClipboardDescriptor(ready)),
+    ).toEqual(ready);
+  });
+
+  test("rejects malformed, oversized, and authority-shaped private descriptors", () => {
+    expect(decodeNodexStructuralClipboardDescriptor("not json")).toBeNull();
+    expect(
+      decodeNodexStructuralClipboardDescriptor(
+        JSON.stringify({
+          version: 1,
+          phase: "preparing",
+          writeClaim,
+          actionHint: "cut",
+          closure: { blocks: [] },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      decodeNodexStructuralClipboardDescriptor(
+        JSON.stringify({
+          version: 1,
+          phase: "ready",
+          writeClaim,
+          actionHint: "cut",
+        }),
+      ),
+    ).toBeNull();
+    expect(decodeNodexStructuralClipboardDescriptor("x".repeat(4 * 1024 + 1))).toBeNull();
+  });
+
   test("round-trips one bounded envelope while retaining a safe fallback marker", () => {
     const html = attachNodexClipboardEnvelope("<p>Shareable fallback</p>", envelope);
 

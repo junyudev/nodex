@@ -1,10 +1,13 @@
 export const CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL = "clipboard:inspect-paste-sync" as const;
 
 export const NODEX_CLIPBOARD_ENVELOPE_META_NAME = "nodex-clipboard-envelope-v1" as const;
+export const NODEX_STRUCTURAL_CLIPBOARD_MIME =
+  "application/x-nodex-structural-clipboard+json" as const;
 export const NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE =
   "data-nodex-structural-fallback" as const;
 export const NODEX_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE = "data-nodex-clipboard-write-claim" as const;
 export const NODEX_CLIPBOARD_ENVELOPE_MAX_BYTES = 4 * 1024;
+export const NODEX_STRUCTURAL_CLIPBOARD_DESCRIPTOR_MAX_BYTES = 4 * 1024;
 const NODEX_CLIPBOARD_ENVELOPE_SCAN_BYTES = NODEX_CLIPBOARD_ENVELOPE_MAX_BYTES * 2;
 const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 
@@ -19,11 +22,73 @@ export interface NodexClipboardEnvelopeV1 {
   readonly actionHint: "copy" | "cut";
 }
 
+export type NodexStructuralClipboardDescriptorV1 =
+  | {
+      readonly version: 1;
+      readonly phase: "preparing";
+      readonly writeClaim: string;
+      readonly actionHint: "copy" | "cut";
+    }
+  | {
+      readonly version: 1;
+      readonly phase: "ready";
+      readonly writeClaim: string;
+      readonly actionHint: "copy" | "cut";
+      readonly envelope: NodexClipboardEnvelopeV1;
+    };
+
 export interface StructuralClipboardWriteInput {
   readonly envelope: NodexClipboardEnvelopeV1;
   readonly writeClaim: string;
   readonly html: string;
   readonly text: string;
+}
+
+export interface StructuralClipboardBeginInput {
+  readonly writeClaim: string;
+  readonly actionHint: "copy" | "cut";
+  readonly libraryId?: string;
+  readonly storeEpoch: string;
+}
+
+export type StructuralClipboardSettleInput =
+  | { readonly writeClaim: string; readonly outcome: "cut_committed" }
+  | { readonly writeClaim: string; readonly outcome: "source_preserved" }
+  | {
+      readonly writeClaim: string;
+      readonly outcome: "failed";
+      readonly reason: "capture_failed" | "clipboard_failed";
+    };
+
+export interface StructuralClipboardAwaitInput {
+  readonly writeClaim: string;
+}
+
+export type StructuralClipboardLifecycleResult =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly failure: "invalid" | "conflict" | "closed" | "superseded" | "capacity";
+    };
+
+export type StructuralClipboardResolution =
+  | {
+      readonly kind: "ready";
+      readonly envelope: NodexClipboardEnvelopeV1;
+      readonly disposition: "structural" | "copy_fallback";
+    }
+  | {
+      readonly kind: "portable_fallback";
+      readonly reason:
+        | "capture_failed"
+        | "clipboard_failed"
+        | "source_closed"
+        | "superseded"
+        | "timeout";
+    };
+
+export function isNodexStructuralClipboardWriteClaim(value: string): boolean {
+  return UUID_V7_PATTERN.test(value);
 }
 
 export interface ClaimedClipboardPresentationWriteInput {
@@ -81,6 +146,58 @@ function isNodexClipboardEnvelope(value: unknown): value is NodexClipboardEnvelo
     const field = candidate[key];
     return typeof field === "string" && field.length > 0 && field.length <= 512;
   });
+}
+
+function isNodexStructuralClipboardDescriptor(
+  value: unknown,
+): value is NodexStructuralClipboardDescriptorV1 {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.version !== 1) return false;
+  if (candidate.phase !== "preparing" && candidate.phase !== "ready") return false;
+  if (!UUID_V7_PATTERN.test(typeof candidate.writeClaim === "string" ? candidate.writeClaim : "")) {
+    return false;
+  }
+  if (candidate.actionHint !== "copy" && candidate.actionHint !== "cut") return false;
+
+  if (candidate.phase === "preparing") {
+    return Object.keys(candidate).length === 4 && candidate.envelope === undefined;
+  }
+  return Object.keys(candidate).length === 5 && isNodexClipboardEnvelope(candidate.envelope);
+}
+
+/** Encodes a bounded routing descriptor. Core remains the clipboard authority. */
+export function encodeNodexStructuralClipboardDescriptor(
+  descriptor: NodexStructuralClipboardDescriptorV1,
+): string {
+  if (!isNodexStructuralClipboardDescriptor(descriptor)) {
+    throw new Error("Invalid Nodex structural clipboard descriptor.");
+  }
+  const encoded = JSON.stringify(descriptor);
+  if (
+    new TextEncoder().encode(encoded).byteLength > NODEX_STRUCTURAL_CLIPBOARD_DESCRIPTOR_MAX_BYTES
+  ) {
+    throw new Error("Nodex structural clipboard descriptor exceeds its size limit.");
+  }
+  return encoded;
+}
+
+export function decodeNodexStructuralClipboardDescriptor(
+  encoded: string,
+): NodexStructuralClipboardDescriptorV1 | null {
+  if (
+    typeof encoded !== "string" ||
+    encoded.length === 0 ||
+    new TextEncoder().encode(encoded).byteLength > NODEX_STRUCTURAL_CLIPBOARD_DESCRIPTOR_MAX_BYTES
+  ) {
+    return null;
+  }
+  try {
+    const descriptor: unknown = JSON.parse(encoded);
+    return isNodexStructuralClipboardDescriptor(descriptor) ? descriptor : null;
+  } catch {
+    return null;
+  }
 }
 
 function readMetaAttribute(tag: string, name: string): string | null {

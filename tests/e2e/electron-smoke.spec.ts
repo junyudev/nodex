@@ -25,7 +25,11 @@ import {
   type PageLifecyclePreflightSnapshotV2,
 } from "../../src/shared/page-lifecycle-v2-runtime";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
-import { attachNodexStructuralClipboardWriteClaim } from "../../src/shared/clipboard-paste";
+import {
+  attachNodexStructuralClipboardWriteClaim,
+  encodeNodexStructuralClipboardDescriptor,
+  NODEX_STRUCTURAL_CLIPBOARD_MIME,
+} from "../../src/shared/clipboard-paste";
 import type { LibraryPageFileManifest } from "../../src/shared/library-module";
 import {
   ElectronScenarioHarness,
@@ -1338,12 +1342,99 @@ test.describe("parallel functional Electron smoke", () => {
       }));
       try {
         const writeClaim = createUuidV7();
-        await harness.application.evaluate(({ clipboard }, pending) => clipboard.write(pending), {
-          html: attachNodexStructuralClipboardWriteClaim("<p>Portable fallback</p>", writeClaim),
-          text: "Portable fallback",
+        const privateDescriptor = encodeNodexStructuralClipboardDescriptor({
+          version: 1,
+          phase: "preparing",
+          writeClaim,
+          actionHint: "copy",
+        });
+        await page.evaluate(
+          (payload) => {
+            const source = document.createElement("div");
+            source.contentEditable = "true";
+            source.textContent = payload.text;
+            source.addEventListener(
+              "copy",
+              (event) => {
+                event.clipboardData?.setData(payload.mime, payload.descriptor);
+                event.clipboardData?.setData("text/html", payload.html);
+                event.clipboardData?.setData("text/plain", payload.text);
+                event.preventDefault();
+              },
+              { once: true },
+            );
+            document.body.append(source);
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(source);
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            source.focus();
+          },
+          {
+            mime: NODEX_STRUCTURAL_CLIPBOARD_MIME,
+            descriptor: privateDescriptor,
+            html: attachNodexStructuralClipboardWriteClaim("<p>Portable fallback</p>", writeClaim),
+            text: "Portable fallback",
+          },
+        );
+        await page.keyboard.press(process.platform === "darwin" ? "Meta+C" : "Control+C");
+        await page.evaluate((mime) => {
+          const target = document.createElement("div");
+          target.contentEditable = "true";
+          target.dataset.structuralClipboardPreparingTarget = "true";
+          target.addEventListener(
+            "paste",
+            (event) => {
+              const clipboardEvent = event as ClipboardEvent;
+              (
+                window as unknown as {
+                  __structuralClipboardPreparingPaste?: string;
+                }
+              ).__structuralClipboardPreparingPaste =
+                clipboardEvent.clipboardData?.getData(mime) ?? "";
+              event.preventDefault();
+            },
+            { once: true },
+          );
+          document.body.append(target);
+          target.focus();
+        }, NODEX_STRUCTURAL_CLIPBOARD_MIME);
+        await page.keyboard.press(process.platform === "darwin" ? "Meta+V" : "Control+V");
+        await expect
+          .poll(
+            async () =>
+              await page.evaluate(
+                () =>
+                  (
+                    window as unknown as {
+                      __structuralClipboardPreparingPaste?: string;
+                    }
+                  ).__structuralClipboardPreparingPaste ?? null,
+              ),
+          )
+          .toBe(privateDescriptor);
+        expect(
+          await harness.application.evaluate(
+            ({ clipboard }, mime) => clipboard.availableFormats().includes(mime),
+            NODEX_STRUCTURAL_CLIPBOARD_MIME,
+          ),
+        ).toBe(true);
+        await page.evaluate(() => {
+          document
+            .querySelector<HTMLElement>("[data-structural-clipboard-preparing-target]")
+            ?.remove();
         });
         expect(
-          await invokeIpc(page, "clipboard:write-structural", {
+          await invokeIpc(page, "clipboard:structural-begin", {
+            writeClaim,
+            actionHint: "copy",
+            libraryId: "library:e2e",
+            storeEpoch: "epoch:e2e",
+          }),
+        ).toEqual({ ok: true });
+        expect(
+          await invokeIpc(page, "clipboard:structural-publish", {
             envelope: {
               version: 1,
               profileId: "profile:e2e",
@@ -3837,7 +3928,7 @@ test.describe("parallel functional Electron smoke", () => {
         );
         await expect(sourceImage.locator("img")).toHaveAttribute(
           "src",
-          /^data:image\/png;base64,/u,
+          /^(?:blob:|data:image\/png;base64,)/u,
           { timeout: 15_000 },
         );
         sourceFileUrl = requireString(
@@ -3896,7 +3987,7 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(promotedImage).toHaveAttribute("data-url", placedFileUrl);
       await expect(promotedImage.locator("img")).toHaveAttribute(
         "src",
-        /^data:image\/png;base64,/u,
+        /^(?:blob:|data:image\/png;base64,)/u,
         { timeout: 15_000 },
       );
       await promotedPanel.getByRole("button", { name: /\d+ more propert(?:y|ies)/u }).click();
@@ -3920,7 +4011,7 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(restoredImage).toHaveAttribute("data-url", placedFileUrl);
       await expect(restoredImage.locator("img")).toHaveAttribute(
         "src",
-        /^data:image\/png;base64,/u,
+        /^(?:blob:|data:image\/png;base64,)/u,
         { timeout: 15_000 },
       );
       const restoredSourceFiles = requireIpcValue<Record<string, unknown>>(
@@ -3964,7 +4055,7 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
-  test("cuts and pastes an image subtree across Pages with stable File identity @page-file-placement", async () => {
+  test("cuts and pastes an image subtree across Windows with stable File identity @page-file-placement", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-file-exclusive-move" });
     const workspace = harness.profile.initialProjectsDirectory;
@@ -4041,7 +4132,7 @@ test.describe("parallel functional Electron smoke", () => {
         );
         await expect(targetImage.locator("img")).toHaveAttribute(
           "src",
-          /^data:image\/png;base64,/u,
+          /^(?:blob:|data:image\/png;base64,)/u,
           { timeout: 15_000 },
         );
 
@@ -4069,7 +4160,7 @@ test.describe("parallel functional Electron smoke", () => {
         );
         await expect(sourceImage.locator("img")).toHaveAttribute(
           "src",
-          /^data:image\/png;base64,/u,
+          /^(?:blob:|data:image\/png;base64,)/u,
           { timeout: 15_000 },
         );
         const sourceFileUrl = requireString(
@@ -4088,18 +4179,51 @@ test.describe("parallel functional Electron smoke", () => {
           ),
           "Cut source image Block id",
         );
+        const targetWindowOpened = harness.application.waitForEvent("window");
+        expect(await invokeIpc(page, "window:new", {})).toBe(true);
+        const targetPage = await targetWindowOpened;
+        await targetPage.evaluate(() => window.api?.awaitInitialization?.());
+        await targetPage.getByRole("button", { name: "Open Page File move", exact: true }).click();
+        await targetPage.getByRole("tab", { name: "Project Home" }).waitFor();
+        const targetWindowColumn = targetPage.locator(
+          '[data-board-column-root][data-board-column-id="triage"]',
+        );
+        await expect(targetWindowColumn).toBeVisible({ timeout: 15_000 });
+        await openBoardPageFromCard({
+          card: targetWindowColumn.locator(`[data-board-uuid-v7="${target.pageId}"]`),
+          page: targetPage,
+          tabName: "Collision target Page",
+        });
+        const targetWindowPanel = targetPage.getByRole("tabpanel", {
+          name: /Collision target Page$/,
+        });
+        const targetWindowSurface = targetWindowPanel.locator(
+          '.nfm-editor .ProseMirror[contenteditable="true"]',
+        );
+        const targetWindowParent = targetWindowSurface
+          .locator(".bn-block[data-id]")
+          .filter({ hasText: "Target image owner" })
+          .first();
+        await expect(targetWindowParent).toBeVisible({ timeout: 15_000 });
+        const targetWindowExistingImage = targetWindowParent.locator(
+          '[data-content-type="image"] img',
+        );
+        await expect(targetWindowExistingImage).toHaveAttribute("src", /^blob:|^data:image\//u, {
+          timeout: 15_000,
+        });
+        const existingImageSrc = requireString(
+          await targetWindowExistingImage.getAttribute("src"),
+          "Existing target image source",
+        );
+        await targetWindowExistingImage.evaluate((image) => {
+          image.setAttribute("data-file-cache-marker", "stable");
+        });
+
         await sourceParent.locator(":scope > .bn-block-content").click();
         await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+x`);
-        await expect
-          .poll(
-            async () => await harness.application.evaluate(({ clipboard }) => clipboard.readHTML()),
-            { timeout: 15_000 },
-          )
-          .toContain('name="nodex-clipboard-envelope-v1"');
-        await page.getByRole("tab", { name: "Collision target Page" }).click();
-        await targetParent.locator(":scope > .bn-block-content").click();
-        await page.keyboard.press("End");
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
+        await targetWindowParent.locator(":scope > .bn-block-content").click();
+        await targetPage.keyboard.press("End");
+        await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
 
         await expect(sourceParent).toHaveCount(0, { timeout: 15_000 });
         await expect
@@ -4125,15 +4249,17 @@ test.describe("parallel functional Electron smoke", () => {
           ]),
         );
 
-        const movedImages = targetPanel.locator(
+        const movedImages = targetWindowPanel.locator(
           `[data-content-type="image"][data-url="${sourceFileUrl}"]`,
         );
         await expect(movedImages).toHaveCount(1);
         await expect(movedImages.locator("img")).toHaveAttribute(
           "src",
-          /^data:image\/png;base64,/u,
+          /^(?:blob:|data:image\/png;base64,)/u,
           { timeout: 15_000 },
         );
+        await expect(targetWindowExistingImage).toHaveAttribute("data-file-cache-marker", "stable");
+        await expect(targetWindowExistingImage).toHaveAttribute("src", existingImageSrc);
         const movedBlockId = requireString(
           await movedImages.evaluate((image) =>
             image.closest<HTMLElement>(".bn-block[data-id]")?.getAttribute("data-id"),
@@ -4141,22 +4267,22 @@ test.describe("parallel functional Electron smoke", () => {
           "Pasted source Block id",
         );
         expect(movedBlockId).toBe(sourceImageBlockId);
-        const moreTargetProperties = targetPanel.getByRole("button", {
+        const moreTargetProperties = targetWindowPanel.getByRole("button", {
           name: /\d+ more propert(?:y|ies)/u,
         });
         if (await moreTargetProperties.isVisible()) await moreTargetProperties.click();
         await expect(
-          targetPanel.getByRole("button", { name: "Open 2 Files shown in Page" }),
+          targetWindowPanel.getByRole("button", { name: "Open 2 Files shown in Page" }),
         ).toBeVisible();
-        await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
+        await expect(targetPage.getByText("Image unavailable", { exact: true })).toHaveCount(0);
 
-        const movedParent = targetSurface
+        const movedParent = targetWindowSurface
           .locator(".bn-block[data-id]")
           .filter({ hasText: "Source image owner" })
           .first();
         await movedParent.locator(":scope > .bn-block-content").click();
-        await page.keyboard.press("End");
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
+        await targetPage.keyboard.press("End");
+        await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
         await expect(movedImages).toHaveCount(2, { timeout: 15_000 });
         const pastedBlockIds = await movedImages.evaluateAll((images) =>
           images.map((image) => image.closest<HTMLElement>(".bn-block[data-id]")?.dataset.id ?? ""),
@@ -4180,9 +4306,9 @@ test.describe("parallel functional Electron smoke", () => {
           ]),
         );
 
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
+        await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
         await expect(movedImages).toHaveCount(1, { timeout: 15_000 });
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
+        await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+z`);
         await expect(movedImages).toHaveCount(0, { timeout: 15_000 });
         await page.getByRole("tab", { name: "Exclusive source Page" }).click();
         await expect(sourceParent).toHaveCount(1, { timeout: 15_000 });
@@ -4191,7 +4317,7 @@ test.describe("parallel functional Electron smoke", () => {
         );
         await expect(restoredImage.locator("img")).toHaveAttribute(
           "src",
-          /^data:image\/png;base64,/u,
+          /^(?:blob:|data:image\/png;base64,)/u,
           { timeout: 15_000 },
         );
         await expect

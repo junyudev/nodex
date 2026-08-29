@@ -100,21 +100,32 @@ are rejected.
 
 The closed row and an open Files surface refresh only when Core announces a new
 manifest revision or owner-local body-usage revision for that exact Page. One
-application-scoped cache listener invalidates matching retained queries even
-when their Page tabs are currently unmounted, so a later remount cannot present
-a pre-move Files inventory as fresh. Manifest and body-usage revisions are
-independent: File mutations advance only the manifest, while an owner-local
-placement-count change advances only body usage. Separately, Core compares the
-complete Page File reference multiset of every Page Document commit and emits an
-exact Document-scoped reference-change signal when it changes. Image and
-attachment reads observe that signal so a newly authorized foreign placement
-resolves immediately; it does not change File ownership, Files inventory, or a
-manifest/body-usage revision. Rename and replace also publish an exact
-current-content invalidation to every foreign placement Page without advancing
-that Page's Files manifest or body-usage revision. Ordinary text, Property,
-focus, and selection changes advance none of these authorities. Background
-refresh retains the last rendered manifest instead of replacing it with an
-empty or loading state. Automatic
+application-scoped inventory listener invalidates matching retained queries
+even when their Page tabs are currently unmounted, so a later remount cannot
+present a pre-move Files inventory as fresh. Manifest and body-usage revisions
+are independent: File mutations advance only the manifest, while an owner-local
+placement-count change advances only body usage.
+
+Placement reads use a separate exact-File coherence contract. Every File
+content or presentation mutation identifies the affected File IDs, and every
+Page Document commit reports the File IDs added to or removed from its canonical
+reference set. Changing placement count without changing set membership does
+not invalidate bytes. Ordinary text, Property, focus, selection, another File,
+or owner-local Files-row usage changes do not reload the current File.
+
+The renderer shares authorized File reads under the complete identity
+`(Store epoch, access context, containing Page, File)`. That cache deduplicates
+in-flight metadata and byte reads, preserves negative authorization results
+until an exact reference or authority change, bounds retained entries, and owns
+the lifetime of image object URLs. Replace uses stale-while-revalidate: the last
+authorized preview remains visible while the new version loads, then the target
+File's placements swap atomically and the retired object URL is released. Exact File
+invalidation notifies only placements of that identity; it never remounts every
+image or attachment in the Page. A Store-epoch or authorization-context change
+revokes the matching cache scope rather than reusing data under a new authority.
+
+Background inventory refresh retains the last rendered manifest instead of
+replacing it with an empty or loading state. Automatic
 Property visibility is stable for the mounted Page session: a new unplaced File
 may promote Files from the disclosure, while a body-placement-only change never
 reorders the Properties section. Once promoted, Files stays visible until the
@@ -137,6 +148,15 @@ single owner Page. A placement does not grant access to the owner Page, direct
 Files manifest, version history, rename, replace, delete, or restore authority.
 A Page Document cannot persist a reference to a deleted, missing, cross-Library,
 or otherwise unauthorized File.
+
+The body keeps ownership disclosure quiet and contextual. A File owned by the
+containing Page shows no redundant source label. For a foreign placement, the
+attachment popover and image File-details surface show `From <Page title>` with
+an open action only when the current access context can read the owner Page. If
+the owner Page is unavailable or not readable, they show `From another Page`
+without a raw Page ID or navigation action. The body itself receives no owner
+badge, and the foreign File never appears in the containing Page's Files
+inventory.
 
 Removing a placement leaves the File intact. Deleting a File that still has
 placements is refused; the user removes those placements explicitly before
@@ -264,6 +284,8 @@ removes bytes protected by a live prepared receipt or retained File version.
 
 The architecture decision is recorded in
 [ADR 0051](../adr/0051-page-owned-files-and-immutable-bytes.md) and
-[ADR 0052](../adr/0052-file-placement-is-independent-of-ownership.md).
+[ADR 0052](../adr/0052-file-placement-is-independent-of-ownership.md). Exact
+placement-read coherence and foreign-owner disclosure are recorded in
+[ADR 0053](../adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
 Attachment authoring details are owned by
 [NFM Editor Attachment Chip Behavior](nfm-editor-attachment-chip-behavior.md).

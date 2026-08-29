@@ -5,11 +5,11 @@ export const CORE_CLIENT_REQUIREMENTS = {
     "min": 12,
     "max": 12
   },
-  "event_version": 8,
+  "event_version": 9,
   "modules": [
     {
       "module": "library",
-      "contract_version": 40
+      "contract_version": 41
     },
     {
       "module": "database",
@@ -17,7 +17,7 @@ export const CORE_CLIENT_REQUIREMENTS = {
     },
     {
       "module": "owned_document",
-      "contract_version": 9
+      "contract_version": 10
     },
     {
       "module": "project_workspace",

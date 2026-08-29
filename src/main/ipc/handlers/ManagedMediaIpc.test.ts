@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
+import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./ManagedMediaIpc";
@@ -28,6 +29,7 @@ it.effect("owns managed asset, clipboard, and composer ingress with the Main Sco
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(ElectronClipboard, {} as ElectronClipboard["Service"]),
             mainConfigLayer(),
             Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
             Layer.succeed(WindowRuntime, {
@@ -41,7 +43,6 @@ it.effect("owns managed asset, clipboard, and composer ingress with the Main Sco
 
     assert.strictEqual(channels.size, 11);
     assert.isTrue(channels.has("asset:preview:read"));
-    assert.isTrue(channels.has("clipboard:write-structural"));
     assert.isTrue(channels.has("clipboard:read-paste"));
     assert.isTrue(channels.has("composer:pick-files"));
 

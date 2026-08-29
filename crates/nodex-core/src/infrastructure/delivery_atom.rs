@@ -91,9 +91,9 @@ pub(crate) fn payload_claims(
                 event
                     .page_ids
                     .iter()
-                    .chain(event.page_file_manifest_revisions.keys())
+                    .chain(event.page_file_manifest_invalidations.keys())
                     .chain(event.page_file_body_usage_revisions.keys())
-                    .chain(event.page_file_content_revisions.keys())
+                    .chain(event.page_file_content_invalidations.keys())
                     .cloned()
                     .map(|page_id| ResourceKey::Page { page_id }),
             );
@@ -242,9 +242,9 @@ fn compile_library(
     let page_ids = event
         .page_ids
         .iter()
-        .chain(event.page_file_manifest_revisions.keys())
+        .chain(event.page_file_manifest_invalidations.keys())
         .chain(event.page_file_body_usage_revisions.keys())
-        .chain(event.page_file_content_revisions.keys())
+        .chain(event.page_file_content_invalidations.keys())
         .collect::<BTreeSet<_>>();
     for page_id in page_ids {
         let page_ids = if event.page_ids.contains(page_id) {
@@ -252,20 +252,22 @@ fn compile_library(
         } else {
             Vec::new()
         };
-        let page_file_manifest_revisions = event
-            .page_file_manifest_revisions
+        let page_file_manifest_invalidations = event
+            .page_file_manifest_invalidations
             .get(page_id)
-            .map(|revision| BTreeMap::from([(page_id.clone(), *revision)]))
+            .cloned()
+            .map(|invalidation| BTreeMap::from([(page_id.clone(), invalidation)]))
             .unwrap_or_default();
         let page_file_body_usage_revisions = event
             .page_file_body_usage_revisions
             .get(page_id)
             .map(|revision| BTreeMap::from([(page_id.clone(), *revision)]))
             .unwrap_or_default();
-        let page_file_content_revisions = event
-            .page_file_content_revisions
+        let page_file_content_invalidations = event
+            .page_file_content_invalidations
             .get(page_id)
-            .map(|revision| BTreeMap::from([(page_id.clone(), *revision)]))
+            .cloned()
+            .map(|invalidation| BTreeMap::from([(page_id.clone(), invalidation)]))
             .unwrap_or_default();
         atoms.push(atom(
             DeliveryAtomKind::LibraryNavigationChanged,
@@ -283,9 +285,9 @@ fn compile_library(
                     database_ids: Vec::new(),
                     view_ids: Vec::new(),
                     parent_keys: Vec::new(),
-                    page_file_manifest_revisions,
+                    page_file_manifest_invalidations,
                     page_file_body_usage_revisions,
-                    page_file_content_revisions,
+                    page_file_content_invalidations,
                 },
             },
         ));
@@ -307,9 +309,9 @@ fn compile_library(
                     database_ids: vec![database_id.clone()],
                     view_ids: Vec::new(),
                     parent_keys: Vec::new(),
-                    page_file_manifest_revisions: BTreeMap::new(),
+                    page_file_manifest_invalidations: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
-                    page_file_content_revisions: BTreeMap::new(),
+                    page_file_content_invalidations: BTreeMap::new(),
                 },
             },
         ));
@@ -331,9 +333,9 @@ fn compile_library(
                     database_ids: Vec::new(),
                     view_ids: vec![view_id.clone()],
                     parent_keys: Vec::new(),
-                    page_file_manifest_revisions: BTreeMap::new(),
+                    page_file_manifest_invalidations: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
-                    page_file_content_revisions: BTreeMap::new(),
+                    page_file_content_invalidations: BTreeMap::new(),
                 },
             },
         ));
@@ -354,9 +356,9 @@ fn compile_library(
                     database_ids: Vec::new(),
                     view_ids: Vec::new(),
                     parent_keys: vec![parent_key.clone()],
-                    page_file_manifest_revisions: BTreeMap::new(),
+                    page_file_manifest_invalidations: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
-                    page_file_content_revisions: BTreeMap::new(),
+                    page_file_content_invalidations: BTreeMap::new(),
                 },
             },
         ));
@@ -373,9 +375,9 @@ fn compile_library(
                     database_ids: Vec::new(),
                     view_ids: Vec::new(),
                     parent_keys: Vec::new(),
-                    page_file_manifest_revisions: BTreeMap::new(),
+                    page_file_manifest_invalidations: BTreeMap::new(),
                     page_file_body_usage_revisions: BTreeMap::new(),
-                    page_file_content_revisions: BTreeMap::new(),
+                    page_file_content_invalidations: BTreeMap::new(),
                 },
             },
         ));
@@ -506,14 +508,14 @@ fn compile_owned_document(
         generation,
         head_seq,
         page_file_body_usage_changed,
-        page_file_references_changed,
+        page_file_reference_change,
     ) = match event {
         nodex_core_contracts::document::OwnedDocumentEvent::DocumentUpdated {
             document_id,
             generation,
             head_seq,
             page_file_body_usage_changed,
-            page_file_references_changed,
+            page_file_reference_change,
             ..
         } => (
             None,
@@ -521,7 +523,7 @@ fn compile_owned_document(
             generation,
             head_seq,
             page_file_body_usage_changed,
-            page_file_references_changed,
+            page_file_reference_change,
         ),
         nodex_core_contracts::document::OwnedDocumentEvent::DocumentResyncRequired {
             document_id,
@@ -530,7 +532,7 @@ fn compile_owned_document(
             update_id,
             update_hash,
             page_file_body_usage_changed,
-            page_file_references_changed,
+            page_file_reference_change,
         } => (
             Some(AuthorizedOwnedDocumentEvent::DocumentResyncRequired {
                 document_id: document_id.clone(),
@@ -543,7 +545,7 @@ fn compile_owned_document(
             generation,
             head_seq,
             page_file_body_usage_changed,
-            page_file_references_changed,
+            page_file_reference_change,
         ),
         nodex_core_contracts::document::OwnedDocumentEvent::CanvasUpdated {
             document_id,
@@ -565,7 +567,7 @@ fn compile_owned_document(
             generation,
             head_seq,
             false,
-            false,
+            None,
         ),
         nodex_core_contracts::document::OwnedDocumentEvent::CanvasGenerationChanged {
             document_id,
@@ -587,7 +589,7 @@ fn compile_owned_document(
             generation,
             head_seq,
             false,
-            false,
+            None,
         ),
         nodex_core_contracts::document::OwnedDocumentEvent::DocumentInvalidated {
             document_id,
@@ -595,7 +597,7 @@ fn compile_owned_document(
             head_seq,
             reason,
             page_file_body_usage_changed,
-            page_file_references_changed,
+            page_file_reference_change,
         } => (
             Some(AuthorizedOwnedDocumentEvent::DocumentInvalidated {
                 document_id: document_id.clone(),
@@ -605,7 +607,7 @@ fn compile_owned_document(
             generation,
             head_seq,
             page_file_body_usage_changed,
-            page_file_references_changed,
+            page_file_reference_change,
         ),
     };
     let mut atoms = if page_file_body_usage_changed {
@@ -614,11 +616,12 @@ fn compile_owned_document(
         Vec::new()
     };
     let mut events = Vec::new();
-    if page_file_references_changed {
+    if let Some(change) = page_file_reference_change {
         events.push(AuthorizedOwnedDocumentEvent::PageFileReferencesChanged {
             document_id: document_id.clone(),
             generation,
             head_seq,
+            change,
         });
     }
     if let Some(event) = event {
@@ -706,9 +709,9 @@ fn compile_page_file_body_usage(
             database_ids: Vec::new(),
             view_ids: Vec::new(),
             parent_keys: Vec::new(),
-            page_file_manifest_revisions: BTreeMap::new(),
+            page_file_manifest_invalidations: BTreeMap::new(),
             page_file_body_usage_revisions: BTreeMap::from([(page_id, revision)]),
-            page_file_content_revisions: BTreeMap::new(),
+            page_file_content_invalidations: BTreeMap::new(),
         },
     )
 }
@@ -909,11 +912,13 @@ mod tests {
     use nodex_core_contracts::database::{
         DatabaseEventKind, DatabasePersonalViewChange, DatabaseViewDisclosureTarget,
     };
+    use nodex_core_contracts::document::PageFileReferenceChange;
+    use nodex_core_contracts::library::LibraryPageFileInvalidation;
 
     use super::*;
 
     #[test]
-    fn page_file_manifest_revisions_are_redacted_to_each_page_atom() {
+    fn page_file_invalidations_are_redacted_to_each_page_atom() {
         let connection = Connection::open_in_memory().expect("in-memory compiler store");
         let atoms = compile(
             &connection,
@@ -925,14 +930,32 @@ mod tests {
                 database_ids: Vec::new(),
                 view_ids: Vec::new(),
                 parent_keys: Vec::new(),
-                page_file_manifest_revisions: BTreeMap::from([
-                    ("page:visible".to_owned(), 7),
-                    ("page:hidden".to_owned(), 3),
+                page_file_manifest_invalidations: BTreeMap::from([
+                    (
+                        "page:visible".to_owned(),
+                        LibraryPageFileInvalidation::Exact {
+                            revision: 7,
+                            file_ids: vec!["file:visible".to_owned()],
+                        },
+                    ),
+                    (
+                        "page:hidden".to_owned(),
+                        LibraryPageFileInvalidation::Reset { revision: 3 },
+                    ),
                 ]),
                 page_file_body_usage_revisions: BTreeMap::new(),
-                page_file_content_revisions: BTreeMap::from([
-                    ("page:visible".to_owned(), 11),
-                    ("page:hidden".to_owned(), 12),
+                page_file_content_invalidations: BTreeMap::from([
+                    (
+                        "page:visible".to_owned(),
+                        LibraryPageFileInvalidation::Exact {
+                            revision: 11,
+                            file_ids: vec!["file:visible".to_owned()],
+                        },
+                    ),
+                    (
+                        "page:hidden".to_owned(),
+                        LibraryPageFileInvalidation::Reset { revision: 12 },
+                    ),
                 ]),
             }),
         )
@@ -944,19 +967,16 @@ mod tests {
                 panic!("expected Library atom");
             };
             assert_eq!(event.page_ids.len(), 1);
-            assert_eq!(event.page_file_manifest_revisions.len(), 1);
-            assert_eq!(event.page_file_content_revisions.len(), 1);
-            assert_eq!(
-                event.page_file_manifest_revisions.get(&event.page_ids[0]),
-                Some(if event.page_ids[0] == "page:visible" {
-                    &7
-                } else {
-                    &3
-                }),
+            assert_eq!(event.page_file_manifest_invalidations.len(), 1);
+            assert_eq!(event.page_file_content_invalidations.len(), 1);
+            assert!(
+                event
+                    .page_file_manifest_invalidations
+                    .contains_key(&event.page_ids[0])
             );
             assert!(
                 event
-                    .page_file_content_revisions
+                    .page_file_content_invalidations
                     .contains_key(&event.page_ids[0])
             );
             assert_eq!(
@@ -998,7 +1018,10 @@ mod tests {
                     head_seq: 9,
                     update: vec![1],
                     page_file_body_usage_changed: true,
-                    page_file_references_changed: true,
+                    page_file_reference_change: Some(PageFileReferenceChange::Exact {
+                        added_file_ids: vec!["file:test".to_owned()],
+                        removed_file_ids: Vec::new(),
+                    }),
                 },
             ),
         )
@@ -1026,6 +1049,10 @@ mod tests {
                 document_id: "document:test".to_owned(),
                 generation: 2,
                 head_seq: 9,
+                change: PageFileReferenceChange::Exact {
+                    added_file_ids: vec!["file:test".to_owned()],
+                    removed_file_ids: Vec::new(),
+                },
             }
         );
         assert_eq!(

@@ -1,33 +1,25 @@
-import { createRequire } from "node:module";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ClipboardWriteImageResult } from "../shared/ipc-api";
 import { parseAssetSource } from "../shared/assets";
 import { resolveAssetPath } from "./local-store/assets";
-
-const require = createRequire(import.meta.url);
+import type { ElectronClipboardPort } from "./platform/electron/ElectronClipboard";
 
 interface NativeImageLike {
   isEmpty(): boolean;
 }
 
-interface ClipboardTarget {
-  writeImage: (image: NativeImageLike) => void;
-}
-
-interface NativeImageApi {
-  createFromBuffer: (buffer: Buffer) => NativeImageLike;
-  createFromDataURL: (dataUrl: string) => NativeImageLike;
-}
-
 interface ClipboardImageWriterDeps {
-  clipboardTarget?: ClipboardTarget;
   fetchImpl?: typeof fetch;
-  nativeImageApi?: NativeImageApi;
   readFile?: (filePath: string) => Promise<Buffer>;
   resolveAssetPath?: (fileName: string) => string;
 }
+
+type ClipboardImagePlatform = Pick<
+  ElectronClipboardPort,
+  "createImageFromBuffer" | "createImageFromDataUrl" | "writeImage"
+>;
 
 function fail(message: string): ClipboardWriteImageResult {
   return { ok: false, message };
@@ -67,10 +59,11 @@ function resolveLocalImagePath(
 
 async function createNativeImageFromSource(
   source: string,
+  platform: ClipboardImagePlatform,
   deps: Required<ClipboardImageWriterDeps>,
 ): Promise<NativeImageLike | null> {
   if (isDataImageUrl(source)) {
-    return deps.nativeImageApi.createFromDataURL(source);
+    return platform.createImageFromDataUrl(source);
   }
 
   if (isHttpLikeUrl(source)) {
@@ -85,7 +78,7 @@ async function createNativeImageFromSource(
     }
 
     const bytes = Buffer.from(await response.arrayBuffer());
-    return deps.nativeImageApi.createFromBuffer(bytes);
+    return platform.createImageFromBuffer(bytes);
   }
 
   const localPath = resolveLocalImagePath(source, deps.resolveAssetPath);
@@ -99,18 +92,14 @@ async function createNativeImageFromSource(
   } catch {
     throw new Error("Could not load the image file.");
   }
-  return deps.nativeImageApi.createFromBuffer(bytes);
+  return platform.createImageFromBuffer(bytes);
 }
 
 function resolveClipboardImageWriterDeps(
   deps: ClipboardImageWriterDeps = {},
 ): Required<ClipboardImageWriterDeps> {
-  const electron = require("electron") as typeof import("electron");
-
   return {
-    clipboardTarget: deps.clipboardTarget ?? (electron.clipboard as unknown as ClipboardTarget),
     fetchImpl: deps.fetchImpl ?? fetch,
-    nativeImageApi: deps.nativeImageApi ?? electron.nativeImage,
     readFile: deps.readFile ?? fs.readFile,
     resolveAssetPath: deps.resolveAssetPath ?? resolveAssetPath,
   };
@@ -118,6 +107,7 @@ function resolveClipboardImageWriterDeps(
 
 export async function writeImageToClipboard(
   source: string,
+  platform: ClipboardImagePlatform,
   deps: ClipboardImageWriterDeps = {},
 ): Promise<ClipboardWriteImageResult> {
   const normalizedSource = source.trim();
@@ -128,7 +118,7 @@ export async function writeImageToClipboard(
   const resolvedDeps = resolveClipboardImageWriterDeps(deps);
 
   try {
-    const image = await createNativeImageFromSource(normalizedSource, resolvedDeps);
+    const image = await createNativeImageFromSource(normalizedSource, platform, resolvedDeps);
     if (!image) {
       return fail("Could not copy image.");
     }
@@ -136,7 +126,7 @@ export async function writeImageToClipboard(
       return fail("Could not decode this image format for clipboard copy.");
     }
 
-    resolvedDeps.clipboardTarget.writeImage(image);
+    platform.writeImage(image as Parameters<ClipboardImagePlatform["writeImage"]>[0]);
     return { ok: true };
   } catch (error) {
     if (error instanceof Error && error.message.length > 0) {

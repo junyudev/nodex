@@ -118,6 +118,11 @@ import type { PageSearchInput, PageSearchSnapshot } from "../../shared/types";
 import type {
   ClaimedClipboardPresentationWriteInput,
   ClaimedClipboardPresentationWriteResult,
+  StructuralClipboardAwaitInput,
+  StructuralClipboardBeginInput,
+  StructuralClipboardLifecycleResult,
+  StructuralClipboardResolution,
+  StructuralClipboardSettleInput,
   StructuralClipboardWriteInput,
   StructuralClipboardWriteResult,
 } from "../../shared/clipboard-paste";
@@ -264,10 +269,28 @@ export function deleteDictationRecording(id: string): Promise<void> {
   return invoke("codex:dictation:history:delete", id);
 }
 
-export function writeStructuralClipboard(
+export function beginStructuralClipboard(
+  input: StructuralClipboardBeginInput,
+): Promise<StructuralClipboardLifecycleResult> {
+  return invoke("clipboard:structural-begin", input);
+}
+
+export function publishStructuralClipboard(
   input: StructuralClipboardWriteInput,
 ): Promise<StructuralClipboardWriteResult> {
-  return invoke("clipboard:write-structural", input);
+  return invoke("clipboard:structural-publish", input);
+}
+
+export function settleStructuralClipboard(
+  input: StructuralClipboardSettleInput,
+): Promise<StructuralClipboardLifecycleResult> {
+  return invoke("clipboard:structural-settle", input);
+}
+
+export function awaitStructuralClipboard(
+  input: StructuralClipboardAwaitInput,
+): Promise<StructuralClipboardResolution> {
+  return invoke("clipboard:structural-await", input);
 }
 
 export function writeClaimedClipboardPresentation(

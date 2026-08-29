@@ -307,13 +307,20 @@ fn move_files_with_placement_expectation(
         if updated != 1 {
             return Err(conflict("Page File ownership changed"));
         }
-        if file.previous_logical_path != file.logical_path {
-            effects.content_revision_page_ids.extend(placement_page_ids(
-                connection,
-                library_id,
-                &file.file_id,
-            )?);
-        }
+        // Rehome changes the File read authority even when its logical path is
+        // preserved. Both the previous owner and every final placement must
+        // invalidate cached content under the ownership transition's commit.
+        effects
+            .content_revision_page_ids
+            .insert(file.source_page_id.clone());
+        effects
+            .content_revision_page_ids
+            .insert(file.target_page_id.clone());
+        effects.content_revision_page_ids.extend(placement_page_ids(
+            connection,
+            library_id,
+            &file.file_id,
+        )?);
         effects.moves.push(LibraryPageFileOwnershipMove {
             file_id: file.file_id,
             previous_owner_page_id: file.source_page_id,

@@ -25,6 +25,7 @@ import * as GitApplicationIpc from "../ipc/handlers/GitApplicationIpc";
 import * as GitWorkerIpc from "../ipc/handlers/GitWorkerIpc";
 import * as RemoteHostedPipIpc from "../ipc/handlers/RemoteHostedPipIpc";
 import * as ManagedMediaIpc from "../ipc/handlers/ManagedMediaIpc";
+import * as StructuralClipboardIpc from "../ipc/handlers/StructuralClipboardIpc";
 import * as NativeShellIpc from "../ipc/handlers/NativeShellIpc";
 import * as PageSearchIpc from "../ipc/handlers/PageSearchIpc";
 import * as PageFilesIpc from "../ipc/handlers/PageFilesIpc";
@@ -73,6 +74,7 @@ export const live = Layer.mergeAll(
   DatabaseProjectionIpc.live,
   GitApplicationIpc.live,
   ManagedMediaIpc.live,
+  StructuralClipboardIpc.live,
   NativeShellIpc.live,
   PageSearchIpc.live({}),
   PageFilesIpc.live,

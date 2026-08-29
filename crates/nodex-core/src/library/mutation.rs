@@ -6,9 +6,10 @@ use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
 use nodex_core_contracts::library::{
     LibraryAccess, LibraryBlockPropertyMutationReceipt, LibraryBlockTransferDocumentCommit,
     LibraryBlockTransferResult, LibraryCanvasMutationResult, LibraryCommitValue, LibraryIntent,
-    LibraryPageCopyResult, LibraryPageCreateResult, LibraryPageInsertion,
-    LibraryPageLifecycleMutationReceipt, LibraryPageMentionDestination, LibraryPageMentionHost,
-    LibraryProjectAccessChange, LibraryReceipt, LibraryResourceTarget, LibraryWriteParent,
+    LibraryPageCopyResult, LibraryPageCreateResult, LibraryPageFileInvalidation,
+    LibraryPageFileOwnershipMove, LibraryPageInsertion, LibraryPageLifecycleMutationReceipt,
+    LibraryPageMentionDestination, LibraryPageMentionHost, LibraryProjectAccessChange,
+    LibraryReceipt, LibraryResourceTarget, LibraryWriteParent,
 };
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, ModuleApplyRequest, ModuleMutationReceipt, ModuleName,
@@ -59,6 +60,8 @@ use super::LibraryApplyOutcome;
 const MODULE_NAME: &str = "library";
 const MAX_ID_LENGTH: usize = 512;
 const MAX_PAGE_TITLE_LENGTH: usize = 10_000;
+const MAX_EXACT_PAGE_FILE_INVALIDATION_IDS: usize = 4_096;
+const MAX_EXACT_PAGE_FILE_INVALIDATION_BYTES: usize = 128 * 1024;
 
 pub(super) struct MutationEffects {
     pub(super) project_id: String,
@@ -3501,10 +3504,6 @@ fn build_mutation_result(
                 .map(|page_id| (page_id.to_owned(), *revision))
         })
         .collect::<BTreeMap<_, _>>();
-    payload_object.insert(
-        "pageFileManifestRevisions".to_owned(),
-        json!(page_file_manifest_revisions),
-    );
     let page_file_content_revisions = effects
         .committed_revisions
         .iter()
@@ -3514,9 +3513,21 @@ fn build_mutation_result(
                 .map(|page_id| (page_id.to_owned(), *revision))
         })
         .collect::<BTreeMap<_, _>>();
+    let (page_file_manifest_invalidations, page_file_content_invalidations) =
+        derive_page_file_event_invalidations(
+            connection,
+            &context.library_id.0,
+            &effects,
+            &page_file_manifest_revisions,
+            &page_file_content_revisions,
+        )?;
     payload_object.insert(
-        "pageFileContentRevisions".to_owned(),
-        json!(page_file_content_revisions),
+        "pageFileManifestInvalidations".to_owned(),
+        json!(page_file_manifest_invalidations),
+    );
+    payload_object.insert(
+        "pageFileContentInvalidations".to_owned(),
+        json!(page_file_content_invalidations),
     );
     let data_source_ids = effects
         .affected_parent_keys
@@ -3642,6 +3653,222 @@ fn build_mutation_result(
         ),
         event_sequence,
     ))
+}
+
+fn derive_page_file_event_invalidations(
+    connection: &Connection,
+    library_id: &str,
+    effects: &MutationEffects,
+    manifest_revisions: &BTreeMap<String, i64>,
+    content_revisions: &BTreeMap<String, i64>,
+) -> Result<
+    (
+        BTreeMap<String, LibraryPageFileInvalidation>,
+        BTreeMap<String, LibraryPageFileInvalidation>,
+    ),
+    StoreError,
+> {
+    let mut manifest_file_ids = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut placement_filtered_content_candidate_file_ids = BTreeSet::new();
+    let mut content_file_ids = BTreeMap::<String, BTreeSet<String>>::new();
+
+    if let Some(receipt) = &effects.page_files {
+        manifest_file_ids
+            .entry(receipt.page_id.clone())
+            .or_default()
+            .extend(
+                receipt
+                    .created_file_ids
+                    .iter()
+                    .chain(&receipt.updated_file_ids)
+                    .chain(&receipt.deleted_file_ids)
+                    .cloned(),
+            );
+        placement_filtered_content_candidate_file_ids
+            .extend(receipt.updated_file_ids.iter().cloned());
+    }
+
+    for movement in page_file_ownership_moves(effects) {
+        manifest_file_ids
+            .entry(movement.previous_owner_page_id.clone())
+            .or_default()
+            .insert(movement.file_id.clone());
+        manifest_file_ids
+            .entry(movement.owner_page_id.clone())
+            .or_default()
+            .insert(movement.file_id.clone());
+        // Ownership evidence is authoritative for both sides of a rehome.
+        // The previous owner has no post-state placement left to discover,
+        // but its Page-scoped File read cache must still be invalidated.
+        content_file_ids
+            .entry(movement.previous_owner_page_id.clone())
+            .or_default()
+            .insert(movement.file_id.clone());
+        content_file_ids
+            .entry(movement.owner_page_id.clone())
+            .or_default()
+            .insert(movement.file_id.clone());
+        placement_filtered_content_candidate_file_ids.insert(movement.file_id.clone());
+    }
+
+    // Page copy deliberately exposes copied Block identities rather than its
+    // private File identity remap. The copied Page starts with an empty File
+    // manifest, so its complete live inventory is the exact changed set.
+    if effects.page_copy.is_some() {
+        for page_id in manifest_revisions.keys() {
+            if manifest_file_ids.contains_key(page_id) {
+                continue;
+            }
+            manifest_file_ids.insert(
+                page_id.clone(),
+                live_page_file_ids(connection, library_id, page_id)?,
+            );
+        }
+    }
+
+    let manifest_invalidations = build_page_file_invalidations(
+        manifest_revisions,
+        &manifest_file_ids,
+        "Page File manifest invalidation",
+    )?;
+
+    for page_id in content_revisions.keys() {
+        let placed_file_ids = placed_candidate_file_ids(
+            connection,
+            library_id,
+            page_id,
+            &placement_filtered_content_candidate_file_ids,
+        )?;
+        content_file_ids
+            .entry(page_id.clone())
+            .or_default()
+            .extend(placed_file_ids);
+    }
+    let content_invalidations = build_page_file_invalidations(
+        content_revisions,
+        &content_file_ids,
+        "Page File content invalidation",
+    )?;
+
+    Ok((manifest_invalidations, content_invalidations))
+}
+
+fn page_file_ownership_moves(
+    effects: &MutationEffects,
+) -> impl Iterator<Item = &LibraryPageFileOwnershipMove> {
+    effects
+        .block_transfer
+        .iter()
+        .flat_map(|result| &result.file_ownership_moves)
+        .chain(
+            effects
+                .block_transfer_undo
+                .iter()
+                .flat_map(|result| &result.file_ownership_moves),
+        )
+        .chain(
+            effects
+                .structural_edit
+                .iter()
+                .flat_map(|result| &result.file_ownership_moves),
+        )
+        .chain(
+            effects
+                .agent_move_pages
+                .iter()
+                .flat_map(|result| &result.file_ownership_moves),
+        )
+}
+
+fn live_page_file_ids(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+) -> Result<BTreeSet<String>, StoreError> {
+    connection
+        .prepare(
+            "SELECT file_id FROM page_files \
+             WHERE owner_page_id = ?1 AND library_id = ?2 AND state = 'live' \
+             ORDER BY file_id",
+        )?
+        .query_map(params![page_id, library_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()
+        .map_err(Into::into)
+}
+
+fn placed_candidate_file_ids(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+    candidate_file_ids: &BTreeSet<String>,
+) -> Result<BTreeSet<String>, StoreError> {
+    if candidate_file_ids.is_empty() {
+        return Ok(BTreeSet::new());
+    }
+    let file_ids = serde_json::to_string(candidate_file_ids)
+        .map_err(|_| internal("Page File invalidation candidates could not be encoded"))?;
+    connection
+        .prepare(
+            "SELECT DISTINCT reference.page_file_id \
+             FROM block_asset_refs reference \
+             WHERE reference.library_id = ?1 AND reference.owner_block_id = ?2 \
+               AND reference.page_file_id IN (SELECT value FROM json_each(?3)) \
+             ORDER BY reference.page_file_id",
+        )?
+        .query_map(params![library_id, page_id, file_ids], |row| {
+            row.get::<_, String>(0)
+        })?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()
+        .map_err(Into::into)
+}
+
+fn build_page_file_invalidations(
+    revisions: &BTreeMap<String, i64>,
+    file_ids_by_page: &BTreeMap<String, BTreeSet<String>>,
+    label: &str,
+) -> Result<BTreeMap<String, LibraryPageFileInvalidation>, StoreError> {
+    let mut exact_identity_count = 0_usize;
+    let mut exact_byte_length = 0_usize;
+    revisions
+        .iter()
+        .map(|(page_id, revision)| {
+            let Some(file_ids) = file_ids_by_page
+                .get(page_id)
+                .filter(|file_ids| !file_ids.is_empty())
+            else {
+                return Ok((
+                    page_id.clone(),
+                    LibraryPageFileInvalidation::Reset {
+                        revision: *revision,
+                    },
+                ));
+            };
+            let file_ids = file_ids.iter().cloned().collect::<Vec<_>>();
+            let identity_count = file_ids.len();
+            let exact = LibraryPageFileInvalidation::Exact {
+                revision: *revision,
+                file_ids,
+            };
+            let encoded_length = serde_json::to_vec(&exact)
+                .map_err(|_| internal(&format!("{label} could not be encoded")))?
+                .len();
+            let next_identity_count = exact_identity_count.saturating_add(identity_count);
+            let next_byte_length = exact_byte_length.saturating_add(encoded_length);
+            if next_identity_count > MAX_EXACT_PAGE_FILE_INVALIDATION_IDS
+                || next_byte_length > MAX_EXACT_PAGE_FILE_INVALIDATION_BYTES
+            {
+                return Ok((
+                    page_id.clone(),
+                    LibraryPageFileInvalidation::Reset {
+                        revision: *revision,
+                    },
+                ));
+            }
+            exact_identity_count = next_identity_count;
+            exact_byte_length = next_byte_length;
+            Ok((page_id.clone(), exact))
+        })
+        .collect()
 }
 
 fn assemble_mutation_result(
@@ -4222,6 +4449,58 @@ mod tests {
         ] {
             assert!(!requires_library_projection_reset(operation), "{operation}");
         }
+    }
+
+    #[test]
+    fn page_file_invalidations_preserve_sorted_exact_identities() {
+        let invalidations = build_page_file_invalidations(
+            &BTreeMap::from([("page:test".to_owned(), 7)]),
+            &BTreeMap::from([(
+                "page:test".to_owned(),
+                BTreeSet::from(["file:b".to_owned(), "file:a".to_owned()]),
+            )]),
+            "test invalidation",
+        )
+        .expect("build exact invalidation");
+
+        assert_eq!(
+            invalidations.get("page:test"),
+            Some(&LibraryPageFileInvalidation::Exact {
+                revision: 7,
+                file_ids: vec!["file:a".to_owned(), "file:b".to_owned()],
+            })
+        );
+    }
+
+    #[test]
+    fn page_file_invalidations_reset_only_the_page_that_exhausts_the_budget() {
+        let oversized = (0..=MAX_EXACT_PAGE_FILE_INVALIDATION_IDS)
+            .map(|index| format!("file:{index:04}"))
+            .collect();
+        let invalidations = build_page_file_invalidations(
+            &BTreeMap::from([("page:a".to_owned(), 3), ("page:b".to_owned(), 4)]),
+            &BTreeMap::from([
+                ("page:a".to_owned(), oversized),
+                (
+                    "page:b".to_owned(),
+                    BTreeSet::from(["file:small".to_owned()]),
+                ),
+            ]),
+            "test invalidation",
+        )
+        .expect("build bounded invalidations");
+
+        assert_eq!(
+            invalidations.get("page:a"),
+            Some(&LibraryPageFileInvalidation::Reset { revision: 3 })
+        );
+        assert_eq!(
+            invalidations.get("page:b"),
+            Some(&LibraryPageFileInvalidation::Exact {
+                revision: 4,
+                file_ids: vec!["file:small".to_owned()],
+            })
+        );
     }
 
     fn context() -> BoundModuleContext {

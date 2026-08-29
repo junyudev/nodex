@@ -1,4 +1,6 @@
-use nodex_core_contracts::document::{DocumentInvalidationReason, OwnedDocumentEvent};
+use nodex_core_contracts::document::{
+    DocumentInvalidationReason, OwnedDocumentEvent, PageFileReferenceChange,
+};
 use nodex_core_contracts::{
     CORE_EVENT_VERSION, CommittedCoreModuleEvent, CoreModuleEventPayload, ProjectionImpact,
     StoreEpoch,
@@ -53,6 +55,8 @@ struct DocumentEventMetadata {
     #[serde(default)]
     page_file_body_usage_changed: bool,
     #[serde(default)]
+    page_file_reference_change: Option<PageFileReferenceChange>,
+    #[serde(default)]
     page_file_references_changed: bool,
 }
 
@@ -76,6 +80,19 @@ pub(crate) fn reconstruct_document_event(
         return Err(corrupt("Owned Document event metadata is inconsistent"));
     }
     let local_commit_id = metadata.local_commit_id.clone();
+    if metadata.page_file_reference_change.is_some() && metadata.page_file_references_changed {
+        return Err(corrupt(
+            "Owned Document event contains duplicate Page File reference evidence",
+        ));
+    }
+    let page_file_reference_change = metadata.page_file_reference_change.clone().or_else(|| {
+        metadata
+            .page_file_references_changed
+            .then_some(PageFileReferenceChange::Reset)
+    });
+    if let Some(change) = &page_file_reference_change {
+        validate_page_file_reference_change(change)?;
+    }
     let payload = match metadata.kind.as_str() {
         "document_initialized" | "document_updated" => {
             let update_id = metadata
@@ -110,7 +127,7 @@ pub(crate) fn reconstruct_document_event(
                         head_seq: metadata.head_seq,
                         update,
                         page_file_body_usage_changed: metadata.page_file_body_usage_changed,
-                        page_file_references_changed: metadata.page_file_references_changed,
+                        page_file_reference_change: page_file_reference_change.clone(),
                     }
                 }
                 None => OwnedDocumentEvent::DocumentResyncRequired {
@@ -124,7 +141,7 @@ pub(crate) fn reconstruct_document_event(
                         .filter(|hash| is_sha256(hash))
                         .ok_or_else(|| corrupt("Yjs event update hash is invalid"))?,
                     page_file_body_usage_changed: metadata.page_file_body_usage_changed,
-                    page_file_references_changed: metadata.page_file_references_changed,
+                    page_file_reference_change: page_file_reference_change.clone(),
                 },
             }
         }
@@ -231,7 +248,7 @@ pub(crate) fn reconstruct_document_event(
             head_seq: metadata.head_seq,
             reason: DocumentInvalidationReason::Restored,
             page_file_body_usage_changed: metadata.page_file_body_usage_changed,
-            page_file_references_changed: metadata.page_file_references_changed,
+            page_file_reference_change: page_file_reference_change.clone(),
         },
         "document_invalidated" => {
             let reason = match metadata.reason.as_deref() {
@@ -246,7 +263,7 @@ pub(crate) fn reconstruct_document_event(
                 head_seq: metadata.head_seq,
                 reason,
                 page_file_body_usage_changed: metadata.page_file_body_usage_changed,
-                page_file_references_changed: metadata.page_file_references_changed,
+                page_file_reference_change,
             }
         }
         _ => return Err(corrupt("Owned Document event kind is unsupported")),
@@ -268,6 +285,42 @@ pub(crate) fn reconstruct_document_event(
         projection_impact,
         payload: CoreModuleEventPayload::OwnedDocument(payload),
     }))
+}
+
+fn validate_page_file_reference_change(change: &PageFileReferenceChange) -> Result<(), StoreError> {
+    let PageFileReferenceChange::Exact {
+        added_file_ids,
+        removed_file_ids,
+    } = change
+    else {
+        return Ok(());
+    };
+    if added_file_ids.is_empty() && removed_file_ids.is_empty() {
+        return Err(corrupt("Exact Page File reference change is empty"));
+    }
+    validate_ordered_identities(added_file_ids, "added Page File")?;
+    validate_ordered_identities(removed_file_ids, "removed Page File")?;
+    if added_file_ids
+        .iter()
+        .any(|file_id| removed_file_ids.binary_search(file_id).is_ok())
+    {
+        return Err(corrupt(
+            "Page File reference change adds and removes the same identity",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_ordered_identities(values: &[String], label: &str) -> Result<(), StoreError> {
+    if values.len() > 4_096
+        || values
+            .iter()
+            .any(|value| value.is_empty() || value.len() > 512 || value.trim() != value)
+        || values.windows(2).any(|pair| pair[0] >= pair[1])
+    {
+        return Err(corrupt(&format!("{label} identities are invalid")));
+    }
+    Ok(())
 }
 
 pub(crate) fn validate_change_log_row(
@@ -304,4 +357,108 @@ fn is_sha256(value: &str) -> bool {
 
 fn corrupt(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::StoreCorrupt, message, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event_row(reference_evidence: &str) -> ChangeLogRow {
+        ChangeLogRow {
+            sequence: 1,
+            project_id: "project:test".to_owned(),
+            store_epoch: "epoch:test".to_owned(),
+            kind: "owned_document.document_updated".to_owned(),
+            operation_id: Some("operation:test".to_owned()),
+            payload_json: format!(
+                r#"{{
+                  "module":"owned_document",
+                  "kind":"document_updated",
+                  "documentId":"document:test",
+                  "generation":1,
+                  "headSeq":1,
+                  "updateId":"update:test",
+                  "updateHash":"{}",
+                  {reference_evidence}
+                }}"#,
+                "a".repeat(64),
+            ),
+            projection_impact_json: None,
+            committed_at: "2026-08-29T00:00:00.000Z".to_owned(),
+        }
+    }
+
+    fn connection_without_retained_updates() -> Connection {
+        let connection = Connection::open_in_memory().expect("event store");
+        connection
+            .execute_batch(
+                "CREATE TABLE document_updates( \
+                   document_id TEXT NOT NULL, generation INTEGER NOT NULL, seq INTEGER NOT NULL, \
+                   update_id TEXT NOT NULL, update_blob BLOB NOT NULL, update_hash TEXT NOT NULL \
+                 );",
+            )
+            .expect("document update table");
+        connection
+    }
+
+    #[test]
+    fn exact_reference_evidence_survives_resync_reconstruction() {
+        let event = reconstruct_document_event(
+            &connection_without_retained_updates(),
+            &event_row(
+                r#""pageFileReferenceChange":{
+                  "kind":"exact",
+                  "added_file_ids":["file:added"],
+                  "removed_file_ids":["file:removed"]
+                }"#,
+            ),
+        )
+        .expect("reconstruct event")
+        .expect("document event");
+
+        assert!(matches!(
+            event.payload,
+            CoreModuleEventPayload::OwnedDocument(
+                OwnedDocumentEvent::DocumentResyncRequired {
+                    page_file_reference_change: Some(PageFileReferenceChange::Exact {
+                        added_file_ids,
+                        removed_file_ids,
+                    }),
+                    ..
+                }
+            ) if added_file_ids == ["file:added"] && removed_file_ids == ["file:removed"]
+        ));
+    }
+
+    #[test]
+    fn legacy_reference_boolean_replays_as_reset_evidence() {
+        let event = reconstruct_document_event(
+            &connection_without_retained_updates(),
+            &event_row(r#""pageFileReferencesChanged":true"#),
+        )
+        .expect("reconstruct legacy event")
+        .expect("document event");
+
+        assert!(matches!(
+            event.payload,
+            CoreModuleEventPayload::OwnedDocument(OwnedDocumentEvent::DocumentResyncRequired {
+                page_file_reference_change: Some(PageFileReferenceChange::Reset),
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn duplicate_new_and_legacy_reference_evidence_is_rejected() {
+        let error = reconstruct_document_event(
+            &connection_without_retained_updates(),
+            &event_row(
+                r#""pageFileReferenceChange":{"kind":"reset"},
+                   "pageFileReferencesChanged":true"#,
+            ),
+        )
+        .expect_err("duplicate evidence must be rejected");
+
+        assert_eq!(error.code, StoreErrorCode::StoreCorrupt);
+    }
 }

@@ -3,32 +3,39 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
-import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
-import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
-import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { live } from "./ApplicationSyncIpc";
 
-it.effect("owns synchronous preload ingress with the Main Scope", () =>
+import { testLayer as mainConfigLayer } from "../../app/MainConfig";
+import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
+import { StructuralClipboardRuntime } from "../../host-runtime/StructuralClipboardRuntime";
+import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import { live } from "./StructuralClipboardIpc";
+
+it.effect("owns exactly the structural clipboard lifecycle ingress", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
-    const ipc = ElectronSyncIpc.of({
-      on: (channel: string) =>
+    const ipc = ElectronIpc.of({
+      handle: (channel: string) =>
         Effect.acquireRelease(
           Effect.sync(() => {
             channels.add(channel);
           }),
           () => Effect.sync(() => channels.delete(channel)),
         ),
-    } as ElectronSyncIpc["Service"]);
+      on: () => Effect.die("unused"),
+    } as unknown as ElectronIpc["Service"]);
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
       live.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(ElectronSyncIpc, ipc),
-            Layer.succeed(ElectronClipboard, {} as ElectronClipboard["Service"]),
+            Layer.succeed(ElectronIpc, ipc),
             mainConfigLayer(),
+            Layer.succeed(RendererClientRuntime, {} as unknown as RendererClientRuntime["Service"]),
+            Layer.succeed(
+              StructuralClipboardRuntime,
+              {} as unknown as StructuralClipboardRuntime["Service"],
+            ),
             Layer.succeed(WindowRuntime, {
               has: () => true,
             } as unknown as WindowRuntime["Service"]),
@@ -39,11 +46,12 @@ it.effect("owns synchronous preload ingress with the Main Scope", () =>
     );
 
     assert.deepEqual([...channels].sort(), [
-      "asset:resolve-path-sync",
-      "blob:resolve-path-sync",
-      "clipboard:inspect-paste-sync",
-      "file-path:inspect-sync",
+      "clipboard:structural-await",
+      "clipboard:structural-begin",
+      "clipboard:structural-publish",
+      "clipboard:structural-settle",
     ]);
+
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(channels.size, 0);
   }),

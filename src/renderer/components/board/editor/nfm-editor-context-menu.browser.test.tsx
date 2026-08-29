@@ -206,7 +206,7 @@ describe("nfm editor context menu", () => {
     }
   });
 
-  test("allows the caller to block direct fallback paste before reading the clipboard", async () => {
+  test("freezes and releases the paste target around the asynchronous clipboard read", async () => {
     const calls: string[] = [];
     const editor = {
       pasteText: (text: string) => {
@@ -225,10 +225,13 @@ describe("nfm editor context menu", () => {
         calls.push("exec");
         return true;
       },
-      () => true,
+      () => {
+        calls.push("prepare");
+        return () => calls.push("release");
+      },
     );
 
-    expect(handled).toBe(true);
-    expect(calls.join(",")).toBe("focus");
+    expect(handled).toBe(false);
+    expect(calls.join(",")).toBe("focus,prepare,release");
   });
 });

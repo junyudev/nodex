@@ -2,7 +2,11 @@ import { getBlockInfo, getNodeById, type BlockNoteEditor } from "@blocknote/core
 import { TextSelection } from "@tiptap/pm/state";
 
 import type { ContentAccessContext } from "../../../../shared/content-access-context";
-import type { NodexClipboardEnvelopeV1 } from "../../../../shared/clipboard-paste";
+import type {
+  NodexClipboardEnvelopeV1,
+  NodexStructuralClipboardDescriptorV1,
+  StructuralClipboardResolution,
+} from "../../../../shared/clipboard-paste";
 import type {
   LibraryModuleApplyResult,
   LibraryPageFileOwnershipMove,
@@ -15,14 +19,19 @@ import type {
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { hasTypedOwnerBlock, type TypedOwnerBlockLike } from "../../../lib/typed-owner-blocks";
 import type { BlockDocumentStructuralMutationParticipant } from "../../../lib/block-document-mutation-registry";
-import { applyLibraryModule, writeStructuralClipboard } from "../../../lib/api";
+import {
+  applyLibraryModule,
+  awaitStructuralClipboard,
+  beginStructuralClipboard,
+  publishStructuralClipboard,
+  settleStructuralClipboard,
+} from "../../../lib/api";
 import { NfmHistoryLane, resolveNfmUndoManager } from "./nfm-editor-history";
 import { planBackspaceAcrossAtomicBlocks } from "./atomic-block-backspace";
 import { getNfmBlockSelectionIds } from "./nfm-block-selection";
-import {
-  nfmStructuralClipboardCoordinator,
-  type NfmStructuralClipboardCoordinator,
-} from "./nfm-structural-clipboard-coordinator";
+import { setNfmClipboardPastePending } from "./nfm-clipboard-paste-pending-extension";
+
+export const NFM_CLIPBOARD_PASTE_PENDING_DELAY_MS = 150;
 
 export interface NfmStructuralClipboardPresentation {
   readonly html: string;
@@ -58,6 +67,15 @@ type StructuralEditor = BlockNoteEditor & {
   getSelection: () => { readonly blocks?: readonly StructuralEditorBlock[] } | undefined;
   getTextCursorPosition: () => StructuralCursorPosition;
   getParentBlock: (blockId: string) => StructuralEditorBlock | undefined;
+  insertBlocks: (
+    blocks: readonly unknown[],
+    referenceBlockId: string,
+    placement: "before" | "after",
+  ) => readonly StructuralEditorBlock[];
+  replaceBlocks: (
+    blockIds: readonly string[],
+    blocks: readonly unknown[],
+  ) => readonly StructuralEditorBlock[];
 };
 
 type NfmStructuralPasteIntent =
@@ -67,6 +85,7 @@ type NfmStructuralPasteIntent =
     }
   | {
       readonly kind: "insert";
+      readonly anchorBlockId: string;
       readonly parentBlockId: string | null;
       readonly beforeBlockId: string | null;
     };
@@ -75,8 +94,10 @@ export interface NfmStructuralEditingSessionOptions {
   readonly editor: BlockNoteEditor<any, any, any>;
   readonly historyLane?: NfmHistoryLane | null;
   readonly apply?: typeof applyLibraryModule;
-  readonly writeClipboard?: typeof writeStructuralClipboard;
-  readonly clipboardCoordinator?: NfmStructuralClipboardCoordinator;
+  readonly beginClipboard?: typeof beginStructuralClipboard;
+  readonly publishClipboard?: typeof publishStructuralClipboard;
+  readonly settleClipboard?: typeof settleStructuralClipboard;
+  readonly awaitClipboard?: typeof awaitStructuralClipboard;
   readonly runtime?: NfmStructuralEditingRuntime;
 }
 
@@ -92,6 +113,7 @@ export interface NfmStructuralEditingRuntime {
   readonly getContainer: () => HTMLElement | null;
   readonly resolveClipboardText?: (portableText: string) => Promise<string>;
   readonly onError?: (message: string) => void;
+  readonly onClipboardFallback?: (message: string) => void;
   readonly onFileOwnershipMoves?: (moves: readonly LibraryPageFileOwnershipMove[]) => void;
 }
 
@@ -179,6 +201,64 @@ const textReplacementBlock = (text: string): LibraryStructuralReplacementBlock =
   children: [],
 });
 
+const isPageFileLocator = (value: unknown): value is string =>
+  typeof value === "string" && value.startsWith("nodex://files/");
+
+const fallbackTextContent = (text: string): readonly unknown[] =>
+  text.length > 0 ? [{ type: "text", text, styles: {} }] : [];
+
+const sanitizePortableInlineContent = (content: unknown): unknown => {
+  if (Array.isArray(content)) return content.map(sanitizePortableInlineContent);
+  if (!content || typeof content !== "object") return content;
+  const record = content as Readonly<Record<string, unknown>>;
+  const props =
+    record.props && typeof record.props === "object"
+      ? (record.props as Readonly<Record<string, unknown>>)
+      : null;
+  if (record.type === "attachment" && props && isPageFileLocator(props.source)) {
+    const name = typeof props.name === "string" && props.name.trim() ? props.name.trim() : "File";
+    return { type: "text", text: name, styles: {} };
+  }
+  return Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, sanitizePortableInlineContent(value)]),
+  );
+};
+
+/** Removes private File locators before a portable fallback crosses Page authority. */
+const sanitizePortableFallbackBlock = (block: StructuralEditorBlock): StructuralEditorBlock => {
+  const props = block.props ?? {};
+  const imageLocator = isPageFileLocator(props.url) || isPageFileLocator(props.source);
+  if (block.type === "image" && imageLocator) {
+    const label =
+      (typeof props.name === "string" && props.name.trim()) ||
+      (typeof props.caption === "string" && props.caption.trim()) ||
+      (typeof props.alt === "string" && props.alt.trim()) ||
+      "Image";
+    return {
+      id: block.id,
+      type: "paragraph",
+      props: {},
+      content: fallbackTextContent(label),
+      children: (block.children ?? []).map(sanitizePortableFallbackBlock),
+    };
+  }
+  return {
+    ...block,
+    props: portableJson(props) as Readonly<Record<string, unknown>>,
+    content: sanitizePortableInlineContent(portableJson(block.content ?? [])),
+    children: (block.children ?? []).map(sanitizePortableFallbackBlock),
+  };
+};
+
+const withoutPortableBlockIdentity = (
+  block: StructuralEditorBlock,
+): Readonly<Record<string, unknown>> => ({
+  type: block.type,
+  props: block.props ?? {},
+  content: block.content ?? [],
+  children: (block.children ?? []).map(withoutPortableBlockIdentity),
+});
+
 /**
  * One retained editor surface's structural input owner. React provides stable
  * runtime dependencies; this session owns command ordering, history and focus.
@@ -186,9 +266,11 @@ const textReplacementBlock = (text: string): LibraryStructuralReplacementBlock =
 export class NfmStructuralEditingSession {
   private readonly editor: StructuralEditor;
   private readonly apply: typeof applyLibraryModule;
-  private readonly writeClipboard: typeof writeStructuralClipboard;
+  private readonly beginClipboard: typeof beginStructuralClipboard;
+  private readonly publishClipboard: typeof publishStructuralClipboard;
+  private readonly settleClipboard: typeof settleStructuralClipboard;
+  private readonly awaitClipboard: typeof awaitStructuralClipboard;
   private readonly history: NfmHistoryLane;
-  private readonly clipboardCoordinator: NfmStructuralClipboardCoordinator;
   private readonly ownsHistory: boolean;
   private readonly detachHistory: () => void;
   private disposed = false;
@@ -196,13 +278,19 @@ export class NfmStructuralEditingSession {
   private historyReplayFocusChanged = false;
   private operationFocusChanged = false;
   private backwardMergePending = false;
+  private preparedPasteIntent: {
+    readonly token: symbol;
+    readonly intent: NfmStructuralPasteIntent;
+  } | null = null;
   private runtime: NfmStructuralEditingRuntime | null;
 
   constructor(options: NfmStructuralEditingSessionOptions) {
     this.editor = options.editor as StructuralEditor;
     this.apply = options.apply ?? applyLibraryModule;
-    this.writeClipboard = options.writeClipboard ?? writeStructuralClipboard;
-    this.clipboardCoordinator = options.clipboardCoordinator ?? nfmStructuralClipboardCoordinator;
+    this.beginClipboard = options.beginClipboard ?? beginStructuralClipboard;
+    this.publishClipboard = options.publishClipboard ?? publishStructuralClipboard;
+    this.settleClipboard = options.settleClipboard ?? settleStructuralClipboard;
+    this.awaitClipboard = options.awaitClipboard ?? awaitStructuralClipboard;
     this.runtime = options.runtime ?? null;
     const undoManager = resolveNfmUndoManager(options.editor);
     this.history = options.historyLane ?? new NfmHistoryLane({ undoManager });
@@ -391,8 +479,9 @@ export class NfmStructuralEditingSession {
     action: "copy" | "cut",
     rootBlockIds: readonly string[],
     presentation: NfmStructuralClipboardPresentation,
-  ): string | null {
-    return this.captureClipboard(action, rootBlockIds, presentation);
+    writeClaim: string,
+  ): boolean {
+    return this.captureClipboard(action, rootBlockIds, presentation, writeClaim);
   }
 
   handlePaste(envelope: NodexClipboardEnvelopeV1): boolean {
@@ -406,21 +495,55 @@ export class NfmStructuralEditingSession {
     return this.start(async () => await this.pasteEnvelope(envelope, intent));
   }
 
-  handlePendingPaste(pendingEnvelope: Promise<NodexClipboardEnvelopeV1 | null>): boolean {
+  handleStructuralClaimPaste(
+    descriptor: NodexStructuralClipboardDescriptorV1,
+    portableBlocks: readonly StructuralEditorBlock[],
+  ): boolean {
     if (this.disposed) return false;
-    const intent = this.capturePasteIntent();
+    const intent = this.consumePreparedPasteIntent() ?? this.capturePasteIntent();
     if (!intent) return false;
+    const frozenPortableBlocks = portableBlocks.map(sanitizePortableFallbackBlock);
     return this.start(async () => {
-      const envelope = await pendingEnvelope;
-      if (!envelope) throw new Error("The structural clipboard could not be prepared.");
-      if (this.boundRuntime.libraryId && envelope.libraryId !== this.boundRuntime.libraryId) {
-        throw new Error("Structural clipboard content belongs to another Library.");
+      const releasePending = this.schedulePendingPasteIndicator(intent);
+      try {
+        const resolution: StructuralClipboardResolution =
+          descriptor.phase === "ready"
+            ? { kind: "ready", envelope: descriptor.envelope, disposition: "structural" }
+            : await this.awaitClipboard({ writeClaim: descriptor.writeClaim });
+        if (resolution.kind === "portable_fallback") {
+          await this.pastePortableBlocks(frozenPortableBlocks, intent);
+          this.boundRuntime.onClipboardFallback?.(
+            descriptor.actionHint === "cut"
+              ? "Pasted a copy because the move could not be completed."
+              : "Pasted portable content because structural clipboard data was unavailable.",
+          );
+          return;
+        }
+        if (!this.envelopeMatchesRuntime(resolution.envelope)) {
+          await this.pastePortableBlocks(frozenPortableBlocks, intent);
+          return;
+        }
+        await this.pasteEnvelope(resolution.envelope, intent);
+        if (resolution.disposition === "copy_fallback") {
+          this.boundRuntime.onClipboardFallback?.(
+            "Pasted a copy because the move could not be completed.",
+          );
+        }
+      } finally {
+        releasePending();
       }
-      if (envelope.storeEpoch !== this.boundRuntime.source.storeEpoch) {
-        throw new Error("Structural clipboard content belongs to another Store generation.");
-      }
-      await this.pasteEnvelope(envelope, intent);
     });
+  }
+
+  /** Freezes a context-menu target before its asynchronous native clipboard read. */
+  prepareNextStructuralPaste(): () => void {
+    const intent = this.capturePasteIntent();
+    if (!intent) return () => undefined;
+    const token = Symbol("structural-paste-intent");
+    this.preparedPasteIntent = { token, intent };
+    return () => {
+      if (this.preparedPasteIntent?.token === token) this.preparedPasteIntent = null;
+    };
   }
 
   handleBlockPaste(blocks: readonly StructuralEditorBlock[]): boolean {
@@ -460,6 +583,7 @@ export class NfmStructuralEditingSession {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.preparedPasteIntent = null;
     this.detachHistory();
     if (this.ownsHistory) this.history.dispose();
   }
@@ -468,22 +592,26 @@ export class NfmStructuralEditingSession {
     actionHint: "copy" | "cut",
     rootBlockIds: readonly string[],
     presentation: NfmStructuralClipboardPresentation,
-  ): string | null {
-    if (this.disposed) return null;
+    writeClaim: string,
+  ): boolean {
+    if (this.disposed) return false;
     const roots = rootBlockIds
       .map((blockId) => this.editor.getBlock(blockId) as StructuralEditorBlock | undefined)
       .filter((block): block is StructuralEditorBlock => Boolean(block));
-    if (roots.length === 0 || roots.length !== rootBlockIds.length) return null;
-    this.clipboardCoordinator.supersedePending();
-    const writeClaim = createUuidV7();
-    const pendingCapture = this.clipboardCoordinator.beginCapture({
+    if (roots.length === 0 || roots.length !== rootBlockIds.length) return false;
+    const begin = this.beginClipboard({
+      writeClaim,
+      actionHint,
       libraryId: this.boundRuntime.libraryId,
       storeEpoch: this.boundRuntime.source.storeEpoch,
-      writeClaim,
-      presentation,
     });
     const started = this.start(async () => {
-      let envelope: NodexClipboardEnvelopeV1 | null = null;
+      const begun = await begin;
+      if (!begun.ok) {
+        throw new Error("The structural clipboard session could not be started.");
+      }
+
+      let published = false;
       try {
         const selection = await this.prepareSelection(roots);
         const capturedResult = await this.apply(this.boundRuntime.accessContext, {
@@ -499,7 +627,7 @@ export class NfmStructuralEditingSession {
         if (!clipboard || !capturedResult.ok) {
           throw new Error("Core omitted the structural clipboard capability.");
         }
-        envelope = {
+        const envelope: NodexClipboardEnvelopeV1 = {
           version: 1,
           profileId: capturedResult.value.profileId,
           libraryId: capturedResult.value.libraryId,
@@ -512,7 +640,7 @@ export class NfmStructuralEditingSession {
         const text = this.boundRuntime.resolveClipboardText
           ? await this.boundRuntime.resolveClipboardText(presentation.text)
           : presentation.text;
-        const written = await this.writeClipboard({
+        const written = await this.publishClipboard({
           envelope,
           writeClaim,
           html: presentation.html,
@@ -520,40 +648,63 @@ export class NfmStructuralEditingSession {
         });
         if (!written.ok) {
           if (written.failure === "superseded") return;
-          envelope = null;
           throw new Error(
             written.failure === "readback_mismatch"
               ? "The system clipboard could not verify the copied structure."
               : "The system clipboard could not be written.",
           );
         }
+        published = true;
         if (actionHint === "copy") return;
 
-        const deleteSelection = await this.prepareSelection(roots);
-        const deleted = applyResult(
-          await this.apply(this.boundRuntime.accessContext, {
-            operationId: createUuidV7(),
-            storeEpoch: this.boundRuntime.source.storeEpoch,
-            operation: {
-              kind: "apply_structural_edit",
-              command: {
-                kind: "delete_selection",
-                selection: deleteSelection,
-                reason: { kind: "cut", bundle: clipboard },
-                direction: "backward",
+        try {
+          const deleteSelection = await this.prepareSelection(roots);
+          const deleted = applyResult(
+            await this.apply(this.boundRuntime.accessContext, {
+              operationId: createUuidV7(),
+              storeEpoch: this.boundRuntime.source.storeEpoch,
+              operation: {
+                kind: "apply_structural_edit",
+                command: {
+                  kind: "delete_selection",
+                  selection: deleteSelection,
+                  reason: { kind: "cut", bundle: clipboard },
+                  direction: "backward",
+                },
               },
-            },
-          }),
-        );
-        this.recordStructuralResult(deleted);
-        await this.restoreSelection(deleted);
-      } finally {
-        pendingCapture.complete(envelope);
+            }),
+          );
+          this.recordStructuralResult(deleted);
+          await this.restoreSelection(deleted);
+          await this.settleClipboard({ writeClaim, outcome: "cut_committed" });
+        } catch (error) {
+          await this.settleClipboard({ writeClaim, outcome: "source_preserved" });
+          throw error;
+        }
+      } catch (error) {
+        if (!published) {
+          await this.settleClipboard({
+            writeClaim,
+            outcome: "failed",
+            reason: "capture_failed",
+          });
+        }
+        throw error;
       }
     });
-    if (started) return writeClaim;
-    pendingCapture.complete(null);
-    return null;
+    if (!started) {
+      void begin
+        .then((result) => {
+          if (!result.ok) return;
+          return this.settleClipboard({
+            writeClaim,
+            outcome: "failed",
+            reason: "capture_failed",
+          });
+        })
+        .catch(() => undefined);
+    }
+    return started;
   }
 
   private async reverseStructural(token: LibraryStructuralHistoryToken) {
@@ -792,6 +943,58 @@ export class NfmStructuralEditingSession {
     await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
   }
 
+  private envelopeMatchesRuntime(envelope: NodexClipboardEnvelopeV1): boolean {
+    return (
+      (!this.boundRuntime.libraryId || envelope.libraryId === this.boundRuntime.libraryId) &&
+      envelope.storeEpoch === this.boundRuntime.source.storeEpoch
+    );
+  }
+
+  private async pastePortableBlocks(
+    blocks: readonly StructuralEditorBlock[],
+    intent: NfmStructuralPasteIntent,
+  ): Promise<void> {
+    if (blocks.length === 0) {
+      throw new Error("The clipboard no longer contains a portable representation.");
+    }
+    const portableBlocks = blocks.map(withoutPortableBlockIdentity);
+    if (intent.kind === "replace") {
+      if (intent.rootBlockIds.some((blockId) => !this.editor.getBlock(blockId))) {
+        throw new Error("The paste target changed before the clipboard was ready.");
+      }
+      this.editor.replaceBlocks(intent.rootBlockIds, portableBlocks);
+      return;
+    }
+    if (intent.beforeBlockId && this.editor.getBlock(intent.beforeBlockId)) {
+      this.editor.insertBlocks(portableBlocks, intent.beforeBlockId, "before");
+      return;
+    }
+    if (this.editor.getBlock(intent.anchorBlockId)) {
+      this.editor.insertBlocks(portableBlocks, intent.anchorBlockId, "after");
+      return;
+    }
+    throw new Error("The paste target changed before the clipboard was ready.");
+  }
+
+  private schedulePendingPasteIndicator(intent: NfmStructuralPasteIntent): () => void {
+    const blockId =
+      intent.kind === "replace"
+        ? intent.rootBlockIds[0]
+        : (intent.beforeBlockId ?? intent.anchorBlockId);
+    if (!blockId || typeof this.editor.transact !== "function") return () => undefined;
+    let visible = false;
+    const timer = globalThis.setTimeout(() => {
+      if (this.disposed || !this.editor.getBlock(blockId)) return;
+      visible = true;
+      setNfmClipboardPastePending(this.editor, blockId, true);
+    }, NFM_CLIPBOARD_PASTE_PENDING_DELAY_MS);
+    return () => {
+      globalThis.clearTimeout(timer);
+      if (!visible) return;
+      setNfmClipboardPastePending(this.editor, blockId, false);
+    };
+  }
+
   private async prepareSelection(roots: readonly StructuralEditorBlock[]) {
     const head = await this.boundRuntime.participant.prepareAndFence();
     this.assertSourceHead(head);
@@ -833,9 +1036,16 @@ export class NfmStructuralEditingSession {
     const parent = this.editor.getParentBlock(anchor.id);
     return {
       kind: "insert",
+      anchorBlockId: anchor.id,
       parentBlockId: parent?.id ?? null,
       beforeBlockId: cursor.nextBlock?.id ?? null,
     };
+  }
+
+  private consumePreparedPasteIntent(): NfmStructuralPasteIntent | null {
+    const prepared = this.preparedPasteIntent;
+    this.preparedPasteIntent = null;
+    return prepared?.intent ?? null;
   }
 
   private replaceRoots(

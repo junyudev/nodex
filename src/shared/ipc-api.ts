@@ -529,6 +529,11 @@ import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import type {
   ClaimedClipboardPresentationWriteInput,
   ClaimedClipboardPresentationWriteResult,
+  StructuralClipboardAwaitInput,
+  StructuralClipboardBeginInput,
+  StructuralClipboardLifecycleResult,
+  StructuralClipboardResolution,
+  StructuralClipboardSettleInput,
   StructuralClipboardWriteInput,
   StructuralClipboardWriteResult,
 } from "./clipboard-paste";
@@ -1225,9 +1230,21 @@ export interface IpcApi {
     args: [input: { source: string }];
     result: ClipboardWriteImageResult;
   };
-  "clipboard:write-structural": {
+  "clipboard:structural-begin": {
+    args: [input: StructuralClipboardBeginInput];
+    result: StructuralClipboardLifecycleResult;
+  };
+  "clipboard:structural-publish": {
     args: [input: StructuralClipboardWriteInput];
     result: StructuralClipboardWriteResult;
+  };
+  "clipboard:structural-settle": {
+    args: [input: StructuralClipboardSettleInput];
+    result: StructuralClipboardLifecycleResult;
+  };
+  "clipboard:structural-await": {
+    args: [input: StructuralClipboardAwaitInput];
+    result: StructuralClipboardResolution;
   };
   "clipboard:write-claimed-presentation": {
     args: [input: ClaimedClipboardPresentationWriteInput];

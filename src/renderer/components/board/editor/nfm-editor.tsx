@@ -37,7 +37,9 @@ import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { applyLibraryModule, readLibraryModule } from "@/lib/api";
 import { resolveNfmLinkAction } from "@/lib/nfm-link-actions";
 import {
+  libraryContentAccess,
   projectIdFromContentAccessContext,
+  projectContentAccess,
   type ContentCanvasNavigationTarget,
   type ContentAccessContext,
   type ContentPageNavigationTarget,
@@ -208,7 +210,11 @@ import {
   prepareNfmEditorStructuralMutation,
   type NfmEditorStructuralMutationRuntime,
 } from "./nfm-editor-relocation";
-import { createPageFilePlacementRuntime, PageFileRuntimeProvider } from "./page-file-runtime";
+import {
+  createPageFilePlacementRuntime,
+  createRendererPageFileReadCache,
+  PageFileRuntimeProvider,
+} from "./page-file-runtime";
 import { subscribePageFileReadAuthority } from "@/lib/page-file-read-authority";
 import { moveNfmBlocks } from "@/lib/nfm-block-move-runtime";
 import { summarizePageFileOwnershipMoveCollisions } from "@/lib/page-file-ownership-move-feedback";
@@ -218,7 +224,6 @@ import {
   resolveTypedOwnerDocumentChanges,
 } from "@/lib/typed-owner-blocks";
 import { NfmStructuralEditingController } from "./nfm-structural-editing-extension";
-import { nfmStructuralClipboardCoordinator } from "./nfm-structural-clipboard-coordinator";
 import { applyLocalNfmTurnInto, type NfmTurnBlocksIntoInput } from "@/lib/nfm-turn-into-targets";
 import {
   copiedSelectionHasFileReferences,
@@ -475,7 +480,6 @@ function NfmEditorInstance({
   const [replaceQuery, setReplaceQuery] = useState("");
   const [searchMatchCount, setSearchMatchCount] = useState(0);
   const [searchActiveIndex, setSearchActiveIndex] = useState(-1);
-  const [pageFileReadAuthorityEpoch, setPageFileReadAuthorityEpoch] = useState(0);
   const [pasteResourceDialog, setPasteResourceDialog] = useState<PasteResourceDialogState | null>(
     null,
   );
@@ -545,30 +549,44 @@ function NfmEditorInstance({
     };
   }, [executionProjectId, projectName]);
 
-  useEffect(() => {
-    const pageId = sourcePageContext?.pageId;
-    setPageFileReadAuthorityEpoch(0);
-    if (!pageId) return;
-    return subscribePageFileReadAuthority(pageId, source.documentId, () => {
-      setPageFileReadAuthorityEpoch((epoch) => epoch + 1);
-    });
-  }, [source.documentId, sourcePageContext?.pageId]);
-
   const sourcePageId = sourcePageContext?.pageId;
+  // Keep equivalent authority inputs referentially stable. Recreating this object on every
+  // document commit would release live object URLs and remount otherwise unchanged media.
+  const pageFileContentAccessContext = useMemo(
+    () => (executionProjectId ? projectContentAccess(executionProjectId) : libraryContentAccess),
+    [executionProjectId],
+  );
+  // One editor instance owns one isolated cache; the Provider releases every acquired scope.
+  const [pageFileReadCache] = useState(createRendererPageFileReadCache);
   const pageFileRuntime = useMemo(
     () =>
       sourcePageId
         ? createPageFilePlacementRuntime(
             {
-              contentAccessContext,
+              contentAccessContext: pageFileContentAccessContext,
+              ...(surfaceMutationBarrier?.libraryId
+                ? { libraryId: surfaceMutationBarrier.libraryId }
+                : {}),
               pageId: sourcePageId,
               storeEpoch: source.storeEpoch,
             },
-            pageFileReadAuthorityEpoch,
+            pageFileReadCache,
           )
         : null,
-    [contentAccessContext, pageFileReadAuthorityEpoch, source.storeEpoch, sourcePageId],
+    [
+      pageFileReadCache,
+      pageFileContentAccessContext,
+      source.storeEpoch,
+      sourcePageId,
+      surfaceMutationBarrier?.libraryId,
+    ],
   );
+  useEffect(() => {
+    if (!sourcePageId || !pageFileRuntime) return;
+    return subscribePageFileReadAuthority(sourcePageId, source.documentId, (invalidation) => {
+      pageFileRuntime.invalidate(invalidation);
+    });
+  }, [pageFileRuntime, source.documentId, sourcePageId]);
   const resolveLocalClipboardFileReference = useCallback(
     async (fileReference: string): Promise<string | null> => {
       if (!parsePageFileSource(fileReference)) {
@@ -680,35 +698,14 @@ function NfmEditorInstance({
       ) ?? new NfmStructuralEditingController(),
     [editorSession],
   );
-  const handlePendingStructuralPaste = useCallback(
-    (eventWriteClaim: string | null = null) => {
-      const pending = nfmStructuralClipboardCoordinator.readPending();
-      if (!pending) return false;
-      const nativeWriteClaim =
-        eventWriteClaim ?? window.api?.inspectPasteClipboard?.().structuralWriteClaim ?? null;
-      if (nativeWriteClaim !== pending.writeClaim) {
-        nfmStructuralClipboardCoordinator.supersedePending();
-        return false;
-      }
-      if (
-        pending.libraryId !== surfaceMutationBarrier?.libraryId ||
-        pending.storeEpoch !== source.storeEpoch
-      ) {
-        toast.danger("Wait for structural copy to finish before pasting into another Library.");
-        return true;
-      }
-      const session = structuralEditingController.current;
-      if (session) return session.handlePendingPaste(pending.envelope);
-      toast.danger("This structural content is still preparing. Try pasting again.");
-      return true;
-    },
-    [source.storeEpoch, structuralEditingController, surfaceMutationBarrier?.libraryId],
-  );
-
   const pasteHandler = useMemo(
     () =>
       createNfmPasteHandler({
-        onPendingStructuralPaste: handlePendingStructuralPaste,
+        onStructuralClaimPaste: ({ descriptor, portableBlocks }) =>
+          structuralEditingController.current?.handleStructuralClaimPaste(
+            descriptor,
+            portableBlocks,
+          ) ?? false,
         onStructuralPaste: (envelope) => {
           const session = structuralEditingController.current;
           if (session) return session.handlePaste(envelope);
@@ -728,23 +725,19 @@ function NfmEditorInstance({
         readNativeStructuralEnvelope: () =>
           window.api?.inspectPasteClipboard?.().structuralEnvelope,
       }),
-    [
-      handlePendingStructuralPaste,
-      source.storeEpoch,
-      structuralEditingController,
-      surfaceMutationBarrier?.libraryId,
-    ],
+    [source.storeEpoch, structuralEditingController, surfaceMutationBarrier?.libraryId],
   );
   const extensions = useMemo(
     () =>
       createNfmEditorExtensions({
         resolveCopiedFileReferences: (payload) => resolveCopiedFileReferencesRef.current(payload),
-        onStructuralClipboard: (action, { rootBlockIds, presentation }) =>
+        onStructuralClipboard: (action, { rootBlockIds, presentation, writeClaim }) =>
           structuralEditingController.current?.handleClipboard(
             action,
             rootBlockIds,
             presentation,
-          ) ?? null,
+            writeClaim,
+          ) ?? false,
         onStructuralClipboardUnavailable: () =>
           toast.danger("Structural editing is initializing. Try the action again."),
       }),
@@ -1660,6 +1653,7 @@ function NfmEditorInstance({
       getContainer: () => containerRef.current,
       resolveClipboardText,
       onError: (message) => toast.danger(message),
+      onClipboardFallback: (message) => toast.info(message),
       onFileOwnershipMoves: reportPageFileOwnershipMoveCollisions,
     });
     return () => structuralEditingController.deactivate(structuralEditingSession);
@@ -3000,7 +2994,13 @@ function NfmEditorInstance({
         <BlockReferenceRuntimeProvider value={blockReferenceRuntimeValue}>
           <ThreadSectionRuntimeProvider value={threadSectionRuntimeValue}>
             <ThreadMentionRuntimeProvider value={threadMentionRuntimeValue}>
-              <NfmEditorContextMenu editor={editor} onBeforePaste={handlePendingStructuralPaste}>
+              <NfmEditorContextMenu
+                editor={editor}
+                onPreparePaste={() =>
+                  structuralEditingController.current?.prepareNextStructuralPaste() ??
+                  (() => undefined)
+                }
+              >
                 <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
                   <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
                     <BlockNoteView

@@ -24,6 +24,11 @@ import {
 } from "../shared/workbench-commands";
 import {
   CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL,
+  type StructuralClipboardAwaitInput,
+  type StructuralClipboardBeginInput,
+  type StructuralClipboardLifecycleResult,
+  type StructuralClipboardResolution,
+  type StructuralClipboardSettleInput,
   type StructuralClipboardWriteInput,
   type StructuralClipboardWriteResult,
 } from "../shared/clipboard-paste";
@@ -216,11 +221,26 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.sendSync(CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL) as ClipboardPasteInspectionResult,
   readPasteClipboard: () =>
     ipcRenderer.invoke("clipboard:read-paste") as Promise<ClipboardPastePayload>,
-  writeStructuralClipboard: (input: StructuralClipboardWriteInput) =>
+  beginStructuralClipboard: (input: StructuralClipboardBeginInput) =>
     ipcRenderer.invoke(
-      "clipboard:write-structural",
+      "clipboard:structural-begin",
+      input,
+    ) as Promise<StructuralClipboardLifecycleResult>,
+  publishStructuralClipboard: (input: StructuralClipboardWriteInput) =>
+    ipcRenderer.invoke(
+      "clipboard:structural-publish",
       input,
     ) as Promise<StructuralClipboardWriteResult>,
+  settleStructuralClipboard: (input: StructuralClipboardSettleInput) =>
+    ipcRenderer.invoke(
+      "clipboard:structural-settle",
+      input,
+    ) as Promise<StructuralClipboardLifecycleResult>,
+  awaitStructuralClipboard: (input: StructuralClipboardAwaitInput) =>
+    ipcRenderer.invoke(
+      "clipboard:structural-await",
+      input,
+    ) as Promise<StructuralClipboardResolution>,
   getPathInfoForFile: (file: File) => {
     try {
       const absolutePath = webUtils.getPathForFile(file);

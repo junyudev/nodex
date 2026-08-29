@@ -705,6 +705,7 @@ export interface components {
             readonly reference: components["schemas"]["DocumentEffectRef"];
         };
         readonly AuthorizedOwnedDocumentEvent: {
+            readonly change: components["schemas"]["PageFileReferenceChange"];
             readonly document_id: string;
             /** Format: int64 */
             readonly generation: number;
@@ -3211,6 +3212,7 @@ export interface components {
         readonly LibraryAgentMovePagesResult: {
             readonly affected_database_ids: readonly string[];
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
+            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly pages: readonly components["schemas"]["LibraryAgentMovedPage"][];
         };
         readonly LibraryAgentPageCopyPreparation: {
@@ -3749,11 +3751,11 @@ export interface components {
             readonly page_file_body_usage_revisions: {
                 readonly [key: string]: number;
             };
-            readonly page_file_content_revisions: {
-                readonly [key: string]: number;
+            readonly page_file_content_invalidations: {
+                readonly [key: string]: components["schemas"]["LibraryPageFileInvalidation"];
             };
-            readonly page_file_manifest_revisions: {
-                readonly [key: string]: number;
+            readonly page_file_manifest_invalidations: {
+                readonly [key: string]: components["schemas"]["LibraryPageFileInvalidation"];
             };
             readonly page_ids: readonly string[];
             readonly parent_keys: readonly string[];
@@ -4101,6 +4103,18 @@ export interface components {
         readonly LibraryPageFileChangeKind: "create" | "replace" | "rename" | "delete" | "restore" | "clone" | "rehome";
         /** @enum {string} */
         readonly LibraryPageFileCollisionPolicy: "reject" | "suffix";
+        readonly LibraryPageFileInvalidation: {
+            readonly file_ids: readonly string[];
+            /** @enum {string} */
+            readonly kind: "exact";
+            /** Format: int64 */
+            readonly revision: number;
+        } | {
+            /** @enum {string} */
+            readonly kind: "reset";
+            /** Format: int64 */
+            readonly revision: number;
+        };
         readonly LibraryPageFileManifest: {
             /** Format: int64 */
             readonly body_usage_revision: number;
@@ -6769,7 +6783,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "document_updated";
             readonly page_file_body_usage_changed: boolean;
-            readonly page_file_references_changed: boolean;
+            readonly page_file_reference_change?: null | components["schemas"]["PageFileReferenceChange"];
             readonly update: readonly number[];
         } | {
             readonly document_id: string;
@@ -6780,7 +6794,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "document_resync_required";
             readonly page_file_body_usage_changed: boolean;
-            readonly page_file_references_changed: boolean;
+            readonly page_file_reference_change?: null | components["schemas"]["PageFileReferenceChange"];
             readonly update_hash: string;
             readonly update_id: string;
         } | {
@@ -6817,7 +6831,7 @@ export interface components {
             /** @enum {string} */
             readonly kind: "document_invalidated";
             readonly page_file_body_usage_changed: boolean;
-            readonly page_file_references_changed: boolean;
+            readonly page_file_reference_change?: null | components["schemas"]["PageFileReferenceChange"];
             readonly reason: components["schemas"]["DocumentInvalidationReason"];
         };
         /** @enum {string} */
@@ -6841,6 +6855,15 @@ export interface components {
             /** Format: int64 */
             readonly head_seq: number;
             readonly page_id: string;
+        };
+        readonly PageFileReferenceChange: {
+            readonly added_file_ids: readonly string[];
+            /** @enum {string} */
+            readonly kind: "exact";
+            readonly removed_file_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "reset";
         };
         readonly PageMetaProjectionV2: {
             readonly id: string;

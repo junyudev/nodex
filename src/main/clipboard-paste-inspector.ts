@@ -1,14 +1,18 @@
 import * as fs from "node:fs";
-import { createRequire } from "node:module";
 import * as path from "node:path";
 
 import { parseLocalFileLinkHref } from "../shared/file-link-openers";
-import { inspectNodexClipboardHtml } from "../shared/clipboard-paste";
+import {
+  decodeNodexStructuralClipboardDescriptor,
+  inspectNodexClipboardHtml,
+  NODEX_STRUCTURAL_CLIPBOARD_MIME,
+} from "../shared/clipboard-paste";
 import type {
   ClipboardPastePayload,
   ClipboardPasteInspectionItem,
   ClipboardPasteInspectionResult,
 } from "../shared/types";
+import type { ElectronClipboardPort } from "./platform/electron/ElectronClipboard";
 
 const CLIPBOARD_TEXT_FORMATS = ["text/uri-list", "public.file-url"] as const;
 
@@ -19,14 +23,10 @@ export const CLIPBOARD_INSPECTION_MAX_PATH_LENGTH = 16 * 1024;
 export const CLIPBOARD_PASTE_FORMAT_MAX_BYTES = 8 * 1024 * 1024;
 export const CLIPBOARD_PASTE_TOTAL_MAX_BYTES = 16 * 1024 * 1024;
 
-const require = createRequire(import.meta.url);
-
-export interface ClipboardPasteTarget {
-  availableFormats(): string[];
-  read(format: string): string;
-  readHTML(): string;
-  readText(): string;
-}
+export type ClipboardPasteTarget = Pick<
+  ElectronClipboardPort,
+  "availableFormats" | "readFormat" | "readHtml" | "readText"
+>;
 
 export function truncateClipboardUtf8(value: string, maxBytes: number): string {
   if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
@@ -96,18 +96,15 @@ export function inspectClipboardPasteItemsFromStrings(
 }
 
 export function inspectClipboardPasteItems(
-  target?: ClipboardPasteTarget,
+  clipboard: ClipboardPasteTarget,
 ): ClipboardPasteInspectionResult {
-  const clipboard =
-    target ??
-    ((require("electron") as typeof import("electron")).clipboard as ClipboardPasteTarget);
   const values: string[] = [];
   const availableFormats = new Set(clipboard.availableFormats());
 
   for (const format of CLIPBOARD_TEXT_FORMATS) {
     if (!availableFormats.has(format)) continue;
     try {
-      const value = clipboard.read(format);
+      const value = clipboard.readFormat(format);
       if (value.trim().length > 0) {
         values.push(value);
       }
@@ -117,11 +114,22 @@ export function inspectClipboardPasteItems(
   }
 
   const result = inspectClipboardPasteItemsFromStrings(values);
+  const descriptor = availableFormats.has(NODEX_STRUCTURAL_CLIPBOARD_MIME)
+    ? decodeNodexStructuralClipboardDescriptor(
+        readClipboardFormat(clipboard, NODEX_STRUCTURAL_CLIPBOARD_MIME) ?? "",
+      )
+    : null;
   const html = readClipboardHtml(clipboard);
-  if (!html) return result;
+  if (!html) {
+    return {
+      ...result,
+      ...(descriptor ? { structuralDescriptor: descriptor } : {}),
+    };
+  }
   const inspected = inspectNodexClipboardHtml(html);
   return {
     ...result,
+    ...(descriptor ? { structuralDescriptor: descriptor } : {}),
     ...(inspected.envelope ? { structuralEnvelope: inspected.envelope } : {}),
     ...(inspected.writeClaim ? { structuralWriteClaim: inspected.writeClaim } : {}),
   };
@@ -129,7 +137,7 @@ export function inspectClipboardPasteItems(
 
 function readClipboardFormat(clipboard: ClipboardPasteTarget, format: string): string | undefined {
   try {
-    const value = clipboard.read(format);
+    const value = clipboard.readFormat(format);
     return value.trim().length > 0
       ? truncateClipboardUtf8(value, CLIPBOARD_PASTE_FORMAT_MAX_BYTES)
       : undefined;
@@ -140,7 +148,7 @@ function readClipboardFormat(clipboard: ClipboardPasteTarget, format: string): s
 
 function readClipboardHtml(clipboard: ClipboardPasteTarget): string | undefined {
   try {
-    const value = clipboard.readHTML();
+    const value = clipboard.readHtml();
     return value.trim().length > 0
       ? truncateClipboardUtf8(value, CLIPBOARD_PASTE_FORMAT_MAX_BYTES)
       : undefined;
@@ -160,16 +168,23 @@ function readClipboardText(clipboard: ClipboardPasteTarget): string | undefined 
   }
 }
 
-export function readClipboardPastePayload(target?: ClipboardPasteTarget): ClipboardPastePayload {
-  const clipboard =
-    target ??
-    ((require("electron") as typeof import("electron")).clipboard as ClipboardPasteTarget);
+export function readClipboardPastePayload(clipboard: ClipboardPasteTarget): ClipboardPastePayload {
   const availableFormats = new Set(clipboard.availableFormats());
   const payload: ClipboardPastePayload = {};
 
+  if (availableFormats.has(NODEX_STRUCTURAL_CLIPBOARD_MIME)) {
+    const descriptor = decodeNodexStructuralClipboardDescriptor(
+      readClipboardFormat(clipboard, NODEX_STRUCTURAL_CLIPBOARD_MIME) ?? "",
+    );
+    if (descriptor) payload.structuralDescriptor = descriptor;
+  }
+
   let remainingBytes = CLIPBOARD_PASTE_TOTAL_MAX_BYTES;
   const assignWithinBudget = <
-    Key extends Exclude<keyof ClipboardPastePayload, "structuralEnvelope" | "structuralWriteClaim">,
+    Key extends Exclude<
+      keyof ClipboardPastePayload,
+      "structuralDescriptor" | "structuralEnvelope" | "structuralWriteClaim"
+    >,
   >(
     key: Key,
     value: ClipboardPastePayload[Key],

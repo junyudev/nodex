@@ -24,15 +24,20 @@ import {
 import { type CopiedSelectionPayload } from "./special-block-copy";
 import { createEmptyThreadSectionBlock } from "./thread-section";
 import { canvasCreatePendingExtension } from "./canvas-create-pending-extension";
+import { nfmClipboardPastePendingExtension } from "./nfm-clipboard-paste-pending-extension";
 import { mentionChipKeyboardNavigationExtension } from "./mention-chip-keyboard-navigation";
 import { nfmTaskShorthandPreviewExtension } from "./nfm-task-shorthand-preview-extension";
 import {
   attachNodexClipboardWriteClaim,
   attachNodexStructuralClipboardWriteClaim,
+  decodeNodexStructuralClipboardDescriptor,
+  encodeNodexStructuralClipboardDescriptor,
   hasUntrustedTypedOwnerHtml,
   inspectNodexClipboardHtml,
+  NODEX_STRUCTURAL_CLIPBOARD_MIME,
   sanitizeUntrustedTypedOwnerHtml,
   type NodexClipboardEnvelopeV1,
+  type NodexStructuralClipboardDescriptorV1,
 } from "../../../../shared/clipboard-paste";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { writeClaimedClipboardPresentation } from "../../../lib/api";
@@ -161,24 +166,53 @@ function writeStructuralSelectionClaimToClipboard(
   clipboardEvent: ClipboardEvent,
   payload: CopiedSelectionPayload,
   writeClaim: string,
-): void {
+  actionHint: NfmClipboardCommand,
+): boolean {
   const clipboardData = clipboardEvent.clipboardData;
-  if (clipboardData) {
-    try {
-      clipboardData.setData(
-        "blocknote/html",
-        sanitizeUntrustedTypedOwnerHtml(payload.clipboardHTML),
-      );
-      clipboardData.setData(
-        "text/html",
-        attachNodexStructuralClipboardWriteClaim(payload.externalHTML, writeClaim),
-      );
-      clipboardData.setData("text/plain", payload.structuredText);
-    } catch (error) {
-      console.warn("Failed to claim the clipboard while structural content was prepared", error);
-    }
+  if (!clipboardData) return false;
+
+  let wrotePortablePresentation = false;
+  let wroteStructuralClaim = false;
+  try {
+    clipboardData.setData("blocknote/html", sanitizeUntrustedTypedOwnerHtml(payload.clipboardHTML));
+    wrotePortablePresentation = true;
+  } catch (error) {
+    console.warn("Failed to write structural block clipboard payload", error);
   }
+  try {
+    clipboardData.setData(
+      "text/html",
+      attachNodexStructuralClipboardWriteClaim(payload.externalHTML, writeClaim),
+    );
+    wrotePortablePresentation = true;
+    wroteStructuralClaim = true;
+  } catch (error) {
+    console.warn("Failed to write structural HTML clipboard claim", error);
+  }
+  try {
+    clipboardData.setData("text/plain", payload.structuredText);
+    wrotePortablePresentation = true;
+  } catch (error) {
+    console.warn("Failed to write structural plain-text clipboard payload", error);
+  }
+  try {
+    clipboardData.setData(
+      NODEX_STRUCTURAL_CLIPBOARD_MIME,
+      encodeNodexStructuralClipboardDescriptor({
+        version: 1,
+        phase: "preparing",
+        writeClaim,
+        actionHint,
+      }),
+    );
+    wroteStructuralClaim = true;
+  } catch (error) {
+    console.warn("Failed to write structural private clipboard claim", error);
+  }
+
+  if (!wrotePortablePresentation || !wroteStructuralClaim) return false;
   clipboardEvent.preventDefault();
+  return true;
 }
 
 function writeFileReferenceSelectionClaimToClipboard(
@@ -235,19 +269,20 @@ function handleNfmClipboardCommand(
   }
 
   if (selection.kind === "block-roots" && options.onStructuralClipboard) {
-    const writeClaim = options.onStructuralClipboard(command, {
+    const writeClaim = createUuidV7();
+    if (!writeStructuralSelectionClaimToClipboard(clipboardEvent, payload, writeClaim, command)) {
+      blockUnavailableStructuralClipboard(clipboardEvent, options.onStructuralClipboardUnavailable);
+      return true;
+    }
+    const accepted = options.onStructuralClipboard(command, {
       rootBlockIds: selection.rootBlockIds,
       presentation: {
         html: payload.externalHTML,
         text: payload.structuredText,
       },
+      writeClaim,
     });
-    if (writeClaim) {
-      writeStructuralSelectionClaimToClipboard(clipboardEvent, payload, writeClaim);
-      return true;
-    }
-
-    blockUnavailableStructuralClipboard(clipboardEvent, options.onStructuralClipboardUnavailable);
+    if (!accepted) options.onStructuralClipboardUnavailable?.();
     return true;
   }
 
@@ -516,8 +551,9 @@ export interface NfmEditorExtensionOptions {
     request: {
       readonly rootBlockIds: readonly string[];
       readonly presentation: NfmStructuralClipboardPresentation;
+      readonly writeClaim: string;
     },
-  ) => string | null;
+  ) => boolean;
   readonly resolveCopiedFileReferences?: (
     payload: CopiedSelectionPayload,
   ) => Promise<CopiedSelectionPayload> | null;
@@ -528,6 +564,7 @@ export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {
     nfmSyntaxHighlighter,
     nfmSearchExtension(),
     canvasCreatePendingExtension(),
+    nfmClipboardPastePendingExtension(),
     nfmTaskShorthandPreviewExtension(),
     NfmStructuredClipboardExtension(options),
     headingToggleAware,
@@ -544,7 +581,10 @@ export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {
 }
 
 export interface NfmPasteHandlerOptions {
-  readonly onPendingStructuralPaste?: (writeClaim: string | null) => boolean;
+  readonly onStructuralClaimPaste?: (request: {
+    readonly descriptor: NodexStructuralClipboardDescriptorV1;
+    readonly portableBlocks: readonly NfmStructuralReplacementBlockLike[];
+  }) => boolean;
   readonly onStructuralPaste?: (
     envelope: NonNullable<ReturnType<typeof inspectNodexClipboardHtml>["envelope"]>,
   ) => boolean;
@@ -589,8 +629,39 @@ const readPortableClipboardBlocks = (
 export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): NfmPasteHandler {
   return ({ event, editor, defaultPasteHandler }) => {
     const clipboardData = event.clipboardData;
+    const privateDescriptor = decodeNodexStructuralClipboardDescriptor(
+      clipboardData?.getData(NODEX_STRUCTURAL_CLIPBOARD_MIME) ?? "",
+    );
     const htmlInspection = inspectNodexClipboardHtml(clipboardData?.getData("text/html") ?? "");
-    if (options.onPendingStructuralPaste?.(htmlInspection.writeClaim)) {
+    const readyHtmlDescriptor =
+      htmlInspection.envelope && htmlInspection.writeClaim
+        ? ({
+            version: 1,
+            phase: "ready",
+            writeClaim: htmlInspection.writeClaim,
+            actionHint: htmlInspection.envelope.actionHint,
+            envelope: htmlInspection.envelope,
+          } satisfies NodexStructuralClipboardDescriptorV1)
+        : null;
+    const descriptor =
+      readyHtmlDescriptor ??
+      privateDescriptor ??
+      (htmlInspection.writeClaim
+        ? ({
+            version: 1,
+            phase: "preparing",
+            writeClaim: htmlInspection.writeClaim,
+            actionHint: "copy",
+          } satisfies NodexStructuralClipboardDescriptorV1)
+        : null);
+    const portableBlocks = descriptor
+      ? (readPortableClipboardBlocks(editor, clipboardData) ?? [])
+      : [];
+    if (
+      descriptor &&
+      portableBlocks.length > 0 &&
+      options.onStructuralClaimPaste?.({ descriptor, portableBlocks })
+    ) {
       event.preventDefault();
       return true;
     }
@@ -602,8 +673,8 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
       return true;
     }
     if (options.shouldHandleStructuralBlockPaste?.()) {
-      const portableBlocks = readPortableClipboardBlocks(editor, clipboardData);
-      if (portableBlocks?.length && options.onStructuralBlockPaste?.(portableBlocks)) {
+      const structuralBlocks = readPortableClipboardBlocks(editor, clipboardData);
+      if (structuralBlocks?.length && options.onStructuralBlockPaste?.(structuralBlocks)) {
         event.preventDefault();
         return true;
       }

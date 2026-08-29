@@ -1,9 +1,10 @@
 import { act, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { render } from "@/test/dom";
+import { PageFileReadCache } from "@/lib/page-file-read-cache";
 import { useAttachmentPreview } from "./attachment-preview";
-import type { PageFilePlacementRuntime } from "./page-file-runtime";
+import { createPageFilePlacementRuntime, type PageFilePlacementRuntime } from "./page-file-runtime";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -18,37 +19,48 @@ const deferred = <T,>(): Deferred<T> => {
   return { promise, resolve };
 };
 
+const activeRuntimes: PageFilePlacementRuntime[] = [];
+
+afterEach(() => {
+  for (const runtime of activeRuntimes.splice(0)) runtime.release();
+});
+
 const createPageFileRuntime = (
   read: PageFilePlacementRuntime["read"],
-): PageFilePlacementRuntime => ({
-  authority: {
+): PageFilePlacementRuntime => {
+  const authority = {
     contentAccessContext: { kind: "project", projectId: "project-1" },
     pageId: "page-1",
     storeEpoch: "store-1",
-  },
-  readAuthorityEpoch: 1,
-  upload: async () => "nodex://files/file-1",
-  read,
-  metadata: async () => {
-    throw new Error("not used");
-  },
-  readImageDataUrl: async () => "data:image/png;base64,",
-  save: async () => undefined,
-});
+  } as const;
+  const cache = new PageFileReadCache({
+    readMetadata: async () => {
+      throw new Error("not used");
+    },
+    readBytes: (_, fileId) => read(`nodex://files/${fileId}`),
+    createObjectUrl: (file) => `blob:${file.etag}`,
+    revokeObjectUrl: () => undefined,
+  });
+  const runtime = createPageFilePlacementRuntime(authority, cache);
+  activeRuntimes.push(runtime);
+  return runtime;
+};
 
 function PreviewHarness({
   source,
   runtime,
+  mimeType = "application/json",
 }: {
   readonly source: string;
   readonly runtime: PageFilePlacementRuntime;
+  readonly mimeType?: string;
 }) {
   const { state } = useAttachmentPreview(
     {
       kind: "file",
       mode: "materialized",
       source,
-      mimeType: "application/json",
+      mimeType,
     },
     runtime,
     true,
@@ -114,5 +126,21 @@ describe("attachment preview lifecycle", () => {
     await waitFor(() => expect(view.getByText("truncated")).toBeTruthy());
     expect(view.getByTestId("preview-content").textContent?.split("\n")).toHaveLength(200);
     expect(view.queryByText("line 201")).toBeNull();
+  });
+
+  test("does not read non-text Page Files that cannot be previewed", async () => {
+    const read = vi.fn(async () => ({
+      bytes: new Uint8Array([0, 1, 2]),
+      mimeType: "video/webm",
+      etag: "etag-1",
+    }));
+    const runtime = createPageFileRuntime(read);
+    const view = render(
+      <PreviewHarness source="nodex://files/file-1" runtime={runtime} mimeType="video/webm" />,
+    );
+
+    expect(view.getByText("unavailable")).toBeTruthy();
+    await act(async () => await Promise.resolve());
+    expect(read).not.toHaveBeenCalled();
   });
 });

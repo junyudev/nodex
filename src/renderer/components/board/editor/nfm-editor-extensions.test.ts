@@ -3,7 +3,9 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import {
   attachNodexClipboardEnvelope,
   attachNodexStructuralClipboardWriteClaim,
+  encodeNodexStructuralClipboardDescriptor,
   inspectNodexClipboardHtml,
+  NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../../../../shared/clipboard-paste";
 import {
   createNfmEditorExtensions,
@@ -73,26 +75,44 @@ describe("nfm editor extensions", () => {
   });
 
   test("queues a paste while its matching structural capture is still pending", () => {
-    const onPendingStructuralPaste = vi.fn(() => true);
+    const onStructuralClaimPaste = vi.fn(() => true);
     const defaultPasteHandler = vi.fn(() => true);
     const preventDefault = vi.fn();
     const html = attachNodexStructuralClipboardWriteClaim("<p>Fallback</p>", writeClaim);
-    const handler = createNfmPasteHandler({ onPendingStructuralPaste });
+    const descriptor = {
+      version: 1 as const,
+      phase: "preparing" as const,
+      writeClaim,
+      actionHint: "cut" as const,
+    };
+    const handler = createNfmPasteHandler({ onStructuralClaimPaste });
 
     expect(
       handler({
         event: {
           preventDefault,
           clipboardData: {
-            types: ["text/html", "text/plain"],
-            getData: (type: string) => (type === "text/html" ? html : "Fallback"),
+            types: [NODEX_STRUCTURAL_CLIPBOARD_MIME, "text/html", "text/plain"],
+            getData: (type: string) =>
+              type === NODEX_STRUCTURAL_CLIPBOARD_MIME
+                ? encodeNodexStructuralClipboardDescriptor(descriptor)
+                : type === "text/html"
+                  ? html
+                  : "Fallback",
           },
         } as unknown as ClipboardEvent,
-        editor: {} as never,
+        editor: {
+          tryParseHTMLToBlocks: () => [
+            { id: "portable", type: "paragraph", props: {}, content: [], children: [] },
+          ],
+        } as never,
         defaultPasteHandler,
       }),
     ).toBe(true);
-    expect(onPendingStructuralPaste).toHaveBeenCalledWith(writeClaim);
+    expect(onStructuralClaimPaste).toHaveBeenCalledWith({
+      descriptor,
+      portableBlocks: [{ id: "portable", type: "paragraph", props: {}, content: [], children: [] }],
+    });
     expect(defaultPasteHandler).not.toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalledOnce();
   });

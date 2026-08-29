@@ -6,7 +6,7 @@ use nodex_core_contracts::database::{
     DatabaseEvent, DatabaseEventKind, DatabasePersonalViewChange, DatabaseViewDisclosureTarget,
 };
 use nodex_core_contracts::events::DeliveryAuthorizationScope;
-use nodex_core_contracts::library::{LibraryEvent, LibraryEventKind};
+use nodex_core_contracts::library::{LibraryEvent, LibraryEventKind, LibraryPageFileInvalidation};
 use nodex_core_contracts::workspace::{
     ProjectCatalogChangeKind, ProjectSessionInvalidationScope, ProjectWorkspaceEvent,
     ProjectWorkspaceEventKind,
@@ -581,7 +581,13 @@ struct LibraryMetadata {
     affected_view_ids: Vec<String>,
     affected_parent_keys: Vec<String>,
     #[serde(default)]
+    page_file_manifest_invalidations:
+        std::collections::BTreeMap<String, LibraryPageFileInvalidation>,
+    #[serde(default)]
     page_file_manifest_revisions: std::collections::BTreeMap<String, i64>,
+    #[serde(default)]
+    page_file_content_invalidations:
+        std::collections::BTreeMap<String, LibraryPageFileInvalidation>,
     #[serde(default)]
     page_file_content_revisions: std::collections::BTreeMap<String, i64>,
 }
@@ -1077,27 +1083,25 @@ fn reconstruct_event(
             validate_strings(&metadata.affected_database_ids, "Library Database")?;
             validate_strings(&metadata.affected_view_ids, "Library View")?;
             validate_strings(&metadata.affected_parent_keys, "Library parent")?;
-            for (page_id, revision) in &metadata.page_file_manifest_revisions {
-                validate_identity(page_id, "Page File manifest Page")?;
-                if *revision < 0 {
-                    return Err(corrupt("Page File manifest revision is invalid"));
-                }
-            }
-            for (page_id, revision) in &metadata.page_file_content_revisions {
-                validate_identity(page_id, "Page File content Page")?;
-                if *revision < 0 {
-                    return Err(corrupt("Page File content revision is invalid"));
-                }
-            }
+            let page_file_manifest_invalidations = normalize_page_file_invalidations(
+                metadata.page_file_manifest_invalidations,
+                metadata.page_file_manifest_revisions,
+                "Page File manifest",
+            )?;
+            let page_file_content_invalidations = normalize_page_file_invalidations(
+                metadata.page_file_content_invalidations,
+                metadata.page_file_content_revisions,
+                "Page File content",
+            )?;
             CoreModuleEventPayload::Library(LibraryEvent {
                 kind: LibraryEventKind::LibraryChanged,
                 page_ids: metadata.affected_page_ids,
                 database_ids: metadata.affected_database_ids,
                 view_ids: metadata.affected_view_ids,
                 parent_keys: metadata.affected_parent_keys,
-                page_file_manifest_revisions: metadata.page_file_manifest_revisions,
+                page_file_manifest_invalidations,
                 page_file_body_usage_revisions: std::collections::BTreeMap::new(),
-                page_file_content_revisions: metadata.page_file_content_revisions,
+                page_file_content_invalidations,
             })
         }
         "database.changed" => {
@@ -1282,7 +1286,9 @@ fn decode_library_metadata(row: &ChangeLogRow) -> Result<LibraryMetadata, StoreE
                 affected_database_ids: Vec::new(),
                 affected_view_ids: Vec::new(),
                 affected_parent_keys: Vec::new(),
+                page_file_manifest_invalidations: std::collections::BTreeMap::new(),
                 page_file_manifest_revisions: std::collections::BTreeMap::new(),
+                page_file_content_invalidations: std::collections::BTreeMap::new(),
                 page_file_content_revisions: std::collections::BTreeMap::new(),
             })
         }
@@ -1571,6 +1577,53 @@ fn validate_strings(values: &[String], label: &str) -> Result<(), StoreError> {
     Ok(())
 }
 
+fn normalize_page_file_invalidations(
+    mut invalidations: std::collections::BTreeMap<String, LibraryPageFileInvalidation>,
+    legacy_revisions: std::collections::BTreeMap<String, i64>,
+    label: &str,
+) -> Result<std::collections::BTreeMap<String, LibraryPageFileInvalidation>, StoreError> {
+    for (page_id, revision) in legacy_revisions {
+        if invalidations
+            .insert(page_id, LibraryPageFileInvalidation::Reset { revision })
+            .is_some()
+        {
+            return Err(corrupt(&format!(
+                "{label} event contains duplicate invalidation evidence"
+            )));
+        }
+    }
+    let mut exact_identity_count = 0_usize;
+    for (page_id, invalidation) in &invalidations {
+        validate_identity(page_id, &format!("{label} Page"))?;
+        let (revision, file_ids) = match invalidation {
+            LibraryPageFileInvalidation::Exact { revision, file_ids } => {
+                (*revision, Some(file_ids))
+            }
+            LibraryPageFileInvalidation::Reset { revision } => (*revision, None),
+        };
+        if revision < 0 {
+            return Err(corrupt(&format!("{label} revision is invalid")));
+        }
+        let Some(file_ids) = file_ids else {
+            continue;
+        };
+        if file_ids.is_empty()
+            || file_ids.len() > MAX_EVENT_IDENTITIES
+            || file_ids.windows(2).any(|pair| pair[0] >= pair[1])
+        {
+            return Err(corrupt(&format!("{label} File identities are invalid")));
+        }
+        validate_strings(file_ids, &format!("{label} File"))?;
+        exact_identity_count = exact_identity_count.saturating_add(file_ids.len());
+        if exact_identity_count > MAX_EVENT_IDENTITIES {
+            return Err(corrupt(&format!(
+                "{label} exact invalidation evidence exceeds its bound"
+            )));
+        }
+    }
+    Ok(invalidations)
+}
+
 fn validate_personal_view_changes(
     changes: &[DatabasePersonalViewChange],
 ) -> Result<(), StoreError> {
@@ -1616,6 +1669,8 @@ fn corrupt(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use nodex_core_contracts::{
         AdapterKind, BoundModuleContext, LibraryId, ProfileId, ProjectId, ResourceRevocation,
         ResourceRevocationReason, RevokedResourceKind,
@@ -1646,6 +1701,37 @@ mod tests {
             connection_id: "connection:host".to_owned(),
             adapter: AdapterKind::ElectronHost,
         }
+    }
+
+    #[test]
+    fn legacy_page_file_revisions_replay_as_reset_invalidations() {
+        let invalidations = normalize_page_file_invalidations(
+            BTreeMap::new(),
+            BTreeMap::from([("page:test".to_owned(), 7)]),
+            "Page File manifest",
+        )
+        .expect("normalize legacy invalidation");
+
+        assert_eq!(
+            invalidations.get("page:test"),
+            Some(&LibraryPageFileInvalidation::Reset { revision: 7 })
+        );
+    }
+
+    #[test]
+    fn persisted_exact_page_file_invalidations_keep_their_file_id_evidence() {
+        let exact = LibraryPageFileInvalidation::Exact {
+            revision: 9,
+            file_ids: vec!["file:a".to_owned(), "file:b".to_owned()],
+        };
+        let invalidations = normalize_page_file_invalidations(
+            BTreeMap::from([("page:test".to_owned(), exact.clone())]),
+            BTreeMap::new(),
+            "Page File content",
+        )
+        .expect("normalize exact invalidation");
+
+        assert_eq!(invalidations.get("page:test"), Some(&exact));
     }
 
     fn store_identity(connection: &Connection) -> Result<(String, String), StoreError> {

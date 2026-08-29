@@ -650,7 +650,7 @@ mod tests {
             head_seq: 4,
             update: vec![1, 2, 3],
             page_file_body_usage_changed: false,
-            page_file_references_changed: false,
+            page_file_reference_change: None,
         });
 
         assert!(

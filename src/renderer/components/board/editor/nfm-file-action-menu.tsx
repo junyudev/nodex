@@ -17,6 +17,7 @@ import { TextCursorInput } from "@/components/shared/icons/generic-icons";
 import { NodexFloatingSurface } from "@/components/ui/floating-surface";
 import { cn } from "@/lib/utils";
 import { type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
+import { PageFileOwnerDisclosureForSource } from "./page-file-owner-disclosure";
 
 export type NfmFileAction = {
   type: "caption" | "replace";
@@ -144,11 +145,13 @@ function NfmFileActionPanel({
   children,
   className,
   onClose,
+  source,
   title,
 }: {
   children: ReactNode;
   className?: string;
   onClose: () => void;
+  source: string;
   title: string;
 }) {
   return (
@@ -175,6 +178,10 @@ function NfmFileActionPanel({
           {title}
         </span>
       </div>
+      <PageFileOwnerDisclosureForSource
+        source={source}
+        className="border-b-[0.5px] border-token-border px-3 py-1.5"
+      />
       {children}
     </NodexFloatingSurface>
   );
@@ -213,6 +220,7 @@ function NfmFileCaptionPanel({ blockId, onClose }: { blockId: string; onClose: (
     <NfmFileActionPanel
       title={dict.formatting_toolbar.file_caption.tooltip}
       onClose={onClose}
+      source={block.props.url}
       className="w-[16.5rem]"
     >
       <div className="p-2">
@@ -243,7 +251,12 @@ function NfmFileReplacePanel({ blockId, onClose }: { blockId: string; onClose: (
     dict.formatting_toolbar.file_replace.tooltip.file;
 
   return (
-    <NfmFileActionPanel title={title} onClose={onClose} className="min-w-[18rem]">
+    <NfmFileActionPanel
+      title={title}
+      onClose={onClose}
+      source={block.props.url}
+      className="min-w-[18rem]"
+    >
       <FilePanel blockId={block.id} />
     </NfmFileActionPanel>
   );

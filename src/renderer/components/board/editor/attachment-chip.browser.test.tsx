@@ -4,10 +4,15 @@ import { act, fireEvent, render, waitFor, within } from "@testing-library/react"
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { PageFileReadCache } from "@/lib/page-file-read-cache";
 import "../../../globals.css";
 import type { AttachmentProps } from "./attachment-chip";
 import { nfmSchema } from "./nfm-schema";
-import { PageFileRuntimeProvider, type PageFilePlacementRuntime } from "./page-file-runtime";
+import {
+  createPageFilePlacementRuntime,
+  PageFileRuntimeProvider,
+  type PageFilePlacementRuntime,
+} from "./page-file-runtime";
 
 const settleEditor = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -35,24 +40,33 @@ const createPageFileMetadata = (overrides: Partial<PageFileMetadata> = {}): Page
 
 const createPageFileRuntime = (
   overrides: Partial<PageFilePlacementRuntime> = {},
-): PageFilePlacementRuntime => ({
-  authority: {
+): PageFilePlacementRuntime => {
+  const authority = {
     contentAccessContext: { kind: "project", projectId: "project-1" },
     pageId: "page-1",
     storeEpoch: "store-1",
-  },
-  readAuthorityEpoch: 1,
-  upload: async () => "nodex://files/file-1",
-  read: async () => ({
-    bytes: new Uint8Array(),
-    mimeType: "video/webm",
-    etag: "etag-1",
-  }),
-  metadata: async () => createPageFileMetadata(),
-  readImageDataUrl: async () => "data:image/png;base64,",
-  save: async () => undefined,
-  ...overrides,
-});
+  } as const;
+  const read =
+    overrides.read ??
+    (async () => ({
+      bytes: new Uint8Array(),
+      mimeType: "video/webm",
+      etag: "etag-1",
+    }));
+  const readMetadata = overrides.metadata ?? (async () => createPageFileMetadata());
+  const cache = new PageFileReadCache({
+    readMetadata: (_, fileId) => readMetadata(`nodex://files/${fileId}`),
+    readBytes: (_, fileId) => read(`nodex://files/${fileId}`),
+    createObjectUrl: (file) => `blob:${file.etag}`,
+    revokeObjectUrl: () => undefined,
+  });
+  return {
+    ...createPageFilePlacementRuntime(authority, cache),
+    ...(overrides.upload ? { upload: overrides.upload } : {}),
+    ...(overrides.readImageDataUrl ? { readImageDataUrl: overrides.readImageDataUrl } : {}),
+    ...(overrides.save ? { save: overrides.save } : {}),
+  };
+};
 
 const renderAttachment = (
   pageFileRuntime: PageFilePlacementRuntime,
@@ -144,7 +158,7 @@ describe("attachment chip Page Files", () => {
     }
   });
 
-  test("reuses one preview read across metadata refresh and reopen", async () => {
+  test("reuses preview bytes while open and releases them when the popover closes", async () => {
     let resolveMetadata!: (
       value: Awaited<ReturnType<PageFilePlacementRuntime["metadata"]>>,
     ) => void;
@@ -227,8 +241,102 @@ describe("attachment chip Page Files", () => {
         await settleEditor();
       });
       const reopenedPopover = await view.findByRole("dialog");
-      expect(within(reopenedPopover).getByText(/"status":"passed"/)).toBeVisible();
-      expect(read).toHaveBeenCalledTimes(1);
+      expect(within(reopenedPopover).getByText("Loading preview...")).toBeVisible();
+      expect(read).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        resolveRead({
+          bytes: new TextEncoder().encode('{"status":"passed"}'),
+          mimeType: "application/json",
+          etag: "etag-1",
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(within(reopenedPopover).getByText(/"status":"passed"/)).toBeVisible();
+      });
+    } finally {
+      view.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
+  test("keeps the current label visible while exact metadata refreshes", async () => {
+    let resolveRefresh!: (value: PageFileMetadata) => void;
+    const refresh = new Promise<PageFileMetadata>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    const metadata = vi
+      .fn<() => Promise<PageFileMetadata>>()
+      .mockResolvedValueOnce(createPageFileMetadata({ logicalPath: "reports/current.json" }))
+      .mockImplementationOnce(() => refresh);
+    const runtime = createPageFileRuntime({ metadata });
+    const { editor, view } = renderAttachment(
+      runtime,
+      {
+        kind: "file",
+        mode: "materialized",
+        source: "nodex://files/file-1",
+        name: "stale.json",
+        mimeType: "application/json",
+      },
+      "attachment-metadata-refresh-block",
+    );
+
+    try {
+      await view.findByText("current.json");
+      await act(async () => {
+        runtime.invalidate({ fileIds: ["file-1"], metadata: true, content: false });
+        await Promise.resolve();
+      });
+
+      expect(view.getByText("current.json")).toBeVisible();
+      expect(metadata).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        resolveRefresh(createPageFileMetadata({ logicalPath: "reports/renamed.json", version: 2 }));
+        await refresh;
+      });
+      await view.findByText("renamed.json");
+      expect(view.queryByText("current.json")).toBeNull();
+    } finally {
+      view.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
+  test("discloses a foreign owner without exposing an unreadable Page identity", async () => {
+    const { editor, view } = renderAttachment(
+      createPageFileRuntime({
+        metadata: async () =>
+          createPageFileMetadata({
+            ownerPageId: "page-secret-uuid",
+            logicalPath: "references/source.json",
+            mimeType: "application/json",
+          }),
+      }),
+      {
+        kind: "file",
+        mode: "materialized",
+        source: "nodex://files/file-1",
+        name: "source.json",
+        mimeType: "application/json",
+      },
+      "foreign-owner-attachment-block",
+    );
+
+    try {
+      const chip = (await view.findByText("source.json")).closest("button");
+      expect(chip).not.toBeNull();
+      if (!chip) throw new Error("Attachment chip was not rendered");
+
+      await act(async () => {
+        fireEvent.click(chip);
+        await settleEditor();
+      });
+
+      const popover = await view.findByRole("dialog");
+      expect(within(popover).getByText("From another Page")).toBeVisible();
+      expect(within(popover).queryByText("page-secret-uuid")).toBeNull();
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();

@@ -9,22 +9,25 @@ class FakeImage {
   }
 }
 
+const imagePlatform = (writeCalls: FakeImage[], empty = false) => ({
+  createImageFromBuffer: () => new FakeImage(empty) as never,
+  createImageFromDataUrl: () => new FakeImage(empty) as never,
+  writeImage: (image: unknown) => {
+    writeCalls.push(image as FakeImage);
+  },
+});
+
 describe("clipboard image writer", () => {
   test("writes asset-backed image bytes to the native clipboard", async () => {
     const writeCalls: FakeImage[] = [];
-    const result = await writeImageToClipboard("nodex://assets/diagram.png", {
-      resolveAssetPath: (fileName) => `/tmp/${fileName}`,
-      readFile: async (filePath) => Buffer.from(filePath),
-      nativeImageApi: {
-        createFromBuffer: () => new FakeImage(false),
-        createFromDataURL: () => new FakeImage(false),
+    const result = await writeImageToClipboard(
+      "nodex://assets/diagram.png",
+      imagePlatform(writeCalls),
+      {
+        resolveAssetPath: (fileName) => `/tmp/${fileName}`,
+        readFile: async (filePath) => Buffer.from(filePath),
       },
-      clipboardTarget: {
-        writeImage: (image) => {
-          writeCalls.push(image as FakeImage);
-        },
-      },
-    });
+    );
 
     expect(result.ok).toBe(true);
     expect(writeCalls.length).toBe(1);
@@ -32,17 +35,8 @@ describe("clipboard image writer", () => {
 
   test("writes absolute local file images to the native clipboard", async () => {
     const writeCalls: FakeImage[] = [];
-    const result = await writeImageToClipboard("/Users/me/image.png", {
+    const result = await writeImageToClipboard("/Users/me/image.png", imagePlatform(writeCalls), {
       readFile: async (filePath) => Buffer.from(filePath),
-      nativeImageApi: {
-        createFromBuffer: () => new FakeImage(false),
-        createFromDataURL: () => new FakeImage(false),
-      },
-      clipboardTarget: {
-        writeImage: (image) => {
-          writeCalls.push(image as FakeImage);
-        },
-      },
     });
 
     expect(result.ok).toBe(true);
@@ -51,24 +45,19 @@ describe("clipboard image writer", () => {
 
   test("fetches remote images and writes the decoded native image", async () => {
     const writeCalls: FakeImage[] = [];
-    const result = await writeImageToClipboard("https://example.com/hero.png", {
-      fetchImpl: async () =>
-        ({
-          ok: true,
-          arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-        }) as Response,
-      nativeImageApi: {
-        createFromBuffer: () => new FakeImage(false),
-        createFromDataURL: () => new FakeImage(false),
+    const result = await writeImageToClipboard(
+      "https://example.com/hero.png",
+      imagePlatform(writeCalls),
+      {
+        fetchImpl: async () =>
+          ({
+            ok: true,
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+          }) as Response,
+        readFile: async () => Buffer.from("unused"),
+        resolveAssetPath: (fileName) => fileName,
       },
-      clipboardTarget: {
-        writeImage: (image) => {
-          writeCalls.push(image as FakeImage);
-        },
-      },
-      readFile: async () => Buffer.from("unused"),
-      resolveAssetPath: (fileName) => fileName,
-    });
+    );
 
     expect(result.ok).toBe(true);
     expect(writeCalls.length).toBe(1);
@@ -76,24 +65,19 @@ describe("clipboard image writer", () => {
 
   test("returns a decode error when the image format cannot be converted", async () => {
     const writeCalls: FakeImage[] = [];
-    const result = await writeImageToClipboard("https://example.com/file.bin", {
-      fetchImpl: async () =>
-        ({
-          ok: true,
-          arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
-        }) as Response,
-      nativeImageApi: {
-        createFromBuffer: () => new FakeImage(true),
-        createFromDataURL: () => new FakeImage(true),
+    const result = await writeImageToClipboard(
+      "https://example.com/file.bin",
+      imagePlatform(writeCalls, true),
+      {
+        fetchImpl: async () =>
+          ({
+            ok: true,
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+          }) as Response,
+        readFile: async () => Buffer.from("unused"),
+        resolveAssetPath: (fileName) => fileName,
       },
-      clipboardTarget: {
-        writeImage: (image) => {
-          writeCalls.push(image as FakeImage);
-        },
-      },
-      readFile: async () => Buffer.from("unused"),
-      resolveAssetPath: (fileName) => fileName,
-    });
+    );
 
     expect(result.ok).toBe(false);
     expect("message" in result ? result.message : "").toBe(
@@ -103,15 +87,8 @@ describe("clipboard image writer", () => {
   });
 
   test("returns a copy failure for invalid image sources", async () => {
-    const result = await writeImageToClipboard("relative/image.png", {
+    const result = await writeImageToClipboard("relative/image.png", imagePlatform([]), {
       readFile: async () => Buffer.from("unused"),
-      nativeImageApi: {
-        createFromBuffer: () => new FakeImage(false),
-        createFromDataURL: () => new FakeImage(false),
-      },
-      clipboardTarget: {
-        writeImage: () => undefined,
-      },
       fetchImpl: async () =>
         ({
           ok: true,

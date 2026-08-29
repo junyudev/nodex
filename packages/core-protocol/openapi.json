@@ -3033,9 +3033,13 @@
               "document_id",
               "generation",
               "head_seq",
+              "change",
               "kind"
             ],
             "properties": {
+              "change": {
+                "$ref": "#/components/schemas/PageFileReferenceChange"
+              },
               "document_id": {
                 "type": "string"
               },
@@ -12866,7 +12870,8 @@
         "required": [
           "pages",
           "document_commits",
-          "affected_database_ids"
+          "affected_database_ids",
+          "file_ownership_moves"
         ],
         "properties": {
           "affected_database_ids": {
@@ -12879,6 +12884,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
+            }
+          },
+          "file_ownership_moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "pages": {
@@ -15207,9 +15218,9 @@
           "database_ids",
           "view_ids",
           "parent_keys",
-          "page_file_manifest_revisions",
+          "page_file_manifest_invalidations",
           "page_file_body_usage_revisions",
-          "page_file_content_revisions"
+          "page_file_content_invalidations"
         ],
         "properties": {
           "database_ids": {
@@ -15231,21 +15242,19 @@
               "type": "string"
             }
           },
-          "page_file_content_revisions": {
+          "page_file_content_invalidations": {
             "type": "object",
             "additionalProperties": {
-              "type": "integer",
-              "format": "int64"
+              "$ref": "#/components/schemas/LibraryPageFileInvalidation"
             },
             "propertyNames": {
               "type": "string"
             }
           },
-          "page_file_manifest_revisions": {
+          "page_file_manifest_invalidations": {
             "type": "object",
             "additionalProperties": {
-              "type": "integer",
-              "format": "int64"
+              "$ref": "#/components/schemas/LibraryPageFileInvalidation"
             },
             "propertyNames": {
               "type": "string"
@@ -16598,6 +16607,55 @@
         "enum": [
           "reject",
           "suffix"
+        ]
+      },
+      "LibraryPageFileInvalidation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "revision",
+              "file_ids",
+              "kind"
+            ],
+            "properties": {
+              "file_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "exact"
+                ]
+              },
+              "revision": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "revision",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reset"
+                ]
+              },
+              "revision": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          }
         ]
       },
       "LibraryPageFileManifest": {
@@ -28139,7 +28197,6 @@
               "head_seq",
               "update",
               "page_file_body_usage_changed",
-              "page_file_references_changed",
               "kind"
             ],
             "properties": {
@@ -28163,8 +28220,15 @@
               "page_file_body_usage_changed": {
                 "type": "boolean"
               },
-              "page_file_references_changed": {
-                "type": "boolean"
+              "page_file_reference_change": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PageFileReferenceChange"
+                  }
+                ]
               },
               "update": {
                 "type": "array",
@@ -28186,7 +28250,6 @@
               "update_id",
               "update_hash",
               "page_file_body_usage_changed",
-              "page_file_references_changed",
               "kind"
             ],
             "properties": {
@@ -28210,8 +28273,15 @@
               "page_file_body_usage_changed": {
                 "type": "boolean"
               },
-              "page_file_references_changed": {
-                "type": "boolean"
+              "page_file_reference_change": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PageFileReferenceChange"
+                  }
+                ]
               },
               "update_hash": {
                 "type": "string"
@@ -28310,7 +28380,6 @@
               "head_seq",
               "reason",
               "page_file_body_usage_changed",
-              "page_file_references_changed",
               "kind"
             ],
             "properties": {
@@ -28334,8 +28403,15 @@
               "page_file_body_usage_changed": {
                 "type": "boolean"
               },
-              "page_file_references_changed": {
-                "type": "boolean"
+              "page_file_reference_change": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PageFileReferenceChange"
+                  }
+                ]
               },
               "reason": {
                 "$ref": "#/components/schemas/DocumentInvalidationReason"
@@ -28431,6 +28507,52 @@
             "type": "string"
           }
         }
+      },
+      "PageFileReferenceChange": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "added_file_ids",
+              "removed_file_ids",
+              "kind"
+            ],
+            "properties": {
+              "added_file_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "exact"
+                ]
+              },
+              "removed_file_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reset"
+                ]
+              }
+            }
+          }
+        ]
       },
       "PageMetaProjectionV2": {
         "type": "object",

@@ -1,5 +1,5 @@
 import { CopyIcon, FolderOpenIcon, OpenExternalIcon } from "@/components/shared/icons";
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useMemo, useState, type ComponentType } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
 import { Link2 } from "@/components/shared/icons/generic-icons";
 
@@ -13,7 +13,7 @@ import { formatAttachmentBytes } from "./attachment-chip-format";
 import { AttachmentResourceIcon } from "../attachment-resource-icon";
 import { getAttachmentTooltipLines } from "./attachment-chip-tooltip";
 import { parsePageFileSource } from "../../../../shared/page-files";
-import { usePageFilePlacementRuntime } from "./page-file-runtime";
+import { usePageFilePlacementRuntime, usePageFileReadSnapshot } from "./page-file-runtime";
 import { InlineReferenceVisual } from "../inline-reference-visual";
 import {
   isTextLikeMimeType,
@@ -23,6 +23,7 @@ import {
   type AttachmentPreviewState,
 } from "./attachment-preview";
 import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
+import { PageFileOwnerDisclosure } from "./page-file-owner-disclosure";
 
 export { isTextLikeMimeType };
 export type { AttachmentPreviewState };
@@ -32,6 +33,7 @@ export interface AttachmentProps extends AttachmentPreviewInput {
   name: string;
   bytes?: number;
   origin?: string;
+  ownerPageId?: string;
 }
 
 const ATTACHMENT_INLINE_LABEL_LIMIT = 48;
@@ -163,6 +165,8 @@ export function AttachmentPopoverView({
         </div>
       </header>
 
+      <PageFileOwnerDisclosure ownerPageId={attachment.ownerPageId} className="mt-2 px-1" />
+
       <dl className="mt-3 grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-2 gap-y-1 border-t-[0.5px] border-token-border px-1 pt-3 text-xs">
         <dt className="text-token-description-foreground">Source</dt>
         <dd className="truncate font-mono text-token-text-secondary">{attachment.source}</dd>
@@ -289,42 +293,18 @@ function AttachmentInlineContent({ inlineContent }: { inlineContent: { props: At
   const fileReferenceRouter = useFileReferenceRouter();
   const pageFileRuntime = usePageFilePlacementRuntime();
   const isOwnedFile = parsePageFileSource(inlineContent.props.source) !== null;
-  const [ownedMetadata, setOwnedMetadata] = useState<{
-    readonly source: string;
-    readonly logicalPath: string;
-    readonly mimeType: string;
-    readonly byteLength: number;
-  } | null>(null);
-  useEffect(() => {
-    if (!isOwnedFile || !pageFileRuntime) return;
-    let active = true;
-    void pageFileRuntime
-      .metadata(inlineContent.props.source)
-      .then((file) => {
-        if (!active) return;
-        setOwnedMetadata({
-          source: inlineContent.props.source,
-          logicalPath: file.logicalPath,
-          mimeType: file.mimeType,
-          byteLength: file.byteLength,
-        });
-      })
-      .catch(() => {
-        if (active) setOwnedMetadata(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [inlineContent.props.source, isOwnedFile, pageFileRuntime]);
+  const metadataSnapshot = usePageFileReadSnapshot(pageFileRuntime, inlineContent.props.source, {
+    metadata: isOwnedFile,
+  });
+  const ownedMetadata = metadataSnapshot.metadata;
   const resolvedProps = useMemo<AttachmentProps>(() => {
-    if (!ownedMetadata || ownedMetadata.source !== inlineContent.props.source) {
-      return inlineContent.props;
-    }
+    if (!ownedMetadata) return inlineContent.props;
     return {
       ...inlineContent.props,
       name: ownedMetadata.logicalPath.split("/").at(-1) || inlineContent.props.name,
       mimeType: ownedMetadata.mimeType,
       bytes: ownedMetadata.byteLength,
+      ownerPageId: ownedMetadata.ownerPageId,
     };
   }, [inlineContent.props, ownedMetadata]);
   const label = useMemo(() => getAttachmentLabel(resolvedProps), [resolvedProps]);
