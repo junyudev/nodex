@@ -13,6 +13,7 @@ interface BootstrapRootTomlConfig extends Record<string, unknown> {
 }
 
 export interface ResolveBootstrapNodexHomeOptions {
+  isPackaged: boolean;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   homeDir?: string;
@@ -43,9 +44,14 @@ function findProjectConfig(cwd: string, exists: (filePath: string) => boolean): 
   }
 }
 
-export function resolveBootstrapNodexHome(options: ResolveBootstrapNodexHomeOptions = {}): string {
+export function resolveBootstrapNodexHome(options: ResolveBootstrapNodexHomeOptions): string {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
+  if (!options.isPackaged && !env.NODEX_HOME?.trim()) {
+    throw new Error(
+      "Unpackaged Nodex requires NODEX_HOME. Start development with `vp run dev` or provide an isolated Profile explicitly.",
+    );
+  }
   const envHome = env.HOME?.trim();
   const homeDir = options.homeDir ?? (envHome ? envHome : homedir());
   const exists = options.exists ?? existsSync;

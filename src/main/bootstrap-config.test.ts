@@ -15,11 +15,31 @@ describe("resolveBootstrapNodexHome", () => {
 
     expect(
       resolveBootstrapNodexHome({
+        isPackaged: false,
         cwd,
         env: { NODEX_HOME: "relative-data" },
         homeDir: "/home/user",
       }),
     ).toBe(path.join(cwd, "relative-data"));
+  });
+
+  test("requires an explicit Profile for unpackaged Desktop startup", () => {
+    const files = makeVirtualFs({
+      "/workspace/project/.nodex/config.toml": '[server]\nhome = "legacy-development-home"\n',
+    });
+
+    expect(() =>
+      resolveBootstrapNodexHome({
+        isPackaged: false,
+        cwd: "/workspace/project",
+        env: {},
+        homeDir: "/home/user",
+        exists: files.exists,
+        readFile: files.readFile,
+      }),
+    ).toThrow(
+      "Unpackaged Nodex requires NODEX_HOME. Start development with `vp run dev` or provide an isolated Profile explicitly.",
+    );
   });
 
   test("merges user and project config with project home taking precedence", () => {
@@ -31,6 +51,7 @@ describe("resolveBootstrapNodexHome", () => {
 
     expect(
       resolveBootstrapNodexHome({
+        isPackaged: true,
         cwd,
         env: {},
         homeDir: "/home/user",
@@ -47,6 +68,7 @@ describe("resolveBootstrapNodexHome", () => {
 
     expect(
       resolveBootstrapNodexHome({
+        isPackaged: true,
         cwd: "/workspace/project",
         env: {},
         homeDir: "/home/user",
@@ -57,6 +79,7 @@ describe("resolveBootstrapNodexHome", () => {
 
     expect(
       resolveBootstrapNodexHome({
+        isPackaged: true,
         cwd: "/workspace/project",
         env: {},
         homeDir: "/home/user",

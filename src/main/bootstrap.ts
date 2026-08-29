@@ -32,7 +32,7 @@ import {
 
 process.env.NODEX_INTERNAL_APP_PACKAGED = app.isPackaged ? "true" : "false";
 
-const nodexHome = resolveBootstrapNodexHome();
+const nodexHome = resolveBootstrapNodexHome({ isPackaged: app.isPackaged });
 process.env.NODEX_HOME = nodexHome;
 const inheritedIsolatedRunId = process.env[ISOLATED_RUN_ID_ENV];
 delete process.env[ISOLATED_RUN_ID_ENV];

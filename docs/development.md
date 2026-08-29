@@ -63,6 +63,10 @@ vp run dev --cdp 9229
 vp run dev --enable runtime-metrics
 ```
 
+Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
+underlying Electron or electron-vite entrypoints directly; the launcher owns
+Profile isolation and supplies the required environment.
+
 The default environment root is `<worktree>/runs.local/default`. Relative
 `--home` paths resolve from the worktree root. Each environment has this layout:
 

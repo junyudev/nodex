@@ -19,6 +19,11 @@ A Dock-launched app has no repository cwd and therefore uses environment/user
 configuration. Malformed, oversized, or non-UTF-8 configuration fails closed
 instead of selecting another Profile silently.
 
+An unpackaged Desktop process requires an explicit nonblank `NODEX_HOME` and
+does not fall back to project or user configuration. The supported `vp run dev`
+launcher supplies an isolated Profile under `runs.local/`; this prevents a
+direct low-level development launch from opening the user's default Profile.
+
 ## Main setting groups
 
 The `[server]` table currently owns these product setting families:
