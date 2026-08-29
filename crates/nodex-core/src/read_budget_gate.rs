@@ -163,14 +163,15 @@ fn seed_identity_and_workspace(kernel: &SqliteStoreKernel) {
                 {
                     let mut insert_placement = transaction.prepare(
                         "INSERT INTO workspace_sidebar_section_items(\
-                           placement_id, section_id, section_kind, project_id, session_id, \
-                           rank_key, revision, created_at, updated_at\
-                         ) VALUES (?1, ?2, 'custom', NULL, ?3, ?4, 1, ?5, ?5)",
+                           placement_id, library_id, section_id, section_kind, project_id, \
+                           session_id, rank_key, revision, created_at, updated_at\
+                         ) VALUES (?1, ?2, ?3, 'custom', NULL, ?4, ?5, 1, ?6, ?6)",
                     )?;
                     for index in 0..SESSION_COUNT {
                         let session_id = format!("session:{index:05}");
                         insert_placement.execute(params![
                             format!("session:{session_id}"),
+                            LIBRARY_ID,
                             SIDEBAR_SECTION_ID,
                             session_id,
                             index as i64,

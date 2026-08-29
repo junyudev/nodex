@@ -908,6 +908,16 @@ function CodexProjectHoverCardContent({
   );
 }
 
+/**
+ * Complete sortable handoff for the shared Project row.
+ *
+ * Root Project lanes resolve their order through the controller. Mixed lanes such as custom
+ * Sections must additionally provide the semantic container, placement identity, canonical mixed
+ * order, exact next-item boundary, and placement-based sortable ID. Supplying only a controller or
+ * sortable ID can leave a row visibly draggable while resolving its indicator or commit against the
+ * wrong list. Keep every Project location on `CodexProjectRow` so whole-row Chat drops and narrow
+ * edge insertion targets remain one contract.
+ */
 export interface CodexProjectRowDndCapability {
   readonly containerId?: string;
   readonly controller: SidebarGroupDndController;

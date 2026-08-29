@@ -60,8 +60,9 @@ pub(super) fn read_direct_placement(
     };
     let sql = format!(
         "SELECT i.section_id FROM workspace_sidebar_section_items i \
-         JOIN workspace_sidebar_sections s ON s.section_id = i.section_id \
-         WHERE i.{column} = ?1 AND s.library_id = ?2 AND s.kind = 'custom' \
+         JOIN workspace_sidebar_sections s \
+           ON s.library_id = i.library_id AND s.section_id = i.section_id \
+         WHERE i.{column} = ?1 AND i.library_id = ?2 AND s.kind = 'custom' \
            AND s.lifecycle = 'active'"
     );
     connection
@@ -225,13 +226,14 @@ pub(super) fn read_section_item_window(
            thread.thread_id, thread.thread_name, thread.thread_preview, \
            thread.status_type, thread.status_active_flags_json \
          FROM workspace_sidebar_section_items item \
-         JOIN workspace_sidebar_sections section ON section.section_id = item.section_id \
+         JOIN workspace_sidebar_sections section \
+           ON section.library_id = item.library_id AND section.section_id = item.section_id \
          LEFT JOIN projects project ON project.id = item.project_id \
          LEFT JOIN pinned_project_order pinned_project ON pinned_project.project_id = project.id \
          LEFT JOIN project_sessions session ON session.id = item.session_id \
          LEFT JOIN project_session_threads link ON link.session_id = session.id \
          LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-         WHERE item.section_id = ?1 AND section.library_id = ?2 AND section.lifecycle = 'active' \
+         WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' \
            AND ((project.id IS NOT NULL AND (?3 = 1 OR project.lifecycle <> 'archived')) \
              OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0))) \
            {cursor_predicate} \
@@ -298,8 +300,7 @@ pub(super) fn read_host_link_window(
             "SELECT link.section_id, link.host_id, link.remote_section_id, link.sync_state, \
                link.observed_generation, link.last_error, link.updated_at \
              FROM workspace_sidebar_section_host_links link \
-             JOIN workspace_sidebar_sections section ON section.section_id = link.section_id \
-             WHERE section.library_id = ?1 AND link.host_id = ?2 AND link.section_id > ?3 \
+             WHERE link.library_id = ?1 AND link.host_id = ?2 AND link.section_id > ?3 \
              ORDER BY link.section_id LIMIT ?4",
         )?
         .query_map(
@@ -375,8 +376,9 @@ pub(super) fn create_section(
     }
     let exists = connection
         .query_row(
-            "SELECT 1 FROM workspace_sidebar_sections WHERE section_id = ?1",
-            [section_id],
+            "SELECT 1 FROM workspace_sidebar_sections \
+             WHERE library_id = ?1 AND section_id = ?2",
+            params![library_id, section_id],
             |_| Ok(()),
         )
         .optional()?;
@@ -489,7 +491,7 @@ pub(super) fn set_section_deleted(
         ],
     )?;
     require_revision_change(connection, library_id, section_id, changed)?;
-    let (project_ids, session_ids) = section_member_ids(connection, section_id)?;
+    let (project_ids, session_ids) = section_member_ids(connection, library_id, section_id)?;
     finish_section_mutation(
         connection,
         library_id,
@@ -528,8 +530,9 @@ pub(super) fn move_item(
         place_item(connection, library_id, section_id, item, placement, &now)?;
     } else {
         connection.execute(
-            "DELETE FROM workspace_sidebar_section_items WHERE placement_id = ?1",
-            [item.stable_key()],
+            "DELETE FROM workspace_sidebar_section_items \
+             WHERE placement_id = ?1 AND library_id = ?2",
+            params![item.stable_key(), library_id],
         )?;
     }
     let mut project_ids = Vec::new();
@@ -627,7 +630,7 @@ pub(super) fn reorder_section_sessions(
     session_ids: &[String],
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     require_custom_section(connection, library_id, section_id, true)?;
-    let rows = read_placement_rows(connection, section_id)?;
+    let rows = read_placement_rows(connection, library_id, section_id)?;
     let current_sessions = rows
         .iter()
         .filter_map(|row| row.session_id.clone())
@@ -696,7 +699,7 @@ pub(super) fn archive_section_sessions(
     replacement_session_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     require_custom_section(connection, library_id, section_id, true)?;
-    let mut session_ids = effective_session_ids(connection, section_id, false)?;
+    let mut session_ids = effective_session_ids(connection, library_id, section_id, false)?;
     let now = sqlite_now(connection)?;
     let mut project_ids = BTreeSet::new();
     for session_id in &session_ids {
@@ -774,13 +777,15 @@ pub(super) fn upsert_host_link(
     let now = sqlite_now(connection)?;
     connection.execute(
         "INSERT INTO workspace_sidebar_section_host_links( \
-           section_id, host_id, remote_section_id, sync_state, observed_generation, last_error, updated_at \
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
-         ON CONFLICT(section_id, host_id) DO UPDATE SET \
+           library_id, section_id, host_id, remote_section_id, sync_state, observed_generation, \
+           last_error, updated_at \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+         ON CONFLICT(library_id, section_id, host_id) DO UPDATE SET \
            remote_section_id = excluded.remote_section_id, sync_state = excluded.sync_state, \
            observed_generation = excluded.observed_generation, last_error = excluded.last_error, \
            updated_at = excluded.updated_at",
         params![
+            library_id,
             link.section_id,
             link.host_id,
             link.remote_section_id,
@@ -819,8 +824,9 @@ pub(super) fn delete_host_link(
     validate_id("host_id", host_id)?;
     let now = sqlite_now(connection)?;
     connection.execute(
-        "DELETE FROM workspace_sidebar_section_host_links WHERE section_id = ?1 AND host_id = ?2",
-        params![section_id, host_id],
+        "DELETE FROM workspace_sidebar_section_host_links \
+         WHERE library_id = ?1 AND section_id = ?2 AND host_id = ?3",
+        params![library_id, section_id, host_id],
     )?;
     finish_section_mutation(
         connection,
@@ -892,13 +898,14 @@ fn section_metrics(
     let (direct, session_ids) = match kind {
         ProjectWorkspaceSidebarSectionKind::Custom => {
             let direct = connection.query_row(
-                "SELECT count(*) FROM workspace_sidebar_section_items WHERE section_id = ?1",
-                [section_id],
+                "SELECT count(*) FROM workspace_sidebar_section_items \
+                 WHERE library_id = ?1 AND section_id = ?2",
+                params![library_id, section_id],
                 |row| row.get::<_, i64>(0),
             )?;
             (
                 direct,
-                effective_session_ids(connection, section_id, false)?,
+                effective_session_ids(connection, library_id, section_id, false)?,
             )
         }
         ProjectWorkspaceSidebarSectionKind::Pinned => {
@@ -921,8 +928,11 @@ fn section_metrics(
                        SELECT 1 FROM pinned_project_order pinned \
                        WHERE pinned.project_id = session.project_id)) \
                        AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
-                         JOIN workspace_sidebar_sections section ON section.section_id = item.section_id \
-                         WHERE item.session_id = session.id AND section.lifecycle = 'active') \
+                         JOIN workspace_sidebar_sections section \
+                           ON section.library_id = item.library_id \
+                          AND section.section_id = item.section_id \
+                         WHERE item.session_id = session.id AND item.library_id = ?1 \
+                           AND section.lifecycle = 'active') \
                        AND (session.project_id IS NULL OR project.library_id = ?1)",
                 )?
                 .query_map([library_id], |row| row.get::<_, String>(0))?
@@ -935,8 +945,11 @@ fn section_metrics(
                  WHERE project.library_id = ?1 AND project.lifecycle <> 'archived' \
                    AND NOT EXISTS (SELECT 1 FROM pinned_project_order pinned WHERE pinned.project_id = project.id) \
                    AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
-                     JOIN workspace_sidebar_sections section ON section.section_id = item.section_id \
-                     WHERE item.project_id = project.id AND section.lifecycle = 'active')",
+                     JOIN workspace_sidebar_sections section \
+                       ON section.library_id = item.library_id \
+                      AND section.section_id = item.section_id \
+                     WHERE item.project_id = project.id AND item.library_id = ?1 \
+                       AND section.lifecycle = 'active')",
                 [library_id],
                 |row| row.get::<_, i64>(0),
             )?;
@@ -948,10 +961,13 @@ fn section_metrics(
                     "SELECT session.id FROM project_sessions session \
                      WHERE session.project_id IS NULL AND session.archived = 0 AND session.pinned = 0 \
                        AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
-                         JOIN workspace_sidebar_sections section ON section.section_id = item.section_id \
-                         WHERE item.session_id = session.id AND section.lifecycle = 'active')",
+                         JOIN workspace_sidebar_sections section \
+                           ON section.library_id = item.library_id \
+                          AND section.section_id = item.section_id \
+                         WHERE item.session_id = session.id AND item.library_id = ?1 \
+                           AND section.lifecycle = 'active')",
                 )?
-                .query_map([], |row| row.get::<_, String>(0))?
+                .query_map([library_id], |row| row.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             (i64::try_from(ids.len()).unwrap_or(i64::MAX), ids)
         }
@@ -969,27 +985,32 @@ fn section_metrics(
 
 fn effective_session_ids(
     connection: &Connection,
+    library_id: &str,
     section_id: &str,
     include_archived: bool,
 ) -> Result<Vec<String>, StoreError> {
     connection
         .prepare(
             "SELECT session.id FROM project_sessions session \
-             WHERE (?2 = 1 OR session.archived = 0) AND ( \
+             WHERE (?3 = 1 OR session.archived = 0) AND ( \
                EXISTS (SELECT 1 FROM workspace_sidebar_section_items direct \
-                 WHERE direct.section_id = ?1 AND direct.session_id = session.id) \
+                 WHERE direct.library_id = ?1 AND direct.section_id = ?2 \
+                   AND direct.session_id = session.id) \
                OR (EXISTS (SELECT 1 FROM workspace_sidebar_section_items project_item \
-                     WHERE project_item.section_id = ?1 AND project_item.project_id = session.project_id) \
+                     WHERE project_item.library_id = ?1 AND project_item.section_id = ?2 \
+                       AND project_item.project_id = session.project_id) \
                  AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items override_item \
                    JOIN workspace_sidebar_sections override_section \
-                     ON override_section.section_id = override_item.section_id \
-                   WHERE override_item.session_id = session.id \
+                     ON override_section.library_id = override_item.library_id \
+                    AND override_section.section_id = override_item.section_id \
+                   WHERE override_item.library_id = ?1 AND override_item.session_id = session.id \
                      AND override_section.lifecycle = 'active')) \
              ) ORDER BY session.id",
         )?
-        .query_map(params![section_id, i64::from(include_archived)], |row| {
-            row.get::<_, String>(0)
-        })?
+        .query_map(
+            params![library_id, section_id, i64::from(include_archived)],
+            |row| row.get::<_, String>(0),
+        )?
         .collect::<rusqlite::Result<Vec<_>>>()
         .map_err(Into::into)
 }
@@ -1097,7 +1118,7 @@ fn place_item(
         "DELETE FROM workspace_sidebar_section_items WHERE placement_id = ?1",
         [&placement_id],
     )?;
-    let mut rows = read_placement_rows(connection, section_id)?;
+    let mut rows = read_placement_rows(connection, library_id, section_id)?;
     let target_index = match placement {
         ProjectWorkspaceSidebarSectionItemPlacement::Start => 0,
         ProjectWorkspaceSidebarSectionItemPlacement::End => rows.len(),
@@ -1143,11 +1164,12 @@ fn place_item(
         if row.placement_id == placement_id {
             connection.execute(
                 "INSERT INTO workspace_sidebar_section_items( \
-                   placement_id, section_id, section_kind, project_id, session_id, rank_key, \
-                   revision, created_at, updated_at \
-                 ) VALUES (?1, ?2, 'custom', ?3, ?4, ?5, 1, ?6, ?6)",
+                   placement_id, library_id, section_id, section_kind, project_id, session_id, \
+                   rank_key, revision, created_at, updated_at \
+                 ) VALUES (?1, ?2, ?3, 'custom', ?4, ?5, ?6, 1, ?7, ?7)",
                 params![
                     row.placement_id,
+                    library_id,
                     section_id,
                     row.project_id,
                     row.session_id,
@@ -1176,15 +1198,17 @@ struct PlacementRow {
 
 fn read_placement_rows(
     connection: &Connection,
+    library_id: &str,
     section_id: &str,
 ) -> Result<Vec<PlacementRow>, StoreError> {
     connection
         .prepare(
             "SELECT placement_id, project_id, session_id, rank_key \
-             FROM workspace_sidebar_section_items WHERE section_id = ?1 \
+             FROM workspace_sidebar_section_items \
+             WHERE library_id = ?1 AND section_id = ?2 \
              ORDER BY rank_key, placement_id",
         )?
-        .query_map([section_id], |row| {
+        .query_map(params![library_id, section_id], |row| {
             Ok(PlacementRow {
                 placement_id: row.get(0)?,
                 project_id: row.get(1)?,
@@ -1314,9 +1338,10 @@ fn require_revision_change(
 
 fn section_member_ids(
     connection: &Connection,
+    library_id: &str,
     section_id: &str,
 ) -> Result<(Vec<String>, Vec<String>), StoreError> {
-    let rows = read_placement_rows(connection, section_id)?;
+    let rows = read_placement_rows(connection, library_id, section_id)?;
     Ok((
         rows.iter()
             .filter_map(|row| row.project_id.clone())
@@ -1468,6 +1493,7 @@ mod tests {
     };
 
     use super::super::test_support::{apply, read, seeded_workspace};
+    use crate::infrastructure::sqlite::with_immediate_transaction;
 
     fn window() -> CollectionWindowRequest {
         CollectionWindowRequest {
@@ -1490,6 +1516,57 @@ mod tests {
             panic!("Sidebar Section window");
         };
         sections.items
+    }
+
+    #[test]
+    fn built_in_section_identities_are_scoped_to_each_library() {
+        let workspace = seeded_workspace();
+        let sections = workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    transaction.execute(
+                        "INSERT INTO profiles(id, created_at, updated_at) \
+                         VALUES ('profile-2', ?1, ?1)",
+                        [super::super::test_support::NOW],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO libraries(id, profile_id, created_at, updated_at) \
+                         VALUES ('library-2', 'profile-2', ?1, ?1)",
+                        [super::super::test_support::NOW],
+                    )?;
+                    transaction
+                        .prepare(
+                            "SELECT library_id, section_id FROM workspace_sidebar_sections \
+                             WHERE kind <> 'custom' ORDER BY library_id, rank_key",
+                        )?
+                        .query_map([], |row| {
+                            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                        })?
+                        .collect::<rusqlite::Result<Vec<_>>>()
+                        .map_err(Into::into)
+                })
+            })
+            .expect("seed a second Profile-scoped Section collection");
+
+        let expected_ids = [
+            "sidebar:pinned",
+            "sidebar:pages",
+            "sidebar:projects",
+            "sidebar:chats",
+        ];
+        assert_eq!(sections.len(), expected_ids.len() * 2);
+        for library_id in ["library-1", "library-2"] {
+            assert_eq!(
+                sections
+                    .iter()
+                    .filter(|(stored_library_id, _)| stored_library_id == library_id)
+                    .map(|(_, section_id)| section_id.as_str())
+                    .collect::<Vec<_>>(),
+                expected_ids,
+            );
+        }
     }
 
     #[test]

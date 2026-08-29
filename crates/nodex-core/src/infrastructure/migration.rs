@@ -144,6 +144,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 142,
         apply: migrate_v141_to_v142,
     },
+    MigrationStep {
+        from_revision: 142,
+        to_revision: 143,
+        apply: migrate_v142_to_v143,
+    },
 ];
 
 fn resolve_migration_path(
@@ -1278,6 +1283,33 @@ fn migrate_v141_to_v142(
     Ok(())
 }
 
+fn migrate_v142_to_v143(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v142_to_v143.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history( \
+           source_revision, target_revision, source_schema_fingerprint, \
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object( \
+           'sidebar_sections', (SELECT count(*) FROM workspace_sidebar_sections), \
+           'sidebar_section_items', (SELECT count(*) FROM workspace_sidebar_section_items), \
+           'sidebar_section_host_links', \
+             (SELECT count(*) FROM workspace_sidebar_section_host_links)))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn install_fresh_profile(connection: &mut Connection, now: u64) -> Result<(), StoreError> {
     install_fresh_profile_with(connection, |transaction| {
         initialize_fresh_profile(transaction, now)
@@ -1582,6 +1614,122 @@ mod tests {
                     .map(|completed| StorePreparationEvent::MigrationProgress { completed, total }),
             )
             .collect()
+    }
+
+    #[test]
+    fn v142_sidebar_sections_gain_library_scoped_keys_without_losing_state() {
+        let mut connection = Connection::open_in_memory().expect("v142 Store");
+        connection
+            .pragma_update(None, "foreign_keys", true)
+            .expect("foreign keys");
+        connection
+            .execute_batch(
+                "CREATE TABLE libraries(id TEXT PRIMARY KEY, created_at TEXT NOT NULL); \
+                 CREATE TABLE projects(id TEXT PRIMARY KEY); \
+                 CREATE TABLE project_sessions(id TEXT PRIMARY KEY); \
+                 CREATE TABLE core_store_migration_history( \
+                   source_revision INTEGER NOT NULL, target_revision INTEGER NOT NULL, \
+                   source_schema_fingerprint TEXT NOT NULL, \
+                   target_schema_fingerprint TEXT NOT NULL, backup_name TEXT NOT NULL, \
+                   completed_at_unix_ms INTEGER NOT NULL, evidence_json TEXT NOT NULL); \
+                 INSERT INTO libraries(id, created_at) \
+                   VALUES ('library-1', '2026-08-30T00:00:00.000Z'); \
+                 INSERT INTO projects(id) VALUES ('project-1');",
+            )
+            .expect("v141 Sidebar Section parents");
+        connection
+            .execute_batch(include_str!("../../schema/migrations/v141_to_v142.sql"))
+            .expect("published v142 Sidebar Section schema");
+        connection
+            .execute_batch(
+                "INSERT INTO workspace_sidebar_sections( \
+                   section_id, library_id, kind, name, rank_key, revision, lifecycle, \
+                   deleted_at, created_at, updated_at \
+                 ) VALUES ( \
+                   'section:custom', 'library-1', 'custom', 'Custom', 2000000000000, \
+                   3, 'active', NULL, '2026-08-30T00:00:00.000Z', \
+                   '2026-08-30T00:01:00.000Z'); \
+                 INSERT INTO workspace_sidebar_section_items( \
+                   placement_id, section_id, section_kind, project_id, session_id, rank_key, \
+                   revision, created_at, updated_at \
+                 ) VALUES ( \
+                   'project:project-1', 'section:custom', 'custom', 'project-1', NULL, 0, 2, \
+                   '2026-08-30T00:00:00.000Z', '2026-08-30T00:01:00.000Z'); \
+                 INSERT INTO workspace_sidebar_section_host_links( \
+                   section_id, host_id, remote_section_id, sync_state, observed_generation, \
+                   last_error, updated_at \
+                 ) VALUES ( \
+                   'section:custom', 'local', 'remote:1', 'ready', 7, NULL, \
+                   '2026-08-30T00:01:00.000Z');",
+            )
+            .expect("v142 Sidebar Section state");
+
+        let source = published_format(142).expect("v142 format");
+        let target = published_format(143).expect("v143 format");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v142_to_v143(
+                transaction,
+                &MigrationContext {
+                    source_revision: 142,
+                    target_revision: 143,
+                    backup_name: "v142-to-v143-test.db".to_owned(),
+                    source_schema_fingerprint: source.schema_fingerprint,
+                    target_schema_fingerprint: target.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .expect("migrate v142 Sidebar Sections");
+
+        let migrated = connection
+            .query_row(
+                "SELECT section.library_id, section.name, section.revision, \
+                        item.library_id, item.revision, link.library_id, link.remote_section_id, \
+                        link.observed_generation \
+                 FROM workspace_sidebar_sections section \
+                 JOIN workspace_sidebar_section_items item \
+                   ON item.library_id = section.library_id \
+                  AND item.section_id = section.section_id \
+                 JOIN workspace_sidebar_section_host_links link \
+                   ON link.library_id = section.library_id \
+                  AND link.section_id = section.section_id \
+                 WHERE section.library_id = 'library-1' \
+                   AND section.section_id = 'section:custom'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, i64>(7)?,
+                    ))
+                },
+            )
+            .expect("migrated Sidebar Section state");
+        assert_eq!(
+            migrated,
+            (
+                "library-1".to_owned(),
+                "Custom".to_owned(),
+                3,
+                "library-1".to_owned(),
+                2,
+                "library-1".to_owned(),
+                "remote:1".to_owned(),
+                7,
+            )
+        );
+        let foreign_key_failures = connection
+            .prepare("PRAGMA foreign_key_check")
+            .expect("foreign key check")
+            .query_map([], |_| Ok(()))
+            .expect("foreign key rows")
+            .count();
+        assert_eq!(foreign_key_failures, 0);
     }
 
     #[test]
@@ -2099,7 +2247,7 @@ mod tests {
             .expect("migration history")
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("migration history rows");
-        assert_eq!(history.len(), 12);
+        assert_eq!(history.len(), 13);
         assert_eq!((history[0].0, history[0].1), (130, 131));
         assert_eq!((history[1].0, history[1].1), (131, 132));
         assert_eq!((history[2].0, history[2].1), (132, 133));
@@ -2112,6 +2260,7 @@ mod tests {
         assert_eq!((history[9].0, history[9].1), (139, 140));
         assert_eq!((history[10].0, history[10].1), (140, 141));
         assert_eq!((history[11].0, history[11].1), (141, 142));
+        assert_eq!((history[12].0, history[12].1), (142, 143));
         assert_eq!(
             history[0].2,
             published_format(130)
@@ -2173,13 +2322,13 @@ mod tests {
                 .schema_fingerprint
         );
         assert_eq!(
-            history[11].3,
-            published_format(142)
-                .expect("v142 format")
+            history[12].3,
+            published_format(143)
+                .expect("v143 format")
                 .schema_fingerprint
         );
         assert!(history.iter().all(|row| row.4 == history[0].4));
-        assert!(history[0].4.starts_with("v130-to-v142-"));
+        assert!(history[0].4.starts_with("v130-to-v143-"));
         assert!(history[0].4.ends_with(".db"));
         assert!(history.iter().all(|row| row.5 > 0));
         let backup_path = directory
@@ -2211,7 +2360,7 @@ mod tests {
                     |row| { row.get::<_, i64>(0) }
                 )
                 .expect("stable history"),
-            12
+            13
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -2246,7 +2395,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            12
+            13
         );
     }
 
@@ -2276,7 +2425,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            10
+            11
         );
         assert_eq!(
             connection
@@ -2374,8 +2523,8 @@ mod tests {
                 },
             )
             .expect("v136 migration history");
-        assert_eq!((source_revision, target_revision), (141, 142));
-        assert!(backup_name.starts_with("v136-to-v142-"));
+        assert_eq!((source_revision, target_revision), (142, 143));
+        assert!(backup_name.starts_with("v136-to-v143-"));
         let backup_path = directory
             .path()
             .join("backups/core-migrations")
@@ -2395,7 +2544,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("stable history"),
-            6
+            7
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -2640,7 +2789,7 @@ mod tests {
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
         fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(backup_directory.join(".v130-to-v142.pending.db"))
+        fs::create_dir(backup_directory.join(".v130-to-v143.pending.db"))
             .expect("non-file pending candidate");
         let mut connection = open_writer(&non_file.path().join("nodex.db")).expect("writer");
         let error = prepare_profile_store(&mut connection, non_file.path())
@@ -2650,7 +2799,7 @@ mod tests {
 
     #[test]
     fn migration_registry_is_contiguous_and_forward_only() {
-        assert_eq!(MIGRATION_STEPS.len(), 12);
+        assert_eq!(MIGRATION_STEPS.len(), 13);
         for (index, step) in MIGRATION_STEPS.iter().enumerate() {
             assert!(step.from_revision < step.to_revision);
             if let Some(next) = MIGRATION_STEPS.get(index + 1) {
