@@ -912,8 +912,8 @@ describe("CoreClient over a Unix socket", () => {
           event: expect.objectContaining({ kind: "library_changed" }),
         }),
       );
-      expect(event.packet.manifest.event_version).toBe(8);
-      expect(replayed.packet.manifest.event_version).toBe(8);
+      expect(event.packet.manifest.event_version).toBe(CORE_CLIENT_REQUIREMENTS.event_version);
+      expect(replayed.packet.manifest.event_version).toBe(CORE_CLIENT_REQUIREMENTS.event_version);
       expect(replayed.packet.projection_effects.length).toBeGreaterThan(0);
       restartedSubscription.close();
       await restartedSubscription.done;

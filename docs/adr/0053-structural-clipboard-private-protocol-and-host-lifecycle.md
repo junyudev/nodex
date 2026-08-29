@@ -91,6 +91,13 @@ timeout; source and target sender lifetime; Profile replacement; and shutdown
 cleanup. Repeated target waiters for one claim share the same readiness result,
 while Core still serializes consumption of a single-use cut claim.
 
+Timeout is fail-closed by lifecycle phase. It may expire an unregistered or
+preparing claim because a later publication will then be rejected before source
+deletion. It does not resolve a published Cut while source deletion is in
+flight: elapsed time cannot prove whether that durable command committed. That
+phase resolves only from explicit source settlement, source disposal, Profile
+replacement, or Scope shutdown.
+
 IPC identity is bound from the trusted sender and current host authority. A
 renderer cannot name another source window, broaden Profile scope, or finalize a
 claim it does not own. Source destruction before a valid terminal result settles

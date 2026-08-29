@@ -113,6 +113,14 @@ reference set. Changing placement count without changing set membership does
 not invalidate bytes. Ordinary text, Property, focus, selection, another File,
 or owner-local Files-row usage changes do not reload the current File.
 
+Reference additions and removals have deliberately different cache semantics.
+Adding a canonical placement clears only that File's negative read result and
+revalidates it. Removing the last placement from a containing Page immediately
+releases that Page/File metadata, bytes, and object URL before revalidation;
+stale-while-revalidate never keeps presentation visible after placement read
+authority has ended. A bounded reset applies the same fail-closed revocation to
+the complete containing-Page cache scope.
+
 The renderer shares authorized File reads under the complete identity
 `(Store epoch, access context, containing Page, File)`. That cache deduplicates
 in-flight metadata and byte reads, preserves negative authorization results

@@ -20,6 +20,8 @@ export interface PageFileReadDemand {
 }
 
 export interface PageFileReadInvalidation {
+  /** Refresh preserves an authorized stale value; revoke removes it before revalidation. */
+  readonly mode: "refresh" | "revoke";
   /** `null` is the generated reset variant for the containing Page scope. */
   readonly fileIds: readonly string[] | null;
   readonly metadata: boolean;
@@ -366,11 +368,18 @@ export class PageFileReadCache {
         entry.metadataGeneration += 1;
         entry.metadataStale = true;
         entry.metadataError = null;
+        if (invalidation.mode === "revoke") entry.metadata = null;
       }
       if (invalidation.content) {
         entry.contentGeneration += 1;
         entry.contentStale = true;
         entry.contentError = null;
+        if (invalidation.mode === "revoke") {
+          entry.bytes = null;
+          entry.contentEtag = null;
+          if (entry.objectUrl) this.#dependencies.revokeObjectUrl(entry.objectUrl);
+          entry.objectUrl = null;
+        }
       }
       this.#publish(entry);
 

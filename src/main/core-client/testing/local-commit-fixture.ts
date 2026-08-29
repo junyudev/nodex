@@ -1,3 +1,5 @@
+import { CORE_CLIENT_REQUIREMENTS } from "@nodex/core-protocol";
+
 import type { CoreAuthorizedDeliveryPacket, CoreModuleEventPayload } from "../types";
 import type { ResourceRevocation } from "../../../shared/resource-revocation-stream";
 
@@ -97,7 +99,7 @@ export const createCoreLocalCommitFixture = (
     delivery_address: authorizationScope,
     authorization_scope: authorizationScope,
     manifest: {
-      event_version: 8,
+      event_version: CORE_CLIENT_REQUIREMENTS.event_version,
       identity: {
         commit_seq: input.commitSeq,
         manifest_hash: manifestHash,

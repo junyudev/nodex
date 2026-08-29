@@ -12,6 +12,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { act, render } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
+import { NODEX_STRUCTURAL_CLIPBOARD_MIME } from "../../../../shared/clipboard-paste";
 import { NfmStructuredClipboardExtension } from "./nfm-editor-extensions";
 
 const typedOwnerConfig = {
@@ -112,6 +113,53 @@ function renderClipboardEditor(editor: AnyBlockNoteEditor) {
 }
 
 describe("current Block clipboard behavior in Chromium", () => {
+  test("does not start a structural copy without a standard portable presentation", async () => {
+    const onStructuralClipboard = vi.fn(() => true);
+    const onStructuralClipboardUnavailable = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const writtenTypes: string[] = [];
+    const editor = BlockNoteEditor.create({
+      schema: clipboardSchema,
+      initialContent: [{ id: "current", type: "paragraph", content: "Current" }],
+      extensions: [
+        NfmStructuredClipboardExtension({
+          onStructuralClipboard,
+          onStructuralClipboardUnavailable,
+        }),
+      ],
+    });
+    const rendered = renderClipboardEditor(editor);
+
+    try {
+      await act(settleEditor);
+      await setTextSelection(editor, "current", 3);
+      const clipboardData = {
+        setData: (type: string) => {
+          writtenTypes.push(type);
+          if (type === "text/html" || type === "text/plain") {
+            throw new Error("standard presentation unavailable");
+          }
+        },
+      };
+      const event = new Event("copy", { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "clipboardData", { value: clipboardData });
+
+      await act(async () => {
+        requireView(editor).dom.dispatchEvent(event);
+        await settleEditor();
+      });
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(onStructuralClipboard).not.toHaveBeenCalled();
+      expect(onStructuralClipboardUnavailable).toHaveBeenCalledOnce();
+      expect(writtenTypes).not.toContain(NODEX_STRUCTURAL_CLIPBOARD_MIME);
+    } finally {
+      warn.mockRestore();
+      rendered.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
   test("copies the complete current Block subtree while preserving a collapsed caret", async () => {
     const editor = BlockNoteEditor.create({
       schema: clipboardSchema,

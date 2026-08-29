@@ -285,7 +285,12 @@ describe("attachment chip Page Files", () => {
     try {
       await view.findByText("current.json");
       await act(async () => {
-        runtime.invalidate({ fileIds: ["file-1"], metadata: true, content: false });
+        runtime.invalidate({
+          mode: "refresh",
+          fileIds: ["file-1"],
+          metadata: true,
+          content: false,
+        });
         await Promise.resolve();
       });
 

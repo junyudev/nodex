@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
+import { CORE_CLIENT_REQUIREMENTS, CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
 
 import type { CoreEventEnvelope, CoreEventReplayRequired } from "./types";
 import { createCoreLocalCommitFixture } from "./testing/local-commit-fixture";
@@ -30,7 +30,7 @@ const replayBoundary: CoreEventReplayRequired = {
 const configureEventContract = (transport: UdsHttpTransport): UdsHttpTransport => {
   transport.configureEventContract({
     transportVersion: 8,
-    eventVersion: 8,
+    eventVersion: CORE_CLIENT_REQUIREMENTS.event_version,
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     coreGeneration: "generation-1",

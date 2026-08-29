@@ -3,7 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 import type { AuthorizedDeliveryPacket } from "../../shared/local-commit-delivery";
 import {
   isPageFileReferenceChangeForDocument,
-  pageFileReferenceInvalidationForDocument,
+  pageFileReferenceInvalidationsForDocument,
   pageFileReadInvalidationsFromChange,
 } from "./page-file-read-authority";
 
@@ -74,7 +74,7 @@ describe("Page File read authority", () => {
     ).toBe(false);
   });
 
-  test("projects reset reference events as page-wide invalidation", () => {
+  test("projects reset reference events as page-wide authority revocation", () => {
     const referenceChange = atom({
       module: "owned_document",
       library_id: "library:test",
@@ -87,14 +87,17 @@ describe("Page File read authority", () => {
       },
     });
 
-    expect(pageFileReferenceInvalidationForDocument(referenceChange, "document:target")).toEqual({
-      fileIds: null,
-      metadata: true,
-      content: true,
-    });
+    expect(pageFileReferenceInvalidationsForDocument(referenceChange, "document:target")).toEqual([
+      {
+        mode: "revoke",
+        fileIds: null,
+        metadata: true,
+        content: true,
+      },
+    ]);
   });
 
-  test("preserves exact added and removed File IDs", () => {
+  test("separates newly readable and revoked File identities", () => {
     const referenceChange = atom({
       module: "owned_document",
       library_id: "library:test",
@@ -111,11 +114,20 @@ describe("Page File read authority", () => {
       },
     });
 
-    expect(pageFileReferenceInvalidationForDocument(referenceChange, "document:target")).toEqual({
-      fileIds: ["file-a", "file-b", "file-c"],
-      metadata: true,
-      content: true,
-    });
+    expect(pageFileReferenceInvalidationsForDocument(referenceChange, "document:target")).toEqual([
+      {
+        mode: "refresh",
+        fileIds: ["file-a", "file-b"],
+        metadata: true,
+        content: true,
+      },
+      {
+        mode: "revoke",
+        fileIds: ["file-c"],
+        metadata: true,
+        content: true,
+      },
+    ]);
   });
 
   test("keeps metadata-only and content invalidations separate", () => {
@@ -129,11 +141,13 @@ describe("Page File read authority", () => {
       }),
     ).toEqual([
       {
+        mode: "refresh",
         fileIds: ["file-renamed", "file-replaced"],
         metadata: true,
         content: false,
       },
       {
+        mode: "refresh",
         fileIds: ["file-replaced"],
         metadata: false,
         content: true,
@@ -152,6 +166,7 @@ describe("Page File read authority", () => {
       }),
     ).toEqual([
       {
+        mode: "refresh",
         fileIds: ["file-replaced"],
         metadata: true,
         content: true,

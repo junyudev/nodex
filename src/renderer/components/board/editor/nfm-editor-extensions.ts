@@ -171,11 +171,10 @@ function writeStructuralSelectionClaimToClipboard(
   const clipboardData = clipboardEvent.clipboardData;
   if (!clipboardData) return false;
 
-  let wrotePortablePresentation = false;
+  let wroteStandardPresentation = false;
   let wroteStructuralClaim = false;
   try {
     clipboardData.setData("blocknote/html", sanitizeUntrustedTypedOwnerHtml(payload.clipboardHTML));
-    wrotePortablePresentation = true;
   } catch (error) {
     console.warn("Failed to write structural block clipboard payload", error);
   }
@@ -184,17 +183,18 @@ function writeStructuralSelectionClaimToClipboard(
       "text/html",
       attachNodexStructuralClipboardWriteClaim(payload.externalHTML, writeClaim),
     );
-    wrotePortablePresentation = true;
+    wroteStandardPresentation = true;
     wroteStructuralClaim = true;
   } catch (error) {
     console.warn("Failed to write structural HTML clipboard claim", error);
   }
   try {
     clipboardData.setData("text/plain", payload.structuredText);
-    wrotePortablePresentation = true;
+    wroteStandardPresentation = true;
   } catch (error) {
     console.warn("Failed to write structural plain-text clipboard payload", error);
   }
+  if (!wroteStandardPresentation) return false;
   try {
     clipboardData.setData(
       NODEX_STRUCTURAL_CLIPBOARD_MIME,
@@ -210,7 +210,7 @@ function writeStructuralSelectionClaimToClipboard(
     console.warn("Failed to write structural private clipboard claim", error);
   }
 
-  if (!wrotePortablePresentation || !wroteStructuralClaim) return false;
+  if (!wroteStructuralClaim) return false;
   clipboardEvent.preventDefault();
   return true;
 }

@@ -17,24 +17,39 @@ export const isPageFileReferenceChangeForDocument = (
   );
 };
 
-export const pageFileReferenceInvalidationForDocument = (
+export const pageFileReferenceInvalidationsForDocument = (
   atom: DeliveryAtom,
   documentId: string,
-): PageFileReadInvalidation | null => {
-  if (!isPageFileReferenceChangeForDocument(atom, documentId)) return null;
+): readonly PageFileReadInvalidation[] => {
+  if (!isPageFileReferenceChangeForDocument(atom, documentId)) return [];
   const payload = atom.payload;
-  if (payload.module !== "owned_document") return null;
+  if (payload.module !== "owned_document") return [];
   const event = payload.event;
-  if (event.kind !== "page_file_references_changed") return null;
+  if (event.kind !== "page_file_references_changed") return [];
   const change = event.change;
-  return {
-    fileIds:
-      change.kind === "exact"
-        ? [...new Set([...change.added_file_ids, ...change.removed_file_ids])]
-        : null,
-    metadata: true,
-    content: true,
-  };
+  if (change.kind === "reset") {
+    return [{ mode: "revoke", fileIds: null, metadata: true, content: true }];
+  }
+  const invalidations: PageFileReadInvalidation[] = [];
+  const addedFileIds = [...new Set(change.added_file_ids)];
+  const removedFileIds = [...new Set(change.removed_file_ids)];
+  if (addedFileIds.length > 0) {
+    invalidations.push({
+      mode: "refresh",
+      fileIds: addedFileIds,
+      metadata: true,
+      content: true,
+    });
+  }
+  if (removedFileIds.length > 0) {
+    invalidations.push({
+      mode: "revoke",
+      fileIds: removedFileIds,
+      metadata: true,
+      content: true,
+    });
+  }
+  return invalidations;
 };
 
 const mergeExactFileIds = (
@@ -50,11 +65,13 @@ export const pageFileReadInvalidationsFromChange = (
   if (change.manifestRevision !== null && change.contentRevision !== null) {
     return [
       {
+        mode: "refresh",
         fileIds: mergeExactFileIds([change.manifestFileIds, change.contentFileIds]),
         metadata: true,
         content: false,
       },
       {
+        mode: "refresh",
         fileIds: change.contentFileIds,
         metadata: false,
         content: true,
@@ -63,10 +80,20 @@ export const pageFileReadInvalidationsFromChange = (
   }
   const invalidations: PageFileReadInvalidation[] = [];
   if (change.manifestRevision !== null) {
-    invalidations.push({ fileIds: change.manifestFileIds, metadata: true, content: false });
+    invalidations.push({
+      mode: "refresh",
+      fileIds: change.manifestFileIds,
+      metadata: true,
+      content: false,
+    });
   }
   if (change.contentRevision !== null) {
-    invalidations.push({ fileIds: change.contentFileIds, metadata: true, content: true });
+    invalidations.push({
+      mode: "refresh",
+      fileIds: change.contentFileIds,
+      metadata: true,
+      content: true,
+    });
   }
   return invalidations;
 };
@@ -86,8 +113,9 @@ export const subscribePageFileReadAuthority = (
     }
   });
   const releaseReferences = rendererLocalCommitIngress.subscribeAtoms((_packet, atom) => {
-    const invalidation = pageFileReferenceInvalidationForDocument(atom, documentId);
-    if (invalidation) listener(invalidation);
+    for (const invalidation of pageFileReferenceInvalidationsForDocument(atom, documentId)) {
+      listener(invalidation);
+    }
   });
   return () => {
     releasePageFiles();

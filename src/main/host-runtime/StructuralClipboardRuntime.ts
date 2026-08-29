@@ -179,7 +179,13 @@ export const live: Layer.Layer<
       );
       callbacks(
         Effect.sleep(STRUCTURAL_CLIPBOARD_SESSION_TIMEOUT_MS).pipe(
-          Effect.andThen(complete(entry, { kind: "portable_fallback", reason: "timeout" })),
+          Effect.andThen(
+            Effect.suspend(() =>
+              entry.state === "awaiting_source_commit"
+                ? Effect.void
+                : complete(entry, { kind: "portable_fallback", reason: "timeout" }),
+            ),
+          ),
         ),
       );
       return entry;

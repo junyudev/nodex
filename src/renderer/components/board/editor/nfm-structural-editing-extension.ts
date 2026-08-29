@@ -657,9 +657,10 @@ export class NfmStructuralEditingSession {
         published = true;
         if (actionHint === "copy") return;
 
+        let deleted: LibraryStructuralEditResult;
         try {
           const deleteSelection = await this.prepareSelection(roots);
-          const deleted = applyResult(
+          deleted = applyResult(
             await this.apply(this.boundRuntime.accessContext, {
               operationId: createUuidV7(),
               storeEpoch: this.boundRuntime.source.storeEpoch,
@@ -674,13 +675,13 @@ export class NfmStructuralEditingSession {
               },
             }),
           );
-          this.recordStructuralResult(deleted);
-          await this.restoreSelection(deleted);
-          await this.settleClipboard({ writeClaim, outcome: "cut_committed" });
         } catch (error) {
           await this.settleClipboard({ writeClaim, outcome: "source_preserved" });
           throw error;
         }
+        await this.settleClipboard({ writeClaim, outcome: "cut_committed" });
+        this.recordStructuralResult(deleted);
+        await this.restoreSelection(deleted);
       } catch (error) {
         if (!published) {
           await this.settleClipboard({

@@ -108,6 +108,11 @@ describe("NFM structural editing session", () => {
     let selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
     let selectedNodeIds: string[] = [];
     const cursorPlacements: unknown[] = [];
+    const portableReplacements: unknown[] = [];
+    const clipboardSettlements: Array<{
+      readonly outcome: string;
+      readonly cursorPlacementCount: number;
+    }> = [];
     const editor = {
       document: [blocks.get("text"), blocks.get("page"), blocks.get("after")],
       getSelection: () => (selectedBlocks.length > 0 ? { blocks: selectedBlocks } : undefined),
@@ -119,6 +124,10 @@ describe("NFM structural editing session", () => {
       getBlock: (blockId: string) => blocks.get(blockId),
       setTextCursorPosition: (blockId: string, edge: string) => {
         cursorPlacements.push({ blockId, edge });
+      },
+      replaceBlocks: (blockIds: readonly string[], replacement: readonly unknown[]) => {
+        portableReplacements.push({ blockIds, replacement });
+        return [];
       },
       focus: () => undefined,
       prosemirrorView: {
@@ -207,7 +216,13 @@ describe("NFM structural editing session", () => {
       }
       return { ok: true };
     };
-    const settleClipboard: typeof settleStructuralClipboard = async () => ({ ok: true });
+    const settleClipboard: typeof settleStructuralClipboard = async (input) => {
+      clipboardSettlements.push({
+        outcome: input.outcome,
+        cursorPlacementCount: cursorPlacements.length,
+      });
+      return { ok: true };
+    };
     const awaitClipboard: typeof awaitStructuralClipboard = async () => ({
       kind: "ready",
       disposition: "structural",
@@ -334,6 +349,7 @@ describe("NFM structural editing session", () => {
       events.length = 0;
       selectedNodeIds = [];
       selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
+      const cursorPlacementCountBeforeCut = cursorPlacements.length;
       expect(
         session.handleClipboard(
           "cut",
@@ -353,6 +369,11 @@ describe("NFM structural editing session", () => {
       expect(commands.at(-1)).toMatchObject({
         command: { reason: { kind: "cut", bundle: clipboard } },
       });
+      expect(clipboardSettlements.at(-1)).toEqual({
+        outcome: "cut_committed",
+        cursorPlacementCount: cursorPlacementCountBeforeCut,
+      });
+      expect(cursorPlacements.length).toBeGreaterThan(cursorPlacementCountBeforeCut);
 
       events.length = 0;
       supersedeNextWrite = true;
@@ -563,6 +584,50 @@ describe("NFM structural editing session", () => {
           kind: "duplicate_selection",
           selection: { rootBlockIds: ["page"] },
         },
+      });
+
+      selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
+      expect(
+        session.handleStructuralClaimPaste(
+          {
+            version: 1,
+            phase: "ready",
+            writeClaim: writeClaim(5),
+            actionHint: "copy",
+            envelope: {
+              version: 1,
+              profileId: "profile:foreign",
+              libraryId: "library:foreign",
+              storeEpoch: clipboard.storeEpoch,
+              bundleId: clipboard.bundleId,
+              capability: clipboard.capability,
+              manifestHash: clipboard.manifestHash,
+              actionHint: "copy",
+            },
+          },
+          [
+            {
+              id: "portable-image",
+              type: "image",
+              props: { url: "nodex://files/file-foreign", name: "diagram.png" },
+              content: [],
+              children: [],
+            },
+          ],
+        ),
+      ).toBe(true);
+      selectedBlocks = [];
+      await session.whenIdle();
+      expect(portableReplacements.at(-1)).toEqual({
+        blockIds: ["text", "page"],
+        replacement: [
+          {
+            type: "paragraph",
+            props: {},
+            content: [{ type: "text", text: "diagram.png", styles: {} }],
+            children: [],
+          },
+        ],
       });
     } finally {
       session.dispose();

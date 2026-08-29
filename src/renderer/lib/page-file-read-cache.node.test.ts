@@ -95,7 +95,12 @@ describe("PageFileReadCache", () => {
     expect(scope.snapshot("file-a").objectUrl).toBe("blob:etag-file-a-1");
 
     versions.set("file-a", 2);
-    scope.invalidate({ fileIds: ["file-a"], metadata: false, content: true });
+    scope.invalidate({
+      mode: "refresh",
+      fileIds: ["file-a"],
+      metadata: false,
+      content: true,
+    });
     expect(scope.snapshot("file-a")).toMatchObject({
       objectUrl: "blob:etag-file-a-1",
       contentRefreshing: true,
@@ -134,7 +139,12 @@ describe("PageFileReadCache", () => {
     await scope.readObjectUrl("file-a");
 
     version = 2;
-    scope.invalidate({ fileIds: ["file-a"], metadata: false, content: true });
+    scope.invalidate({
+      mode: "refresh",
+      fileIds: ["file-a"],
+      metadata: false,
+      content: true,
+    });
     await vi.waitFor(() => expect(scope.snapshot("file-a").contentError).toBe("offline"));
     expect(scope.snapshot("file-a").objectUrl).toBe("blob:etag-file-a-1");
 
@@ -203,6 +213,48 @@ describe("PageFileReadCache", () => {
 
     await expect(read).rejects.toThrow("released");
     expect(createObjectUrl).not.toHaveBeenCalled();
+  });
+
+  test("revokes stale presentation immediately when placement authority is removed", async () => {
+    const revokeObjectUrl = vi.fn();
+    let authorized = true;
+    const cache = new PageFileReadCache({
+      readMetadata: async (_, fileId) => {
+        if (!authorized) throw new Error("not authorized");
+        return metadata(fileId);
+      },
+      readBytes: async (_, fileId) => {
+        if (!authorized) throw new Error("not authorized");
+        return bytes(fileId);
+      },
+      createObjectUrl: (file) => `blob:${file.etag}`,
+      revokeObjectUrl,
+    });
+    const scope = cache.acquire(authority);
+    scope.subscribe("file-a", { metadata: true, objectUrl: true }, () => undefined);
+    await Promise.all([scope.readMetadata("file-a"), scope.readObjectUrl("file-a")]);
+    expect(scope.snapshot("file-a")).toMatchObject({
+      metadata: { fileId: "file-a" },
+      objectUrl: "blob:etag-file-a-1",
+    });
+
+    authorized = false;
+    scope.invalidate({
+      mode: "revoke",
+      fileIds: ["file-a"],
+      metadata: true,
+      content: true,
+    });
+
+    expect(scope.snapshot("file-a")).toMatchObject({ metadata: null, objectUrl: null });
+    expect(revokeObjectUrl).toHaveBeenCalledExactlyOnceWith("blob:etag-file-a-1");
+    await vi.waitFor(() => {
+      expect(scope.snapshot("file-a")).toMatchObject({
+        metadataError: "not authorized",
+        contentError: "not authorized",
+      });
+    });
+    scope.release();
   });
 
   test("detaches subscriptions owned by a released lease", async () => {

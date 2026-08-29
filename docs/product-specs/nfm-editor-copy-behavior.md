@@ -95,7 +95,15 @@ A collapsed-caret cut resumes at the previous editable sibling's end, otherwise 
 
 For complete Block roots, Core first captures an immutable ownership-closure snapshot. Electron Main publishes the safe portable presentation and private routing descriptor to the native clipboard under one exact write claim. A Cut submits one structural source deletion only after that claim still owns the native clipboard slot. Main does not expose the Cut as ready to another window until the deletion's LocalCommit has been admitted by the source renderer. Failure leaves the complete source unchanged and, when the portable presentation remains current, leaves a safe copy result rather than a half-completed move.
 
-Electron Main owns the application-scoped pending lifecycle for structural copy and cut. A paste in another Nodex window may begin waiting before source capture has registered; both sides still rendezvous by the exact write claim. Main does not require immediate native readback during registration because the browser may not have committed the ClipboardEvent yet. Final publication performs the exact slot comparison, supersedes older sessions, and sender loss, timeout, Profile replacement, or application shutdown settles every waiter without transferring semantic authority to Main.
+A registration or capture timeout may reject work before source deletion begins.
+Once a Cut has published and source deletion is in flight, elapsed time alone
+cannot prove that the source was preserved. That phase therefore remains
+pending until the source renderer reports the admitted commit or preservation,
+the source renderer is disposed, or the application Scope closes; Main never
+turns an active deletion into a portable-copy verdict merely because a timer
+expired.
+
+Electron Main owns the application-scoped pending lifecycle for structural copy and cut. A paste in another Nodex window may begin waiting before source capture has registered; both sides still rendezvous by the exact write claim. Main does not require immediate native readback during registration because the browser may not have committed the ClipboardEvent yet. Final publication performs the exact slot comparison and supersedes older sessions. Registration/capture timeout, explicit source settlement, sender loss, Profile replacement, or application shutdown eventually settles every waiter without transferring semantic authority to Main.
 
 ### How copy payloads are derived
 

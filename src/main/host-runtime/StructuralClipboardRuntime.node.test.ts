@@ -20,6 +20,7 @@ import { RendererClientRuntime } from "./RendererClientRuntime";
 import {
   live,
   STRUCTURAL_CLIPBOARD_REGISTRATION_GRACE_MS,
+  STRUCTURAL_CLIPBOARD_SESSION_TIMEOUT_MS,
   StructuralClipboardRuntime,
 } from "./StructuralClipboardRuntime";
 
@@ -188,6 +189,42 @@ it.effect("keeps cut pending until source commit settles and safely falls back t
       kind: "ready",
       envelope: envelope("cut"),
       disposition: "copy_fallback",
+    });
+  }).pipe(Effect.scoped),
+);
+
+it.effect("does not let a timeout infer that an in-flight source cut was preserved", () =>
+  Effect.gen(function* () {
+    const clipboard = makeClipboard();
+    const context = yield* Layer.build(withRuntime(clipboard.port));
+    const runtime = Context.get(context, StructuralClipboardRuntime);
+    yield* runtime.begin(
+      {
+        writeClaim: firstClaim,
+        actionHint: "cut",
+        libraryId: "library-1",
+        storeEpoch: "epoch-1",
+      },
+      "client-15",
+    );
+    yield* runtime.publish(
+      {
+        envelope: envelope("cut"),
+        writeClaim: firstClaim,
+        html: "<p>Portable</p>",
+        text: "Portable",
+      },
+      "client-15",
+    );
+    const waiting = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+
+    yield* TestClock.adjust(STRUCTURAL_CLIPBOARD_SESSION_TIMEOUT_MS);
+    assert.isUndefined(waiting.pollUnsafe());
+    yield* runtime.settle({ writeClaim: firstClaim, outcome: "cut_committed" }, "client-15");
+    assert.deepEqual(yield* Fiber.join(waiting), {
+      kind: "ready",
+      envelope: envelope("cut"),
+      disposition: "structural",
     });
   }).pipe(Effect.scoped),
 );
