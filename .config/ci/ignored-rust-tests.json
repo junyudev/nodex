@@ -4,6 +4,10 @@
       "tier": "reliability",
       "script": "core:test:read-budget"
     },
+    "sidebar_section_large_window_budget": {
+      "tier": "reliability",
+      "script": "core:test:sidebar-section-read-budget"
+    },
     "million_edge_relation_projection_stays_bounded_at_sqlite_boundary": {
       "tier": "scale",
       "script": "core:test:relation-scale"

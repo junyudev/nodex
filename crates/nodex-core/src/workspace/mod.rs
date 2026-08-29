@@ -11,6 +11,7 @@ mod read;
 mod session_lifecycle;
 mod session_mutation;
 mod sidebar;
+mod sidebar_section;
 mod task_window;
 #[cfg(test)]
 mod test_support;

@@ -383,6 +383,17 @@ current implicit access after current lifecycle/revisions are checked; it never
 revives an expired approval or archived Session automatically. Project archive
 or deletion never deletes Library resources.
 
+### Sidebar Section
+
+A Sidebar Section is a Profile-scoped, named and ordered organization group for
+Projects and Project Sessions. It changes only where those objects are presented
+in the sidebar; it never changes Project ownership, Thread identity, execution
+context, or Library access. A Project or Project Session has at most one direct
+custom Section placement, and a Session without a direct placement may inherit
+its Project's Section for presentation.
+
+_Avoid_: Project folder, Thread lane, filter.
+
 ### Linked chat
 
 A Linked chat is a normalized, non-owning, non-authorizing edge between one

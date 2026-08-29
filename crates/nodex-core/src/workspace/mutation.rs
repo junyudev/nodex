@@ -42,7 +42,7 @@ use crate::infrastructure::writer::StoreWriter;
 
 use super::{
     ProjectWorkspaceApplyOutcome, execution, queued_follow_up, session_lifecycle, session_mutation,
-    sidebar, thread,
+    sidebar, sidebar_section, thread,
 };
 
 const MODULE_NAME: &str = "project_workspace";
@@ -381,6 +381,142 @@ pub(super) fn apply(
                         *pinned,
                     )
                 }
+                ProjectWorkspaceIntent::CreateSidebarSection {
+                    section_id,
+                    name,
+                    initial_item,
+                } => sidebar_section::create_section(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    section_id,
+                    name,
+                    initial_item.as_ref(),
+                ),
+                ProjectWorkspaceIntent::RenameSidebarSection {
+                    section_id,
+                    name,
+                    expected_revision,
+                } => sidebar_section::rename_section(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    section_id,
+                    name,
+                    *expected_revision,
+                ),
+                ProjectWorkspaceIntent::DeleteSidebarSection {
+                    section_id,
+                    expected_revision,
+                } => sidebar_section::set_section_deleted(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    section_id,
+                    *expected_revision,
+                    true,
+                ),
+                ProjectWorkspaceIntent::RestoreSidebarSection {
+                    section_id,
+                    expected_revision,
+                } => sidebar_section::set_section_deleted(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    section_id,
+                    *expected_revision,
+                    false,
+                ),
+                ProjectWorkspaceIntent::MoveSidebarSectionItem {
+                    item,
+                    section_id,
+                    placement,
+                } => sidebar_section::move_item(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    item,
+                    section_id.as_deref(),
+                    placement,
+                ),
+                ProjectWorkspaceIntent::ReorderSidebarSectionSessions {
+                    section_id,
+                    session_ids,
+                } => sidebar_section::reorder_section_sessions(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    section_id,
+                    session_ids,
+                ),
+                ProjectWorkspaceIntent::ReorderSidebarSections { section_ids } => {
+                    sidebar_section::reorder_sections(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        section_ids,
+                    )
+                }
+                ProjectWorkspaceIntent::ArchiveSidebarSectionSessions {
+                    section_id,
+                    replacement_session_id,
+                } => {
+                    sidebar_section::archive_section_sessions(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        section_id,
+                        replacement_session_id.as_deref(),
+                    )
+                }
+                ProjectWorkspaceIntent::UpsertSidebarSectionHostLink { link } => {
+                    sidebar_section::upsert_host_link(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        link,
+                    )
+                }
+                ProjectWorkspaceIntent::DeleteSidebarSectionHostLink {
+                    section_id,
+                    host_id,
+                } => sidebar_section::delete_host_link(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    section_id,
+                    host_id,
+                ),
                 ProjectWorkspaceIntent::CreateSession {
                     session_id,
                     project_id,
@@ -397,6 +533,25 @@ pub(super) fn apply(
                     project_id.as_deref(),
                     title,
                     initial_page_ids,
+                    None,
+                ),
+                ProjectWorkspaceIntent::CreateSessionInSidebarSection {
+                    session_id,
+                    section_id,
+                    title,
+                    initial_page_ids,
+                } => session_lifecycle::create_session(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    session_id,
+                    None,
+                    title,
+                    initial_page_ids,
+                    Some(section_id),
                 ),
                 ProjectWorkspaceIntent::EnsureDefaultDraftSession {
                     session_id,
@@ -1441,6 +1596,10 @@ fn set_project_pinned(
     }
     let now = sqlite_now(connection)?;
     if pinned {
+        connection.execute(
+            "DELETE FROM workspace_sidebar_section_items WHERE project_id = ?1",
+            [project_id],
+        )?;
         connection.execute(
             "INSERT INTO pinned_project_order(project_id, \"order\", updated) \
              SELECT ?1, COALESCE(MAX(pinned.\"order\"), -1) + 1, ?2 \

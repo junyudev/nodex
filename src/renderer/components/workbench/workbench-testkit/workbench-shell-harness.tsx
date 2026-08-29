@@ -68,7 +68,7 @@ import { buildPageDetailStoryResult } from "../../board/page-stage/page-stage-st
 import { authorizedReadStampFixture } from "../../../../shared/testing/authorized-read-stamp-fixture";
 import { terminalSessionStore } from "@/lib/terminal-session-store";
 import type {
-  SidebarCollapsibleSectionId,
+  SidebarDisclosureSectionId,
   SidebarCollapsibleSectionsState,
 } from "@/lib/use-workbench-profile-preferences";
 import { openNodexMenu, render, settleAsyncRender } from "../../../test/dom";
@@ -3769,7 +3769,7 @@ export function renderWorkbench({
           setSidebarState((current) => ({ ...current, width }));
         }}
         setSidebarCollapsibleSectionCollapsed={(
-          sectionId: SidebarCollapsibleSectionId,
+          sectionId: SidebarDisclosureSectionId,
           collapsed: boolean,
         ) => {
           setSidebarState((current) => ({

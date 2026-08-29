@@ -18,6 +18,11 @@ import type {
   ScenarioRelatedChatSeedResult,
   ScenarioSeedPort,
 } from "../contracts";
+import type {
+  SidebarSectionCreateInput,
+  SidebarSectionMoveItemInput,
+  SidebarSectionSessionCreateInput,
+} from "../../../src/shared/sidebar-sections";
 import { normalizeScenarioBoardGroups } from "./normalize-board-groups";
 import {
   ensurePrimaryDataSourcePropertyCount,
@@ -220,5 +225,35 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       includeArchived: false,
       first: 50,
     });
+  }
+
+  async createSidebarSection(input: SidebarSectionCreateInput) {
+    return unwrapCoreResult(
+      await this.#invoke("sidebar-sections:create", input),
+      "Sidebar Section creation",
+    );
+  }
+
+  async createSessionInSidebarSection(input: SidebarSectionSessionCreateInput) {
+    return unwrapCoreResult(
+      await this.#invoke("sidebar-sections:sessions:create", input),
+      "Sidebar Section Session creation",
+    );
+  }
+
+  async moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void> {
+    unwrapCoreResult(
+      await this.#invoke("sidebar-sections:item:move", input),
+      "Sidebar Section item move",
+    );
+  }
+
+  async listSidebarSections() {
+    const result = await this.#invoke("sidebar-sections:list", { first: 200 });
+    return result.items;
+  }
+
+  async listSidebarSectionItems(sectionId: string) {
+    return await this.#invoke("sidebar-sections:items:list", sectionId, { first: 200 });
   }
 }

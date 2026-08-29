@@ -5791,6 +5791,189 @@
           }
         }
       },
+      "CollectionWindow_ProjectWorkspaceSidebarSectionHostLink": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "section_id",
+                "host_id",
+                "sync_state",
+                "observed_generation",
+                "updated_at"
+              ],
+              "properties": {
+                "host_id": {
+                  "type": "string"
+                },
+                "last_error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "observed_generation": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "remote_section_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "section_id": {
+                  "type": "string"
+                },
+                "sync_state": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionHostSyncState"
+                },
+                "updated_at": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceSidebarSectionItem": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "placement_id",
+                "rank_key",
+                "revision",
+                "value"
+              ],
+              "properties": {
+                "placement_id": {
+                  "type": "string"
+                },
+                "rank_key": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "revision": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "value": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemValue"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceSidebarSectionSummary": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "section_id",
+                "kind",
+                "rank_key",
+                "revision",
+                "lifecycle",
+                "direct_item_count",
+                "effective_session_count",
+                "has_running",
+                "has_unread"
+              ],
+              "properties": {
+                "direct_item_count": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                },
+                "effective_session_count": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                },
+                "has_running": {
+                  "type": "boolean"
+                },
+                "has_unread": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionKind"
+                },
+                "lifecycle": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionLifecycle"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rank_key": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "revision": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "section_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CollectionWindow_ProjectWorkspaceTaskSummary": {
         "type": "object",
         "required": [
@@ -23844,6 +24027,249 @@
               {
                 "type": "object",
                 "required": [
+                  "section_id",
+                  "name",
+                  "kind"
+                ],
+                "properties": {
+                  "initial_item": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "create_sidebar_section"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "section_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
+                  "name",
+                  "expected_revision",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "rename_sidebar_section"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "section_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
+                  "expected_revision",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "delete_sidebar_section"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
+                  "expected_revision",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "restore_sidebar_section"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "item",
+                  "placement",
+                  "kind"
+                ],
+                "properties": {
+                  "item": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "move_sidebar_section_item"
+                    ]
+                  },
+                  "placement": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemPlacement"
+                  },
+                  "section_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
+                  "session_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "reorder_sidebar_section_sessions"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
+                  },
+                  "session_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "reorder_sidebar_sections"
+                    ]
+                  },
+                  "section_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "archive_sidebar_section_sessions"
+                    ]
+                  },
+                  "replacement_session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "link",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "upsert_sidebar_section_host_link"
+                    ]
+                  },
+                  "link": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionHostLink"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
+                  "host_id",
+                  "kind"
+                ],
+                "properties": {
+                  "host_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "delete_sidebar_section_host_link"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "session_id",
                   "title",
                   "initial_page_ids",
@@ -23867,6 +24293,39 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "session_id",
+                  "section_id",
+                  "title",
+                  "initial_page_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "initial_page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "create_session_in_sidebar_section"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
                   },
                   "session_id": {
                     "type": "string"
@@ -27679,6 +28138,98 @@
               {
                 "type": "object",
                 "required": [
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "include_deleted": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "sidebar_section_window"
+                    ]
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "include_archived": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "sidebar_section_item_window"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "item",
+                  "kind"
+                ],
+                "properties": {
+                  "item": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "sidebar_section_placement"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "host_id",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "host_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "sidebar_section_host_link_window"
+                    ]
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "session_id",
                   "kind"
                 ],
@@ -29941,6 +30492,297 @@
           },
           "updated_at": {
             "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSidebarProjectItem": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "name",
+          "lifecycle",
+          "appearance",
+          "pinned"
+        ],
+        "properties": {
+          "appearance": {
+            "$ref": "#/components/schemas/ProjectAppearance"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/ProjectLifecycle"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "project_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSidebarSectionHostLink": {
+        "type": "object",
+        "required": [
+          "section_id",
+          "host_id",
+          "sync_state",
+          "observed_generation",
+          "updated_at"
+        ],
+        "properties": {
+          "host_id": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observed_generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "remote_section_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "section_id": {
+            "type": "string"
+          },
+          "sync_state": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionHostSyncState"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSidebarSectionHostSyncState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "ready",
+          "delete_pending",
+          "conflict",
+          "unsupported"
+        ]
+      },
+      "ProjectWorkspaceSidebarSectionItemPlacement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "start"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "end"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "item",
+              "kind"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "before"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "item",
+              "kind"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "after"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ProjectWorkspaceSidebarSectionItemRef": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project"
+                ]
+              },
+              "project_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "session"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "ProjectWorkspaceSidebarSectionItemValue": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "project",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project"
+                ]
+              },
+              "project": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSidebarProjectItem"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "session"
+                ]
+              },
+              "session": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSidebarSessionItem"
+              }
+            }
+          }
+        ]
+      },
+      "ProjectWorkspaceSidebarSectionKind": {
+        "type": "string",
+        "enum": [
+          "pinned",
+          "pages",
+          "projects",
+          "chats",
+          "custom"
+        ]
+      },
+      "ProjectWorkspaceSidebarSectionLifecycle": {
+        "type": "string",
+        "enum": [
+          "active",
+          "deleted"
+        ]
+      },
+      "ProjectWorkspaceSidebarSessionItem": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "display_title",
+          "pinned",
+          "archived",
+          "unread"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "display_title": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+              }
+            ]
+          },
+          "thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unread": {
+            "type": "boolean"
           }
         }
       },
@@ -35748,6 +36590,80 @@
                           },
                           "pinned_tasks": {
                             "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceTaskSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "sections",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sidebar_section_window"
+                            ]
+                          },
+                          "sections": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSidebarSectionSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "items",
+                          "kind"
+                        ],
+                        "properties": {
+                          "items": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSidebarSectionItem"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sidebar_section_item_window"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sidebar_section_placement"
+                            ]
+                          },
+                          "section_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "links",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sidebar_section_host_link_window"
+                            ]
+                          },
+                          "links": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSidebarSectionHostLink"
                           }
                         }
                       },

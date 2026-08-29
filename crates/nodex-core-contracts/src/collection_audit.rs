@@ -36,7 +36,12 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ChildThreadWindow { .. }
         | ProjectWorkspaceRead::BackgroundProcessWindow { .. }
         | ProjectWorkspaceRead::ManagedWorktreeWindow { .. }
-        | ProjectWorkspaceRead::PageChatWindow { .. } => ReadBudgetPolicy::CollectionWindow,
+        | ProjectWorkspaceRead::PageChatWindow { .. }
+        | ProjectWorkspaceRead::SidebarSectionWindow { .. }
+        | ProjectWorkspaceRead::SidebarSectionItemWindow { .. }
+        | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. } => {
+            ReadBudgetPolicy::CollectionWindow
+        }
         ProjectWorkspaceRead::ProjectActivitySummaries { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
@@ -48,7 +53,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::Thread { .. }
         | ProjectWorkspaceRead::QueuedFollowUpLedger { .. }
         | ProjectWorkspaceRead::ExecutionContext { .. }
-        | ProjectWorkspaceRead::TurnAuthority { .. } => ReadBudgetPolicy::Identity,
+        | ProjectWorkspaceRead::TurnAuthority { .. }
+        | ProjectWorkspaceRead::SidebarSectionPlacement { .. } => ReadBudgetPolicy::Identity,
     }
 }
 
@@ -180,6 +186,14 @@ fn every_read_variant_has_an_explicit_budget_policy() {
             project_id: "project:audit".to_owned(),
         }),
         ReadBudgetPolicy::Identity
+    );
+    assert_eq!(
+        workspace_policy(&ProjectWorkspaceRead::SidebarSectionItemWindow {
+            section_id: "section:audit".to_owned(),
+            include_archived: Some(false),
+            window: Default::default(),
+        }),
+        ReadBudgetPolicy::CollectionWindow
     );
     assert_eq!(
         automation_policy(&AutomationRead::Inbox {

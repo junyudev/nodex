@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexProjectSessionFork } from "../../codex-application/CodexProjectSessionFork";
+import { CodexSidebarSectionSync } from "../../codex-application/CodexSidebarSectionSync";
 import { CodexThreadTitlePersistence } from "../../codex-application/CodexThreadTitlePersistence";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
@@ -69,6 +70,14 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
               CodexProjectSessionFork,
               CodexProjectSessionFork.of({ fork: () => Effect.die("unused") }),
             ),
+            Layer.succeed(
+              CodexSidebarSectionSync,
+              CodexSidebarSectionSync.of({
+                request: () => Effect.void,
+                syncHost: () => Effect.die("unused"),
+                syncAll: () => Effect.succeed([]),
+              }),
+            ),
             Layer.succeed(BrowserApplication, {
               closeConversation: () => Effect.void,
               localServers: { closeProject: () => Effect.void },
@@ -88,7 +97,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 31);
+    assert.strictEqual(handlers.size, 43);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("project-sessions:fork"));
     assert.isTrue(handlers.has("project-session-threads:detach"));

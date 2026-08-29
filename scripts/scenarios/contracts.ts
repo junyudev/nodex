@@ -7,6 +7,14 @@ import type {
   ProjectCreateInput,
 } from "../../src/shared/types";
 import type { WorkflowStatus } from "../../src/shared/workflow-status";
+import type {
+  SidebarSectionCreateInput,
+  SidebarSectionItemWindow,
+  SidebarSectionMoveItemInput,
+  SidebarSectionSessionCreateInput,
+  SidebarSectionSummary,
+} from "../../src/shared/sidebar-sections";
+import type { ProjectSession } from "../../src/shared/types";
 
 export const SCENARIO_MANIFEST_VERSION = 1 as const;
 
@@ -88,6 +96,11 @@ export interface ScenarioSeedPort {
     pageIds: readonly string[],
   ): Promise<PageChatActivitySummaryResult>;
   readPageChats(projectId: string, pageId: string): Promise<PageChatWindow>;
+  createSidebarSection(input: SidebarSectionCreateInput): Promise<SidebarSectionSummary>;
+  createSessionInSidebarSection(input: SidebarSectionSessionCreateInput): Promise<ProjectSession>;
+  moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void>;
+  listSidebarSections(): Promise<readonly SidebarSectionSummary[]>;
+  listSidebarSectionItems(sectionId: string): Promise<SidebarSectionItemWindow>;
 }
 
 export interface ScenarioManifest {

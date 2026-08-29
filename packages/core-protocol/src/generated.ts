@@ -1407,6 +1407,52 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_ProjectWorkspaceSidebarSectionHostLink: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly host_id: string;
+                readonly last_error?: string | null;
+                /** Format: int64 */
+                readonly observed_generation: number;
+                readonly remote_section_id?: string | null;
+                readonly section_id: string;
+                readonly sync_state: components["schemas"]["ProjectWorkspaceSidebarSectionHostSyncState"];
+                readonly updated_at: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
+        readonly CollectionWindow_ProjectWorkspaceSidebarSectionItem: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly placement_id: string;
+                /** Format: int64 */
+                readonly rank_key: number;
+                /** Format: int64 */
+                readonly revision: number;
+                readonly value: components["schemas"]["ProjectWorkspaceSidebarSectionItemValue"];
+            }[];
+            readonly next_cursor?: string | null;
+        };
+        readonly CollectionWindow_ProjectWorkspaceSidebarSectionSummary: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                /** Format: int32 */
+                readonly direct_item_count: number;
+                /** Format: int32 */
+                readonly effective_session_count: number;
+                readonly has_running: boolean;
+                readonly has_unread: boolean;
+                readonly kind: components["schemas"]["ProjectWorkspaceSidebarSectionKind"];
+                readonly lifecycle: components["schemas"]["ProjectWorkspaceSidebarSectionLifecycle"];
+                readonly name?: string | null;
+                /** Format: int64 */
+                readonly rank_key: number;
+                /** Format: int64 */
+                readonly revision: number;
+                readonly section_id: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindow_ProjectWorkspaceTaskSummary: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -5797,10 +5843,71 @@ export interface components {
                 readonly pinned: boolean;
                 readonly project_id: string;
             } | {
+                readonly initial_item?: null | components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+                /** @enum {string} */
+                readonly kind: "create_sidebar_section";
+                readonly name: string;
+                readonly section_id: string;
+            } | {
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "rename_sidebar_section";
+                readonly name: string;
+                readonly section_id: string;
+            } | {
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "delete_sidebar_section";
+                readonly section_id: string;
+            } | {
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "restore_sidebar_section";
+                readonly section_id: string;
+            } | {
+                readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+                /** @enum {string} */
+                readonly kind: "move_sidebar_section_item";
+                readonly placement: components["schemas"]["ProjectWorkspaceSidebarSectionItemPlacement"];
+                readonly section_id?: string | null;
+            } | {
+                /** @enum {string} */
+                readonly kind: "reorder_sidebar_section_sessions";
+                readonly section_id: string;
+                readonly session_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "reorder_sidebar_sections";
+                readonly section_ids: readonly string[];
+            } | {
+                /** @enum {string} */
+                readonly kind: "archive_sidebar_section_sessions";
+                readonly replacement_session_id?: string | null;
+                readonly section_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "upsert_sidebar_section_host_link";
+                readonly link: components["schemas"]["ProjectWorkspaceSidebarSectionHostLink"];
+            } | {
+                readonly host_id: string;
+                /** @enum {string} */
+                readonly kind: "delete_sidebar_section_host_link";
+                readonly section_id: string;
+            } | {
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
                 readonly kind: "create_session";
                 readonly project_id?: string | null;
+                readonly session_id: string;
+                readonly title: string;
+            } | {
+                readonly initial_page_ids: readonly string[];
+                /** @enum {string} */
+                readonly kind: "create_session_in_sidebar_section";
+                readonly section_id: string;
                 readonly session_id: string;
                 readonly title: string;
             } | {
@@ -6642,6 +6749,26 @@ export interface components {
                 readonly kind: "sidebar_overview";
                 readonly pinned_window: components["schemas"]["CollectionWindowRequest"];
             } | {
+                readonly include_deleted?: boolean | null;
+                /** @enum {string} */
+                readonly kind: "sidebar_section_window";
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                readonly include_archived?: boolean | null;
+                /** @enum {string} */
+                readonly kind: "sidebar_section_item_window";
+                readonly section_id: string;
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+                /** @enum {string} */
+                readonly kind: "sidebar_section_placement";
+            } | {
+                readonly host_id: string;
+                /** @enum {string} */
+                readonly kind: "sidebar_section_host_link_window";
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
                 /** @enum {string} */
                 readonly kind: "session";
                 readonly session_id: string;
@@ -7301,6 +7428,72 @@ export interface components {
             readonly thread_id?: string | null;
             readonly unread: boolean;
             readonly updated_at: string;
+        };
+        readonly ProjectWorkspaceSidebarProjectItem: {
+            readonly appearance: components["schemas"]["ProjectAppearance"];
+            readonly lifecycle: components["schemas"]["ProjectLifecycle"];
+            readonly name: string;
+            readonly pinned: boolean;
+            readonly project_id: string;
+        };
+        readonly ProjectWorkspaceSidebarSectionHostLink: {
+            readonly host_id: string;
+            readonly last_error?: string | null;
+            /** Format: int64 */
+            readonly observed_generation: number;
+            readonly remote_section_id?: string | null;
+            readonly section_id: string;
+            readonly sync_state: components["schemas"]["ProjectWorkspaceSidebarSectionHostSyncState"];
+            readonly updated_at: string;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSidebarSectionHostSyncState: "pending" | "ready" | "delete_pending" | "conflict" | "unsupported";
+        readonly ProjectWorkspaceSidebarSectionItemPlacement: {
+            /** @enum {string} */
+            readonly kind: "start";
+        } | {
+            /** @enum {string} */
+            readonly kind: "end";
+        } | {
+            readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+            /** @enum {string} */
+            readonly kind: "before";
+        } | {
+            readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+            /** @enum {string} */
+            readonly kind: "after";
+        };
+        readonly ProjectWorkspaceSidebarSectionItemRef: {
+            /** @enum {string} */
+            readonly kind: "project";
+            readonly project_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "session";
+            readonly session_id: string;
+        };
+        readonly ProjectWorkspaceSidebarSectionItemValue: {
+            /** @enum {string} */
+            readonly kind: "project";
+            readonly project: components["schemas"]["ProjectWorkspaceSidebarProjectItem"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "session";
+            readonly session: components["schemas"]["ProjectWorkspaceSidebarSessionItem"];
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSidebarSectionKind: "pinned" | "pages" | "projects" | "chats" | "custom";
+        /** @enum {string} */
+        readonly ProjectWorkspaceSidebarSectionLifecycle: "active" | "deleted";
+        readonly ProjectWorkspaceSidebarSessionItem: {
+            readonly archived: boolean;
+            readonly display_title: string;
+            readonly pinned: boolean;
+            readonly project_id?: string | null;
+            readonly session_id: string;
+            readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
+            readonly thread_id?: string | null;
+            readonly unread: boolean;
         };
         readonly ProjectWorkspaceStarterPage: {
             readonly document_id: string;
@@ -8422,6 +8615,22 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "sidebar_overview";
                     readonly pinned_tasks: components["schemas"]["CollectionWindow_ProjectWorkspaceTaskSummary"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "sidebar_section_window";
+                    readonly sections: components["schemas"]["CollectionWindow_ProjectWorkspaceSidebarSectionSummary"];
+                } | {
+                    readonly items: components["schemas"]["CollectionWindow_ProjectWorkspaceSidebarSectionItem"];
+                    /** @enum {string} */
+                    readonly kind: "sidebar_section_item_window";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "sidebar_section_placement";
+                    readonly section_id?: string | null;
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "sidebar_section_host_link_window";
+                    readonly links: components["schemas"]["CollectionWindow_ProjectWorkspaceSidebarSectionHostLink"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "session";

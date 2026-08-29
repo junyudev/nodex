@@ -1,7 +1,8 @@
 import { useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ensureFreshDatabaseViewBoard } from "@/lib/board-store";
-import { getGitWorkerClient, invoke } from "@/lib/api";
+import { getGitWorkerClient, invoke, invokeCoreResult } from "@/lib/api";
+import { listAllSidebarSections } from "@/lib/sidebar-sections-api";
 import { buildSessionDeepLink } from "@/lib/page-deeplink";
 import { documentSessionRegistry } from "@/lib/document-session-registry";
 import { queryKeys } from "@/lib/query-keys";
@@ -15,6 +16,7 @@ import {
   buildSessionContextMenuItems,
   canForkSessionLocally,
   readSessionMoveToProjectActionId,
+  readSessionMoveToSectionActionId,
   resolveSessionRevealPath,
   resolveSessionProjectMoveContainers,
   SESSION_CONTEXT_MENU_ACTION_IDS,
@@ -50,6 +52,7 @@ import {
 } from "../../../shared/codex-sidebar-thread-move";
 import { RenameChatDialog } from "./rename-chat-dialog";
 import { SidebarThreadMoveConfirmationDialog } from "./sidebar-thread-move-confirmation-dialog";
+import { SIDEBAR_SECTIONS_QUERY_KEY, SidebarSectionNameDialog } from "./sidebar-custom-sections";
 import type { SidebarThreadDropCommit, SidebarThreadDropRequest } from "./sidebar-thread-reorder";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
@@ -803,6 +806,40 @@ export function useWorkbenchSidebarController({
 
   const handleSessionContextMenuAction = useCallback(
     async (session: ProjectSession, actionId: string) => {
+      const moveTargetSectionId = readSessionMoveToSectionActionId(actionId);
+      if (moveTargetSectionId) {
+        await invokeCoreResult("sidebar-sections:item:move", {
+          item: { kind: "session", sessionId: session.id },
+          sectionId: moveTargetSectionId,
+          placement: { kind: "end" },
+        });
+        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+        return;
+      }
+      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.newSection) {
+        openModal(appHandle, SidebarSectionNameDialog, {
+          title: "New section",
+          description: "Create a section and move this chat into it.",
+          allowEmpty: true,
+          onSave: async (name) => {
+            await invokeCoreResult("sidebar-sections:create", {
+              name,
+              initialItem: { kind: "session", sessionId: session.id },
+            });
+            await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+          },
+        });
+        return;
+      }
+      if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection) {
+        await invokeCoreResult("sidebar-sections:item:move", {
+          item: { kind: "session", sessionId: session.id },
+          sectionId: null,
+          placement: { kind: "end" },
+        });
+        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+        return;
+      }
       const moveTargetProjectId = readSessionMoveToProjectActionId(actionId);
       if (moveTargetProjectId || actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject) {
         const threadId = session.thread?.threadId;
@@ -870,11 +907,13 @@ export function useWorkbenchSidebarController({
     },
     [
       archiveSessionWithSidebarPendingState,
+      appHandle,
       copySessionText,
       forkSession,
       moveSidebarThreadInputForSidebar,
       onOpenProjectSessionInNewWindow,
       openRenameSessionDialog,
+      queryClient,
       revealSession,
       toggleSessionPin,
       toggleSessionUnread,
@@ -890,12 +929,24 @@ export function useWorkbenchSidebarController({
       const y = event.clientY > 0 ? event.clientY : rect.bottom;
       const project = projects.find((candidate) => candidate.id === session.projectId) ?? null;
       const isGitRepository = await resolveSessionHasGitRepository(session);
+      const [sections, directSectionId] = await Promise.all([
+        listAllSidebarSections().catch(() => []),
+        invoke("sidebar-sections:item:placement", {
+          kind: "session",
+          sessionId: session.id,
+        }).catch(() => null),
+      ]);
+      const customSections = sections.filter(
+        (section) => section.kind === "custom" && section.lifecycle === "active",
+      );
       const items = buildSessionContextMenuItems({
         session,
         projects,
         projectWorkspacePath: projectWorkspaceRootOrNull(project),
         platform: readRendererPlatform(),
         isGitRepository,
+        sections: customSections,
+        directSectionId,
       });
 
       beginContextMenu(session.id);

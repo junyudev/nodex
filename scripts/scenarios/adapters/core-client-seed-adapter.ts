@@ -13,6 +13,12 @@ import type {
 } from "../../../src/shared/types";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import type {
+  SidebarSectionCreateInput,
+  SidebarSectionMoveItemInput,
+  SidebarSectionSessionCreateInput,
+  SidebarSectionWindow,
+} from "../../../src/shared/sidebar-sections";
+import type {
   ScenarioBoardObservation,
   ScenarioDocumentReplacement,
   ScenarioPageObservation,
@@ -236,6 +242,49 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         includeArchived: false,
         first: 50,
       }),
+    );
+  }
+
+  async createSidebarSection(input: SidebarSectionCreateInput) {
+    return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.createSidebarSection(input),
+    );
+  }
+
+  async createSessionInSidebarSection(input: SidebarSectionSessionCreateInput) {
+    return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.createSessionInSidebarSection(input),
+    );
+  }
+
+  async moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void> {
+    await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.moveSidebarSectionItem(input),
+    );
+  }
+
+  async listSidebarSections() {
+    return await runScenarioProjectWorkspace(
+      this.#runtime,
+      Effect.fn("CoreClientSeedAdapter.listSidebarSections")(function* (workspace) {
+        const items = [];
+        let after: string | null = null;
+        do {
+          const window: SidebarSectionWindow = yield* workspace.listSidebarSections({
+            after,
+            first: 200,
+          });
+          items.push(...window.items);
+          after = window.nextCursor;
+        } while (after);
+        return items;
+      }),
+    );
+  }
+
+  async listSidebarSectionItems(sectionId: string) {
+    return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.listSidebarSectionItems(sectionId, { first: 200 }),
     );
   }
 

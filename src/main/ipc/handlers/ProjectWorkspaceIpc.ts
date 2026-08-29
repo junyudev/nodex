@@ -8,6 +8,7 @@ import { WorkbenchSceneSnapshotSchema } from "../../../shared/schemas/workbench-
 import { ProjectLifecycleInputSchema } from "../../../shared/schemas/projects";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexProjectSessionFork } from "../../codex-application/CodexProjectSessionFork";
+import { CodexSidebarSectionSync } from "../../codex-application/CodexSidebarSectionSync";
 import { CodexThreadTitlePersistence } from "../../codex-application/CodexThreadTitlePersistence";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { CoreModuleResponseError } from "../../core-client/core-client";
@@ -51,6 +52,7 @@ export const live: Layer.Layer<
   never,
   | BrowserApplication
   | CodexProjectSessionFork
+  | CodexSidebarSectionSync
   | CodexThreadTitlePersistence
   | ConversationCommands
   | ElectronDesktop
@@ -64,6 +66,7 @@ export const live: Layer.Layer<
     const config = yield* MainConfig;
     const conversationCommands = yield* ConversationCommands;
     const projectSessionFork = yield* CodexProjectSessionFork;
+    const sectionSync = yield* CodexSidebarSectionSync;
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const projectLifecycle = yield* ProjectLifecycleCommands;
@@ -74,6 +77,8 @@ export const live: Layer.Layer<
     const projectSessionBrowserRuntime = {
       closeBrowserConversation: browser.closeConversation,
     };
+    const syncSectionsAfter = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(Effect.tap(() => sectionSync.request("local-mutation")));
     const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
       ipc.handle(channel, handler);
     const authorize = (event: IpcMainInvokeEvent) =>
@@ -190,7 +195,7 @@ export const live: Layer.Layer<
     );
     yield* invokeEffect("projects:reorder", (_, input) => projects.reorderProjects(input));
     yield* invokeEffect("projects:set-pinned", (_, projectId, input) =>
-      projects.setProjectPinned(projectId, input),
+      syncSectionsAfter(projects.setProjectPinned(projectId, input)),
     );
     yield* invokeEffect("projects:set-pinned-order", (_, input) =>
       projects.setPinnedProjectOrder(input),
@@ -229,6 +234,40 @@ export const live: Layer.Layer<
         ),
         Effect.flatMap((parsed) => projectLifecycle.setLifecycle(projectId, parsed.lifecycle)),
       ),
+    );
+    yield* invokeEffect("sidebar-sections:list", (_, input) => projects.listSidebarSections(input));
+    yield* invokeEffect("sidebar-sections:items:list", (_, sectionId, input) =>
+      projects.listSidebarSectionItems(sectionId, input),
+    );
+    yield* invokeEffect("sidebar-sections:item:placement", (_, item) =>
+      projects.readSidebarSectionPlacement(item),
+    );
+    yield* core("sidebar-sections:create", (_, input) =>
+      syncSectionsAfter(projects.createSidebarSection(input)),
+    );
+    yield* core("sidebar-sections:rename", (_, sectionId, input) =>
+      syncSectionsAfter(projects.renameSidebarSection(sectionId, input)),
+    );
+    yield* core("sidebar-sections:delete", (_, sectionId, input) =>
+      syncSectionsAfter(projects.deleteSidebarSection(sectionId, input.expectedRevision)),
+    );
+    yield* core("sidebar-sections:restore", (_, sectionId, input) =>
+      syncSectionsAfter(projects.restoreSidebarSection(sectionId, input.expectedRevision)),
+    );
+    yield* core("sidebar-sections:item:move", (_, input) =>
+      syncSectionsAfter(projects.moveSidebarSectionItem(input)),
+    );
+    yield* core("sidebar-sections:reorder", (_, sectionIds) =>
+      projects.reorderSidebarSections(sectionIds),
+    );
+    yield* core("sidebar-sections:sessions:reorder", (_, sectionId, sessionIds) =>
+      syncSectionsAfter(projects.reorderSidebarSectionSessions(sectionId, sessionIds)),
+    );
+    yield* core("sidebar-sections:sessions:archive-all", (_, sectionId, input) =>
+      syncSectionsAfter(projects.archiveSidebarSectionSessions(sectionId, input)),
+    );
+    yield* core("sidebar-sections:sessions:create", (_, input) =>
+      syncSectionsAfter(projects.createSessionInSidebarSection(input)),
     );
     yield* invokeEffect("workspace:tasks:list", (_, projectId, input) =>
       Effect.gen(function* () {
@@ -291,7 +330,7 @@ export const live: Layer.Layer<
       projects.reorderProjectSessions(projectId, orderedSessionIds),
     );
     yield* invokeEffect("project-sessions:set-pinned", (_, sessionId, input) =>
-      projects.setProjectSessionPinned(sessionId, input),
+      syncSectionsAfter(projects.setProjectSessionPinned(sessionId, input)),
     );
     yield* invokeEffect("project-sessions:set-pinned-order", (_, projectId, input) =>
       projects.setPinnedProjectSessionOrder(projectId, input),

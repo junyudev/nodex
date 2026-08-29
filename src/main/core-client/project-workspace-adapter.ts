@@ -15,6 +15,11 @@ import type {
 } from "../../shared/types";
 import type { AgentExecutionProfile } from "../../shared/agent-runtime";
 import type { DynamicToolCatalogSelection } from "../codex/dynamic-tool-registry";
+import type {
+  SidebarSectionItem,
+  SidebarSectionItemRef,
+  SidebarSectionSummary,
+} from "../../shared/sidebar-sections";
 import type { ProjectWorkspaceReadSnapshot } from "./types";
 
 type CoreProject = Extract<
@@ -43,6 +48,73 @@ type CorePageChatItem = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { kind: "page_chat_window" }
 >["chats"]["items"][number];
+type CoreSidebarSectionSummary = Extract<
+  ProjectWorkspaceReadSnapshot["value"],
+  { kind: "sidebar_section_window" }
+>["sections"]["items"][number];
+type CoreSidebarSectionItem = Extract<
+  ProjectWorkspaceReadSnapshot["value"],
+  { kind: "sidebar_section_item_window" }
+>["items"]["items"][number];
+
+export const projectWorkspaceSidebarSectionSummaryFromCore = (
+  section: CoreSidebarSectionSummary,
+): SidebarSectionSummary => ({
+  sectionId: section.section_id,
+  kind: section.kind,
+  name: section.name ?? null,
+  rankKey: section.rank_key,
+  revision: section.revision,
+  lifecycle: section.lifecycle,
+  directItemCount: section.direct_item_count,
+  effectiveSessionCount: section.effective_session_count,
+  hasRunning: section.has_running,
+  hasUnread: section.has_unread,
+});
+
+export const projectWorkspaceSidebarSectionItemFromCore = (
+  item: CoreSidebarSectionItem,
+): SidebarSectionItem =>
+  item.value.kind === "project"
+    ? {
+        placementId: item.placement_id,
+        rankKey: item.rank_key,
+        revision: item.revision,
+        kind: "project",
+        project: {
+          projectId: item.value.project.project_id,
+          name: item.value.project.name,
+          lifecycle: item.value.project.lifecycle,
+          appearance: item.value.project.appearance,
+          pinned: item.value.project.pinned,
+        },
+      }
+    : {
+        placementId: item.placement_id,
+        rankKey: item.rank_key,
+        revision: item.revision,
+        kind: "session",
+        session: {
+          sessionId: item.value.session.session_id,
+          projectId: item.value.session.project_id ?? null,
+          displayTitle: item.value.session.display_title,
+          pinned: item.value.session.pinned,
+          archived: item.value.session.archived,
+          unread: item.value.session.unread,
+          threadId: item.value.session.thread_id ?? null,
+          status: item.value.session.status
+            ? {
+                statusType: item.value.session.status.status_type,
+                activeFlags: [...item.value.session.status.active_flags],
+              }
+            : null,
+        },
+      };
+
+export const projectWorkspaceSidebarSectionItemRefToCore = (item: SidebarSectionItemRef) =>
+  item.kind === "project"
+    ? { kind: "project" as const, project_id: item.projectId }
+    : { kind: "session" as const, session_id: item.sessionId };
 export interface DesktopProjectWorkspaceThread {
   readonly threadId: string;
   readonly projectId: string | null;

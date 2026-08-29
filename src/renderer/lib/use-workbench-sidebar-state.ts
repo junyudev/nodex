@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { Project } from "./types";
 import {
   makeDefaultSidebarCollapsibleSectionsState,
-  type SidebarCollapsibleSectionId,
+  type SidebarDisclosureSectionId,
   type SidebarCollapsibleSectionsState,
 } from "./sidebar-section-prefs";
 
@@ -21,7 +21,7 @@ interface UseWorkbenchSidebarStateInput {
   readonly activeProjectId: string | null;
   readonly collapsibleSections?: SidebarCollapsibleSectionsState;
   readonly setCollapsibleSectionCollapsed?: (
-    sectionId: SidebarCollapsibleSectionId,
+    sectionId: SidebarDisclosureSectionId,
     collapsed: boolean,
   ) => void;
 }
@@ -60,7 +60,7 @@ export function useWorkbenchSidebarState({
   }, []);
 
   const setSectionCollapsed = useCallback(
-    (sectionId: SidebarCollapsibleSectionId, collapsed: boolean) => {
+    (sectionId: SidebarDisclosureSectionId, collapsed: boolean) => {
       if (setCollapsibleSectionCollapsed) {
         setCollapsibleSectionCollapsed(sectionId, collapsed);
         return;
@@ -78,7 +78,7 @@ export function useWorkbenchSidebarState({
   );
 
   const toggleSection = useCallback(
-    (sectionId: SidebarCollapsibleSectionId) => {
+    (sectionId: SidebarDisclosureSectionId) => {
       setSectionCollapsed(sectionId, !resolvedCollapsibleSections[sectionId]);
     },
     [resolvedCollapsibleSections, setSectionCollapsed],
@@ -124,6 +124,8 @@ export function useWorkbenchSidebarState({
     beginArchive,
     finishArchive,
     sections: resolvedCollapsibleSections,
+    setSectionCollapsed,
+    toggleSection,
     togglePinnedSection: () => toggleSection("pinned"),
     togglePagesSection: () => toggleSection("pages"),
     toggleProjectsSection: () => toggleSection("projects"),

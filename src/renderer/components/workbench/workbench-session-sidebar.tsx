@@ -9,7 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, type MotionValue } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { codexSidebarProjectThreadContainerId } from "../../../shared/codex-sidebar-thread-move";
@@ -24,6 +24,7 @@ import {
   CodexSidebarTopActionButton,
   resolveCodexNewChatShortcutLabel,
   resolveCodexPageSearchShortcutLabel,
+  type CodexProjectRowDndCapability,
 } from "./codex-sidebar";
 import { LeftSidebarFooter } from "./left-sidebar-footer";
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
@@ -41,7 +42,8 @@ import {
   type SidebarGroupDndController,
 } from "./sidebar-project-group-dnd";
 import { SidebarProjectsSectionActions } from "./sidebar-projects-section-actions";
-import { SidebarReorderDndProvider } from "./sidebar-reorder-dnd";
+import { SidebarReorderDndProvider, type SidebarProjectDropRequest } from "./sidebar-reorder-dnd";
+import { resolveSidebarSectionItemPlacement } from "./sidebar-section-item-dnd";
 import {
   SidebarThreadDropContainer,
   SidebarThreadReorderRows,
@@ -75,7 +77,7 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
-import { invoke } from "@/lib/api";
+import { invoke, invokeCoreResult } from "@/lib/api";
 import {
   CODEX_SIDEBAR_FLOATING_ASIDE_CLASS,
   CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
@@ -117,6 +119,7 @@ import type {
   ProjectOrderInput,
   ProjectPinnedInput,
   ProjectPinnedOrderInput,
+  ProjectSession as ProjectSessionDomain,
   ProjectUpdateInput,
 } from "@/lib/types";
 import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
@@ -128,7 +131,18 @@ import {
   type WorkbenchSessionCollectionState,
 } from "@/lib/use-workbench-session-catalog";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
+import type { SidebarCollapsibleSectionsState } from "@/lib/sidebar-section-prefs";
 import { SidebarPaginatedItems } from "./sidebar-paginated-items";
+import {
+  SidebarCustomSections,
+  SidebarProjectSectionMenu,
+  SIDEBAR_SECTIONS_QUERY_KEY,
+  useSidebarSectionsCatalog,
+} from "./sidebar-custom-sections";
+import {
+  readSidebarSectionContainerId,
+  sidebarSectionContainerId,
+} from "../../../shared/sidebar-sections";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 const IDLE_SESSION_COLLECTION_STATE = { kind: "idle" } as const;
@@ -683,6 +697,7 @@ function SidebarThreadOrganizerSections({
   pagesSectionCollapsed,
   projectsSectionCollapsed,
   chatsSectionCollapsed,
+  sidebarCollapsibleSections,
   onLoadMoreTaskWindow,
   onRetryTaskWindow,
   model,
@@ -691,8 +706,10 @@ function SidebarThreadOrganizerSections({
   onTogglePagesSectionCollapsed,
   onToggleProjectsSectionCollapsed,
   onToggleChatsSectionCollapsed,
+  onSetSidebarSectionCollapsed,
   onToggleProjectExpanded,
   onSelectProject,
+  onSelectSession,
   onSelectSidebarThread,
   onPreviewSidebarThread,
   onOpenSessionContextMenu,
@@ -736,6 +753,7 @@ function SidebarThreadOrganizerSections({
   pagesSectionCollapsed: boolean;
   projectsSectionCollapsed: boolean;
   chatsSectionCollapsed: boolean;
+  sidebarCollapsibleSections: SidebarCollapsibleSectionsState;
   onLoadMoreTaskWindow: (projectId: string | null) => Promise<void>;
   onRetryTaskWindow: (projectId: string | null) => Promise<void>;
   model: CodexSidebarThreadSyncModel;
@@ -744,8 +762,10 @@ function SidebarThreadOrganizerSections({
   onTogglePagesSectionCollapsed: () => void;
   onToggleProjectsSectionCollapsed: () => void;
   onToggleChatsSectionCollapsed: () => void;
+  onSetSidebarSectionCollapsed: (sectionId: `custom:${string}`, collapsed: boolean) => void;
   onToggleProjectExpanded: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
+  onSelectSession: (session: ProjectSessionDomain) => void;
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
@@ -791,7 +811,8 @@ function SidebarThreadOrganizerSections({
   loadingMoreProjects: boolean;
   onLoadMoreProjects?: () => Promise<void>;
 }) {
-  const sessionsByProject = useMemo<Record<string, ProjectSession[]>>(
+  const sectionCatalog = useSidebarSectionsCatalog();
+  const sectionSessionsByProject = useMemo<Record<string, ProjectSession[]>>(
     () =>
       Object.fromEntries(
         Object.entries(projectSessionProjectionsByProject(sessionCollectionsByProject)).map(
@@ -803,12 +824,24 @@ function SidebarThreadOrganizerSections({
       ),
     [sessionCollectionsByProject],
   );
+  const sessionsByProject = useMemo<Record<string, ProjectSession[]>>(
+    () =>
+      Object.fromEntries(
+        Object.entries(sectionSessionsByProject).map(([projectId, sessions]) => [
+          projectId,
+          sessions.filter((session) => !sectionCatalog.directSessionIds.has(session.id)),
+        ]),
+      ),
+    [sectionCatalog.directSessionIds, sectionSessionsByProject],
+  );
   const projectlessSessions = useMemo(
     () =>
-      projectlessSessionCollection.projections.filter((session) =>
-        isCodexSidebarRootThread(session.thread),
+      projectlessSessionCollection.projections.filter(
+        (session) =>
+          isCodexSidebarRootThread(session.thread) &&
+          !sectionCatalog.directSessionIds.has(session.id),
       ),
-    [projectlessSessionCollection.projections],
+    [projectlessSessionCollection.projections, sectionCatalog.directSessionIds],
   );
   const [pinnedProjectsExpanded, setPinnedProjectsExpanded] = useState(false);
   const [projectsExpanded, setProjectsExpanded] = useState(false);
@@ -1021,7 +1054,7 @@ function SidebarThreadOrganizerSections({
     },
     [model.snapshot.pinnedThreadIds, onReorderPinnedThreads, sidebarThreadItemsByKey],
   );
-  const projectGroups = useMemo(
+  const allProjectGroups = useMemo(
     () =>
       model.projectGroups.map((group) => {
         const projectPinnedThreadKeySet = new Set([
@@ -1042,7 +1075,11 @@ function SidebarThreadOrganizerSections({
         const canonicalThreadKeySet = new Set(canonicalThreadKeys);
         const threadKeys = [
           ...canonicalThreadKeys,
-          ...group.threadKeys.filter((threadKey) => !canonicalThreadKeySet.has(threadKey)),
+          ...group.threadKeys.filter((threadKey) => {
+            if (canonicalThreadKeySet.has(threadKey)) return false;
+            const sessionId = getSidebarSessionId(threadKey);
+            return sessionId === null || !sectionCatalog.directSessionIds.has(sessionId);
+          }),
         ];
         return {
           project: group.project,
@@ -1054,32 +1091,47 @@ function SidebarThreadOrganizerSections({
       allPinnedThreadKeys,
       fallbackThreadItems,
       model.projectGroups,
+      getSidebarSessionId,
+      sectionCatalog.directSessionIds,
       sessionsByProject,
       sidebarThreadKeyBySessionId,
     ],
   );
+  const defaultProjectGroups = useMemo(
+    () =>
+      allProjectGroups.filter((group) => !sectionCatalog.directProjectIds.has(group.project.id)),
+    [allProjectGroups, sectionCatalog.directProjectIds],
+  );
+  const projectGroupById = useMemo(
+    () => new Map(allProjectGroups.map((group) => [group.project.id, group] as const)),
+    [allProjectGroups],
+  );
   const stableWorktreeWorkspaceRootOptions = useMemo(
-    () => projectGroups.flatMap(({ project }) => project.sources.map((source) => source.root)),
-    [projectGroups],
+    () => allProjectGroups.flatMap(({ project }) => project.sources.map((source) => source.root)),
+    [allProjectGroups],
   );
   const stableWorktreeWorkspaceRootLabels = useMemo(
     () =>
       Object.fromEntries(
-        projectGroups.flatMap(({ project }) =>
+        allProjectGroups.flatMap(({ project }) =>
           project.sources.map((source) => [source.root, project.name] as const),
         ),
       ),
-    [projectGroups],
+    [allProjectGroups],
   );
   const projectLabelById = useMemo(() => {
-    const entries = projectGroups.map(({ project }) => [project.id, project.name] as const);
+    const entries = allProjectGroups.map(({ project }) => [project.id, project.name] as const);
     return new Map(entries);
-  }, [projectGroups]);
+  }, [allProjectGroups]);
   const projectOrderIds = useMemo(
-    () => projectGroups.map((group) => group.project.id),
-    [projectGroups],
+    () => defaultProjectGroups.map((group) => group.project.id),
+    [defaultProjectGroups],
   );
-  const projectActivityQuery = useQuery(projectActivitySummariesQueryOptions(projectOrderIds));
+  const allProjectIds = useMemo(
+    () => allProjectGroups.map((group) => group.project.id),
+    [allProjectGroups],
+  );
+  const projectActivityQuery = useQuery(projectActivitySummariesQueryOptions(allProjectIds));
   const projectActivityById = useMemo(
     () =>
       new Map(
@@ -1091,22 +1143,22 @@ function SidebarThreadOrganizerSections({
   );
   const pinnedProjectGroups = useMemo(
     () =>
-      projectGroups
+      defaultProjectGroups
         .filter((group) => group.project.pinned)
         .sort(
           (left, right) =>
             (left.project.pinnedOrder ?? Number.MAX_SAFE_INTEGER) -
             (right.project.pinnedOrder ?? Number.MAX_SAFE_INTEGER),
         ),
-    [projectGroups],
+    [defaultProjectGroups],
   );
   const pinnedProjectIds = useMemo(
     () => pinnedProjectGroups.map((group) => group.project.id),
     [pinnedProjectGroups],
   );
   const unpinnedProjectGroups = useMemo(
-    () => projectGroups.filter((group) => !group.project.pinned),
-    [projectGroups],
+    () => defaultProjectGroups.filter((group) => !group.project.pinned),
+    [defaultProjectGroups],
   );
   const visibleProjectGroupIds = useMemo(
     () => unpinnedProjectGroups.map((group) => group.project.id),
@@ -1216,7 +1268,7 @@ function SidebarThreadOrganizerSections({
       projectionRevision: projectlessSessionCollection.projectionRevision,
       threadIds: threadIdsForKeys(projectlessThreadKeys),
     });
-    for (const group of projectGroups) {
+    for (const group of allProjectGroups) {
       const projectionRevision =
         sessionCollectionsByProject[group.project.id]?.projectionRevision ?? null;
       lanes.set(codexSidebarProjectThreadContainerId(group.project.id, true), {
@@ -1232,7 +1284,7 @@ function SidebarThreadOrganizerSections({
   }, [
     getSidebarRealThreadId,
     pinnedStandaloneThreadKeys,
-    projectGroups,
+    allProjectGroups,
     projectlessSessionCollection.projectionRevision,
     projectlessThreadKeys,
     sessionCollectionsByProject,
@@ -1395,8 +1447,95 @@ function SidebarThreadOrganizerSections({
     [renderThreadRow, sidebarArchivePendingKeys],
   );
 
+  const renderProjectGroup = (
+    { project, pinnedThreadKeys, threadKeys }: CodexSidebarProjectGroup,
+    dnd: CodexProjectRowDndCapability,
+    currentSectionId: string | null = null,
+  ) => {
+    const expanded = expandedProjectIds.has(project.id);
+    const threadListExpanded = expandedProjectThreadListIds.has(project.id);
+    const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
+      .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
+      .filter((item): item is CodexSidebarThreadItem => item != null);
+
+    return (
+      <CodexProjectRow
+        key={project.id}
+        project={project}
+        activity={
+          projectActivityQuery.isPending
+            ? undefined
+            : projectActivityQuery.isError
+              ? null
+              : (projectActivityById.get(project.id) ?? null)
+        }
+        active={activeSessionId === null && activeProjectId === project.id}
+        expanded={expanded}
+        dnd={dnd}
+        threadItems={projectThreadItems}
+        onActivate={() => onToggleProjectExpanded(project.id)}
+        onSelectProject={() => onSelectProject(project.id)}
+        onStartNewChat={() => void onStartNewChatInProject(project.id)}
+        onUpdateProject={onUpdateProject}
+        onArchiveProject={onArchiveProject}
+        onSetProjectPinned={onSetProjectPinned}
+        onCreateStableWorktree={onCreateStableWorktree}
+        stableWorktreeWorkspaceRootOptions={stableWorktreeWorkspaceRootOptions}
+        stableWorktreeWorkspaceRootLabels={stableWorktreeWorkspaceRootLabels}
+        onArchiveThreadItem={onArchiveThreadItem}
+        onMarkThreadItemRead={onMarkThreadItemRead}
+        onThreadsChanged={onThreadsChanged}
+        sectionActions={
+          <SidebarProjectSectionMenu
+            projectId={project.id}
+            catalog={sectionCatalog}
+            currentSectionId={currentSectionId}
+            pinned={project.pinned}
+          />
+        }
+        onHoverCardOpenChange={(open) => {
+          setSidebarHoverSurfaceOpen(`project:${project.id}`, open);
+        }}
+      >
+        <SidebarProjectThreadRowsContent
+          project={project}
+          pinnedThreadKeys={pinnedThreadKeys}
+          sortablePinnedThreadKeys={pinnedThreadKeys.filter(
+            (threadKey) =>
+              model.threadItemsByKey.has(threadKey) && !sidebarArchivePendingKeys.has(threadKey),
+          )}
+          threadKeys={threadKeys}
+          expanded={threadListExpanded}
+          onExpandedChange={(nextExpanded) => {
+            setProjectThreadListExpanded(project.id, nextExpanded);
+          }}
+          forcedVisibleKey={activeThreadKey}
+          suppressedKeys={sidebarArchivePendingKeys}
+          collectionState={
+            sessionCollectionsByProject[project.id]?.state ?? IDLE_SESSION_COLLECTION_STATE
+          }
+          hasMoreAtSource={sessionCollectionsByProject[project.id]?.hasMore === true}
+          onLoadMore={() => onLoadMoreTaskWindow(project.id)}
+          onRetry={() => onRetryTaskWindow(project.id)}
+          onPinnedThreadOrderChange={reorderVisiblePinnedThreads}
+          onRegularSessionOrderChange={(orderedSessionIds) =>
+            onReorderSessions(project.id, orderedSessionIds)
+          }
+          getSessionId={getSidebarSessionId}
+          getThreadId={getSidebarRealThreadId}
+          itemsByKey={sidebarThreadItemsByKey}
+          renderThread={(threadKey) =>
+            renderThreadRow(threadKey, {
+              hoverCardProjectLabel: project.name,
+            })
+          }
+        />
+      </CodexProjectRow>
+    );
+  };
+
   const renderProjectGroupRows = (
-    groups: typeof projectGroups,
+    groups: CodexSidebarProjectGroup[],
     options: {
       reorderScope: "projects" | "pinned";
       expanded: boolean;
@@ -1429,82 +1568,9 @@ function SidebarThreadOrganizerSections({
               }
               return reorderVisibleProjectGroups(visibleGroupIds, nextVisibleGroupIds);
             }}
-            renderProjectGroup={({ project, pinnedThreadKeys, threadKeys }, groupDndController) => {
-              const expanded = expandedProjectIds.has(project.id);
-              const threadListExpanded = expandedProjectThreadListIds.has(project.id);
-              const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
-                .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
-                .filter((item): item is CodexSidebarThreadItem => item != null);
-              return (
-                <CodexProjectRow
-                  key={project.id}
-                  project={project}
-                  activity={
-                    projectActivityQuery.isPending
-                      ? undefined
-                      : projectActivityQuery.isError
-                        ? null
-                        : (projectActivityById.get(project.id) ?? null)
-                  }
-                  active={activeSessionId === null && activeProjectId === project.id}
-                  expanded={expanded}
-                  groupDndController={groupDndController}
-                  allowProjectReorder
-                  threadItems={projectThreadItems}
-                  onActivate={() => onToggleProjectExpanded(project.id)}
-                  onSelectProject={() => onSelectProject(project.id)}
-                  onStartNewChat={() => void onStartNewChatInProject(project.id)}
-                  onUpdateProject={onUpdateProject}
-                  onArchiveProject={onArchiveProject}
-                  onSetProjectPinned={onSetProjectPinned}
-                  onCreateStableWorktree={onCreateStableWorktree}
-                  stableWorktreeWorkspaceRootOptions={stableWorktreeWorkspaceRootOptions}
-                  stableWorktreeWorkspaceRootLabels={stableWorktreeWorkspaceRootLabels}
-                  onArchiveThreadItem={onArchiveThreadItem}
-                  onMarkThreadItemRead={onMarkThreadItemRead}
-                  onThreadsChanged={onThreadsChanged}
-                  onHoverCardOpenChange={(open) => {
-                    setSidebarHoverSurfaceOpen(`project:${project.id}`, open);
-                  }}
-                >
-                  <SidebarProjectThreadRowsContent
-                    project={project}
-                    pinnedThreadKeys={pinnedThreadKeys}
-                    sortablePinnedThreadKeys={pinnedThreadKeys.filter(
-                      (threadKey) =>
-                        model.threadItemsByKey.has(threadKey) &&
-                        !sidebarArchivePendingKeys.has(threadKey),
-                    )}
-                    threadKeys={threadKeys}
-                    expanded={threadListExpanded}
-                    onExpandedChange={(nextExpanded) => {
-                      setProjectThreadListExpanded(project.id, nextExpanded);
-                    }}
-                    forcedVisibleKey={activeThreadKey}
-                    suppressedKeys={sidebarArchivePendingKeys}
-                    collectionState={
-                      sessionCollectionsByProject[project.id]?.state ??
-                      IDLE_SESSION_COLLECTION_STATE
-                    }
-                    hasMoreAtSource={sessionCollectionsByProject[project.id]?.hasMore === true}
-                    onLoadMore={() => onLoadMoreTaskWindow(project.id)}
-                    onRetry={() => onRetryTaskWindow(project.id)}
-                    onPinnedThreadOrderChange={reorderVisiblePinnedThreads}
-                    onRegularSessionOrderChange={(orderedSessionIds) =>
-                      onReorderSessions(project.id, orderedSessionIds)
-                    }
-                    getSessionId={getSidebarSessionId}
-                    getThreadId={getSidebarRealThreadId}
-                    itemsByKey={sidebarThreadItemsByKey}
-                    renderThread={(threadKey) =>
-                      renderThreadRow(threadKey, {
-                        hoverCardProjectLabel: project.name,
-                      })
-                    }
-                  />
-                </CodexProjectRow>
-              );
-            }}
+            renderProjectGroup={(group, groupDndController) =>
+              renderProjectGroup(group, { controller: groupDndController })
+            }
           />
         );
       }}
@@ -1594,11 +1660,43 @@ function SidebarThreadOrganizerSections({
         activeRoot={activeResourceTarget}
         onToggle={onTogglePagesSectionCollapsed}
         onOpenRoot={onOpenResourceTarget}
-        projects={projectGroups.map(({ project }) => ({
+        projects={allProjectGroups.map(({ project }) => ({
           id: project.id,
           name: project.name,
         }))}
         onOpenInProject={onOpenResourceTargetInProject}
+      />
+      <SidebarCustomSections
+        catalog={sectionCatalog}
+        sessionsByProject={sectionSessionsByProject}
+        renderProject={({ controller, item, itemIds, nextItemId, sectionId }) => {
+          const group = projectGroupById.get(item.project.projectId);
+          if (!group) return null;
+          return renderProjectGroup(
+            group,
+            {
+              containerId: sidebarSectionContainerId(sectionId),
+              controller,
+              itemId: item.placementId,
+              itemIds,
+              nextItemId,
+              sortableId: item.placementId,
+            },
+            sectionId,
+          );
+        }}
+        renderSession={(sessionId) => {
+          const threadKey = sidebarThreadKeyBySessionId.get(sessionId);
+          return threadKey ? renderThreadRow(threadKey) : null;
+        }}
+        onSelectSession={onSelectSession}
+        activeSessionId={activeSessionId}
+        collapsedSections={sidebarCollapsibleSections}
+        onSetCollapsed={onSetSidebarSectionCollapsed}
+        onThreadsChanged={onThreadsChanged}
+        getThreadKey={(sessionId) =>
+          sidebarThreadKeyBySessionId.get(sessionId) ?? `section-session:${sessionId}`
+        }
       />
       <CodexSidebarSection
         heading="Projects"
@@ -1677,6 +1775,7 @@ export interface ProjectSessionSidebarProps {
   pagesSectionCollapsed: boolean;
   projectsSectionCollapsed: boolean;
   chatsSectionCollapsed: boolean;
+  sidebarCollapsibleSections: SidebarCollapsibleSectionsState;
   onLoadMoreTaskWindow: (projectId: string | null) => Promise<void>;
   onRetryTaskWindow: (projectId: string | null) => Promise<void>;
   width: number;
@@ -1695,8 +1794,10 @@ export interface ProjectSessionSidebarProps {
   onTogglePagesSectionCollapsed: () => void;
   onToggleProjectsSectionCollapsed: () => void;
   onToggleChatsSectionCollapsed: () => void;
+  onSetSidebarSectionCollapsed: (sectionId: `custom:${string}`, collapsed: boolean) => void;
   onToggleProjectExpanded: (projectId: string) => void;
   onSelectProject: (projectId: string) => void;
+  onSelectSession: (session: ProjectSessionDomain) => void;
   onSelectSidebarThread: (item: CodexSidebarThreadItem) => void | Promise<void>;
   onPreviewSidebarThread?: (item: CodexSidebarThreadItem) => void;
   onOpenSessionContextMenu?: (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => void;
@@ -1773,6 +1874,7 @@ export function ProjectSessionSidebar({
   pagesSectionCollapsed,
   projectsSectionCollapsed,
   chatsSectionCollapsed,
+  sidebarCollapsibleSections,
   onLoadMoreTaskWindow,
   onRetryTaskWindow,
   width,
@@ -1787,8 +1889,10 @@ export function ProjectSessionSidebar({
   onTogglePagesSectionCollapsed,
   onToggleProjectsSectionCollapsed,
   onToggleChatsSectionCollapsed,
+  onSetSidebarSectionCollapsed,
   onToggleProjectExpanded,
   onSelectProject,
+  onSelectSession,
   onSelectSidebarThread,
   onPreviewSidebarThread,
   onOpenSessionContextMenu,
@@ -1835,6 +1939,8 @@ export function ProjectSessionSidebar({
   loadingMoreProjects,
   onLoadMoreProjects,
 }: ProjectSessionSidebarProps) {
+  const queryClient = useQueryClient();
+  const sectionCatalog = useSidebarSectionsCatalog();
   const knownSessionProjections = useMemo(
     () =>
       [
@@ -1866,13 +1972,34 @@ export function ProjectSessionSidebar({
     [onHoverSurfaceOpenChange],
   );
   const handleProjectDrop = useCallback(
-    (drop: { projectId: string; targetContainerId: string }) => {
-      if (drop.targetContainerId !== "pinned") return;
-      void onSetProjectPinned(drop.projectId, { pinned: true }).catch(() => {
-        toast.danger("Failed to pin project");
-      });
+    (drop: SidebarProjectDropRequest) => {
+      const sectionId = readSidebarSectionContainerId(drop.targetContainerId);
+      if (sectionId) {
+        const targetItems = sectionCatalog.itemsBySectionId.get(sectionId) ?? [];
+        void invokeCoreResult("sidebar-sections:item:move", {
+          item: { kind: "project", projectId: drop.projectId },
+          sectionId,
+          placement: resolveSidebarSectionItemPlacement(targetItems, drop.beforeItemId),
+        })
+          .then(async () => {
+            onSetSidebarSectionCollapsed(`custom:${sectionId}`, false);
+            await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+          })
+          .catch(() => toast.danger("Failed to move project to section"));
+        return;
+      }
+      if (drop.targetContainerId === "pinned") {
+        void onSetProjectPinned(drop.projectId, { pinned: true }).catch(() => {
+          toast.danger("Failed to pin project");
+        });
+      }
     },
-    [onSetProjectPinned],
+    [
+      onSetProjectPinned,
+      onSetSidebarSectionCollapsed,
+      queryClient,
+      sectionCatalog.itemsBySectionId,
+    ],
   );
   const handleLibraryMove = useCallback(
     async ({
@@ -1971,11 +2098,84 @@ export function ProjectSessionSidebar({
       if (containerId === null) continue;
       entries.push([session.thread.threadId, containerId]);
     }
+    for (const section of sectionCatalog.sections) {
+      const items = sectionCatalog.itemsBySectionId.get(section.sectionId) ?? [];
+      const directSessionIds = new Set(
+        items.flatMap((item) => (item.kind === "session" ? [item.session.sessionId] : [])),
+      );
+      const directProjectIds = new Set(
+        items.flatMap((item) => (item.kind === "project" ? [item.project.projectId] : [])),
+      );
+      for (const session of knownSessionProjections) {
+        if (!session.thread) continue;
+        const isDirect = directSessionIds.has(session.id);
+        const isInherited =
+          session.projectId !== null &&
+          directProjectIds.has(session.projectId) &&
+          !sectionCatalog.directSessionIds.has(session.id);
+        if (!isDirect && !isInherited) continue;
+        entries.push([session.thread.threadId, sidebarSectionContainerId(section.sectionId)]);
+      }
+    }
     return new Map(entries);
-  }, [knownSidebarProjectIds, knownSessionProjections, sidebarThreadModel.threadItemsByKey]);
+  }, [
+    knownSidebarProjectIds,
+    knownSessionProjections,
+    sectionCatalog.directSessionIds,
+    sectionCatalog.itemsBySectionId,
+    sectionCatalog.sections,
+    sidebarThreadModel.threadItemsByKey,
+  ]);
   const getSidebarThreadIdByKey = useCallback(
     (threadKey: string) => sidebarThreadIdByKey.get(threadKey) ?? null,
     [sidebarThreadIdByKey],
+  );
+  const handleSidebarThreadDrop = useCallback(
+    async (drop: SidebarThreadDropRequest): Promise<SidebarThreadDropCommit | null> => {
+      const targetSectionId = readSidebarSectionContainerId(drop.targetContainerId);
+      const sourceSectionId = readSidebarSectionContainerId(drop.sourceContainerId);
+      const session = knownSessionProjections.find(
+        (candidate) => candidate.thread?.threadId === drop.threadId,
+      );
+      if (!session || (!targetSectionId && !sourceSectionId)) {
+        return await onMoveSidebarThread(drop);
+      }
+
+      if (targetSectionId) {
+        const targetItems = sectionCatalog.itemsBySectionId.get(targetSectionId) ?? [];
+        await invokeCoreResult("sidebar-sections:item:move", {
+          item: { kind: "session", sessionId: session.id },
+          sectionId: targetSectionId,
+          placement: resolveSidebarSectionItemPlacement(targetItems, drop.beforeItemId),
+        });
+        onSetSidebarSectionCollapsed(`custom:${targetSectionId}`, false);
+        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+        await onThreadsChanged?.();
+        return null;
+      }
+
+      const sourceItems = sectionCatalog.itemsBySectionId.get(sourceSectionId as string) ?? [];
+      const directPlacement = sourceItems.some(
+        (item) => item.kind === "session" && item.session.sessionId === session.id,
+      );
+      if (directPlacement) {
+        await invokeCoreResult("sidebar-sections:item:move", {
+          item: { kind: "session", sessionId: session.id },
+          sectionId: null,
+          placement: { kind: "end" },
+        });
+        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
+      }
+      return await onMoveSidebarThread(drop);
+    },
+    [
+      knownSessionProjections,
+      onMoveSidebarThread,
+      onSetSidebarSectionCollapsed,
+      onThreadsChanged,
+      queryClient,
+      sectionCatalog.itemsBySectionId,
+    ],
   );
 
   const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -2128,7 +2328,7 @@ export function ProjectSessionSidebar({
                 onProjectError={reportSidebarProjectReorderError}
                 onProjectDrop={handleProjectDrop}
                 onThreadError={reportSidebarThreadReorderError}
-                onThreadDrop={onMoveSidebarThread}
+                onThreadDrop={handleSidebarThreadDrop}
                 onLibraryMove={handleLibraryMove}
                 onLibraryGrant={setPendingLibraryGrantDrop}
               >
@@ -2144,6 +2344,7 @@ export function ProjectSessionSidebar({
                   pagesSectionCollapsed={pagesSectionCollapsed}
                   projectsSectionCollapsed={projectsSectionCollapsed}
                   chatsSectionCollapsed={chatsSectionCollapsed}
+                  sidebarCollapsibleSections={sidebarCollapsibleSections}
                   onLoadMoreTaskWindow={onLoadMoreTaskWindow}
                   onRetryTaskWindow={onRetryTaskWindow}
                   model={sidebarThreadModel}
@@ -2152,8 +2353,10 @@ export function ProjectSessionSidebar({
                   onTogglePagesSectionCollapsed={onTogglePagesSectionCollapsed}
                   onToggleProjectsSectionCollapsed={onToggleProjectsSectionCollapsed}
                   onToggleChatsSectionCollapsed={onToggleChatsSectionCollapsed}
+                  onSetSidebarSectionCollapsed={onSetSidebarSectionCollapsed}
                   onToggleProjectExpanded={onToggleProjectExpanded}
                   onSelectProject={onSelectProject}
+                  onSelectSession={onSelectSession}
                   onSelectSidebarThread={onSelectSidebarThread}
                   onPreviewSidebarThread={onPreviewSidebarThread}
                   onOpenSessionContextMenu={onOpenSessionContextMenu}

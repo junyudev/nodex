@@ -2,7 +2,10 @@ export const SIDEBAR_COLLAPSIBLE_SECTION_IDS = ["pinned", "pages", "projects", "
 
 export type SidebarCollapsibleSectionId = (typeof SIDEBAR_COLLAPSIBLE_SECTION_IDS)[number];
 
-export type SidebarCollapsibleSectionsState = Record<SidebarCollapsibleSectionId, boolean>;
+export type SidebarDisclosureSectionId = SidebarCollapsibleSectionId | `custom:${string}`;
+
+export type SidebarCollapsibleSectionsState = Record<string, boolean> &
+  Record<SidebarCollapsibleSectionId, boolean>;
 
 export const SIDEBAR_SECTION_ITEM_LIMITS = [5, 10, 15, 20] as const;
 
@@ -32,8 +35,7 @@ export function normalizeSidebarCollapsibleSectionsState(
 ): SidebarCollapsibleSectionsState {
   const defaults = makeDefaultSidebarCollapsibleSectionsState();
   if (typeof value !== "object" || value === null || Array.isArray(value)) return defaults;
-
-  return SIDEBAR_COLLAPSIBLE_SECTION_IDS.reduce<SidebarCollapsibleSectionsState>(
+  const normalized = SIDEBAR_COLLAPSIBLE_SECTION_IDS.reduce<SidebarCollapsibleSectionsState>(
     (acc, sectionId) => {
       const record = value as Record<string, unknown>;
       const collapsed =
@@ -43,4 +45,9 @@ export function normalizeSidebarCollapsibleSectionsState(
     },
     {} as SidebarCollapsibleSectionsState,
   );
+  for (const [key, collapsed] of Object.entries(value as Record<string, unknown>)) {
+    if (!key.startsWith("custom:") || key.length > 320) continue;
+    if (typeof collapsed === "boolean") normalized[key] = collapsed;
+  }
+  return normalized;
 }

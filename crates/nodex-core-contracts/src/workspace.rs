@@ -4,7 +4,7 @@ use utoipa::ToSchema;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 17;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 18;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -42,6 +42,22 @@ pub enum ProjectWorkspaceRead {
     SidebarOverview {
         include_archived: Option<bool>,
         pinned_window: CollectionWindowRequest,
+    },
+    SidebarSectionWindow {
+        include_deleted: Option<bool>,
+        window: CollectionWindowRequest,
+    },
+    SidebarSectionItemWindow {
+        section_id: String,
+        include_archived: Option<bool>,
+        window: CollectionWindowRequest,
+    },
+    SidebarSectionPlacement {
+        item: ProjectWorkspaceSidebarSectionItemRef,
+    },
+    SidebarSectionHostLinkWindow {
+        host_id: String,
+        window: CollectionWindowRequest,
     },
     Session {
         session_id: String,
@@ -112,6 +128,18 @@ pub enum ProjectWorkspaceReadValue {
     SidebarOverview {
         pinned_tasks: CollectionWindow<ProjectWorkspaceTaskSummary>,
     },
+    SidebarSectionWindow {
+        sections: CollectionWindow<ProjectWorkspaceSidebarSectionSummary>,
+    },
+    SidebarSectionItemWindow {
+        items: CollectionWindow<ProjectWorkspaceSidebarSectionItem>,
+    },
+    SidebarSectionPlacement {
+        section_id: Option<String>,
+    },
+    SidebarSectionHostLinkWindow {
+        links: CollectionWindow<ProjectWorkspaceSidebarSectionHostLink>,
+    },
     Session {
         session: ProjectWorkspaceSessionSummary,
     },
@@ -168,6 +196,127 @@ pub enum ProjectWorkspaceThreadPlacement {
 pub enum ProjectWorkspaceThreadLane {
     Project { project_id: String },
     Projectless,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSidebarSectionKind {
+    Pinned,
+    Pages,
+    Projects,
+    Chats,
+    Custom,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSidebarSectionLifecycle {
+    Active,
+    Deleted,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSidebarSectionSummary {
+    pub section_id: String,
+    pub kind: ProjectWorkspaceSidebarSectionKind,
+    pub name: Option<String>,
+    pub rank_key: i64,
+    pub revision: i64,
+    pub lifecycle: ProjectWorkspaceSidebarSectionLifecycle,
+    pub direct_item_count: u32,
+    pub effective_session_count: u32,
+    pub has_running: bool,
+    pub has_unread: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceSidebarSectionItemRef {
+    Project { project_id: String },
+    Session { session_id: String },
+}
+
+impl ProjectWorkspaceSidebarSectionItemRef {
+    pub fn stable_key(&self) -> String {
+        match self {
+            Self::Project { project_id } => format!("project:{project_id}"),
+            Self::Session { session_id } => format!("session:{session_id}"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceSidebarSectionItemPlacement {
+    Start,
+    End,
+    Before {
+        item: ProjectWorkspaceSidebarSectionItemRef,
+    },
+    After {
+        item: ProjectWorkspaceSidebarSectionItemRef,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSidebarProjectItem {
+    pub project_id: String,
+    pub name: String,
+    pub lifecycle: ProjectLifecycle,
+    pub appearance: ProjectAppearance,
+    pub pinned: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSidebarSessionItem {
+    pub session_id: String,
+    pub project_id: Option<String>,
+    pub display_title: String,
+    pub pinned: bool,
+    pub archived: bool,
+    pub unread: bool,
+    pub thread_id: Option<String>,
+    pub status: Option<ProjectWorkspaceThreadStatus>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceSidebarSectionItemValue {
+    Project {
+        project: ProjectWorkspaceSidebarProjectItem,
+    },
+    Session {
+        session: ProjectWorkspaceSidebarSessionItem,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSidebarSectionItem {
+    pub placement_id: String,
+    pub rank_key: i64,
+    pub revision: i64,
+    pub value: ProjectWorkspaceSidebarSectionItemValue,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSidebarSectionHostSyncState {
+    Pending,
+    Ready,
+    DeletePending,
+    Conflict,
+    Unsupported,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSidebarSectionHostLink {
+    pub section_id: String,
+    pub host_id: String,
+    pub remote_section_id: Option<String>,
+    pub sync_state: ProjectWorkspaceSidebarSectionHostSyncState,
+    pub observed_generation: i64,
+    pub last_error: Option<String>,
+    pub updated_at: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -845,9 +994,56 @@ pub enum ProjectWorkspaceIntent {
         project_id: String,
         pinned: bool,
     },
+    CreateSidebarSection {
+        section_id: String,
+        name: String,
+        initial_item: Option<ProjectWorkspaceSidebarSectionItemRef>,
+    },
+    RenameSidebarSection {
+        section_id: String,
+        name: String,
+        expected_revision: i64,
+    },
+    DeleteSidebarSection {
+        section_id: String,
+        expected_revision: i64,
+    },
+    RestoreSidebarSection {
+        section_id: String,
+        expected_revision: i64,
+    },
+    MoveSidebarSectionItem {
+        item: ProjectWorkspaceSidebarSectionItemRef,
+        section_id: Option<String>,
+        placement: ProjectWorkspaceSidebarSectionItemPlacement,
+    },
+    ReorderSidebarSectionSessions {
+        section_id: String,
+        session_ids: Vec<String>,
+    },
+    ReorderSidebarSections {
+        section_ids: Vec<String>,
+    },
+    ArchiveSidebarSectionSessions {
+        section_id: String,
+        replacement_session_id: Option<String>,
+    },
+    UpsertSidebarSectionHostLink {
+        link: ProjectWorkspaceSidebarSectionHostLink,
+    },
+    DeleteSidebarSectionHostLink {
+        section_id: String,
+        host_id: String,
+    },
     CreateSession {
         session_id: String,
         project_id: Option<String>,
+        title: String,
+        initial_page_ids: Vec<String>,
+    },
+    CreateSessionInSidebarSection {
+        session_id: String,
+        section_id: String,
         title: String,
         initial_page_ids: Vec<String>,
     },

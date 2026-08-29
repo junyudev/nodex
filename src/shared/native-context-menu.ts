@@ -5,8 +5,12 @@ export type NativeContextMenuIconKey =
   | "archive"
   | "unread"
   | "folder"
+  | "project"
+  | "section"
+  | "share"
   | "copy"
   | "fork"
+  | "openIn"
   | "window";
 
 export interface NativeContextMenuBaseItem {

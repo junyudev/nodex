@@ -26,6 +26,7 @@ import {
   type SidebarThreadReorderController,
 } from "./sidebar-thread-reorder";
 import { SidebarReorderDndProvider } from "./sidebar-reorder-dnd";
+import type { SidebarGroupDndPayload } from "./sidebar-project-group-dnd";
 
 const SOURCE_RECT = { top: 60, bottom: 90 };
 const TARGET_RECT = { top: 0, bottom: 30 };
@@ -110,7 +111,10 @@ function makeRichDragEndEvent({
 }: {
   activePayload: SidebarThreadItemDndPayload;
   overId: string;
-  overPayload: SidebarThreadContainerDndPayload | SidebarThreadItemDndPayload;
+  overPayload:
+    | SidebarGroupDndPayload
+    | SidebarThreadContainerDndPayload
+    | SidebarThreadItemDndPayload;
   activeRect?: { top: number; bottom: number };
   overRect?: { top: number; bottom: number };
 }): DragEndEvent {
@@ -243,6 +247,92 @@ describe("cross-container sidebar thread targeting", () => {
     expect(beforeTarget?.beforeThreadId).toBe("thread-beta");
     expect(afterTarget?.beforeThreadId).toBe("thread-gamma");
     expect(Boolean(afterTarget?.insertAtEnd)).toBe(false);
+  });
+
+  test("uses a Project row inside a mixed Section as an exact insertion anchor", () => {
+    const targetController = { handleDragEnd() {} };
+    const target = resolveSidebarThreadExternalDropTarget(
+      makeRichDragEndEvent({
+        activePayload,
+        overId: "placement-project",
+        overPayload: {
+          kind: "sidebar-group",
+          containerId: "section:section-alpha",
+          controller: targetController,
+          dragOverlay: "Project alpha",
+          itemId: "placement-project",
+          itemIds: ["placement-project", "placement-chat"],
+          nextItemId: "placement-chat",
+          projectId: "project-alpha",
+        },
+      }),
+      26,
+      () => null,
+    );
+
+    expect(target).toEqual({
+      beforeItemId: "placement-chat",
+      beforeThreadId: null,
+      targetContainerId: "section:section-alpha",
+      targetItemIds: ["placement-project", "placement-chat"],
+      targetProjectKind: "local",
+    });
+  });
+
+  test("uses a Section header as the first exact mixed insertion boundary", () => {
+    const target = resolveSidebarThreadExternalDropTarget(
+      makeRichDragEndEvent({
+        activePayload,
+        overId: "sidebar-thread-container:section:section-alpha",
+        overPayload: {
+          kind: "sidebar-thread-container",
+          beforeItemId: "placement-project",
+          containerId: "section:section-alpha",
+          itemIds: ["placement-project", "placement-chat"],
+          targetProjectKind: "local",
+        },
+      }),
+      4,
+      () => null,
+    );
+
+    expect(target).toEqual({
+      beforeItemId: "placement-project",
+      beforeThreadId: null,
+      targetContainerId: "section:section-alpha",
+      targetItemIds: ["placement-project", "placement-chat"],
+      targetProjectKind: "local",
+    });
+  });
+
+  test("suppresses dropping the first Section item onto its own header boundary", () => {
+    const firstItem = {
+      ...makeSidebarThreadPayload({
+        containerId: "section:section-alpha",
+        controller,
+        itemId: "placement-chat",
+        threadId: "thread-alpha",
+        threadKey: "local:thread-alpha",
+      }),
+      itemIds: ["placement-chat", "placement-project"],
+    };
+    const target = resolveSidebarThreadExternalDropTarget(
+      makeRichDragEndEvent({
+        activePayload: firstItem,
+        overId: "sidebar-thread-container:section:section-alpha",
+        overPayload: {
+          kind: "sidebar-thread-container",
+          beforeItemId: "placement-chat",
+          containerId: "section:section-alpha",
+          itemIds: ["placement-chat", "placement-project"],
+          targetProjectKind: "local",
+        },
+      }),
+      4,
+      () => null,
+    );
+
+    expect(target).toBe(null);
   });
 
   test("anchors the drop after the final real row to that row", () => {

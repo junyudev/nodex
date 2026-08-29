@@ -48,6 +48,20 @@ import type {
   ProjectWindow,
   ProjectWindowInput,
 } from "../../shared/types";
+import type {
+  SidebarSectionArchiveInput,
+  SidebarSectionCreateInput,
+  SidebarSectionItemPlacement,
+  SidebarSectionItemRef,
+  SidebarSectionItemWindow,
+  SidebarSectionItemWindowInput,
+  SidebarSectionMoveItemInput,
+  SidebarSectionRenameInput,
+  SidebarSectionSessionCreateInput,
+  SidebarSectionSummary,
+  SidebarSectionWindow,
+  SidebarSectionWindowInput,
+} from "../../shared/sidebar-sections";
 import type { DynamicToolCatalogSelection } from "../codex/dynamic-tool-registry";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import {
@@ -56,6 +70,9 @@ import {
   projectWorkspaceProjectFromCore,
   projectWorkspacePageChatActivitySummaryFromCore,
   projectWorkspacePageChatItemFromCore,
+  projectWorkspaceSidebarSectionItemFromCore,
+  projectWorkspaceSidebarSectionItemRefToCore,
+  projectWorkspaceSidebarSectionSummaryFromCore,
   projectWorkspaceSessionFromCore,
   projectWorkspaceSessionThreadFromCore,
   projectWorkspaceTaskFromCore,
@@ -165,6 +182,48 @@ export interface ProjectWorkspaceService {
     projectId: string,
     lifecycle: Project["lifecycle"],
   ) => ProjectWorkspaceEffect<Project | null>;
+  readonly listSidebarSections: (
+    input?: SidebarSectionWindowInput,
+  ) => ProjectWorkspaceEffect<SidebarSectionWindow>;
+  readonly listSidebarSectionItems: (
+    sectionId: string,
+    input?: SidebarSectionItemWindowInput,
+  ) => ProjectWorkspaceEffect<SidebarSectionItemWindow>;
+  readonly readSidebarSectionPlacement: (
+    item: SidebarSectionItemRef,
+  ) => ProjectWorkspaceEffect<string | null>;
+  readonly createSidebarSection: (
+    input: SidebarSectionCreateInput,
+  ) => ProjectWorkspaceEffect<SidebarSectionSummary>;
+  readonly renameSidebarSection: (
+    sectionId: string,
+    input: SidebarSectionRenameInput,
+  ) => ProjectWorkspaceEffect<SidebarSectionSummary>;
+  readonly deleteSidebarSection: (
+    sectionId: string,
+    expectedRevision: number,
+  ) => ProjectWorkspaceEffect<void>;
+  readonly restoreSidebarSection: (
+    sectionId: string,
+    expectedRevision: number,
+  ) => ProjectWorkspaceEffect<SidebarSectionSummary>;
+  readonly moveSidebarSectionItem: (
+    input: SidebarSectionMoveItemInput,
+  ) => ProjectWorkspaceEffect<void>;
+  readonly reorderSidebarSections: (
+    orderedSectionIds: readonly string[],
+  ) => ProjectWorkspaceEffect<void>;
+  readonly reorderSidebarSectionSessions: (
+    sectionId: string,
+    orderedSessionIds: readonly string[],
+  ) => ProjectWorkspaceEffect<void>;
+  readonly archiveSidebarSectionSessions: (
+    sectionId: string,
+    input?: SidebarSectionArchiveInput,
+  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+  readonly createSessionInSidebarSection: (
+    input: SidebarSectionSessionCreateInput,
+  ) => ProjectWorkspaceEffect<ProjectSession>;
   readonly listProjectSessionSummaryWindow: (
     projectId: string | null,
     input?: ProjectSessionSummaryWindowInput,
@@ -326,6 +385,19 @@ const expectVariant = <
     return snapshot.value as Extract<Snapshot["value"], { kind: Kind }>;
   }
   throw new Error(`Core returned ${snapshot.value.kind} for Project Workspace ${kind}`);
+};
+
+const sidebarSectionItemPlacementToCore = (
+  placement: SidebarSectionItemPlacement,
+): Extract<
+  ProjectWorkspaceApplyInput["intent"],
+  { kind: "move_sidebar_section_item" }
+>["placement"] => {
+  if (placement.kind === "start" || placement.kind === "end") return placement;
+  return {
+    kind: placement.kind,
+    item: projectWorkspaceSidebarSectionItemRefToCore(placement.item),
+  };
 };
 
 export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | Scope.Scope> =
@@ -491,6 +563,219 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           projectionRevision: tasks.authority.projection_revision,
         } satisfies ProjectSessionSummaryWindow;
       });
+    });
+
+    const listSidebarSections = Effect.fn("ProjectWorkspace.listSidebarSections")(function* (
+      input: SidebarSectionWindowInput = {},
+    ) {
+      const snapshot = yield* read("sidebar-section.window", {
+        kind: "sidebar_section_window",
+        include_deleted: input.includeDeleted ?? false,
+        window: { after: input.after ?? null, first: input.first ?? 100 },
+      });
+      return yield* evaluate("sidebar-section.window", () => {
+        const sections = expectVariant(snapshot, "sidebar_section_window").sections;
+        return {
+          items: sections.items.map(projectWorkspaceSidebarSectionSummaryFromCore),
+          nextCursor: sections.next_cursor ?? null,
+          hasMore: sections.next_cursor !== null && sections.next_cursor !== undefined,
+          projectionRevision: sections.authority.projection_revision,
+        } satisfies SidebarSectionWindow;
+      });
+    });
+
+    const listSidebarSectionItems = Effect.fn("ProjectWorkspace.listSidebarSectionItems")(
+      function* (sectionId: string, input: SidebarSectionItemWindowInput = {}) {
+        const snapshot = yield* read("sidebar-section.items.window", {
+          kind: "sidebar_section_item_window",
+          section_id: sectionId,
+          include_archived: input.includeArchived ?? false,
+          window: { after: input.after ?? null, first: input.first ?? 200 },
+        });
+        return yield* evaluate("sidebar-section.items.window", () => {
+          const items = expectVariant(snapshot, "sidebar_section_item_window").items;
+          return {
+            items: items.items.map(projectWorkspaceSidebarSectionItemFromCore),
+            nextCursor: items.next_cursor ?? null,
+            hasMore: items.next_cursor !== null && items.next_cursor !== undefined,
+            projectionRevision: items.authority.projection_revision,
+          } satisfies SidebarSectionItemWindow;
+        });
+      },
+    );
+
+    const readSidebarSectionPlacement = Effect.fn("ProjectWorkspace.readSidebarSectionPlacement")(
+      function* (item: SidebarSectionItemRef) {
+        const snapshot = yield* read("sidebar-section.item.placement", {
+          kind: "sidebar_section_placement",
+          item: projectWorkspaceSidebarSectionItemRefToCore(item),
+        });
+        return yield* evaluate(
+          "sidebar-section.item.placement",
+          () => expectVariant(snapshot, "sidebar_section_placement").section_id ?? null,
+        );
+      },
+    );
+
+    const readSidebarSection = Effect.fn("ProjectWorkspace.readSidebarSection")(function* (
+      sectionId: string,
+      includeDeleted = false,
+    ) {
+      let after: string | null = null;
+      for (let page = 0; page < 500; page += 1) {
+        const sections: SidebarSectionWindow = yield* listSidebarSections({
+          includeDeleted,
+          after,
+          first: 200,
+        });
+        const section = sections.items.find((candidate) => candidate.sectionId === sectionId);
+        if (section) return section;
+        if (!sections.nextCursor) return null;
+        if (sections.nextCursor === after) {
+          return yield* projectWorkspaceError(
+            "sidebar-section.read",
+            new Error("Sidebar Section pagination did not advance"),
+          );
+        }
+        after = sections.nextCursor;
+      }
+      return yield* projectWorkspaceError(
+        "sidebar-section.read",
+        new Error("Sidebar Section pagination exceeded its safety bound"),
+      );
+    });
+
+    const createSidebarSection = Effect.fn("ProjectWorkspace.createSidebarSection")(function* (
+      input: SidebarSectionCreateInput,
+    ) {
+      const sectionId = randomUUID();
+      yield* apply("sidebar-section.create", {
+        kind: "create_sidebar_section",
+        section_id: sectionId,
+        name: input.name,
+        initial_item: input.initialItem
+          ? projectWorkspaceSidebarSectionItemRefToCore(input.initialItem)
+          : null,
+      });
+      const section = yield* readSidebarSection(sectionId);
+      if (section) return section;
+      return yield* projectWorkspaceError(
+        "sidebar-section.create",
+        new Error(`Created Sidebar Section not found: ${sectionId}`),
+      );
+    });
+
+    const renameSidebarSection = Effect.fn("ProjectWorkspace.renameSidebarSection")(function* (
+      sectionId: string,
+      input: SidebarSectionRenameInput,
+    ) {
+      yield* apply("sidebar-section.rename", {
+        kind: "rename_sidebar_section",
+        section_id: sectionId,
+        name: input.name,
+        expected_revision: input.expectedRevision,
+      });
+      const section = yield* readSidebarSection(sectionId);
+      if (section) return section;
+      return yield* projectWorkspaceError(
+        "sidebar-section.rename",
+        new Error(`Renamed Sidebar Section not found: ${sectionId}`),
+      );
+    });
+
+    const deleteSidebarSection = Effect.fn("ProjectWorkspace.deleteSidebarSection")(function* (
+      sectionId: string,
+      expectedRevision: number,
+    ) {
+      yield* apply("sidebar-section.delete", {
+        kind: "delete_sidebar_section",
+        section_id: sectionId,
+        expected_revision: expectedRevision,
+      });
+    });
+
+    const restoreSidebarSection = Effect.fn("ProjectWorkspace.restoreSidebarSection")(function* (
+      sectionId: string,
+      expectedRevision: number,
+    ) {
+      yield* apply("sidebar-section.restore", {
+        kind: "restore_sidebar_section",
+        section_id: sectionId,
+        expected_revision: expectedRevision,
+      });
+      const section = yield* readSidebarSection(sectionId);
+      if (section) return section;
+      return yield* projectWorkspaceError(
+        "sidebar-section.restore",
+        new Error(`Restored Sidebar Section not found: ${sectionId}`),
+      );
+    });
+
+    const moveSidebarSectionItem = Effect.fn("ProjectWorkspace.moveSidebarSectionItem")(function* (
+      input: SidebarSectionMoveItemInput,
+    ) {
+      yield* apply("sidebar-section.item.move", {
+        kind: "move_sidebar_section_item",
+        item: projectWorkspaceSidebarSectionItemRefToCore(input.item),
+        section_id: input.sectionId,
+        placement: sidebarSectionItemPlacementToCore(input.placement),
+      });
+    });
+
+    const reorderSidebarSections = Effect.fn("ProjectWorkspace.reorderSidebarSections")(function* (
+      orderedSectionIds: readonly string[],
+    ) {
+      yield* apply("sidebar-section.reorder", {
+        kind: "reorder_sidebar_sections",
+        section_ids: [...orderedSectionIds],
+      });
+    });
+
+    const reorderSidebarSectionSessions = Effect.fn(
+      "ProjectWorkspace.reorderSidebarSectionSessions",
+    )(function* (sectionId: string, orderedSessionIds: readonly string[]) {
+      yield* apply("sidebar-section.sessions.reorder", {
+        kind: "reorder_sidebar_section_sessions",
+        section_id: sectionId,
+        session_ids: [...orderedSessionIds],
+      });
+    });
+
+    const archiveSidebarSectionSessions = Effect.fn(
+      "ProjectWorkspace.archiveSidebarSectionSessions",
+    )(function* (sectionId: string, input: SidebarSectionArchiveInput = {}) {
+      const replacementSessionId = input.createReplacement ? randomUUID() : null;
+      yield* apply("sidebar-section.sessions.archive", {
+        kind: "archive_sidebar_section_sessions",
+        section_id: sectionId,
+        replacement_session_id: replacementSessionId,
+      });
+      if (!replacementSessionId) return null;
+      const replacement = yield* readSession(replacementSessionId);
+      if (replacement) return replacement;
+      return yield* projectWorkspaceError(
+        "sidebar-section.sessions.archive",
+        new Error(`Replacement Sidebar Section Session not found: ${replacementSessionId}`),
+      );
+    });
+
+    const createSessionInSidebarSection = Effect.fn(
+      "ProjectWorkspace.createSessionInSidebarSection",
+    )(function* (input: SidebarSectionSessionCreateInput) {
+      const sessionId = randomUUID();
+      yield* apply("sidebar-section.session.create", {
+        kind: "create_session_in_sidebar_section",
+        session_id: sessionId,
+        section_id: input.sectionId,
+        title: input.title?.trim() || "New chat",
+        initial_page_ids: [...(input.initialPageIds ?? [])],
+      });
+      const session = yield* readSession(sessionId);
+      if (session) return session;
+      return yield* projectWorkspaceError(
+        "sidebar-section.session.create",
+        new Error(`Created Sidebar Section Session not found: ${sessionId}`),
+      );
     });
 
     const listProjectWindow = Effect.fn("ProjectWorkspace.listProjectWindow")(function* (
@@ -743,6 +1028,18 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       readProjectBootstrap,
       listProjects,
       listProjectWindow,
+      listSidebarSections,
+      listSidebarSectionItems,
+      readSidebarSectionPlacement,
+      createSidebarSection,
+      renameSidebarSection,
+      deleteSidebarSection,
+      restoreSidebarSection,
+      moveSidebarSectionItem,
+      reorderSidebarSections,
+      reorderSidebarSectionSessions,
+      archiveSidebarSectionSessions,
+      createSessionInSidebarSection,
       readProjectActivitySummaries,
       readPageChatActivitySummaries,
       listPageChatWindow,

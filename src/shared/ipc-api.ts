@@ -76,6 +76,20 @@ import type {
   LibraryBlockPropertyMutationRequestV2,
 } from "./block-property-mutations-v2";
 import type {
+  SidebarSectionArchiveInput,
+  SidebarSectionCreateInput,
+  SidebarSectionItemWindow,
+  SidebarSectionItemWindowInput,
+  SidebarSectionItemRef,
+  SidebarSectionMoveItemInput,
+  SidebarSectionRenameInput,
+  SidebarSectionRevisionInput,
+  SidebarSectionSessionCreateInput,
+  SidebarSectionSummary,
+  SidebarSectionWindow,
+  SidebarSectionWindowInput,
+} from "./sidebar-sections";
+import type {
   DatabaseApplyResultV2,
   DatabaseApplyV2,
   DatabaseModuleReadRequestV2,
@@ -907,6 +921,54 @@ export interface IpcApi {
   "projects:set-lifecycle": {
     args: [projectId: string, input: ProjectLifecycleInput];
     result: ProjectLifecycleMutationResult;
+  };
+  "sidebar-sections:list": {
+    args: [input?: SidebarSectionWindowInput];
+    result: SidebarSectionWindow;
+  };
+  "sidebar-sections:items:list": {
+    args: [sectionId: string, input?: SidebarSectionItemWindowInput];
+    result: SidebarSectionItemWindow;
+  };
+  "sidebar-sections:item:placement": {
+    args: [item: SidebarSectionItemRef];
+    result: string | null;
+  };
+  "sidebar-sections:create": {
+    args: [input: SidebarSectionCreateInput];
+    result: CoreResult<SidebarSectionSummary>;
+  };
+  "sidebar-sections:rename": {
+    args: [sectionId: string, input: SidebarSectionRenameInput];
+    result: CoreResult<SidebarSectionSummary>;
+  };
+  "sidebar-sections:delete": {
+    args: [sectionId: string, input: SidebarSectionRevisionInput];
+    result: CoreResult<void>;
+  };
+  "sidebar-sections:restore": {
+    args: [sectionId: string, input: SidebarSectionRevisionInput];
+    result: CoreResult<SidebarSectionSummary>;
+  };
+  "sidebar-sections:item:move": {
+    args: [input: SidebarSectionMoveItemInput];
+    result: CoreResult<void>;
+  };
+  "sidebar-sections:reorder": {
+    args: [sectionIds: string[]];
+    result: CoreResult<void>;
+  };
+  "sidebar-sections:sessions:reorder": {
+    args: [sectionId: string, sessionIds: string[]];
+    result: CoreResult<void>;
+  };
+  "sidebar-sections:sessions:archive-all": {
+    args: [sectionId: string, input?: SidebarSectionArchiveInput];
+    result: CoreResult<ProjectSession | null>;
+  };
+  "sidebar-sections:sessions:create": {
+    args: [input: SidebarSectionSessionCreateInput];
+    result: CoreResult<ProjectSession>;
   };
   "workspace:tasks:list": {
     args: [projectId: string | null, input?: ProjectSessionSummaryWindowInput];

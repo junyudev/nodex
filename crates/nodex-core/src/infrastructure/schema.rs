@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn current_schema_artifact_matches_catalog() {
-        assert_eq!(CURRENT_STORE_REVISION, 141);
+        assert_eq!(CURRENT_STORE_REVISION, 142);
         let mut artifact = Connection::open_in_memory().expect("artifact Store");
         install_current_schema(&mut artifact).expect("current schema artifact");
         let artifact_inventory = read_schema_inventory(&artifact).expect("artifact inventory");
@@ -191,6 +191,9 @@ mod tests {
             "codex_queued_follow_up_payload_asset_refs",
             "codex_queued_follow_up_manifest_gc",
             "project_session_pages",
+            "workspace_sidebar_sections",
+            "workspace_sidebar_section_items",
+            "workspace_sidebar_section_host_links",
             "structural_clipboard_bundles",
             "structural_clipboard_leases",
             "structural_cut_claims",

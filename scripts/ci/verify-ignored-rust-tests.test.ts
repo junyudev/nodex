@@ -10,6 +10,7 @@ describe("ignored Rust test CI contract", () => {
         "canvas_incremental_hot_path_stays_bounded_at_twenty_thousand_elements",
         "million_edge_relation_projection_stays_bounded_at_sqlite_boundary",
         "read_budget_gate_large_fixture",
+        "sidebar_section_large_window_budget",
       ]),
     );
     await expect(verifyIgnoredRustTestManifest()).resolves.toHaveLength(tests.length);

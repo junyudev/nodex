@@ -5,13 +5,14 @@ import {
 } from "./sidebar-section-prefs";
 
 describe("sidebar-section-prefs", () => {
-  test("normalizes collapsible section state and ignores unknown ids", () => {
+  test("normalizes built-in state and preserves bounded custom disclosure keys", () => {
     const defaults = makeDefaultSidebarCollapsibleSectionsState();
     const state = normalizeSidebarCollapsibleSectionsState({
       pinned: true,
       projects: "collapsed",
       chats: true,
       custom: true,
+      "custom:section-alpha": true,
     });
 
     expect(defaults.pinned).toBe(false);
@@ -19,9 +20,8 @@ describe("sidebar-section-prefs", () => {
     expect(state.pinned).toBe(true);
     expect(state.projects).toBe(false);
     expect(state.chats).toBe(true);
-    expect(JSON.stringify(Object.keys(state))).toBe(
-      JSON.stringify(["pinned", "pages", "projects", "chats"]),
-    );
+    expect(state["custom:section-alpha"]).toBe(true);
+    expect(state.custom).toBeUndefined();
   });
 
   test("migrates the retired Library collapse preference to Pages", () => {

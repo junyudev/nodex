@@ -15,14 +15,18 @@ export const PINNED_PROJECT_CONTAINER_ID = "pinned";
 export interface SidebarGroupDndController {
   handleDragStart?: (event: DragStartEvent) => void;
   handleDragOver?: (event: DragMoveEvent | DragOverEvent, pointerY: number | null) => void;
-  handleDragCancel?: (event: DragCancelEvent | DragEndEvent) => void;
+  handleDragCancel?: (event?: DragCancelEvent | DragEndEvent) => void;
   handleDragEnd: (event: DragEndEvent, pointerY: number | null) => void;
 }
 
 export interface SidebarGroupDndPayload {
   kind: "sidebar-group";
   controller: SidebarGroupDndController;
+  containerId?: string;
   dragOverlay: ReactNode;
+  itemId?: string;
+  itemIds?: string[];
+  nextItemId?: string | null;
   projectId: string;
 }
 

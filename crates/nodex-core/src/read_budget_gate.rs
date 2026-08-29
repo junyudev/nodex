@@ -31,6 +31,7 @@ const SESSION_COUNT: usize = 10_000;
 const THREAD_COUNT: usize = 12_000;
 const DATABASE_ROW_COUNT: usize = 20_000;
 const PROJECT_ID: &str = "project:000";
+const SIDEBAR_SECTION_ID: &str = "section:read-budget-gate";
 const DATABASE_ID: &str = "018f2000-0000-7000-8000-000000000001";
 const DATA_SOURCE_ID: &str = "018f2000-0000-7000-8000-000000000002";
 const VIEW_ID: &str = "018f2000-0000-7000-8000-000000000003";
@@ -147,6 +148,32 @@ fn seed_identity_and_workspace(kernel: &SqliteStoreKernel) {
                         link_thread.execute(params![
                             session_id,
                             format!("thread:{index:05}"),
+                            NOW
+                        ])?;
+                    }
+                }
+                transaction.execute(
+                    "INSERT INTO workspace_sidebar_sections(\
+                       section_id, library_id, kind, name, rank_key, revision, lifecycle, \
+                       deleted_at, created_at, updated_at\
+                     ) VALUES (?1, ?2, 'custom', 'Scale Section', 2000000000000, 1, \
+                       'active', NULL, ?3, ?3)",
+                    params![SIDEBAR_SECTION_ID, LIBRARY_ID, NOW],
+                )?;
+                {
+                    let mut insert_placement = transaction.prepare(
+                        "INSERT INTO workspace_sidebar_section_items(\
+                           placement_id, section_id, section_kind, project_id, session_id, \
+                           rank_key, revision, created_at, updated_at\
+                         ) VALUES (?1, ?2, 'custom', NULL, ?3, ?4, 1, ?5, ?5)",
+                    )?;
+                    for index in 0..SESSION_COUNT {
+                        let session_id = format!("session:{index:05}");
+                        insert_placement.execute(params![
+                            format!("session:{session_id}"),
+                            SIDEBAR_SECTION_ID,
+                            session_id,
+                            index as i64,
                             NOW
                         ])?;
                     }
@@ -550,6 +577,87 @@ fn assert_store_health(connection: &Connection) {
     );
 }
 
+fn assert_sidebar_section_window_budget(workspace: &ProjectWorkspaceModule) {
+    let first = workspace
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::SidebarSectionItemWindow {
+                    section_id: SIDEBAR_SECTION_ID.to_owned(),
+                    include_archived: Some(false),
+                    window: CollectionWindowRequest {
+                        after: None,
+                        first: Some(200),
+                    },
+                },
+            },
+        )
+        .expect("read first Sidebar Section item window");
+    let ProjectWorkspaceReadValue::SidebarSectionItemWindow {
+        items: first_window,
+    } = &first.value
+    else {
+        panic!("Workspace returned the wrong Sidebar Section window");
+    };
+    assert_eq!(first_window.items.len(), 200);
+    assert!(
+        serde_json::to_vec(&first)
+            .expect("serialize Sidebar Section item window")
+            .len()
+            < MAX_COLLECTION_WINDOW_JSON_BYTES
+    );
+    let cursor = first_window
+        .next_cursor
+        .clone()
+        .expect("Sidebar Section continuation");
+    let first_placement_ids = first_window
+        .items
+        .iter()
+        .map(|item| item.placement_id.as_str())
+        .collect::<HashSet<_>>();
+    let second = workspace
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::SidebarSectionItemWindow {
+                    section_id: SIDEBAR_SECTION_ID.to_owned(),
+                    include_archived: Some(false),
+                    window: CollectionWindowRequest {
+                        after: Some(cursor),
+                        first: Some(200),
+                    },
+                },
+            },
+        )
+        .expect("read second Sidebar Section item window");
+    let ProjectWorkspaceReadValue::SidebarSectionItemWindow {
+        items: second_window,
+    } = second.value
+    else {
+        panic!("Workspace returned the wrong Sidebar Section continuation");
+    };
+    assert_eq!(second_window.items.len(), 200);
+    assert!(
+        second_window
+            .items
+            .iter()
+            .all(|item| !first_placement_ids.contains(item.placement_id.as_str()))
+    );
+}
+
+#[test]
+#[ignore = "explicit Sidebar Section large-data reliability gate"]
+fn sidebar_section_large_window_budget() {
+    let home = profile_home();
+    let kernel = SqliteStoreKernel::open_test(&home).expect("open disposable gate Profile");
+    seed_identity_and_workspace(&kernel);
+    let workspace = ProjectWorkspaceModule::new(PROFILE_ID, LIBRARY_ID, &kernel)
+        .expect("open Workspace module");
+    assert_sidebar_section_window_budget(&workspace);
+}
+
 #[test]
 #[ignore = "explicit large-data reliability gate"]
 fn read_budget_gate_large_fixture() {
@@ -626,6 +734,8 @@ fn read_budget_gate_large_fixture() {
             .iter()
             .all(|task| !first_task_ids.contains(task.session.id.as_str()))
     );
+
+    assert_sidebar_section_window_budget(&workspace);
 
     let first_database = database
         .read(

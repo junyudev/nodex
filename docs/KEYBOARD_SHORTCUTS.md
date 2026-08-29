@@ -43,6 +43,14 @@ The editable settings tab covers Nodex-supported command ids only. Editor-native
 | `⌘/Ctrl+F`             | Content search             | Opens the floating Workbench search for the mounted chat, review diff, or Browser page source. When the floating input is focused, repeating the shortcut cycles chat -> diff -> browser when available. Database task search remains a Database-view-local action                                                                                                    |
 | `⌘/Ctrl+L`             | Focus browser address bar  | Focuses and selects the active Browser tab address field when one is mounted                                                                                                                                                                                                                                                                                          |
 
+## Sidebar Sections
+
+| Shortcut                           | Action                      | Notes                                                                                                                                                                                                    |
+| ---------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Alt+↑` / `Alt+↓`                  | Move focused custom Section | Works from the Section heading and persists the complete custom Section order.                                                                                                                           |
+| `Space` / `Enter`, then arrow keys | Reorder a custom Section    | Starts keyboard drag from the focused Section heading; `Escape` cancels and `Space` / `Enter` drops.                                                                                                     |
+| `Space` / `Enter`, then arrow keys | Move a Project or chat      | Uses the same sidebar drag model as pointer input. Project ownership is unchanged when moving into a custom Section; moving a chat to a Project keeps the existing ownership-move confirmation boundary. |
+
 ## Panel Shortcuts
 
 | Shortcut         | Action              | Notes                                                                                                                                          |

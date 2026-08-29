@@ -1060,6 +1060,12 @@ pub(super) fn set_thread_pinned(
     )?;
     let now = sqlite_now(connection)?;
     if pinned {
+        for session_id in &session_ids {
+            connection.execute(
+                "DELETE FROM workspace_sidebar_section_items WHERE session_id = ?1",
+                [session_id],
+            )?;
+        }
         let next_order = connection.query_row(
             "SELECT COALESCE(max(pinned_order), -1) + 1 FROM codex_pinned_threads",
             [],

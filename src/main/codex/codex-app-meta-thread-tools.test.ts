@@ -19,14 +19,22 @@ describe("codex app meta thread tool specs", () => {
       JSON.stringify(
         [
           "automation_update",
+          "create_sidebar_section",
           "create_thread",
+          "delete_sidebar_section",
           "fork_thread",
           "get_handoff_status",
           "handoff_thread",
           "list_projects",
           "list_threads",
+          "move_project_to_sidebar_section",
+          "move_thread_to_sidebar_section",
           "read_thread",
           "read_thread_terminal",
+          "rename_sidebar_section",
+          "reorder_section",
+          "reorder_sidebar_projects",
+          "reorder_sidebar_sections",
           "send_message_to_thread",
           "set_thread_archived",
           "set_thread_pinned",
@@ -41,6 +49,8 @@ describe("codex app meta thread tool specs", () => {
     const readThread = tools.find((spec) => spec.name === "read_thread");
     const sendMessage = tools.find((spec) => spec.name === "send_message_to_thread");
     const automationUpdate = tools.find((spec) => spec.name === "automation_update");
+    const listThreads = tools.find((spec) => spec.name === "list_threads");
+    const moveTask = tools.find((spec) => spec.name === "move_thread_to_sidebar_section");
 
     expect(JSON.stringify((createThread?.inputSchema as Record<string, unknown>).required)).toBe(
       JSON.stringify(["prompt", "target"]),
@@ -80,6 +90,10 @@ describe("codex app meta thread tool specs", () => {
     ).toBe(true);
     expect(JSON.stringify((sendMessage?.inputSchema as Record<string, unknown>).required)).toBe(
       JSON.stringify(["threadId", "prompt"]),
+    );
+    expect(listThreads?.description).toContain("user-controlled data");
+    expect(JSON.stringify((moveTask?.inputSchema as Record<string, unknown>).required)).toBe(
+      JSON.stringify(["threadId", "sectionId"]),
     );
     const automationSchema = automationUpdate?.inputSchema as {
       anyOf?: Array<{

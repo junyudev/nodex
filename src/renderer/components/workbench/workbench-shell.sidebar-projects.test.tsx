@@ -1267,6 +1267,7 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(screen.queryByLabelText("Pinned section actions")).toBe(null);
 
     const projectsSection = getSidebarSection(screen.container, "Projects");
+    expect(within(projectsSection).queryByLabelText("New section")).toBe(null);
 
     await act(async () => {
       const trigger = within(projectsSection).getByLabelText("Project sidebar options");

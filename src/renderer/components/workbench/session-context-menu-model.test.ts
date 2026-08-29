@@ -91,13 +91,16 @@ describe("session context menu model", () => {
     expect(JSON.stringify(flattenActionIds(items))).toBe(
       JSON.stringify([
         SESSION_CONTEXT_MENU_ACTION_IDS.togglePin,
+        SESSION_CONTEXT_MENU_ACTION_IDS.rename,
+        SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
+        SESSION_CONTEXT_MENU_ACTION_IDS.archive,
+        "separator",
         "session.moveToProject",
         sessionMoveToProjectActionId("project-2"),
         SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject,
-        SESSION_CONTEXT_MENU_ACTION_IDS.rename,
-        SESSION_CONTEXT_MENU_ACTION_IDS.archive,
+        "session.section",
+        SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
         "separator",
-        SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
         SESSION_CONTEXT_MENU_ACTION_IDS.reveal,
         "session.copy",
         SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory,
@@ -110,6 +113,37 @@ describe("session context menu model", () => {
         SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow,
       ]),
     );
+  });
+
+  test("marks the direct Section and turns selecting it into removal", () => {
+    const items = buildSessionContextMenuItems({
+      session: makeSession(),
+      directSectionId: "section-alpha",
+      sections: [
+        {
+          sectionId: "section-alpha",
+          kind: "custom",
+          name: "Alpha",
+          rankKey: 1,
+          revision: 1,
+          lifecycle: "active",
+          directItemCount: 1,
+          effectiveSessionCount: 1,
+          hasRunning: false,
+          hasUnread: false,
+        },
+      ],
+    });
+    const sectionMenu = items.find(
+      (item) => item.type === "submenu" && item.id === "session.section",
+    );
+
+    expect(sectionMenu?.type).toBe("submenu");
+    if (sectionMenu?.type !== "submenu") return;
+    const current = sectionMenu.submenu[0];
+    expect(current?.type).toBe("checkbox");
+    expect(current?.id).toBe(SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection);
+    if (current?.type === "checkbox") expect(current.checked).toBe(true);
   });
 
   test("offers every other active Project and parses the selected destination", () => {

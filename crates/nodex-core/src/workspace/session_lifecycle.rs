@@ -30,6 +30,7 @@ pub(super) fn create_session(
     project_id: Option<&str>,
     title: &str,
     initial_page_ids: &[String],
+    sidebar_section_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
     if let Some(project_id) = project_id {
@@ -45,6 +46,11 @@ pub(super) fn create_session(
     let title = normalize_session_title(title)?;
     let now = insert_session_records(connection, session_id, project_id, &title, false)?;
     super::page_chat::insert_initial_page_links(connection, session_id, initial_page_ids, &now)?;
+    if let Some(section_id) = sidebar_section_id {
+        super::sidebar_section::place_created_session(
+            connection, library_id, section_id, session_id, &now,
+        )?;
+    }
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -121,7 +127,7 @@ pub(super) fn ensure_default_draft_session(
     )
 }
 
-fn insert_session_records(
+pub(super) fn insert_session_records(
     connection: &Connection,
     session_id: &str,
     project_id: Option<&str>,

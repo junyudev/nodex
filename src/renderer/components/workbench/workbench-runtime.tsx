@@ -88,8 +88,8 @@ import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context
 import { useLibraryNavigationInvalidation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
 import {
-  type SidebarCollapsibleSectionId,
   type SidebarCollapsibleSectionsState,
+  type SidebarDisclosureSectionId,
 } from "@/lib/sidebar-section-prefs";
 import { useWorkbenchSidebarState } from "@/lib/use-workbench-sidebar-state";
 import { makeEditorSurfaceKey, documentSessionRegistry } from "@/lib/document-session-registry";
@@ -392,7 +392,7 @@ export interface WorkbenchRuntimeProps {
   setSidebarCollapsed?: (collapsed: boolean) => void;
   setSidebarWidth?: (width: number) => void;
   setSidebarCollapsibleSectionCollapsed?: (
-    sectionId: SidebarCollapsibleSectionId,
+    sectionId: SidebarDisclosureSectionId,
     collapsed: boolean,
   ) => void;
   recentPageSessions?: readonly RecentPageSession[];
@@ -4363,6 +4363,7 @@ export function WorkbenchRuntime({
     pagesSectionCollapsed,
     projectsSectionCollapsed,
     chatsSectionCollapsed,
+    sidebarCollapsibleSections: sidebarState.sections,
     onLoadMoreTaskWindow: loadMoreProjectSessionSummaries,
     onRetryTaskWindow: sessionCatalog.retryCollection,
     width: sidebarWidth,
@@ -4372,11 +4373,17 @@ export function WorkbenchRuntime({
     onTogglePagesSectionCollapsed: togglePagesSection,
     onToggleProjectsSectionCollapsed: toggleProjectsSectionCollapsed,
     onToggleChatsSectionCollapsed: toggleChatsSectionCollapsed,
+    onSetSidebarSectionCollapsed: sidebarState.setSectionCollapsed,
     onToggleProjectExpanded: toggleProjectExpanded,
     onSelectProject: (projectId) => {
       closePendingWorktreeRoute();
       setAutomationsPath(null);
       selectProject(projectId);
+    },
+    onSelectSession: (session) => {
+      closePendingWorktreeRoute();
+      setAutomationsPath(null);
+      selectSession(session);
     },
     onSelectSidebarThread: (item) => {
       closePendingWorktreeRoute();

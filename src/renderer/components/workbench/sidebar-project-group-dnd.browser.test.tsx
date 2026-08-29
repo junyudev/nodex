@@ -16,11 +16,15 @@ import {
   type SidebarGroupDndPayload,
 } from "./sidebar-project-group-dnd";
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
-import { SidebarReorderDndProvider } from "./sidebar-reorder-dnd";
+import {
+  resolveSidebarProjectExternalDropTarget,
+  SidebarReorderDndProvider,
+} from "./sidebar-reorder-dnd";
 import {
   SidebarThreadSortableContext,
   SidebarThreadSortableItem,
   useSidebarPinnedDropContainer,
+  useSidebarThreadDropContainer,
   type SidebarThreadReorderController,
 } from "./sidebar-thread-reorder";
 
@@ -64,6 +68,75 @@ const PROJECTS: Project[] = [
 const THREAD_CONTROLLER: SidebarThreadReorderController = {
   handleDragEnd() {},
 };
+
+test("resolves a Project drop against the exact mixed Section row boundary", () => {
+  const event = {
+    active: {
+      id: getSidebarGroupDndId("alpha"),
+      rect: { current: { translated: { top: 60, bottom: 90 } } },
+    },
+    over: {
+      id: "placement-chat",
+      rect: { top: 0, bottom: 30 },
+      data: {
+        current: {
+          kind: "sidebar-item",
+          controller: THREAD_CONTROLLER,
+          itemId: "placement-chat",
+          itemIds: ["placement-project", "placement-chat"],
+          nextItemId: null,
+          thread: {
+            containerId: "section:section-alpha",
+            dragOverlay: "Chat",
+            sourceProjectKind: "local",
+            targetProjectKind: "local",
+            threadId: "thread-alpha",
+            threadKey: "local:thread-alpha",
+          },
+        },
+      },
+    },
+  } as never;
+
+  expect(resolveSidebarProjectExternalDropTarget(event, 4)).toEqual({
+    beforeItemId: "placement-chat",
+    targetContainerId: "section:section-alpha",
+    targetItemIds: ["placement-project", "placement-chat"],
+  });
+  expect(resolveSidebarProjectExternalDropTarget(event, 26)).toEqual({
+    beforeItemId: null,
+    targetContainerId: "section:section-alpha",
+    targetItemIds: ["placement-project", "placement-chat"],
+  });
+});
+
+test("resolves a Project drop on the Section header as its first mixed boundary", () => {
+  const event = {
+    active: {
+      id: getSidebarGroupDndId("alpha"),
+      rect: { current: { translated: { top: 60, bottom: 90 } } },
+    },
+    over: {
+      id: "sidebar-thread-container:section:section-alpha",
+      rect: { top: 0, bottom: 120 },
+      data: {
+        current: {
+          kind: "sidebar-thread-container",
+          beforeItemId: "placement-project",
+          containerId: "section:section-alpha",
+          itemIds: ["placement-project", "placement-chat"],
+          targetProjectKind: "local",
+        },
+      },
+    },
+  } as never;
+
+  expect(resolveSidebarProjectExternalDropTarget(event, 12)).toEqual({
+    beforeItemId: "placement-project",
+    targetContainerId: "section:section-alpha",
+    targetItemIds: ["placement-project", "placement-chat"],
+  });
+});
 
 function SortableProject({
   controller,
@@ -167,8 +240,7 @@ function MixedSidebarReorderHarness({
                       active={false}
                       expanded
                       animateChildren={false}
-                      allowProjectReorder
-                      groupDndController={reorder.controller}
+                      dnd={{ controller: reorder.controller }}
                       onActivate={() => {}}
                       onUpdateProject={async () => project}
                       onArchiveProject={async () => ({ kind: "not-found" })}
@@ -207,6 +279,22 @@ function PinnedProjectDropTarget() {
       style={{ height: 40, width: 240 }}
     >
       {target.projectDragActive && target.isOver ? <SidebarDropIndicator /> : null}
+    </div>
+  );
+}
+
+function CustomSectionProjectDropTarget() {
+  const target = useSidebarThreadDropContainer({
+    acceptProjectDrop: true,
+    containerId: "section:section-alpha",
+    targetProjectKind: "local",
+  });
+  const active = target.isOver && (target.projectDragActive || target.threadDragActive);
+
+  return (
+    <div ref={target.setNodeRef}>
+      {active ? <SidebarDropIndicator /> : null}
+      <div data-testid="custom-section-project-drop-target" style={{ height: 40, width: 240 }} />
     </div>
   );
 }
@@ -660,6 +748,96 @@ describe("sidebar project reorder in Chromium", () => {
 
       await waitFor(() => {
         expect(drops).toEqual([{ projectId: "alpha", targetContainerId: "pinned" }]);
+      });
+    } finally {
+      if (!pointerReleased) {
+        await act(async () => {
+          fireEvent.pointerUp(document, {
+            button: 0,
+            clientX: pointerX,
+            clientY: dropY,
+            isPrimary: true,
+            pointerId,
+            pointerType: "mouse",
+          });
+          await Promise.resolve();
+        });
+      }
+      view.unmount();
+    }
+  });
+
+  test("routes a Project drop into an empty custom Section", async () => {
+    const drops: Array<{ projectId: string; targetContainerId: string }> = [];
+    const controller: SidebarGroupDndController = { handleDragEnd() {} };
+    const view = render(
+      <SidebarReorderDndProvider onProjectDrop={(drop) => drops.push(drop)}>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <SidebarProjectSortableContext groupIds={["alpha"]}>
+            <SortableProject controller={controller} projectId="alpha" />
+          </SidebarProjectSortableContext>
+          <CustomSectionProjectDropTarget />
+        </div>
+      </SidebarReorderDndProvider>,
+    );
+    const source = view.getByTestId("project-alpha");
+    const activator = view.getByTestId("project-alpha-activator");
+    const target = view.getByTestId("custom-section-project-drop-target");
+    const sourceRect = source.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const pointerId = 21;
+    const pointerX = targetRect.left + targetRect.width / 2;
+    const dropY = targetRect.top + targetRect.height / 2;
+    let pointerReleased = false;
+
+    try {
+      await act(async () => {
+        fireEvent.pointerDown(activator, {
+          button: 0,
+          clientX: sourceRect.left + sourceRect.width / 2,
+          clientY: sourceRect.top + sourceRect.height / 2,
+          isPrimary: true,
+          pointerId,
+          pointerType: "mouse",
+        });
+        fireEvent.pointerMove(document, {
+          buttons: 1,
+          clientX: pointerX,
+          clientY: sourceRect.bottom + 8,
+          isPrimary: true,
+          pointerId,
+          pointerType: "mouse",
+        });
+        fireEvent.pointerMove(document, {
+          buttons: 1,
+          clientX: pointerX,
+          clientY: dropY,
+          isPrimary: true,
+          pointerId,
+          pointerType: "mouse",
+        });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(target.parentElement?.querySelector("[role='presentation']")).not.toBeNull();
+      });
+
+      await act(async () => {
+        fireEvent.pointerUp(document, {
+          button: 0,
+          clientX: pointerX,
+          clientY: dropY,
+          isPrimary: true,
+          pointerId,
+          pointerType: "mouse",
+        });
+        await Promise.resolve();
+      });
+      pointerReleased = true;
+
+      await waitFor(() => {
+        expect(drops).toEqual([{ projectId: "alpha", targetContainerId: "section:section-alpha" }]);
       });
     } finally {
       if (!pointerReleased) {

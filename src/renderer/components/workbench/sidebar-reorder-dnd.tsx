@@ -21,6 +21,7 @@ import {
   PINNED_PROJECT_CONTAINER_ID,
   readSidebarGroupDndPayload,
   SidebarProjectDndStateProvider,
+  type SidebarGroupDndPayload,
 } from "./sidebar-project-group-dnd";
 import {
   createSidebarThreadCollisionDetection,
@@ -28,6 +29,7 @@ import {
   readSidebarThreadDndPayload,
   reconcilePendingSidebarThreadDrops,
   SidebarThreadDndStateProvider,
+  wouldSidebarItemMoveChangeOrder,
   type PendingSidebarThreadDrop,
   type SidebarThreadCanonicalLanes,
   type SidebarThreadDndThread,
@@ -42,6 +44,8 @@ import {
   type SidebarLibraryDragResource,
 } from "./sidebar-library-dnd";
 import type { LibraryWriteParent } from "../../../shared/library-module";
+import { readSidebarSectionContainerId } from "../../../shared/sidebar-sections";
+import { readSidebarSectionRootDndPayload } from "./sidebar-section-root-dnd";
 
 const EMPTY_HOME_CONTAINER_IDS: ReadonlyMap<string, string> = new Map();
 const DEFAULT_GET_THREAD_ID = (threadKey: string): string => threadKey;
@@ -72,6 +76,12 @@ type ActiveSidebarDrag =
       node: ReactNode;
       resource: SidebarLibraryDragResource;
       zoom: number;
+    }
+  | {
+      kind: "section";
+      node: ReactNode;
+      sectionId: string;
+      zoom: number;
     };
 
 function readWindowZoom(event: Event): number {
@@ -97,9 +107,15 @@ const sidebarProjectCollisionDetection: CollisionDetection = (args) => {
     const projectPayload = readSidebarGroupDndPayload(container.data.current);
     const threadPayload = readSidebarThreadDndPayload(container.data.current);
     return (
-      (projectPayload !== null && projectPayload.controller === activePayload.controller) ||
-      (threadPayload?.kind === "sidebar-thread-container" &&
-        threadPayload.containerId === PINNED_PROJECT_CONTAINER_ID)
+      (projectPayload !== null &&
+        (projectPayload.controller === activePayload.controller ||
+          (projectPayload.containerId !== undefined &&
+            readSidebarSectionContainerId(projectPayload.containerId) !== null))) ||
+      (threadPayload !== null &&
+        (threadPayload.kind === "sidebar-item"
+          ? readSidebarSectionContainerId(threadPayload.thread.containerId) !== null
+          : threadPayload.containerId === PINNED_PROJECT_CONTAINER_ID ||
+            readSidebarSectionContainerId(threadPayload.containerId) !== null))
     );
   });
   const eligibleArgs = {
@@ -109,10 +125,14 @@ const sidebarProjectCollisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin({
     ...eligibleArgs,
     droppableContainers: eligibleContainers.filter(
-      (container) => readSidebarGroupDndPayload(container.data.current) !== null,
+      (container) =>
+        readSidebarGroupDndPayload(container.data.current) !== null ||
+        readSidebarThreadDndPayload(container.data.current)?.kind === "sidebar-item",
     ),
   });
   if (pointerCollisions.length > 0) return pointerCollisions;
+  const containerPointerCollisions = pointerWithin(eligibleArgs);
+  if (containerPointerCollisions.length > 0) return containerPointerCollisions;
   if (!args.pointerCoordinates) return closestCenter(eligibleArgs);
 
   const { x, y } = args.pointerCoordinates;
@@ -130,6 +150,90 @@ const sidebarProjectCollisionDetection: CollisionDetection = (args) => {
   });
 };
 
+export interface SidebarProjectDropRequest {
+  beforeItemId?: string | null;
+  projectId: string;
+  targetContainerId: string;
+  targetItemIds?: string[];
+}
+
+function projectItemTargetDetails(value: unknown): {
+  containerId: string;
+  controller: SidebarGroupDndPayload["controller"];
+  itemId: string;
+  itemIds: string[];
+  nextItemId: string | null;
+} | null {
+  const projectPayload = readSidebarGroupDndPayload(value);
+  if (projectPayload?.containerId && projectPayload.itemId && projectPayload.itemIds) {
+    return {
+      containerId: projectPayload.containerId,
+      controller: projectPayload.controller,
+      itemId: projectPayload.itemId,
+      itemIds: projectPayload.itemIds,
+      nextItemId: projectPayload.nextItemId ?? null,
+    };
+  }
+  const threadPayload = readSidebarThreadDndPayload(value);
+  if (threadPayload?.kind !== "sidebar-item" || !threadPayload.itemId || !threadPayload.itemIds) {
+    return null;
+  }
+  return {
+    containerId: threadPayload.thread.containerId,
+    controller: threadPayload.controller,
+    itemId: threadPayload.itemId,
+    itemIds: threadPayload.itemIds,
+    nextItemId: threadPayload.nextItemId ?? null,
+  };
+}
+
+export function resolveSidebarProjectExternalDropTarget(
+  event: DragEndEvent,
+  pointerY: number | null,
+): Omit<SidebarProjectDropRequest, "projectId"> | null {
+  const activePayload = readSidebarGroupDndPayload(event.active.data?.current);
+  const containerPayload = readSidebarThreadDndPayload(event.over?.data.current);
+  if (containerPayload?.kind === "sidebar-thread-container") {
+    const target = {
+      targetContainerId: containerPayload.containerId,
+      ...(containerPayload.beforeItemId === undefined
+        ? {}
+        : { beforeItemId: containerPayload.beforeItemId }),
+      ...(containerPayload.itemIds === undefined
+        ? {}
+        : { targetItemIds: containerPayload.itemIds }),
+    };
+    if (
+      activePayload?.containerId === target.targetContainerId &&
+      activePayload.itemId !== undefined &&
+      target.beforeItemId !== undefined &&
+      target.targetItemIds?.includes(activePayload.itemId)
+    ) {
+      if (
+        !wouldSidebarItemMoveChangeOrder(
+          target.targetItemIds,
+          activePayload.itemId,
+          target.beforeItemId,
+        )
+      ) {
+        return null;
+      }
+    }
+    return target;
+  }
+  const itemTarget = projectItemTargetDetails(event.over?.data.current);
+  const activeRect = event.active.rect.current.translated;
+  if (!itemTarget || !event.over || !activeRect) return null;
+  const before =
+    (pointerY ?? (activeRect.top + activeRect.bottom) / 2) <
+    (event.over.rect.top + event.over.rect.bottom) / 2;
+  return {
+    beforeItemId: before ? itemTarget.itemId : itemTarget.nextItemId,
+    targetContainerId: itemTarget.containerId,
+    targetItemIds: itemTarget.itemIds,
+  };
+}
+
 export function SidebarReorderDndProvider({
   children,
   getThreadIdByThreadKey = DEFAULT_GET_THREAD_ID,
@@ -145,7 +249,7 @@ export function SidebarReorderDndProvider({
   getThreadIdByThreadKey?: (threadKey: string) => string | null;
   homeContainerIdByThreadId?: ReadonlyMap<string, string>;
   onProjectError?: (error: unknown) => void;
-  onProjectDrop?: (drop: { projectId: string; targetContainerId: string }) => void;
+  onProjectDrop?: (drop: SidebarProjectDropRequest) => void;
   onThreadError?: (error: unknown) => void;
   onThreadDrop?: (
     drop: SidebarThreadDropRequest,
@@ -190,6 +294,17 @@ export function SidebarReorderDndProvider({
       pointerYRef.current = args.pointerCoordinates?.y ?? null;
       if (readSidebarGroupDndPayload(args.active.data.current)) {
         return sidebarProjectCollisionDetection(args);
+      }
+      const activeSection = readSidebarSectionRootDndPayload(args.active.data.current);
+      if (activeSection) {
+        return closestCenter({
+          ...args,
+          droppableContainers: args.droppableContainers.filter(
+            (container) =>
+              readSidebarSectionRootDndPayload(container.data.current)?.controller ===
+              activeSection.controller,
+          ),
+        });
       }
       if (readSidebarThreadDndPayload(args.active.data.current)?.kind === "sidebar-item") {
         return threadCollisionDetection(args);
@@ -237,6 +352,17 @@ export function SidebarReorderDndProvider({
         return;
       }
 
+      const sectionPayload = readSidebarSectionRootDndPayload(event.active.data.current);
+      if (sectionPayload) {
+        setActiveDrag({
+          kind: "section",
+          node: sectionPayload.dragOverlay,
+          sectionId: sectionPayload.sectionId,
+          zoom: readWindowZoom(event.activatorEvent),
+        });
+        return;
+      }
+
       const threadPayload = readSidebarThreadDndPayload(event.active.data.current);
       if (threadPayload?.kind === "sidebar-item") {
         setActiveDrag({
@@ -265,6 +391,19 @@ export function SidebarReorderDndProvider({
       const projectPayload = readSidebarGroupDndPayload(event.active.data.current);
       if (projectPayload) {
         projectPayload.controller.handleDragOver?.(event, pointerYRef.current);
+        const itemTarget = projectItemTargetDetails(event.over?.data.current);
+        const nextDestinationController =
+          itemTarget?.controller !== projectPayload.controller ? itemTarget?.controller : null;
+        if (destinationControllerRef.current !== nextDestinationController) {
+          cancelDestinationController();
+          destinationControllerRef.current = nextDestinationController ?? null;
+        }
+        nextDestinationController?.handleDragOver?.(event, pointerYRef.current);
+        return;
+      }
+      const sectionPayload = readSidebarSectionRootDndPayload(event.active.data.current);
+      if (sectionPayload) {
+        sectionPayload.controller.handleDragOver?.(event, pointerYRef.current);
         return;
       }
 
@@ -274,10 +413,16 @@ export function SidebarReorderDndProvider({
       activePayload.controller.handleDragOver?.(event, pointerY);
 
       const overPayload = readSidebarThreadDndPayload(event.over?.data.current);
-      const nextDestinationController =
-        overPayload?.kind === "sidebar-item" && overPayload.controller !== activePayload.controller
+      const overProjectPayload = readSidebarGroupDndPayload(event.over?.data.current);
+      const overController =
+        overPayload?.kind === "sidebar-item"
           ? overPayload.controller
-          : null;
+          : overProjectPayload?.containerId &&
+              readSidebarSectionContainerId(overProjectPayload.containerId) !== null
+            ? overProjectPayload.controller
+            : null;
+      const nextDestinationController =
+        overController !== activePayload.controller ? overController : null;
       if (destinationControllerRef.current !== nextDestinationController) {
         cancelDestinationController();
         destinationControllerRef.current = nextDestinationController;
@@ -293,6 +438,12 @@ export function SidebarReorderDndProvider({
       const projectPayload = readSidebarGroupDndPayload(event.active.data.current);
       if (projectPayload) {
         projectPayload.controller.handleDragCancel?.(event);
+        resetGestureState();
+        return;
+      }
+      const sectionPayload = readSidebarSectionRootDndPayload(event.active.data.current);
+      if (sectionPayload) {
+        sectionPayload.controller.handleDragCancel?.(event);
         resetGestureState();
         return;
       }
@@ -315,20 +466,36 @@ export function SidebarReorderDndProvider({
 
       const projectPayload = readSidebarGroupDndPayload(event.active.data.current);
       if (projectPayload) {
-        const overPayload = readSidebarThreadDndPayload(event.over?.data.current);
+        destinationController?.handleDragCancel?.(event);
+        const itemTarget = projectItemTargetDetails(event.over?.data.current);
         if (
-          overPayload?.kind === "sidebar-thread-container" &&
-          overPayload.containerId === PINNED_PROJECT_CONTAINER_ID
+          projectPayload.itemId !== undefined &&
+          itemTarget?.controller === projectPayload.controller
+        ) {
+          projectPayload.controller.handleDragEnd(event, pointerY);
+          return;
+        }
+        const dropTarget = resolveSidebarProjectExternalDropTarget(event, pointerY);
+        if (
+          dropTarget &&
+          (dropTarget.targetContainerId === PINNED_PROJECT_CONTAINER_ID ||
+            readSidebarSectionContainerId(dropTarget.targetContainerId) !== null)
         ) {
           projectPayload.controller.handleDragCancel?.(event);
           onProjectDrop?.({
+            ...dropTarget,
             projectId: projectPayload.projectId,
-            targetContainerId: overPayload.containerId,
           });
           return;
         }
 
         projectPayload.controller.handleDragEnd(event, pointerY);
+        return;
+      }
+
+      const sectionPayload = readSidebarSectionRootDndPayload(event.active.data.current);
+      if (sectionPayload) {
+        sectionPayload.controller.handleDragEnd(event, pointerY);
         return;
       }
 

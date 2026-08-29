@@ -7,7 +7,7 @@ import {
 } from "./codex-sidebar-auto-reveal";
 import {
   normalizeSidebarCollapsibleSectionsState,
-  type SidebarCollapsibleSectionId,
+  type SidebarDisclosureSectionId,
   type SidebarCollapsibleSectionsState,
 } from "./sidebar-section-prefs";
 import { appScope, scopedAtom, useScopedAtom } from "./maitai";
@@ -16,6 +16,7 @@ import { WORKBENCH_PERSIST_DEBOUNCE_MS } from "./timing";
 export type RecentPageSession = WorkbenchRecentPageSession;
 export type {
   SidebarCollapsibleSectionId,
+  SidebarDisclosureSectionId,
   SidebarCollapsibleSectionsState,
 } from "./sidebar-section-prefs";
 
@@ -254,7 +255,7 @@ export function useWorkbenchProfilePreferences() {
   );
 
   const setSidebarCollapsibleSectionCollapsed = useCallback(
-    (sectionId: SidebarCollapsibleSectionId, collapsed: boolean) => {
+    (sectionId: SidebarDisclosureSectionId, collapsed: boolean) => {
       update((current) => {
         if (current.sidebar.collapsibleSections[sectionId] === collapsed) {
           return current;

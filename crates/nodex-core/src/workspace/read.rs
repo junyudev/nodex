@@ -167,6 +167,50 @@ pub(super) fn read(
                 &pinned_window,
             )?,
         }),
+        ProjectWorkspaceRead::SidebarSectionWindow {
+            include_deleted,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::SidebarSectionWindow {
+            sections: super::sidebar_section::read_section_window(
+                connection,
+                library_id,
+                commit_head,
+                include_deleted.unwrap_or(false),
+                &window,
+            )?,
+        }),
+        ProjectWorkspaceRead::SidebarSectionItemWindow {
+            section_id,
+            include_archived,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::SidebarSectionItemWindow {
+            items: super::sidebar_section::read_section_item_window(
+                connection,
+                library_id,
+                commit_head,
+                &section_id,
+                include_archived.unwrap_or(false),
+                &window,
+            )?,
+        }),
+        ProjectWorkspaceRead::SidebarSectionPlacement { item } => {
+            Ok(ProjectWorkspaceReadValue::SidebarSectionPlacement {
+                section_id: super::sidebar_section::read_direct_placement(
+                    connection, library_id, &item,
+                )?,
+            })
+        }
+        ProjectWorkspaceRead::SidebarSectionHostLinkWindow { host_id, window } => {
+            Ok(ProjectWorkspaceReadValue::SidebarSectionHostLinkWindow {
+                links: super::sidebar_section::read_host_link_window(
+                    connection,
+                    library_id,
+                    commit_head,
+                    &host_id,
+                    &window,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::Session { session_id } => {
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id)?

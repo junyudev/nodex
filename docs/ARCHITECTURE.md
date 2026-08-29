@@ -115,6 +115,7 @@ The decisions behind this model are recorded in [ADR 0017](docs/adr/0017-library
 | Blocks, Pages, Page Files, Databases, Documents, search, schedules, history                 | Rust Core Library/Database/Document Modules                                  | Core protocol, authenticated blob streams, Electron adapters, CLI, renderer read models                                                          |
 | Page-key namespaces, prefix history, counters, assignments                                  | Rust Core Database Module                                                    | Contextual Core projections; CLI/Agent resolve to canonical Page IDs                                                                             |
 | Projects, Sessions, durable Thread metadata and queued follow-up ledgers, execution context | Rust Core Workspace Module                                                   | Electron Codex/Workspace services and renderer queries                                                                                           |
+| Sidebar Section identities, root order, mixed Project/Session placement, host links         | Rust Core Workspace Module                                                   | Main bounded adapters, renderer projections, agent tools, per-host app-server ThreadSection synchronization                                      |
 | Page–Project Session Linked chat edges and Page Chat activity                               | Rust Core Workspace Module                                                   | Effect Main Workspace Adapter; renderer joins bounded Workspace activity with Database Page windows                                              |
 | Project access to Library resources                                                         | Rust Core Library authorization and resource-grant boundary                  | Workspace supplies Project identity; Electron and CLI bind access context                                                                        |
 | Automation definitions, runs, occurrences, reminder leases and receipts                     | Rust Core Automation Module                                                  | Electron scheduler/executor and renderer queries                                                                                                 |
@@ -572,6 +573,14 @@ Codex has four distinct authorities that must not collapse into one another:
 - The active renderer owner is the sole visible conversation writer. Renderer-local editing and
   presentation remain renderer concerns; Main retains only a validated relay and recovery replica,
   and followers render validated copies.
+
+Sidebar Sections are a Profile-wide organization projection owned by Core Workspace, independent
+of Project execution ownership. Direct placement uses stable Project or Session identities; a
+Session may otherwise inherit its Project's effective Section. Main projects only attached Threads
+to each capable app-server host, with durable host links and generation-fenced reconciliation, so
+remote `ThreadSection` state never becomes a second authority for Projects, threadless Sessions, or
+root order. See [ADR 0054](adr/0054-core-authoritative-sidebar-sections.md) and the
+[Workbench Shell specification](product-specs/workbench-shell.md).
 
 The app-server transport has one physical owner per endpoint generation. The Gateway exposes typed
 requests and generation-fenced observations without duplicating reconnect, timeout, request

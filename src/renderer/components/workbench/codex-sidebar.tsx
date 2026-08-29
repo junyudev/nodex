@@ -298,13 +298,23 @@ export function CodexSidebarSection({
   heading,
   collapsed,
   onToggle,
+  onMove,
+  status,
+  headingButtonRef,
+  headingButtonProps,
   actions,
+  dropIndicator,
   children,
 }: {
   heading: string;
   collapsed: boolean;
   onToggle: () => void;
+  onMove?: (direction: -1 | 1) => void;
+  status?: ReactNode;
+  headingButtonRef?: Ref<HTMLButtonElement>;
+  headingButtonProps?: ComponentPropsWithoutRef<"button">;
   actions?: ReactNode;
+  dropIndicator?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -320,13 +330,27 @@ export function CodexSidebarSection({
             <div className="group/projects-section-header flex items-center justify-between gap-2">
               <div className="flex min-w-0 flex-1">
                 <button
+                  {...headingButtonProps}
+                  ref={headingButtonRef}
                   type="button"
                   data-app-action-sidebar-section-toggle=""
                   className="group/section-toggle flex min-w-0 flex-1 cursor-interaction items-center gap-1 rounded-md py-0.5 pr-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                   aria-expanded={!collapsed}
-                  onClick={onToggle}
+                  onClick={(event) => {
+                    headingButtonProps?.onClick?.(event);
+                    if (!event.defaultPrevented) onToggle();
+                  }}
+                  onKeyDown={(event) => {
+                    headingButtonProps?.onKeyDown?.(event);
+                    if (event.defaultPrevented) return;
+                    if (!event.altKey || !onMove) return;
+                    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                    event.preventDefault();
+                    onMove(event.key === "ArrowUp" ? -1 : 1);
+                  }}
                 >
                   <span className="min-w-0 truncate">{heading}</span>
+                  {status}
                   <ChevronDownIcon
                     className={cn(
                       CODEX_SIDEBAR_DISCLOSURE_CHEVRON_CLASS,
@@ -342,6 +366,7 @@ export function CodexSidebarSection({
             </div>
           </div>
         </div>
+        {dropIndicator}
         <AnimatePresence initial={false}>
           {!collapsed ? (
             <motion.div
@@ -391,6 +416,7 @@ export function CodexProjectActionsMenu({
   onMarkThreadItemRead,
   onThreadsChanged,
   onOpenChange,
+  sectionActions,
 }: {
   project: Project;
   threadItems?: readonly CodexSidebarThreadItem[];
@@ -405,6 +431,7 @@ export function CodexProjectActionsMenu({
   onMarkThreadItemRead?: (item: CodexSidebarThreadItem) => Promise<void>;
   onThreadsChanged?: () => Promise<unknown> | void;
   onOpenChange?: (open: boolean) => void;
+  sectionActions?: ReactNode;
 }) {
   const appHandle = useScopeHandle(appScope);
   const [open, setOpen] = useState(false);
@@ -509,6 +536,7 @@ export function CodexProjectActionsMenu({
             {project.pinned ? "Unpin project" : "Pin project"}
           </NodexDropdownItem>
         ) : null}
+        {sectionActions}
         {primaryWorkspaceRoot && sourceRoots.length === 1 ? (
           <NodexDropdownItem
             leftSlot={<ProjectFolderOpenIcon className="icon-xs" />}
@@ -717,14 +745,22 @@ function CodexProjectHoverCardContent({
   );
 }
 
+export interface CodexProjectRowDndCapability {
+  readonly containerId?: string;
+  readonly controller: SidebarGroupDndController;
+  readonly itemId?: string;
+  readonly itemIds?: string[];
+  readonly nextItemId?: string | null;
+  readonly sortableId?: string;
+}
+
 export function CodexProjectRow({
   project,
   activity,
   active,
   expanded,
   animateChildren = true,
-  groupDndController,
-  allowProjectReorder = false,
+  dnd,
   threadItems,
   onActivate,
   onSelectProject,
@@ -740,6 +776,7 @@ export function CodexProjectRow({
   onThreadsChanged,
   hoverCardOpen,
   onHoverCardOpenChange,
+  sectionActions,
   children,
 }: {
   project: Project;
@@ -747,8 +784,7 @@ export function CodexProjectRow({
   active: boolean;
   expanded: boolean;
   animateChildren?: boolean;
-  groupDndController?: SidebarGroupDndController;
-  allowProjectReorder?: boolean;
+  dnd?: CodexProjectRowDndCapability;
   threadItems?: readonly CodexSidebarThreadItem[];
   onActivate: () => void;
   onSelectProject?: () => void;
@@ -764,9 +800,10 @@ export function CodexProjectRow({
   onThreadsChanged?: () => Promise<unknown> | void;
   hoverCardOpen?: boolean;
   onHoverCardOpenChange?: (open: boolean) => void;
+  sectionActions?: ReactNode;
   children?: ReactNode;
 }) {
-  const sortableEnabled = allowProjectReorder && Boolean(groupDndController);
+  const sortableEnabled = dnd !== undefined;
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
   const queryClient = useQueryClient();
   const [canCreateStableWorktree, setCanCreateStableWorktree] = useState(false);
@@ -781,7 +818,7 @@ export function CodexProjectRow({
     projectId: project.id,
     targetProjectKind: "local",
   });
-  const sortableId = getSidebarGroupDndId(project.id);
+  const sortableId = dnd?.sortableId ?? getSidebarGroupDndId(project.id);
   const { activeProjectId, projectDragActive } = useSidebarProjectDndState();
   const dragOverlay = useMemo(
     () => (
@@ -795,11 +832,23 @@ export function CodexProjectRow({
   const sortableData = useMemo<SidebarGroupDndPayload>(
     () => ({
       kind: "sidebar-group",
-      controller: groupDndController ?? NOOP_SIDEBAR_GROUP_DND_CONTROLLER,
+      containerId: dnd?.containerId,
+      controller: dnd?.controller ?? NOOP_SIDEBAR_GROUP_DND_CONTROLLER,
       dragOverlay,
+      itemId: dnd?.itemId,
+      itemIds: dnd?.itemIds,
+      nextItemId: dnd?.nextItemId,
       projectId: project.id,
     }),
-    [dragOverlay, groupDndController, project.id],
+    [
+      dnd?.containerId,
+      dnd?.controller,
+      dnd?.itemId,
+      dnd?.itemIds,
+      dnd?.nextItemId,
+      dragOverlay,
+      project.id,
+    ],
   );
   const {
     attributes,
@@ -816,6 +865,7 @@ export function CodexProjectRow({
   });
   const projectRowRef = useCombinedRefs(setNodeRef, wholeThreadDropTarget.setNodeRef);
   const activeProjectDrag = isDragging || activeProjectId === project.id;
+  const projectDropActive = wholeThreadDropTarget.isProjectDropTargetOver;
   const resolvedHoverCardOpen = hoverCardOpen ?? uncontrolledHoverCardOpen;
   const hoverCardDisabled =
     activeProjectDrag ||
@@ -882,9 +932,8 @@ export function CodexProjectRow({
       className={cn(
         "group/cwd relative flex flex-col",
         activeProjectDrag && "opacity-20",
-        wholeThreadDropTarget.isExternalThreadDropTarget &&
-          wholeThreadDropTarget.isOver &&
-          "rounded-lg bg-token-list-hover-background",
+        projectDropActive &&
+          "cursor-grabbing rounded-[10px] bg-[color-mix(in_oklab,var(--color-text-info)_10%,transparent)] ring-2 ring-inset ring-text-info",
       )}
       style={sortableStyle}
       inert={activeProjectDrag ? true : undefined}
@@ -923,24 +972,14 @@ export function CodexProjectRow({
           data-app-action-sidebar-project-label={project.name}
           data-app-action-sidebar-project-row=""
           active={active}
-          className={cn(
-            rowThreadDropTarget.isExternalThreadDropTarget &&
-              rowThreadDropTarget.isOver &&
-              "bg-token-list-hover-background",
-            projectDragActive && "pointer-events-none",
-          )}
+          className={cn(projectDragActive && "pointer-events-none")}
           onPointerEnter={prefetchProjectHoverCardMetadata}
           onFocusCapture={prefetchProjectHoverCardMetadata}
         >
           <CodexSidebarRowLayout
             leadingRef={iconThreadDropTarget.setNodeRef}
             leadingSlotProps={{
-              className: cn(
-                "group/project-leading-slot",
-                iconThreadDropTarget.isExternalThreadDropTarget &&
-                  iconThreadDropTarget.isOver &&
-                  "rounded-md bg-token-list-hover-background",
-              ),
+              className: "group/project-leading-slot",
             }}
             leadingSlotData={{
               "data-app-action-sidebar-project-leading-slot": "",
@@ -992,6 +1031,7 @@ export function CodexProjectRow({
                   onArchiveThreadItem={onArchiveThreadItem}
                   onMarkThreadItemRead={onMarkThreadItemRead}
                   onThreadsChanged={onThreadsChanged}
+                  sectionActions={sectionActions}
                   onOpenChange={(open) => {
                     setProjectActionsMenuOpen(open);
                     if (open) setProjectHoverCardOpen(false);
@@ -1033,12 +1073,7 @@ export function CodexProjectRow({
       <div
         ref={gutterThreadDropTarget.setNodeRef}
         aria-hidden
-        className={cn(
-          "absolute bottom-0 left-0 top-[var(--height-token-nav-row)] z-10 w-2",
-          gutterThreadDropTarget.isExternalThreadDropTarget &&
-            gutterThreadDropTarget.isOver &&
-            "bg-token-list-hover-background",
-        )}
+        className="absolute bottom-0 left-0 top-[var(--height-token-nav-row)] z-10 w-2"
       />
       {projectChildren}
     </div>

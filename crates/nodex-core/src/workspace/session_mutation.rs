@@ -279,6 +279,10 @@ fn set_session_pinned(
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let now = sqlite_now(connection)?;
     let pinned_order = if pinned {
+        connection.execute(
+            "DELETE FROM workspace_sidebar_section_items WHERE session_id = ?1",
+            [session_id],
+        )?;
         authority
             .pinned
             .then_some(authority.pinned_order)

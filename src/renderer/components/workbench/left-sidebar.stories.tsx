@@ -644,8 +644,7 @@ function CodexSortableProjectSections({
       project={project}
       active={project.id === "nodex"}
       expanded={project.id === "nodex"}
-      groupDndController={controller}
-      allowProjectReorder
+      dnd={{ controller }}
       onActivate={() => {}}
       onSelectProject={() => {}}
       onUpdateProject={async () => project}

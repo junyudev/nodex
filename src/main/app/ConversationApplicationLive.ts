@@ -31,6 +31,10 @@ import {
   make as makeCodexSidebarSyncRuntime,
 } from "../codex-application/CodexSidebarSyncRuntime";
 import {
+  CodexSidebarSectionSync,
+  make as makeCodexSidebarSectionSync,
+} from "../codex-application/CodexSidebarSectionSync";
+import {
   CodexStructuredThreadTitle,
   CodexStructuredThreadTitleError,
   make as makeCodexStructuredThreadTitle,
@@ -436,6 +440,9 @@ const threadCatalog = Layer.unwrap(
     );
   }),
 ).pipe(Layer.provideMerge(threadExecution));
+const sidebarSectionSync = Layer.effect(CodexSidebarSectionSync, makeCodexSidebarSectionSync).pipe(
+  Layer.provideMerge(threadCatalog),
+);
 const clientThreadIdentity = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -444,7 +451,7 @@ const clientThreadIdentity = Layer.unwrap(
       makeCodexClientThreadIdentity(makePersistedAtomStore(config.nodexHome)),
     );
   }),
-).pipe(Layer.provideMerge(threadCatalog));
+).pipe(Layer.provideMerge(sidebarSectionSync));
 const forkSidePanelTransfer = Layer.effect(
   CodexForkSidePanelTransfer,
   makeCodexForkSidePanelTransfer,

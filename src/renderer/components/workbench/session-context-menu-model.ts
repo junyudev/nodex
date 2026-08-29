@@ -4,8 +4,10 @@ import {
   type CodexSidebarThreadContainerId,
 } from "../../../shared/codex-sidebar-thread-move";
 import type { Project, ProjectSession } from "@/lib/types";
+import type { SidebarSectionSummary } from "../../../shared/sidebar-sections";
 
 export const SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX = "session.moveToProject:";
+export const SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX = "session.moveToSection:";
 
 export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   togglePin: "session.togglePin",
@@ -20,11 +22,14 @@ export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   forkLocal: "session.forkLocal",
   forkNewWorktree: "session.forkNewWorktree",
   openInNewWindow: "session.openInNewWindow",
+  newSection: "session.newSection",
+  removeFromSection: "session.removeFromSection",
 } as const;
 
 export type SessionContextMenuActionId =
   | (typeof SESSION_CONTEXT_MENU_ACTION_IDS)[keyof typeof SESSION_CONTEXT_MENU_ACTION_IDS]
-  | `${typeof SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX}${string}`;
+  | `${typeof SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX}${string}`
+  | `${typeof SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX}${string}`;
 
 export interface SessionContextMenuInput {
   session: ProjectSession;
@@ -32,6 +37,8 @@ export interface SessionContextMenuInput {
   projectWorkspacePath?: string | null;
   platform?: NodeJS.Platform | "browser";
   isGitRepository?: boolean;
+  sections?: readonly SidebarSectionSummary[];
+  directSectionId?: string | null;
 }
 
 export function resolveSessionRevealPath(input: {
@@ -60,6 +67,15 @@ export function sessionMoveToProjectActionId(projectId: string): SessionContextM
 export function readSessionMoveToProjectActionId(actionId: string): string | null {
   if (!actionId.startsWith(SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX)) return null;
   return actionId.slice(SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX.length).trim() || null;
+}
+
+export function sessionMoveToSectionActionId(sectionId: string): SessionContextMenuActionId {
+  return `${SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX}${sectionId}`;
+}
+
+export function readSessionMoveToSectionActionId(actionId: string): string | null {
+  if (!actionId.startsWith(SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX)) return null;
+  return actionId.slice(SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX.length).trim() || null;
 }
 
 export function resolveSessionProjectMoveContainers(
@@ -108,8 +124,8 @@ export function buildSessionContextMenuItems(
           {
             id: "session.moveToProject",
             type: "submenu" as const,
-            label: "Move to project",
-            iconKey: "folder" as const,
+            label: "Project",
+            iconKey: "project" as const,
             submenu: projectMoveItems,
           },
         ]),
@@ -132,12 +148,17 @@ export function buildSessionContextMenuItems(
       enabled: true,
       iconKey: session.pinned ? "unpin" : "pin",
     },
-    ...projectMoveActions,
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.rename,
       label: "Rename",
       enabled: true,
       iconKey: "rename",
+    },
+    {
+      id: SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
+      label: session.unread ? "Mark as read" : "Mark as unread",
+      enabled: true,
+      iconKey: "unread",
     },
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.archive,
@@ -146,12 +167,31 @@ export function buildSessionContextMenuItems(
       iconKey: "archive",
     },
     { type: "separator" },
+    ...projectMoveActions,
     {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.markUnread,
-      label: session.unread ? "Mark as read" : "Mark as unread",
-      enabled: true,
-      iconKey: "unread",
+      id: "session.section",
+      type: "submenu",
+      label: "Section",
+      iconKey: "section",
+      submenu: [
+        ...(input.sections ?? []).map((section) => ({
+          id:
+            input.directSectionId === section.sectionId
+              ? SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection
+              : sessionMoveToSectionActionId(section.sectionId),
+          type: "checkbox" as const,
+          label: section.name ?? "Untitled section",
+          enabled: true,
+          checked: input.directSectionId === section.sectionId,
+        })),
+        {
+          id: SESSION_CONTEXT_MENU_ACTION_IDS.newSection,
+          label: "New section…",
+          enabled: true,
+        },
+      ],
     },
+    { type: "separator" },
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.reveal,
       label: resolveRevealInFileManagerLabel(input.platform),

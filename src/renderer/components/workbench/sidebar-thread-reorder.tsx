@@ -34,10 +34,13 @@ import {
   isCodexSidebarPinnedThreadContainerId,
 } from "../../../shared/codex-sidebar-thread-move";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import { readSidebarSectionContainerId } from "../../../shared/sidebar-sections";
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
 import {
   PINNED_PROJECT_CONTAINER_ID,
+  readSidebarGroupDndPayload,
   useSidebarProjectDndState,
+  type SidebarGroupDndPayload,
 } from "./sidebar-project-group-dnd";
 
 export interface SidebarThreadDropTarget {
@@ -82,7 +85,9 @@ export interface SidebarThreadItemDndPayload {
 
 export interface SidebarThreadContainerDndPayload {
   kind: "sidebar-thread-container";
+  beforeItemId?: string | null;
   containerId: string;
+  itemIds?: string[];
   preserveSourceProjectLane?: true;
   projectDropZone?: SidebarThreadProjectDropZone;
   targetProjectKind?: SidebarThreadProjectKind;
@@ -165,6 +170,7 @@ export interface SidebarThreadReorderController {
 }
 
 type SidebarThreadDndPayload = SidebarThreadContainerDndPayload | SidebarThreadItemDndPayload;
+type SidebarThreadTargetDndPayload = SidebarThreadDndPayload | SidebarGroupDndPayload;
 
 interface SidebarThreadReorderContextValue {
   activeThread: SidebarThreadDndThread | null;
@@ -208,6 +214,14 @@ export function readSidebarThreadDndPayload(value: unknown): SidebarThreadDndPay
     return value as SidebarThreadContainerDndPayload;
   }
   return null;
+}
+
+function readSidebarThreadTargetDndPayload(value: unknown): SidebarThreadTargetDndPayload | null {
+  const threadPayload = readSidebarThreadDndPayload(value);
+  if (threadPayload) return threadPayload;
+  const projectPayload = readSidebarGroupDndPayload(value);
+  if (!projectPayload?.containerId) return null;
+  return readSidebarSectionContainerId(projectPayload.containerId) ? projectPayload : null;
 }
 
 function isProjectContainerId(containerId: string): boolean {
@@ -258,6 +272,7 @@ export function resolveSidebarThreadDropPolicy({
   if (targetContainerId === "pinned" || isProjectContainerId(targetContainerId)) {
     return { status: "allowed" };
   }
+  if (readSidebarSectionContainerId(targetContainerId)) return { status: "allowed" };
   if (
     targetContainerId === "chats" &&
     (isProjectContainerId(sourceContainerId) || sourceContainerId === "pinned")
@@ -299,6 +314,14 @@ export function moveSidebarThreadBefore(
     activeThreadKey,
     ...remainingThreadKeys.slice(insertionIndex),
   ];
+}
+
+export function wouldSidebarItemMoveChangeOrder(
+  itemIds: readonly string[],
+  activeItemId: string,
+  beforeItemId: string | null,
+): boolean {
+  return !sameStringOrder(itemIds, moveSidebarThreadBefore(itemIds, activeItemId, beforeItemId));
 }
 
 export function resolveSidebarThreadDropTarget({
@@ -396,7 +419,7 @@ export function resolveSidebarThreadExternalDropTarget(
   const activePayload = readSidebarThreadDndPayload(event.active.data.current);
   if (activePayload?.kind !== "sidebar-item") return null;
 
-  const overPayload = readSidebarThreadDndPayload(event.over?.data.current);
+  const overPayload = readSidebarThreadTargetDndPayload(event.over?.data.current);
   if (!overPayload) return null;
 
   if (overPayload.kind === "sidebar-thread-container") {
@@ -404,17 +427,44 @@ export function resolveSidebarThreadExternalDropTarget(
       overPayload,
       activePayload.thread.containerId,
     );
+    const beforeItemId = overPayload.beforeItemId;
     const target: SidebarThreadResolvedExternalDropTarget = {
       beforeThreadId: null,
       targetContainerId,
       targetProjectKind: overPayload.targetProjectKind,
+      ...(beforeItemId === undefined ? {} : { beforeItemId }),
+      ...(overPayload.itemIds === undefined ? {} : { targetItemIds: overPayload.itemIds }),
+      ...(beforeItemId === null && overPayload.itemIds !== undefined
+        ? { insertAtEnd: true as const }
+        : {}),
       ...(isProjectContainerId(targetContainerId) ? { useDefaultOrder: true as const } : {}),
     };
-    return isUnchangedSidebarThreadDrop(activePayload.thread, target) ? null : target;
+    return isUnchangedSidebarThreadDrop(activePayload.thread, target, activePayload.itemId)
+      ? null
+      : target;
   }
 
   const activeRect = event.active.rect.current.translated;
   if (!activeRect || !event.over) return null;
+
+  if (overPayload.kind === "sidebar-group") {
+    if (!overPayload.containerId || !overPayload.itemId || !overPayload.itemIds) return null;
+    const placement =
+      (pointerY ?? (activeRect.top + activeRect.bottom) / 2) <
+      (event.over.rect.top + event.over.rect.bottom) / 2
+        ? "before"
+        : "after";
+    const beforeItemId =
+      placement === "before" ? overPayload.itemId : (overPayload.nextItemId ?? null);
+    return {
+      beforeItemId,
+      beforeThreadId: null,
+      ...(beforeItemId === null ? { insertAtEnd: true as const } : {}),
+      targetContainerId: overPayload.containerId,
+      targetItemIds: overPayload.itemIds,
+      targetProjectKind: "local",
+    };
+  }
 
   const targetThread = overPayload.thread;
   const placement =
@@ -448,16 +498,30 @@ export function resolveSidebarThreadExternalDropTarget(
     ...(overPayload.itemIds === undefined ? {} : { targetItemIds: overPayload.itemIds }),
     ...(reachesItemEnd && !reachesEnd ? { insertAtEnd: true as const } : {}),
   };
-  return isUnchangedSidebarThreadDrop(activePayload.thread, target) ? null : target;
+  return isUnchangedSidebarThreadDrop(activePayload.thread, target, activePayload.itemId)
+    ? null
+    : target;
 }
 
 function isUnchangedSidebarThreadDrop(
   activeThread: SidebarThreadDndThread,
   target: SidebarThreadResolvedExternalDropTarget,
+  activeItemId?: string,
 ): boolean {
   if (activeThread.threadId === null) return false;
   if (activeThread.containerId !== target.targetContainerId) return false;
   if (target.useDefaultOrder) return true;
+  if (
+    activeItemId !== undefined &&
+    target.beforeItemId !== undefined &&
+    target.targetItemIds?.includes(activeItemId)
+  ) {
+    return !wouldSidebarItemMoveChangeOrder(
+      target.targetItemIds,
+      activeItemId,
+      target.beforeItemId,
+    );
+  }
 
   const activeThreadId = activeThread.threadId;
   if (target.beforeThreadId === activeThreadId || target.afterThreadId === activeThreadId) {
@@ -627,7 +691,7 @@ function containsPoint({
 }
 
 function targetContainerDetails(
-  payload: SidebarThreadDndPayload,
+  payload: SidebarThreadTargetDndPayload,
   sourceContainerId: string,
 ): {
   containerId: string;
@@ -637,6 +701,12 @@ function targetContainerDetails(
     return {
       containerId: resolveSidebarThreadContainerTargetId(payload, sourceContainerId),
       targetProjectKind: payload.targetProjectKind,
+    };
+  }
+  if (payload.kind === "sidebar-group") {
+    return {
+      containerId: payload.containerId ?? sourceContainerId,
+      targetProjectKind: "local",
     };
   }
   return {
@@ -652,7 +722,7 @@ function isSidebarThreadTargetAllowed({
 }: {
   activePayload: SidebarThreadItemDndPayload;
   homeContainerIdByThreadId: ReadonlyMap<string, string>;
-  targetPayload: SidebarThreadDndPayload;
+  targetPayload: SidebarThreadTargetDndPayload;
 }): boolean {
   const activeThread = activePayload.thread;
   const target = targetContainerDetails(targetPayload, activeThread.containerId);
@@ -680,7 +750,7 @@ export function createSidebarThreadCollisionDetection(
     if (activePayload?.kind !== "sidebar-item") return closestCenter(args);
 
     const eligibleContainers = args.droppableContainers.filter((container) => {
-      const targetPayload = readSidebarThreadDndPayload(container.data.current);
+      const targetPayload = readSidebarThreadTargetDndPayload(container.data.current);
       if (!targetPayload) return false;
       return isSidebarThreadTargetAllowed({
         activePayload,
@@ -696,7 +766,9 @@ export function createSidebarThreadCollisionDetection(
 
     const point = args.pointerCoordinates;
     const rowTargets = eligibleContainers.filter(
-      (container) => readSidebarThreadDndPayload(container.data.current)?.kind === "sidebar-item",
+      (container) =>
+        readSidebarThreadTargetDndPayload(container.data.current)?.kind !==
+        "sidebar-thread-container",
     );
     const containerTargets = eligibleContainers.filter(
       (container) =>
@@ -704,7 +776,7 @@ export function createSidebarThreadCollisionDetection(
     );
     const isAtPoint = (container: (typeof eligibleContainers)[number]): boolean => {
       const rect = args.droppableRects.get(container.id);
-      const payload = readSidebarThreadDndPayload(container.data.current);
+      const payload = readSidebarThreadTargetDndPayload(container.data.current);
       if (!rect || !payload) return false;
       const edgeInsetY =
         payload.kind === "sidebar-thread-container"
@@ -724,7 +796,7 @@ export function createSidebarThreadCollisionDetection(
     };
 
     const guaranteedContainerTargets = containerTargets.filter((container) => {
-      const payload = readSidebarThreadDndPayload(container.data.current);
+      const payload = readSidebarThreadTargetDndPayload(container.data.current);
       return (
         payload?.kind === "sidebar-thread-container" &&
         (payload.projectDropZone === "project-gutter" ||
@@ -737,7 +809,7 @@ export function createSidebarThreadCollisionDetection(
     let selectedTargets = guaranteedContainerTargets;
     if (selectedTargets.length === 0) {
       const reorderBoundaryTargets = containerTargets.filter((container) => {
-        const payload = readSidebarThreadDndPayload(container.data.current);
+        const payload = readSidebarThreadTargetDndPayload(container.data.current);
         const rect = args.droppableRects.get(container.id);
         if (
           payload?.kind !== "sidebar-thread-container" ||
@@ -843,13 +915,14 @@ export function dispatchSidebarThreadDragEnd({
   const activePayload = readSidebarThreadDndPayload(event.active.data.current);
   if (activePayload?.kind !== "sidebar-item") return "cancelled";
 
-  const overPayload = readSidebarThreadDndPayload(event.over?.data.current);
+  const overPayload = readSidebarThreadTargetDndPayload(event.over?.data.current);
   if (!overPayload) {
     activePayload.controller.handleDragCancel?.(event);
     return "cancelled";
   }
   const sameController =
-    overPayload.kind === "sidebar-item" && overPayload.controller === activePayload.controller;
+    overPayload.kind !== "sidebar-thread-container" &&
+    overPayload.controller === activePayload.controller;
   if (
     sameController &&
     (activePayload.itemId !== undefined ||
@@ -1026,7 +1099,10 @@ export function resolveSidebarThreadContainerTargetId(
 }
 
 interface SidebarThreadDropContainerOptions {
+  acceptProjectDrop?: boolean;
+  beforeItemId?: string | null;
   containerId: string;
+  itemIds?: string[];
   projectDropZone?: SidebarThreadProjectDropZone;
   targetProjectKind?: SidebarThreadProjectKind;
 }
@@ -1034,13 +1110,17 @@ interface SidebarThreadDropContainerOptions {
 interface SidebarThreadDropContainerRegistration {
   isExternalThreadDropTarget: boolean;
   isOver: boolean;
+  isProjectDropTargetOver: boolean;
   projectDragActive: boolean;
   setNodeRef: (element: HTMLElement | null) => void;
+  threadDragActive: boolean;
 }
 
 function useSidebarThreadDropContainerRegistration({
   acceptProjectDrop = false,
+  beforeItemId,
   containerId,
+  itemIds,
   preserveSourceProjectLane,
   projectDropZone,
   targetProjectKind,
@@ -1053,12 +1133,21 @@ function useSidebarThreadDropContainerRegistration({
   const payload = useMemo<SidebarThreadContainerDndPayload>(
     () => ({
       kind: "sidebar-thread-container",
+      beforeItemId,
       containerId,
+      itemIds,
       ...(preserveSourceProjectLane ? { preserveSourceProjectLane: true as const } : {}),
       projectDropZone,
       targetProjectKind,
     }),
-    [containerId, preserveSourceProjectLane, projectDropZone, targetProjectKind],
+    [
+      beforeItemId,
+      containerId,
+      itemIds,
+      preserveSourceProjectLane,
+      projectDropZone,
+      targetProjectKind,
+    ],
   );
   const targetContainerId = resolveSidebarThreadContainerTargetId(
     payload,
@@ -1083,17 +1172,28 @@ function useSidebarThreadDropContainerRegistration({
     projectDropZone === undefined
       ? `sidebar-thread-container:${containerId}`
       : `sidebar-${projectDropZone}:${containerId}`;
-  const { isOver, setNodeRef } = useDroppable({
+  const { isOver, over, setNodeRef } = useDroppable({
     id,
     data: payload,
     disabled: !(acceptProjectDrop && projectDragActive) && policy?.status !== "allowed",
   });
+  const isExternalThreadDropTarget =
+    policy?.status === "allowed" && activeThread?.containerId !== targetContainerId;
+  const overPayload = readSidebarThreadDndPayload(over?.data.current);
+  const overContainerId =
+    overPayload?.kind === "sidebar-thread-container"
+      ? resolveSidebarThreadContainerTargetId(overPayload, activeThread?.containerId ?? null)
+      : null;
   return {
-    isExternalThreadDropTarget:
-      policy?.status === "allowed" && activeThread?.containerId !== targetContainerId,
+    isExternalThreadDropTarget,
     isOver,
+    isProjectDropTargetOver:
+      isExternalThreadDropTarget &&
+      isProjectContainerId(targetContainerId) &&
+      overContainerId === targetContainerId,
     projectDragActive: acceptProjectDrop && projectDragActive,
     setNodeRef,
+    threadDragActive: policy?.status === "allowed",
   };
 }
 
@@ -1102,6 +1202,7 @@ export function useSidebarThreadDropContainer(
 ): SidebarThreadDropContainerRegistration {
   return useSidebarThreadDropContainerRegistration({
     ...options,
+    acceptProjectDrop: options.acceptProjectDrop,
     preserveSourceProjectLane: false,
   });
 }
@@ -1155,6 +1256,7 @@ export function useSidebarThreadProjectDropTargets({
 }
 
 export function SidebarThreadDropContainer({
+  acceptProjectDrop = false,
   activeClassName,
   activeNode,
   children,
@@ -1163,6 +1265,7 @@ export function SidebarThreadDropContainer({
   projectDropZone,
   targetProjectKind,
 }: {
+  acceptProjectDrop?: boolean;
   activeClassName?: string;
   activeNode?: ReactNode;
   children: ReactNode;
@@ -1171,12 +1274,15 @@ export function SidebarThreadDropContainer({
   projectDropZone?: SidebarThreadProjectDropZone;
   targetProjectKind?: SidebarThreadProjectKind;
 }) {
-  const { isExternalThreadDropTarget, isOver, setNodeRef } = useSidebarThreadDropContainer({
-    containerId,
-    projectDropZone,
-    targetProjectKind,
-  });
-  const active = isExternalThreadDropTarget && isOver;
+  const { isExternalThreadDropTarget, isOver, projectDragActive, setNodeRef } =
+    useSidebarThreadDropContainerRegistration({
+      acceptProjectDrop,
+      containerId,
+      preserveSourceProjectLane: false,
+      projectDropZone,
+      targetProjectKind,
+    });
+  const active = isOver && (isExternalThreadDropTarget || projectDragActive);
 
   return (
     <div
@@ -1202,6 +1308,7 @@ export function useSidebarThreadReorderController({
 }: {
   visibleThreadKeys: string[];
   onVisibleThreadOrderChange?: (change: {
+    activeThreadKey: string;
     visibleThreadKeys: string[];
     nextVisibleThreadKeys: string[];
   }) => Promise<void>;
@@ -1257,6 +1364,7 @@ export function useSidebarThreadReorderController({
         );
         orderHandoff.submit(nextVisibleThreadKeys, () =>
           onVisibleThreadOrderChange({
+            activeThreadKey,
             visibleThreadKeys: displayedVisibleThreadKeys,
             nextVisibleThreadKeys,
           }),
@@ -1314,6 +1422,7 @@ export function SidebarThreadSortableItem({
   nextItemId,
   nextThreadKey,
   sourceProjectKind,
+  sortableId,
   targetProjectKind,
   threadId,
   threadKey,
@@ -1332,6 +1441,7 @@ export function SidebarThreadSortableItem({
   nextItemId?: string | null;
   nextThreadKey?: string | null;
   sourceProjectKind?: SidebarThreadProjectKind;
+  sortableId?: string;
   targetProjectKind?: SidebarThreadProjectKind;
   threadId?: string | null;
   threadKey: string;
@@ -1389,7 +1499,7 @@ export function SidebarThreadSortableItem({
   );
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({
     animateLayoutChanges: disableSidebarThreadLayoutAnimation,
-    id: threadKey,
+    id: sortableId ?? threadKey,
     disabled: sortableDisabled,
     data: payload,
   });
