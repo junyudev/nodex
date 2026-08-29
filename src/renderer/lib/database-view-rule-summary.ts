@@ -6,6 +6,7 @@ import type {
   DatabaseViewSort,
 } from "../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../shared/database-module-v2";
+import { databaseViewFilterOperatorLabel } from "../../shared/database-view-rules";
 import { readDatabasePropertyOptions } from "./database-view-authoring";
 import {
   createDefaultDatabaseTaskFilterGroup,
@@ -14,15 +15,6 @@ import {
   type DatabaseTaskChoiceFilter,
   type DatabaseTaskFilterProperty,
 } from "./database-view-task-filter";
-
-const FILTER_OPERATOR_LABELS = {
-  equals: "is",
-  not_equals: "is not",
-  contains: "contains",
-  not_contains: "does not contain",
-  is_empty: "is empty",
-  is_not_empty: "is not empty",
-} as const;
 
 export interface DatabaseViewRuleSummary {
   readonly key: string;
@@ -150,7 +142,7 @@ export const summarizeDatabaseViewFilter = (
       };
     }
     const clause = clauses[0]!;
-    const operator = FILTER_OPERATOR_LABELS[clause.operator];
+    const operator = databaseViewFilterOperatorLabel(clause.operator);
     const value =
       clause.operator === "is_empty" || clause.operator === "is_not_empty"
         ? operator
@@ -168,16 +160,38 @@ export const databaseViewSortFieldLabel = (
   properties: readonly DataSourcePropertyRecordV2[],
 ): string => {
   if (sort.field.kind === "manual") return "Manual order";
-  if (sort.field.kind === "title") return "Title";
-  if (sort.field.kind === "created") return "Created";
+  if (sort.field.kind === "title") return "Name";
+  if (sort.field.kind === "created") return "Created time";
   const propertyId = sort.field.propertyId;
   return (
     properties.find((property) => property.propertyId === propertyId)?.name ?? "Missing property"
   );
 };
 
+export const databaseViewSortDirectionLabels = (
+  sort: DatabaseViewSort,
+  properties: readonly DataSourcePropertyRecordV2[],
+): readonly [ascending: string, descending: string] => {
+  const propertyId = sort.field.kind === "property" ? sort.field.propertyId : null;
+  const property = propertyId
+    ? (properties.find((candidate) => candidate.propertyId === propertyId) ?? null)
+    : null;
+  if (
+    sort.field.kind === "created" ||
+    property?.valueType === "date" ||
+    property?.valueType === "datetime"
+  ) {
+    return ["Earliest first", "Latest first"];
+  }
+  if (property?.valueType === "number") return ["Low to high", "High to low"];
+  if (property?.valueType === "checkbox") return ["Unchecked first", "Checked first"];
+  if (sort.field.kind === "manual") return ["Top to bottom", "Bottom to top"];
+  return ["A to Z", "Z to A"];
+};
+
 export const hasCustomDatabaseViewSort = (sorts: readonly DatabaseViewSort[]): boolean => {
-  if (sorts.length !== 1) return true;
+  if (sorts.length === 0) return false;
+  if (sorts.length > 1) return true;
   const sort = sorts[0];
   return sort?.field.kind !== "manual" || sort.direction !== "asc" || sort.nulls !== "last";
 };

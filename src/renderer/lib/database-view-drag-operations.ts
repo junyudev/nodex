@@ -188,7 +188,7 @@ const resolveStructuralDropValues = (input: {
 export const databaseViewSupportsSortedSlotInference = (
   model: DatabaseViewRenderModel,
 ): boolean => {
-  for (const sort of model.query.view.config.presentation.sort) {
+  for (const sort of model.query.view.config.rules.sorts) {
     if (sort.field.kind === "manual") return true;
     if (sort.field.kind !== "property") return false;
     const property = activeProperty(model, sort.field.propertyId);
@@ -241,7 +241,7 @@ export const resolveDatabaseViewSortedDropValues = (input: {
     ),
   );
   const values: DatabaseViewDropPropertyValue[] = [];
-  for (const sort of presentation.sort) {
+  for (const sort of input.model.query.view.config.rules.sorts) {
     if (sort.field.kind === "manual") break;
     if (sort.field.kind !== "property") break;
     const propertyId = sort.field.propertyId;

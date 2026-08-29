@@ -140,7 +140,7 @@ function makeDescriptor(
       databaseId,
       dataSourceId,
       name: view.name,
-      defaultLayout: "board",
+      layout: "board",
       config: upgradeDatabaseViewConfigV2({
         schemaKey: "nodex.database-view",
         schemaVersion: 2,

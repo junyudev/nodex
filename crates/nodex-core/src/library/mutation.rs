@@ -5233,10 +5233,10 @@ mod tests {
             &items[0],
             nodex_core_contracts::library::LibraryNavigationNode::View {
                 title,
-                default_layout,
+                layout,
                 is_default: true,
                 ..
-            } if title == "Board" && default_layout == "board"
+            } if title == "Board" && layout == "board"
         ));
         kernel
             .readers()
@@ -5277,7 +5277,7 @@ mod tests {
                         "018f0000-0000-7000-8000-000000000003".to_owned(),
                         1,
                         1,
-                        4,
+                        5,
                         9,
                         1,
                         1,

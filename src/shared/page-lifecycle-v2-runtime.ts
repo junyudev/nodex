@@ -481,7 +481,7 @@ const primaryView = (preflight: PageLifecyclePreflightSnapshotV2) => {
     dataSource.lifecycle !== "active" ||
     view.lifecycle !== "active" ||
     !view.isDefault ||
-    view.defaultLayout !== "board" ||
+    view.layout !== "board" ||
     view.databaseId !== database.databaseId ||
     view.dataSourceId !== dataSource.dataSourceId ||
     value.tagsProperty.propertyId !== "tags" ||

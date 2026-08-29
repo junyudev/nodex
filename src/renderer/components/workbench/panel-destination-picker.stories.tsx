@@ -109,7 +109,7 @@ const DATABASE_DESCRIPTOR_MAP = new Map<string, DatabaseContainerDescriptorV2>(
       databaseId,
       dataSourceId,
       name,
-      defaultLayout: "board" as const,
+      layout: "board" as const,
       config: upgradeDatabaseViewConfigV2({
         schemaKey: "nodex.database-view" as const,
         schemaVersion: 2 as const,

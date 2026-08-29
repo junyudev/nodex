@@ -286,16 +286,18 @@ mod tests {
         DatabaseAgentDataSourceQuery, DatabaseAgentViewQuery, DatabaseGroupScope, DatabaseIntent,
         DatabaseListMoveEdge, DatabaseListMoveSelection, DatabaseListMoveTarget,
         DatabaseListProjectionExpectation, DatabaseListProjectionRow, DatabaseListTransientKind,
-        DatabaseOperationOutcome, DatabasePageKeyPrefixAvailability, DatabasePagePropertyAddress,
+        DatabaseNumberFormat, DatabaseOperationOutcome, DatabaseOptionPlacement,
+        DatabasePageKeyPrefixAvailability, DatabasePageLayoutPlacement,
+        DatabasePagePropertyAddress, DatabasePagePropertyVisibility, DatabasePropertyPlacement,
         DatabasePropertySchema, DatabasePropertySetDelta, DatabasePropertyValueEdit,
         DatabasePropertyValueInput, DatabasePropertyValueMutation, DatabaseRowsTarget,
         DatabaseTaskParentPage, DatabaseTransferTarget, DatabaseViewCompletedRangeInput,
         DatabaseViewCompletionOverrideInput, DatabaseViewDefinition, DatabaseViewDisclosureTarget,
-        DatabaseViewFieldInput, DatabaseViewFilter, DatabaseViewFilterGroupOperator,
-        DatabaseViewFilterOperator, DatabaseViewGroupOverrideInput, DatabaseViewIntrinsicField,
-        DatabaseViewLayout, DatabaseViewLayoutDisplayOverrideInput, DatabaseViewLayoutInput,
-        DatabaseViewLayoutsOverrideInput, DatabaseViewNullOrder, DatabaseViewPersonalPresentation,
-        DatabaseViewPresentationOverrideInput, DatabaseViewReadTarget, DatabaseViewSort,
+        DatabaseViewFilter, DatabaseViewFilterGroupOperator, DatabaseViewFilterOperator,
+        DatabaseViewGroupOverrideInput, DatabaseViewLayout, DatabaseViewLayoutDisplayOverrideInput,
+        DatabaseViewNullOrder, DatabaseViewPersonalPreferences, DatabaseViewPlacement,
+        DatabaseViewPreferencesOverrideInput, DatabaseViewPresentationOverrideInput,
+        DatabaseViewReadTarget, DatabaseViewRulesOverrideInput, DatabaseViewSort,
         DatabaseViewSortDirection, DatabaseViewSortDirectionInput, DatabaseViewSortField,
     };
     use nodex_core_contracts::library::{
@@ -326,20 +328,31 @@ mod tests {
     const NOW: &str = "2026-07-19T00:15:00.000Z";
 
     fn view_config(filter: Value, group_property_id: Option<&str>, fields: &[&str]) -> Value {
+        let advanced_filter =
+            if filter == json!({ "kind": "group", "operator": "and", "children": [] }) {
+                Value::Null
+            } else if filter.get("kind").and_then(Value::as_str) == Some("clause") {
+                json!({ "kind": "group", "operator": "and", "children": [filter] })
+            } else {
+                filter
+            };
         let fields = fields
             .iter()
             .map(|property_id| json!({ "kind": "property", "propertyId": property_id }))
             .collect::<Vec<_>>();
         json!({
             "schemaKey": "nodex.database-view",
-            "schemaVersion": 4,
-            "filter": filter,
-            "presentation": {
-                "sort": [{
+            "schemaVersion": 6,
+            "rules": {
+                "propertyFilters": [],
+                "advancedFilter": advanced_filter,
+                "sorts": [{
                     "field": { "kind": "manual" },
                     "direction": "asc",
                     "nulls": "last"
-                }],
+                }]
+            },
+            "presentation": {
                 "group": group_property_id.map(|property_id| json!({
                     "propertyId": property_id
                 })),
@@ -347,10 +360,7 @@ mod tests {
                 "groupDirection": "asc",
                 "completion": { "range": "all", "orderByRecency": false },
                 "hierarchy": { "showSubPages": true, "nestedSubPages": false },
-                "layouts": {
-                    "board": { "fields": fields, "showEmptyGroups": false },
-                    "list": { "fields": fields, "showEmptyGroups": false }
-                }
+                "display": { "fields": fields, "showEmptyGroups": false }
             }
         })
     }
@@ -358,6 +368,15 @@ mod tests {
     fn view_definition(config: Value) -> DatabaseViewDefinition {
         super::view_contract::decode_definition_value(config)
             .expect("test View config must satisfy the durable definition contract")
+    }
+
+    fn preferences_override(
+        presentation_override: DatabaseViewPresentationOverrideInput,
+    ) -> DatabaseViewPreferencesOverrideInput {
+        DatabaseViewPreferencesOverrideInput {
+            presentation_override,
+            ..Default::default()
+        }
     }
 
     fn context() -> BoundModuleContext {
@@ -553,7 +572,7 @@ mod tests {
                             json!({
                                 "kind": "clause",
                                 "propertyId": "priority",
-                                "operator": "equals",
+                                "operator": "select_is",
                                 "value": "p4-later"
                             }),
                             Some("status"),
@@ -1640,6 +1659,7 @@ mod tests {
             BTreeMap::from([
                 (format!("source:{SOURCE_ID}"), 3),
                 (format!("property:{SOURCE_ID}:p_risk0000"), 2),
+                (format!("page_layout:{SOURCE_ID}"), 2),
                 (format!("value:{SOURCE_ID}:membership:row:p_risk0000"), 1),
                 ("page:page:database-row:metadata".to_owned(), 2),
             ])
@@ -1773,7 +1793,9 @@ mod tests {
                             expected_data_source_revision: 3,
                             expected_property_revision: 0,
                             name: "Score".to_owned(),
-                            schema: DatabasePropertySchema::Number,
+                            schema: DatabasePropertySchema::Number {
+                                format: Default::default(),
+                            },
                             before_property_id: None,
                         },
                         DatabaseIntent::EditPropertyValues {
@@ -2011,16 +2033,16 @@ mod tests {
                     read: DatabaseRead::ViewWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: SECOND_VIEW_ID.to_owned(),
-                            presentation_override: DatabaseViewPresentationOverrideInput {
-                                layout: None,
-                                sort: None,
-                                group: Some(DatabaseViewGroupOverrideInput::None),
-                                subgroup: None,
-                                group_direction: None,
-                                completion: None,
-                                hierarchy: None,
-                                layouts: None,
-                            },
+                            preferences_override: preferences_override(
+                                DatabaseViewPresentationOverrideInput {
+                                    group: Some(DatabaseViewGroupOverrideInput::None),
+                                    subgroup: None,
+                                    group_direction: None,
+                                    completion: None,
+                                    hierarchy: None,
+                                    display: None,
+                                },
+                            ),
                         },
                         window: Default::default(),
                         group_scope: None,
@@ -2236,6 +2258,7 @@ mod tests {
             BTreeMap::from([
                 (format!("source:{SOURCE_ID}"), 4),
                 (format!("property:{SOURCE_ID}:p_libnote0"), 1),
+                (format!("page_layout:{SOURCE_ID}"), 3),
             ])
         );
         let library_event = library_write.event.expect("Library Database event");
@@ -2405,19 +2428,1219 @@ mod tests {
         DatabaseModule::new("profile-1", "library-1", kernel)
     }
 
-    fn read_personal_presentation(module: &DatabaseModule) -> DatabaseViewPersonalPresentation {
+    #[test]
+    fn page_layout_is_source_owned_ordered_and_revision_guarded() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(&kernel, vec![]);
+        let initial = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::PageLayout {
+                        data_source_id: SOURCE_ID.to_owned(),
+                    },
+                },
+            )
+            .expect("read initial Page layout");
+        let DatabaseReadValue::PageLayout { value: initial } = initial.value else {
+            panic!("Page layout snapshot");
+        };
+        assert_eq!(initial.revision, 1);
+        assert_eq!(
+            initial
+                .entries
+                .first()
+                .map(|entry| entry.property_id.as_str()),
+            Some("status")
+        );
+
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:page-layout-status".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutPageLayoutEntry {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        expected_revision: 1,
+                        property_id: "status".to_owned(),
+                        visibility: DatabasePagePropertyVisibility::HideWhenEmpty,
+                        placement: Some(DatabasePageLayoutPlacement::End),
+                    }],
+                },
+            )
+            .expect("update Page layout");
+        let updated = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::PageLayout {
+                        data_source_id: SOURCE_ID.to_owned(),
+                    },
+                },
+            )
+            .expect("read updated Page layout");
+        let DatabaseReadValue::PageLayout { value: updated } = updated.value else {
+            panic!("updated Page layout snapshot");
+        };
+        assert_eq!(updated.revision, 2);
+        assert_eq!(
+            updated
+                .entries
+                .last()
+                .map(|entry| entry.property_id.as_str()),
+            Some("status")
+        );
+        assert_eq!(
+            updated.entries.last().map(|entry| entry.visibility),
+            Some(DatabasePagePropertyVisibility::HideWhenEmpty)
+        );
+
+        let conflict = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:page-layout-stale".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutPageLayoutEntry {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        expected_revision: 1,
+                        property_id: "priority".to_owned(),
+                        visibility: DatabasePagePropertyVisibility::AlwaysHide,
+                        placement: None,
+                    }],
+                },
+            )
+            .expect_err("reject stale Page layout mutation");
+        assert_eq!(conflict.code, CoreErrorCode::RevisionConflict);
+    }
+
+    #[test]
+    fn number_format_is_durable_and_preserves_non_empty_values() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(
+            &kernel,
+            vec![GroupRowSpec {
+                page_id: "page:format-row",
+                title: "Formatted",
+                value_json: Some("\"build\""),
+                rank_key: Some("a0"),
+            }],
+        );
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:create-number-format".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutProperty {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_metric00".to_owned(),
+                        expected_data_source_revision: 1,
+                        expected_property_revision: 0,
+                        name: "Metric".to_owned(),
+                        schema: DatabasePropertySchema::Number {
+                            format: DatabaseNumberFormat::Plain,
+                        },
+                        before_property_id: None,
+                    }],
+                },
+            )
+            .expect("create Number Property");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:set-number-value".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::EditPropertyValues {
+                        edits: vec![DatabasePropertyValueMutation {
+                            address: DatabasePagePropertyAddress {
+                                page_id: "page:format-row".to_owned(),
+                                data_source_id: SOURCE_ID.to_owned(),
+                                property_id: "p_metric00".to_owned(),
+                            },
+                            edit: DatabasePropertyValueEdit::Replace {
+                                expected_value_revision: 0,
+                                value: DatabasePropertyValueInput::Number { value: 0.25 },
+                            },
+                        }],
+                    }],
+                },
+            )
+            .expect("set Number value");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:format-number-percent".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::ChangePropertyType {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_metric00".to_owned(),
+                        expected_data_source_revision: 2,
+                        expected_property_revision: 1,
+                        schema: DatabasePropertySchema::Number {
+                            format: DatabaseNumberFormat::Percent,
+                        },
+                    }],
+                },
+            )
+            .expect("change Number presentation without clearing values");
+
+        let properties = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::PropertyWindow {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        window: Default::default(),
+                    },
+                },
+            )
+            .expect("read formatted Property");
+        let DatabaseReadValue::PropertyWindow { properties } = properties.value else {
+            panic!("Property window");
+        };
+        let metric = properties
+            .items
+            .iter()
+            .find(|property| property.property_id == "p_metric00")
+            .expect("Metric Property");
+        assert_eq!(
+            metric.schema,
+            DatabasePropertySchema::Number {
+                format: DatabaseNumberFormat::Percent,
+            }
+        );
+        assert_eq!(metric.non_empty_value_count, 1);
+
+        let stored_value = kernel
+            .readers()
+            .read_default(|connection| {
+                connection
+                    .query_row(
+                        "SELECT value_json FROM data_source_property_values \
+                         WHERE data_source_id = ?1 AND property_id = 'p_metric00'",
+                        [SOURCE_ID],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(StoreError::from)
+            })
+            .expect("read preserved Number value");
+        assert_eq!(stored_value, "0.25");
+
+        let blocked = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:block-number-type-change".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::ChangePropertyType {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_metric00".to_owned(),
+                        expected_data_source_revision: 3,
+                        expected_property_revision: 2,
+                        schema: DatabasePropertySchema::Text,
+                    }],
+                },
+            )
+            .expect_err("block structural type changes while values exist");
+        assert_eq!(blocked.code, CoreErrorCode::Conflict);
+    }
+
+    #[test]
+    fn property_lifecycle_uses_explicit_move_and_permanently_retires_identity() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(&kernel, vec![]);
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:lifecycle-create".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutProperty {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_life0000".to_owned(),
+                        expected_data_source_revision: 1,
+                        expected_property_revision: 0,
+                        name: "Lifecycle".to_owned(),
+                        schema: DatabasePropertySchema::Text,
+                        before_property_id: None,
+                    }],
+                },
+            )
+            .expect("create Property");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:lifecycle-duplicate".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DuplicateProperty {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_life0000".to_owned(),
+                        expected_data_source_revision: 2,
+                        expected_property_revision: 1,
+                        new_property_id: "p_dupe0000".to_owned(),
+                        name: "Lifecycle copy".to_owned(),
+                        option_ids: vec![],
+                    }],
+                },
+            )
+            .expect("duplicate Property");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:lifecycle-move-end".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::MoveProperty {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_life0000".to_owned(),
+                        expected_data_source_revision: 3,
+                        expected_property_revision: 1,
+                        placement: DatabasePropertyPlacement::End,
+                    }],
+                },
+            )
+            .expect("move Property to end");
+        let properties = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::PropertyWindow {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        window: Default::default(),
+                    },
+                },
+            )
+            .expect("read reordered Properties");
+        let DatabaseReadValue::PropertyWindow { properties } = properties.value else {
+            panic!("Property window");
+        };
+        assert_eq!(properties.items.last().unwrap().property_id, "p_life0000");
+
+        for (operation_id, intent) in [
+            (
+                "operation:lifecycle-delete",
+                DatabaseIntent::DeleteProperty {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    property_id: "p_life0000".to_owned(),
+                    expected_data_source_revision: 4,
+                    expected_property_revision: 2,
+                },
+            ),
+            (
+                "operation:lifecycle-restore",
+                DatabaseIntent::RestoreProperty {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    property_id: "p_life0000".to_owned(),
+                    expected_data_source_revision: 5,
+                    expected_property_revision: 3,
+                },
+            ),
+            (
+                "operation:lifecycle-delete-again",
+                DatabaseIntent::DeleteProperty {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    property_id: "p_life0000".to_owned(),
+                    expected_data_source_revision: 6,
+                    expected_property_revision: 4,
+                },
+            ),
+            (
+                "operation:lifecycle-permanent",
+                DatabaseIntent::PermanentlyDeleteProperty {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    property_id: "p_life0000".to_owned(),
+                    expected_data_source_revision: 7,
+                    expected_property_revision: 5,
+                },
+            ),
+        ] {
+            module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: operation_id.to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![intent],
+                    },
+                )
+                .expect(operation_id);
+        }
+        let retired = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:lifecycle-reuse-retired".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutProperty {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_life0000".to_owned(),
+                        expected_data_source_revision: 8,
+                        expected_property_revision: 0,
+                        name: "Reused".to_owned(),
+                        schema: DatabasePropertySchema::Text,
+                        before_property_id: None,
+                    }],
+                },
+            )
+            .expect_err("retired Property identities cannot be reused");
+        assert!(retired.message.contains("retired"));
+    }
+
+    #[test]
+    fn option_management_preserves_workflow_structure_and_clears_custom_values_atomically() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(
+            &kernel,
+            vec![GroupRowSpec {
+                page_id: "page:option-row",
+                title: "Option row",
+                value_json: None,
+                rank_key: Some("a0"),
+            }],
+        );
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:create-phase-property".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutProperty {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_phase000".to_owned(),
+                        expected_data_source_revision: 1,
+                        expected_property_revision: 0,
+                        name: "Phase".to_owned(),
+                        schema: DatabasePropertySchema::Select,
+                        before_property_id: None,
+                    }],
+                },
+            )
+            .expect("create custom Select Property");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:create-phase-option".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutOption {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_phase000".to_owned(),
+                        option_id: "o_phase000".to_owned(),
+                        name: "Research".to_owned(),
+                        color: Some("blue".to_owned()),
+                        expected_property_revision: 1,
+                    }],
+                },
+            )
+            .expect("create custom option");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:select-phase-option".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::EditPropertyValues {
+                        edits: vec![DatabasePropertyValueMutation {
+                            address: DatabasePagePropertyAddress {
+                                page_id: "page:option-row".to_owned(),
+                                data_source_id: SOURCE_ID.to_owned(),
+                                property_id: "p_phase000".to_owned(),
+                            },
+                            edit: DatabasePropertyValueEdit::Replace {
+                                expected_value_revision: 0,
+                                value: DatabasePropertyValueInput::Select {
+                                    option_id: "o_phase000".to_owned(),
+                                },
+                            },
+                        }],
+                    }],
+                },
+            )
+            .expect("select custom option");
+
+        let referenced = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:reject-referenced-option-delete".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DeleteOption {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_phase000".to_owned(),
+                        option_id: "o_phase000".to_owned(),
+                        expected_property_revision: 2,
+                    }],
+                },
+            )
+            .expect_err("plain option deletion cannot leave dangling values");
+        assert_eq!(referenced.code, CoreErrorCode::Conflict);
+
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:clear-and-delete-option".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DeleteOptionAndClearValues {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_phase000".to_owned(),
+                        option_id: "o_phase000".to_owned(),
+                        expected_property_revision: 2,
+                    }],
+                },
+            )
+            .expect("clear values and delete custom option in one transaction");
+        let remaining = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::OptionWindow {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_phase000".to_owned(),
+                        window: Default::default(),
+                    },
+                },
+            )
+            .expect("read custom options after deletion");
+        let DatabaseReadValue::OptionWindow { options } = remaining.value else {
+            panic!("custom option window");
+        };
+        assert!(options.items.is_empty());
+        let value_count = kernel
+            .readers()
+            .read_default(|connection| {
+                connection
+                    .query_row(
+                        "SELECT count(*) FROM data_source_property_values \
+                         WHERE data_source_id = ?1 AND property_id = 'p_phase000' \
+                           AND value_json != 'null'",
+                        [SOURCE_ID],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(StoreError::from)
+            })
+            .expect("count cleared option values");
+        assert_eq!(value_count, 0);
+
+        let properties = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::PropertyWindow {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        window: Default::default(),
+                    },
+                },
+            )
+            .expect("read status management revision");
+        let DatabaseReadValue::PropertyWindow { properties } = properties.value else {
+            panic!("Property window");
+        };
+        let status = properties
+            .items
+            .iter()
+            .find(|property| property.property_id == "status")
+            .expect("status Property");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:rename-status-option".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutOption {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "status".to_owned(),
+                        option_id: "triage".to_owned(),
+                        name: "Inbox".to_owned(),
+                        color: Some("gray".to_owned()),
+                        expected_property_revision: status.revision,
+                    }],
+                },
+            )
+            .expect("status option presentation remains editable");
+        for (operation_id, intent) in [
+            (
+                "operation:reject-status-option-move",
+                DatabaseIntent::MoveOption {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    property_id: "status".to_owned(),
+                    option_id: "triage".to_owned(),
+                    expected_property_revision: status.revision + 1,
+                    placement: DatabaseOptionPlacement::End,
+                },
+            ),
+            (
+                "operation:reject-status-option-delete",
+                DatabaseIntent::DeleteOption {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    property_id: "status".to_owned(),
+                    option_id: "triage".to_owned(),
+                    expected_property_revision: status.revision + 1,
+                },
+            ),
+            (
+                "operation:reject-new-status-option",
+                DatabaseIntent::PutOption {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    property_id: "status".to_owned(),
+                    option_id: "o_status00".to_owned(),
+                    name: "Extra".to_owned(),
+                    color: None,
+                    expected_property_revision: status.revision + 1,
+                },
+            ),
+        ] {
+            let blocked = module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: operation_id.to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![intent],
+                    },
+                )
+                .expect_err(operation_id);
+            assert_eq!(
+                blocked.code,
+                if operation_id == "operation:reject-new-status-option" {
+                    CoreErrorCode::InvalidInput
+                } else {
+                    CoreErrorCode::Conflict
+                },
+                "{operation_id}: {}",
+                blocked.message
+            );
+        }
+    }
+
+    #[test]
+    fn conditional_color_rules_validate_identity_and_participate_in_property_repair() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(&kernel, vec![]);
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:create-color-property".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutProperty {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        property_id: "p_tone0000".to_owned(),
+                        expected_data_source_revision: 1,
+                        expected_property_revision: 0,
+                        name: "Tone".to_owned(),
+                        schema: DatabasePropertySchema::Text,
+                        before_property_id: None,
+                    }],
+                },
+            )
+            .expect("create conditional color Property");
+
+        let color_rule = json!({
+            "ruleId": "rule:tone",
+            "propertyId": "p_tone0000",
+            "operator": "equals",
+            "value": "urgent",
+            "color": "red"
+        });
+        let mut duplicate_config = view_config(
+            json!({ "kind": "group", "operator": "and", "children": [] }),
+            None,
+            &["status"],
+        );
+        duplicate_config["presentation"]["conditionalColors"] =
+            json!([color_rule.clone(), color_rule.clone()]);
+        let duplicate = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:reject-duplicate-color-rules".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutView {
+                        database_id: DATABASE_ID.to_owned(),
+                        data_source_id: SOURCE_ID.to_owned(),
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        name: "Board".to_owned(),
+                        layout: DatabaseViewLayout::Board,
+                        definition: view_definition(duplicate_config),
+                        is_default: true,
+                        before_view_id: None,
+                    }],
+                },
+            )
+            .expect_err("conditional rule identities are unique within a View");
+        assert_eq!(duplicate.code, CoreErrorCode::InvalidInput);
+
+        let mut valid_config = view_config(
+            json!({ "kind": "group", "operator": "and", "children": [] }),
+            None,
+            &["status"],
+        );
+        valid_config["presentation"]["conditionalColors"] = json!([color_rule]);
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:save-color-rule".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutView {
+                        database_id: DATABASE_ID.to_owned(),
+                        data_source_id: SOURCE_ID.to_owned(),
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        name: "Board".to_owned(),
+                        layout: DatabaseViewLayout::Board,
+                        definition: view_definition(valid_config),
+                        is_default: true,
+                        before_view_id: None,
+                    }],
+                },
+            )
+            .expect("save conditional color rule");
+        let properties = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::PropertyWindow {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        window: Default::default(),
+                    },
+                },
+            )
+            .expect("read conditional color dependency");
+        let DatabaseReadValue::PropertyWindow { properties } = properties.value else {
+            panic!("Property window");
+        };
+        let tone = properties
+            .items
+            .iter()
+            .find(|property| property.property_id == "p_tone0000")
+            .expect("Tone Property");
+        assert_eq!(tone.referenced_view_ids, [VIEW_ID]);
+
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:repair-color-rule-delete".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![
+                        DatabaseIntent::PutView {
+                            database_id: DATABASE_ID.to_owned(),
+                            data_source_id: SOURCE_ID.to_owned(),
+                            view_id: VIEW_ID.to_owned(),
+                            expected_revision: 2,
+                            name: "Board".to_owned(),
+                            layout: DatabaseViewLayout::Board,
+                            definition: view_definition(view_config(
+                                json!({
+                                    "kind": "group",
+                                    "operator": "and",
+                                    "children": []
+                                }),
+                                None,
+                                &["status"],
+                            )),
+                            is_default: true,
+                            before_view_id: None,
+                        },
+                        DatabaseIntent::DeleteProperty {
+                            data_source_id: SOURCE_ID.to_owned(),
+                            property_id: "p_tone0000".to_owned(),
+                            expected_data_source_revision: 2,
+                            expected_property_revision: 1,
+                        },
+                    ],
+                },
+            )
+            .expect("repair conditional rules while soft-deleting their Property");
+        let view = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::View {
+                        view_id: VIEW_ID.to_owned(),
+                    },
+                },
+            )
+            .expect("read repaired View");
+        let DatabaseReadValue::View { value } = view.value else {
+            panic!("View record");
+        };
+        assert!(value.definition.presentation.conditional_colors.is_empty());
+    }
+
+    #[test]
+    fn personal_view_filter_changes_projection_without_mutating_the_durable_view() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(
+            &kernel,
+            vec![
+                GroupRowSpec {
+                    page_id: "page:personal-filter-match",
+                    title: "Match",
+                    value_json: Some("\"triage\""),
+                    rank_key: Some("a0"),
+                },
+                GroupRowSpec {
+                    page_id: "page:personal-filter-other",
+                    title: "Other",
+                    value_json: Some("\"build\""),
+                    rank_key: Some("b0"),
+                },
+            ],
+        );
+        let filtered = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::ViewWindow {
+                        target: DatabaseViewReadTarget::PresentedView {
+                            view_id: VIEW_ID.to_owned(),
+                            preferences_override: DatabaseViewPreferencesOverrideInput {
+                                rules_override: DatabaseViewRulesOverrideInput {
+                                    advanced_filter: Some(
+                                        nodex_core_contracts::database::DatabaseViewAdvancedFilterOverrideInput::Filter {
+                                            filter: DatabaseViewFilter::Group {
+                                                operator: DatabaseViewFilterGroupOperator::And,
+                                                children: vec![DatabaseViewFilter::Clause {
+                                                    property_id: "status".to_owned(),
+                                                    operator: DatabaseViewFilterOperator::SelectIs,
+                                                    value: Some(Some(json!("triage"))),
+                                                }],
+                                            },
+                                        },
+                                    ),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            },
+                        },
+                        window: Default::default(),
+                        group_scope: None,
+                    },
+                },
+            )
+            .expect("read a personally filtered View");
+        let DatabaseReadValue::ViewWindow { value } = filtered.value else {
+            panic!("personally filtered View window");
+        };
+        assert_eq!(value.rows.items.len(), 1);
+        assert_eq!(value.rows.items[0].page_id, "page:personal-filter-match");
+
+        let durable = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::View {
+                        view_id: VIEW_ID.to_owned(),
+                    },
+                },
+            )
+            .expect("read durable View after personal filtering");
+        let DatabaseReadValue::View { value } = durable.value else {
+            panic!("durable View record");
+        };
+        assert!(matches!(value.definition.rules.advanced_filter, None));
+    }
+
+    #[test]
+    fn incomplete_personal_filter_draft_round_trips_without_affecting_projection() {
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(
+            &kernel,
+            vec![
+                GroupRowSpec {
+                    page_id: "page:draft-one",
+                    title: "One",
+                    value_json: Some("\"triage\""),
+                    rank_key: Some("a0"),
+                },
+                GroupRowSpec {
+                    page_id: "page:draft-two",
+                    title: "Two",
+                    value_json: Some("\"build\""),
+                    rank_key: Some("b0"),
+                },
+            ],
+        );
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:save-incomplete-filter-draft".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutViewPersonalPreferences {
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 0,
+                        rules_override: DatabaseViewRulesOverrideInput {
+                            advanced_filter: Some(
+                                nodex_core_contracts::database::DatabaseViewAdvancedFilterOverrideInput::Filter {
+                                    filter: DatabaseViewFilter::Group {
+                                        operator: DatabaseViewFilterGroupOperator::And,
+                                        children: vec![DatabaseViewFilter::Clause {
+                                            property_id: "status".to_owned(),
+                                            operator: DatabaseViewFilterOperator::SelectIs,
+                                            value: Some(None),
+                                        }],
+                                    },
+                                },
+                            ),
+                            ..Default::default()
+                        },
+                        presentation_override: DatabaseViewPresentationOverrideInput::default(),
+                    }],
+                },
+            )
+            .expect("persist an incomplete personal filter draft");
+
+        let stored = read_personal_presentation(&module);
+        let encoded = serde_json::to_value(&stored.rules_override).expect("encode saved draft");
+        assert!(
+            encoded["advanced_filter"]["filter"]["children"][0]["value"].is_null(),
+            "the present null operand must survive storage and readback"
+        );
+
+        let window = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::ViewWindow {
+                        target: DatabaseViewReadTarget::PresentedView {
+                            view_id: VIEW_ID.to_owned(),
+                            preferences_override: DatabaseViewPreferencesOverrideInput {
+                                rules_override: stored.rules_override,
+                                presentation_override: stored.presentation_override,
+                            },
+                        },
+                        window: Default::default(),
+                        group_scope: None,
+                    },
+                },
+            )
+            .expect("query with an incomplete draft");
+        let DatabaseReadValue::ViewWindow { value } = window.value else {
+            panic!("View window");
+        };
+        assert_eq!(value.rows.items.len(), 2);
+
+        let rejected = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:reject-missing-filter-operand".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutViewPersonalPreferences {
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        rules_override: DatabaseViewRulesOverrideInput {
+                            advanced_filter: Some(
+                                nodex_core_contracts::database::DatabaseViewAdvancedFilterOverrideInput::Filter {
+                                    filter: DatabaseViewFilter::Group {
+                                        operator: DatabaseViewFilterGroupOperator::And,
+                                        children: vec![DatabaseViewFilter::Clause {
+                                            property_id: "status".to_owned(),
+                                            operator: DatabaseViewFilterOperator::SelectIs,
+                                            value: None,
+                                        }],
+                                    },
+                                },
+                            ),
+                            ..Default::default()
+                        },
+                        presentation_override: DatabaseViewPresentationOverrideInput::default(),
+                    }],
+                },
+            )
+            .expect_err("reject a parser-incompatible missing operand");
+        assert_eq!(rejected.code, CoreErrorCode::InvalidInput);
+        assert_eq!(read_personal_presentation(&module).revision, 1);
+    }
+
+    #[test]
+    fn deleting_the_default_view_selects_a_fallback_and_rejects_the_last_view() {
+        const SECOND_VIEW_ID: &str = "018f1000-0000-7000-8000-000000000099";
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(&kernel, vec![]);
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:create-second-view".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutView {
+                        database_id: DATABASE_ID.to_owned(),
+                        data_source_id: SOURCE_ID.to_owned(),
+                        view_id: SECOND_VIEW_ID.to_owned(),
+                        expected_revision: 0,
+                        name: "Second".to_owned(),
+                        layout: DatabaseViewLayout::List,
+                        definition: view_definition(view_config(
+                            json!({ "kind": "group", "operator": "and", "children": [] }),
+                            None,
+                            &["status"],
+                        )),
+                        is_default: false,
+                        before_view_id: None,
+                    }],
+                },
+            )
+            .expect("create second View");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:move-default-view-end".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::MoveView {
+                        database_id: DATABASE_ID.to_owned(),
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        placement: DatabaseViewPlacement::End,
+                    }],
+                },
+            )
+            .expect("move default View to end");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:delete-default-view".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DeleteView {
+                        database_id: DATABASE_ID.to_owned(),
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 2,
+                    }],
+                },
+            )
+            .expect("delete default View");
+        let descriptor = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::Database {
+                        target: nodex_core_contracts::database::DatabaseIdentityTarget::Database {
+                            database_id: DATABASE_ID.to_owned(),
+                        },
+                    },
+                },
+            )
+            .expect("read Database fallback");
+        let DatabaseReadValue::Database { value } = descriptor.value else {
+            panic!("Database descriptor");
+        };
+        assert_eq!(
+            value.database.default_view_id.as_deref(),
+            Some(SECOND_VIEW_ID)
+        );
+
+        let last = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:reject-delete-last-view".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DeleteView {
+                        database_id: DATABASE_ID.to_owned(),
+                        view_id: SECOND_VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                    }],
+                },
+            )
+            .expect_err("reject deleting the last active View");
+        assert_eq!(last.code, CoreErrorCode::Conflict);
+    }
+
+    #[test]
+    fn duplicate_and_layout_conversion_are_explicit_view_intents() {
+        const DUPLICATE_VIEW_ID: &str = "018f1000-0000-7000-8000-00000000009a";
+        const SECOND_DUPLICATE_VIEW_ID: &str = "018f1000-0000-7000-8000-00000000009b";
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        let module = seed_grouped_fixture(&kernel, vec![]);
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:duplicate-view".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DuplicateView {
+                        database_id: DATABASE_ID.to_owned(),
+                        source_view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        new_view_id: DUPLICATE_VIEW_ID.to_owned(),
+                    }],
+                },
+            )
+            .expect("duplicate durable View");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:duplicate-view-again".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DuplicateView {
+                        database_id: DATABASE_ID.to_owned(),
+                        source_view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        new_view_id: SECOND_DUPLICATE_VIEW_ID.to_owned(),
+                    }],
+                },
+            )
+            .expect("duplicate durable View with a deduplicated name");
+        let views = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::ViewDescriptorWindow {
+                        database_id: DATABASE_ID.to_owned(),
+                        window: Default::default(),
+                    },
+                },
+            )
+            .expect("read duplicated Views");
+        let DatabaseReadValue::ViewDescriptorWindow { views } = views.value else {
+            panic!("View descriptor window");
+        };
+        let duplicate = views
+            .items
+            .iter()
+            .find(|view| view.view_id == DUPLICATE_VIEW_ID)
+            .expect("first duplicate");
+        let second_duplicate = views
+            .items
+            .iter()
+            .find(|view| view.view_id == SECOND_DUPLICATE_VIEW_ID)
+            .expect("second duplicate");
+        assert_eq!(duplicate.name, "Board copy");
+        assert_eq!(second_duplicate.name, "Board copy 2");
+        assert_eq!(duplicate.layout, DatabaseViewLayout::Board);
+        assert_eq!(duplicate.definition, views.items[0].definition);
+        assert_eq!(views.items[0].view_id, VIEW_ID);
+        assert_eq!(
+            views.items[1..3]
+                .iter()
+                .map(|view| view.view_id.as_str())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([DUPLICATE_VIEW_ID, SECOND_DUPLICATE_VIEW_ID])
+        );
+
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:change-view-layout".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::ChangeViewLayout {
+                        database_id: DATABASE_ID.to_owned(),
+                        view_id: DUPLICATE_VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        layout: DatabaseViewLayout::List,
+                    }],
+                },
+            )
+            .expect("convert durable View layout");
+        let converted = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::View {
+                        view_id: DUPLICATE_VIEW_ID.to_owned(),
+                    },
+                },
+            )
+            .expect("read converted View");
+        let DatabaseReadValue::View { value: converted } = converted.value else {
+            panic!("converted View");
+        };
+        assert_eq!(converted.layout, DatabaseViewLayout::List);
+        assert_eq!(converted.revision, 2);
+        assert!(!converted.definition.presentation.display.show_description);
+        assert_eq!(converted.definition.rules, duplicate.definition.rules);
+    }
+
+    fn read_personal_presentation(module: &DatabaseModule) -> DatabaseViewPersonalPreferences {
         let snapshot = module
             .read(
                 &context(),
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
-                    read: DatabaseRead::ViewPersonalPresentation {
+                    read: DatabaseRead::ViewPersonalPreferences {
                         view_id: VIEW_ID.to_owned(),
                     },
                 },
             )
             .expect("read personal View preferences");
-        let DatabaseReadValue::ViewPersonalPresentation { value } = snapshot.value else {
+        let DatabaseReadValue::ViewPersonalPreferences { value } = snapshot.value else {
             panic!("View personal presentation value");
         };
         value
@@ -2488,11 +3711,17 @@ mod tests {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     operation_id: "operation:put-personal-view-presentation".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![DatabaseIntent::PutViewPersonalPresentation {
+                    intent: vec![DatabaseIntent::PutViewPersonalPreferences {
                         view_id: VIEW_ID.to_owned(),
                         expected_revision: 0,
+                        rules_override: DatabaseViewRulesOverrideInput::default(),
                         presentation_override: DatabaseViewPresentationOverrideInput {
-                            layout: Some(DatabaseViewLayoutInput::List),
+                            display: Some(DatabaseViewLayoutDisplayOverrideInput {
+                                fields: None,
+                                property_order: Some(vec!["status".to_owned()]),
+                                show_empty_groups: None,
+                                show_description: Some(false),
+                            }),
                             ..Default::default()
                         },
                     }],
@@ -2502,8 +3731,19 @@ mod tests {
         let stored = read_personal_presentation(&module);
         assert_eq!(stored.revision, 1);
         assert_eq!(
-            stored.presentation_override.layout,
-            Some(DatabaseViewLayoutInput::List)
+            stored
+                .presentation_override
+                .display
+                .as_ref()
+                .and_then(|display| display.show_description),
+            Some(false)
+        );
+        assert_eq!(
+            stored
+                .presentation_override
+                .display
+                .and_then(|display| display.property_order),
+            Some(vec!["status".to_owned()])
         );
 
         module
@@ -2537,9 +3777,10 @@ mod tests {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     operation_id: "operation:stale-personal-view-presentation".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![DatabaseIntent::PutViewPersonalPresentation {
+                    intent: vec![DatabaseIntent::PutViewPersonalPreferences {
                         view_id: VIEW_ID.to_owned(),
                         expected_revision: 0,
+                        rules_override: DatabaseViewRulesOverrideInput::default(),
                         presentation_override: DatabaseViewPresentationOverrideInput::default(),
                     }],
                 },
@@ -2554,9 +3795,10 @@ mod tests {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     operation_id: "operation:reset-personal-view-presentation".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![DatabaseIntent::PutViewPersonalPresentation {
+                    intent: vec![DatabaseIntent::PutViewPersonalPreferences {
                         view_id: VIEW_ID.to_owned(),
                         expected_revision: 1,
+                        rules_override: DatabaseViewRulesOverrideInput::default(),
                         presentation_override: DatabaseViewPresentationOverrideInput::default(),
                     }],
                 },
@@ -2567,7 +3809,7 @@ mod tests {
                 .committed
                 .receipt
                 .committed_revisions
-                .get(&format!("view_presentation:profile-1:{VIEW_ID}")),
+                .get(&format!("view_preferences:profile-1:{VIEW_ID}")),
             Some(&2),
         );
         let reset_value = read_personal_presentation(&module);
@@ -2582,9 +3824,10 @@ mod tests {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     operation_id: "operation:put-personal-group-direction".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![DatabaseIntent::PutViewPersonalPresentation {
+                    intent: vec![DatabaseIntent::PutViewPersonalPreferences {
                         view_id: VIEW_ID.to_owned(),
                         expected_revision: 2,
+                        rules_override: DatabaseViewRulesOverrideInput::default(),
                         presentation_override: DatabaseViewPresentationOverrideInput {
                             group_direction: Some(DatabaseViewSortDirectionInput::Desc),
                             ..Default::default()
@@ -3483,7 +4726,7 @@ mod tests {
             json!({
                 "kind": "clause",
                 "propertyId": "status",
-                "operator": "equals",
+                "operator": "select_is",
                 "value": "done"
             }),
             None,
@@ -3648,10 +4891,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::MoveListOccurrences {
                         view_id: VIEW_ID.to_owned(),
-                        presentation_override: DatabaseViewPresentationOverrideInput {
-                            layout: Some(DatabaseViewLayoutInput::List),
-                            ..Default::default()
-                        },
+                        preferences_override: DatabaseViewPreferencesOverrideInput::default(),
                         expected_projection: list_projection_expectation(&before),
                         initiator_occurrence_key: initiator_occurrence_key.clone(),
                         selection: DatabaseListMoveSelection::Explicit {
@@ -3893,7 +5133,7 @@ mod tests {
             None,
             &["status", "priority", "estimate", "tags"],
         );
-        config["presentation"]["sort"] = json!([]);
+        config["rules"]["sorts"] = json!([]);
         config["presentation"]["hierarchy"] =
             json!({ "showSubPages": true, "nestedSubPages": true });
         module
@@ -3946,10 +5186,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::MoveListOccurrences {
                         view_id: VIEW_ID.to_owned(),
-                        presentation_override: DatabaseViewPresentationOverrideInput {
-                            layout: Some(DatabaseViewLayoutInput::List),
-                            ..Default::default()
-                        },
+                        preferences_override: DatabaseViewPreferencesOverrideInput::default(),
                         expected_projection: list_projection_expectation(&before),
                         initiator_occurrence_key: source_key.clone(),
                         selection: DatabaseListMoveSelection::Explicit {
@@ -4072,7 +5309,7 @@ mod tests {
             Some("status"),
             &["status", "priority"],
         );
-        config["presentation"]["sort"] = json!([{
+        config["rules"]["sorts"] = json!([{
             "field": { "kind": "property", "propertyId": "priority" },
             "direction": "asc",
             "nulls": "last"
@@ -4128,10 +5365,7 @@ mod tests {
                     "project-1",
                     SOURCE_ID,
                     VIEW_ID,
-                    &DatabaseViewPresentationOverrideInput {
-                        layout: Some(DatabaseViewLayoutInput::List),
-                        ..Default::default()
-                    },
+                    &DatabaseViewPreferencesOverrideInput::default(),
                     &block_expectation,
                     &DatabaseListMoveTarget::Page {
                         occurrence_key: block_target_key,
@@ -4163,10 +5397,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::MoveListOccurrences {
                         view_id: VIEW_ID.to_owned(),
-                        presentation_override: DatabaseViewPresentationOverrideInput {
-                            layout: Some(DatabaseViewLayoutInput::List),
-                            ..Default::default()
-                        },
+                        preferences_override: DatabaseViewPreferencesOverrideInput::default(),
                         expected_projection: list_projection_expectation(&before),
                         initiator_occurrence_key: source_key.clone(),
                         selection: DatabaseListMoveSelection::Explicit {
@@ -4327,10 +5558,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::MoveListOccurrences {
                         view_id: VIEW_ID.to_owned(),
-                        presentation_override: DatabaseViewPresentationOverrideInput {
-                            layout: Some(DatabaseViewLayoutInput::List),
-                            ..Default::default()
-                        },
+                        preferences_override: DatabaseViewPreferencesOverrideInput::default(),
                         expected_projection: list_projection_expectation(&before),
                         initiator_occurrence_key: source_key.clone(),
                         selection: DatabaseListMoveSelection::Explicit {
@@ -4521,10 +5749,12 @@ mod tests {
                     read: DatabaseRead::ListWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            presentation_override: DatabaseViewPresentationOverrideInput {
-                                group_direction: Some(DatabaseViewSortDirectionInput::Desc),
-                                ..Default::default()
-                            },
+                            preferences_override: preferences_override(
+                                DatabaseViewPresentationOverrideInput {
+                                    group_direction: Some(DatabaseViewSortDirectionInput::Desc),
+                                    ..Default::default()
+                                },
+                            ),
                         },
                         window: CollectionWindowRequest {
                             after: None,
@@ -4566,8 +5796,8 @@ mod tests {
                             json!({
                                 "kind": "clause",
                                 "propertyId": "tags",
-                                "operator": "contains",
-                                "value": "o_AAAAAAAA"
+                                "operator": "multi_select_contains",
+                                "value": ["o_AAAAAAAA"]
                             }),
                             Some("tags"),
                             &["status", "priority", "estimate", "tags"],
@@ -4587,7 +5817,7 @@ mod tests {
             None,
             &["status", "priority", "estimate", "tags"],
         );
-        sorted_config["presentation"]["sort"] = json!([{
+        sorted_config["rules"]["sorts"] = json!([{
             "field": { "kind": "property", "propertyId": "tags" },
             "direction": "asc",
             "nulls": "last"
@@ -5359,11 +6589,15 @@ mod tests {
                     .map_err(StoreError::from)
             })
             .expect("read Relation filter View");
-        view_config["filter"] = json!({
-            "kind": "clause",
-            "propertyId": "p_blocked0",
-            "operator": "contains",
-            "value": "page:relation-row"
+        view_config["rules"]["advancedFilter"] = json!({
+            "kind": "group",
+            "operator": "and",
+            "children": [{
+                "kind": "clause",
+                "propertyId": "p_blocked0",
+                "operator": "relation_contains",
+                "value": ["page:relation-row"]
+            }]
         });
         module
             .apply(
@@ -5864,9 +7098,9 @@ mod tests {
             .call(|connection| {
                 connection.execute(
                     "INSERT INTO database_views(\
-                       id, database_block_id, data_source_id, name, default_layout, config_json, revision, \
+                       id, database_block_id, data_source_id, name, layout, config_json, revision, \
                        rank_key, lifecycle, created_at, updated_at\
-                     ) SELECT ?1, database_block_id, data_source_id, 'Other board', default_layout, \
+                     ) SELECT ?1, database_block_id, data_source_id, 'Other board', layout, \
                        config_json, revision, 'z', lifecycle, created_at, updated_at \
                      FROM database_views WHERE id = ?2",
                     params![OTHER_VIEW_ID, VIEW_ID],
@@ -6291,19 +7525,19 @@ mod tests {
                         read: DatabaseRead::ViewWindow {
                             target: DatabaseViewReadTarget::PresentedView {
                                 view_id: VIEW_ID.to_owned(),
-                                presentation_override: DatabaseViewPresentationOverrideInput {
-                                    layout: None,
-                                    sort: None,
-                                    group: Some(DatabaseViewGroupOverrideInput::None),
-                                    subgroup: None,
-                                    group_direction: None,
-                                    completion: Some(DatabaseViewCompletionOverrideInput {
-                                        range: Some(range),
-                                        order_by_recency: Some(order_by_recency),
-                                    }),
-                                    hierarchy: None,
-                                    layouts: None,
-                                },
+                                preferences_override: preferences_override(
+                                    DatabaseViewPresentationOverrideInput {
+                                        group: Some(DatabaseViewGroupOverrideInput::None),
+                                        subgroup: None,
+                                        group_direction: None,
+                                        completion: Some(DatabaseViewCompletionOverrideInput {
+                                            range: Some(range),
+                                            order_by_recency: Some(order_by_recency),
+                                        }),
+                                        hierarchy: None,
+                                        display: None,
+                                    },
+                                ),
                             },
                             window: Default::default(),
                             group_scope: None,
@@ -6399,31 +7633,18 @@ mod tests {
                 Ok(())
             })
             .expect("seed subgroup values");
-        let presentation_override = DatabaseViewPresentationOverrideInput {
-            layout: Some(DatabaseViewLayoutInput::Board),
-            sort: None,
-            group: None,
+        let presentation_override = preferences_override(DatabaseViewPresentationOverrideInput {
             subgroup: Some(DatabaseViewGroupOverrideInput::Property {
                 property_id: "priority".to_owned(),
             }),
-            group_direction: None,
-            completion: None,
-            hierarchy: None,
-            layouts: Some(DatabaseViewLayoutsOverrideInput {
-                board: Some(DatabaseViewLayoutDisplayOverrideInput {
-                    fields: None,
-                    show_empty_groups: Some(true),
-                    show_description: None,
-                }),
-                list: Some(DatabaseViewLayoutDisplayOverrideInput {
-                    fields: Some(vec![DatabaseViewFieldInput::Intrinsic {
-                        field: DatabaseViewIntrinsicField::PageKey,
-                    }]),
-                    show_empty_groups: None,
-                    show_description: None,
-                }),
+            display: Some(DatabaseViewLayoutDisplayOverrideInput {
+                fields: None,
+                property_order: None,
+                show_empty_groups: Some(true),
+                show_description: None,
             }),
-        };
+            ..Default::default()
+        });
         let groups_snapshot = module
             .read(
                 &context(),
@@ -6432,7 +7653,7 @@ mod tests {
                     read: DatabaseRead::ViewGroups {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            presentation_override: presentation_override.clone(),
+                            preferences_override: presentation_override.clone(),
                         },
                     },
                 },
@@ -6478,7 +7699,7 @@ mod tests {
                     read: DatabaseRead::ViewWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            presentation_override: presentation_override.clone(),
+                            preferences_override: presentation_override.clone(),
                         },
                         window: Default::default(),
                         group_scope: Some(DatabaseGroupScope::Path {
@@ -6535,27 +7756,21 @@ mod tests {
                 Ok(())
             })
             .expect("seed large custom option domains");
-        let bounded_override = DatabaseViewPresentationOverrideInput {
-            layout: Some(DatabaseViewLayoutInput::Board),
-            sort: None,
+        let bounded_override = preferences_override(DatabaseViewPresentationOverrideInput {
             group: Some(DatabaseViewGroupOverrideInput::Property {
                 property_id: "p_group000".to_owned(),
             }),
             subgroup: Some(DatabaseViewGroupOverrideInput::Property {
                 property_id: "p_subgr000".to_owned(),
             }),
-            group_direction: None,
-            completion: None,
-            hierarchy: None,
-            layouts: Some(DatabaseViewLayoutsOverrideInput {
-                board: Some(DatabaseViewLayoutDisplayOverrideInput {
-                    fields: None,
-                    show_empty_groups: Some(true),
-                    show_description: None,
-                }),
-                list: None,
+            display: Some(DatabaseViewLayoutDisplayOverrideInput {
+                fields: None,
+                property_order: None,
+                show_empty_groups: Some(true),
+                show_description: None,
             }),
-        };
+            ..Default::default()
+        });
         let bounded = module
             .read(
                 &context(),
@@ -6564,7 +7779,7 @@ mod tests {
                     read: DatabaseRead::ViewGroups {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            presentation_override: bounded_override,
+                            preferences_override: bounded_override,
                         },
                     },
                 },
@@ -6579,18 +7794,12 @@ mod tests {
         assert_eq!(bounded.total_groups, 226);
         assert_eq!(bounded.groups.len(), 200);
 
-        let invalid_override = DatabaseViewPresentationOverrideInput {
-            layout: None,
-            sort: None,
-            group: None,
+        let invalid_override = preferences_override(DatabaseViewPresentationOverrideInput {
             subgroup: Some(DatabaseViewGroupOverrideInput::Property {
                 property_id: "p_deleted0".to_owned(),
             }),
-            group_direction: None,
-            completion: None,
-            hierarchy: None,
-            layouts: None,
-        };
+            ..Default::default()
+        });
         let invalid = module
             .read(
                 &context(),
@@ -6599,7 +7808,7 @@ mod tests {
                     read: DatabaseRead::ViewGroups {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            presentation_override: invalid_override,
+                            preferences_override: invalid_override,
                         },
                     },
                 },
@@ -6631,7 +7840,7 @@ mod tests {
             .call(|connection| {
                 connection.execute(
                     "INSERT INTO database_views(\
-                       id, database_block_id, data_source_id, name, default_layout, config_json, revision, \
+                       id, database_block_id, data_source_id, name, layout, config_json, revision, \
                        rank_key, lifecycle, created_at, updated_at\
                      ) SELECT ?1, database_block_id, data_source_id, 'Flat', 'list', \
                        json_set(config_json, '$.presentation.group', json('null')), 1, 'z', 'active', \

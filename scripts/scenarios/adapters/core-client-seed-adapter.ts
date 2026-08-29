@@ -106,6 +106,14 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     return await readPrimaryDataSourcePropertyCount(this.#databasePort(), projectId);
   }
 
+  async readDatabase(request: Parameters<ScenarioDatabasePort["read"]>[0]) {
+    return await this.#databasePort().read(request);
+  }
+
+  async applyDatabase(request: Parameters<ScenarioDatabasePort["apply"]>[0]) {
+    return await this.#databasePort().apply(request);
+  }
+
   async replaceOwnedDocument(
     input: ScenarioDocumentReplacement,
   ): Promise<{ readonly commitSeq: number }> {

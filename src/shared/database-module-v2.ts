@@ -11,9 +11,12 @@ import type {
   DatabaseJsonValue,
   DatabasePropertyOption,
   DatabasePropertyValueType,
-  DatabaseViewConfigV4,
+  DatabaseViewConfigV6,
+  DatabaseViewFilterOperator,
   DatabaseViewLayout,
+  DatabaseViewPreferencesOverride,
   DatabaseViewPresentationOverride,
+  DatabaseViewRulesOverride,
 } from "./database-kernel";
 import type { Page } from "./page";
 
@@ -45,14 +48,35 @@ export interface DataSourceRecordV2 {
   readonly updatedAt: string;
 }
 
+export type DatabaseNumberFormatV2 =
+  | { readonly kind: "plain" }
+  | { readonly kind: "percent" }
+  | {
+      readonly kind: "currency";
+      readonly currencyCode: "usd" | "eur" | "gbp" | "jpy" | "cny";
+    };
+
+export type DatabaseDateFormatV2 =
+  | "full"
+  | "month_day_year"
+  | "day_month_year"
+  | "year_month_day"
+  | "relative";
+
+export type DatabaseTimeFormatV2 = "twelve_hour" | "twenty_four_hour";
+
 export type DatabasePropertySchemaV2 =
   | { readonly kind: "text" }
-  | { readonly kind: "number" }
+  | { readonly kind: "number"; readonly format: DatabaseNumberFormatV2 }
   | { readonly kind: "checkbox" }
   | { readonly kind: "select" }
   | { readonly kind: "multi_select" }
-  | { readonly kind: "date" }
-  | { readonly kind: "datetime" }
+  | { readonly kind: "date"; readonly dateFormat: DatabaseDateFormatV2 }
+  | {
+      readonly kind: "datetime";
+      readonly dateFormat: DatabaseDateFormatV2;
+      readonly timeFormat: DatabaseTimeFormatV2;
+    }
   | {
       readonly kind: "relation";
       readonly targetDataSourceId: DataSourceId;
@@ -60,16 +84,24 @@ export type DatabasePropertySchemaV2 =
     };
 
 export interface DatabasePropertyCapabilitiesV2 {
-  readonly filterOperators: readonly (
-    | "equals"
-    | "not_equals"
-    | "contains"
-    | "not_contains"
-    | "is_empty"
-    | "is_not_empty"
-  )[];
+  readonly filterOperators: readonly DatabaseViewFilterOperator[];
   readonly sortable: boolean;
   readonly groupable: boolean;
+}
+
+export type DatabasePropertySystemRoleV2 = "status" | "task_parent";
+
+export interface DatabasePropertyManagementPolicyV2 {
+  readonly canRename: boolean;
+  readonly canReorder: boolean;
+  readonly canChangeType: boolean;
+  readonly canDuplicate: boolean;
+  readonly canDelete: boolean;
+  readonly canRestore: boolean;
+  readonly canPermanentlyDelete: boolean;
+  readonly canManageOptions: boolean;
+  readonly allowedTypes: readonly DatabasePropertyValueType[];
+  readonly blockedReasons: readonly string[];
 }
 
 export interface DataSourcePropertyRecordV2 {
@@ -78,6 +110,10 @@ export interface DataSourcePropertyRecordV2 {
   readonly name: string;
   readonly schema: DatabasePropertySchemaV2;
   readonly capabilities: DatabasePropertyCapabilitiesV2;
+  readonly systemRole: DatabasePropertySystemRoleV2 | null;
+  readonly nonEmptyValueCount: number;
+  readonly referencedViewIds: readonly DatabaseViewId[];
+  readonly managementPolicy: DatabasePropertyManagementPolicyV2;
   /** Derived presentation discriminator; schema is the authority. */
   readonly valueType: DatabasePropertyValueType;
   /** Option registries are fetched through OptionWindow when an editor opens. */
@@ -95,8 +131,8 @@ export interface DatabaseViewRecordV2 {
   readonly databaseId: DatabaseId;
   readonly dataSourceId: DataSourceId;
   readonly name: string;
-  readonly defaultLayout: DatabaseViewLayout;
-  readonly config: DatabaseViewConfigV4;
+  readonly layout: DatabaseViewLayout;
+  readonly config: DatabaseViewConfigV6;
   readonly isDefault: boolean;
   readonly revision: number;
   readonly rankKey: string;
@@ -218,7 +254,9 @@ export interface DatabaseRelationTargetWindowV2 {
 }
 
 export interface DatabasePropertyOptionWindowV2 {
-  readonly options: readonly DatabasePropertyOption[];
+  readonly options: readonly (DatabasePropertyOption & {
+    readonly selectedPageCount: number;
+  })[];
   readonly nextCursor: string | null;
   readonly projectionRevision: number;
 }
@@ -238,9 +276,10 @@ export interface DatabaseRelationCandidateWindowV2 {
   readonly projectionRevision: number;
 }
 
-export interface DatabaseViewPersonalPresentationV2 {
+export interface DatabaseViewPersonalPreferencesV2 {
+  readonly rulesOverride: DatabaseViewRulesOverride;
   readonly presentationOverride: DatabaseViewPresentationOverride;
-  /** Zero means that this Profile has never changed this View presentation. */
+  /** Zero means that this Profile has never changed this View. */
   readonly revision: number;
 }
 
@@ -250,6 +289,18 @@ export type DatabaseViewDisclosureTargetV2 =
 
 export interface DatabaseViewCollapsedOccurrencesV2 {
   readonly targets: readonly DatabaseViewDisclosureTargetV2[];
+}
+
+export type DatabasePagePropertyVisibilityV2 = "always_show" | "hide_when_empty" | "always_hide";
+
+export interface DatabasePageLayoutV2 {
+  readonly dataSourceId: DataSourceId;
+  readonly revision: number;
+  readonly entries: readonly {
+    readonly propertyId: DataSourcePropertyId;
+    readonly rankKey: string;
+    readonly visibility: DatabasePagePropertyVisibilityV2;
+  }[];
 }
 
 export type DatabaseReadV2 = (
@@ -297,6 +348,13 @@ export type DatabaseReadV2 = (
         readonly kind: "data_source";
         readonly dataSourceId: DataSourceId;
       };
+      readonly mode: "page_layout";
+    }
+  | {
+      readonly target: {
+        readonly kind: "data_source";
+        readonly dataSourceId: DataSourceId;
+      };
       readonly mode: "relation_candidate_window";
       readonly query?: string;
       readonly window?: { readonly after?: string | null; readonly first?: number };
@@ -313,7 +371,7 @@ export type DatabaseReadV2 = (
         readonly kind: "view";
         readonly viewId: DatabaseViewId;
       };
-      readonly mode: "view_personal_presentation";
+      readonly mode: "view_personal_preferences";
     }
   | {
       readonly target: {
@@ -364,10 +422,11 @@ export type DatabaseReadValueV2 =
       readonly value: DatabasePageKeyNamespaceV2;
     }
   | { readonly kind: "data_source"; readonly value: DataSourceDescriptorV2 }
+  | { readonly kind: "page_layout"; readonly value: DatabasePageLayoutV2 }
   | { readonly kind: "view"; readonly value: DatabaseViewRecordV2 }
   | {
-      readonly kind: "view_personal_presentation";
-      readonly value: DatabaseViewPersonalPresentationV2;
+      readonly kind: "view_personal_preferences";
+      readonly value: DatabaseViewPersonalPreferencesV2;
     }
   | {
       readonly kind: "view_collapsed_occurrences";
@@ -475,6 +534,17 @@ export interface PutDataSourcePropertyOperationV2 {
   readonly beforePropertyId?: DataSourcePropertyId;
 }
 
+export interface MoveDataSourcePropertyOperationV2 {
+  readonly kind: "move_property";
+  readonly dataSourceId: DataSourceId;
+  readonly propertyId: DataSourcePropertyId;
+  readonly expectedDataSourceRevision: number;
+  readonly expectedPropertyRevision: number;
+  readonly placement:
+    | { readonly kind: "before"; readonly propertyId: DataSourcePropertyId }
+    | { readonly kind: "end" };
+}
+
 export interface RenameDatabasePageKeyPrefixOperationV2 {
   readonly kind: "rename_page_key_prefix";
   readonly databaseId: DatabaseId;
@@ -484,6 +554,45 @@ export interface RenameDatabasePageKeyPrefixOperationV2 {
 
 export interface DeleteDataSourcePropertyOperationV2 {
   readonly kind: "delete_property";
+  readonly dataSourceId: DataSourceId;
+  readonly propertyId: DataSourcePropertyId;
+  readonly expectedDataSourceRevision: number;
+  readonly expectedPropertyRevision: number;
+}
+
+export interface ChangeDataSourcePropertyTypeOperationV2 {
+  readonly kind: "change_property_type";
+  readonly dataSourceId: DataSourceId;
+  readonly propertyId: DataSourcePropertyId;
+  readonly expectedDataSourceRevision: number;
+  readonly expectedPropertyRevision: number;
+  readonly schema: DatabasePropertySchemaV2;
+}
+
+export interface DuplicateDataSourcePropertyOperationV2 {
+  readonly kind: "duplicate_property";
+  readonly dataSourceId: DataSourceId;
+  readonly propertyId: DataSourcePropertyId;
+  readonly expectedDataSourceRevision: number;
+  readonly expectedPropertyRevision: number;
+  readonly newPropertyId: DataSourcePropertyId;
+  readonly name: string;
+  readonly optionIds: readonly {
+    readonly sourceOptionId: DataSourceOptionId;
+    readonly newOptionId: DataSourceOptionId;
+  }[];
+}
+
+export interface RestoreDataSourcePropertyOperationV2 {
+  readonly kind: "restore_property";
+  readonly dataSourceId: DataSourceId;
+  readonly propertyId: DataSourcePropertyId;
+  readonly expectedDataSourceRevision: number;
+  readonly expectedPropertyRevision: number;
+}
+
+export interface PermanentlyDeleteDataSourcePropertyOperationV2 {
+  readonly kind: "permanently_delete_property";
   readonly dataSourceId: DataSourceId;
   readonly propertyId: DataSourcePropertyId;
   readonly expectedDataSourceRevision: number;
@@ -506,6 +615,36 @@ export interface DeleteDataSourceOptionOperationV2 {
   readonly propertyId: DataSourcePropertyId;
   readonly optionId: DataSourceOptionId;
   readonly expectedPropertyRevision: number;
+}
+
+export interface MoveDataSourceOptionOperationV2 {
+  readonly kind: "move_option";
+  readonly dataSourceId: DataSourceId;
+  readonly propertyId: DataSourcePropertyId;
+  readonly optionId: DataSourceOptionId;
+  readonly expectedPropertyRevision: number;
+  readonly placement:
+    | { readonly kind: "before"; readonly optionId: DataSourceOptionId }
+    | { readonly kind: "end" };
+}
+
+export interface DeleteDataSourceOptionAndClearValuesOperationV2 {
+  readonly kind: "delete_option_and_clear_values";
+  readonly dataSourceId: DataSourceId;
+  readonly propertyId: DataSourcePropertyId;
+  readonly optionId: DataSourceOptionId;
+  readonly expectedPropertyRevision: number;
+}
+
+export interface PutDatabasePageLayoutEntryOperationV2 {
+  readonly kind: "put_page_layout_entry";
+  readonly dataSourceId: DataSourceId;
+  readonly expectedRevision: number;
+  readonly propertyId: DataSourcePropertyId;
+  readonly visibility: DatabasePagePropertyVisibilityV2;
+  readonly placement?:
+    | { readonly kind: "before"; readonly propertyId: DataSourcePropertyId }
+    | { readonly kind: "end" };
 }
 
 export type DatabasePropertyValueInputV2 =
@@ -578,10 +717,26 @@ export interface PutDatabaseViewOperationV2 {
   readonly viewId: DatabaseViewId;
   readonly expectedRevision: number;
   readonly name: string;
-  readonly defaultLayout: DatabaseViewLayout;
-  readonly config: DatabaseViewConfigV4;
+  readonly layout: DatabaseViewLayout;
+  readonly config: DatabaseViewConfigV6;
   readonly isDefault: boolean;
   readonly beforeViewId?: DatabaseViewId | null;
+}
+
+export interface DuplicateDatabaseViewOperationV2 {
+  readonly kind: "duplicate_view";
+  readonly databaseId: DatabaseId;
+  readonly sourceViewId: DatabaseViewId;
+  readonly expectedRevision: number;
+  readonly newViewId: DatabaseViewId;
+}
+
+export interface ChangeDatabaseViewLayoutOperationV2 {
+  readonly kind: "change_view_layout";
+  readonly databaseId: DatabaseId;
+  readonly viewId: DatabaseViewId;
+  readonly expectedRevision: number;
+  readonly layout: DatabaseViewLayout;
 }
 
 export interface DeleteDatabaseViewOperationV2 {
@@ -589,6 +744,16 @@ export interface DeleteDatabaseViewOperationV2 {
   readonly databaseId: DatabaseId;
   readonly viewId: DatabaseViewId;
   readonly expectedRevision: number;
+}
+
+export interface MoveDatabaseViewOperationV2 {
+  readonly kind: "move_view";
+  readonly databaseId: DatabaseId;
+  readonly viewId: DatabaseViewId;
+  readonly expectedRevision: number;
+  readonly placement:
+    | { readonly kind: "before"; readonly viewId: DatabaseViewId }
+    | { readonly kind: "end" };
 }
 
 export interface PositionDatabaseViewPageOperationV2 {
@@ -658,7 +823,7 @@ export interface DatabaseListProjectionExpectationV2 {
 export interface MoveDatabaseListOccurrencesOperationV2 {
   readonly kind: "move_list_occurrences";
   readonly viewId: DatabaseViewId;
-  readonly presentationOverride: DatabaseViewPresentationOverride;
+  readonly preferencesOverride: DatabaseViewPreferencesOverride;
   readonly expectedProjection: DatabaseListProjectionExpectationV2;
   readonly initiatorOccurrenceKey: string;
   readonly selection: DatabaseListMoveSelectionV2;
@@ -722,10 +887,11 @@ export type DatabaseOperationOutcomeV2 =
       readonly restoredPageIds: readonly string[];
     };
 
-export interface PutDatabaseViewPersonalPresentationOperationV2 {
-  readonly kind: "put_view_personal_presentation";
+export interface PutDatabaseViewPersonalPreferencesOperationV2 {
+  readonly kind: "put_view_personal_preferences";
   readonly viewId: DatabaseViewId;
   readonly expectedRevision: number;
+  readonly rulesOverride: DatabaseViewRulesOverride;
   readonly presentationOverride: DatabaseViewPresentationOverride;
 }
 
@@ -739,19 +905,30 @@ export interface SetDatabaseViewOccurrenceDisclosureOperationV2 {
 export type DatabaseApplyOperationV2 =
   | RenameDatabasePageKeyPrefixOperationV2
   | PutDataSourcePropertyOperationV2
+  | MoveDataSourcePropertyOperationV2
+  | ChangeDataSourcePropertyTypeOperationV2
+  | DuplicateDataSourcePropertyOperationV2
+  | RestoreDataSourcePropertyOperationV2
+  | PermanentlyDeleteDataSourcePropertyOperationV2
   | DeleteDataSourcePropertyOperationV2
   | PutDataSourceOptionOperationV2
+  | MoveDataSourceOptionOperationV2
   | DeleteDataSourceOptionOperationV2
+  | DeleteDataSourceOptionAndClearValuesOperationV2
+  | PutDatabasePageLayoutEntryOperationV2
   | EditDataSourcePageValuesOperationV2
   | TransferDataSourcePageOperationV2
   | PutDatabaseViewOperationV2
+  | DuplicateDatabaseViewOperationV2
+  | ChangeDatabaseViewLayoutOperationV2
+  | MoveDatabaseViewOperationV2
   | DeleteDatabaseViewOperationV2
   | PositionDatabaseViewPageOperationV2
   | PositionDatabaseViewPagesOperationV2
   | SetDatabaseTaskParentOperationV2
   | MoveDatabaseListOccurrencesOperationV2
   | UndoDatabaseListOccurrenceMoveOperationV2
-  | PutDatabaseViewPersonalPresentationOperationV2
+  | PutDatabaseViewPersonalPreferencesOperationV2
   | SetDatabaseViewOccurrenceDisclosureOperationV2;
 
 export interface DatabaseApplyV2 {

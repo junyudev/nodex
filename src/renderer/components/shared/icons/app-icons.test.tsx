@@ -19,6 +19,7 @@ import {
   FileTabIconSvg,
   FolderIcon,
   FolderOpenIcon,
+  MultiSelectIcon,
   NfmLinkToolbarOpenIcon,
   NewChatIcon,
   OpenInIcon,
@@ -40,6 +41,7 @@ import {
   SettingsPasswordsIcon,
   SidePanelSideChatIcon,
   SidebarManualOrderIcon,
+  TagsIcon,
   WorktreeSetupStatusIcon,
 } from "./app-icons";
 
@@ -59,6 +61,8 @@ describe("shared icon intrinsic geometry", () => {
     ["calendar", CalendarIcon, "16"],
     ["calendar overdue", CalendarOverdueIcon, "16"],
     ["clock", ClockIcon, "16"],
+    ["multi-select", MultiSelectIcon, "20"],
+    ["tags", TagsIcon, "20"],
     ["worktree setup", WorktreeSetupStatusIcon, "10"],
   ])("provides a CSS-independent fallback for %s", (_label, Icon, size) => {
     const view = render(<Icon />);
@@ -66,6 +70,18 @@ describe("shared icon intrinsic geometry", () => {
 
     expect(svg?.getAttribute("width")).toBe(size);
     expect(svg?.getAttribute("height")).toBe(size);
+  });
+});
+
+describe("Database Property type icons", () => {
+  test("keeps the canonical three-row Multi-select geometry", () => {
+    const svg = render(<MultiSelectIcon />).container.querySelector("svg");
+
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(svg?.getAttribute("fill")).toBe("currentColor");
+    expect(svg?.querySelector("path")?.getAttribute("d")).toBe(
+      "M17.5 4.063v1.875H6.875V4.063zM6.875 10.938H17.5V9.062H6.875zm0 5H17.5v-1.876H6.875zM3.75 3.75a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5m0 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5m0 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5",
+    );
   });
 });
 

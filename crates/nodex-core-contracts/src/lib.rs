@@ -1,7 +1,17 @@
 #![forbid(unsafe_code)]
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
+
+/// Preserve the distinction between an omitted field and an explicitly null
+/// field when the target type is `Option<Option<T>>`.
+pub(crate) fn deserialize_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
+}
 
 pub const CORE_EVENT_VERSION: u32 = 9;
 

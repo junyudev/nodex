@@ -80,7 +80,7 @@ const makeWindow = <ProjectScope extends string | null>(
     databaseBlockId: databaseId,
     projectId,
     name: "Board",
-    defaultLayout: "board",
+    layout: "board",
     config: {},
     isPrimary: true,
     createdAt: timestamp,
@@ -115,7 +115,7 @@ const makeWindow = <ProjectScope extends string | null>(
       databaseId,
       dataSourceId,
       name: "Board",
-      defaultLayout: "board",
+      layout: "board",
       config: upgradeDatabaseViewConfigV2({
         schemaKey: "nodex.database-view",
         schemaVersion: 2,

@@ -25,6 +25,7 @@ import {
   removeWorkbenchSceneSurface,
   reorderWorkbenchSceneSurfaces,
   splitWorkbenchSceneLeaf,
+  updateWorkbenchSceneSurface,
   type WorkbenchSceneIdentityFactory,
   type WorkbenchSceneSnapshot,
   type WorkbenchSceneSnapshotV1,
@@ -189,6 +190,23 @@ describe("WorkbenchScene", () => {
         surface: browserSurface(),
       }),
     ).toBe(withBrowser);
+  });
+
+  test("persists an exact Database View target on the protected Project primary", () => {
+    const initial = projectScene();
+    const primary = protectedPrimary(initial);
+    const exact = updateWorkbenchSceneSurface(initial, primary.id, {
+      titleSnapshot: "List",
+      config: {
+        accessContext: { kind: "project", projectId: "project-1" },
+        target: { kind: "database-view", databaseViewId: "view-list" },
+      },
+    });
+
+    expect(WorkbenchSceneSnapshotSchema.parse(exact).primary).toMatchObject({
+      titleSnapshot: "List",
+      config: { target: { kind: "database-view", databaseViewId: "view-list" } },
+    });
   });
 
   test("persists image editors only through stable asset locators", () => {

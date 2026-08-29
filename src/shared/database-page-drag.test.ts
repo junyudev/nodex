@@ -16,6 +16,7 @@ import {
   DatabasePageDragError,
 } from "./database-page-drag";
 import { upgradeDatabaseViewConfigV2 } from "./database-view-presentation";
+import { testPropertyManagement } from "./testing/database-property-record";
 
 const timestamp = "2026-07-16T00:00:00.000Z";
 
@@ -56,10 +57,11 @@ const querySnapshot = (
       name: "Status",
       schema: { kind: "select" as const },
       capabilities: {
-        filterOperators: ["equals", "not_equals", "is_empty", "is_not_empty"] as const,
+        filterOperators: ["select_is", "select_is_not", "is_empty", "is_not_empty"] as const,
         sortable: true,
         groupable: true,
       },
+      ...testPropertyManagement(),
       valueType: "select" as const,
       config: {},
       optionCount: 0,
@@ -75,10 +77,11 @@ const querySnapshot = (
       name: "Priority",
       schema: { kind: "select" as const },
       capabilities: {
-        filterOperators: ["equals", "not_equals", "is_empty", "is_not_empty"] as const,
+        filterOperators: ["select_is", "select_is_not", "is_empty", "is_not_empty"] as const,
         sortable: true,
         groupable: true,
       },
+      ...testPropertyManagement(),
       valueType: "select" as const,
       config: {},
       optionCount: 0,
@@ -94,7 +97,7 @@ const querySnapshot = (
     databaseId: database.databaseId,
     dataSourceId: dataSource.dataSourceId,
     name: "Board",
-    defaultLayout: "board" as const,
+    layout: "board" as const,
     config: upgradeDatabaseViewConfigV2({
       schemaKey: "nodex.database-view" as const,
       schemaVersion: 2 as const,

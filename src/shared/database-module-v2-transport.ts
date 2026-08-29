@@ -59,8 +59,12 @@ import {
 } from "./database-module-v2";
 import { parseLocalCommitApply } from "./local-commit-delivery";
 import {
-  parseDatabaseViewConfigV4,
+  parseDatabaseViewConfigV6,
+  parseDatabaseViewPreferencesOverride,
   parseDatabaseViewPresentationOverride,
+  parseDatabaseViewRulesOverride,
+  databaseViewFilterOperatorsForValueType,
+  isDatabaseViewFilterOperator,
   type DatabaseJsonValue,
   type DatabasePropertyValueType,
   type DatabaseViewLayout,
@@ -244,6 +248,16 @@ const readViewLayout = (value: unknown, label: string): DatabaseViewLayout => {
   throw new TypeError(`${label} is unsupported`);
 };
 
+const readPagePropertyVisibility = (
+  value: unknown,
+  label: string,
+): "always_show" | "hide_when_empty" | "always_hide" => {
+  if (value === "always_show" || value === "hide_when_empty" || value === "always_hide") {
+    return value;
+  }
+  throw new TypeError(`${label} is unsupported`);
+};
+
 const validateBuiltInPropertyValueType = (
   propertyId: DataSourcePropertyId,
   valueType: DatabasePropertyValueType,
@@ -304,15 +318,62 @@ const parsePropertySchema = (
       cardinality: schema.cardinality,
     };
   }
-  if (
-    kind === "text" ||
-    kind === "number" ||
-    kind === "checkbox" ||
-    kind === "select" ||
-    kind === "multi_select" ||
-    kind === "date" ||
-    kind === "datetime"
-  ) {
+  if (kind === "number") {
+    assertExactKeys(schema, label, ["kind"], ["format"]);
+    if (schema.format === undefined) return { kind, format: { kind: "plain" } };
+    const format = readRecord(schema.format, `${label}.format`);
+    if (format.kind === "plain" || format.kind === "percent") {
+      assertExactKeys(format, `${label}.format`, ["kind"]);
+      return { kind, format: { kind: format.kind } };
+    }
+    if (format.kind === "currency") {
+      assertExactKeys(format, `${label}.format`, ["kind", "currencyCode"]);
+      if (
+        format.currencyCode !== "usd" &&
+        format.currencyCode !== "eur" &&
+        format.currencyCode !== "gbp" &&
+        format.currencyCode !== "jpy" &&
+        format.currencyCode !== "cny"
+      ) {
+        throw new TypeError(`${label}.format.currencyCode is unsupported`);
+      }
+      return { kind, format: { kind: "currency", currencyCode: format.currencyCode } };
+    }
+    throw new TypeError(`${label}.format.kind is unsupported`);
+  }
+  if (kind === "date") {
+    assertExactKeys(schema, label, ["kind"], ["dateFormat"]);
+    const dateFormat = schema.dateFormat ?? "full";
+    if (
+      dateFormat !== "full" &&
+      dateFormat !== "month_day_year" &&
+      dateFormat !== "day_month_year" &&
+      dateFormat !== "year_month_day" &&
+      dateFormat !== "relative"
+    ) {
+      throw new TypeError(`${label}.dateFormat is unsupported`);
+    }
+    return { kind, dateFormat };
+  }
+  if (kind === "datetime") {
+    assertExactKeys(schema, label, ["kind"], ["dateFormat", "timeFormat"]);
+    const dateFormat = schema.dateFormat ?? "full";
+    const timeFormat = schema.timeFormat ?? "twelve_hour";
+    if (
+      dateFormat !== "full" &&
+      dateFormat !== "month_day_year" &&
+      dateFormat !== "day_month_year" &&
+      dateFormat !== "year_month_day" &&
+      dateFormat !== "relative"
+    ) {
+      throw new TypeError(`${label}.dateFormat is unsupported`);
+    }
+    if (timeFormat !== "twelve_hour" && timeFormat !== "twenty_four_hour") {
+      throw new TypeError(`${label}.timeFormat is unsupported`);
+    }
+    return { kind, dateFormat, timeFormat };
+  }
+  if (kind === "text" || kind === "checkbox" || kind === "select" || kind === "multi_select") {
     assertExactKeys(schema, label, ["kind"]);
     return { kind };
   }
@@ -624,6 +685,144 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
     };
   }
 
+  if (operation.kind === "move_property") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "dataSourceId",
+      "propertyId",
+      "expectedDataSourceRevision",
+      "expectedPropertyRevision",
+      "placement",
+    ]);
+    const placement = readRecord(operation.placement, `${label}.placement`);
+    if (placement.kind !== "before" && placement.kind !== "end") {
+      throw new TypeError(`${label}.placement.kind is unsupported`);
+    }
+    assertExactKeys(
+      placement,
+      `${label}.placement`,
+      placement.kind === "before" ? ["kind", "propertyId"] : ["kind"],
+    );
+    return {
+      kind: operation.kind,
+      dataSourceId: readDataSourceId(operation.dataSourceId, `${label}.dataSourceId`),
+      propertyId: readPropertyId(operation.propertyId, `${label}.propertyId`),
+      expectedDataSourceRevision: readRevision(
+        operation.expectedDataSourceRevision,
+        `${label}.expectedDataSourceRevision`,
+      ),
+      expectedPropertyRevision: readRevision(
+        operation.expectedPropertyRevision,
+        `${label}.expectedPropertyRevision`,
+      ),
+      placement:
+        placement.kind === "end"
+          ? { kind: "end" }
+          : {
+              kind: "before",
+              propertyId: readPropertyId(placement.propertyId, `${label}.placement.propertyId`),
+            },
+    };
+  }
+
+  if (operation.kind === "change_property_type") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "dataSourceId",
+      "propertyId",
+      "expectedDataSourceRevision",
+      "expectedPropertyRevision",
+      "schema",
+    ]);
+    return {
+      kind: operation.kind,
+      dataSourceId: readDataSourceId(operation.dataSourceId, `${label}.dataSourceId`),
+      propertyId: readPropertyId(operation.propertyId, `${label}.propertyId`),
+      expectedDataSourceRevision: readRevision(
+        operation.expectedDataSourceRevision,
+        `${label}.expectedDataSourceRevision`,
+      ),
+      expectedPropertyRevision: readRevision(
+        operation.expectedPropertyRevision,
+        `${label}.expectedPropertyRevision`,
+      ),
+      schema: parsePropertySchema(operation.schema, `${label}.schema`),
+    };
+  }
+
+  if (operation.kind === "duplicate_property") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "dataSourceId",
+      "propertyId",
+      "expectedDataSourceRevision",
+      "expectedPropertyRevision",
+      "newPropertyId",
+      "name",
+      "optionIds",
+    ]);
+    const propertyId = readPropertyId(operation.propertyId, `${label}.propertyId`);
+    const newPropertyId = readPropertyId(operation.newPropertyId, `${label}.newPropertyId`);
+    if (!Array.isArray(operation.optionIds)) {
+      throw new TypeError(`${label}.optionIds must be an array`);
+    }
+    return {
+      kind: operation.kind,
+      dataSourceId: readDataSourceId(operation.dataSourceId, `${label}.dataSourceId`),
+      propertyId,
+      expectedDataSourceRevision: readRevision(
+        operation.expectedDataSourceRevision,
+        `${label}.expectedDataSourceRevision`,
+      ),
+      expectedPropertyRevision: readRevision(
+        operation.expectedPropertyRevision,
+        `${label}.expectedPropertyRevision`,
+      ),
+      newPropertyId,
+      name: readString(operation.name, `${label}.name`, MAX_NAME_LENGTH),
+      optionIds: operation.optionIds.map((entry, optionIndex) => {
+        const optionLabel = `${label}.optionIds[${optionIndex}]`;
+        const mapping = readRecord(entry, optionLabel);
+        assertExactKeys(mapping, optionLabel, ["sourceOptionId", "newOptionId"]);
+        return {
+          sourceOptionId: readOptionId(
+            propertyId,
+            mapping.sourceOptionId,
+            `${optionLabel}.sourceOptionId`,
+          ),
+          newOptionId: readOptionId(
+            newPropertyId,
+            mapping.newOptionId,
+            `${optionLabel}.newOptionId`,
+          ),
+        };
+      }),
+    };
+  }
+
+  if (operation.kind === "restore_property" || operation.kind === "permanently_delete_property") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "dataSourceId",
+      "propertyId",
+      "expectedDataSourceRevision",
+      "expectedPropertyRevision",
+    ]);
+    return {
+      kind: operation.kind,
+      dataSourceId: readDataSourceId(operation.dataSourceId, `${label}.dataSourceId`),
+      propertyId: readPropertyId(operation.propertyId, `${label}.propertyId`),
+      expectedDataSourceRevision: readRevision(
+        operation.expectedDataSourceRevision,
+        `${label}.expectedDataSourceRevision`,
+      ),
+      expectedPropertyRevision: readRevision(
+        operation.expectedPropertyRevision,
+        `${label}.expectedPropertyRevision`,
+      ),
+    };
+  }
+
   if (operation.kind === "delete_property") {
     assertExactKeys(operation, label, [
       "kind",
@@ -688,6 +887,98 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
         operation.expectedPropertyRevision,
         `${label}.expectedPropertyRevision`,
       ),
+    };
+  }
+
+  if (operation.kind === "move_option") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "dataSourceId",
+      "propertyId",
+      "optionId",
+      "expectedPropertyRevision",
+      "placement",
+    ]);
+    const propertyId = readPropertyId(operation.propertyId, `${label}.propertyId`);
+    const placement = readRecord(operation.placement, `${label}.placement`);
+    const parsedPlacement = (() => {
+      if (placement.kind === "end") {
+        assertExactKeys(placement, `${label}.placement`, ["kind"]);
+        return { kind: "end" as const };
+      }
+      if (placement.kind === "before") {
+        assertExactKeys(placement, `${label}.placement`, ["kind", "optionId"]);
+        return {
+          kind: "before" as const,
+          optionId: readOptionId(propertyId, placement.optionId, `${label}.placement.optionId`),
+        };
+      }
+      throw new TypeError(`${label}.placement.kind is unsupported`);
+    })();
+    return {
+      kind: operation.kind,
+      dataSourceId: readDataSourceId(operation.dataSourceId, `${label}.dataSourceId`),
+      propertyId,
+      optionId: readOptionId(propertyId, operation.optionId, `${label}.optionId`),
+      expectedPropertyRevision: readRevision(
+        operation.expectedPropertyRevision,
+        `${label}.expectedPropertyRevision`,
+      ),
+      placement: parsedPlacement,
+    };
+  }
+
+  if (operation.kind === "delete_option_and_clear_values") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "dataSourceId",
+      "propertyId",
+      "optionId",
+      "expectedPropertyRevision",
+    ]);
+    const propertyId = readPropertyId(operation.propertyId, `${label}.propertyId`);
+    return {
+      kind: operation.kind,
+      dataSourceId: readDataSourceId(operation.dataSourceId, `${label}.dataSourceId`),
+      propertyId,
+      optionId: readOptionId(propertyId, operation.optionId, `${label}.optionId`),
+      expectedPropertyRevision: readRevision(
+        operation.expectedPropertyRevision,
+        `${label}.expectedPropertyRevision`,
+      ),
+    };
+  }
+
+  if (operation.kind === "put_page_layout_entry") {
+    assertExactKeys(
+      operation,
+      label,
+      ["kind", "dataSourceId", "expectedRevision", "propertyId", "visibility"],
+      ["placement"],
+    );
+    const placement = (() => {
+      if (operation.placement === undefined) return undefined;
+      const rawPlacement = readRecord(operation.placement, `${label}.placement`);
+      if (rawPlacement.kind === "end") {
+        assertExactKeys(rawPlacement, `${label}.placement`, ["kind"]);
+        return { kind: "end" as const };
+      }
+      if (rawPlacement.kind === "before") {
+        assertExactKeys(rawPlacement, `${label}.placement`, ["kind", "propertyId"]);
+        return {
+          kind: "before" as const,
+          propertyId: readPropertyId(rawPlacement.propertyId, `${label}.placement.propertyId`),
+        };
+      }
+      throw new TypeError(`${label}.placement.kind is unsupported`);
+    })();
+    return {
+      kind: operation.kind,
+      dataSourceId: readDataSourceId(operation.dataSourceId, `${label}.dataSourceId`),
+      expectedRevision: readRevision(operation.expectedRevision, `${label}.expectedRevision`),
+      propertyId: readPropertyId(operation.propertyId, `${label}.propertyId`),
+      visibility: readPagePropertyVisibility(operation.visibility, `${label}.visibility`),
+      ...(placement === undefined ? {} : { placement }),
     };
   }
 
@@ -898,7 +1189,7 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
         "viewId",
         "expectedRevision",
         "name",
-        "defaultLayout",
+        "layout",
         "config",
         "isDefault",
       ],
@@ -917,10 +1208,76 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
       viewId: readViewId(operation.viewId, `${label}.viewId`),
       expectedRevision: readRevision(operation.expectedRevision, `${label}.expectedRevision`),
       name: readString(operation.name, `${label}.name`, MAX_NAME_LENGTH),
-      defaultLayout: readViewLayout(operation.defaultLayout, `${label}.defaultLayout`),
-      config: parseDatabaseViewConfigV4(operation.config),
+      layout: readViewLayout(operation.layout, `${label}.layout`),
+      config: parseDatabaseViewConfigV6(operation.config),
       isDefault: readBoolean(operation.isDefault, `${label}.isDefault`),
       ...(beforeViewId === undefined ? {} : { beforeViewId }),
+    };
+  }
+
+  if (operation.kind === "duplicate_view") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "databaseId",
+      "sourceViewId",
+      "expectedRevision",
+      "newViewId",
+    ]);
+    return {
+      kind: "duplicate_view",
+      databaseId: readDatabaseId(operation.databaseId, `${label}.databaseId`),
+      sourceViewId: readViewId(operation.sourceViewId, `${label}.sourceViewId`),
+      expectedRevision: readRevision(operation.expectedRevision, `${label}.expectedRevision`),
+      newViewId: readViewId(operation.newViewId, `${label}.newViewId`),
+    };
+  }
+
+  if (operation.kind === "change_view_layout") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "databaseId",
+      "viewId",
+      "expectedRevision",
+      "layout",
+    ]);
+    return {
+      kind: "change_view_layout",
+      databaseId: readDatabaseId(operation.databaseId, `${label}.databaseId`),
+      viewId: readViewId(operation.viewId, `${label}.viewId`),
+      expectedRevision: readRevision(operation.expectedRevision, `${label}.expectedRevision`),
+      layout: readViewLayout(operation.layout, `${label}.layout`),
+    };
+  }
+
+  if (operation.kind === "move_view") {
+    assertExactKeys(operation, label, [
+      "kind",
+      "databaseId",
+      "viewId",
+      "expectedRevision",
+      "placement",
+    ]);
+    const placement = readRecord(operation.placement, `${label}.placement`);
+    if (placement.kind !== "before" && placement.kind !== "end") {
+      throw new TypeError(`${label}.placement.kind is unsupported`);
+    }
+    assertExactKeys(
+      placement,
+      `${label}.placement`,
+      placement.kind === "before" ? ["kind", "viewId"] : ["kind"],
+    );
+    return {
+      kind: operation.kind,
+      databaseId: readDatabaseId(operation.databaseId, `${label}.databaseId`),
+      viewId: readViewId(operation.viewId, `${label}.viewId`),
+      expectedRevision: readRevision(operation.expectedRevision, `${label}.expectedRevision`),
+      placement:
+        placement.kind === "end"
+          ? { kind: "end" }
+          : {
+              kind: "before",
+              viewId: readViewId(placement.viewId, `${label}.placement.viewId`),
+            },
     };
   }
 
@@ -1048,7 +1405,7 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
     assertExactKeys(operation, label, [
       "kind",
       "viewId",
-      "presentationOverride",
+      "preferencesOverride",
       "expectedProjection",
       "initiatorOccurrenceKey",
       "selection",
@@ -1088,7 +1445,7 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
     return {
       kind: operation.kind,
       viewId: readViewId(operation.viewId, `${label}.viewId`),
-      presentationOverride: parseDatabaseViewPresentationOverride(operation.presentationOverride),
+      preferencesOverride: parseDatabaseViewPreferencesOverride(operation.preferencesOverride),
       expectedProjection: parseDatabaseListProjectionExpectationV2(
         operation.expectedProjection,
         expectedProjectionLabel,
@@ -1111,17 +1468,19 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
     };
   }
 
-  if (operation.kind === "put_view_personal_presentation") {
+  if (operation.kind === "put_view_personal_preferences") {
     assertExactKeys(operation, label, [
       "kind",
       "viewId",
       "expectedRevision",
+      "rulesOverride",
       "presentationOverride",
     ]);
     return {
-      kind: "put_view_personal_presentation",
+      kind: "put_view_personal_preferences",
       viewId: readViewId(operation.viewId, `${label}.viewId`),
       expectedRevision: readRevision(operation.expectedRevision, `${label}.expectedRevision`),
+      rulesOverride: parseDatabaseViewRulesOverride(operation.rulesOverride),
       presentationOverride: parseDatabaseViewPresentationOverride(operation.presentationOverride),
     };
   }
@@ -1298,6 +1657,19 @@ const parseDatabaseReadV2 = (value: unknown): DatabaseReadV2 => {
     };
   }
 
+  if (target.kind === "data_source" && mode === "page_layout") {
+    assertExactKeys(target, "databaseModuleReadV2.read.target", ["kind", "dataSourceId"]);
+    assertExactKeys(read, "databaseModuleReadV2.read", ["target", "mode"], ["minimumCommitSeq"]);
+    return {
+      target: {
+        kind: "data_source",
+        dataSourceId: readDataSourceId(target.dataSourceId, "databaseModuleReadV2.dataSourceId"),
+      },
+      mode,
+      ...readBarrier,
+    };
+  }
+
   if (target.kind === "data_source" && mode === "relation_candidate_window") {
     assertExactKeys(target, "databaseModuleReadV2.read.target", ["kind", "dataSourceId"]);
     assertExactKeys(
@@ -1338,7 +1710,7 @@ const parseDatabaseReadV2 = (value: unknown): DatabaseReadV2 => {
 
   if (
     target.kind === "view" &&
-    (mode === "view_personal_presentation" || mode === "view_collapsed_occurrences")
+    (mode === "view_personal_preferences" || mode === "view_collapsed_occurrences")
   ) {
     assertExactKeys(target, "databaseModuleReadV2.read.target", ["kind", "viewId"]);
     assertExactKeys(read, "databaseModuleReadV2.read", ["target", "mode"], ["minimumCommitSeq"]);
@@ -1628,6 +2000,10 @@ const parsePropertyRecord = (value: unknown, label: string): DataSourcePropertyR
     "name",
     "schema",
     "capabilities",
+    "systemRole",
+    "nonEmptyValueCount",
+    "referencedViewIds",
+    "managementPolicy",
     "valueType",
     "config",
     "optionCount",
@@ -1652,16 +2028,60 @@ const parsePropertyRecord = (value: unknown, label: string): DataSourcePropertyR
   ]);
   if (
     !Array.isArray(capabilities.filterOperators) ||
-    capabilities.filterOperators.some(
-      (operator) =>
-        !["equals", "not_equals", "contains", "not_contains", "is_empty", "is_not_empty"].includes(
-          String(operator),
-        ),
-    )
+    capabilities.filterOperators.some((operator) => !isDatabaseViewFilterOperator(operator))
   ) {
     throw new TypeError(`${label}.capabilities.filterOperators is invalid`);
   }
+  const expectedFilterOperators = databaseViewFilterOperatorsForValueType(valueType);
+  if (
+    capabilities.filterOperators.length !== expectedFilterOperators.length ||
+    capabilities.filterOperators.some(
+      (operator, index) => operator !== expectedFilterOperators[index],
+    )
+  ) {
+    throw new TypeError(`${label}.capabilities.filterOperators diverges from its Property schema`);
+  }
   const optionCount = readRevision(record.optionCount, `${label}.optionCount`);
+  if (
+    record.systemRole !== null &&
+    record.systemRole !== "status" &&
+    record.systemRole !== "task_parent"
+  ) {
+    throw new TypeError(`${label}.systemRole is unsupported`);
+  }
+  if (!Array.isArray(record.referencedViewIds)) {
+    throw new TypeError(`${label}.referencedViewIds must be an array`);
+  }
+  const referencedViewIds = record.referencedViewIds.map((viewId, index) =>
+    readViewId(viewId, `${label}.referencedViewIds[${index}]`),
+  );
+  const managementPolicy = readRecord(record.managementPolicy, `${label}.managementPolicy`);
+  assertExactKeys(managementPolicy, `${label}.managementPolicy`, [
+    "canRename",
+    "canReorder",
+    "canChangeType",
+    "canDuplicate",
+    "canDelete",
+    "canRestore",
+    "canPermanentlyDelete",
+    "canManageOptions",
+    "allowedTypes",
+    "blockedReasons",
+  ]);
+  if (!Array.isArray(managementPolicy.allowedTypes)) {
+    throw new TypeError(`${label}.managementPolicy.allowedTypes must be an array`);
+  }
+  const allowedTypes = managementPolicy.allowedTypes.map((allowedType, index) =>
+    readPropertyValueType(allowedType, `${label}.managementPolicy.allowedTypes[${index}]`),
+  );
+  if (new Set(allowedTypes).size !== allowedTypes.length) {
+    throw new TypeError(`${label}.managementPolicy.allowedTypes contains duplicate types`);
+  }
+  const blockedReasons = readIdentityArray(
+    managementPolicy.blockedReasons,
+    `${label}.managementPolicy.blockedReasons`,
+    32,
+  );
   validateBuiltInPropertyValueType(propertyId, valueType, label);
   const isOptionBacked = valueType === "select" || valueType === "multi_select";
   if (
@@ -1692,6 +2112,33 @@ const parsePropertyRecord = (value: unknown, label: string): DataSourcePropertyR
       sortable: readBoolean(capabilities.sortable, `${label}.capabilities.sortable`),
       groupable: readBoolean(capabilities.groupable, `${label}.capabilities.groupable`),
     },
+    systemRole: record.systemRole,
+    nonEmptyValueCount: readRevision(record.nonEmptyValueCount, `${label}.nonEmptyValueCount`),
+    referencedViewIds,
+    managementPolicy: {
+      canRename: readBoolean(managementPolicy.canRename, `${label}.managementPolicy.canRename`),
+      canReorder: readBoolean(managementPolicy.canReorder, `${label}.managementPolicy.canReorder`),
+      canChangeType: readBoolean(
+        managementPolicy.canChangeType,
+        `${label}.managementPolicy.canChangeType`,
+      ),
+      canDuplicate: readBoolean(
+        managementPolicy.canDuplicate,
+        `${label}.managementPolicy.canDuplicate`,
+      ),
+      canDelete: readBoolean(managementPolicy.canDelete, `${label}.managementPolicy.canDelete`),
+      canRestore: readBoolean(managementPolicy.canRestore, `${label}.managementPolicy.canRestore`),
+      canPermanentlyDelete: readBoolean(
+        managementPolicy.canPermanentlyDelete,
+        `${label}.managementPolicy.canPermanentlyDelete`,
+      ),
+      canManageOptions: readBoolean(
+        managementPolicy.canManageOptions,
+        `${label}.managementPolicy.canManageOptions`,
+      ),
+      allowedTypes,
+      blockedReasons,
+    },
     valueType,
     config: parseStoredPropertyConfig(propertyId, valueType, record.config, `${label}.config`),
     optionCount,
@@ -1717,7 +2164,7 @@ const parseViewRecord = (value: unknown, label: string): DatabaseViewRecordV2 =>
     "databaseId",
     "dataSourceId",
     "name",
-    "defaultLayout",
+    "layout",
     "config",
     "isDefault",
     "revision",
@@ -1731,8 +2178,8 @@ const parseViewRecord = (value: unknown, label: string): DatabaseViewRecordV2 =>
     databaseId: readDatabaseId(record.databaseId, `${label}.databaseId`),
     dataSourceId: readDataSourceId(record.dataSourceId, `${label}.dataSourceId`),
     name: readString(record.name, `${label}.name`, MAX_NAME_LENGTH),
-    defaultLayout: readViewLayout(record.defaultLayout, `${label}.defaultLayout`),
-    config: parseDatabaseViewConfigV4(record.config),
+    layout: readViewLayout(record.layout, `${label}.layout`),
+    config: parseDatabaseViewConfigV6(record.config),
     isDefault: readBoolean(record.isDefault, `${label}.isDefault`),
     revision: readPositiveRevision(record.revision, `${label}.revision`),
     rankKey: readString(record.rankKey, `${label}.rankKey`),
@@ -2080,25 +2527,56 @@ const parseReadValue = (value: unknown): DatabaseReadValueV2 => {
       value: parseDataSourceDescriptor(result.value, "databaseModuleReadV2.value.value"),
     };
   }
+  if (result.kind === "page_layout") {
+    const layout = readRecord(result.value, "databaseModuleReadV2.value.value");
+    assertExactKeys(layout, "databaseModuleReadV2.value.value", [
+      "dataSourceId",
+      "revision",
+      "entries",
+    ]);
+    if (!Array.isArray(layout.entries) || layout.entries.length > 2_000) {
+      throw new TypeError("Page layout entries must be a bounded array");
+    }
+    const entries = layout.entries.map((entry, index) => {
+      const entryLabel = `pageLayout.entries[${index}]`;
+      const record = readRecord(entry, entryLabel);
+      assertExactKeys(record, entryLabel, ["propertyId", "rankKey", "visibility"]);
+      return {
+        propertyId: readPropertyId(record.propertyId, `${entryLabel}.propertyId`),
+        rankKey: readString(record.rankKey, `${entryLabel}.rankKey`),
+        visibility: readPagePropertyVisibility(record.visibility, `${entryLabel}.visibility`),
+      };
+    });
+    return {
+      kind: result.kind,
+      value: {
+        dataSourceId: readDataSourceId(layout.dataSourceId, "pageLayout.dataSourceId"),
+        revision: readPositiveRevision(layout.revision, "pageLayout.revision"),
+        entries,
+      },
+    };
+  }
   if (result.kind === "view") {
     return {
       kind: "view",
       value: parseViewRecord(result.value, "databaseModuleReadV2.value.value"),
     };
   }
-  if (result.kind === "view_personal_presentation") {
+  if (result.kind === "view_personal_preferences") {
     const presentation = readRecord(result.value, "databaseModuleReadV2.value.value");
     assertExactKeys(presentation, "databaseModuleReadV2.value.value", [
+      "rulesOverride",
       "presentationOverride",
       "revision",
     ]);
     return {
-      kind: "view_personal_presentation",
+      kind: "view_personal_preferences",
       value: {
+        rulesOverride: parseDatabaseViewRulesOverride(presentation.rulesOverride),
         presentationOverride: parseDatabaseViewPresentationOverride(
           presentation.presentationOverride,
         ),
-        revision: readRevision(presentation.revision, "databaseViewPersonalPresentation.revision"),
+        revision: readRevision(presentation.revision, "databaseViewPersonalPreferences.revision"),
       },
     };
   }
@@ -2217,7 +2695,12 @@ const parseReadValue = (value: unknown): DatabaseReadValueV2 => {
     }
     const options = window.options.map((rawOption, index) => {
       const option = readRecord(rawOption, `optionWindow.options[${index}]`);
-      assertExactKeys(option, `optionWindow.options[${index}]`, ["id", "name"], ["color"]);
+      assertExactKeys(
+        option,
+        `optionWindow.options[${index}]`,
+        ["id", "name", "selectedPageCount"],
+        ["color"],
+      );
       const color =
         option.color === undefined
           ? undefined
@@ -2232,6 +2715,10 @@ const parseReadValue = (value: unknown): DatabaseReadValueV2 => {
           option.name,
           `optionWindow.options[${index}].name`,
           MAX_DATA_SOURCE_OPTION_NAME_LENGTH,
+        ),
+        selectedPageCount: readRevision(
+          option.selectedPageCount,
+          `optionWindow.options[${index}].selectedPageCount`,
         ),
         ...(color === undefined ? {} : { color }),
       };
@@ -2373,19 +2860,30 @@ const readUniqueIdentityArray = <Identity extends string>(
 const OPERATION_KINDS = new Set<DatabaseApplyOperationV2["kind"]>([
   "rename_page_key_prefix",
   "put_property",
+  "move_property",
+  "change_property_type",
+  "duplicate_property",
+  "restore_property",
+  "permanently_delete_property",
   "delete_property",
   "put_option",
+  "move_option",
   "delete_option",
+  "delete_option_and_clear_values",
+  "put_page_layout_entry",
   "edit_property_values",
   "transfer_page",
   "put_view",
+  "duplicate_view",
+  "change_view_layout",
+  "move_view",
   "delete_view",
   "position_page",
   "position_pages",
   "set_task_parent",
   "move_list_occurrences",
   "undo_list_occurrence_move",
-  "put_view_personal_presentation",
+  "put_view_personal_preferences",
   "set_view_occurrence_disclosure",
 ]);
 

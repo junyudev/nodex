@@ -12,7 +12,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import {
   type DatabaseViewLayout,
-  type EffectiveDatabaseViewPresentation,
+  type EffectiveDatabaseView,
   type DatabaseJsonValue,
   type DatabasePropertyOption,
   databaseGroupKeyForValue,
@@ -21,6 +21,7 @@ import type {
   DataSourcePageRowV2,
   DataSourcePropertyRecordV2,
 } from "../../../shared/database-module-v2";
+import { effectiveDatabaseViewFilter } from "../../../shared/database-view-rules";
 import type { ColumnPaginationState } from "@/lib/board-store";
 import {
   compilePageCollectionSearchQuery,
@@ -35,7 +36,7 @@ import {
 import {
   buildDatabaseViewColumns,
   groupScopeKeyForPath,
-  withEffectiveDatabaseViewPresentation,
+  withEffectiveDatabaseView,
   type DatabaseViewRenderColumn,
   type DatabaseViewRenderModel,
   type DatabaseViewRenderRow,
@@ -118,7 +119,7 @@ import { COLLAPSED_BOARD_COLUMN_WIDTH } from "@/lib/board-column-layout";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PlusIcon } from "@/components/shared/icons";
 import type { DatabaseViewBoardPageDropIntent } from "@/lib/use-board";
-import { databaseViewGesturePresentationOverride } from "../../../shared/database-view-presentation";
+import { databaseViewGesturePreferencesOverride } from "../../../shared/database-view-presentation";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
 import type { DatabaseViewPageOpenHandler } from "./database-view-page-open";
 import type { PageChatActivitySummary } from "@/lib/types";
@@ -162,7 +163,7 @@ const readDraggedPageIds = (dataTransfer: DataTransfer): readonly string[] => {
 interface DatabaseViewSurfaceProps {
   readonly model: DatabaseViewRenderModel;
   readonly presentationLayout?: DatabaseViewLayout;
-  readonly effectivePresentation?: EffectiveDatabaseViewPresentation;
+  readonly effectivePresentation?: EffectiveDatabaseView;
   readonly groupPagination?: ReadonlyMap<string, ColumnPaginationState>;
   readonly onLoadMoreGroup?: (scopeKey: string) => Promise<void> | void;
   readonly searchQuery: string;
@@ -274,7 +275,8 @@ function DatabaseViewSurfaceContent(props: DatabaseViewSurfaceProps) {
     [onSelectedPageIdsChange],
   );
   const effectivePresentation = props.effectivePresentation ?? {
-    layout: props.presentationLayout ?? props.model.query.view.defaultLayout,
+    layout: props.presentationLayout ?? props.model.query.view.layout,
+    rules: props.model.query.view.config.rules,
     presentation: props.model.query.view.config.presentation,
   };
   if (effectivePresentation.layout === "list") {
@@ -333,7 +335,7 @@ function BoardDatabaseViewSurface({
   pageChatActivityByPageId,
   onRemovePageChatRelation,
 }: Omit<DatabaseViewSurfaceProps, "effectivePresentation"> & {
-  readonly effectivePresentation: EffectiveDatabaseViewPresentation;
+  readonly effectivePresentation: EffectiveDatabaseView;
   readonly pageChatActivityByPageId: ReadonlyMap<string, PageChatActivitySummary>;
   readonly onRemovePageChatRelation: (pageId: string, sessionId: string) => Promise<void>;
 }) {
@@ -383,9 +385,9 @@ function BoardDatabaseViewSurface({
       collectRequiredPropertyOptionIds({
         properties: model.query.properties,
         rows: model.query.rows,
-        filter: model.query.view.config.filter,
+        filter: effectiveDatabaseViewFilter(effectivePresentation.rules),
       }),
-    [model.query.properties, model.query.rows, model.query.view.config.filter],
+    [effectivePresentation.rules, model.query.properties, model.query.rows],
   );
   const propertyOptionRegistries = usePropertyOptionRegistries({
     accessContext: model.accessContext,
@@ -408,7 +410,7 @@ function BoardDatabaseViewSurface({
   const activeLayout = effectivePresentation.layout;
   const presentation = effectivePresentation.presentation;
   const authorityMutationModel = useMemo(
-    () => withEffectiveDatabaseViewPresentation(model, effectivePresentation),
+    () => withEffectiveDatabaseView(model, effectivePresentation),
     [effectivePresentation, model],
   );
   const mutationModel = useMemo(
@@ -441,11 +443,11 @@ function BoardDatabaseViewSurface({
     () => compilePageCollectionSearchQuery(deferredSearchQuery),
     [deferredSearchQuery],
   );
-  const trailingBoardFields = presentation.layouts.board.fields;
-  const showBoardPageKey = presentation.layouts.board.fields.some(
+  const trailingBoardFields = presentation.display.fields;
+  const showBoardPageKey = presentation.display.fields.some(
     (field) => field.kind === "intrinsic" && field.field === "page_key",
   );
-  const showBoardDescription = presentation.layouts.board.showDescription !== false;
+  const showBoardDescription = presentation.display.showDescription !== false;
   const columns = useMemo(
     () =>
       buildDatabaseViewColumns(
@@ -553,7 +555,7 @@ function BoardDatabaseViewSurface({
       >();
     const options = readDatabasePropertyOptions(property);
     const optionNames = new Map(options.map((option) => [option.id, option.name]));
-    const showEmpty = presentation.layouts[activeLayout ?? "list"].showEmptyGroups;
+    const showEmpty = presentation.display.showEmptyGroups;
     const finiteKeys = showEmpty
       ? property.valueType === "checkbox"
         ? ["false", "true"]
@@ -582,7 +584,7 @@ function BoardDatabaseViewSurface({
         ] as const;
       }),
     );
-  }, [activeLayout, columns, model.query.properties, presentation]);
+  }, [columns, model.query.properties, presentation]);
   const boardSubgroups = useMemo(() => {
     const entries = columns.flatMap((column) => subgroupsByColumn.get(column.id) ?? []);
     const unique = new Map<string, { key: string | null; name: string | null }>();
@@ -909,10 +911,7 @@ function BoardDatabaseViewSurface({
       placement: {
         kind: "direct",
         viewId: model.databaseViewId,
-        presentationOverride: databaseViewGesturePresentationOverride(
-          effectivePresentation,
-          "board",
-        ),
+        preferencesOverride: databaseViewGesturePreferencesOverride(effectivePresentation),
         groupKey: target.groupKey,
         ...(target.beforePageId ? { beforePageId: target.beforePageId } : {}),
         sortedPropertyValues: resolveDatabaseViewSortedDropValues({

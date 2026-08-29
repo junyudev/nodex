@@ -40,7 +40,7 @@ const VIEW: DatabaseViewReadModel = {
     databaseBlockId: "database:primary",
     projectId: "nodex",
     name: "Block-first migration",
-    defaultLayout: "list",
+    layout: "list",
     config: {},
     isPrimary: false,
     createdAt: "2026-01-01T00:00:00.000Z",

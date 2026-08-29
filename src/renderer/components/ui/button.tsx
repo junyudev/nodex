@@ -74,48 +74,58 @@ export interface NodexIconButtonProps extends React.ComponentProps<"button"> {
   ariaLabel: string;
 }
 
-export function NodexIconButton({
-  icon: Icon,
-  active = false,
-  tone = "default",
-  size = "default",
-  disabled = false,
-  className,
-  ariaLabel,
-  type = "button",
-  title,
-  ...props
-}: NodexIconButtonProps) {
-  const tooltipContent = title ?? ariaLabel;
-  return (
-    <NodexTooltip tooltipContent={tooltipContent} side="top">
-      <button
-        {...props}
-        type={type}
-        disabled={disabled}
-        aria-label={ariaLabel}
-        className={cn(
-          "inline-flex items-center justify-center rounded-md outline-hidden transition-colors",
-          "focus-visible:ring-token-focus focus-visible:ring-2",
-          size === "xs" && "size-6",
-          size === "sm" && "size-7",
-          size === "default" && "size-8",
-          tone === "danger"
-            ? active
-              ? "text-token-error-foreground"
-              : "text-token-error-foreground/70 hover:bg-token-error-background/10 hover:text-token-error-foreground"
-            : active
-              ? "text-(--accent-blue)"
-              : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground)",
-          disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
-          className,
-        )}
+export const NodexIconButton = React.forwardRef<HTMLButtonElement, NodexIconButtonProps>(
+  function NodexIconButton(
+    {
+      icon: Icon,
+      active = false,
+      tone = "default",
+      size = "default",
+      disabled = false,
+      className,
+      ariaLabel,
+      type = "button",
+      title,
+      ...props
+    },
+    ref,
+  ) {
+    const tooltipText = title ?? ariaLabel;
+    return (
+      <NodexTooltip
+        tooltipContent={<span className="whitespace-pre-line">{tooltipText}</span>}
+        side="top"
       >
-        <Icon className="size-4" />
-      </button>
-    </NodexTooltip>
-  );
-}
+        <button
+          ref={ref}
+          {...props}
+          type={type}
+          disabled={disabled}
+          aria-label={ariaLabel}
+          data-active={active ? "true" : undefined}
+          className={cn(
+            "inline-flex items-center justify-center rounded-md outline-hidden",
+            "focus-visible:ring-token-focus focus-visible:ring-2",
+            size === "xs" && "size-6",
+            size === "sm" && "size-7",
+            size === "default" && "size-8",
+            tone === "danger"
+              ? active
+                ? "text-token-error-foreground hover:bg-token-error-background/10"
+                : "text-token-error-foreground/70 hover:bg-token-error-background/10 hover:text-token-error-foreground"
+              : active
+                ? "text-(--accent-blue) hover:bg-[color-mix(in_srgb,var(--accent-blue)_12%,transparent)]"
+                : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground)",
+            disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
+            className,
+          )}
+        >
+          <Icon className="size-4" />
+        </button>
+      </NodexTooltip>
+    );
+  },
+);
 
 export interface NodexSwitchProps {
   ariaLabel?: string;

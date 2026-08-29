@@ -356,7 +356,7 @@ describe("Core Database Module Adapter", () => {
           name: "All tasks",
           layout: "list",
           definition: {
-            filter: config.filter,
+            rules: config.rules,
             presentation: config.presentation,
           },
           is_default: true,
@@ -393,7 +393,7 @@ describe("Core Database Module Adapter", () => {
             databaseId: "database:test",
             dataSourceId: "source:test",
             name: "All tasks",
-            defaultLayout: "list",
+            layout: "list",
             config,
             isDefault: true,
             revision: 2,
@@ -587,10 +587,24 @@ describe("Core Database Module Adapter", () => {
               name: "Status",
               schema: { kind: "select" },
               capabilities: {
-                filter_operators: ["equals", "not_equals", "is_empty", "is_not_empty"],
+                filter_operators: ["select_is", "select_is_not", "is_empty", "is_not_empty"],
                 sortable: true,
                 groupable: true,
               },
+              management_policy: {
+                can_rename: true,
+                can_reorder: true,
+                can_change_type: false,
+                can_duplicate: true,
+                can_delete: false,
+                can_restore: false,
+                can_permanently_delete: false,
+                can_manage_options: true,
+                allowed_types: [],
+                blocked_reasons: ["required_system_property"],
+              },
+              non_empty_value_count: 1,
+              referenced_view_ids: [],
               option_count: 1,
               rank_key: "a",
               lifecycle: "active",
@@ -617,16 +631,41 @@ describe("Core Database Module Adapter", () => {
               schema: { kind: "text" },
               capabilities: {
                 filter_operators: [
-                  "equals",
-                  "not_equals",
-                  "contains",
-                  "not_contains",
+                  "text_is",
+                  "text_is_not",
+                  "text_contains",
+                  "text_does_not_contain",
+                  "text_starts_with",
+                  "text_ends_with",
                   "is_empty",
                   "is_not_empty",
                 ],
                 sortable: true,
                 groupable: true,
               },
+              management_policy: {
+                can_rename: true,
+                can_reorder: true,
+                can_change_type: true,
+                can_duplicate: true,
+                can_delete: true,
+                can_restore: false,
+                can_permanently_delete: false,
+                can_manage_options: false,
+                allowed_types: [
+                  "text",
+                  "number",
+                  "checkbox",
+                  "select",
+                  "multi_select",
+                  "date",
+                  "datetime",
+                  "relation",
+                ],
+                blocked_reasons: [],
+              },
+              non_empty_value_count: 0,
+              referenced_view_ids: [],
               option_count: 0,
               rank_key: "b",
               lifecycle: "active",
@@ -686,9 +725,24 @@ describe("Core Database Module Adapter", () => {
         name: "Risk",
         schema: { kind: "select" },
         capabilities: {
-          filter_operators: ["equals"],
+          filter_operators: ["select_is", "select_is_not", "is_empty", "is_not_empty"],
           sortable: true,
           groupable: true,
+        },
+        system_role: null,
+        non_empty_value_count: 0,
+        referenced_view_ids: [],
+        management_policy: {
+          can_rename: true,
+          can_reorder: true,
+          can_change_type: true,
+          can_duplicate: true,
+          can_delete: true,
+          can_restore: false,
+          can_permanently_delete: false,
+          can_manage_options: true,
+          allowed_types: ["select"],
+          blocked_reasons: [],
         },
         option_count: 0,
         rank_key: "a",
@@ -829,7 +883,7 @@ describe("Core Database Module Adapter", () => {
             viewId,
             expectedRevision: 0,
             name: "Priority",
-            defaultLayout: "list",
+            layout: "list",
             config,
             isDefault: true,
             beforeViewId: null,
@@ -947,7 +1001,7 @@ describe("Core Database Module Adapter", () => {
             name: "Priority",
             layout: "list",
             definition: {
-              filter: config.filter,
+              rules: config.rules,
               presentation: config.presentation,
             },
             is_default: true,
@@ -981,9 +1035,12 @@ describe("Core Database Module Adapter", () => {
     const client = new FakeCoreClient();
     const dataSourceId = parseDataSourceId("source:test");
     const viewId = parseDatabaseViewId("view:test");
-    const presentationOverride = {
-      layout: "list" as const,
-      hierarchy: { showSubPages: true, nestedSubPages: true },
+    const preferencesOverride = {
+      rulesOverride: {},
+      presentationOverride: {
+        hierarchy: { showSubPages: true, nestedSubPages: true },
+        display: { propertyOrder: ["status"] },
+      },
     };
     const expectedProjection = {
       scopeKey: "view:view:test:list",
@@ -1011,7 +1068,7 @@ describe("Core Database Module Adapter", () => {
     const moveOperation = {
       kind: "move_list_occurrences" as const,
       viewId,
-      presentationOverride,
+      preferencesOverride,
       expectedProjection,
       initiatorOccurrenceKey: "page:parent@root",
       selection: {
@@ -1032,9 +1089,12 @@ describe("Core Database Module Adapter", () => {
     expect(toCoreDatabaseIntent(moveOperation)).toEqual({
       kind: "move_list_occurrences",
       view_id: viewId,
-      presentation_override: {
-        layout: "list",
-        hierarchy: { show_sub_pages: true, nested_sub_pages: true },
+      preferences_override: {
+        rules_override: {},
+        presentation_override: {
+          hierarchy: { show_sub_pages: true, nested_sub_pages: true },
+          display: { property_order: ["status"] },
+        },
       },
       expected_projection: {
         scope_key: expectedProjection.scopeKey,

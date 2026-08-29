@@ -30,7 +30,7 @@ import {
 } from "../../shared/database-identities";
 import { stableStringifyDatabaseJson, type DatabaseJsonValue } from "../../shared/database-kernel";
 import type { DatabaseRead, DatabaseReadSnapshot } from "../core-client/types";
-import { toCoreDatabaseViewPresentationOverride } from "../core-client/database-presentation-adapter";
+import { toCoreDatabaseViewPreferencesOverride } from "../core-client/database-presentation-adapter";
 
 type DescriptorReadResult = DatabaseModuleReadResultV2 | LibraryDatabaseModuleReadResultV2;
 type BoundedProjectionInput =
@@ -50,14 +50,14 @@ export const minimumCommitSeqForDatabaseProjection = (
 const coreViewTarget = (
   input: BoundedProjectionInput,
 ): Extract<DatabaseRead, { readonly kind: "view_window" }>["target"] => {
-  if (input.presentationOverride && !input.databaseViewId) {
-    throw new Error("A Database View presentation override requires an explicit View");
+  if (input.preferencesOverride && !input.databaseViewId) {
+    throw new Error("Database View preferences require an explicit View");
   }
-  if (input.databaseViewId && input.presentationOverride) {
+  if (input.databaseViewId && input.preferencesOverride) {
     return {
       kind: "presented_view",
       view_id: input.databaseViewId,
-      presentation_override: toCoreDatabaseViewPresentationOverride(input.presentationOverride),
+      preferences_override: toCoreDatabaseViewPreferencesOverride(input.preferencesOverride),
     };
   }
   if (input.databaseViewId) return { kind: "view", view_id: input.databaseViewId };
@@ -181,7 +181,7 @@ export const projectDatabaseViewWindow = <ProjectScope extends string | null>(in
       databaseBlockId: view.databaseId,
       projectId: input.projectId,
       name: view.name,
-      defaultLayout: view.defaultLayout,
+      layout: view.layout,
       config: JSON.parse(stableStringifyDatabaseJson(view.config)) as Readonly<
         Record<string, DatabaseJsonValue>
       >,

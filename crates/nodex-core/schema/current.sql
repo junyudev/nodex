@@ -1274,6 +1274,34 @@ CREATE TABLE "data_source_properties" (
   CHECK (lifecycle IN ('active', 'deleted')),
   CHECK (json_valid(config_json) AND json_type(config_json) = 'object')
 ) WITHOUT ROWID;
+CREATE TABLE data_source_page_layouts (
+  data_source_id TEXT PRIMARY KEY REFERENCES data_sources(id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) WITHOUT ROWID, STRICT;
+CREATE TABLE data_source_page_layout_entries (
+  data_source_id TEXT NOT NULL,
+  property_id TEXT NOT NULL,
+  rank_key TEXT NOT NULL,
+  visibility TEXT NOT NULL
+    CHECK (visibility IN ('always_show', 'hide_when_empty', 'always_hide')),
+  PRIMARY KEY (data_source_id, property_id),
+  FOREIGN KEY (data_source_id)
+    REFERENCES data_source_page_layouts(data_source_id) ON DELETE CASCADE,
+  FOREIGN KEY (data_source_id, property_id)
+    REFERENCES data_source_properties(data_source_id, id)
+    ON UPDATE CASCADE ON DELETE NO ACTION,
+  CHECK (length(rank_key) BETWEEN 1 AND 512)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE retired_data_source_property_ids (
+  data_source_id TEXT NOT NULL REFERENCES data_sources(id) ON DELETE CASCADE,
+  property_id TEXT NOT NULL,
+  retired_at TEXT NOT NULL,
+  PRIMARY KEY (data_source_id, property_id),
+  CHECK (length(property_id) BETWEEN 1 AND 128),
+  CHECK (length(retired_at) > 0)
+) WITHOUT ROWID, STRICT;
 CREATE TABLE "data_source_property_values" (
   data_source_id TEXT NOT NULL,
   membership_id TEXT NOT NULL,
@@ -1435,7 +1463,7 @@ CREATE TABLE "database_views" (
   database_block_id TEXT NOT NULL,
   data_source_id TEXT NOT NULL,
   name TEXT NOT NULL,
-  default_layout TEXT NOT NULL,
+  layout TEXT NOT NULL,
   config_json TEXT NOT NULL DEFAULT '{}',
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
   rank_key TEXT NOT NULL,
@@ -1447,7 +1475,7 @@ CREATE TABLE "database_views" (
   FOREIGN KEY (data_source_id, database_block_id)
     REFERENCES data_sources(id, home_database_block_id)
     ON UPDATE CASCADE ON DELETE CASCADE,
-  CHECK (default_layout IN ('board', 'list')),
+  CHECK (layout IN ('board', 'list')),
   CHECK (lifecycle IN ('active', 'deleted')),
   CHECK (json_valid(config_json) AND json_type(config_json) = 'object')
 ) WITHOUT ROWID, STRICT;
@@ -1461,17 +1489,17 @@ CREATE TABLE "database_view_page_positions" (
   PRIMARY KEY (view_id, page_block_id),
   FOREIGN KEY (view_id) REFERENCES "database_views"(id) ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE database_view_personal_presentations (
+CREATE TABLE database_view_personal_preferences (
           profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
           view_id TEXT NOT NULL REFERENCES database_views(id) ON DELETE CASCADE,
-          presentation_override_json TEXT NOT NULL,
+          preferences_json TEXT NOT NULL,
           revision INTEGER NOT NULL CHECK (revision >= 1),
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           PRIMARY KEY (profile_id, view_id),
           CHECK (
-            json_valid(presentation_override_json)
-            AND json_type(presentation_override_json) = 'object'
+            json_valid(preferences_json)
+            AND json_type(preferences_json) = 'object'
           )
         ) WITHOUT ROWID, STRICT;
 CREATE TABLE database_view_collapsed_occurrences (
@@ -3169,7 +3197,7 @@ WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
 INSERT INTO local_commit_visibility_dirty_facts(
 store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
 )
-SELECT store_epoch, commit_seq, 'database_views', 'insert', NULL, json_object('id', NEW."id", 'database_block_id', NEW."database_block_id", 'data_source_id', NEW."data_source_id", 'name', NEW."name", 'default_layout', NEW."default_layout", 'config_json', NEW."config_json", 'revision', NEW."revision", 'rank_key', NEW."rank_key", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
+SELECT store_epoch, commit_seq, 'database_views', 'insert', NULL, json_object('id', NEW."id", 'database_block_id', NEW."database_block_id", 'data_source_id', NEW."data_source_id", 'name', NEW."name", 'layout', NEW."layout", 'config_json', NEW."config_json", 'revision', NEW."revision", 'rank_key', NEW."rank_key", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
 FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
 END;
 CREATE TRIGGER "visibility_dirty_database_views_update"
@@ -3183,7 +3211,7 @@ WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
 INSERT INTO local_commit_visibility_dirty_facts(
 store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
 )
-SELECT store_epoch, commit_seq, 'database_views', 'update', json_object('id', OLD."id", 'database_block_id', OLD."database_block_id", 'data_source_id', OLD."data_source_id", 'name', OLD."name", 'default_layout', OLD."default_layout", 'config_json', OLD."config_json", 'revision', OLD."revision", 'rank_key', OLD."rank_key", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('id', NEW."id", 'database_block_id', NEW."database_block_id", 'data_source_id', NEW."data_source_id", 'name', NEW."name", 'default_layout', NEW."default_layout", 'config_json', NEW."config_json", 'revision', NEW."revision", 'rank_key', NEW."rank_key", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
+SELECT store_epoch, commit_seq, 'database_views', 'update', json_object('id', OLD."id", 'database_block_id', OLD."database_block_id", 'data_source_id', OLD."data_source_id", 'name', OLD."name", 'layout', OLD."layout", 'config_json', OLD."config_json", 'revision', OLD."revision", 'rank_key', OLD."rank_key", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('id', NEW."id", 'database_block_id', NEW."database_block_id", 'data_source_id', NEW."data_source_id", 'name', NEW."name", 'layout', NEW."layout", 'config_json', NEW."config_json", 'revision', NEW."revision", 'rank_key', NEW."rank_key", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
 FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
 END;
 CREATE TRIGGER "visibility_dirty_database_views_delete"
@@ -3197,7 +3225,7 @@ WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
 INSERT INTO local_commit_visibility_dirty_facts(
 store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
 )
-SELECT store_epoch, commit_seq, 'database_views', 'delete', json_object('id', OLD."id", 'database_block_id', OLD."database_block_id", 'data_source_id', OLD."data_source_id", 'name', OLD."name", 'default_layout', OLD."default_layout", 'config_json', OLD."config_json", 'revision', OLD."revision", 'rank_key', OLD."rank_key", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
+SELECT store_epoch, commit_seq, 'database_views', 'delete', json_object('id', OLD."id", 'database_block_id', OLD."database_block_id", 'data_source_id', OLD."data_source_id", 'name', OLD."name", 'layout', OLD."layout", 'config_json', OLD."config_json", 'revision', OLD."revision", 'rank_key', OLD."rank_key", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
 FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
 END;
 CREATE TRIGGER "visibility_dirty_data_source_page_memberships_insert"
@@ -4762,4 +4790,4 @@ CREATE TABLE operational_journal_state (
   ),
   CHECK (length(operation_identity_cutover_at) > 0)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 143;
+PRAGMA user_version = 147;

@@ -76,13 +76,14 @@ fn read_subject(context: &BoundModuleContext, read: &DatabaseRead) -> Option<Res
         DatabaseRead::DataSource { data_source_id }
         | DatabaseRead::PropertyWindow { data_source_id, .. }
         | DatabaseRead::OptionWindow { data_source_id, .. }
+        | DatabaseRead::PageLayout { data_source_id }
         | DatabaseRead::RelationCandidateWindow { data_source_id, .. } => {
             Some(ResourceKey::DataSource {
                 data_source_id: data_source_id.clone(),
             })
         }
         DatabaseRead::View { view_id }
-        | DatabaseRead::ViewPersonalPresentation { view_id }
+        | DatabaseRead::ViewPersonalPreferences { view_id }
         | DatabaseRead::ViewCollapsedOccurrences { view_id }
         | DatabaseRead::ViewContext { view_id, .. } => Some(ResourceKey::View {
             view_id: view_id.clone(),

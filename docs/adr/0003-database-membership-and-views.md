@@ -20,7 +20,11 @@ Database property values belong to the membership. Property changes use field/pa
 
 ADR 0013 supersedes only the inclusion of Agent state in the preceding Card-intrinsic property decision. Execution configuration, recurrence, and reminders remain Card properties; live Agent execution state belongs to Thread/session runtime.
 
-A durable Database View stores filter, presentation, and manual position configuration. ADR 0041 supersedes this ADR's presentation list: one View supports only Board and List layouts, while editor toggle-list Blocks, Canvas, and Schedule are separate surfaces. Each View owns one layout-independent fractional manual ordering; content placement and another View's order are unaffected.
+A durable Database View stores filter, presentation, and manual position configuration. ADR 0041
+supersedes this ADR's presentation list, and ADR 0053 supersedes its multi-layout identity rule:
+each View owns one Board or List layout, while editor toggle-list Blocks, Canvas, and Schedule are
+separate surfaces. Each View owns one layout-independent fractional manual ordering; content
+placement and another View's order are unaffected.
 
 Membership, not manual position, determines whether a Card is a Database row. A membership may have no position in a given View; the View still evaluates that row through its filter, property sort, and grouping rules, and a manual sort treats the absent rank as null according to the View's explicit null policy. Reads must never require or synthesize a position merely to make a row visible. When a position does exist, it contains one complete View-global rank; grouping remains exclusively derived from the configured property authority.
 

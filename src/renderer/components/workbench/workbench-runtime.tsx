@@ -3259,6 +3259,16 @@ export function WorkbenchRuntime({
             onOpenRelatedChat={sessionCommands.openProjectSessionById}
             onSendPageToChat={sessionCommands.sendPageToChat}
             onOpenCanvasStage={openProjectSceneCanvas}
+            onSelectDatabaseView={(nextViewId, title) => {
+              if (!projectSceneOwner) return;
+              updateSceneSurfacePresentation(projectSceneOwner, surface.id, {
+                titleSnapshot: title,
+                config: {
+                  ...surface.config,
+                  target: { kind: "database-view", databaseViewId: nextViewId },
+                },
+              });
+            }}
             targetLeafId={leafId}
             pageStageCloseRef={pageStageCloseRef}
           />

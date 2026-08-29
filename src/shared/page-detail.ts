@@ -4,6 +4,7 @@ import {
 } from "./block-property-mutations";
 import type {
   DatabaseContainerRecordV2,
+  DatabasePageLayoutV2,
   DataSourcePageValueV2,
   DataSourcePropertyRecordV2,
   DataSourceRecordV2,
@@ -39,6 +40,7 @@ export type PageDataSourceContext =
       readonly database: DatabaseContainerRecordV2;
       readonly dataSource: DataSourceRecordV2;
       readonly properties: readonly DataSourcePropertyRecordV2[];
+      readonly pageLayout: DatabasePageLayoutV2;
       readonly values: Readonly<Record<string, DataSourcePageValueV2>>;
     };
 
@@ -279,6 +281,10 @@ const parseProperty = (
     "name",
     "schema",
     "capabilities",
+    "systemRole",
+    "nonEmptyValueCount",
+    "referencedViewIds",
+    "managementPolicy",
     "valueType",
     "config",
     "optionCount",
@@ -299,8 +305,67 @@ const parseProperty = (
   const propertyValueType = valueType(value.valueType, `${label}.valueType`);
   const schema = portableJson(value.schema, `${label}.schema`);
   const capabilities = portableJson(value.capabilities, `${label}.capabilities`);
-  if (!isRecord(schema) || schema.kind !== propertyValueType || !isRecord(capabilities)) {
+  const managementPolicy = portableJson(value.managementPolicy, `${label}.managementPolicy`);
+  if (
+    !isRecord(schema) ||
+    schema.kind !== propertyValueType ||
+    !isRecord(capabilities) ||
+    !isRecord(managementPolicy)
+  ) {
     throw new PageDetailContractError(`${label} typed semantics are invalid`);
+  }
+  exactKeys(managementPolicy, `${label}.managementPolicy`, [
+    "canRename",
+    "canReorder",
+    "canChangeType",
+    "canDuplicate",
+    "canDelete",
+    "canRestore",
+    "canPermanentlyDelete",
+    "canManageOptions",
+    "allowedTypes",
+    "blockedReasons",
+  ]);
+  const booleanPolicyFields = [
+    "canRename",
+    "canReorder",
+    "canChangeType",
+    "canDuplicate",
+    "canDelete",
+    "canRestore",
+    "canPermanentlyDelete",
+    "canManageOptions",
+  ] as const;
+  for (const field of booleanPolicyFields) {
+    if (typeof managementPolicy[field] === "boolean") continue;
+    throw new PageDetailContractError(`${label}.managementPolicy.${field} must be a boolean`);
+  }
+  if (!Array.isArray(managementPolicy.allowedTypes)) {
+    throw new PageDetailContractError(`${label}.managementPolicy.allowedTypes must be an array`);
+  }
+  const allowedTypes = managementPolicy.allowedTypes.map((allowedType, allowedTypeIndex) =>
+    valueType(allowedType, `${label}.managementPolicy.allowedTypes[${allowedTypeIndex}]`),
+  );
+  if (new Set(allowedTypes).size !== allowedTypes.length) {
+    throw new PageDetailContractError(
+      `${label}.managementPolicy.allowedTypes contains duplicate types`,
+    );
+  }
+  if (
+    !Array.isArray(managementPolicy.blockedReasons) ||
+    managementPolicy.blockedReasons.some((reason) => typeof reason !== "string")
+  ) {
+    throw new PageDetailContractError(`${label}.managementPolicy.blockedReasons is invalid`);
+  }
+  if (
+    value.systemRole !== null &&
+    value.systemRole !== "status" &&
+    value.systemRole !== "task_parent"
+  ) {
+    throw new PageDetailContractError(`${label}.systemRole is invalid`);
+  }
+  if (!Array.isArray(value.referencedViewIds)) {
+    throw new PageDetailContractError(`${label}.referencedViewIds must be an array`);
   }
   const rawConfig = portableJson(value.config, `${label}.config`);
   if (!isRecord(rawConfig)) {
@@ -315,6 +380,23 @@ const parseProperty = (
     name: boundedText(value.name, `${label}.name`),
     schema: schema as DataSourcePropertyRecordV2["schema"],
     capabilities: capabilities as unknown as DataSourcePropertyRecordV2["capabilities"],
+    systemRole: value.systemRole,
+    nonEmptyValueCount: revision(value.nonEmptyValueCount, `${label}.nonEmptyValueCount`),
+    referencedViewIds: value.referencedViewIds.map((viewId, viewIndex) =>
+      scopedIdentity(viewId, `${label}.referencedViewIds[${viewIndex}]`, parseDatabaseViewId),
+    ),
+    managementPolicy: {
+      canRename: managementPolicy.canRename,
+      canReorder: managementPolicy.canReorder,
+      canChangeType: managementPolicy.canChangeType,
+      canDuplicate: managementPolicy.canDuplicate,
+      canDelete: managementPolicy.canDelete,
+      canRestore: managementPolicy.canRestore,
+      canPermanentlyDelete: managementPolicy.canPermanentlyDelete,
+      canManageOptions: managementPolicy.canManageOptions,
+      allowedTypes,
+      blockedReasons: managementPolicy.blockedReasons,
+    } as DataSourcePropertyRecordV2["managementPolicy"],
     valueType: propertyValueType,
     config: {},
     optionCount: revision(value.optionCount, `${label}.optionCount`),
@@ -391,9 +473,14 @@ const parseDataSourceContext = (
     "database",
     "dataSource",
     "properties",
+    "pageLayout",
     "values",
   ]);
-  if (!isRecord(value.membership) || !Array.isArray(value.properties)) {
+  if (
+    !isRecord(value.membership) ||
+    !Array.isArray(value.properties) ||
+    !isRecord(value.pageLayout)
+  ) {
     throw new PageDetailContractError("Page Detail Data Source membership payload is invalid");
   }
   exactKeys(value.membership, "pageDetail.membership", [
@@ -422,6 +509,42 @@ const parseDataSourceContext = (
       "Page Detail properties must have unique identities and keys",
     );
   }
+  exactKeys(value.pageLayout, "pageDetail.pageLayout", ["dataSourceId", "revision", "entries"]);
+  if (!Array.isArray(value.pageLayout.entries)) {
+    throw new PageDetailContractError("pageDetail.pageLayout.entries must be an array");
+  }
+  const pageLayout: DatabasePageLayoutV2 = {
+    dataSourceId: scopedIdentity(
+      value.pageLayout.dataSourceId,
+      "pageDetail.pageLayout.dataSourceId",
+      parseDataSourceId,
+    ),
+    revision: revision(value.pageLayout.revision, "pageDetail.pageLayout.revision"),
+    entries: value.pageLayout.entries.map((entry, index) => {
+      const entryLabel = `pageDetail.pageLayout.entries[${index}]`;
+      if (!isRecord(entry)) throw new PageDetailContractError(`${entryLabel} must be an object`);
+      exactKeys(entry, entryLabel, ["propertyId", "rankKey", "visibility"]);
+      if (
+        entry.visibility !== "always_show" &&
+        entry.visibility !== "hide_when_empty" &&
+        entry.visibility !== "always_hide"
+      ) {
+        throw new PageDetailContractError(`${entryLabel}.visibility is invalid`);
+      }
+      return {
+        propertyId: scopedIdentity(
+          entry.propertyId,
+          `${entryLabel}.propertyId`,
+          parseDataSourcePropertyId,
+        ),
+        rankKey: identity(entry.rankKey, `${entryLabel}.rankKey`),
+        visibility: entry.visibility,
+      };
+    }),
+  };
+  if (pageLayout.dataSourceId !== dataSource.dataSourceId) {
+    throw new PageDetailContractError("Page layout belongs to another Data Source");
+  }
   return {
     kind: "member",
     pageKey:
@@ -437,6 +560,7 @@ const parseDataSourceContext = (
     database,
     dataSource,
     properties,
+    pageLayout,
     values: parseValues(value.values, properties),
   };
 };

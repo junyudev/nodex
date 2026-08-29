@@ -131,7 +131,7 @@ const compilePageRunFromQuery = (input: {
     query.database.lifecycle !== "active" ||
     query.dataSource.lifecycle !== "active" ||
     query.view.lifecycle !== "active" ||
-    query.view.defaultLayout !== "board" ||
+    query.view.layout !== "board" ||
     query.view.databaseId !== query.database.databaseId ||
     query.view.dataSourceId !== query.dataSource.dataSourceId
   ) {
@@ -229,7 +229,7 @@ const compilePageRunFromQuery = (input: {
   const crossesGroup = currentStatuses.some((status) => status !== input.move.toStatus);
   const positionChanged =
     crossesGroup || currentTargetOrder.join("\u0000") !== nextTargetOrder.join("\u0000");
-  const manualDirection = databaseViewFractionalOrderDirection(query.view.config.presentation.sort);
+  const manualDirection = databaseViewFractionalOrderDirection(query.view.config.rules.sorts);
   if (manualDirection === "desc" && positionChanged) {
     return fail(
       "manual_direction_unsupported",

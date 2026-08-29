@@ -1,5 +1,8 @@
 import type { DatabaseViewId } from "./database-identities";
-import type { DatabaseViewPresentationOverride } from "./database-kernel";
+import type {
+  DatabaseViewPresentationOverride,
+  DatabaseViewRulesOverride,
+} from "./database-kernel";
 import type { DatabaseViewDisclosureTargetV2 } from "./database-module-v2";
 
 export const DATABASE_CHANGE_EVENT_VERSION = 3 as const;
@@ -15,8 +18,9 @@ export type DatabaseChangeSourceKind =
 
 export type DatabasePersonalViewChange =
   | {
-      readonly kind: "presentation";
+      readonly kind: "preferences";
       readonly viewId: DatabaseViewId;
+      readonly rulesOverride: DatabaseViewRulesOverride;
       readonly presentationOverride: DatabaseViewPresentationOverride;
       readonly revision: number;
     }

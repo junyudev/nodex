@@ -43,7 +43,10 @@ import {
   type ProjectionRegistration,
 } from "./projection-invalidation-registry";
 import { upgradeDatabaseViewConfigV2 } from "../../shared/database-view-presentation";
-import { groupScopeKeyForColumn } from "./database-view-render-model";
+import {
+  groupScopeKeyForColumn,
+  withPublishedDatabaseViewDefinition,
+} from "./database-view-render-model";
 
 function createDatabaseViewSnapshot(
   viewId: string,
@@ -61,7 +64,7 @@ function createDatabaseViewSnapshot(
     databaseId,
     dataSourceId,
     name: isPrimary ? "Primary" : "Focused",
-    defaultLayout: "board" as const,
+    layout: "board" as const,
     config: upgradeDatabaseViewConfigV2({
       schemaKey: "nodex.database-view",
       schemaVersion: 2,
@@ -287,7 +290,7 @@ function createBoardSnapshot(
       databaseBlockId: "database-1",
       projectId: "project-1",
       name: query.view.name,
-      defaultLayout: query.view.defaultLayout,
+      layout: query.view.layout,
       config: query.view.config as never,
       isPrimary: primary,
       createdAt: query.view.createdAt,
@@ -703,16 +706,14 @@ describe("board store", () => {
     const store = registry.getStore("project-1", "view-focused");
     await store.fetchBoard();
 
-    store.setPresentationOverride({ group: null, layout: "list" });
+    store.setPresentationOverride({ group: null });
     await store.fetchBoard();
 
-    expect(groupInputs.at(-1)?.presentationOverride).toEqual({
+    expect(groupInputs.at(-1)?.preferencesOverride?.presentationOverride).toEqual({
       group: null,
-      layout: "list",
     });
-    expect(windowInputs.at(-1)?.presentationOverride).toEqual({
+    expect(windowInputs.at(-1)?.preferencesOverride?.presentationOverride).toEqual({
       group: null,
-      layout: "list",
     });
   });
 
@@ -743,7 +744,7 @@ describe("board store", () => {
     const store = registry.getStore("project-1", "view-focused");
     await store.fetchBoard();
 
-    store.setPresentationOverride({ layout: "list", group: null });
+    store.setPresentationOverride({ group: null });
     const refresh = store.fetchBoard();
     await waitForMicrotasks();
 
@@ -791,7 +792,7 @@ describe("board store", () => {
     const releasedRegistration = projection.registrations.at(-1);
     if (!releasedRegistration) throw new Error("Board projection was not registered");
 
-    store.setPresentationOverride({ layout: "list", group: null });
+    store.setPresentationOverride({ group: null });
     releasedRegistration.fence?.({
       version: 2,
       kind: "checkpoint",
@@ -830,7 +831,7 @@ describe("board store", () => {
     const store = registry.getStore("project-1", "view-focused");
     await store.fetchBoard();
 
-    store.setPresentationOverride({ layout: "list", group: null });
+    store.setPresentationOverride({ group: null });
     await store.fetchBoard();
 
     expect(store.getSnapshot().loading).toBe(false);
@@ -1851,8 +1852,8 @@ describe("board store", () => {
       getProjectionInvalidationRegistry: projection.getRegistry,
     });
     const store = registry.getStore("project-1");
-    store.setPresentationOverride({
-      sort: [
+    store.setRulesOverride({
+      sorts: [
         {
           field: { kind: "property", propertyId: "priority" },
           direction: "asc",
@@ -1991,6 +1992,66 @@ describe("board store", () => {
     refreshed.resolve(canonical);
     expect((await mutation).ok).toBe(true);
     expect(visibleOrder()).toEqual(["card-2", "card-1"]);
+  });
+
+  test("keeps published rules visible while personal state hands off to canonical authority", async () => {
+    const initial = createTwoPageBoardSnapshot();
+    const rules = { ...initial.query.view.config.rules, sorts: [] };
+    const canonicalBase = createTwoPageBoardSnapshot(["card-1", "card-2"], 2);
+    const canonical: DatabaseViewWindowSnapshot = {
+      ...canonicalBase,
+      query: {
+        ...canonicalBase.query,
+        view: {
+          ...canonicalBase.query.view,
+          config: { ...canonicalBase.query.view.config, rules },
+        },
+      },
+      view: {
+        ...canonicalBase.view,
+        config: { ...canonicalBase.view.config, rules } as never,
+      },
+    };
+    const remote = createDeferred<{
+      readonly storeEpoch: string;
+      readonly commitSeq: number;
+    }>();
+    const refreshed = createDeferred<DatabaseViewWindowSnapshot>();
+    let readCount = 0;
+    const registry = createTestRegistry({
+      readViewWindow: async () => {
+        readCount += 1;
+        return readCount === 1 ? initial : await refreshed.promise;
+      },
+      subscribeBoardChanges: () => () => {},
+    });
+    const store = registry.getStore("default");
+    store.setRulesOverride({ sorts: rules.sorts });
+    await store.fetchBoard();
+
+    const mutation = store.runOptimisticDatabaseViewMutation({
+      kind: "database:view:rules:publish",
+      conflictKeys: ["database-view:definition:rules"],
+      apply: (model) => withPublishedDatabaseViewDefinition(model, { rules }),
+      runRemote: async () => await remote.promise,
+      getCommitCursor: (receipt) => receipt,
+    });
+    const visibleRules = () => store.getSnapshot().databaseView?.query.view.config.rules;
+    expect(visibleRules()).toEqual(rules);
+
+    // Core may publish the personal-preference clear before the canonical View
+    // refresh arrives. The receipt-fenced definition patch owns this gap.
+    store.setRulesOverride(null);
+    expect(visibleRules()).toEqual(rules);
+
+    remote.resolve({ storeEpoch: "epoch-1", commitSeq: 2 });
+    await waitForMicrotasks();
+    expect(readCount).toBe(2);
+    expect(visibleRules()).toEqual(rules);
+
+    refreshed.resolve(canonical);
+    expect((await mutation).ok).toBe(true);
+    expect(visibleRules()).toEqual(rules);
   });
 
   test("ignores no-op local overlays", async () => {

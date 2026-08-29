@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn current_schema_artifact_matches_catalog() {
-        assert_eq!(CURRENT_STORE_REVISION, 143);
+        assert_eq!(CURRENT_STORE_REVISION, 147);
         let mut artifact = Connection::open_in_memory().expect("artifact Store");
         install_current_schema(&mut artifact).expect("current schema artifact");
         let artifact_inventory = read_schema_inventory(&artifact).expect("artifact inventory");

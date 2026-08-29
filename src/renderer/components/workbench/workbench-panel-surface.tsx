@@ -131,6 +131,12 @@ export function WorkbenchTabProjectionPanel({
         onOpenRelatedChat={onOpenRelatedChat}
         onSendPageToChat={onSendPageToChat}
         onOpenCanvasStage={onOpenCanvasStage}
+        onSelectDatabaseView={(databaseViewId, title) => {
+          onUpdateTab(tab.id, {
+            title,
+            config: { projectId: tab.config.projectId, databaseViewId },
+          });
+        }}
         targetLeafId={resolveLeafIdForPanelTab(activeSession, tab.panelId, tab.id)}
       />
     );

@@ -852,7 +852,7 @@ const fromCoreNode = (node: CoreNavigationNode): LibraryNavigationNode => {
     databaseId: parseDatabaseId(node.database_id),
     dataSourceId: parseDataSourceId(node.data_source_id),
     title: node.title,
-    defaultLayout: parseViewLayout(node.default_layout),
+    layout: parseViewLayout(node.layout),
     isDefault: node.is_default,
     revision: node.revision,
   };
@@ -1200,6 +1200,15 @@ const mapPageDataSourceContext = (context: CorePageDetail["data_source_context"]
     database: context.database,
     dataSource: context.data_source,
     properties: context.properties.map(mapCorePropertyDescriptor),
+    pageLayout: {
+      dataSourceId: context.page_layout.data_source_id,
+      revision: context.page_layout.revision,
+      entries: context.page_layout.entries.map((entry) => ({
+        propertyId: entry.property_id,
+        rankKey: entry.rank_key,
+        visibility: entry.visibility,
+      })),
+    },
     values: context.values,
   };
 };

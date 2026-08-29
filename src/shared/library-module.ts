@@ -76,7 +76,7 @@ export interface LibraryViewNavigationNode {
   readonly databaseId: DatabaseId;
   readonly dataSourceId: DataSourceId;
   readonly title: string;
-  readonly defaultLayout: DatabaseViewLayout;
+  readonly layout: DatabaseViewLayout;
   readonly isDefault: boolean;
   readonly revision: number;
 }

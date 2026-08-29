@@ -3,12 +3,13 @@ import {
   CalendarIcon,
   CheckboxSquareIcon,
   EstimateIcon,
+  MultiSelectIcon,
   PageIcon,
   PriorityIcon,
   StatusIcon,
-  TagIcon,
+  TagsIcon,
 } from "@/components/shared/icons";
-import { Hash, Tags, TextCursorInput } from "@/components/shared/icons/generic-icons";
+import { Hash, TextCursorInput } from "@/components/shared/icons/generic-icons";
 import type { DatabasePropertyValueType } from "../../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
@@ -31,8 +32,9 @@ export const dataSourcePropertyTypeIcon = (valueType: DatabasePropertyValueType)
     case "checkbox":
       return CheckboxSquareIcon;
     case "select":
+      return TagsIcon;
     case "multi_select":
-      return Tags;
+      return MultiSelectIcon;
     case "date":
     case "datetime":
       return CalendarIcon;
@@ -55,7 +57,7 @@ export const dataSourcePropertyIcon = (
     case "estimate":
       return EstimateIcon;
     case "tags":
-      return TagIcon;
+      return TagsIcon;
     case "due_date":
     case "schedule_boundary":
       return CalendarIcon;

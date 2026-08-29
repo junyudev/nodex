@@ -16,7 +16,7 @@ use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde_json::Value;
 
-use crate::database::read::{page_data_source_projection, page_record};
+use crate::database::read::{page_data_source_projection, page_layout, page_record};
 use crate::database::resolve_page_key_matches_in_library;
 use crate::document::is_primary_canvas_block_id;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -1560,6 +1560,7 @@ fn page_detail(
                 &document.2,
                 requesting_project_id,
             )?;
+            let page_layout = page_layout(connection, &projection.data_source_id)?;
             LibraryPageDataSourceContext::Member {
                 page_key: projection.page_key,
                 membership: Box::new(LibraryPageMembership {
@@ -1571,6 +1572,7 @@ fn page_detail(
                 database: projection.database,
                 data_source: projection.data_source,
                 properties: projection.properties,
+                page_layout,
                 values: projection.values,
             }
         }
@@ -2312,7 +2314,7 @@ fn view_node_window(
         i64::try_from(limit.saturating_add(1)).map_err(|_| invalid("Library limit overflowed"))?;
     let nodes = connection
         .prepare(
-            "SELECT id, database_block_id, data_source_id, name, default_layout, revision, rank_key \
+            "SELECT id, database_block_id, data_source_id, name, layout, revision, rank_key \
              FROM database_views WHERE database_block_id = ?1 AND lifecycle = 'active' \
                AND (?2 IS NULL OR rank_key > ?2 OR (rank_key = ?2 AND id > ?3)) \
              ORDER BY rank_key, id LIMIT ?4",
@@ -2328,7 +2330,7 @@ fn view_node_window(
                         database_id: row.get(1)?,
                         data_source_id: row.get(2)?,
                         title: row.get(3)?,
-                        default_layout: row.get(4)?,
+                        layout: row.get(4)?,
                         revision: row.get(5)?,
                     },
                     sort_key: row.get(6)?,
@@ -2412,7 +2414,7 @@ fn view_node(
     connection
         .query_row(
             "SELECT view.id, view.database_block_id, view.data_source_id, view.name, \
-               view.default_layout, view.revision, view.id = container.default_view_id \
+               view.layout, view.revision, view.id = container.default_view_id \
              FROM database_views view \
              INNER JOIN database_containers container \
                ON container.block_id = view.database_block_id \
@@ -2426,7 +2428,7 @@ fn view_node(
                     database_id: row.get(1)?,
                     data_source_id: row.get(2)?,
                     title: row.get(3)?,
-                    default_layout: row.get(4)?,
+                    layout: row.get(4)?,
                     revision: row.get(5)?,
                     is_default: row.get::<_, i64>(6)? == 1,
                 })

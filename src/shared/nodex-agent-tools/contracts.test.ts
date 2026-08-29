@@ -309,7 +309,7 @@ describe("Nodex Agent tool contracts", () => {
             },
           ],
         },
-        view: { viewId: "view-1", name: "Board", defaultLayout: "board" },
+        view: { viewId: "view-1", name: "Board", layout: "board" },
         rows: Array.from({ length: 13 }, (_, index) => ({
           blockId: `block-${index + 1}`,
           title: `Task ${index + 1}`,

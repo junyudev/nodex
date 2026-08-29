@@ -1,5 +1,6 @@
 import type { DatabaseJsonValue, DatabasePropertyValueType } from "../../shared/database-kernel";
 import type {
+  DatabasePagePropertyVisibilityV2,
   DataSourcePageValueV2,
   DataSourcePropertyRecordV2,
 } from "../../shared/database-module-v2";
@@ -31,6 +32,7 @@ export interface PageStageDataSourceProperty {
   readonly value: DatabaseJsonValue;
   readonly valueRevision: number;
   readonly error: string | null;
+  readonly pageVisibility: DatabasePagePropertyVisibilityV2;
 }
 
 export interface PageStageSemanticProperty<Value> {
@@ -132,6 +134,9 @@ export const buildPageStageDataSourceProperties = (
 ): readonly PageStageDataSourceProperty[] => {
   if (detail.dataSourceContext.kind !== "member") return [];
   const context = detail.dataSourceContext;
+  const layoutByProperty = new Map(
+    context.pageLayout.entries.map((entry) => [entry.propertyId, entry] as const),
+  );
   return context.properties
     .filter((property) => property.lifecycle === "active")
     .map((property) => {
@@ -142,9 +147,16 @@ export const buildPageStageDataSourceProperties = (
         value,
         valueRevision: current?.revision ?? 0,
         error: invalidValueReason(property, value),
+        pageVisibility: layoutByProperty.get(property.propertyId)?.visibility ?? "always_show",
       };
     })
-    .sort((left, right) => left.property.rankKey.localeCompare(right.property.rankKey));
+    .sort((left, right) => {
+      const leftRank =
+        layoutByProperty.get(left.property.propertyId)?.rankKey ?? left.property.rankKey;
+      const rightRank =
+        layoutByProperty.get(right.property.propertyId)?.rankKey ?? right.property.rankKey;
+      return leftRank.localeCompare(rightRank);
+    });
 };
 
 const findBuiltInProperty = (

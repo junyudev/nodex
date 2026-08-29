@@ -84,7 +84,7 @@ const DatabaseSummarySchema = z.strictObject({
     z.strictObject({
       viewId: ViewIdSchema,
       name: z.string(),
-      defaultLayout: DatabaseViewLayoutSchema,
+      layout: DatabaseViewLayoutSchema,
       isPrimary: z.boolean(),
     }),
   ),
@@ -377,7 +377,7 @@ export const QueryDatabaseDataSchema = z.strictObject({
     .strictObject({
       viewId: ViewIdSchema,
       name: z.string(),
-      defaultLayout: DatabaseViewLayoutSchema,
+      layout: DatabaseViewLayoutSchema,
     })
     .optional(),
   rows: z

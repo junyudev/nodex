@@ -273,8 +273,11 @@ UI hides the Data Source noun while contracts retain its explicit identity.
 
 A Data Source is a relational entity with one home Database. It is never a
 Block, has no Document, and has no independent Library placement. It owns one
-typed property schema, Data Source-parented Pages, their property values,
-schema/query revisions, and dormant membership history.
+typed property schema, Data Source-parented Pages, their property values, one
+Page layout, schema/query revisions, and dormant membership history. The Page
+layout orders Source-defined Properties and assigns each one `always_show`,
+`hide_when_empty`, or `always_hide`; it does not own Page capabilities such as
+Files, Linked chats, or schedules.
 
 Property identity is local to one Data Source. Built-in capabilities use
 reserved stable IDs such as `status`, `priority`, and `tags`; custom Properties
@@ -306,40 +309,50 @@ View's personal sorting or presentation.
 
 ### Database View
 
-A Database View is a durable named query and default presentation belonging to
-one Database and targeting exactly one Data Source. It stores its Filter,
-default Presentation, Manual Order, and revision. Active View, search text,
+A Database View is a durable named query and Presentation belonging to one
+Database and targeting exactly one Data Source. Every user-visible View tab has
+one stable View identity and one current Layout. It stores its Filter,
+Presentation, Manual Order, rank, and revision. Active View, search text,
 selection, and expansion remain window-local.
 
 ### Layout
 
-A Layout is the Board or List display strategy for one Database View. Changing
-Layout keeps the same View identity and Filter.
+A Layout is the durable Board or List presentation strategy for one Database
+View. It is the Presentation discriminant: a View has only the fields legal for
+its current Layout. An explicit Layout change keeps the View identity and
+layout-neutral query settings while replacing layout-specific settings. Layout
+is never a personal preference or a substitute for View identity.
 _Avoid_: View kind, Table view, toggle-list view, Calendar layout
 
 ### View Preference Override
 
-A View Preference Override is a sparse Profile-local presentation preference
-for one Database View. It cannot change the View's Filter, access scope,
-lifecycle, or Manual Order.
+A View Preference Override is a sparse Profile-local Filter and Presentation
+preference for one Database View. It can change only the fields explicitly
+supported for that View's current Layout. It cannot change the View's name,
+target Data Source, Layout, rank, lifecycle, access scope, or Manual Order.
 _Avoid_: Project view preference, personal View copy
 
 ### Effective View
 
-An Effective View is the normalized result of a Database View's default
-Presentation, one View Preference Override, and its Data Source capabilities.
-Both Core projection reads and renderer Layouts consume the same result.
+An Effective View is the normalized result of a Database View's durable Filter
+and Presentation, one View Preference Override, and its Data Source
+capabilities. Both Core projection reads and the renderer for its one current
+Layout consume the same result.
 
 ### Filter
 
-A Filter is the durable Database View expression that determines which Source
-Pages belong to the result. Search is a separate window-local interaction.
+A Filter is the Database View expression that determines which Source Pages
+belong to the result. Its durable value is shared; a sparse personal change may
+remain private until explicitly published. Search is a separate window-local
+interaction.
 
 ### Presentation
 
 A Presentation describes how a Database View result is sorted, grouped, and
-shown in Board or List. A default Presentation is durable; a personal change
-remains a View Preference Override until explicitly set as the View default.
+shown in its current Board or List Layout. It includes the ordered Properties
+shown in that View and layout-specific settings. Its durable value is shared;
+a supported personal change remains a View Preference Override until explicitly
+published. View Property display is independent from Data Source Page layout.
 
 ### Manual Order
 

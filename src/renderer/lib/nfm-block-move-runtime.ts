@@ -289,7 +289,7 @@ export const moveNfmBlocks = async (
       placement: {
         kind: "direct",
         viewId: view.viewId,
-        presentationOverride: { layout: "board" },
+        preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
         groupKey: request.destination.columnId,
       },
     };

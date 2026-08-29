@@ -12,6 +12,7 @@ import {
 import type { DatabaseJsonValue } from "../../../shared/database-kernel";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
 import { defaultDataSourcePropertyOptionColor } from "@/lib/data-source-property-options";
+import { formatDatabaseNumber } from "@/lib/database-property-display-format";
 import { RelationPropertyEditor } from "./relation-property-editor";
 import { PropertyOptionPicker, type PropertyOptionPickerHost } from "./property-option-picker";
 import { SemanticSelectPropertyEditor } from "./semantic-property-editors";
@@ -50,6 +51,7 @@ interface ScalarPropertyEditorProps {
   readonly presentation: DatabasePropertyValuePresentation;
   readonly kind: "text" | "number";
   readonly triggerIcon?: ReactNode;
+  readonly formatDisplayValue?: (value: string) => string;
   readonly onChange: (value: DatabaseJsonValue) => void;
 }
 
@@ -61,10 +63,12 @@ function ScalarPropertyEditor({
   presentation,
   kind,
   triggerIcon,
+  formatDisplayValue,
   onChange,
 }: ScalarPropertyEditorProps) {
   const [draft, setDraft] = useState(value);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const skipBlurCommitRef = useRef(false);
   const disabledRef = useRef(disabled);
   disabledRef.current = disabled;
@@ -98,18 +102,21 @@ function ScalarPropertyEditor({
   };
 
   const dense = presentation === "list" || presentation === "board";
+  const presentedDraft = focused || !formatDisplayValue ? draft : formatDisplayValue(draft);
   const input = (
     <input
       type="text"
       inputMode={kind === "number" ? "decimal" : "text"}
       aria-label={`${label} value`}
       aria-invalid={error !== null}
-      size={presentation === "board" ? Math.max(1, Math.min(draft.length, 18)) : undefined}
-      value={draft}
+      size={presentation === "board" ? Math.max(1, Math.min(presentedDraft.length, 18)) : undefined}
+      value={presentedDraft}
       disabled={disabled}
       placeholder={PROPERTY_EMPTY_VALUE_LABEL}
+      onFocus={() => setFocused(true)}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={() => {
+        setFocused(false);
         if (skipBlurCommitRef.current) {
           skipBlurCommitRef.current = false;
           return;
@@ -428,6 +435,14 @@ export function DataSourcePropertyValueEditor({
         revision={revision}
         disabled={disabled || pending}
         presentation={presentation}
+        dateFormat={
+          property.schema.kind === "date" || property.schema.kind === "datetime"
+            ? property.schema.dateFormat
+            : "full"
+        }
+        timeFormat={
+          property.schema.kind === "datetime" ? property.schema.timeFormat : "twelve_hour"
+        }
         triggerIcon={
           presentation === "list" || presentation === "board" ? valueTriggerIcon : undefined
         }
@@ -445,6 +460,7 @@ export function DataSourcePropertyValueEditor({
     );
   }
   if (property.valueType === "text" || property.valueType === "number") {
+    const numberFormat = property.schema.kind === "number" ? property.schema.format : null;
     return (
       <span className="inline-flex min-w-0 items-center gap-1">
         {label}
@@ -463,6 +479,15 @@ export function DataSourcePropertyValueEditor({
           kind={property.valueType}
           triggerIcon={
             presentation === "list" || presentation === "board" ? valueTriggerIcon : undefined
+          }
+          formatDisplayValue={
+            numberFormat
+              ? (raw) => {
+                  if (!raw.trim()) return raw;
+                  const parsed = Number(raw);
+                  return Number.isFinite(parsed) ? formatDatabaseNumber(parsed, numberFormat) : raw;
+                }
+              : undefined
           }
           onChange={onChange}
         />

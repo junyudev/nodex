@@ -9,7 +9,10 @@ import {
 } from "../../shared/library-events";
 import type { ProjectCatalogChangeKind } from "../../shared/core-modules/project-workspace-module";
 import type { ProjectSessionInvalidationScope } from "../../shared/core-modules/project-workspace-module";
-import { fromCoreDatabaseViewPresentationOverride } from "../core-client/database-presentation-adapter";
+import {
+  fromCoreDatabaseViewPresentationOverride,
+  fromCoreDatabaseViewRulesOverride,
+} from "../core-client/database-presentation-adapter";
 import type { CoreAuthorizedDeliveryAtom, CoreEventEnvelope } from "../core-client/types";
 
 export interface CoreAutomationInvalidation {
@@ -85,10 +88,11 @@ export const projectCoreDatabaseEvent = (
     affectedPageIds: payload.event.page_ids,
     affectedViewIds: payload.event.view_ids,
     personalViewChanges: (payload.event.personal_view_changes ?? []).map((change) =>
-      change.kind === "presentation"
+      change.kind === "preferences"
         ? {
             kind: change.kind,
             viewId: parseDatabaseViewId(change.view_id),
+            rulesOverride: fromCoreDatabaseViewRulesOverride(change.value.rules_override),
             presentationOverride: fromCoreDatabaseViewPresentationOverride(
               change.value.presentation_override,
             ),

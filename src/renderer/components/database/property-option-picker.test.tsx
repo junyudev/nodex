@@ -120,6 +120,31 @@ describe("PropertyOptionPicker", () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 
+  test("keeps an embedded single-select editor expanded after choosing a value", async () => {
+    const onChange = vi.fn();
+    const view = render(
+      <PropertyOptionPicker
+        host="embedded"
+        label="Status"
+        mode="single"
+        options={options}
+        selectedIds={[]}
+        onSelectedIdsChange={onChange}
+      />,
+    );
+
+    const search = view.getByRole("combobox", { name: "Search Status options" });
+    expect(search.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => {
+      fireEvent.click(view.getByRole("option", { name: "Ready" }));
+      await Promise.resolve();
+    });
+
+    expect(onChange).toHaveBeenCalledWith(["two"]);
+    expect(search.getAttribute("aria-expanded")).toBe("true");
+    expect(view.getByRole("option", { name: "Needs review" })).toBeTruthy();
+  });
+
   test("filters options and delegates creation without inventing an identity", async () => {
     const onCreate = vi.fn(async () => undefined);
     const view = render(

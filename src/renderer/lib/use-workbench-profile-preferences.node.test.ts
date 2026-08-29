@@ -33,6 +33,17 @@ describe("Workbench profile preferences", () => {
         },
         { id: "invalid" },
       ],
+      databaseViewTabs: {
+        displayModeByDatabaseId: {
+          "database-a": "icon_only",
+          "database-b": "unsupported",
+        },
+        ruleBarOpenByViewId: {
+          "view-a": true,
+          "view-b": false,
+          "view-invalid": "yes",
+        },
+      },
     });
 
     expect(preferences).not.toHaveProperty("viewsByProject");
@@ -47,6 +58,13 @@ describe("Workbench profile preferences", () => {
       },
     });
     expect(preferences.recentPageSessions).toHaveLength(1);
+    expect(preferences.databaseViewTabs.displayModeByDatabaseId).toEqual({
+      "database-a": "icon_only",
+    });
+    expect(preferences.databaseViewTabs.ruleBarOpenByViewId).toEqual({
+      "view-a": true,
+      "view-b": false,
+    });
   });
 
   test("drops retired Database presentation preferences", () => {

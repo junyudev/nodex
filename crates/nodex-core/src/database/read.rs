@@ -8,11 +8,14 @@ use nodex_core_contracts::collection::{
 use nodex_core_contracts::database::{
     DatabaseContainerRecord, DatabaseDataSourceDescriptor, DatabaseDataSourceRecord,
     DatabaseDescriptor, DatabaseIdentityTarget, DatabasePageKeyNamespace,
-    DatabasePageKeyPrefixAvailability, DatabasePageKeyPrefixPreview, DatabasePropertyDescriptor,
-    DatabasePropertyOption, DatabaseRead, DatabaseReadValue, DatabaseRetiredPageKeyPrefix,
-    DatabaseRowsTarget, DatabaseViewCollapsedOccurrences, DatabaseViewContext,
-    DatabaseViewDisclosureTarget, DatabaseViewLayout, DatabaseViewPersonalPresentation,
-    DatabaseViewPresentationOverrideInput, DatabaseViewReadTarget, DatabaseViewRecord,
+    DatabasePageKeyPrefixAvailability, DatabasePageKeyPrefixPreview, DatabasePageLayout,
+    DatabasePageLayoutEntry, DatabasePagePropertyVisibility, DatabasePropertyDescriptor,
+    DatabasePropertyManagementPolicy, DatabasePropertyOption, DatabasePropertySchema,
+    DatabasePropertySystemRole, DatabasePropertyType, DatabaseRead, DatabaseReadValue,
+    DatabaseRetiredPageKeyPrefix, DatabaseRowsTarget, DatabaseViewCollapsedOccurrences,
+    DatabaseViewContext, DatabaseViewDisclosureTarget, DatabaseViewLayout,
+    DatabaseViewPersonalPreferences, DatabaseViewPreferencesOverrideInput, DatabaseViewReadTarget,
+    DatabaseViewRecord,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Map, Value, json};
@@ -80,6 +83,13 @@ fn property_descriptor(
         )?
         .options
         .len()
+    } else if matches!(
+        schema,
+        DatabasePropertySchema::Number { .. }
+            | DatabasePropertySchema::Date { .. }
+            | DatabasePropertySchema::Datetime { .. }
+    ) {
+        0
     } else {
         let config = serde_json::from_str::<Value>(&row.config_json)
             .map_err(|_| corrupt("Stored Property config is invalid"))?;
@@ -90,11 +100,72 @@ fn property_descriptor(
         }
         0
     };
+    let non_empty_value_count = non_empty_property_value_count(
+        connection,
+        &row.data_source_id,
+        &row.property_id,
+        &row.value_type,
+    )?;
+    let referenced_view_ids =
+        property_referenced_view_ids(connection, &row.data_source_id, &row.property_id)?;
+    let system_role = match row.property_id.as_str() {
+        super::property_semantics::STATUS_PROPERTY_ID => Some(DatabasePropertySystemRole::Status),
+        super::property_semantics::TASK_PARENT_PROPERTY_ID => {
+            Some(DatabasePropertySystemRole::TaskParent)
+        }
+        _ => None,
+    };
+    let active = row.lifecycle == "active";
+    let custom = super::property_semantics::is_custom_property_id(&row.property_id);
+    let removable = system_role.is_none();
+    let option_backed = matches!(row.value_type.as_str(), "select" | "multi_select");
+    let mut blocked_reasons = Vec::new();
+    if !active {
+        blocked_reasons.push("Deleted Properties must be restored before editing".to_owned());
+    }
+    if system_role.is_some() {
+        blocked_reasons.push("This Property has a required Nodex system role".to_owned());
+    }
+    if active && non_empty_value_count > 0 {
+        blocked_reasons.push("Clear all Property values before changing its type".to_owned());
+    }
+    let management_policy = DatabasePropertyManagementPolicy {
+        can_rename: active,
+        can_reorder: active,
+        // The same schema intent owns presentation-only Number/Date formats,
+        // which remain editable with values. Core still rejects structural
+        // type or Relation changes until values are empty.
+        can_change_type: active && custom,
+        can_duplicate: active && system_role != Some(DatabasePropertySystemRole::TaskParent),
+        can_delete: active && removable,
+        can_restore: !active && removable,
+        can_permanently_delete: !active && removable && referenced_view_ids.is_empty(),
+        can_manage_options: active && option_backed,
+        allowed_types: if active && custom {
+            vec![
+                DatabasePropertyType::Text,
+                DatabasePropertyType::Number,
+                DatabasePropertyType::Checkbox,
+                DatabasePropertyType::Select,
+                DatabasePropertyType::MultiSelect,
+                DatabasePropertyType::Date,
+                DatabasePropertyType::Datetime,
+                DatabasePropertyType::Relation,
+            ]
+        } else {
+            vec![]
+        },
+        blocked_reasons,
+    };
     Ok(DatabasePropertyDescriptor {
         property_id: row.property_id,
         data_source_id: row.data_source_id,
         name: row.name,
         capabilities: super::property_semantics::capabilities(&schema),
+        system_role,
+        non_empty_value_count,
+        referenced_view_ids,
+        management_policy,
         schema,
         option_count: u32::try_from(option_count)
             .map_err(|_| corrupt("Property option count overflowed"))?,
@@ -104,6 +175,164 @@ fn property_descriptor(
         created_at: row.created_at,
         updated_at: row.updated_at,
     })
+}
+
+pub(crate) fn page_layout(
+    connection: &Connection,
+    data_source_id: &str,
+) -> Result<DatabasePageLayout, StoreError> {
+    let revision = connection
+        .query_row(
+            "SELECT revision FROM data_source_page_layouts WHERE data_source_id = ?1",
+            [data_source_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .ok_or_else(|| corrupt("Data Source Page layout is unavailable"))?;
+    let rows = connection
+        .prepare(
+            "SELECT entry.property_id, entry.rank_key, entry.visibility \
+             FROM data_source_page_layout_entries entry \
+             JOIN data_source_properties property \
+               ON property.data_source_id = entry.data_source_id \
+              AND property.id = entry.property_id \
+             WHERE entry.data_source_id = ?1 AND property.lifecycle = 'active' \
+             ORDER BY entry.rank_key, entry.property_id",
+        )?
+        .query_map([data_source_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let entries = rows
+        .into_iter()
+        .map(|(property_id, rank_key, visibility)| {
+            let visibility = match visibility.as_str() {
+                "always_show" => DatabasePagePropertyVisibility::AlwaysShow,
+                "hide_when_empty" => DatabasePagePropertyVisibility::HideWhenEmpty,
+                "always_hide" => DatabasePagePropertyVisibility::AlwaysHide,
+                _ => return Err(corrupt("Page layout visibility is invalid")),
+            };
+            Ok(DatabasePageLayoutEntry {
+                property_id,
+                rank_key,
+                visibility,
+            })
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    Ok(DatabasePageLayout {
+        data_source_id: data_source_id.to_owned(),
+        revision,
+        entries,
+    })
+}
+
+fn non_empty_property_value_count(
+    connection: &Connection,
+    data_source_id: &str,
+    property_id: &str,
+    value_type: &str,
+) -> Result<i64, StoreError> {
+    if value_type == "relation" {
+        return connection
+            .query_row(
+                "SELECT count(DISTINCT source_membership_id) \
+                 FROM data_source_relation_edges \
+                 WHERE source_data_source_id = ?1 AND property_id = ?2",
+                params![data_source_id, property_id],
+                |row| row.get(0),
+            )
+            .map_err(StoreError::from);
+    }
+    connection
+        .query_row(
+            "SELECT count(*) FROM data_source_property_values \
+             WHERE data_source_id = ?1 AND property_id = ?2 AND \
+               CASE value_type \
+                 WHEN 'text' THEN json_type(value_json) = 'text' \
+                   AND length(json_extract(value_json, '$')) > 0 \
+                 WHEN 'multi_select' THEN json_type(value_json) = 'array' \
+                   AND json_array_length(value_json) > 0 \
+                 ELSE json_type(value_json) <> 'null' \
+               END",
+            params![data_source_id, property_id],
+            |row| row.get(0),
+        )
+        .map_err(StoreError::from)
+}
+
+fn filter_references_property(
+    filter: &nodex_core_contracts::database::DatabaseViewFilter,
+    property_id: &str,
+) -> bool {
+    match filter {
+        nodex_core_contracts::database::DatabaseViewFilter::Clause {
+            property_id: candidate,
+            ..
+        } => candidate == property_id,
+        nodex_core_contracts::database::DatabaseViewFilter::Group { children, .. } => children
+            .iter()
+            .any(|child| filter_references_property(child, property_id)),
+    }
+}
+
+fn property_referenced_view_ids(
+    connection: &Connection,
+    data_source_id: &str,
+    property_id: &str,
+) -> Result<Vec<String>, StoreError> {
+    let rows = connection
+        .prepare(
+            "SELECT id, config_json FROM database_views \
+             WHERE data_source_id = ?1 AND lifecycle = 'active' ORDER BY rank_key, id",
+        )?
+        .query_map([data_source_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    rows.into_iter()
+        .filter_map(|(view_id, config_json)| {
+            let definition = match super::view_contract::decode_definition_json(&config_json) {
+                Ok(value) => value,
+                Err(message) => return Some(Err(corrupt(&message))),
+            };
+            let presentation = &definition.presentation;
+            let referenced = filter_references_property(
+                &super::view_contract::effective_filter(&definition.rules),
+                property_id,
+            ) || definition.rules.sorts.iter().any(|sort| {
+                matches!(
+                    &sort.field,
+                    nodex_core_contracts::database::DatabaseViewSortField::Property {
+                        property_id: candidate
+                    } if candidate == property_id
+                )
+            }) || presentation
+                .group
+                .as_ref()
+                .is_some_and(|group| group.property_id == property_id)
+                || presentation
+                    .subgroup
+                    .as_ref()
+                    .is_some_and(|group| group.property_id == property_id)
+                || presentation.display.fields.iter().any(|field| {
+                    matches!(
+                        field,
+                        nodex_core_contracts::database::DatabaseViewField::Property {
+                            property_id: candidate
+                        } if candidate == property_id
+                    )
+                })
+                || presentation
+                    .conditional_colors
+                    .iter()
+                    .any(|rule| rule.property_id == property_id);
+            referenced.then_some(Ok(view_id))
+        })
+        .collect()
 }
 
 pub(crate) fn page_data_source_projection(
@@ -388,6 +617,18 @@ pub(crate) fn read_at_commit_head(
                 )?,
             }
         }
+        DatabaseRead::PageLayout { data_source_id } => {
+            let database_id = database_for_source(connection, library_id, &data_source_id)?;
+            authorize_required(
+                connection,
+                project_id,
+                primary_database_id.as_deref(),
+                &database_id,
+            )?;
+            DatabaseReadValue::PageLayout {
+                value: page_layout(connection, &data_source_id)?,
+            }
+        }
         DatabaseRead::ViewDescriptorWindow {
             database_id,
             window,
@@ -421,7 +662,7 @@ pub(crate) fn read_at_commit_head(
                 value: view_record(connection, library_id, project_id, &view_id)?,
             }
         }
-        DatabaseRead::ViewPersonalPresentation { view_id } => {
+        DatabaseRead::ViewPersonalPreferences { view_id } => {
             authorize_view(
                 connection,
                 library_id,
@@ -429,8 +670,8 @@ pub(crate) fn read_at_commit_head(
                 primary_database_id.as_deref(),
                 &view_id,
             )?;
-            DatabaseReadValue::ViewPersonalPresentation {
-                value: view_personal_presentation(
+            DatabaseReadValue::ViewPersonalPreferences {
+                value: view_personal_preferences(
                     connection,
                     context.profile_id.0.as_str(),
                     &view_id,
@@ -478,12 +719,12 @@ pub(crate) fn read_at_commit_head(
                 window: &window,
                 group_scope: group_scope.as_ref(),
             };
-            let value = match resolved.presentation_override {
-                Some(presentation_override) => super::window::presented_view_window(
+            let value = match resolved.preferences_override {
+                Some(preferences_override) => super::window::presented_view_window(
                     connection,
                     library_id,
                     &resolved.view_id,
-                    &presentation_override,
+                    &preferences_override,
                     read,
                 )?,
                 None => {
@@ -513,12 +754,12 @@ pub(crate) fn read_at_commit_head(
                 window: &window,
                 group_scope: None,
             };
-            let value = match resolved.presentation_override {
-                Some(presentation_override) => super::window::presented_list_window(
+            let value = match resolved.preferences_override {
+                Some(preferences_override) => super::window::presented_list_window(
                     connection,
                     library_id,
                     &resolved.view_id,
-                    &presentation_override,
+                    &preferences_override,
                     read,
                 )?,
                 None => {
@@ -546,12 +787,12 @@ pub(crate) fn read_at_commit_head(
                 project_id,
                 store_epoch: &store_epoch,
             };
-            let value = match resolved.presentation_override {
-                Some(presentation_override) => super::window::presented_view_groups(
+            let value = match resolved.preferences_override {
+                Some(preferences_override) => super::window::presented_view_groups(
                     connection,
                     library_id,
                     &resolved.view_id,
-                    &presentation_override,
+                    &preferences_override,
                     read,
                 )?,
                 None => {
@@ -784,7 +1025,7 @@ fn page_key_examples(prefix: &str, next_number: i64) -> Result<Vec<String>, Stor
 
 struct ResolvedViewReadTarget {
     view_id: String,
-    presentation_override: Option<DatabaseViewPresentationOverrideInput>,
+    preferences_override: Option<DatabaseViewPreferencesOverrideInput>,
 }
 
 fn resolve_view_read_target(
@@ -794,7 +1035,7 @@ fn resolve_view_read_target(
     primary_database_id: Option<&str>,
     target: DatabaseViewReadTarget,
 ) -> Result<ResolvedViewReadTarget, StoreError> {
-    let (view_id, presentation_override) = match target {
+    let (view_id, preferences_override) = match target {
         DatabaseViewReadTarget::ProjectDefault => {
             let database_id =
                 primary_database_id.ok_or_else(|| not_found("Project has no primary Database"))?;
@@ -817,7 +1058,7 @@ fn resolve_view_read_target(
         }
         DatabaseViewReadTarget::PresentedView {
             view_id,
-            presentation_override,
+            preferences_override,
         } => {
             authorize_view(
                 connection,
@@ -826,12 +1067,12 @@ fn resolve_view_read_target(
                 primary_database_id,
                 &view_id,
             )?;
-            (view_id, Some(presentation_override))
+            (view_id, Some(preferences_override))
         }
     };
     Ok(ResolvedViewReadTarget {
         view_id,
-        presentation_override,
+        preferences_override,
     })
 }
 
@@ -846,30 +1087,33 @@ fn authorize_view(
     authorize_required(connection, project_id, primary_database_id, &database_id)
 }
 
-fn view_personal_presentation(
+fn view_personal_preferences(
     connection: &Connection,
     profile_id: &str,
     view_id: &str,
-) -> Result<DatabaseViewPersonalPresentation, StoreError> {
+) -> Result<DatabaseViewPersonalPreferences, StoreError> {
     let stored = connection
         .query_row(
-            "SELECT presentation_override_json, revision \
-             FROM database_view_personal_presentations \
+            "SELECT preferences_json, revision \
+             FROM database_view_personal_preferences \
              WHERE profile_id = ?1 AND view_id = ?2",
             params![profile_id, view_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
         )
         .optional()?;
     let Some((presentation_json, revision)) = stored else {
-        return Ok(DatabaseViewPersonalPresentation {
+        return Ok(DatabaseViewPersonalPreferences {
+            rules_override: Default::default(),
             presentation_override: Default::default(),
             revision: 0,
         });
     };
-    let presentation_override = serde_json::from_str(&presentation_json)
-        .map_err(|_| corrupt("Database View personal presentation override is invalid"))?;
-    Ok(DatabaseViewPersonalPresentation {
-        presentation_override,
+    let preferences_override =
+        serde_json::from_str::<DatabaseViewPreferencesOverrideInput>(&presentation_json)
+            .map_err(|_| corrupt("Database View personal preferences are invalid"))?;
+    Ok(DatabaseViewPersonalPreferences {
+        rules_override: preferences_override.rules_override,
+        presentation_override: preferences_override.presentation_override,
         revision,
     })
 }
@@ -1240,7 +1484,7 @@ fn property_window(
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<DatabasePropertyDescriptor>, StoreError> {
     let normalized = normalize_request(request)?;
-    let fingerprint = cursor::query_fingerprint(&("database_properties_v1", data_source_id))?;
+    let fingerprint = cursor::query_fingerprint(&("database_properties_v2", data_source_id))?;
     let subject = CollectionCursorSubject {
         kind: "database_properties",
         library_id,
@@ -1258,7 +1502,7 @@ fn property_window(
             "SELECT id, data_source_id, name, value_type, config_json, rank_key, lifecycle, \
                schema_revision, created_at, updated_at, \
                CASE lifecycle WHEN 'active' THEN 0 ELSE 1 END \
-             FROM data_source_properties WHERE data_source_id = ?1 AND lifecycle = 'active' \
+             FROM data_source_properties WHERE data_source_id = ?1 \
                AND (?2 IS NULL \
                  OR CASE lifecycle WHEN 'active' THEN 0 ELSE 1 END > ?2 \
                  OR (CASE lifecycle WHEN 'active' THEN 0 ELSE 1 END = ?2 AND rank_key > ?3) \
@@ -1391,6 +1635,12 @@ fn option_window(
         .take(normalized.first.saturating_add(1))
         .map(|(ordinal, option)| {
             let option = DatabasePropertyOption {
+                selected_page_count: selected_option_page_count(
+                    connection,
+                    data_source_id,
+                    property_id,
+                    &option.id,
+                )?,
                 id: option.id,
                 name: option.name,
                 color: option.color,
@@ -1415,6 +1665,29 @@ fn option_window(
         normalized.first,
         candidates,
     )
+}
+
+fn selected_option_page_count(
+    connection: &Connection,
+    data_source_id: &str,
+    property_id: &str,
+    option_id: &str,
+) -> Result<i64, StoreError> {
+    connection
+        .query_row(
+            "SELECT count(DISTINCT value.membership_id) \
+             FROM data_source_property_values value \
+             WHERE value.data_source_id = ?1 AND value.property_id = ?2 AND (\
+               (json_type(value.value_json) = 'text' \
+                 AND json_extract(value.value_json, '$') = ?3) \
+               OR (json_type(value.value_json) = 'array' AND EXISTS (\
+                 SELECT 1 FROM json_each(value.value_json) item WHERE item.value = ?3\
+               ))\
+             )",
+            params![data_source_id, property_id, option_id],
+            |row| row.get(0),
+        )
+        .map_err(StoreError::from)
 }
 
 fn assemble_database_window<T: serde::Serialize>(
@@ -1662,7 +1935,7 @@ fn view_record_value(record: &DatabaseViewRecord) -> Result<Value, StoreError> {
         "databaseId": record.database_id,
         "dataSourceId": record.data_source_id,
         "name": record.name,
-        "defaultLayout": match record.layout {
+        "layout": match record.layout {
             DatabaseViewLayout::Board => "board",
             DatabaseViewLayout::List => "list",
         },
@@ -1776,7 +2049,7 @@ fn view_record(
 ) -> Result<DatabaseViewRecord, StoreError> {
     let stored = connection
         .query_row(
-            "SELECT view.id, view.database_block_id, view.data_source_id, view.name, view.default_layout, \
+            "SELECT view.id, view.database_block_id, view.data_source_id, view.name, view.layout, \
                view.config_json, view.revision, view.rank_key, view.lifecycle, view.created_at, \
                view.updated_at, container.default_view_id \
              FROM database_views view JOIN database_containers container \
@@ -1829,7 +2102,7 @@ fn view_record(
         library_id,
         project_id,
         &data_source_id,
-        &definition.filter,
+        &super::view_contract::effective_filter(&definition.rules),
     )?;
     Ok(DatabaseViewRecord {
         view_id,
@@ -1868,7 +2141,7 @@ fn validate_view_filter_access_by_id(
         library_id,
         project_id,
         &data_source_id,
-        &definition.filter,
+        &super::view_contract::effective_filter(&definition.rules),
     )
 }
 

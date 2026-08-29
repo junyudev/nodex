@@ -34,7 +34,8 @@ const APP_ICON_NAMES = [
   "BellIcon",
   "PriorityIcon",
   "AssigneeIcon",
-  "TagIcon",
+  "MultiSelectIcon",
+  "TagsIcon",
   "ActivitySpinnerIcon",
 ] as const satisfies readonly (keyof typeof AppIcons)[];
 

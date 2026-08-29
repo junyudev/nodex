@@ -12,7 +12,11 @@ import type {
   DatabaseViewWindowInput,
   DatabaseViewWindowSnapshot,
 } from "../../shared/database-views";
-import type { DatabaseViewPresentationOverride } from "../../shared/database-kernel";
+import type {
+  DatabaseViewPreferencesOverride,
+  DatabaseViewPresentationOverride,
+  DatabaseViewRulesOverride,
+} from "../../shared/database-kernel";
 import {
   buildPatchPageTransform,
   conflictKeysForPatch,
@@ -62,16 +66,16 @@ const CONSISTENT_WINDOW_READ_ATTEMPTS = 4;
 const MAX_RETAINED_BOARD_STORES = 32;
 const GROUP_WINDOW_READ_CONCURRENCY = 8;
 
-const changesProjectionCoordinate = (override: DatabaseViewPresentationOverride | null): boolean =>
+const changesProjectionCoordinate = (override: DatabaseViewPreferencesOverride | null): boolean =>
   Boolean(
     override &&
-    (override.layout !== undefined ||
-      override.sort !== undefined ||
-      Object.prototype.hasOwnProperty.call(override, "group") ||
-      Object.prototype.hasOwnProperty.call(override, "subgroup") ||
-      override.groupDirection !== undefined ||
-      override.completion !== undefined ||
-      override.hierarchy !== undefined),
+    (Object.keys(override.rulesOverride).length > 0 ||
+      Object.prototype.hasOwnProperty.call(override.presentationOverride, "group") ||
+      Object.prototype.hasOwnProperty.call(override.presentationOverride, "subgroup") ||
+      override.presentationOverride.groupDirection !== undefined ||
+      override.presentationOverride.completion !== undefined ||
+      override.presentationOverride.hierarchy !== undefined ||
+      override.presentationOverride.display !== undefined),
   );
 
 export interface IndexedPage extends DatabasePageSummary {
@@ -483,7 +487,7 @@ class BoardProjectStore {
 
   private stale = true;
 
-  private presentationOverride: DatabaseViewPresentationOverride | null = null;
+  private preferencesOverride: DatabaseViewPreferencesOverride | null = null;
 
   /**
    * Presentation refreshes keep the last readable projection on screen while
@@ -508,9 +512,9 @@ class BoardProjectStore {
     private readonly onInactive: () => void,
   ) {}
 
-  setPresentationOverride(presentationOverride: DatabaseViewPresentationOverride | null): void {
-    if (JSON.stringify(this.presentationOverride) === JSON.stringify(presentationOverride)) return;
-    this.presentationOverride = presentationOverride;
+  setPreferencesOverride(preferencesOverride: DatabaseViewPreferencesOverride | null): void {
+    if (JSON.stringify(this.preferencesOverride) === JSON.stringify(preferencesOverride)) return;
+    this.preferencesOverride = preferencesOverride;
     this.presentationGeneration += 1;
     this.revocationGeneration += 1;
     this.requiredRefreshGeneration += 1;
@@ -528,6 +532,20 @@ class BoardProjectStore {
     // the new presentation can replace it atomically.
     this.recomputeSnapshot({ loading: false, error: null });
     if (this.listeners.size > 0) void this.fetchBoard();
+  }
+
+  setPresentationOverride(presentationOverride: DatabaseViewPresentationOverride | null): void {
+    this.setPreferencesOverride({
+      rulesOverride: this.preferencesOverride?.rulesOverride ?? {},
+      presentationOverride: presentationOverride ?? {},
+    });
+  }
+
+  setRulesOverride(rulesOverride: DatabaseViewRulesOverride | null): void {
+    this.setPreferencesOverride({
+      rulesOverride: rulesOverride ?? {},
+      presentationOverride: this.preferencesOverride?.presentationOverride ?? {},
+    });
   }
 
   getSnapshot = (): BoardStoreSnapshot => this.snapshot;
@@ -660,7 +678,7 @@ class BoardProjectStore {
     return this.databaseViewId
       ? {
           databaseViewId: this.databaseViewId,
-          ...(this.presentationOverride ? { presentationOverride: this.presentationOverride } : {}),
+          ...(this.preferencesOverride ? { preferencesOverride: this.preferencesOverride } : {}),
           ...minimum,
         }
       : minimum;
@@ -684,7 +702,7 @@ class BoardProjectStore {
     return this.databaseViewId
       ? {
           databaseViewId: this.databaseViewId,
-          ...(this.presentationOverride ? { presentationOverride: this.presentationOverride } : {}),
+          ...(this.preferencesOverride ? { preferencesOverride: this.preferencesOverride } : {}),
           ...minimum,
         }
       : minimum;
@@ -1200,9 +1218,9 @@ class BoardProjectStore {
       // rank would expose a manual-order frame before the required canonical
       // repair. Presentation-changing personal overrides also make the
       // patch's durable group coordinates non-authoritative for this window.
-      const manualDirection = changesProjectionCoordinate(this.presentationOverride)
+      const manualDirection = changesProjectionCoordinate(this.preferencesOverride)
         ? null
-        : databaseViewPrimaryManualOrderDirection(snapshot.query.view.config.presentation.sort);
+        : databaseViewPrimaryManualOrderDirection(snapshot.query.view.config.rules.sorts);
       const admitsUpsert =
         includesUpsert &&
         (alreadyLoaded ||

@@ -128,6 +128,7 @@ function SidebarSectionMoreActionsMenu({
         <NodexDropdownButtonTrigger
           aria-label={`${group.label} actions`}
           showChevron={false}
+          chrome="transparent"
           className={cn(
             "h-6 w-6 shrink-0 justify-center px-0",
             "text-(--sidebar-foreground-tertiary) opacity-0 group-hover/top-header:opacity-100",

@@ -8,9 +8,11 @@ Database/Data Source/View/Page model is defined in [CONTEXT.md](../../CONTEXT.md
 Durability and synchronization are defined in [Reliability](../RELIABILITY.md).
 
 A Database is a placeable Container with one or more Data Sources and Views. A
-Data Source owns schema, row Pages, and values. A View targets one Data Source
-and owns saved filtering, sorting, grouping, displayed Properties, and optional
-manual Page positions. Page content remains in the Page's owned Document.
+Data Source owns schema, row Pages, values, and Page Property layout. A View
+targets one Data Source and owns one current Board or List layout, saved
+filtering, sorting, grouping, displayed Properties, and optional manual Page
+positions. Every visible View tab is one durable View identity. Page content
+remains in the Page's owned Document.
 
 ## Page keys
 
@@ -142,9 +144,12 @@ identity or emitting one patch per Page.
 
 ## View behavior
 
-Database Views support Board and List layouts. Both execute the selected View's
-saved query through one runtime and preserve the durable View identity while the
-layout changes. Every legal Board grouping and subgrouping uses one canonical
+Database Views support Board and List layouts. Each View has one current layout,
+and each visible View tab selects one exact durable View identity. Board and
+List Views execute their saved queries through one runtime; changing tabs
+changes View identity, while explicitly changing one View's layout preserves
+that View identity and replaces only layout-specific settings. Every legal
+Board grouping and subgrouping uses one canonical
 Column/Card presentation with whole-card drag, schema-driven compact Properties,
 column controls, Page menus, and keyboard behavior. Grouping changes column and
 swimlane membership, markers, labels, and semantic tone; it never selects a
@@ -179,22 +184,178 @@ when only one window is loaded. Flat Views use one cursor window. Refresh after
 a mutation preserves the loaded span where possible, and an expired cursor
 restarts that bounded window rather than silently truncating the result.
 
-Filter is durable View query authority and search is window-local. Layout,
-sorting, grouping, subgrouping, completion policy, List empty-group visibility,
-Board card description visibility, and displayed Properties resolve through a
-sparse Core personal presentation keyed by durable View ID. Its monotonic
-revision applies only to that presentation;
+Each View owns one ordered rule set: quick Property filters, one optional
+advanced AND/OR filter tree, and Sort rules. Quick filters have stable identity,
+remain visible while their value is empty, and combine with the advanced tree
+through a top-level AND. An incomplete authoring rule does not affect query
+results. Its explicit empty operand remains present across personal preference
+storage and Core events, while value-less operators omit the operand entirely;
+Core validates that distinction before committing either durable or personal
+rules. Operators and value controls follow the Property type; Relation values
+are selected from authorized Pages rather than entered as Page IDs. Search is
+window-local and does not become a saved rule.
+
+Rules and presentation may resolve through independent sparse fields in one
+Core personal-preference envelope keyed by durable View ID. View name, target
+Source, layout, rank, lifecycle, and default status are always durable. The
+personal preference's monotonic revision applies only to that preference;
 List disclosure is a separate bounded sparse set changed by idempotent
 per-target patches. The current List exposes disclosure only on group headers;
 Page occurrences remain expanded and do not create personal disclosure state.
-Changing either coordinate never rewrites or conflicts with the other. Board
-and List remember separate displayed-Property sets while sharing the other
-presentation rules. Reset removes only the personal presentation override and
-does not expand collapsed groups.
-`Set default for everyone` publishes the normalized effective presentation with
-View revision compare-and-swap and clears the override only after success; a
-conflict retains the personal state. A valid legacy renderer preference migrates
-once and is removed only after Core accepts the write.
+Changing either coordinate never rewrites or conflicts with the other. Each
+View remembers one complete Source-Property order plus the displayed-Property
+set for its current layout, so hidden Properties retain stable positions. Rule
+changes become the current user's effective query immediately. Reset restores
+the shared Filter and Sort settings together in one action without clearing an
+unrelated presentation override. `Save for everyone` publishes the effective
+Filter and Sort settings together in one action and clears both rule overrides
+only after the View revision compare-and-swap succeeds; a conflict retains the
+personal state. Publication keeps the effective rules visible until a
+receipt-fenced canonical View read materializes them, so clearing the personal
+patch never flashes the previous shared rules. The same seamless handoff
+applies when View presentation is published from the settings rail. Resetting
+View preferences does not expand collapsed groups.
+
+Filter and Sort authoring lives in one inline rule bar directly below the View
+tabs and toolbar. Its open state is a bounded Profile chrome preference per
+View, not query state, and existing rules do not force the bar open. Toolbar
+Filter and Sort are the direct bar toggles once their relevant authoring state
+exists. A rule-free, closed View is the create-first exception: Filter opens an
+`Add filter` Property picker at the toolbar button, and Sort opens a `New sort`
+Property picker there, without mounting an empty bar. Selecting a Property
+creates the rule, opens the bar, dismisses the toolbar picker, and opens the new
+rule's editor at its bar token. Existing Sorts route Sort back to the bar token;
+when filters or an already-open bar exist without a Sort, Sort toggles the bar
+and keeps creation anchored to the toolbar. The bar orders Sort,
+advanced-filter, and quick-filter tokens before `+ Filter`; it never renders an
+empty `+ Sort` placeholder. Empty tokens use quiet chrome; effective rules use
+the app accent. Personal changes keep the Save action active without adding a
+persistent marker to every affected token. Hovering or keyboard-focusing Reset
+or Save previews only the Sort, advanced-filter, and quick-filter branches that
+the action will actually change, using neutral reset and accent save treatments
+without moving token geometry. Compact Reset and Save icon actions stay at the
+bar tail, while their tooltips explain the personal/shared scope and unsaved
+state. Both actions always apply directly to Filter and Sort together.
+
+Quick-filter tokens reorder horizontally and Sort rows reorder vertically with
+the shared continuous pointer gesture: mouse and stylus activate after 6px,
+then follow every pointer sample, stay clamped to their drag-start container,
+and commit once on drop without remount flicker. Sort fields are unique within
+one View and use type-aware direction wording. The Sort editor is a compact
+vertical list: field and direction controls consume only the width their content
+needs up to a bounded maximum, a flexible tail lane absorbs remaining row width
+before the aligned delete action, and adjacent rows retain a compact 4px gap.
+Every row stays inside the floating surface, and its footer offers both Add sort
+and whole-list Delete sort actions.
+
+A quick filter opens one Property-specific editor rather than a generic form.
+Its compact header owns Property, operator, and a More menu; the More menu puts
+Delete filter before Add to advanced filter. Text and number use a direct input,
+checkbox exposes Checked and Unchecked rows, select and multi-select expose the
+searchable option list directly, Relation exposes the authorized Page search
+directly, and Date/DateTime embed the calendar. No quick editor adds a second
+value-trigger popover around that content. Editors with no value operand render
+only the header.
+
+The advanced editor presents `Where`, AND/OR, Property, operator, value, a compact
+tail lane, and row actions as content-dense rule rows in one anchored surface.
+Every row resolves its Property, operator, and value tracks independently from
+the controls in that row. Changing `contains` to `is` therefore moves the value
+control left instead of relocating the same empty width outside the operator
+button. The floating surface shrink-wraps the widest row up to the
+available viewport rather than imposing a fixed editor width. The second row's
+AND/OR control reuses the same 32px outline selector chrome; `Where` and later
+static connectors use the primary foreground and align to the connector track
+end. Adjacent rows retain a compact gap, and nested groups contribute their
+intrinsic width without forcing a larger empty outer surface. Group containers
+use a subtle tint while their selectors remain opaque, and every Boolean selector
+preserves the editor's left inset instead of overflowing its track. Add filter
+rule occupies the available row width while keeping its icon, label, and chevron
+clustered at the start. The editor supports duplicate, remove, wrap, unwrap, and
+nested groups while limiting interactive authoring to three understandable group
+levels. A separated Delete filter footer clears the complete advanced tree.
+
+View Property display and Data Source Page Property layout are independent. A
+View owns the complete ordered Property list and the fields shown on its cards
+or rows. The fixed Name identity is always first, always visible, and has no
+drag handle. Every optional Property has a drag handle in both the shown and
+hidden sections. Reordering within a section preserves visibility; crossing the
+section boundary changes order and visibility together. Property pointer drag
+activates after 6px, retains the threshold-crossing pointer delta on that frame,
+then tracks every vertical pointer sample while sibling Properties and the
+shown/hidden boundary ease into their candidate positions. The dragged row is
+represented by one overlay, stays horizontally locked and vertically bounded
+to the Property list, and commits one presentation change only on drop. A Data
+Source owns the order used when its Pages open and assigns each schema Property **Always show**,
+**Hide when empty**, or **Always hide**. Hidden Page Properties remain reachable
+through one disclosure; expanding it is Page-session state and does not change
+the Data Source layout. Files, Linked chats, and other Page capabilities keep
+their own presentation rules and are not schema Properties.
+
+Existing Property rows use semantic icons for built-in identities such as
+Status, Priority, and Estimate. User-defined Properties use their value-type
+icon, even when their display name resembles a built-in Property. Select uses
+the shared Tags icon; Multi-select uses the bulleted-list icon across settings
+and Property rows.
+
+Layout, display, Source Properties, and Page layout are available in a settings
+rail beside the current Database content. The rail uses back/close navigation
+and keeps the Board or List visible while editing. Filter and Sort are not rail
+routes; their toolbar actions and tokens share the inline rule-bar controller.
+Creating, renaming, duplicating, ordering, linking, or deleting a View happens
+inline; a centered Database manager is not part of this workflow. The rail is
+local to the Database surface and never replaces the Workbench's user-controlled
+global side panel.
+
+The inline View strip is also the direct View-management surface. Selecting an
+inactive tab changes the active durable View; selecting the active tab again,
+or right-clicking any tab, opens that exact View's action menu. The menu offers
+Rename, a personal **Display as** choice for text/icon presentation, Edit view,
+Source settings, Copy link, Duplicate, and Delete. It uses the same visual and
+keyboard conventions as other Nodex context menus. Rename opens the settings
+rail with the current name selected; Duplicate creates and selects a durable
+copy, then opens the same focused name editor. Delete requires confirmation and
+is unavailable for the final View. Pointer drag reorders the visible tabs
+directly after a short activation threshold; the gesture stays local until
+drop. Crossing the threshold retains the complete pointer delta on that same
+frame, after which the dragged tab tracks every horizontal pointer movement
+while sibling tabs ease into candidate slots. The dragged tab is clamped to the
+exact horizontal viewport of the View tab list, independent of where inside the
+tab the pointer began; it cannot translate vertically or edge-scroll beyond the
+list. Drop persists one placement operation and restores the authority order if
+the write fails. The rail header ellipsis invokes the same target-aware action
+model, so toolbar and rail never maintain divergent View commands.
+
+The Database toolbar spans the complete View and remains a 40px top row. On a
+desktop surface the rail begins exactly below that toolbar and occupies one
+290px right-side region; no second empty width owner surrounds its controls.
+Opening it does not resize or reflow the Database content. The rail overlays the
+content's right edge and enters from 12px toward the inline end while fading from
+transparent to opaque over 200ms with CSS `ease`. Reduced-motion preference
+compresses the same transition to 1ms. Closing removes the rail directly rather
+than replaying a decorative exit.
+Root settings use a compact View label
+and inline View identity row; nested routes use a left-aligned back/title/close
+header. Menu and Property rows are 28px with 14px labels, while section labels
+use the smaller 12px hierarchy. The root does not repeat a second View list:
+durable View identity and View creation stay in the toolbar's inline View strip,
+and active-View actions remain reachable from the View identity control. Standard
+body rows use 400 weight and a 16.8px line height. Leading semantic icons use the
+compact 16px Nodex scale; secondary drag handles use 14px. Labels and leading
+icons share the primary foreground; trailing values, chevrons, section labels,
+meta actions, and disabled states provide the quieter hierarchy instead of
+globally muting action icons. The rail inherits Nodex's semantic main-surface and
+foreground tokens rather than maintaining a private light/dark palette. The
+application blue accent is reserved for compact actionable or selected states:
+Property visibility's **Hide all** / **Show all** actions, the active Layout tile,
+enabled switches and selection checkmarks, and keyboard focus outlines. Ordinary
+labels and leading icons remain primary foreground.
+
+Compact identity fields keep their semantic one-pixel boundary and subtle input
+surface visible at rest. View rename and new Property naming share this chrome;
+focus changes the boundary color instead of revealing the field for the first
+time. Inline option editors remain visually lighter where the surrounding row
+already owns the interaction boundary.
 
 Personal presentation and disclosure changes converge across mounted windows as
 typed deltas authorized by the durable View. They do not claim a shared View,
@@ -202,6 +363,10 @@ Data Source, Database, or Page projection change, so a personal toggle cannot
 refresh Board/List content or invalidate Library navigation. Reconnect replay
 preserves those deltas; a Store-epoch replacement rehydrates both personal
 authorities while retaining the last readable surface until the handover.
+Personal presentation persistence is optimistic and serialized: its background
+`saving` phase never disables, dims, or removes drag eligibility from settings
+controls. Initial hydration and an explicit durable publication are the only
+presentation phases that lock those controls.
 
 Display Options derives valid group fields, intrinsic Page identity fields,
 finite empty groups, completion controls, and visible Properties from the active
@@ -464,6 +629,23 @@ Properties such as Status, Priority, Estimate, Tags, schedule boundaries, and
 Assignee may use focused controls only when their exact registered types match.
 Custom or malformed Properties use the typed fallback.
 
+Every Property selector and option editor follows that same identity rule.
+Status, Priority, and Estimate use their canonical option order, labels, and
+value glyphs in Filter, conditional-color, Page, Board, List, and Source settings
+surfaces; they never fall back to generic Select dots or Tags tokens. Priority
+uses the distinct P0–P3 value icon set. Their authoritative registries continue
+to own membership, labels, and colors while the semantic editor supplies each
+recognized identity's canonical ordering and visual. Tags and custom option
+Properties retain the generic option-token UI.
+
+The Source Property editor supports the current text, number, checkbox, date,
+date-and-time, select, multi-select, and Relation types. A Property can be
+renamed, assigned its type-specific format or relation target/cardinality, and
+reordered without changing identity. Number formats and date formats are schema
+metadata consumed consistently by Page Stage, Board, and List. Select and
+multi-select options have durable identity, order, label, and color; renaming,
+recoloring, and reordering an option never rewrites stored Page values.
+
 Option registries own option identity, order, labels, colors, and revisions.
 The bounded Status, Priority, and Estimate registries begin loading when their
 owning surface mounts, before their pickers open, so a closed-value projection
@@ -501,9 +683,19 @@ parent-removal promotion policy without creating another storage authority.
 Relation supports contains/not-contains/empty/not-empty filters and is not
 sortable or groupable in this release.
 
-Deleting a Property requires explicit confirmation and is blocked while a View
+Removing a Property requires explicit confirmation and is blocked while a View
 still references it. Core rechecks the current schema and View references at
-commit time.
+commit time. A removed Property first enters the Source's recoverable Deleted
+list with its values, option registry, and Page-layout position intact. Restore
+reactivates the same identity. Permanent deletion is available only from that
+Deleted list and retires the identifier so a later Property cannot inherit old
+values or references.
+
+Conditional color rules belong to one View and are evaluated in their displayed
+order. The first matching rule supplies the row or card decoration; later rules
+do not layer over it. Rules refer to stable Property and option identities, are
+repaired when those dependencies change, and never mutate option colors or Page
+values.
 
 ## Page editor behavior
 

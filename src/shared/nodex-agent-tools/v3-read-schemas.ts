@@ -36,7 +36,7 @@ const DatabaseSummaryV3Schema = z.strictObject({
       viewId: ViewIdSchema,
       dataSourceId: DataSourceIdSchema,
       name: z.string(),
-      defaultLayout: DatabaseViewLayoutSchema,
+      layout: DatabaseViewLayoutSchema,
       isDefault: z.boolean(),
     }),
   ),
@@ -333,7 +333,7 @@ export const QueryDatabaseV3DataSchema = z.strictObject({
       viewId: ViewIdSchema,
       dataSourceId: DataSourceIdSchema,
       name: z.string(),
-      defaultLayout: DatabaseViewLayoutSchema,
+      layout: DatabaseViewLayoutSchema,
     })
     .optional(),
   rows: z.array(QueryDatabaseRowV3Schema).max(200),

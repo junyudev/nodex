@@ -316,6 +316,33 @@ function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps
   );
 }
 
+function DataSourcePropertyRow({
+  item,
+  controls,
+}: {
+  readonly item: PageStageController["propertyControls"]["properties"][number];
+  readonly controls: PageStageController["propertyControls"];
+}) {
+  const Icon = dataSourcePropertyIcon(item.property);
+  return (
+    <div className="flex min-h-7.5 items-center">
+      <div className="flex w-40 shrink-0 items-center gap-1.5 pl-1.5">
+        <div className="flex w-5 items-center justify-center text-(--foreground-secondary)">
+          <Icon className="size-4 shrink-0" />
+        </div>
+        <span className="truncate text-sm/5 text-(--foreground-secondary)">
+          {item.property.name}
+        </span>
+      </div>
+      <PageStageDataSourcePropertyControl
+        item={item}
+        controls={controls}
+        className="min-w-0 flex-1 px-2"
+      />
+    </div>
+  );
+}
+
 export function PageStagePropertiesSection({ controller }: PageStagePropertiesSectionProps) {
   const pageId = controller.page?.id ?? "";
   const baseFiles = usePageFiles(controller.contentAccessContext, pageId);
@@ -368,7 +395,9 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
     controller.hasRelatedChatsRow &&
     linkedChatsSignal !== "attention" &&
     !currentQuietPropertiesState.linkedChats.visible;
-  const collapsedPropertyCount = [filesCollapsed, relatedChatsCollapsed].filter(Boolean).length;
+  const collapsedPropertyCount =
+    [filesCollapsed, relatedChatsCollapsed].filter(Boolean).length +
+    propertyControls.hiddenLayoutProperties.length;
   const collapsedPropertyLabel = formatPageStageQuietPropertyCountLabel(
     collapsedPropertyCount,
     propertiesExpanded,
@@ -395,25 +424,24 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
         />
 
         {propertyControls.sectionProperties.map((item) => {
-          const Icon = dataSourcePropertyIcon(item.property);
           return (
-            <div key={item.property.propertyId} className="flex min-h-7.5 items-center">
-              <div className="flex w-40 shrink-0 items-center gap-1.5 pl-1.5">
-                <div className="flex w-5 items-center justify-center text-(--foreground-secondary)">
-                  <Icon className="size-4 shrink-0" />
-                </div>
-                <span className="truncate text-sm/5 text-(--foreground-secondary)">
-                  {item.property.name}
-                </span>
-              </div>
-              <PageStageDataSourcePropertyControl
-                item={item}
-                controls={propertyControls}
-                className="min-w-0 flex-1 px-2"
-              />
-            </div>
+            <DataSourcePropertyRow
+              key={item.property.propertyId}
+              item={item}
+              controls={propertyControls}
+            />
           );
         })}
+
+        {propertiesExpanded
+          ? propertyControls.hiddenLayoutProperties.map((item) => (
+              <DataSourcePropertyRow
+                key={`hidden:${item.property.propertyId}`}
+                item={item}
+                controls={propertyControls}
+              />
+            ))
+          : null}
 
         {controller.hasRelatedChatsRow && (propertiesExpanded || !relatedChatsCollapsed) ? (
           <RelatedChatsPropertyRow controller={controller} />

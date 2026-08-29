@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 
 import type { DataSourcePropertyRecordV2 } from "../../../../shared/database-module-v2";
+import { testPropertySemantics } from "../../../../shared/testing/database-property-record";
 import {
   databaseListGroupLabel,
   databaseListPropertyHasValue,
@@ -12,19 +13,7 @@ const property = (
   propertyId: "custom:test" as DataSourcePropertyRecordV2["propertyId"],
   dataSourceId: "data-source:test" as DataSourcePropertyRecordV2["dataSourceId"],
   name: "Test",
-  schema:
-    valueType === "relation"
-      ? {
-          kind: "relation",
-          targetDataSourceId: "data-source:test" as DataSourcePropertyRecordV2["dataSourceId"],
-          cardinality: "many",
-        }
-      : { kind: valueType },
-  capabilities: {
-    filterOperators: [],
-    sortable: true,
-    groupable: true,
-  },
+  ...testPropertySemantics(valueType),
   valueType,
   config: {},
   optionCount: 0,

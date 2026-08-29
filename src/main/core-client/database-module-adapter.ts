@@ -25,7 +25,7 @@ import {
   parseDataSourceOptionId,
   parseDataSourcePropertyId,
 } from "../../shared/database-identities";
-import type { DatabaseViewConfigV4 } from "../../shared/database-kernel";
+import { parseDatabaseViewConfigV6 } from "../../shared/database-kernel";
 import {
   parseDatabaseApplyResultV2,
   parseDatabaseModuleReadResultV2,
@@ -42,7 +42,10 @@ import {
 } from "./types";
 import {
   fromCoreDatabaseViewPresentationOverride,
+  fromCoreDatabaseViewRulesOverride,
+  toCoreDatabaseViewPreferencesOverride,
   toCoreDatabaseViewPresentationOverride,
+  toCoreDatabaseViewRulesOverride,
 } from "./database-presentation-adapter";
 import type {
   CoreClientPort,
@@ -117,6 +120,11 @@ const toCoreRead = (read: DatabaseReadV2): DatabaseRead => {
         kind: "data_source",
         data_source_id: read.target.dataSourceId,
       };
+    case "page_layout":
+      return {
+        kind: "page_layout",
+        data_source_id: read.target.dataSourceId,
+      };
     case "relation_candidate_window":
       return {
         kind: "relation_candidate_window",
@@ -126,9 +134,9 @@ const toCoreRead = (read: DatabaseReadV2): DatabaseRead => {
       };
     case "view":
       return { kind: "view", view_id: read.target.viewId };
-    case "view_personal_presentation":
+    case "view_personal_preferences":
       return {
-        kind: "view_personal_presentation",
+        kind: "view_personal_preferences",
         view_id: read.target.viewId,
       };
     case "view_collapsed_occurrences":
@@ -303,6 +311,41 @@ const toCoreDatabaseListMoveUndoRecipe = (
   })),
 });
 
+const toCorePropertySchema = (
+  schema: Extract<DatabaseApplyOperationV2, { readonly kind: "put_property" }>["schema"],
+): Extract<CoreDatabaseIntent, { readonly kind: "put_property" }>["schema"] => {
+  if (schema.kind === "relation") {
+    return {
+      kind: "relation",
+      target_data_source_id: schema.targetDataSourceId,
+      cardinality: schema.cardinality,
+    };
+  }
+  if (schema.kind === "number") {
+    return {
+      kind: "number",
+      format:
+        schema.format.kind === "currency"
+          ? {
+              kind: "currency",
+              currency_code: schema.format.currencyCode,
+            }
+          : { kind: schema.format.kind },
+    };
+  }
+  if (schema.kind === "date") {
+    return { kind: "date", date_format: schema.dateFormat };
+  }
+  if (schema.kind === "datetime") {
+    return {
+      kind: "datetime",
+      date_format: schema.dateFormat,
+      time_format: schema.timeFormat,
+    };
+  }
+  return schema;
+};
+
 export const toCoreDatabaseIntent = (operation: DatabaseApplyOperationV2): CoreDatabaseIntent => {
   switch (operation.kind) {
     case "rename_page_key_prefix":
@@ -320,15 +363,52 @@ export const toCoreDatabaseIntent = (operation: DatabaseApplyOperationV2): CoreD
         expected_data_source_revision: operation.expectedDataSourceRevision,
         expected_property_revision: operation.expectedPropertyRevision,
         name: operation.name,
-        schema:
-          operation.schema.kind === "relation"
-            ? {
-                kind: "relation",
-                target_data_source_id: operation.schema.targetDataSourceId,
-                cardinality: operation.schema.cardinality,
-              }
-            : operation.schema,
+        schema: toCorePropertySchema(operation.schema),
         before_property_id: operation.beforePropertyId ?? null,
+      };
+    case "move_property":
+      return {
+        kind: operation.kind,
+        data_source_id: operation.dataSourceId,
+        property_id: operation.propertyId,
+        expected_data_source_revision: operation.expectedDataSourceRevision,
+        expected_property_revision: operation.expectedPropertyRevision,
+        placement:
+          operation.placement.kind === "end"
+            ? { kind: "end" }
+            : { kind: "before", property_id: operation.placement.propertyId },
+      };
+    case "change_property_type":
+      return {
+        kind: operation.kind,
+        data_source_id: operation.dataSourceId,
+        property_id: operation.propertyId,
+        expected_data_source_revision: operation.expectedDataSourceRevision,
+        expected_property_revision: operation.expectedPropertyRevision,
+        schema: toCorePropertySchema(operation.schema),
+      };
+    case "duplicate_property":
+      return {
+        kind: operation.kind,
+        data_source_id: operation.dataSourceId,
+        property_id: operation.propertyId,
+        expected_data_source_revision: operation.expectedDataSourceRevision,
+        expected_property_revision: operation.expectedPropertyRevision,
+        new_property_id: operation.newPropertyId,
+        name: operation.name,
+        option_ids: operation.optionIds.map((mapping) => ({
+          source_option_id: mapping.sourceOptionId,
+          new_option_id: mapping.newOptionId,
+        })),
+      };
+    case "restore_property":
+    case "permanently_delete_property":
+      return {
+        kind: operation.kind,
+        data_source_id: operation.dataSourceId,
+        property_id: operation.propertyId,
+        expected_data_source_revision: operation.expectedDataSourceRevision,
+        expected_property_revision: operation.expectedPropertyRevision,
       };
     case "delete_property":
       return {
@@ -348,13 +428,40 @@ export const toCoreDatabaseIntent = (operation: DatabaseApplyOperationV2): CoreD
         color: operation.color ?? null,
         expected_property_revision: operation.expectedPropertyRevision,
       };
-    case "delete_option":
+    case "move_option":
       return {
         kind: operation.kind,
         data_source_id: operation.dataSourceId,
         property_id: operation.propertyId,
         option_id: operation.optionId,
         expected_property_revision: operation.expectedPropertyRevision,
+        placement:
+          operation.placement.kind === "end"
+            ? { kind: "end" }
+            : { kind: "before", option_id: operation.placement.optionId },
+      };
+    case "delete_option":
+    case "delete_option_and_clear_values":
+      return {
+        kind: operation.kind,
+        data_source_id: operation.dataSourceId,
+        property_id: operation.propertyId,
+        option_id: operation.optionId,
+        expected_property_revision: operation.expectedPropertyRevision,
+      };
+    case "put_page_layout_entry":
+      return {
+        kind: operation.kind,
+        data_source_id: operation.dataSourceId,
+        expected_revision: operation.expectedRevision,
+        property_id: operation.propertyId,
+        visibility: operation.visibility,
+        placement:
+          operation.placement === undefined
+            ? null
+            : operation.placement.kind === "end"
+              ? { kind: "end" }
+              : { kind: "before", property_id: operation.placement.propertyId },
       };
     case "edit_property_values":
       return {
@@ -425,13 +532,40 @@ export const toCoreDatabaseIntent = (operation: DatabaseApplyOperationV2): CoreD
         view_id: operation.viewId,
         expected_revision: operation.expectedRevision,
         name: operation.name,
-        layout: operation.defaultLayout,
+        layout: operation.layout,
         definition: {
-          filter: operation.config.filter,
+          rules: operation.config.rules,
           presentation: operation.config.presentation,
         },
         is_default: operation.isDefault,
         before_view_id: operation.beforeViewId ?? null,
+      };
+    case "duplicate_view":
+      return {
+        kind: operation.kind,
+        database_id: operation.databaseId,
+        source_view_id: operation.sourceViewId,
+        expected_revision: operation.expectedRevision,
+        new_view_id: operation.newViewId,
+      };
+    case "change_view_layout":
+      return {
+        kind: operation.kind,
+        database_id: operation.databaseId,
+        view_id: operation.viewId,
+        expected_revision: operation.expectedRevision,
+        layout: operation.layout,
+      };
+    case "move_view":
+      return {
+        kind: operation.kind,
+        database_id: operation.databaseId,
+        view_id: operation.viewId,
+        expected_revision: operation.expectedRevision,
+        placement:
+          operation.placement.kind === "end"
+            ? { kind: "end" }
+            : { kind: "before", view_id: operation.placement.viewId },
       };
     case "delete_view":
       return {
@@ -473,9 +607,7 @@ export const toCoreDatabaseIntent = (operation: DatabaseApplyOperationV2): CoreD
       return {
         kind: operation.kind,
         view_id: operation.viewId,
-        presentation_override: toCoreDatabaseViewPresentationOverride(
-          operation.presentationOverride,
-        ),
+        preferences_override: toCoreDatabaseViewPreferencesOverride(operation.preferencesOverride),
         expected_projection: {
           scope_key: operation.expectedProjection.scopeKey,
           schema_version: operation.expectedProjection.schemaVersion,
@@ -513,11 +645,12 @@ export const toCoreDatabaseIntent = (operation: DatabaseApplyOperationV2): CoreD
         kind: operation.kind,
         recipe: toCoreDatabaseListMoveUndoRecipe(operation.recipe),
       };
-    case "put_view_personal_presentation":
+    case "put_view_personal_preferences":
       return {
         kind: operation.kind,
         view_id: operation.viewId,
         expected_revision: operation.expectedRevision,
+        rules_override: toCoreDatabaseViewRulesOverride(operation.rulesOverride),
         presentation_override: toCoreDatabaseViewPresentationOverride(
           operation.presentationOverride,
         ),
@@ -770,13 +903,17 @@ const mapCoreViewRecord = (
   databaseId: parseDatabaseId(record.database_id),
   dataSourceId: parseDataSourceId(record.data_source_id),
   name: record.name,
-  defaultLayout: record.layout,
-  config: {
+  layout: record.layout,
+  config: parseDatabaseViewConfigV6({
     schemaKey: "nodex.database-view",
-    schemaVersion: 4,
-    filter: record.definition.filter,
+    schemaVersion: 6,
+    rules: {
+      propertyFilters: record.definition.rules.propertyFilters ?? [],
+      advancedFilter: record.definition.rules.advancedFilter ?? null,
+      sorts: record.definition.rules.sorts ?? [],
+    },
     presentation: record.definition.presentation,
-  } as DatabaseViewConfigV4,
+  }),
   isDefault: record.is_default,
   revision: record.revision,
   rankKey: record.rank_key,
@@ -784,6 +921,63 @@ const mapCoreViewRecord = (
   createdAt: record.created_at,
   updatedAt: record.updated_at,
 });
+
+const mapCorePropertySchema = (
+  schema: Readonly<Record<string, unknown>>,
+  schemaKind: string,
+): DataSourcePropertyRecordV2["schema"] => {
+  if (schemaKind === "relation") {
+    return {
+      kind: "relation",
+      targetDataSourceId: parseDataSourceId(
+        requireString(schema, "target_data_source_id", "Core Relation schema"),
+      ),
+      cardinality: requireRelationCardinality(schema),
+    };
+  }
+  if (schemaKind === "number") {
+    const formatValue = schema.format;
+    if (formatValue === undefined) return { kind: "number", format: { kind: "plain" } };
+    const format = requireRecord(formatValue, "Core Number format");
+    const kind = requireString(format, "kind", "Core Number format");
+    if (kind === "plain" || kind === "percent") return { kind: "number", format: { kind } };
+    if (kind !== "currency") throw new Error("Core Number format is unsupported");
+    const currencyCode = requireString(format, "currency_code", "Core Number format");
+    if (!["usd", "eur", "gbp", "jpy", "cny"].includes(currencyCode)) {
+      throw new Error("Core Number currency is unsupported");
+    }
+    return {
+      kind: "number",
+      format: {
+        kind: "currency",
+        currencyCode: currencyCode as "usd" | "eur" | "gbp" | "jpy" | "cny",
+      },
+    };
+  }
+  if (schemaKind === "date") {
+    return {
+      kind: "date",
+      dateFormat: (schema.date_format ?? "full") as Extract<
+        DataSourcePropertyRecordV2["schema"],
+        { readonly kind: "date" }
+      >["dateFormat"],
+    };
+  }
+  if (schemaKind === "datetime") {
+    return {
+      kind: "datetime",
+      dateFormat: (schema.date_format ?? "full") as Extract<
+        DataSourcePropertyRecordV2["schema"],
+        { readonly kind: "datetime" }
+      >["dateFormat"],
+      timeFormat: (schema.time_format ?? "twelve_hour") as Extract<
+        DataSourcePropertyRecordV2["schema"],
+        { readonly kind: "datetime" }
+      >["timeFormat"],
+    };
+  }
+  return { kind: schemaKind } as DataSourcePropertyRecordV2["schema"];
+};
 
 export const mapCorePropertyDescriptor = (input: unknown): DataSourcePropertyRecordV2 => {
   const property = requireRecord(input, "Core Property descriptor");
@@ -804,22 +998,15 @@ export const mapCorePropertyDescriptor = (input: unknown): DataSourcePropertyRec
     throw new Error("Core Property schema is unsupported");
   }
   const capabilities = requireRecord(property.capabilities, "Core Property capabilities");
+  const managementPolicy = requireRecord(
+    property.management_policy,
+    "Core Property management policy",
+  );
   return parseDataSourcePropertyRecordV2({
     propertyId: requireString(property, "property_id", "Core Property"),
     dataSourceId: requireString(property, "data_source_id", "Core Property"),
     name: requireString(property, "name", "Core Property"),
-    schema:
-      schemaKind === "relation"
-        ? {
-            kind: "relation",
-            targetDataSourceId: requireString(
-              schema,
-              "target_data_source_id",
-              "Core Relation schema",
-            ),
-            cardinality: requireRelationCardinality(schema),
-          }
-        : { kind: schemaKind },
+    schema: mapCorePropertySchema(schema, schemaKind),
     capabilities: {
       filterOperators: Array.isArray(capabilities.filter_operators)
         ? (capabilities.filter_operators as NonNullable<
@@ -828,6 +1015,30 @@ export const mapCorePropertyDescriptor = (input: unknown): DataSourcePropertyRec
         : [],
       sortable: capabilities.sortable === true,
       groupable: capabilities.groupable === true,
+    },
+    systemRole:
+      property.system_role === "status" || property.system_role === "task_parent"
+        ? property.system_role
+        : null,
+    nonEmptyValueCount: Number(property.non_empty_value_count),
+    referencedViewIds: Array.isArray(property.referenced_view_ids)
+      ? property.referenced_view_ids
+      : [],
+    managementPolicy: {
+      canRename: managementPolicy.can_rename === true,
+      canReorder: managementPolicy.can_reorder === true,
+      canChangeType: managementPolicy.can_change_type === true,
+      canDuplicate: managementPolicy.can_duplicate === true,
+      canDelete: managementPolicy.can_delete === true,
+      canRestore: managementPolicy.can_restore === true,
+      canPermanentlyDelete: managementPolicy.can_permanently_delete === true,
+      canManageOptions: managementPolicy.can_manage_options === true,
+      allowedTypes: Array.isArray(managementPolicy.allowed_types)
+        ? managementPolicy.allowed_types
+        : [],
+      blockedReasons: Array.isArray(managementPolicy.blocked_reasons)
+        ? managementPolicy.blocked_reasons
+        : [],
     },
     valueType: schemaKind,
     config: {},
@@ -995,10 +1206,11 @@ const hydrateCoreReadValue = async (
       value: mapCoreViewRecord(value.value),
     };
   }
-  if (value.kind === "view_personal_presentation") {
+  if (value.kind === "view_personal_preferences") {
     return {
       kind: value.kind,
       value: {
+        rulesOverride: fromCoreDatabaseViewRulesOverride(value.value.rules_override),
         presentationOverride: fromCoreDatabaseViewPresentationOverride(
           value.value.presentation_override,
         ),
@@ -1013,6 +1225,20 @@ const hydrateCoreReadValue = async (
         targets: value.value.targets.map((target) => ({
           kind: target.kind,
           occurrenceKey: target.occurrence_key,
+        })),
+      },
+    };
+  }
+  if (value.kind === "page_layout") {
+    return {
+      kind: value.kind,
+      value: {
+        dataSourceId: parseDataSourceId(value.value.data_source_id),
+        revision: value.value.revision,
+        entries: value.value.entries.map((entry) => ({
+          propertyId: parseDataSourcePropertyId(entry.property_id),
+          rankKey: entry.rank_key,
+          visibility: entry.visibility,
         })),
       },
     };
@@ -1047,6 +1273,7 @@ const hydrateCoreReadValue = async (
         options: value.options.items.map((option) => ({
           id: option.id,
           name: option.name,
+          selectedPageCount: option.selected_page_count,
           ...(option.color == null ? {} : { color: option.color }),
         })),
         nextCursor: value.options.next_cursor ?? null,

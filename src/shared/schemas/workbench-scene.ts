@@ -832,12 +832,14 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
           scene.primary.kind !== "db_view" ||
           scene.primary.config.accessContext.kind !== "project" ||
           scene.primary.config.accessContext.projectId !== scene.owner.projectId ||
-          scene.primary.config.target.kind !== "project-default"
+          (scene.primary.config.target.kind !== "project-default" &&
+            scene.primary.config.target.kind !== "database-view")
         ) {
           context.addIssue({
             code: "custom",
             path: ["primary"],
-            message: "Project Scene primary must target the Project default Database View",
+            message:
+              "Project Scene primary must target the Project default or an exact Database View",
           });
         }
         if (scene.agentDock === null) {

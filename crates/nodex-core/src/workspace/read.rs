@@ -666,7 +666,7 @@ mod tests {
                             'active', 'a', \
                             '2026-07-19T03:30:00.000Z', '2026-07-19T03:30:00.000Z'); \
                          INSERT INTO database_views( \
-                           id, database_block_id, data_source_id, name, default_layout, config_json, \
+                           id, database_block_id, data_source_id, name, layout, config_json, \
                            rank_key, lifecycle, created_at, updated_at \
                          ) VALUES \
                            ('view-1', 'database-1', 'source-1', 'Board', 'board', '{}', \

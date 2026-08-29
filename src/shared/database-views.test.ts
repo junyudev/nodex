@@ -38,7 +38,7 @@ const makeReadModel = (includeHostPage: boolean): DatabaseViewReadModel => ({
     databaseBlockId: "database:test",
     projectId: "project:test",
     name: "Test",
-    defaultLayout: "list",
+    layout: "list",
     config: { options: { includeHostPage } },
     isPrimary: false,
     createdAt: "2026-01-01T00:00:00.000Z",

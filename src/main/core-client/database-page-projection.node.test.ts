@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
+import { testPropertyManagement } from "../../shared/testing/database-property-record";
 
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
 import {
@@ -48,6 +49,7 @@ const property = (
     sortable: true,
     groupable: true,
   },
+  ...testPropertyManagement(),
   valueType,
   config,
   optionCount: Array.isArray(config.options) ? config.options.length : 0,
@@ -175,7 +177,7 @@ const makeQuery = (rows: readonly DataSourcePageRowV2[]): DatabaseViewQueryResul
     databaseId,
     dataSourceId,
     name: "Board",
-    defaultLayout: "board",
+    layout: "board",
     config: upgradeDatabaseViewConfigV2({
       schemaKey: "nodex.database-view",
       schemaVersion: 2,

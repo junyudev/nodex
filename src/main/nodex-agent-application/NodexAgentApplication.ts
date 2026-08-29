@@ -384,7 +384,7 @@ export const live: Layer.Layer<
                     viewId: view.viewId,
                     dataSourceId: view.dataSourceId,
                     name: view.name,
-                    defaultLayout: view.defaultLayout,
+                    layout: view.layout,
                     isDefault: view.isDefault,
                   })),
               },

@@ -221,6 +221,15 @@ export const buildPageDetailStoryResult = (
           updatedAt: timestamp,
         },
         properties,
+        pageLayout: {
+          dataSourceId,
+          revision: 1,
+          entries: properties.map((property) => ({
+            propertyId: property.propertyId,
+            rankKey: property.rankKey,
+            visibility: "always_show" as const,
+          })),
+        },
         values,
       },
     },

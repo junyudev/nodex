@@ -52,6 +52,7 @@ describe("PageStageInlinePropertyStrip", () => {
       properties,
       primaryProperties: properties.filter(isPageStagePrimaryProperty),
       sectionProperties: pageStageSectionProperties(properties, semantic),
+      hiddenLayoutProperties: [],
       semanticValues: pageStageSemanticValues(semantic),
       hasScheduleCapability: hasPageStageScheduleCapability(semantic),
       options: {},

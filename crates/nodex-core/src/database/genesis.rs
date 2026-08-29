@@ -57,6 +57,18 @@ pub(crate) fn create_database_authority_records(
         )?;
     }
     connection.execute(
+        "INSERT INTO data_source_page_layouts(data_source_id, revision, created_at, updated_at) \
+         VALUES (?1, 1, ?2, ?2)",
+        params![data_source_id, now],
+    )?;
+    connection.execute(
+        "INSERT INTO data_source_page_layout_entries(\
+           data_source_id, property_id, rank_key, visibility\
+         ) SELECT ?1, id, rank_key, 'always_show' FROM data_source_properties \
+           WHERE data_source_id = ?1 AND lifecycle = 'active'",
+        params![data_source_id],
+    )?;
+    connection.execute(
         "INSERT INTO data_source_relation_properties(\
            data_source_id, property_id, target_data_source_id, cardinality\
          ) VALUES (?1, ?2, ?1, 'one')",
@@ -67,45 +79,37 @@ pub(crate) fn create_database_authority_records(
     )?;
     let current_view_config = json!({
         "schemaKey": "nodex.database-view",
-        "schemaVersion": 4,
-        "filter": { "kind": "group", "operator": "and", "children": [] },
-        "presentation": {
-            "sort": [{
+        "schemaVersion": 6,
+        "rules": {
+            "propertyFilters": [],
+            "advancedFilter": null,
+            "sorts": [{
                 "field": { "kind": "manual" },
                 "direction": "asc",
                 "nulls": "last"
-            }],
+            }]
+        },
+        "presentation": {
             "group": { "propertyId": "status" },
             "subgroup": null,
             "groupDirection": "asc",
             "completion": { "range": "all", "orderByRecency": false },
             "hierarchy": { "showSubPages": true, "nestedSubPages": false },
-            "layouts": {
-                "board": {
-                    "fields": [
-                        { "kind": "property", "propertyId": "status" },
-                        { "kind": "property", "propertyId": "priority" },
-                        { "kind": "property", "propertyId": "estimate" },
-                        { "kind": "property", "propertyId": "tags" }
-                    ],
-                    "showEmptyGroups": false
-                },
-                "list": {
-                    "fields": [
-                        { "kind": "intrinsic", "field": "page_key" },
-                        { "kind": "property", "propertyId": "status" },
-                        { "kind": "property", "propertyId": "priority" },
-                        { "kind": "property", "propertyId": "estimate" },
-                        { "kind": "property", "propertyId": "tags" }
-                    ],
-                    "showEmptyGroups": false
-                }
+            "display": {
+                "fields": [
+                    { "kind": "property", "propertyId": "status" },
+                    { "kind": "property", "propertyId": "priority" },
+                    { "kind": "property", "propertyId": "estimate" },
+                    { "kind": "property", "propertyId": "tags" }
+                ],
+                "showEmptyGroups": false,
+                "showDescription": true
             }
         }
     });
     connection.execute(
         "INSERT INTO database_views(\
-           id, database_block_id, data_source_id, name, default_layout, config_json, revision, \
+           id, database_block_id, data_source_id, name, layout, config_json, revision, \
            rank_key, lifecycle, created_at, updated_at\
          ) VALUES (?1, ?2, ?3, 'Board', 'board', ?4, 1, ?5, 'active', ?6, ?6)",
         params![

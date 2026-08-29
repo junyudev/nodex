@@ -9,7 +9,7 @@ import {
   ExpandPanelIcon,
   PriorityIcon,
   RestorePanelIcon,
-  TagIcon,
+  TagsIcon,
 } from "@/components/shared/icons";
 import {
   NodexDialog,
@@ -514,7 +514,7 @@ function PageCreateDialogContent({
                 mode="multiple"
                 presentation="chip"
                 triggerPrefix={
-                  <TagIcon className="icon-xs shrink-0 text-token-description-foreground" />
+                  <TagsIcon className="icon-xs shrink-0 text-token-description-foreground" />
                 }
                 options={tagOptions}
                 selectedIds={selectedTagIds}

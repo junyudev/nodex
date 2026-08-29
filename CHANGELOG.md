@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Added custom Sidebar Sections for organizing Projects and chats in one durable mixed order, with drag-and-drop, context menus, bulk archive, Undoable deletion, agent tools, and multi-host Codex synchronization.
+- Database Views now have independent Board or List identities, direct tab actions and durable drag ordering, inline typed Filter and Sort rules with personal publishing, plus a settings rail for View presentation, typed Source Properties, recoverable Property removal, conditional colors, and Page Property layouts.
 - Pages can now own and manage exact-format Files through native file and folder drops or explicit selection, while Agents can attach generated file outputs to the Page that owns them; Files keep their identity through Block moves and keyboard cut/paste, follow the move when every placement leaves its owner for one destination, disclose readable source Pages when placed elsewhere, refresh only previews of the changed File, and can be copied as opt-in local paths for use in other desktop apps.
 - Equations now support first-class block and inline TeX authoring, while Mermaid Code Blocks add secure local code, preview, and split views with fullscreen, copy, and image export.
 - Code Blocks now offer a compact hover Action Bar, an exact searchable language catalog, plain-code copy, local line wrapping, and on-demand formatting, with matching read-only previews and no document changes from presentation state.
@@ -18,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Nodex now upgrades supported Profiles through Store v142 with a verified backup, current-only Block Document schemas and projections, durable File ownership history, bounded operational history, and Core-owned Sidebar organization.
+- Nodex now upgrades supported Profiles through Store v147 with a verified backup, current-only Block Document schemas and projections, durable File ownership history, bounded operational history, Core-owned Sidebar organization, coherent single-layout Database Views with typed query rules, and Source-owned Page Property layouts.
 - Permission selection now keeps custom config details out of the Composer menu and confirms the capabilities granted before enabling Full access.
 
 ### Fixed

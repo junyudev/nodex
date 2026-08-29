@@ -4,12 +4,14 @@ import { createUuidV7 } from "../../shared/uuid-v7";
 import { parseDatabaseViewId, type DatabaseViewId } from "../../shared/database-identities";
 import {
   parseDatabaseViewPresentationOverride,
+  parseDatabaseViewRulesOverride,
   type DatabaseViewPresentationOverride,
+  type DatabaseViewRulesOverride,
 } from "../../shared/database-kernel";
 import {
   type DatabaseApplyReceiptV2,
   type DatabaseViewDisclosureTargetV2,
-  type DatabaseViewPersonalPresentationV2,
+  type DatabaseViewPersonalPreferencesV2,
 } from "../../shared/database-module-v2";
 import type { DatabaseChangeEvent } from "../../shared/database-events";
 import { applyDatabaseModule, readDatabaseModule, subscribeDatabaseChanges } from "./api";
@@ -70,15 +72,16 @@ const removeMigratedLegacyOverride = (viewId: string): void => {
 };
 
 const normalizePresentation = (
-  input: DatabaseViewPersonalPresentationV2,
-): DatabaseViewPersonalPresentationV2 => ({
+  input: DatabaseViewPersonalPreferencesV2,
+): DatabaseViewPersonalPreferencesV2 => ({
+  rulesOverride: parseDatabaseViewRulesOverride(input.rulesOverride),
   presentationOverride: parseDatabaseViewPresentationOverride(input.presentationOverride),
   revision: input.revision,
 });
 
-const sameOverride = (
-  left: DatabaseViewPresentationOverride,
-  right: DatabaseViewPresentationOverride,
+const samePreferences = (
+  left: Pick<DatabaseViewPersonalPreferencesV2, "rulesOverride" | "presentationOverride">,
+  right: Pick<DatabaseViewPersonalPreferencesV2, "rulesOverride" | "presentationOverride">,
 ): boolean => JSON.stringify(left) === JSON.stringify(right);
 
 const disclosureTargetKey = (target: DatabaseViewDisclosureTargetV2): string =>
@@ -89,7 +92,7 @@ const receiptPresentationRevision = (
   viewId: DatabaseViewId,
 ): number | null =>
   Object.entries(receipt.committedRevisions).find(
-    ([key]) => key.startsWith("view_presentation:") && key.endsWith(`:${viewId}`),
+    ([key]) => key.startsWith("view_preferences:") && key.endsWith(`:${viewId}`),
   )?.[1] ?? null;
 
 const readCorePresentation = async (
@@ -98,18 +101,18 @@ const readCorePresentation = async (
 ): Promise<{
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly value: DatabaseViewPersonalPresentationV2;
+  readonly value: DatabaseViewPersonalPreferencesV2;
 }> => {
   const result = await readDatabaseModule(projectId, {
     projectId,
     read: {
       target: { kind: "view", viewId },
-      mode: "view_personal_presentation",
+      mode: "view_personal_preferences",
     },
   });
   if (!result.ok) throw new Error(result.error.message);
-  if (result.value.value.kind !== "view_personal_presentation") {
-    throw new Error("Database Core returned unrelated personal presentation state");
+  if (result.value.value.kind !== "view_personal_preferences") {
+    throw new Error("Database Core returned unrelated personal View preferences");
   }
   return {
     storeEpoch: result.value.storeEpoch,
@@ -148,7 +151,7 @@ const writeCorePresentation = async (input: {
   readonly projectId: string;
   readonly viewId: DatabaseViewId;
   readonly storeEpoch: string;
-  readonly value: DatabaseViewPersonalPresentationV2;
+  readonly value: DatabaseViewPersonalPreferencesV2;
 }): Promise<{ readonly revision: number; readonly commitSeq: number }> => {
   const result = await applyDatabaseModule(input.projectId, {
     projectId: input.projectId,
@@ -157,9 +160,10 @@ const writeCorePresentation = async (input: {
     actor: { kind: "renderer_database_view_personal_state" },
     operations: [
       {
-        kind: "put_view_personal_presentation",
+        kind: "put_view_personal_preferences",
         viewId: input.viewId,
         expectedRevision: input.value.revision,
+        rulesOverride: input.value.rulesOverride,
         presentationOverride: input.value.presentationOverride,
       },
     ],
@@ -197,21 +201,24 @@ const writeCoreDisclosure = async (input: {
 };
 
 export interface DatabaseViewPersonalStateController {
+  readonly rulesOverride: DatabaseViewRulesOverride | undefined;
   readonly presentationOverride: DatabaseViewPresentationOverride | undefined;
   readonly collapsedOccurrenceKeys: readonly string[];
-  readonly presentationRevision: number;
+  readonly preferencesRevision: number;
   readonly loading: boolean;
   readonly saving: boolean;
   readonly error: string | null;
   readonly setPresentationOverride: (
     override: DatabaseViewPresentationOverride | null,
   ) => Promise<boolean>;
+  readonly setRulesOverride: (override: DatabaseViewRulesOverride | null) => Promise<boolean>;
   readonly setOccurrenceDisclosure: (
     target: DatabaseViewDisclosureTargetV2,
     collapsed: boolean,
   ) => Promise<boolean>;
-  readonly flushPresentation: () => Promise<DatabaseViewPersonalPresentationV2>;
-  readonly acceptPresentationCommitted: (input: {
+  readonly flushPreferences: () => Promise<DatabaseViewPersonalPreferencesV2>;
+  readonly acceptPreferencesCommitted: (input: {
+    readonly rulesOverride: DatabaseViewRulesOverride | null;
     readonly presentationOverride: DatabaseViewPresentationOverride | null;
     readonly revision: number;
     readonly commitSeq: number;
@@ -219,13 +226,14 @@ export interface DatabaseViewPersonalStateController {
   readonly synchronizeStoreEpoch: (storeEpoch: string) => void;
 }
 
-const EMPTY_PRESENTATION: DatabaseViewPersonalPresentationV2 = Object.freeze({
+const EMPTY_PRESENTATION: DatabaseViewPersonalPreferencesV2 = Object.freeze({
+  rulesOverride: {},
   presentationOverride: {},
   revision: 0,
 });
 
 interface DatabaseViewPersonalStateSnapshot {
-  readonly presentation: DatabaseViewPersonalPresentationV2;
+  readonly presentation: DatabaseViewPersonalPreferencesV2;
   readonly collapsedOccurrenceKeys: readonly string[];
   readonly loading: boolean;
   readonly saving: boolean;
@@ -371,12 +379,12 @@ class DatabaseViewPersonalStateStore {
           projectId: this.projectId,
           viewId: this.viewId,
           storeEpoch: presentation.storeEpoch,
-          value: { presentationOverride: legacy, revision: 0 },
+          value: { rulesOverride: {}, presentationOverride: legacy, revision: 0 },
         });
         presentation = {
           ...presentation,
           commitSeq: result.commitSeq,
-          value: { presentationOverride: legacy, revision: result.revision },
+          value: { rulesOverride: {}, presentationOverride: legacy, revision: result.revision },
         };
         removeMigratedLegacyOverride(this.viewId);
       }
@@ -421,9 +429,10 @@ class DatabaseViewPersonalStateStore {
     let changed = false;
     for (const change of event.personalViewChanges) {
       if (change.viewId !== this.viewId) continue;
-      if (change.kind === "presentation") {
+      if (change.kind === "preferences") {
         if (event.commitSeq < this.presentationCommitSeq) continue;
         const incoming = normalizePresentation({
+          rulesOverride: change.rulesOverride,
           presentationOverride: change.presentationOverride,
           revision: change.revision,
         });
@@ -431,7 +440,7 @@ class DatabaseViewPersonalStateStore {
         this.committedPresentation = incoming;
         if (
           this.pendingPresentationWrites === 0 ||
-          sameOverride(this.desiredPresentation.presentationOverride, incoming.presentationOverride)
+          samePreferences(this.desiredPresentation, incoming)
         ) {
           this.desiredPresentation = incoming;
         }
@@ -471,14 +480,15 @@ class DatabaseViewPersonalStateStore {
     this.rebuildCollapsedOccurrences();
   }
 
-  setPresentationOverride = (
-    override: DatabaseViewPresentationOverride | null,
+  private setPreferencesOverride = (
+    preferences: Pick<DatabaseViewPersonalPreferencesV2, "rulesOverride" | "presentationOverride">,
   ): Promise<boolean> => {
     void this.ensureHydrated();
     this.presentationLocalEditVersion += 1;
     this.pendingPresentationWrites += 1;
     this.desiredPresentation = {
-      presentationOverride: parseDatabaseViewPresentationOverride(override ?? {}),
+      rulesOverride: parseDatabaseViewRulesOverride(preferences.rulesOverride),
+      presentationOverride: parseDatabaseViewPresentationOverride(preferences.presentationOverride),
       revision: this.committedPresentation.revision,
     };
     this.publish({ error: null });
@@ -494,12 +504,7 @@ class DatabaseViewPersonalStateStore {
           return;
         }
         const desired = this.desiredPresentation;
-        if (
-          sameOverride(
-            desired.presentationOverride,
-            this.committedPresentation.presentationOverride,
-          )
-        ) {
+        if (samePreferences(desired, this.committedPresentation)) {
           this.desiredPresentation = this.committedPresentation;
           return;
         }
@@ -509,6 +514,7 @@ class DatabaseViewPersonalStateStore {
             viewId: this.viewId,
             storeEpoch: this.storeEpoch,
             value: {
+              rulesOverride: desired.rulesOverride,
               presentationOverride: desired.presentationOverride,
               revision: this.committedPresentation.revision,
             },
@@ -519,10 +525,7 @@ class DatabaseViewPersonalStateStore {
             this.presentationCommitSeq = result.commitSeq;
             this.committedPresentation = committed;
           }
-          this.desiredPresentation = sameOverride(
-            this.desiredPresentation.presentationOverride,
-            desired.presentationOverride,
-          )
+          this.desiredPresentation = samePreferences(this.desiredPresentation, desired)
             ? this.committedPresentation
             : { ...this.desiredPresentation, revision: result.revision };
         } catch (cause) {
@@ -547,6 +550,18 @@ class DatabaseViewPersonalStateStore {
     );
     return operation.then(() => succeeded);
   };
+
+  setPresentationOverride = (override: DatabaseViewPresentationOverride | null): Promise<boolean> =>
+    this.setPreferencesOverride({
+      rulesOverride: this.desiredPresentation.rulesOverride,
+      presentationOverride: override ?? {},
+    });
+
+  setRulesOverride = (override: DatabaseViewRulesOverride | null): Promise<boolean> =>
+    this.setPreferencesOverride({
+      rulesOverride: override ?? {},
+      presentationOverride: this.desiredPresentation.presentationOverride,
+    });
 
   setOccurrenceDisclosure = (
     target: DatabaseViewDisclosureTargetV2,
@@ -620,7 +635,7 @@ class DatabaseViewPersonalStateStore {
     return operation.then(() => succeeded);
   };
 
-  flushPresentation = async (): Promise<DatabaseViewPersonalPresentationV2> => {
+  flushPreferences = async (): Promise<DatabaseViewPersonalPreferencesV2> => {
     await this.ensureHydrated();
     await this.presentationWriteChain;
     if (!this.hydrated) {
@@ -631,13 +646,15 @@ class DatabaseViewPersonalStateStore {
     return this.committedPresentation;
   };
 
-  acceptPresentationCommitted = (input: {
+  acceptPreferencesCommitted = (input: {
+    readonly rulesOverride: DatabaseViewRulesOverride | null;
     readonly presentationOverride: DatabaseViewPresentationOverride | null;
     readonly revision: number;
     readonly commitSeq: number;
   }): void => {
     if (input.commitSeq < this.presentationCommitSeq) return;
     const committed = normalizePresentation({
+      rulesOverride: input.rulesOverride ?? {},
       presentationOverride: input.presentationOverride ?? {},
       revision: input.revision,
     });
@@ -733,7 +750,7 @@ class DatabaseViewPersonalStateRegistry {
 
 const sharedPersonalStateRegistry = new DatabaseViewPersonalStateRegistry();
 
-export const useDatabaseViewPresentationPreference = (
+export const useDatabaseViewPersonalPreference = (
   projectId: string,
   rawViewId: string,
 ): DatabaseViewPersonalStateController => {
@@ -744,25 +761,30 @@ export const useDatabaseViewPresentationPreference = (
   );
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   return {
+    rulesOverride:
+      Object.keys(snapshot.presentation.rulesOverride).length === 0
+        ? undefined
+        : snapshot.presentation.rulesOverride,
     presentationOverride:
       Object.keys(snapshot.presentation.presentationOverride).length === 0
         ? undefined
         : snapshot.presentation.presentationOverride,
     collapsedOccurrenceKeys: snapshot.collapsedOccurrenceKeys,
-    presentationRevision: snapshot.presentation.revision,
+    preferencesRevision: snapshot.presentation.revision,
     loading: snapshot.loading,
     saving: snapshot.saving,
     error: snapshot.error,
     setPresentationOverride: store.setPresentationOverride,
+    setRulesOverride: store.setRulesOverride,
     setOccurrenceDisclosure: store.setOccurrenceDisclosure,
-    flushPresentation: store.flushPresentation,
-    acceptPresentationCommitted: store.acceptPresentationCommitted,
+    flushPreferences: store.flushPreferences,
+    acceptPreferencesCommitted: store.acceptPreferencesCommitted,
     synchronizeStoreEpoch: store.synchronizeStoreEpoch,
   };
 };
 
 export const databaseViewPresentationPreferencesStorageKey = LEGACY_STORAGE_KEY;
 
-export const resetDatabaseViewPresentationPreferencesForTests = (): void => {
+export const resetDatabaseViewPersonalPreferencesForTests = (): void => {
   sharedPersonalStateRegistry.reset();
 };

@@ -440,7 +440,7 @@ export const NodexDropdownContent = forwardRef<HTMLDivElement, NodexDropdownCont
 );
 
 export type NodexDropdownButtonTriggerProps = Omit<ComponentPropsWithoutRef<"button">, "title"> & {
-  size?: "xs" | "sm" | "default" | "settings";
+  size?: "xs" | "sm" | "default" | "rule" | "settings";
   muted?: boolean;
   showChevron?: boolean;
   chrome?: "filled" | "transparent" | "outline" | "raised";
@@ -458,7 +458,7 @@ export const NodexDropdownButtonTrigger = forwardRef<
     size = "default",
     muted = false,
     showChevron = true,
-    chrome = "filled",
+    chrome = "outline",
     shape = "default",
     ...props
   },
@@ -469,30 +469,32 @@ export const NodexDropdownButtonTrigger = forwardRef<
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex min-w-0 items-center justify-between gap-1 border-[0.5px] border-transparent outline-hidden disabled:cursor-not-allowed disabled:opacity-40",
+        "inline-flex min-w-0 items-center justify-between gap-1 border-[0.5px] outline-hidden disabled:cursor-not-allowed disabled:opacity-40",
         chrome === "outline"
           ? "border-token-border bg-token-bg-fog hover:bg-token-list-hover-background"
           : chrome === "raised"
             ? NODEX_RAISED_CONTROL_CHROME_CLASS_NAME
             : chrome === "filled"
-              ? "bg-token-foreground/5 hover:bg-token-foreground/10"
-              : "bg-transparent hover:bg-token-foreground/5",
+              ? "border-transparent bg-token-foreground/5 hover:bg-token-foreground/10"
+              : "border-transparent bg-transparent hover:bg-token-foreground/5",
         "focus-visible:ring-token-focus focus-visible:ring-2",
         muted ? "text-token-description-foreground" : "text-token-foreground",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-token-description-foreground",
         size === "xs"
-          ? "h-6 rounded-md px-2 py-0 text-xs [&_svg]:size-4"
+          ? "h-6 rounded-md px-2 py-0 text-xs"
           : size === "sm"
             ? "h-7 rounded-lg px-2 py-0 text-sm/4.5"
-            : size === "settings"
-              ? "h-token-button-composer rounded-lg px-3 py-0 text-base leading-[18px]"
-              : "h-7 rounded-lg px-2 py-0 text-sm/4.5",
+            : size === "rule"
+              ? "h-8 rounded-lg px-2 py-0 text-sm/5"
+              : size === "settings"
+                ? "h-token-button-composer rounded-lg px-3 py-0 text-base leading-[18px]"
+                : "h-7 rounded-lg px-2 py-0 text-sm/4.5",
         shape === "pill" && "rounded-full pl-1 pr-2",
         className,
       )}
       {...props}
     >
-      <span className="flex min-w-0 items-center gap-1">{children}</span>
+      <span className="flex min-w-0 flex-1 items-center gap-1">{children}</span>
       {showChevron ? <ChevronDownIcon className="icon-2xs" /> : null}
     </button>
   );

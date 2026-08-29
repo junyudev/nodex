@@ -448,7 +448,7 @@ fn visit_scheduled_rows(
            JOIN database_containers container \
              ON container.default_view_id = view.id AND container.block_id = view.database_block_id \
            JOIN database_view_page_positions position ON position.view_id = view.id \
-           WHERE view.default_layout = 'board' AND view.lifecycle = 'active' \
+           WHERE view.layout = 'board' AND view.lifecycle = 'active' \
          ) \
          SELECT schedule.page_block_id, schedule.library_id, schedule.lifecycle, block.lifecycle, \
            block.metadata_revision, schedule.source_metadata_revision, schedule.scheduled_start, \

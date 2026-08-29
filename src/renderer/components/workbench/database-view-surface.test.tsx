@@ -123,7 +123,7 @@ const model: DatabaseViewRenderModel = {
       databaseId,
       dataSourceId,
       name: "Focused",
-      defaultLayout: "list",
+      layout: "list",
       config: upgradeDatabaseViewConfigV2({
         schemaKey: "nodex.database-view",
         schemaVersion: 2,
@@ -250,7 +250,7 @@ const boardModel = (): DatabaseViewRenderModel => {
     ...model,
     query: {
       ...model.query,
-      view: { ...model.query.view, defaultLayout: "board" },
+      view: { ...model.query.view, layout: "board" },
       rows: [firstAuthority, secondAuthority],
     },
     columns: [
@@ -307,16 +307,13 @@ const boardMetadataModel = (): DatabaseViewRenderModel => {
           ...next.query.view.config,
           presentation: {
             ...next.query.view.config.presentation,
-            layouts: {
-              ...next.query.view.config.presentation.layouts,
-              board: {
-                ...next.query.view.config.presentation.layouts.board,
-                fields: [
-                  { kind: "intrinsic", field: "created_at" },
-                  ...next.query.view.config.presentation.layouts.board.fields,
-                  { kind: "intrinsic", field: "updated_at" },
-                ],
-              },
+            display: {
+              ...next.query.view.config.presentation.display,
+              fields: [
+                { kind: "intrinsic", field: "created_at" },
+                ...next.query.view.config.presentation.display.fields,
+                { kind: "intrinsic", field: "updated_at" },
+              ],
             },
           },
         },
@@ -345,15 +342,12 @@ const keyedBoardModel = (): DatabaseViewRenderModel => {
           ...next.query.view.config,
           presentation: {
             ...next.query.view.config.presentation,
-            layouts: {
-              ...next.query.view.config.presentation.layouts,
-              board: {
-                ...next.query.view.config.presentation.layouts.board,
-                fields: [
-                  { kind: "intrinsic", field: "page_key" },
-                  ...next.query.view.config.presentation.layouts.board.fields,
-                ],
-              },
+            display: {
+              ...next.query.view.config.presentation.display,
+              fields: [
+                { kind: "intrinsic", field: "page_key" },
+                ...next.query.view.config.presentation.display.fields,
+              ],
             },
           },
         },
@@ -379,7 +373,7 @@ const listModel = (): DatabaseViewRenderModel => {
     ...next,
     query: {
       ...next.query,
-      view: { ...next.query.view, defaultLayout: "list" },
+      view: { ...next.query.view, layout: "list" },
     },
     columns: [
       {
@@ -460,7 +454,7 @@ const groupedListModel = (): DatabaseViewRenderModel => {
       ...next.query,
       view: {
         ...next.query.view,
-        defaultLayout: "list",
+        layout: "list",
         config: {
           ...next.query.view.config,
           presentation: {
@@ -513,21 +507,18 @@ const priorityGroupedBoardModel = (): DatabaseViewRenderModel => {
       ...next.query,
       view: {
         ...next.query.view,
-        defaultLayout: "board",
+        layout: "board",
         config: {
           ...next.query.view.config,
           presentation: {
             ...next.query.view.config.presentation,
             group: { propertyId: priorityPropertyId },
-            layouts: {
-              ...next.query.view.config.presentation.layouts,
-              board: {
-                ...next.query.view.config.presentation.layouts.board,
-                fields: [
-                  { kind: "property", propertyId: priorityPropertyId },
-                  { kind: "property", propertyId: tagsPropertyId },
-                ],
-              },
+            display: {
+              ...next.query.view.config.presentation.display,
+              fields: [
+                { kind: "property", propertyId: priorityPropertyId },
+                { kind: "property", propertyId: tagsPropertyId },
+              ],
             },
           },
         },
@@ -560,10 +551,9 @@ const prioritySortedBoardModel = (): DatabaseViewRenderModel => {
         ...next.query.view,
         config: {
           ...next.query.view.config,
-          presentation: {
-            ...next.query.view.config.presentation,
-            group: null,
-            sort: [
+          rules: {
+            ...next.query.view.config.rules,
+            sorts: [
               {
                 field: { kind: "property", propertyId: priorityPropertyId },
                 direction: "asc",
@@ -571,6 +561,7 @@ const prioritySortedBoardModel = (): DatabaseViewRenderModel => {
               },
             ],
           },
+          presentation: { ...next.query.view.config.presentation, group: null },
         },
       },
       rows: next.query.rows.map((row, index) => ({
@@ -626,15 +617,12 @@ const editableSemanticListModel = (): DatabaseViewRenderModel => {
           ...next.query.view.config,
           presentation: {
             ...next.query.view.config.presentation,
-            layouts: {
-              ...next.query.view.config.presentation.layouts,
-              list: {
-                ...next.query.view.config.presentation.layouts.list,
-                fields: [
-                  { kind: "property", propertyId: priorityPropertyId },
-                  { kind: "property", propertyId: statusPropertyId },
-                ],
-              },
+            display: {
+              ...next.query.view.config.presentation.display,
+              fields: [
+                { kind: "property", propertyId: priorityPropertyId },
+                { kind: "property", propertyId: statusPropertyId },
+              ],
             },
           },
         },
@@ -990,14 +978,12 @@ describe("DatabaseViewSurface", () => {
     const described = describedBoardModel();
     const effectivePresentation = {
       layout: "board" as const,
+      rules: described.query.view.config.rules,
       presentation: {
         ...described.query.view.config.presentation,
-        layouts: {
-          ...described.query.view.config.presentation.layouts,
-          board: {
-            ...described.query.view.config.presentation.layouts.board,
-            showDescription: false,
-          },
+        display: {
+          ...described.query.view.config.presentation.display,
+          showDescription: false,
         },
       },
     };
@@ -1018,12 +1004,9 @@ describe("DatabaseViewSurface", () => {
           ...effectivePresentation,
           presentation: {
             ...effectivePresentation.presentation,
-            layouts: {
-              ...effectivePresentation.presentation.layouts,
-              board: {
-                ...effectivePresentation.presentation.layouts.board,
-                showDescription: true,
-              },
+            display: {
+              ...effectivePresentation.presentation.display,
+              showDescription: true,
             },
           },
         }}
@@ -1088,7 +1071,7 @@ describe("DatabaseViewSurface", () => {
       ...model,
       query: {
         ...model.query,
-        view: { ...model.query.view, defaultLayout: "board" },
+        view: { ...model.query.view, layout: "board" },
       },
     };
     const defaultScreen = render(
@@ -1113,7 +1096,7 @@ describe("DatabaseViewSurface", () => {
     fireEvent.click(fallbackScreen.getByRole("button", { name: "Open Page Focused Page" }));
     expect(opened[0]).toEqual(["page-focused", "Focused Page", "preview"]);
     expect(boardDefaultModel.databaseViewId).toBe(viewId);
-    expect(boardDefaultModel.query.view.defaultLayout).toBe("board");
+    expect(boardDefaultModel.query.view.layout).toBe("board");
   });
 
   test("keeps Board navigation and selection active across reactive renders", () => {
@@ -1941,15 +1924,12 @@ describe("DatabaseViewSurface", () => {
             ...model.query.view.config,
             presentation: {
               ...model.query.view.config.presentation,
-              layouts: {
-                ...model.query.view.config.presentation.layouts,
-                list: {
-                  ...model.query.view.config.presentation.layouts.list,
-                  fields: [tagsPropertyId, brokenPropertyId].map((propertyId) => ({
-                    kind: "property" as const,
-                    propertyId,
-                  })),
-                },
+              display: {
+                ...model.query.view.config.presentation.display,
+                fields: [tagsPropertyId, brokenPropertyId].map((propertyId) => ({
+                  kind: "property" as const,
+                  propertyId,
+                })),
               },
             },
           },
@@ -2113,15 +2093,12 @@ describe("DatabaseViewSurface", () => {
             ...model.query.view.config,
             presentation: {
               ...model.query.view.config.presentation,
-              layouts: {
-                ...model.query.view.config.presentation.layouts,
-                list: {
-                  ...model.query.view.config.presentation.layouts.list,
-                  fields: [tagsPropertyId, flagPropertyId].map((propertyId) => ({
-                    kind: "property" as const,
-                    propertyId,
-                  })),
-                },
+              display: {
+                ...model.query.view.config.presentation.display,
+                fields: [tagsPropertyId, flagPropertyId].map((propertyId) => ({
+                  kind: "property" as const,
+                  propertyId,
+                })),
               },
             },
           },
@@ -2309,6 +2286,7 @@ describe("DatabaseViewTabSurface", () => {
         presentationLayout="board"
         effectivePresentation={{
           layout: "list",
+          rules: model.query.view.config.rules,
           presentation: model.query.view.config.presentation,
         }}
         activeSearchQuery=""

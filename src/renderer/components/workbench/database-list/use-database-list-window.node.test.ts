@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import type { EffectiveDatabaseViewPresentation } from "../../../../shared/database-kernel";
+import type { EffectiveDatabaseView } from "../../../../shared/database-kernel";
 import type { DatabaseListWindowSnapshot } from "../../../../shared/database-views";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import {
@@ -63,19 +63,21 @@ const state = (first: DatabaseListWindowSnapshot): DatabaseListWindowState => ({
   error: null,
 });
 
-const effective: EffectiveDatabaseViewPresentation = {
-  layout: "board",
+const effective: EffectiveDatabaseView = {
+  layout: "list",
+  rules: {
+    propertyFilters: [],
+    advancedFilter: null,
+    sorts: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
+  },
   presentation: {
-    sort: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
+    conditionalColors: [],
     group: null,
     subgroup: null,
     groupDirection: "asc",
     completion: { range: "all", orderByRecency: false },
     hierarchy: { showSubPages: true, nestedSubPages: true },
-    layouts: {
-      board: { fields: [], showEmptyGroups: false },
-      list: { fields: [], showEmptyGroups: false },
-    },
+    display: { fields: [], propertyOrder: [], showEmptyGroups: false },
   },
 };
 
@@ -139,11 +141,15 @@ describe("Database List window stitching", () => {
     const replacement = new Promise<DatabaseListWindowSnapshot>((resolve) => {
       resolveReplacement = resolve;
     });
-    const requestLayouts: Array<string | null> = [];
+    const requestOverridesHaveLayout: boolean[] = [];
     const registry = createDatabaseListWindowStoreRegistry({
       readWindow: async (request) => {
-        requestLayouts.push(request.input.presentationOverride?.layout ?? null);
-        if (requestLayouts.length === 1) {
+        requestOverridesHaveLayout.push(
+          request.input.preferencesOverride !== undefined &&
+            request.input.preferencesOverride !== null &&
+            "layout" in request.input.preferencesOverride.presentationOverride,
+        );
+        if (requestOverridesHaveLayout.length === 1) {
           return snapshot({
             rows: [{ occurrenceKey: "stable-old-order" }],
             windowStart: 0,
@@ -173,7 +179,7 @@ describe("Database List window stitching", () => {
       loading: true,
       rows: [{ occurrenceKey: "stable-old-order" }],
     });
-    expect(requestLayouts.at(-1)).toBe("list");
+    expect(requestOverridesHaveLayout.at(-1)).toBe(false);
 
     resolveReplacement(
       snapshot({
@@ -191,7 +197,7 @@ describe("Database List window stitching", () => {
     });
 
     sameStore.setRequest(model(4), effective);
-    expect(requestLayouts).toHaveLength(2);
+    expect(requestOverridesHaveLayout).toHaveLength(2);
     expect(sameStore.getSnapshot().rows).toMatchObject([{ occurrenceKey: "stable-new-order" }]);
     unsubscribe();
   });

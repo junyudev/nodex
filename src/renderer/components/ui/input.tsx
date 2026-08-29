@@ -21,3 +21,21 @@ export const Input = React.forwardRef<HTMLInputElement, React.ComponentPropsWith
     );
   },
 );
+
+/** Compact identity input with a persistent boundary for dense settings surfaces. */
+export const NodexCompactFramedInput = React.forwardRef<
+  HTMLInputElement,
+  React.ComponentPropsWithoutRef<"input">
+>(function NodexCompactFramedInput({ className, ...props }, ref) {
+  return (
+    <Input
+      ref={ref}
+      className={cn(
+        "h-7 rounded-[6px] border-token-border/70 bg-token-foreground/3 px-1.5 text-sm text-token-text-primary shadow-none",
+        "hover:bg-token-foreground/3 focus:bg-token-foreground/3 focus:ring-0",
+        className,
+      )}
+      {...props}
+    />
+  );
+});

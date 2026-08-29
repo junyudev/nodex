@@ -265,7 +265,7 @@ fn resolve_data_source_placement(
     match placement {
         LibraryBlockTransferDataSourcePlacement::Direct {
             view_id,
-            presentation_override,
+            preferences_override,
             group_key,
             before_page_id,
             sorted_property_values,
@@ -283,7 +283,7 @@ fn resolve_data_source_placement(
                 project_id,
                 data_source_id,
                 view_id,
-                presentation_override,
+                preferences_override,
                 group_key.as_deref(),
                 before_page_id.as_deref(),
                 &values,
@@ -291,7 +291,7 @@ fn resolve_data_source_placement(
         }
         LibraryBlockTransferDataSourcePlacement::ListOccurrence {
             view_id,
-            presentation_override,
+            preferences_override,
             expected_projection,
             target,
         } => resolve_page_transfer_list_destination(
@@ -300,7 +300,7 @@ fn resolve_data_source_placement(
             project_id,
             data_source_id,
             view_id,
-            presentation_override,
+            preferences_override,
             expected_projection,
             target,
         ),
@@ -1798,7 +1798,7 @@ fn prepare_page_ownership_transfer(
             let destination = if let Some(authority) = agent_authority {
                 let LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id,
-                    presentation_override: _,
+                    preferences_override: _,
                     group_key,
                     before_page_id,
                     sorted_property_values: _,

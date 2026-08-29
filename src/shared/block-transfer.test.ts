@@ -82,15 +82,17 @@ describe("BlockTransfer contract", () => {
         placement: {
           kind: "direct" as const,
           viewId: "view-b",
-          presentationOverride: {
-            layout: "board" as const,
-            sort: [
-              {
-                field: { kind: "property" as const, propertyId: "priority" },
-                direction: "asc" as const,
-                nulls: "last" as const,
-              },
-            ],
+          preferencesOverride: {
+            rulesOverride: {
+              sorts: [
+                {
+                  field: { kind: "property" as const, propertyId: "priority" },
+                  direction: "asc" as const,
+                  nulls: "last" as const,
+                },
+              ],
+            },
+            presentationOverride: {},
           },
           groupKey: "ship",
           beforePageId: "card-2",
@@ -215,7 +217,7 @@ describe("BlockTransfer contract", () => {
         placement: {
           kind: "list_occurrence" as const,
           viewId: "view-b",
-          presentationOverride: { layout: "list" as const },
+          preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
           expectedProjection: {
             scopeKey: "list:view-b",
             schemaVersion: 2,

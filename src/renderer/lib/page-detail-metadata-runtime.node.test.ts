@@ -165,6 +165,15 @@ const detail = (member = true): PageDetail => {
             updatedAt: timestamp,
           },
           properties,
+          pageLayout: {
+            dataSourceId,
+            revision: 1,
+            entries: properties.map((property, index) => ({
+              propertyId: property.propertyId,
+              visibility: "always_show" as const,
+              rankKey: `a${index}`,
+            })),
+          },
           values: {
             priority: {
               propertyId: priorityPropertyId,

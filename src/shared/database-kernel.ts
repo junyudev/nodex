@@ -20,6 +20,7 @@ const MAX_CANONICAL_REQUEST_LENGTH = 2_000_000;
 const MAX_VIEW_CONFIG_LENGTH = 262_144;
 const MAX_VIEW_FILTER_DEPTH = 8;
 const MAX_VIEW_FILTER_NODES = 1_024;
+const MAX_VIEW_PROPERTY_ORDER = 200;
 const UTF8_ENCODER = new TextEncoder();
 
 export type DatabaseJsonValue = BlockPropertyJsonValue;
@@ -78,9 +79,116 @@ export interface DatabasePropertyOption {
   readonly id: string;
   readonly name: string;
   readonly color?: string;
+  /** Present on option-window reads; omitted from durable View/config projections. */
+  readonly selectedPageCount?: number;
 }
 
 export type DatabaseViewFilterOperator =
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "not_contains"
+  | "text_is"
+  | "text_is_not"
+  | "text_contains"
+  | "text_does_not_contain"
+  | "text_starts_with"
+  | "text_ends_with"
+  | "number_equals"
+  | "number_does_not_equal"
+  | "number_greater_than"
+  | "number_less_than"
+  | "number_greater_than_or_equal_to"
+  | "number_less_than_or_equal_to"
+  | "checkbox_is"
+  | "checkbox_is_not"
+  | "select_is"
+  | "select_is_not"
+  | "multi_select_contains"
+  | "multi_select_does_not_contain"
+  | "multi_select_contains_all"
+  | "date_is"
+  | "date_is_not"
+  | "date_before"
+  | "date_after"
+  | "date_on_or_before"
+  | "date_on_or_after"
+  | "date_within"
+  | "date_relative_to"
+  | "relation_contains"
+  | "relation_does_not_contain"
+  | "is_empty"
+  | "is_not_empty";
+
+/**
+ * Canonical authoring capabilities for each Property value type. Durable legacy
+ * operators remain decodable for schema migrations, but never cross the current
+ * Property-record boundary or appear in new authoring UI.
+ */
+export const DATABASE_VIEW_FILTER_OPERATORS_BY_VALUE_TYPE = {
+  text: [
+    "text_is",
+    "text_is_not",
+    "text_contains",
+    "text_does_not_contain",
+    "text_starts_with",
+    "text_ends_with",
+    "is_empty",
+    "is_not_empty",
+  ],
+  number: [
+    "number_equals",
+    "number_does_not_equal",
+    "number_greater_than",
+    "number_less_than",
+    "number_greater_than_or_equal_to",
+    "number_less_than_or_equal_to",
+    "is_empty",
+    "is_not_empty",
+  ],
+  checkbox: ["checkbox_is", "checkbox_is_not"],
+  select: ["select_is", "select_is_not", "is_empty", "is_not_empty"],
+  multi_select: [
+    "multi_select_contains",
+    "multi_select_does_not_contain",
+    "multi_select_contains_all",
+    "is_empty",
+    "is_not_empty",
+  ],
+  date: [
+    "date_is",
+    "date_is_not",
+    "date_before",
+    "date_after",
+    "date_on_or_before",
+    "date_on_or_after",
+    "date_within",
+    "date_relative_to",
+    "is_empty",
+    "is_not_empty",
+  ],
+  datetime: [
+    "date_is",
+    "date_is_not",
+    "date_before",
+    "date_after",
+    "date_on_or_before",
+    "date_on_or_after",
+    "date_within",
+    "date_relative_to",
+    "is_empty",
+    "is_not_empty",
+  ],
+  relation: ["relation_contains", "relation_does_not_contain", "is_empty", "is_not_empty"],
+} as const satisfies Readonly<
+  Record<DatabasePropertyValueType, readonly DatabaseViewFilterOperator[]>
+>;
+
+export const databaseViewFilterOperatorsForValueType = (
+  valueType: DatabasePropertyValueType,
+): readonly DatabaseViewFilterOperator[] => DATABASE_VIEW_FILTER_OPERATORS_BY_VALUE_TYPE[valueType];
+
+export type DatabasePropertyFilterOperator =
   | "equals"
   | "not_equals"
   | "contains"
@@ -137,13 +245,14 @@ export interface DatabaseViewConfigV2 extends Omit<DatabaseViewConfig, "schemaVe
 
 export interface DatabaseViewLayoutDisplayConfig {
   readonly fields: readonly DatabaseViewField[];
+  /** Complete View-owned order for Source Properties, including hidden Properties. */
+  readonly propertyOrder: readonly string[];
   readonly showEmptyGroups: boolean;
   /** Board-only Page body preview visibility; omitted legacy configs default to visible. */
   readonly showDescription?: boolean;
 }
 
 export interface DatabaseViewPresentationConfig {
-  readonly sort: readonly DatabaseViewSort[];
   readonly group: null | { readonly propertyId: string };
   readonly subgroup: null | { readonly propertyId: string };
   readonly groupDirection: DatabaseViewSort["direction"];
@@ -157,22 +266,48 @@ export interface DatabaseViewPresentationConfig {
     /** Render task children below their parent instead of as flat occurrences. */
     readonly nestedSubPages: boolean;
   };
-  readonly layouts: {
-    readonly board: DatabaseViewLayoutDisplayConfig;
-    readonly list: DatabaseViewLayoutDisplayConfig;
-  };
+  readonly display: DatabaseViewLayoutDisplayConfig;
+  readonly conditionalColors: readonly DatabaseViewConditionalColorRule[];
 }
 
-export interface DatabaseViewConfigV4 {
+export type DatabaseViewConditionalColor =
+  | "gray"
+  | "brown"
+  | "orange"
+  | "yellow"
+  | "green"
+  | "blue"
+  | "purple"
+  | "pink"
+  | "red";
+
+export interface DatabaseViewConditionalColorRule {
+  readonly ruleId: string;
+  readonly propertyId: string;
+  readonly operator: DatabasePropertyFilterOperator;
+  readonly value?: DatabaseJsonValue;
+  readonly color: DatabaseViewConditionalColor;
+}
+
+export interface DatabaseViewPropertyFilter {
+  readonly filterId: string;
+  readonly clause: DatabaseViewFilterClause;
+}
+
+export interface DatabaseViewRules {
+  readonly propertyFilters: readonly DatabaseViewPropertyFilter[];
+  readonly advancedFilter: DatabaseViewFilterGroup | null;
+  readonly sorts: readonly DatabaseViewSort[];
+}
+
+export interface DatabaseViewConfigV6 {
   readonly schemaKey: "nodex.database-view";
-  readonly schemaVersion: 4;
-  readonly filter: DatabaseViewFilterNode;
+  readonly schemaVersion: 6;
+  readonly rules: DatabaseViewRules;
   readonly presentation: DatabaseViewPresentationConfig;
 }
 
 export interface DatabaseViewPresentationOverride {
-  readonly layout?: DatabaseViewLayout;
-  readonly sort?: readonly DatabaseViewSort[];
   readonly group?: null | { readonly propertyId: string };
   readonly subgroup?: null | { readonly propertyId: string };
   readonly groupDirection?: DatabaseViewSort["direction"];
@@ -184,21 +319,30 @@ export interface DatabaseViewPresentationOverride {
     readonly showSubPages?: boolean;
     readonly nestedSubPages?: boolean;
   };
-  readonly layouts?: {
-    readonly board?: Partial<DatabaseViewLayoutDisplayConfig>;
-    readonly list?: Partial<DatabaseViewLayoutDisplayConfig>;
-  };
+  readonly display?: Partial<DatabaseViewLayoutDisplayConfig>;
 }
 
-export interface EffectiveDatabaseViewPresentation {
+export interface DatabaseViewRulesOverride {
+  readonly propertyFilters?: readonly DatabaseViewPropertyFilter[];
+  readonly advancedFilter?: DatabaseViewFilterGroup | null;
+  readonly sorts?: readonly DatabaseViewSort[];
+}
+
+export interface DatabaseViewPreferencesOverride {
+  readonly rulesOverride: DatabaseViewRulesOverride;
+  readonly presentationOverride: DatabaseViewPresentationOverride;
+}
+
+export interface EffectiveDatabaseView {
   readonly layout: DatabaseViewLayout;
+  readonly rules: DatabaseViewRules;
   readonly presentation: DatabaseViewPresentationConfig;
 }
 
 export interface InitialDatabaseView {
   readonly viewId: string;
   readonly name: string;
-  readonly defaultLayout: DatabaseViewLayout;
+  readonly layout: DatabaseViewLayout;
   readonly config: DatabaseViewConfig;
 }
 
@@ -263,7 +407,7 @@ export interface PutDatabaseViewOperation {
   /** Zero creates the View; a positive value updates the same identity. */
   readonly expectedRevision: number;
   readonly name: string;
-  readonly defaultLayout: DatabaseViewLayout;
+  readonly layout: DatabaseViewLayout;
   readonly config: DatabaseViewConfig;
   readonly isPrimary: boolean;
   /** Missing appends to this Database's durable View order. */
@@ -768,11 +912,172 @@ interface ViewFilterParseState {
   nodeCount: number;
 }
 
+const VIEW_FILTER_OPERATORS = new Set<DatabaseViewFilterOperator>([
+  "equals",
+  "not_equals",
+  "contains",
+  "not_contains",
+  "text_is",
+  "text_is_not",
+  "text_contains",
+  "text_does_not_contain",
+  "text_starts_with",
+  "text_ends_with",
+  "number_equals",
+  "number_does_not_equal",
+  "number_greater_than",
+  "number_less_than",
+  "number_greater_than_or_equal_to",
+  "number_less_than_or_equal_to",
+  "checkbox_is",
+  "checkbox_is_not",
+  "select_is",
+  "select_is_not",
+  "multi_select_contains",
+  "multi_select_does_not_contain",
+  "multi_select_contains_all",
+  "date_is",
+  "date_is_not",
+  "date_before",
+  "date_after",
+  "date_on_or_before",
+  "date_on_or_after",
+  "date_within",
+  "date_relative_to",
+  "relation_contains",
+  "relation_does_not_contain",
+  "is_empty",
+  "is_not_empty",
+]);
+
+export const isDatabaseViewFilterOperator = (value: unknown): value is DatabaseViewFilterOperator =>
+  typeof value === "string" && VIEW_FILTER_OPERATORS.has(value as DatabaseViewFilterOperator);
+
+const VALUELESS_VIEW_FILTER_OPERATORS = new Set<DatabaseViewFilterOperator>([
+  "is_empty",
+  "is_not_empty",
+]);
+
+const STRING_VIEW_FILTER_OPERATORS = new Set<DatabaseViewFilterOperator>([
+  "text_is",
+  "text_is_not",
+  "text_contains",
+  "text_does_not_contain",
+  "text_starts_with",
+  "text_ends_with",
+  "select_is",
+  "select_is_not",
+  "date_is",
+  "date_is_not",
+  "date_before",
+  "date_after",
+  "date_on_or_before",
+  "date_on_or_after",
+]);
+
+const NUMBER_VIEW_FILTER_OPERATORS = new Set<DatabaseViewFilterOperator>([
+  "number_equals",
+  "number_does_not_equal",
+  "number_greater_than",
+  "number_less_than",
+  "number_greater_than_or_equal_to",
+  "number_less_than_or_equal_to",
+]);
+
+const IDENTITY_LIST_VIEW_FILTER_OPERATORS = new Set<DatabaseViewFilterOperator>([
+  "multi_select_contains",
+  "multi_select_does_not_contain",
+  "multi_select_contains_all",
+  "relation_contains",
+  "relation_does_not_contain",
+]);
+
+const assertTypedViewFilterValue = (
+  operator: DatabaseViewFilterOperator,
+  value: DatabaseJsonValue,
+  label: string,
+): void => {
+  if (STRING_VIEW_FILTER_OPERATORS.has(operator)) {
+    if (typeof value !== "string") {
+      throw new DatabaseMutationContractError(`${label} must be a string`);
+    }
+    return;
+  }
+  if (NUMBER_VIEW_FILTER_OPERATORS.has(operator)) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new DatabaseMutationContractError(`${label} must be a finite number`);
+    }
+    return;
+  }
+  if (operator === "checkbox_is" || operator === "checkbox_is_not") {
+    if (typeof value !== "boolean") {
+      throw new DatabaseMutationContractError(`${label} must be a boolean`);
+    }
+    return;
+  }
+  if (IDENTITY_LIST_VIEW_FILTER_OPERATORS.has(operator)) {
+    if (
+      !Array.isArray(value) ||
+      value.length === 0 ||
+      value.some((identity) => typeof identity !== "string" || identity.length === 0)
+    ) {
+      throw new DatabaseMutationContractError(`${label} must be a non-empty identity list`);
+    }
+    return;
+  }
+  if (operator === "date_within") {
+    const range = readRecord(value, label);
+    assertExactKeys(range, label, ["start", "end"]);
+    readString(range, "start", label);
+    readString(range, "end", label);
+    return;
+  }
+  if (operator !== "date_relative_to") return;
+  const relative = readRecord(value, label);
+  assertExactKeys(relative, label, ["direction", "count", "unit"]);
+  if (relative.direction !== "past" && relative.direction !== "future") {
+    throw new DatabaseMutationContractError(`${label}.direction is unsupported`);
+  }
+  if (
+    typeof relative.count !== "number" ||
+    !Number.isInteger(relative.count) ||
+    relative.count < 1 ||
+    relative.count > 10_000
+  ) {
+    throw new DatabaseMutationContractError(`${label}.count must be an integer from 1 to 10000`);
+  }
+  if (
+    relative.unit !== "day" &&
+    relative.unit !== "week" &&
+    relative.unit !== "month" &&
+    relative.unit !== "year"
+  ) {
+    throw new DatabaseMutationContractError(`${label}.unit is unsupported`);
+  }
+};
+
+const isEmptyQuickFilterValue = (
+  operator: DatabaseViewFilterOperator,
+  value: DatabaseJsonValue,
+): boolean => {
+  if (value === null || value === "") return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (operator !== "date_within" || !isRecord(value)) return false;
+  return (
+    typeof value.start !== "string" ||
+    value.start.length === 0 ||
+    typeof value.end !== "string" ||
+    value.end.length === 0
+  );
+};
+
 const parseViewFilterNode = (
   value: unknown,
   label: string,
   depth: number,
   state: ViewFilterParseState,
+  typedValues = false,
+  allowEmptyValue = false,
 ): DatabaseViewFilterNode => {
   if (depth > MAX_VIEW_FILTER_DEPTH) {
     throw new DatabaseMutationContractError(
@@ -799,7 +1104,14 @@ const parseViewFilterNode = (
       kind: "group",
       operator: node.operator,
       children: node.children.map((child, index) =>
-        parseViewFilterNode(child, `${label}.children[${index}]`, depth + 1, state),
+        parseViewFilterNode(
+          child,
+          `${label}.children[${index}]`,
+          depth + 1,
+          state,
+          typedValues,
+          allowEmptyValue,
+        ),
       ),
     };
   }
@@ -807,25 +1119,28 @@ const parseViewFilterNode = (
     throw new DatabaseMutationContractError(`${label}.kind must be group or clause`);
   }
   assertExactKeys(node, label, ["kind", "propertyId", "operator"], ["value"]);
-  if (
-    node.operator !== "equals" &&
-    node.operator !== "not_equals" &&
-    node.operator !== "contains" &&
-    node.operator !== "not_contains" &&
-    node.operator !== "is_empty" &&
-    node.operator !== "is_not_empty"
-  ) {
+  if (!isDatabaseViewFilterOperator(node.operator)) {
     throw new DatabaseMutationContractError(`${label}.operator is unsupported`);
   }
-  const requiresValue = node.operator !== "is_empty" && node.operator !== "is_not_empty";
+  const operator = node.operator;
+  const requiresValue = !VALUELESS_VIEW_FILTER_OPERATORS.has(operator);
   if (requiresValue !== (node.value !== undefined)) {
     throw new DatabaseMutationContractError(`${label} has an invalid value arity`);
+  }
+  const parsedValue =
+    node.value === undefined ? undefined : canonicalizeJson(node.value, `${label}.value`);
+  if (
+    typedValues &&
+    parsedValue !== undefined &&
+    !(allowEmptyValue && isEmptyQuickFilterValue(operator, parsedValue))
+  ) {
+    assertTypedViewFilterValue(operator, parsedValue, `${label}.value`);
   }
   return {
     kind: "clause",
     propertyId: readString(node, "propertyId", label),
-    operator: node.operator,
-    ...(node.value === undefined ? {} : { value: canonicalizeJson(node.value, `${label}.value`) }),
+    operator,
+    ...(parsedValue === undefined ? {} : { value: parsedValue }),
   };
 };
 
@@ -833,10 +1148,10 @@ const parseViewSorts = (value: unknown, label: string): readonly DatabaseViewSor
   if (!Array.isArray(value)) {
     throw new DatabaseMutationContractError(`${label} must be an array`);
   }
-  if (value.length > 4) {
-    throw new DatabaseMutationContractError(`${label} exceeds the maximum of 4 rules`);
+  if (value.length > 128) {
+    throw new DatabaseMutationContractError(`${label} exceeds the maximum of 128 rules`);
   }
-  return value.map((candidate, index): DatabaseViewSort => {
+  const sorts = value.map((candidate, index): DatabaseViewSort => {
     const item = readRecord(candidate, `${label}[${index}]`);
     assertExactKeys(item, `${label}[${index}]`, ["field", "direction", "nulls"]);
     if (item.direction !== "asc" && item.direction !== "desc") {
@@ -867,6 +1182,13 @@ const parseViewSorts = (value: unknown, label: string): readonly DatabaseViewSor
       nulls: item.nulls,
     };
   });
+  const identities = sorts.map((sort) =>
+    sort.field.kind === "property" ? `property:${sort.field.propertyId}` : sort.field.kind,
+  );
+  if (new Set(identities).size !== identities.length) {
+    throw new DatabaseMutationContractError(`${label} contains duplicate fields`);
+  }
+  return sorts;
 };
 
 const parseViewConfig = (
@@ -1001,7 +1323,12 @@ const parseViewGroup = (value: unknown, label: string): { readonly propertyId: s
 
 const parseViewLayoutDisplay = (value: unknown, label: string): DatabaseViewLayoutDisplayConfig => {
   const display = readRecord(value, label);
-  assertExactKeys(display, label, ["fields", "showEmptyGroups"], ["showDescription"]);
+  assertExactKeys(
+    display,
+    label,
+    ["fields", "showEmptyGroups"],
+    ["propertyOrder", "showDescription"],
+  );
   if (!Array.isArray(display.fields) || display.fields.length > 64) {
     throw new DatabaseMutationContractError(`${label}.fields must contain at most 64 fields`);
   }
@@ -1033,16 +1360,35 @@ const parseViewLayoutDisplay = (value: unknown, label: string): DatabaseViewLayo
   if (new Set(identities).size !== identities.length) {
     throw new DatabaseMutationContractError(`${label}.fields contains duplicates`);
   }
+  const rawPropertyOrder = display.propertyOrder;
+  if (
+    rawPropertyOrder !== undefined &&
+    (!Array.isArray(rawPropertyOrder) ||
+      rawPropertyOrder.length > MAX_VIEW_PROPERTY_ORDER ||
+      !rawPropertyOrder.every((entry) => typeof entry === "string"))
+  ) {
+    throw new DatabaseMutationContractError(
+      `${label}.propertyOrder must contain at most ${MAX_VIEW_PROPERTY_ORDER} Property identities`,
+    );
+  }
+  const propertyOrder = (rawPropertyOrder ??
+    fields.flatMap((field) =>
+      field.kind === "property" ? [field.propertyId] : [],
+    )) as readonly string[];
+  if (new Set(propertyOrder).size !== propertyOrder.length) {
+    throw new DatabaseMutationContractError(`${label}.propertyOrder contains duplicates`);
+  }
   return {
     fields,
+    propertyOrder,
     showEmptyGroups: readBoolean(display, "showEmptyGroups", label),
     showDescription:
       display.showDescription === undefined ? true : readBoolean(display, "showDescription", label),
   };
 };
 
-const visitViewConfigV4PropertyIds = (
-  config: DatabaseViewConfigV4,
+const visitViewConfigV6PropertyIds = (
+  config: DatabaseViewConfigV6,
   visit: (propertyId: string) => void,
 ): void => {
   const visitFilter = (filter: DatabaseViewFilterNode): void => {
@@ -1052,20 +1398,78 @@ const visitViewConfigV4PropertyIds = (
     }
     filter.children.forEach(visitFilter);
   };
-  visitFilter(config.filter);
-  for (const sort of config.presentation.sort) {
+  for (const filter of config.rules.propertyFilters) visitFilter(filter.clause);
+  if (config.rules.advancedFilter) visitFilter(config.rules.advancedFilter);
+  for (const sort of config.rules.sorts) {
     if (sort.field.kind === "property") visit(sort.field.propertyId);
   }
   if (config.presentation.group) visit(config.presentation.group.propertyId);
   if (config.presentation.subgroup) visit(config.presentation.subgroup.propertyId);
-  for (const layout of [config.presentation.layouts.board, config.presentation.layouts.list]) {
-    for (const field of layout.fields) {
-      if (field.kind === "property") visit(field.propertyId);
-    }
+  for (const field of config.presentation.display.fields) {
+    if (field.kind === "property") visit(field.propertyId);
   }
+  for (const rule of config.presentation.conditionalColors) visit(rule.propertyId);
 };
 
-export const parseDatabaseViewConfigV4 = (value: unknown): DatabaseViewConfigV4 => {
+const parseConditionalColorRules = (
+  value: unknown,
+  label: string,
+): readonly DatabaseViewConditionalColorRule[] => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 32) {
+    throw new DatabaseMutationContractError(`${label} must contain at most 32 rules`);
+  }
+  const colors = new Set<DatabaseViewConditionalColor>([
+    "gray",
+    "brown",
+    "orange",
+    "yellow",
+    "green",
+    "blue",
+    "purple",
+    "pink",
+    "red",
+  ]);
+  const rules = value.map((candidate, index) => {
+    const ruleLabel = `${label}[${index}]`;
+    const rule = readRecord(candidate, ruleLabel);
+    assertExactKeys(rule, ruleLabel, ["ruleId", "propertyId", "operator", "color"], ["value"]);
+    const operators = new Set<DatabasePropertyFilterOperator>([
+      "equals",
+      "not_equals",
+      "contains",
+      "not_contains",
+      "is_empty",
+      "is_not_empty",
+    ]);
+    if (
+      !operators.has(rule.operator as DatabasePropertyFilterOperator) ||
+      !colors.has(rule.color as DatabaseViewConditionalColor)
+    ) {
+      throw new DatabaseMutationContractError(`${ruleLabel} is invalid`);
+    }
+    const operator = rule.operator as DatabasePropertyFilterOperator;
+    const requiresValue = operator !== "is_empty" && operator !== "is_not_empty";
+    if (requiresValue !== (rule.value !== undefined)) {
+      throw new DatabaseMutationContractError(`${ruleLabel} has an invalid value arity`);
+    }
+    return {
+      ruleId: readString(rule, "ruleId", ruleLabel),
+      propertyId: readString(rule, "propertyId", ruleLabel),
+      operator,
+      ...(rule.value === undefined
+        ? {}
+        : { value: canonicalizeJson(rule.value, `${ruleLabel}.value`) }),
+      color: rule.color as DatabaseViewConditionalColor,
+    };
+  });
+  if (new Set(rules.map((rule) => rule.ruleId)).size !== rules.length) {
+    throw new DatabaseMutationContractError(`${label} contains duplicate identities`);
+  }
+  return rules;
+};
+
+export const parseDatabaseViewConfigV6 = (value: unknown): DatabaseViewConfigV6 => {
   let canonical: string;
   try {
     canonical = stableStringifyBlockPropertyJson(value);
@@ -1083,24 +1487,74 @@ export const parseDatabaseViewConfigV4 = (value: unknown): DatabaseViewConfigV4 
   assertExactKeys(config, "databaseViewConfig", [
     "schemaKey",
     "schemaVersion",
-    "filter",
+    "rules",
     "presentation",
   ]);
-  if (config.schemaKey !== "nodex.database-view" || config.schemaVersion !== 4) {
+  if (config.schemaKey !== "nodex.database-view" || config.schemaVersion !== 6) {
     throw new DatabaseMutationContractError(
-      "databaseViewConfig must use nodex.database-view schema version 4",
+      "databaseViewConfig must use nodex.database-view schema version 6",
+    );
+  }
+  const rules = readRecord(config.rules, "databaseViewConfig.rules");
+  assertExactKeys(
+    rules,
+    "databaseViewConfig.rules",
+    [],
+    ["propertyFilters", "advancedFilter", "sorts"],
+  );
+  const rawPropertyFilters = rules.propertyFilters ?? [];
+  if (!Array.isArray(rawPropertyFilters) || rawPropertyFilters.length > 128) {
+    throw new DatabaseMutationContractError(
+      "databaseViewConfig.rules.propertyFilters must contain at most 128 rules",
+    );
+  }
+  const propertyFilters = rawPropertyFilters.map((candidate, index) => {
+    const label = `databaseViewConfig.rules.propertyFilters[${index}]`;
+    const filter = readRecord(candidate, label);
+    assertExactKeys(filter, label, ["filterId", "clause"]);
+    const clause = parseViewFilterNode(
+      filter.clause,
+      `${label}.clause`,
+      1,
+      { nodeCount: 0 },
+      true,
+      true,
+    );
+    if (clause.kind !== "clause") {
+      throw new DatabaseMutationContractError(`${label}.clause must be a Property clause`);
+    }
+    return { filterId: readString(filter, "filterId", label), clause };
+  });
+  if (new Set(propertyFilters.map((filter) => filter.filterId)).size !== propertyFilters.length) {
+    throw new DatabaseMutationContractError(
+      "databaseViewConfig.rules.propertyFilters contains duplicate identities",
+    );
+  }
+  const advancedFilter =
+    rules.advancedFilter === undefined || rules.advancedFilter === null
+      ? null
+      : parseViewFilterNode(
+          rules.advancedFilter,
+          "databaseViewConfig.rules.advancedFilter",
+          1,
+          {
+            nodeCount: 0,
+          },
+          true,
+          true,
+        );
+  if (advancedFilter?.kind === "clause") {
+    throw new DatabaseMutationContractError(
+      "databaseViewConfig.rules.advancedFilter must be a group",
     );
   }
   const presentation = readRecord(config.presentation, "databaseViewConfig.presentation");
-  assertExactKeys(presentation, "databaseViewConfig.presentation", [
-    "sort",
-    "group",
-    "subgroup",
-    "groupDirection",
-    "completion",
-    "hierarchy",
-    "layouts",
-  ]);
+  assertExactKeys(
+    presentation,
+    "databaseViewConfig.presentation",
+    ["group", "subgroup", "groupDirection", "completion", "hierarchy", "display"],
+    ["conditionalColors"],
+  );
   const group = parseViewGroup(presentation.group, "databaseViewConfig.presentation.group");
   const subgroup = parseViewGroup(
     presentation.subgroup,
@@ -1156,16 +1610,15 @@ export const parseDatabaseViewConfigV4 = (value: unknown): DatabaseViewConfigV4 
       "databaseViewConfig nested sub-pages require visible sub-pages",
     );
   }
-  const layouts = readRecord(presentation.layouts, "databaseViewConfig.presentation.layouts");
-  assertExactKeys(layouts, "databaseViewConfig.presentation.layouts", ["board", "list"]);
-  const parsed: DatabaseViewConfigV4 = {
+  const parsed: DatabaseViewConfigV6 = {
     schemaKey: "nodex.database-view",
-    schemaVersion: 4,
-    filter: parseViewFilterNode(config.filter, "databaseViewConfig.filter", 1, {
-      nodeCount: 0,
-    }),
+    schemaVersion: 6,
+    rules: {
+      propertyFilters,
+      advancedFilter,
+      sorts: parseViewSorts(rules.sorts ?? [], "databaseViewConfig.rules.sorts"),
+    },
     presentation: {
-      sort: parseViewSorts(presentation.sort, "databaseViewConfig.presentation.sort"),
       group,
       subgroup,
       groupDirection,
@@ -1178,26 +1631,28 @@ export const parseDatabaseViewConfigV4 = (value: unknown): DatabaseViewConfigV4 
         ),
       },
       hierarchy: { showSubPages, nestedSubPages },
-      layouts: {
-        board: parseViewLayoutDisplay(
-          layouts.board,
-          "databaseViewConfig.presentation.layouts.board",
-        ),
-        list: parseViewLayoutDisplay(layouts.list, "databaseViewConfig.presentation.layouts.list"),
-      },
+      display: parseViewLayoutDisplay(
+        presentation.display,
+        "databaseViewConfig.presentation.display",
+      ),
+      conditionalColors: parseConditionalColorRules(
+        presentation.conditionalColors,
+        "databaseViewConfig.presentation.conditionalColors",
+      ),
     },
   };
-  visitViewConfigV4PropertyIds(parsed, (propertyId) => {
+  visitViewConfigV6PropertyIds(parsed, (propertyId) => {
     parseDataSourcePropertyId(propertyId);
   });
+  parsed.presentation.display.propertyOrder.forEach(parseDataSourcePropertyId);
   return parsed;
 };
 
-export function databaseViewReferencedPropertyIdsV4(
-  config: DatabaseViewConfigV4,
+export function databaseViewReferencedPropertyIdsV6(
+  config: DatabaseViewConfigV6,
 ): readonly string[] {
   const propertyIds = new Set<string>();
-  visitViewConfigV4PropertyIds(config, (propertyId) => propertyIds.add(propertyId));
+  visitViewConfigV6PropertyIds(config, (propertyId) => propertyIds.add(propertyId));
   return [...propertyIds];
 }
 
@@ -1206,7 +1661,12 @@ const parseViewLayoutDisplayOverride = (
   label: string,
 ): Partial<DatabaseViewLayoutDisplayConfig> => {
   const display = readRecord(value, label);
-  assertExactKeys(display, label, [], ["fields", "showEmptyGroups", "showDescription"]);
+  assertExactKeys(
+    display,
+    label,
+    [],
+    ["fields", "propertyOrder", "showEmptyGroups", "showDescription"],
+  );
   return {
     ...(display.fields === undefined
       ? {}
@@ -1223,6 +1683,18 @@ const parseViewLayoutDisplayOverride = (
       ? {}
       : {
           showEmptyGroups: readBoolean(display, "showEmptyGroups", label),
+        }),
+    ...(display.propertyOrder === undefined
+      ? {}
+      : {
+          propertyOrder: parseViewLayoutDisplay(
+            {
+              fields: [],
+              propertyOrder: display.propertyOrder,
+              showEmptyGroups: false,
+            },
+            label,
+          ).propertyOrder,
         }),
     ...(display.showDescription === undefined
       ? {}
@@ -1254,13 +1726,8 @@ export const parseDatabaseViewPresentationOverride = (
     override,
     "databaseViewPresentationOverride",
     [],
-    ["layout", "sort", "group", "subgroup", "groupDirection", "completion", "hierarchy", "layouts"],
+    ["group", "subgroup", "groupDirection", "completion", "hierarchy", "display"],
   );
-  if (override.layout !== undefined && override.layout !== "board" && override.layout !== "list") {
-    throw new DatabaseMutationContractError(
-      "databaseViewPresentationOverride.layout is unsupported",
-    );
-  }
   const group =
     override.group === undefined
       ? undefined
@@ -1319,20 +1786,14 @@ export const parseDatabaseViewPresentationOverride = (
       ["showSubPages", "nestedSubPages"],
     );
   }
-  const layouts =
-    override.layouts === undefined
+  const display =
+    override.display === undefined
       ? undefined
-      : readRecord(override.layouts, "databaseViewPresentationOverride.layouts");
-  if (layouts) {
-    assertExactKeys(layouts, "databaseViewPresentationOverride.layouts", [], ["board", "list"]);
-  }
+      : parseViewLayoutDisplayOverride(
+          override.display,
+          "databaseViewPresentationOverride.display",
+        );
   const parsed: DatabaseViewPresentationOverride = {
-    ...(override.layout === undefined ? {} : { layout: override.layout }),
-    ...(override.sort === undefined
-      ? {}
-      : {
-          sort: parseViewSorts(override.sort, "databaseViewPresentationOverride.sort"),
-        }),
     ...(override.group === undefined ? {} : { group: group ?? null }),
     ...(override.subgroup === undefined ? {} : { subgroup: subgroup ?? null }),
     ...(override.groupDirection === undefined ? {} : { groupDirection: override.groupDirection }),
@@ -1378,54 +1839,122 @@ export const parseDatabaseViewPresentationOverride = (
           },
         }
       : {}),
-    ...(layouts
-      ? {
-          layouts: {
-            ...(layouts.board === undefined
-              ? {}
-              : {
-                  board: parseViewLayoutDisplayOverride(
-                    layouts.board,
-                    "databaseViewPresentationOverride.layouts.board",
-                  ),
-                }),
-            ...(layouts.list === undefined
-              ? {}
-              : {
-                  list: parseViewLayoutDisplayOverride(
-                    layouts.list,
-                    "databaseViewPresentationOverride.layouts.list",
-                  ),
-                }),
-          },
-        }
-      : {}),
+    ...(display ? { display } : {}),
   };
   const propertyIds = new Set<string>();
-  parsed.sort?.forEach((sort) => {
-    if (sort.field.kind === "property") propertyIds.add(sort.field.propertyId);
-  });
   if (parsed.group) propertyIds.add(parsed.group.propertyId);
   if (parsed.subgroup) propertyIds.add(parsed.subgroup.propertyId);
-  for (const layout of [parsed.layouts?.board, parsed.layouts?.list]) {
-    layout?.fields?.forEach((field) => {
-      if (field.kind === "property") propertyIds.add(field.propertyId);
-    });
-  }
+  parsed.display?.fields?.forEach((field) => {
+    if (field.kind === "property") propertyIds.add(field.propertyId);
+  });
+  parsed.display?.propertyOrder?.forEach((propertyId) => propertyIds.add(propertyId));
   propertyIds.forEach(parseDataSourcePropertyId);
   return parsed;
 };
 
+/** Strict boundary parser for the sparse query-rule portion of personal View preferences. */
+export const parseDatabaseViewRulesOverride = (value: unknown): DatabaseViewRulesOverride => {
+  let canonical: string;
+  try {
+    canonical = stableStringifyBlockPropertyJson(value);
+  } catch (error) {
+    throw new DatabaseMutationContractError(
+      `databaseViewRulesOverride must be bounded canonical JSON: ${(error as Error).message}`,
+    );
+  }
+  if (canonical.length > MAX_VIEW_CONFIG_LENGTH) {
+    throw new DatabaseMutationContractError(
+      `databaseViewRulesOverride exceeds the maximum JSON size of ${MAX_VIEW_CONFIG_LENGTH} bytes`,
+    );
+  }
+  const override = readRecord(JSON.parse(canonical) as unknown, "databaseViewRulesOverride");
+  assertExactKeys(
+    override,
+    "databaseViewRulesOverride",
+    [],
+    ["propertyFilters", "advancedFilter", "sorts"],
+  );
+  let propertyFilters: readonly DatabaseViewPropertyFilter[] | undefined;
+  if (override.propertyFilters !== undefined) {
+    if (!Array.isArray(override.propertyFilters) || override.propertyFilters.length > 128) {
+      throw new DatabaseMutationContractError(
+        "databaseViewRulesOverride.propertyFilters must contain at most 128 rules",
+      );
+    }
+    propertyFilters = override.propertyFilters.map((candidate, index) => {
+      const label = `databaseViewRulesOverride.propertyFilters[${index}]`;
+      const filter = readRecord(candidate, label);
+      assertExactKeys(filter, label, ["filterId", "clause"]);
+      const clause = parseViewFilterNode(
+        filter.clause,
+        `${label}.clause`,
+        1,
+        { nodeCount: 0 },
+        true,
+        true,
+      );
+      if (clause.kind !== "clause") {
+        throw new DatabaseMutationContractError(`${label}.clause must be a Property clause`);
+      }
+      return { filterId: readString(filter, "filterId", label), clause };
+    });
+    if (new Set(propertyFilters.map((filter) => filter.filterId)).size !== propertyFilters.length) {
+      throw new DatabaseMutationContractError(
+        "databaseViewRulesOverride.propertyFilters contains duplicate identities",
+      );
+    }
+  }
+  const advancedFilter =
+    override.advancedFilter === undefined
+      ? undefined
+      : override.advancedFilter === null
+        ? null
+        : parseViewFilterNode(
+            override.advancedFilter,
+            "databaseViewRulesOverride.advancedFilter",
+            1,
+            { nodeCount: 0 },
+            true,
+            true,
+          );
+  if (advancedFilter?.kind === "clause") {
+    throw new DatabaseMutationContractError(
+      "databaseViewRulesOverride.advancedFilter must be a group",
+    );
+  }
+  return {
+    ...(propertyFilters === undefined ? {} : { propertyFilters }),
+    ...(advancedFilter === undefined ? {} : { advancedFilter }),
+    ...(override.sorts === undefined
+      ? {}
+      : { sorts: parseViewSorts(override.sorts, "databaseViewRulesOverride.sorts") }),
+  };
+};
+
+export const parseDatabaseViewPreferencesOverride = (
+  value: unknown,
+): DatabaseViewPreferencesOverride => {
+  const override = readRecord(value, "databaseViewPreferencesOverride");
+  assertExactKeys(override, "databaseViewPreferencesOverride", [
+    "rulesOverride",
+    "presentationOverride",
+  ]);
+  return {
+    rulesOverride: parseDatabaseViewRulesOverride(override.rulesOverride),
+    presentationOverride: parseDatabaseViewPresentationOverride(override.presentationOverride),
+  };
+};
+
 const parseInitialView = (value: unknown, label: string): InitialDatabaseView => {
   const view = readRecord(value, label);
-  assertExactKeys(view, label, ["viewId", "name", "defaultLayout", "config"]);
-  if (view.defaultLayout !== "board" && view.defaultLayout !== "list") {
-    throw new DatabaseMutationContractError(`${label}.defaultLayout is unsupported`);
+  assertExactKeys(view, label, ["viewId", "name", "layout", "config"]);
+  if (view.layout !== "board" && view.layout !== "list") {
+    throw new DatabaseMutationContractError(`${label}.layout is unsupported`);
   }
   return {
     viewId: readString(view, "viewId", label),
     name: readString(view, "name", label, MAX_NAME_LENGTH),
-    defaultLayout: view.defaultLayout,
+    layout: view.layout,
     config: parseViewConfig(view.config, `${label}.config`, 1) as DatabaseViewConfig,
   };
 };
@@ -1596,14 +2125,14 @@ const parseOperation = (value: unknown): DatabaseMutationOperation => {
         "viewId",
         "expectedRevision",
         "name",
-        "defaultLayout",
+        "layout",
         "config",
         "isPrimary",
       ],
       ["beforeViewId"],
     );
-    if (operation.defaultLayout !== "board" && operation.defaultLayout !== "list") {
-      throw new DatabaseMutationContractError(`${label}.defaultLayout is unsupported`);
+    if (operation.layout !== "board" && operation.layout !== "list") {
+      throw new DatabaseMutationContractError(`${label}.layout is unsupported`);
     }
     return {
       kind: "put_view",
@@ -1611,7 +2140,7 @@ const parseOperation = (value: unknown): DatabaseMutationOperation => {
       viewId: readString(operation, "viewId", label),
       expectedRevision: readRevision(operation, "expectedRevision", label),
       name: readString(operation, "name", label, MAX_NAME_LENGTH),
-      defaultLayout: operation.defaultLayout,
+      layout: operation.layout,
       config: parseViewConfig(operation.config, `${label}.config`, 1) as DatabaseViewConfig,
       isPrimary: readBoolean(operation, "isPrimary", label),
       ...(operation.beforeViewId === undefined
@@ -2044,6 +2573,34 @@ const isEmptyDatabaseViewValue = (value: DatabaseJsonValue | undefined): boolean
   value === "" ||
   (Array.isArray(value) && value.length === 0);
 
+const databaseViewJsonValuesEqual = (
+  left: DatabaseJsonValue | undefined,
+  right: DatabaseJsonValue | undefined,
+): boolean =>
+  stableStringifyDatabaseJson(left ?? null) === stableStringifyDatabaseJson(right ?? null);
+
+const databaseViewIdentityList = (value: DatabaseJsonValue | undefined): readonly string[] =>
+  Array.isArray(value)
+    ? value.filter((candidate): candidate is string => typeof candidate === "string")
+    : typeof value === "string"
+      ? [value]
+      : [];
+
+const databaseViewRelativeDateBoundary = (
+  now: Date,
+  direction: "past" | "future",
+  count: number,
+  unit: "day" | "week" | "month" | "year",
+): Date => {
+  const boundary = new Date(now);
+  const signedCount = direction === "past" ? -count : count;
+  if (unit === "day") boundary.setUTCDate(boundary.getUTCDate() + signedCount);
+  if (unit === "week") boundary.setUTCDate(boundary.getUTCDate() + signedCount * 7);
+  if (unit === "month") boundary.setUTCMonth(boundary.getUTCMonth() + signedCount);
+  if (unit === "year") boundary.setUTCFullYear(boundary.getUTCFullYear() + signedCount);
+  return boundary;
+};
+
 const evaluateDatabaseViewFilterClause = (
   clause: DatabaseViewFilterClause,
   valueForPropertyId: (propertyId: string) => DatabaseJsonValue | undefined,
@@ -2056,19 +2613,118 @@ const evaluateDatabaseViewFilterClause = (
     return !isEmptyDatabaseViewValue(current);
   }
   const expected = clause.value;
-  const equals =
-    stableStringifyDatabaseJson(current ?? null) === stableStringifyDatabaseJson(expected ?? null);
-  if (clause.operator === "equals") return equals;
-  if (clause.operator === "not_equals") return !equals;
+  const equals = databaseViewJsonValuesEqual(current, expected);
+  if (
+    clause.operator === "equals" ||
+    clause.operator === "text_is" ||
+    clause.operator === "number_equals" ||
+    clause.operator === "checkbox_is" ||
+    clause.operator === "select_is" ||
+    clause.operator === "date_is"
+  ) {
+    return equals;
+  }
+  if (
+    clause.operator === "not_equals" ||
+    clause.operator === "text_is_not" ||
+    clause.operator === "number_does_not_equal" ||
+    clause.operator === "checkbox_is_not" ||
+    clause.operator === "select_is_not" ||
+    clause.operator === "date_is_not"
+  ) {
+    return !equals;
+  }
+
+  const currentText = typeof current === "string" ? current.toLocaleLowerCase() : null;
+  const expectedText = typeof expected === "string" ? expected.toLocaleLowerCase() : null;
+  if (clause.operator === "text_contains") {
+    return currentText !== null && expectedText !== null && currentText.includes(expectedText);
+  }
+  if (clause.operator === "text_does_not_contain") {
+    return currentText === null || expectedText === null || !currentText.includes(expectedText);
+  }
+  if (clause.operator === "text_starts_with") {
+    return currentText !== null && expectedText !== null && currentText.startsWith(expectedText);
+  }
+  if (clause.operator === "text_ends_with") {
+    return currentText !== null && expectedText !== null && currentText.endsWith(expectedText);
+  }
+
+  const currentNumber = typeof current === "number" ? current : Number.NaN;
+  const expectedNumber = typeof expected === "number" ? expected : Number.NaN;
+  if (clause.operator === "number_greater_than") return currentNumber > expectedNumber;
+  if (clause.operator === "number_less_than") return currentNumber < expectedNumber;
+  if (clause.operator === "number_greater_than_or_equal_to") {
+    return currentNumber >= expectedNumber;
+  }
+  if (clause.operator === "number_less_than_or_equal_to") {
+    return currentNumber <= expectedNumber;
+  }
+
+  const currentIdentities = databaseViewIdentityList(current);
+  const expectedIdentities = databaseViewIdentityList(expected);
+  const containsAny = expectedIdentities.some((identity) => currentIdentities.includes(identity));
+  if (clause.operator === "multi_select_contains" || clause.operator === "relation_contains") {
+    return containsAny;
+  }
+  if (
+    clause.operator === "multi_select_does_not_contain" ||
+    clause.operator === "relation_does_not_contain"
+  ) {
+    return !containsAny;
+  }
+  if (clause.operator === "multi_select_contains_all") {
+    return expectedIdentities.every((identity) => currentIdentities.includes(identity));
+  }
+
+  if (
+    clause.operator === "date_before" ||
+    clause.operator === "date_after" ||
+    clause.operator === "date_on_or_before" ||
+    clause.operator === "date_on_or_after"
+  ) {
+    if (typeof current !== "string" || typeof expected !== "string") return false;
+    if (clause.operator === "date_before") return current < expected;
+    if (clause.operator === "date_after") return current > expected;
+    if (clause.operator === "date_on_or_before") return current <= expected;
+    return current >= expected;
+  }
+  if (clause.operator === "date_within") {
+    if (typeof current !== "string" || !isRecord(expected)) return false;
+    const start = expected.start;
+    const end = expected.end;
+    return (
+      typeof start === "string" && typeof end === "string" && current >= start && current <= end
+    );
+  }
+  if (clause.operator === "date_relative_to") {
+    if (typeof current !== "string" || !isRecord(expected)) return false;
+    const { direction, count, unit } = expected;
+    if (
+      (direction !== "past" && direction !== "future") ||
+      typeof count !== "number" ||
+      !Number.isInteger(count) ||
+      count < 1 ||
+      (unit !== "day" && unit !== "week" && unit !== "month" && unit !== "year")
+    ) {
+      return false;
+    }
+    const currentDate = new Date(current);
+    if (Number.isNaN(currentDate.getTime())) return false;
+    const now = new Date();
+    const boundary = databaseViewRelativeDateBoundary(now, direction, count, unit);
+    return direction === "past"
+      ? currentDate >= boundary && currentDate <= now
+      : currentDate >= now && currentDate <= boundary;
+  }
+
+  // Legacy v1/v2 filters may still reach this pure evaluator during migration tests.
   if (typeof current === "string" && typeof expected === "string") {
-    const contains = current.includes(expected);
+    const contains = current.toLocaleLowerCase().includes(expected.toLocaleLowerCase());
     return clause.operator === "not_contains" ? !contains : contains;
   }
   if (!Array.isArray(current)) return clause.operator === "not_contains";
-  const expectedKey = stableStringifyDatabaseJson(expected ?? null);
-  const contains = current.some(
-    (candidate) => stableStringifyDatabaseJson(candidate) === expectedKey,
-  );
+  const contains = current.some((candidate) => databaseViewJsonValuesEqual(candidate, expected));
   return clause.operator === "not_contains" ? !contains : contains;
 };
 
@@ -2084,6 +2740,29 @@ export const evaluateDatabaseViewFilter = (
     return filter.children.every((child) => evaluateDatabaseViewFilter(child, valueForPropertyId));
   }
   return filter.children.some((child) => evaluateDatabaseViewFilter(child, valueForPropertyId));
+};
+
+/** Ordered rules use first-match semantics so every row has one deterministic decoration. */
+export const evaluateDatabaseViewConditionalColor = (
+  rules: readonly DatabaseViewConditionalColorRule[],
+  valueForPropertyId: (propertyId: string) => DatabaseJsonValue | undefined,
+): DatabaseViewConditionalColor | null => {
+  for (const rule of rules) {
+    if (
+      evaluateDatabaseViewFilterClause(
+        {
+          kind: "clause",
+          propertyId: rule.propertyId,
+          operator: rule.operator,
+          ...(rule.value === undefined ? {} : { value: rule.value }),
+        },
+        valueForPropertyId,
+      )
+    ) {
+      return rule.color;
+    }
+  }
+  return null;
 };
 
 /** Actor/session are first-seen audit attribution, not logical retry identity. */

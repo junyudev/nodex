@@ -56,7 +56,7 @@ describe("Database View Block drop command", () => {
       placement: {
         kind: "direct",
         viewId: "view-1",
-        presentationOverride: { layout: "board" },
+        preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
         groupKey: null,
       },
       altKey: false,
@@ -108,7 +108,7 @@ describe("Database View Block drop command", () => {
         placement: {
           kind: "direct",
           viewId: "view-1",
-          presentationOverride: { layout: "board" },
+          preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
           groupKey: null,
         },
         altKey: false,

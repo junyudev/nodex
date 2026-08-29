@@ -736,7 +736,7 @@ fn read_create_source(
              JOIN database_views view ON view.id = container.default_view_id \
                AND view.database_block_id = container.block_id \
                AND view.data_source_id = source.id AND view.lifecycle = 'active' \
-               AND view.default_layout = 'board' \
+               AND view.layout = 'board' \
              WHERE source.id = ?1 AND source.library_id = ?2 AND source.lifecycle = 'active'",
             params![data_source_id, library_id],
             |row| {
@@ -3495,23 +3495,23 @@ mod tests {
     fn exact_primary_board_config() -> Value {
         json!({
             "schemaKey": "nodex.database-view",
-            "schemaVersion": 4,
-            "filter": { "kind": "group", "operator": "and", "children": [] },
-            "presentation": {
-                "sort": [{
+            "schemaVersion": 6,
+            "rules": {
+                "propertyFilters": [],
+                "advancedFilter": null,
+                "sorts": [{
                     "field": { "kind": "manual" },
                     "direction": "asc",
                     "nulls": "last"
-                }],
+                }]
+            },
+            "presentation": {
                 "group": { "propertyId": "status" },
                 "subgroup": null,
                 "groupDirection": "asc",
                 "completion": { "range": "all", "orderByRecency": false },
                 "hierarchy": { "showSubPages": true, "nestedSubPages": false },
-                "layouts": {
-                    "board": { "fields": [], "showEmptyGroups": false },
-                    "list": { "fields": [], "showEmptyGroups": false }
-                }
+                "display": { "fields": [], "showEmptyGroups": false }
             }
         })
     }
@@ -3529,7 +3529,7 @@ mod tests {
                    default_view_id TEXT); \
                  CREATE TABLE database_views( \
                    id TEXT NOT NULL, database_block_id TEXT NOT NULL, data_source_id TEXT NOT NULL, \
-                   lifecycle TEXT NOT NULL, default_layout TEXT NOT NULL, config_json TEXT NOT NULL); \
+                   lifecycle TEXT NOT NULL, layout TEXT NOT NULL, config_json TEXT NOT NULL); \
                  INSERT INTO data_sources VALUES \
                    ('source-1', 'library-1', 'active', 'database-1'); \
                  INSERT INTO database_containers VALUES \

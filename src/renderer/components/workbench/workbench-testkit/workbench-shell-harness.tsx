@@ -15,6 +15,7 @@ import {
 import * as Y from "yjs";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../../shared/block-documents/page-document";
+import type { DatabaseViewConfigV6, DatabaseViewSort } from "../../../../shared/database-kernel";
 import { WorkbenchLayoutSnapshotSchema } from "../../../../shared/schemas/workbench-layout";
 import type {
   CodexAutomationInboxItem,
@@ -61,7 +62,7 @@ import {
 import type { ProjectSession } from "./workbench-shell-fixtures";
 import { resetDatabaseRowDetailStoreForTests } from "@/lib/database-row-detail-store";
 import { resetPageDetailStoreForTests } from "@/lib/page-detail-store";
-import { resetDatabaseViewPresentationPreferencesForTests } from "@/lib/database-view-presentation-preferences";
+import { resetDatabaseViewPersonalPreferencesForTests } from "@/lib/database-view-personal-preferences";
 import { resetDatabaseListWindowStoresForTests } from "../database-list/use-database-list-window";
 import { useRetainedScrollPosition } from "@/lib/retained-scroll-position";
 import { buildPageDetailStoryResult } from "../../board/page-stage/page-stage-story-page-detail";
@@ -118,6 +119,28 @@ import {
 } from "@/lib/page-title-projection-context";
 
 export let invokeCalls: unknown[][] = [];
+
+const databaseViewConfigFixture = ({
+  sorts = [],
+  showEmptyGroups = true,
+}: {
+  readonly sorts?: readonly DatabaseViewSort[];
+  readonly showEmptyGroups?: boolean;
+} = {}): DatabaseViewConfigV6 => ({
+  schemaKey: "nodex.database-view",
+  schemaVersion: 6,
+  rules: { propertyFilters: [], advancedFilter: null, sorts },
+  presentation: {
+    group: null,
+    subgroup: null,
+    groupDirection: "asc",
+    completion: { range: "all", orderByRecency: false },
+    hierarchy: { showSubPages: true, nestedSubPages: false },
+    display: { fields: [], propertyOrder: [], showEmptyGroups, showDescription: true },
+    conditionalColors: [],
+  },
+});
+
 export let mockInvokeImpl: ((channel: string, ...args: unknown[]) => Promise<unknown>) | null =
   null;
 export let startThreadForSessionCalls: unknown[] = [];
@@ -626,7 +649,7 @@ vi.mock("@/lib/api", () => {
       if (
         personalPresentationOperations.length > 0 &&
         personalPresentationOperations.every(
-          (operation) => operation.kind === "put_view_personal_presentation",
+          (operation) => operation.kind === "put_view_personal_preferences",
         )
       ) {
         return {
@@ -802,11 +825,11 @@ vi.mock("@/lib/api", () => {
       invokeCalls.push(["database-module:read", projectId, request]);
       const configured = await mockInvokeImpl?.("database-module:read", projectId, request);
       if (configured !== undefined && configured !== null) return configured;
-      const projectName = projectId === "beta" ? "Beta" : "Alpha";
-      const databaseId = `database:${projectId}:primary`;
-      const dataSourceId = `${databaseId}:data-source:initial`;
+      const databaseId = `database-${projectId}`;
+      const dataSourceId = `source-${projectId}`;
       const viewId = `database-view:${projectId}:primary-board`;
-      if (request.read?.mode === "view_personal_presentation") {
+      const listViewId = `database-view:${projectId}:primary-list`;
+      if (request.read?.mode === "view_personal_preferences") {
         return {
           ok: true,
           value: {
@@ -817,9 +840,9 @@ vi.mock("@/lib/api", () => {
             commitSeq: 1,
             authorization: null,
             value: {
-              kind: "view_personal_presentation",
+              kind: "view_personal_preferences",
               value: {
-                presentationOverride: {},
+                preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
                 revision: 0,
               },
             },
@@ -874,16 +897,9 @@ vi.mock("@/lib/api", () => {
             viewId,
             databaseId,
             dataSourceId,
-            name: projectName,
-            defaultLayout: "board",
-            config: {
-              schemaKey: "nodex.database-view",
-              schemaVersion: 1,
-              filter: { kind: "group", operator: "and", children: [] },
-              sort: [],
-              group: null,
-              display: { propertyIds: [], showTitle: true },
-            },
+            name: "Board",
+            layout: "board",
+            config: databaseViewConfigFixture({ showEmptyGroups: false }),
             isDefault: true,
             revision: 1,
             rankKey: "a",
@@ -891,8 +907,25 @@ vi.mock("@/lib/api", () => {
             createdAt: "2026-06-07T00:00:00.000Z",
             updatedAt: "2026-06-07T00:00:00.000Z",
           },
+          {
+            viewId: listViewId,
+            databaseId,
+            dataSourceId,
+            name: "List",
+            layout: "list",
+            config: databaseViewConfigFixture({ showEmptyGroups: false }),
+            isDefault: false,
+            revision: 1,
+            rankKey: "b",
+            lifecycle: "active",
+            createdAt: "2026-06-07T00:00:00.000Z",
+            updatedAt: "2026-06-07T00:00:00.000Z",
+          },
         ],
       } as const;
+      const selectedView =
+        descriptor.views.find((view) => view.viewId === request.read?.target?.viewId) ??
+        descriptor.views[0];
       return {
         ok: true,
         value: {
@@ -908,7 +941,9 @@ vi.mock("@/lib/api", () => {
                 ? "catalog"
                 : request.read?.mode === "query"
                   ? "query"
-                  : "database",
+                  : request.read?.mode === "data_source"
+                    ? "data_source"
+                    : "database",
             ...(request.read?.mode === "catalog"
               ? {
                   databases: [descriptor],
@@ -918,12 +953,19 @@ vi.mock("@/lib/api", () => {
                     value: {
                       database: descriptor.database,
                       dataSource: descriptor.dataSources[0],
-                      view: descriptor.views[0],
+                      view: selectedView,
                       properties: [],
                       rows: [],
                     },
                   }
-                : { value: descriptor }),
+                : request.read?.mode === "data_source"
+                  ? {
+                      value: {
+                        dataSource: descriptor.dataSources[0],
+                        properties: [],
+                      },
+                    }
+                  : { value: descriptor }),
           },
         },
       };
@@ -1722,6 +1764,9 @@ vi.mock("@/lib/use-board", () => ({
           ];
     const visibleCards = Array.isArray(cards) ? cards : [cards];
     const databaseViewId = options?.databaseViewId ?? `view-${projectId}-primary`;
+    const isListView = databaseViewId === `database-view:${projectId}:primary-list`;
+    const viewLayout = isListView ? "list" : "board";
+    const viewName = isListView ? "List" : "Board";
     const timestamp = "2026-08-11T00:00:00.000Z";
     const rows = visibleCards.map((card, index) => ({
       pageId: card.id,
@@ -1744,7 +1789,7 @@ vi.mock("@/lib/use-board", () => ({
       dataSourceId: `source-${projectId}`,
       databaseName: "Tasks",
       dataSourceName: "Tasks",
-      viewName: "Board",
+      viewName,
       storeEpoch: "store-test",
       commitSeq: 1,
       authorization: null,
@@ -1786,24 +1831,11 @@ vi.mock("@/lib/use-board", () => ({
           viewId: databaseViewId,
           databaseId: `database-${projectId}`,
           dataSourceId: `source-${projectId}`,
-          name: "Board",
-          defaultLayout: "board",
-          config: {
-            schemaKey: "nodex.database-view",
-            schemaVersion: 4,
-            filter: { kind: "group", operator: "and", children: [] },
-            presentation: {
-              sort: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
-              group: null,
-              subgroup: null,
-              completion: { range: "all", orderByRecency: false },
-              hierarchy: { showSubPages: true, nestedSubPages: false },
-              layouts: {
-                board: { fields: [], showEmptyGroups: true },
-                list: { fields: [], showEmptyGroups: true },
-              },
-            },
-          },
+          name: viewName,
+          layout: viewLayout,
+          config: databaseViewConfigFixture({
+            sorts: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
+          }),
           isDefault: true,
           revision: 1,
           rankKey: "a",
@@ -3006,23 +3038,8 @@ export function renderWorkbench({
         databaseId,
         dataSourceId,
         name: projectId === "beta" ? "Beta" : "Alpha",
-        defaultLayout: "board",
-        config: {
-          schemaKey: "nodex.database-view",
-          schemaVersion: 4,
-          filter: { kind: "group", operator: "and", children: [] },
-          presentation: {
-            sort: [],
-            group: null,
-            subgroup: null,
-            completion: { range: "all", orderByRecency: false },
-            hierarchy: { showSubPages: true, nestedSubPages: false },
-            layouts: {
-              board: { fields: [], showEmptyGroups: true },
-              list: { fields: [], showEmptyGroups: true },
-            },
-          },
-        },
+        layout: "board",
+        config: databaseViewConfigFixture(),
         isDefault: true,
         revision: 1,
         rankKey: "a",
@@ -3072,7 +3089,7 @@ export function renderWorkbench({
           databaseBlockId: databaseId,
           projectId,
           name: queryView.name,
-          defaultLayout: queryView.defaultLayout,
+          layout: queryView.layout,
           config: queryView.config,
           isPrimary: true,
           createdAt: queryView.createdAt,
@@ -3873,7 +3890,7 @@ beforeEach(() => {
   terminalSessionStore.disposeEventSubscriptions();
   resetDatabaseRowDetailStoreForTests();
   resetPageDetailStoreForTests();
-  resetDatabaseViewPresentationPreferencesForTests();
+  resetDatabaseViewPersonalPreferencesForTests();
   resetDatabaseListWindowStoresForTests();
   __resetNodexToastStoreForTests();
   document.body.removeAttribute("style");

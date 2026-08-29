@@ -1,17 +1,20 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use nodex_core_contracts::database::{
-    DatabaseCommitValue, DatabaseEvent, DatabaseEventKind, DatabaseIntent,
-    DatabaseListMoveSelection, DatabaseListMoveTarget, DatabaseListMoveUndoRecipe,
-    DatabaseListProjectionExpectation, DatabaseOperationOutcome, DatabasePagePosition,
-    DatabasePagePropertyAddress, DatabasePersonalViewChange, DatabasePropertyCapabilities,
-    DatabasePropertyFilterOperator, DatabasePropertySchema, DatabasePropertySetDelta,
-    DatabasePropertyValueEdit, DatabasePropertyValueInput, DatabasePropertyValueMutation,
-    DatabaseReceipt, DatabaseRelationCardinality, DatabaseTaskParentPage, DatabaseTransferTarget,
-    DatabaseViewDefinition, DatabaseViewDisclosureTarget, DatabaseViewField, DatabaseViewFilter,
+    DatabaseCommitValue, DatabaseDuplicatePropertyOption, DatabaseEvent, DatabaseEventKind,
+    DatabaseIntent, DatabaseListMoveSelection, DatabaseListMoveTarget, DatabaseListMoveUndoRecipe,
+    DatabaseListProjectionExpectation, DatabaseOperationOutcome, DatabaseOptionPlacement,
+    DatabasePageLayoutPlacement, DatabasePagePosition, DatabasePagePropertyAddress,
+    DatabasePagePropertyVisibility, DatabasePersonalViewChange, DatabasePropertyCapabilities,
+    DatabasePropertyFilterOperator, DatabasePropertyPlacement, DatabasePropertySchema,
+    DatabasePropertySetDelta, DatabasePropertyValueEdit, DatabasePropertyValueInput,
+    DatabasePropertyValueMutation, DatabaseReceipt, DatabaseRelationCardinality,
+    DatabaseTaskParentPage, DatabaseTransferTarget, DatabaseViewDefinition,
+    DatabaseViewDisclosureTarget, DatabaseViewField, DatabaseViewFilter,
     DatabaseViewFilterOperator as ViewFilterOperator, DatabaseViewIntrinsicField,
-    DatabaseViewLayout, DatabaseViewPersonalPresentation, DatabaseViewPresentationOverrideInput,
-    DatabaseViewSortDirection, DatabaseViewSortField,
+    DatabaseViewLayout, DatabaseViewPersonalPreferences, DatabaseViewPlacement,
+    DatabaseViewPreferencesOverrideInput, DatabaseViewPresentationOverrideInput,
+    DatabaseViewRulesOverrideInput, DatabaseViewSortDirection, DatabaseViewSortField,
 };
 use nodex_core_contracts::{
     BoundModuleContext, CoreModuleEventPayload, ModuleApplyRequest, ModuleMutationReceipt,
@@ -44,6 +47,7 @@ use super::authorization::{authorize_required, project_primary_database};
 use super::ensure_database_page_key;
 use super::is_trusted_library_database_context;
 use super::relation::RelationValueEdit as RelationEdit;
+use super::view_contract::MAX_VIEW_SORT_RULES;
 
 const MODULE_NAME: &str = "database";
 const MAX_OPERATIONS: usize = 64;
@@ -51,7 +55,6 @@ const MAX_BULK_VALUES: usize = 4_096;
 const MAX_ID_LENGTH: usize = 512;
 const MAX_PROPERTY_ID_LENGTH: usize = 128;
 const MAX_NAME_LENGTH: usize = 256;
-const MAX_VIEW_SORT_RULES: usize = 4;
 const MAX_VIEW_DISPLAY_PROPERTIES: usize = 64;
 const MAX_COLLAPSED_OCCURRENCES: i64 = 2_000;
 const MAX_OCCURRENCE_KEY_LENGTH: usize = 1_024;
@@ -63,7 +66,7 @@ struct MutationEffects {
     page_ids: BTreeSet<String>,
     view_ids: BTreeSet<String>,
     revisions: BTreeMap<String, i64>,
-    personal_presentations: BTreeMap<String, DatabaseViewPersonalPresentation>,
+    personal_preferences: BTreeMap<String, DatabaseViewPersonalPreferences>,
     occurrence_disclosures: BTreeMap<(String, DatabaseViewDisclosureTarget), bool>,
     operation_outcomes: Vec<DatabaseOperationOutcome>,
 }
@@ -91,6 +94,7 @@ struct SourceRow {
 #[derive(Debug)]
 pub(crate) struct PropertyRow {
     pub(crate) id: String,
+    pub(crate) name: String,
     pub(crate) value_type: String,
     pub(crate) config_json: String,
     pub(crate) rank_key: String,
@@ -110,6 +114,8 @@ struct ViewRow {
     id: String,
     database_id: String,
     data_source_id: String,
+    name: String,
+    layout: String,
     config_json: String,
     rank_key: String,
     lifecycle: String,
@@ -321,13 +327,13 @@ fn validate_request(request: &ModuleApplyRequest<Vec<DatabaseIntent>>) -> Result
                 "set_task_parent requires between 1 and {MAX_BULK_VALUES} Pages"
             )));
         }
-        if let DatabaseIntent::PutViewPersonalPresentation {
+        if let DatabaseIntent::PutViewPersonalPreferences {
             expected_revision, ..
         } = intent
             && *expected_revision < 0
         {
             return Err(invalid(
-                "View personal presentation revision cannot be negative",
+                "View personal preferences revision cannot be negative",
             ));
         }
         if let DatabaseIntent::SetViewOccurrenceDisclosure { target, .. } = intent {
@@ -493,19 +499,30 @@ fn database_intent_kind(intent: &DatabaseIntent) -> &'static str {
     match intent {
         DatabaseIntent::RenamePageKeyPrefix { .. } => "rename_page_key_prefix",
         DatabaseIntent::PutProperty { .. } => "put_property",
+        DatabaseIntent::MoveProperty { .. } => "move_property",
+        DatabaseIntent::ChangePropertyType { .. } => "change_property_type",
+        DatabaseIntent::DuplicateProperty { .. } => "duplicate_property",
+        DatabaseIntent::RestoreProperty { .. } => "restore_property",
+        DatabaseIntent::PermanentlyDeleteProperty { .. } => "permanently_delete_property",
         DatabaseIntent::DeleteProperty { .. } => "delete_property",
         DatabaseIntent::PutOption { .. } => "put_option",
+        DatabaseIntent::MoveOption { .. } => "move_option",
         DatabaseIntent::DeleteOption { .. } => "delete_option",
+        DatabaseIntent::DeleteOptionAndClearValues { .. } => "delete_option_and_clear_values",
+        DatabaseIntent::PutPageLayoutEntry { .. } => "put_page_layout_entry",
         DatabaseIntent::EditPropertyValues { .. } => "edit_property_values",
         DatabaseIntent::TransferPage { .. } => "transfer_page",
         DatabaseIntent::PutView { .. } => "put_view",
+        DatabaseIntent::DuplicateView { .. } => "duplicate_view",
+        DatabaseIntent::ChangeViewLayout { .. } => "change_view_layout",
+        DatabaseIntent::MoveView { .. } => "move_view",
         DatabaseIntent::DeleteView { .. } => "delete_view",
         DatabaseIntent::PositionPage { .. } => "position_page",
         DatabaseIntent::PositionPages { .. } => "position_pages",
         DatabaseIntent::SetTaskParent { .. } => "set_task_parent",
         DatabaseIntent::MoveListOccurrences { .. } => "move_list_occurrences",
         DatabaseIntent::UndoListOccurrenceMove { .. } => "undo_list_occurrence_move",
-        DatabaseIntent::PutViewPersonalPresentation { .. } => "put_view_personal_presentation",
+        DatabaseIntent::PutViewPersonalPreferences { .. } => "put_view_personal_preferences",
         DatabaseIntent::SetViewOccurrenceDisclosure { .. } => "set_view_occurrence_disclosure",
     }
 }
@@ -519,12 +536,23 @@ fn page_detail_dependency_ids(intents: &[DatabaseIntent]) -> (BTreeSet<String>, 
                 database_ids.insert(database_id.clone());
             }
             DatabaseIntent::PutProperty { data_source_id, .. }
+            | DatabaseIntent::MoveProperty { data_source_id, .. }
+            | DatabaseIntent::ChangePropertyType { data_source_id, .. }
+            | DatabaseIntent::DuplicateProperty { data_source_id, .. }
+            | DatabaseIntent::RestoreProperty { data_source_id, .. }
+            | DatabaseIntent::PermanentlyDeleteProperty { data_source_id, .. }
             | DatabaseIntent::DeleteProperty { data_source_id, .. }
             | DatabaseIntent::PutOption { data_source_id, .. }
-            | DatabaseIntent::DeleteOption { data_source_id, .. } => {
+            | DatabaseIntent::MoveOption { data_source_id, .. }
+            | DatabaseIntent::DeleteOption { data_source_id, .. }
+            | DatabaseIntent::DeleteOptionAndClearValues { data_source_id, .. }
+            | DatabaseIntent::PutPageLayoutEntry { data_source_id, .. } => {
                 data_source_ids.insert(data_source_id.clone());
             }
             DatabaseIntent::PutView { database_id, .. }
+            | DatabaseIntent::DuplicateView { database_id, .. }
+            | DatabaseIntent::ChangeViewLayout { database_id, .. }
+            | DatabaseIntent::MoveView { database_id, .. }
             | DatabaseIntent::DeleteView { database_id, .. } => {
                 database_ids.insert(database_id.clone());
             }
@@ -535,7 +563,7 @@ fn page_detail_dependency_ids(intents: &[DatabaseIntent]) -> (BTreeSet<String>, 
             | DatabaseIntent::SetTaskParent { .. }
             | DatabaseIntent::MoveListOccurrences { .. }
             | DatabaseIntent::UndoListOccurrenceMove { .. }
-            | DatabaseIntent::PutViewPersonalPresentation { .. }
+            | DatabaseIntent::PutViewPersonalPreferences { .. }
             | DatabaseIntent::SetViewOccurrenceDisclosure { .. } => {}
         }
     }
@@ -594,6 +622,101 @@ fn apply_intent(
             effects,
             library_scope,
         ),
+        DatabaseIntent::MoveProperty {
+            data_source_id,
+            property_id,
+            expected_data_source_revision,
+            expected_property_revision,
+            placement,
+        } => move_property(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            property_id,
+            *expected_data_source_revision,
+            *expected_property_revision,
+            placement,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::ChangePropertyType {
+            data_source_id,
+            property_id,
+            expected_data_source_revision,
+            expected_property_revision,
+            schema,
+        } => change_property_type(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            property_id,
+            *expected_data_source_revision,
+            *expected_property_revision,
+            schema,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::DuplicateProperty {
+            data_source_id,
+            property_id,
+            expected_data_source_revision,
+            expected_property_revision,
+            new_property_id,
+            name,
+            option_ids,
+        } => duplicate_property(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            property_id,
+            *expected_data_source_revision,
+            *expected_property_revision,
+            new_property_id,
+            name,
+            option_ids,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::RestoreProperty {
+            data_source_id,
+            property_id,
+            expected_data_source_revision,
+            expected_property_revision,
+        } => restore_property(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            property_id,
+            *expected_data_source_revision,
+            *expected_property_revision,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::PermanentlyDeleteProperty {
+            data_source_id,
+            property_id,
+            expected_data_source_revision,
+            expected_property_revision,
+        } => permanently_delete_property(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            property_id,
+            *expected_data_source_revision,
+            *expected_property_revision,
+            now,
+            effects,
+            library_scope,
+        ),
         DatabaseIntent::DeleteProperty {
             data_source_id,
             property_id,
@@ -632,6 +755,25 @@ fn apply_intent(
             effects,
             library_scope,
         ),
+        DatabaseIntent::MoveOption {
+            data_source_id,
+            property_id,
+            option_id,
+            expected_property_revision,
+            placement,
+        } => move_option(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            property_id,
+            option_id,
+            *expected_property_revision,
+            placement,
+            now,
+            effects,
+            library_scope,
+        ),
         DatabaseIntent::DeleteOption {
             data_source_id,
             property_id,
@@ -645,6 +787,42 @@ fn apply_intent(
             property_id,
             option_id,
             *expected_property_revision,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::DeleteOptionAndClearValues {
+            data_source_id,
+            property_id,
+            option_id,
+            expected_property_revision,
+        } => delete_option_and_clear_values(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            property_id,
+            option_id,
+            *expected_property_revision,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::PutPageLayoutEntry {
+            data_source_id,
+            expected_revision,
+            property_id,
+            visibility,
+            placement,
+        } => put_page_layout_entry(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            *expected_revision,
+            property_id,
+            *visibility,
+            placement.as_ref(),
             now,
             effects,
             library_scope,
@@ -697,6 +875,57 @@ fn apply_intent(
             definition,
             *is_default,
             before_view_id.as_deref(),
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::DuplicateView {
+            database_id,
+            source_view_id,
+            expected_revision,
+            new_view_id,
+        } => duplicate_view(
+            connection,
+            library_id,
+            project_id,
+            database_id,
+            source_view_id,
+            *expected_revision,
+            new_view_id,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::ChangeViewLayout {
+            database_id,
+            view_id,
+            expected_revision,
+            layout,
+        } => change_view_layout(
+            connection,
+            library_id,
+            project_id,
+            database_id,
+            view_id,
+            *expected_revision,
+            *layout,
+            now,
+            effects,
+            library_scope,
+        ),
+        DatabaseIntent::MoveView {
+            database_id,
+            view_id,
+            expected_revision,
+            placement,
+        } => move_view(
+            connection,
+            library_id,
+            project_id,
+            database_id,
+            view_id,
+            *expected_revision,
+            placement,
             now,
             effects,
             library_scope,
@@ -769,7 +998,7 @@ fn apply_intent(
         ),
         DatabaseIntent::MoveListOccurrences {
             view_id,
-            presentation_override,
+            preferences_override,
             expected_projection,
             initiator_occurrence_key,
             selection,
@@ -780,7 +1009,7 @@ fn apply_intent(
             project_id,
             authority.project_id.as_deref(),
             view_id,
-            presentation_override,
+            preferences_override,
             expected_projection,
             initiator_occurrence_key,
             selection,
@@ -800,17 +1029,20 @@ fn apply_intent(
             effects,
             library_scope,
         ),
-        DatabaseIntent::PutViewPersonalPresentation {
+        DatabaseIntent::PutViewPersonalPreferences {
             view_id,
             expected_revision,
+            rules_override,
             presentation_override,
-        } => put_view_personal_presentation(
+        } => put_view_personal_preferences(
             connection,
             profile_id,
             library_id,
+            project_id,
             authority.project_id.as_deref(),
             view_id,
             *expected_revision,
+            rules_override,
             presentation_override,
             now,
             effects,
@@ -961,6 +1193,23 @@ fn put_property(
         "Data Source revision changed",
     )?;
     let existing = property_row(connection, data_source_id, property_id)?;
+    if existing.is_none()
+        && connection
+            .query_row(
+                "SELECT 1 FROM retired_data_source_property_ids \
+                 WHERE data_source_id = ?1 AND property_id = ?2",
+                params![data_source_id, property_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some()
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Property identity was permanently retired",
+            false,
+        ));
+    }
     require_revision(
         expected_property_revision,
         existing.as_ref().map_or(0, |property| property.revision),
@@ -982,7 +1231,7 @@ fn put_property(
             "Data Source Property collection",
         )?;
     }
-    let config = property_config_for_put(property_id, value_type, existing.as_ref())?;
+    let config = property_config_for_put(property_id, schema, existing.as_ref())?;
     let preserve_rank = existing
         .as_ref()
         .filter(|property| property.lifecycle == "active" && before_property_id.is_none())
@@ -1062,6 +1311,34 @@ fn put_property(
     if preserve_rank.is_none() {
         reorder_properties(connection, data_source_id, property_id, before_property_id)?;
     }
+    connection.execute(
+        "INSERT OR IGNORE INTO data_source_page_layouts(\
+           data_source_id, revision, created_at, updated_at\
+         ) VALUES (?1, 1, ?2, ?2)",
+        params![data_source_id, now],
+    )?;
+    let inserted_layout_entry = connection.execute(
+        "INSERT OR IGNORE INTO data_source_page_layout_entries(\
+           data_source_id, property_id, rank_key, visibility\
+         ) SELECT ?1, id, rank_key, 'always_show' FROM data_source_properties \
+           WHERE data_source_id = ?1 AND id = ?2",
+        params![data_source_id, property_id],
+    )?;
+    if inserted_layout_entry == 1 {
+        connection.execute(
+            "UPDATE data_source_page_layouts SET revision = revision + 1, updated_at = ?1 \
+             WHERE data_source_id = ?2",
+            params![now, data_source_id],
+        )?;
+        let layout_revision = connection.query_row(
+            "SELECT revision FROM data_source_page_layouts WHERE data_source_id = ?1",
+            [data_source_id],
+            |row| row.get::<_, i64>(0),
+        )?;
+        effects
+            .revisions
+            .insert(format!("page_layout:{data_source_id}"), layout_revision);
+    }
     let source_revision = source.revision + 1;
     connection.execute(
         "UPDATE data_sources SET schema_revision = ?1, updated_at = ?2 WHERE id = ?3",
@@ -1079,6 +1356,509 @@ fn put_property(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn property_non_empty_value_count(
+    connection: &Connection,
+    data_source_id: &str,
+    property: &PropertyRow,
+) -> Result<i64, StoreError> {
+    if property.value_type == "relation" {
+        return connection
+            .query_row(
+                "SELECT count(DISTINCT source_membership_id) \
+                 FROM data_source_relation_edges \
+                 WHERE source_data_source_id = ?1 AND property_id = ?2",
+                params![data_source_id, property.id],
+                |row| row.get(0),
+            )
+            .map_err(StoreError::from);
+    }
+    connection
+        .query_row(
+            "SELECT count(*) FROM data_source_property_values \
+             WHERE data_source_id = ?1 AND property_id = ?2 AND \
+               CASE value_type \
+                 WHEN 'text' THEN json_type(value_json) = 'text' \
+                   AND length(json_extract(value_json, '$')) > 0 \
+                 WHEN 'multi_select' THEN json_type(value_json) = 'array' \
+                   AND json_array_length(value_json) > 0 \
+                 ELSE json_type(value_json) <> 'null' \
+               END",
+            params![data_source_id, property.id],
+            |row| row.get(0),
+        )
+        .map_err(StoreError::from)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn move_property(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    property_id: &str,
+    expected_source_revision: i64,
+    expected_property_revision: i64,
+    placement: &DatabasePropertyPlacement,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    let source = require_source(connection, library_id, data_source_id)?;
+    authorize_write(
+        connection,
+        project_id,
+        &source.database_id,
+        DatabaseWriteAction::ManageSchema,
+        library_scope,
+    )?;
+    require_revision(
+        expected_source_revision,
+        source.revision,
+        "Data Source revision changed",
+    )?;
+    let property = active_property(connection, data_source_id, property_id)?;
+    require_revision(
+        expected_property_revision,
+        property.revision,
+        "Property revision changed",
+    )?;
+    let before_property_id = match placement {
+        DatabasePropertyPlacement::Before { property_id } => Some(property_id.as_str()),
+        DatabasePropertyPlacement::End => None,
+    };
+    reorder_properties(connection, data_source_id, property_id, before_property_id)?;
+    let property_revision = property.revision + 1;
+    connection.execute(
+        "UPDATE data_source_properties SET schema_revision = ?1, updated_at = ?2 \
+         WHERE data_source_id = ?3 AND id = ?4",
+        params![property_revision, now, data_source_id, property_id],
+    )?;
+    let source_revision = source.revision + 1;
+    connection.execute(
+        "UPDATE data_sources SET schema_revision = ?1, updated_at = ?2 WHERE id = ?3",
+        params![source_revision, now, data_source_id],
+    )?;
+    touch_source(effects, &source);
+    effects
+        .revisions
+        .insert(format!("source:{data_source_id}"), source_revision);
+    effects.revisions.insert(
+        format!("property:{data_source_id}:{property_id}"),
+        property_revision,
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn change_property_type(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    property_id: &str,
+    expected_source_revision: i64,
+    expected_property_revision: i64,
+    schema: &DatabasePropertySchema,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    if !super::property_semantics::is_custom_property_id(property_id) {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Required Properties cannot change type",
+            false,
+        ));
+    }
+    let source = require_source(connection, library_id, data_source_id)?;
+    authorize_write(
+        connection,
+        project_id,
+        &source.database_id,
+        DatabaseWriteAction::ManageSchema,
+        library_scope,
+    )?;
+    require_revision(
+        expected_source_revision,
+        source.revision,
+        "Data Source revision changed",
+    )?;
+    let property = active_property(connection, data_source_id, property_id)?;
+    require_revision(
+        expected_property_revision,
+        property.revision,
+        "Property revision changed",
+    )?;
+    let existing_schema = super::property_semantics::schema_from_storage(
+        connection,
+        data_source_id,
+        property_id,
+        &property.value_type,
+    )?;
+    if existing_schema == *schema {
+        effects.revisions.insert(
+            format!("property:{data_source_id}:{property_id}"),
+            property.revision,
+        );
+        return Ok(());
+    }
+    let presentation_only = matches!(
+        (&existing_schema, schema),
+        (
+            DatabasePropertySchema::Number { .. },
+            DatabasePropertySchema::Number { .. }
+        ) | (
+            DatabasePropertySchema::Date { .. },
+            DatabasePropertySchema::Date { .. }
+        ) | (
+            DatabasePropertySchema::Datetime { .. },
+            DatabasePropertySchema::Datetime { .. }
+        )
+    );
+    if !presentation_only
+        && property_non_empty_value_count(connection, data_source_id, &property)? > 0
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Property type and Relation structure can change only when all values are empty",
+            false,
+        ));
+    }
+    if let DatabasePropertySchema::Relation {
+        target_data_source_id,
+        ..
+    } = schema
+    {
+        authorize_relation_target_read(
+            connection,
+            library_id,
+            project_id,
+            target_data_source_id,
+            library_scope,
+        )?;
+    }
+    let value_type = super::property_semantics::value_type(schema);
+    if !presentation_only {
+        connection.execute(
+            "DELETE FROM data_source_property_values \
+             WHERE data_source_id = ?1 AND property_id = ?2",
+            params![data_source_id, property_id],
+        )?;
+        connection.execute(
+            "DELETE FROM data_source_relation_properties \
+             WHERE data_source_id = ?1 AND property_id = ?2",
+            params![data_source_id, property_id],
+        )?;
+        if let DatabasePropertySchema::Relation {
+            target_data_source_id,
+            cardinality,
+        } = schema
+        {
+            connection.execute(
+                "INSERT INTO data_source_relation_properties(\
+                   data_source_id, property_id, target_data_source_id, cardinality\
+                 ) VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    data_source_id,
+                    property_id,
+                    target_data_source_id,
+                    match cardinality {
+                        DatabaseRelationCardinality::One => "one",
+                        DatabaseRelationCardinality::Many => "many",
+                    }
+                ],
+            )?;
+        }
+    }
+    let config = property_config_for_put(property_id, schema, None)?;
+    connection.execute(
+        "UPDATE data_source_properties SET value_type = ?1, config_json = ?2, \
+           schema_revision = schema_revision + 1, updated_at = ?3 \
+         WHERE data_source_id = ?4 AND id = ?5",
+        params![
+            value_type,
+            serde_json::to_string(&config).map_err(|_| internal("Property config"))?,
+            now,
+            data_source_id,
+            property_id
+        ],
+    )?;
+    connection.execute(
+        "UPDATE data_sources SET schema_revision = schema_revision + 1, updated_at = ?1 \
+         WHERE id = ?2",
+        params![now, data_source_id],
+    )?;
+    touch_source(effects, &source);
+    effects
+        .revisions
+        .insert(format!("source:{data_source_id}"), source.revision + 1);
+    effects.revisions.insert(
+        format!("property:{data_source_id}:{property_id}"),
+        property.revision + 1,
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn duplicate_property(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    property_id: &str,
+    expected_source_revision: i64,
+    expected_property_revision: i64,
+    new_property_id: &str,
+    name: &str,
+    option_ids: &[DatabaseDuplicatePropertyOption],
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    let property = active_property(connection, data_source_id, property_id)?;
+    require_revision(
+        expected_property_revision,
+        property.revision,
+        "Property revision changed",
+    )?;
+    if property_id == super::property_semantics::TASK_PARENT_PROPERTY_ID {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Task Parent cannot be duplicated",
+            false,
+        ));
+    }
+    let schema = super::property_semantics::schema_from_storage(
+        connection,
+        data_source_id,
+        property_id,
+        &property.value_type,
+    )?;
+    put_property(
+        connection,
+        library_id,
+        project_id,
+        data_source_id,
+        new_property_id,
+        expected_source_revision,
+        0,
+        name,
+        &schema,
+        None,
+        now,
+        effects,
+        library_scope,
+    )?;
+    if !matches!(property.value_type.as_str(), "select" | "multi_select") {
+        if !option_ids.is_empty() {
+            return Err(invalid(
+                "Only option-backed Properties accept duplicate option identities",
+            ));
+        }
+        return Ok(());
+    }
+    let source_options = option_config(&property)?.options;
+    if source_options.len() != option_ids.len() {
+        return Err(invalid(
+            "Duplicate Property option identity plan is incomplete",
+        ));
+    }
+    let mapping = option_ids
+        .iter()
+        .map(|mapping| {
+            (
+                mapping.source_option_id.as_str(),
+                mapping.new_option_id.as_str(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    if mapping.len() != option_ids.len() {
+        return Err(invalid(
+            "Duplicate Property option identity plan contains duplicates",
+        ));
+    }
+    let options = source_options
+        .into_iter()
+        .map(|option| {
+            let new_option_id = mapping
+                .get(option.id.as_str())
+                .ok_or_else(|| invalid("Duplicate Property option identity plan is incomplete"))?;
+            if !super::property_semantics::is_canonical_option_id(new_property_id, new_option_id) {
+                return Err(invalid(
+                    "Duplicated Property option identity is not canonical",
+                ));
+            }
+            Ok(super::property_semantics::PropertyOption {
+                id: (*new_option_id).to_owned(),
+                name: option.name,
+                color: option.color,
+            })
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    connection.execute(
+        "UPDATE data_source_properties SET config_json = ?1 \
+         WHERE data_source_id = ?2 AND id = ?3",
+        params![
+            serde_json::to_string(&json!({ "options": options }))
+                .map_err(|_| internal("Duplicated Property options"))?,
+            data_source_id,
+            new_property_id
+        ],
+    )?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn restore_property(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    property_id: &str,
+    expected_source_revision: i64,
+    expected_property_revision: i64,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    let property = property_row(connection, data_source_id, property_id)?
+        .ok_or_else(|| not_found("Property is unavailable"))?;
+    if property.lifecycle != "deleted" {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Only deleted Properties can be restored",
+            false,
+        ));
+    }
+    if super::property_semantics::is_required_property_id(property_id) {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Required Properties cannot enter the deleted lifecycle",
+            false,
+        ));
+    }
+    let schema = super::property_semantics::schema_from_storage(
+        connection,
+        data_source_id,
+        property_id,
+        &property.value_type,
+    )?;
+    put_property(
+        connection,
+        library_id,
+        project_id,
+        data_source_id,
+        property_id,
+        expected_source_revision,
+        expected_property_revision,
+        &property.name,
+        &schema,
+        None,
+        now,
+        effects,
+        library_scope,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn permanently_delete_property(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    property_id: &str,
+    expected_source_revision: i64,
+    expected_property_revision: i64,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    if super::property_semantics::is_required_property_id(property_id) {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Required Property identities cannot be retired",
+            false,
+        ));
+    }
+    let source = require_source(connection, library_id, data_source_id)?;
+    authorize_write(
+        connection,
+        project_id,
+        &source.database_id,
+        DatabaseWriteAction::ManageSchema,
+        library_scope,
+    )?;
+    require_revision(
+        expected_source_revision,
+        source.revision,
+        "Data Source revision changed",
+    )?;
+    let property = property_row(connection, data_source_id, property_id)?
+        .ok_or_else(|| not_found("Property is unavailable"))?;
+    require_revision(
+        expected_property_revision,
+        property.revision,
+        "Property revision changed",
+    )?;
+    if property.lifecycle != "deleted" {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Property must be deleted before it can be permanently removed",
+            false,
+        ));
+    }
+    if active_view_references_property(connection, data_source_id, property_id)? {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Property is still referenced by an active Database View",
+            false,
+        ));
+    }
+    connection.execute(
+        "DELETE FROM data_source_page_layout_entries \
+         WHERE data_source_id = ?1 AND property_id = ?2",
+        params![data_source_id, property_id],
+    )?;
+    connection.execute(
+        "INSERT INTO retired_data_source_property_ids(data_source_id, property_id, retired_at) \
+         VALUES (?1, ?2, ?3)",
+        params![data_source_id, property_id, now],
+    )?;
+    connection.execute(
+        "DELETE FROM data_source_properties WHERE data_source_id = ?1 AND id = ?2",
+        params![data_source_id, property_id],
+    )?;
+    connection.execute(
+        "UPDATE data_source_page_layouts SET revision = revision + 1, updated_at = ?1 \
+         WHERE data_source_id = ?2",
+        params![now, data_source_id],
+    )?;
+    connection.execute(
+        "UPDATE data_sources SET schema_revision = schema_revision + 1, updated_at = ?1 \
+         WHERE id = ?2",
+        params![now, data_source_id],
+    )?;
+    touch_source(effects, &source);
+    effects
+        .revisions
+        .insert(format!("source:{data_source_id}"), source.revision + 1);
+    effects.revisions.insert(
+        format!("property:{data_source_id}:{property_id}"),
+        property.revision + 1,
+    );
+    let page_layout_revision = connection.query_row(
+        "SELECT revision FROM data_source_page_layouts WHERE data_source_id = ?1",
+        [data_source_id],
+        |row| row.get::<_, i64>(0),
+    )?;
+    effects.revisions.insert(
+        format!("page_layout:{data_source_id}"),
+        page_layout_revision,
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn delete_property(
     connection: &Connection,
     library_id: &str,
@@ -1091,10 +1871,10 @@ fn delete_property(
     effects: &mut MutationEffects,
     library_scope: bool,
 ) -> Result<(), StoreError> {
-    if property_id == super::property_semantics::TASK_PARENT_PROPERTY_ID {
+    if super::property_semantics::is_required_property_id(property_id) {
         return Err(StoreError::new(
             StoreErrorCode::Conflict,
-            "Task Parent is a required standard Property",
+            "Required Properties cannot be deleted",
             false,
         ));
     }
@@ -1202,6 +1982,15 @@ fn put_option(
         "Property revision changed",
     )?;
     let mut config = option_config(&property)?;
+    if property_id == super::property_semantics::STATUS_PROPERTY_ID
+        && !config.options.iter().any(|option| option.id == option_id)
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Workflow status option membership is fixed",
+            false,
+        ));
+    }
     if property_id == "tags"
         && config
             .options
@@ -1266,6 +2055,13 @@ fn delete_option(
     effects: &mut MutationEffects,
     library_scope: bool,
 ) -> Result<(), StoreError> {
+    if property_id == super::property_semantics::STATUS_PROPERTY_ID {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Workflow status options cannot be deleted",
+            false,
+        ));
+    }
     let source = require_source(connection, library_id, data_source_id)?;
     authorize_write(
         connection,
@@ -1317,6 +2113,258 @@ fn delete_option(
         format!("property:{data_source_id}:{property_id}"),
         property.revision + 1,
     );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn move_option(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    property_id: &str,
+    option_id: &str,
+    expected_property_revision: i64,
+    placement: &DatabaseOptionPlacement,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    if property_id == super::property_semantics::STATUS_PROPERTY_ID {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Workflow status option order is fixed",
+            false,
+        ));
+    }
+    let source = require_source(connection, library_id, data_source_id)?;
+    authorize_write(
+        connection,
+        project_id,
+        &source.database_id,
+        DatabaseWriteAction::ManageSchema,
+        library_scope,
+    )?;
+    let property = active_property(connection, data_source_id, property_id)?;
+    require_revision(
+        expected_property_revision,
+        property.revision,
+        "Property revision changed",
+    )?;
+    let mut config = option_config(&property)?;
+    let source_index = config
+        .options
+        .iter()
+        .position(|option| option.id == option_id)
+        .ok_or_else(|| not_found("Property option is unavailable"))?;
+    let option = config.options.remove(source_index);
+    let target_index = match placement {
+        DatabaseOptionPlacement::Before {
+            option_id: anchor_id,
+        } => config
+            .options
+            .iter()
+            .position(|candidate| candidate.id == *anchor_id)
+            .ok_or_else(|| {
+                StoreError::new(
+                    StoreErrorCode::Conflict,
+                    "Property option placement anchor changed",
+                    false,
+                )
+            })?,
+        DatabaseOptionPlacement::End => config.options.len(),
+    };
+    config.options.insert(target_index, option);
+    persist_option_config(connection, &source, &property, &config, now)?;
+    if property_id == "tags" {
+        refresh_tag_projections(connection, data_source_id, &config, now, effects)?;
+    }
+    touch_source(effects, &source);
+    effects
+        .revisions
+        .insert(format!("source:{data_source_id}"), source.revision + 1);
+    effects.revisions.insert(
+        format!("property:{data_source_id}:{property_id}"),
+        property.revision + 1,
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn delete_option_and_clear_values(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    property_id: &str,
+    option_id: &str,
+    expected_property_revision: i64,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    if property_id == super::property_semantics::STATUS_PROPERTY_ID {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Workflow status options cannot be deleted",
+            false,
+        ));
+    }
+    let source = require_source(connection, library_id, data_source_id)?;
+    authorize_write(
+        connection,
+        project_id,
+        &source.database_id,
+        DatabaseWriteAction::ManageSchema,
+        library_scope,
+    )?;
+    let property = active_property(connection, data_source_id, property_id)?;
+    require_revision(
+        expected_property_revision,
+        property.revision,
+        "Property revision changed",
+    )?;
+    let mut config = option_config(&property)?;
+    if !config.options.iter().any(|option| option.id == option_id) {
+        return Err(not_found("Property option is unavailable"));
+    }
+    let selected_values = connection
+        .prepare(
+            "SELECT membership.page_block_id, value.value_json, value.revision \
+             FROM data_source_property_values value \
+             JOIN data_source_page_memberships membership \
+               ON membership.data_source_id = value.data_source_id \
+              AND membership.id = value.membership_id \
+             WHERE value.data_source_id = ?1 AND value.property_id = ?2 \
+               AND membership.removed_at IS NULL",
+        )?
+        .query_map(params![data_source_id, property_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (page_id, value_json, revision) in selected_values {
+        let value = parse_json(&value_json, "Property value")?;
+        let next = if property.value_type == "select" {
+            if value.as_str() != Some(option_id) {
+                continue;
+            }
+            Value::Null
+        } else {
+            let Some(values) = value.as_array() else {
+                return Err(corrupt("Stored multi_select value is not an array"));
+            };
+            if !values.iter().any(|value| value.as_str() == Some(option_id)) {
+                continue;
+            }
+            Value::Array(
+                values
+                    .iter()
+                    .filter(|value| value.as_str() != Some(option_id))
+                    .cloned()
+                    .collect(),
+            )
+        };
+        set_value(
+            connection,
+            library_id,
+            project_id,
+            &DatabasePagePropertyAddress {
+                page_id,
+                data_source_id: data_source_id.to_owned(),
+                property_id: property_id.to_owned(),
+            },
+            revision,
+            &next,
+            now,
+            effects,
+            library_scope,
+        )?;
+    }
+    config.options.retain(|option| option.id != option_id);
+    persist_option_config(connection, &source, &property, &config, now)?;
+    if property_id == "tags" {
+        refresh_tag_projections(connection, data_source_id, &config, now, effects)?;
+    }
+    touch_source(effects, &source);
+    effects
+        .revisions
+        .insert(format!("source:{data_source_id}"), source.revision + 1);
+    effects.revisions.insert(
+        format!("property:{data_source_id}:{property_id}"),
+        property.revision + 1,
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn put_page_layout_entry(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    data_source_id: &str,
+    expected_revision: i64,
+    property_id: &str,
+    visibility: DatabasePagePropertyVisibility,
+    placement: Option<&DatabasePageLayoutPlacement>,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    let source = require_source(connection, library_id, data_source_id)?;
+    authorize_write(
+        connection,
+        project_id,
+        &source.database_id,
+        DatabaseWriteAction::ManageSchema,
+        library_scope,
+    )?;
+    let revision = connection
+        .query_row(
+            "SELECT revision FROM data_source_page_layouts WHERE data_source_id = ?1",
+            [data_source_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?
+        .ok_or_else(|| corrupt("Data Source Page layout is unavailable"))?;
+    require_revision(
+        expected_revision,
+        revision,
+        "Data Source Page layout revision changed",
+    )?;
+    active_property(connection, data_source_id, property_id)?;
+    let visibility = match visibility {
+        DatabasePagePropertyVisibility::AlwaysShow => "always_show",
+        DatabasePagePropertyVisibility::HideWhenEmpty => "hide_when_empty",
+        DatabasePagePropertyVisibility::AlwaysHide => "always_hide",
+    };
+    let changed = connection.execute(
+        "UPDATE data_source_page_layout_entries SET visibility = ?1 \
+         WHERE data_source_id = ?2 AND property_id = ?3 AND visibility <> ?1",
+        params![visibility, data_source_id, property_id],
+    )?;
+    if let Some(placement) = placement {
+        reorder_page_layout_entries(connection, data_source_id, property_id, placement)?;
+    }
+    if changed == 0 && placement.is_none() {
+        effects
+            .revisions
+            .insert(format!("page_layout:{data_source_id}"), revision);
+        return Ok(());
+    }
+    let next_revision = revision + 1;
+    connection.execute(
+        "UPDATE data_source_page_layouts SET revision = ?1, updated_at = ?2 \
+         WHERE data_source_id = ?3",
+        params![next_revision, now, data_source_id],
+    )?;
+    touch_source(effects, &source);
+    effects
+        .revisions
+        .insert(format!("page_layout:{data_source_id}"), next_revision);
     Ok(())
 }
 
@@ -2349,7 +3397,7 @@ pub(crate) fn resolve_page_transfer_board_destination(
     requesting_project_id: &str,
     data_source_id: &str,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
     group_key: Option<&str>,
     before_page_id: Option<&str>,
     sorted_property_values: &[PageCopyValueDraft],
@@ -2367,7 +3415,7 @@ pub(crate) fn resolve_page_transfer_board_destination(
         connection,
         library_id,
         view_id,
-        presentation_override,
+        preferences_override,
     )?;
     if sorted_property_values.len() > drop_presentation.writable_sort_property_ids.len()
         || sorted_property_values
@@ -2435,7 +3483,7 @@ pub(crate) fn resolve_page_transfer_list_destination(
     requesting_project_id: &str,
     data_source_id: &str,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
     expected_projection: &DatabaseListProjectionExpectation,
     target: &DatabaseListMoveTarget,
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
@@ -2452,7 +3500,7 @@ pub(crate) fn resolve_page_transfer_list_destination(
         connection,
         library_id,
         view_id,
-        presentation_override,
+        preferences_override,
         &read_store_epoch(connection)?,
         Some(requesting_project_id),
     )?;
@@ -2528,8 +3576,7 @@ pub(crate) fn resolve_page_transfer_list_destination(
         values.push(PageCopyValueDraft { property_id, value });
     }
     let fractional_order =
-        super::view_contract::fractional_order_direction(&projection.graph.presentation.sort)
-            .is_some();
+        super::view_contract::fractional_order_direction(&projection.graph.sorts).is_some();
     let before = if fractional_order {
         normalized
             .before_page_id
@@ -3910,19 +4957,20 @@ fn ensure_transferred_built_in_values(
 ) -> Result<(), StoreError> {
     let properties = connection
         .prepare(
-            "SELECT id, value_type, config_json, rank_key, lifecycle, schema_revision, created_at \
+            "SELECT id, name, value_type, config_json, rank_key, lifecycle, schema_revision, created_at \
              FROM data_source_properties WHERE data_source_id = ?1 AND lifecycle = 'active' \
              ORDER BY id",
         )?
         .query_map([target_data_source_id], |row| {
             Ok(PropertyRow {
                 id: row.get(0)?,
-                value_type: row.get(1)?,
-                config_json: row.get(2)?,
-                rank_key: row.get(3)?,
-                lifecycle: row.get(4)?,
-                revision: row.get(5)?,
-                created_at: row.get(6)?,
+                name: row.get(1)?,
+                value_type: row.get(2)?,
+                config_json: row.get(3)?,
+                rank_key: row.get(4)?,
+                lifecycle: row.get(5)?,
+                revision: row.get(6)?,
+                created_at: row.get(7)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -4242,8 +5290,8 @@ fn read_compatibility_values(
 ) -> Result<CompatibilityValues, StoreError> {
     let rows = connection
         .prepare(
-            "SELECT property.id, property.value_type, property.config_json, property.rank_key, \
-               property.lifecycle, property.schema_revision, property.created_at, \
+            "SELECT property.id, property.name, property.value_type, property.config_json, \
+               property.rank_key, property.lifecycle, property.schema_revision, property.created_at, \
                value.value_json, value.revision FROM data_source_properties property \
              LEFT JOIN data_source_property_values value ON value.data_source_id = property.data_source_id \
                AND value.property_id = property.id AND value.membership_id = ?1 \
@@ -4253,15 +5301,16 @@ fn read_compatibility_values(
             Ok((
                 PropertyRow {
                     id: row.get(0)?,
-                    value_type: row.get(1)?,
-                    config_json: row.get(2)?,
-                    rank_key: row.get(3)?,
-                    lifecycle: row.get(4)?,
-                    revision: row.get(5)?,
-                    created_at: row.get(6)?,
+                    name: row.get(1)?,
+                    value_type: row.get(2)?,
+                    config_json: row.get(3)?,
+                    rank_key: row.get(4)?,
+                    lifecycle: row.get(5)?,
+                    revision: row.get(6)?,
+                    created_at: row.get(7)?,
                 },
-                row.get::<_, Option<String>>(7)?,
-                row.get::<_, Option<i64>>(8)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, Option<i64>>(9)?,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -4491,12 +5540,12 @@ fn put_view(
     };
     connection.execute(
         "INSERT INTO database_views(\
-           id, database_block_id, data_source_id, name, default_layout, config_json, revision, \
+           id, database_block_id, data_source_id, name, layout, config_json, revision, \
            rank_key, lifecycle, created_at, updated_at\
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'active', ?9, ?10) \
          ON CONFLICT(id) DO UPDATE SET database_block_id = excluded.database_block_id, \
            data_source_id = excluded.data_source_id, name = excluded.name, \
-           default_layout = excluded.default_layout, \
+           layout = excluded.layout, \
            config_json = excluded.config_json, revision = excluded.revision, \
            rank_key = excluded.rank_key, lifecycle = 'active', updated_at = excluded.updated_at",
         params![
@@ -4547,6 +5596,205 @@ fn put_view(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn duplicate_view(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    database_id: &str,
+    source_view_id: &str,
+    expected_revision: i64,
+    new_view_id: &str,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    let source_view = view_row(connection, source_view_id)?
+        .filter(|view| view.database_id == database_id && view.lifecycle == "active")
+        .ok_or_else(|| not_found("Source Database View is unavailable"))?;
+    require_revision(
+        expected_revision,
+        source_view.revision,
+        "Database View revision changed",
+    )?;
+    if view_row(connection, new_view_id)?.is_some() {
+        return Err(StoreError::new(
+            StoreErrorCode::AlreadyOwned,
+            "Duplicate Database View identity is already owned",
+            false,
+        ));
+    }
+    let definition =
+        super::view_contract::decode_definition_json(&source_view.config_json).map_err(corrupt)?;
+    let layout = match source_view.layout.as_str() {
+        "board" => DatabaseViewLayout::Board,
+        "list" => DatabaseViewLayout::List,
+        _ => return Err(corrupt("Database View layout is unsupported")),
+    };
+    let candidate = format!("{} copy", source_view.name);
+    let mut suffix = 1_u64;
+    let name = loop {
+        let name = if suffix == 1 {
+            candidate.clone()
+        } else {
+            format!("{candidate} {suffix}")
+        };
+        let exists = connection.query_row(
+            "SELECT EXISTS( \
+               SELECT 1 FROM database_views \
+               WHERE database_block_id = ?1 AND lifecycle = 'active' \
+                 AND lower(name) = lower(?2) \
+             )",
+            params![database_id, name],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !exists {
+            break name;
+        }
+        suffix += 1;
+    };
+    let before_view_id = connection
+        .query_row(
+            "SELECT id FROM database_views \
+             WHERE database_block_id = ?1 AND lifecycle = 'active' AND id <> ?2 \
+               AND (rank_key > ?3 OR (rank_key = ?3 AND id > ?2)) \
+             ORDER BY rank_key, id LIMIT 1",
+            params![database_id, source_view_id, source_view.rank_key],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    put_view(
+        connection,
+        library_id,
+        project_id,
+        database_id,
+        &source_view.data_source_id,
+        new_view_id,
+        0,
+        &name,
+        layout,
+        &definition,
+        false,
+        before_view_id.as_deref(),
+        now,
+        effects,
+        library_scope,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn change_view_layout(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    database_id: &str,
+    view_id: &str,
+    expected_revision: i64,
+    layout: DatabaseViewLayout,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    let view = view_row(connection, view_id)?
+        .filter(|view| view.database_id == database_id && view.lifecycle == "active")
+        .ok_or_else(|| not_found("Active Database View is unavailable"))?;
+    require_revision(
+        expected_revision,
+        view.revision,
+        "Database View revision changed",
+    )?;
+    let current_layout = match view.layout.as_str() {
+        "board" => DatabaseViewLayout::Board,
+        "list" => DatabaseViewLayout::List,
+        _ => return Err(corrupt("Database View layout is unsupported")),
+    };
+    if current_layout == layout {
+        return Err(invalid("Database View already uses the requested layout"));
+    }
+    let mut definition =
+        super::view_contract::decode_definition_json(&view.config_json).map_err(corrupt)?;
+    definition.presentation.display.show_description = matches!(layout, DatabaseViewLayout::Board);
+    put_view(
+        connection,
+        library_id,
+        project_id,
+        database_id,
+        &view.data_source_id,
+        view_id,
+        expected_revision,
+        &view.name,
+        layout,
+        &definition,
+        false,
+        None,
+        now,
+        effects,
+        library_scope,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn move_view(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    database_id: &str,
+    view_id: &str,
+    expected_revision: i64,
+    placement: &DatabaseViewPlacement,
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
+    let container = require_container(connection, library_id, database_id)?;
+    if container.lifecycle != "active" {
+        return Err(not_found("Database is not active"));
+    }
+    authorize_write(
+        connection,
+        project_id,
+        database_id,
+        DatabaseWriteAction::ManageViews,
+        library_scope,
+    )?;
+    let view = view_row(connection, view_id)?.ok_or_else(|| not_found("View is unavailable"))?;
+    if view.lifecycle != "active" || view.database_id != database_id {
+        return Err(not_found("View is not active in this Database"));
+    }
+    require_revision(
+        expected_revision,
+        view.revision,
+        "Database View revision changed",
+    )?;
+    let before_view_id = match placement {
+        DatabaseViewPlacement::Before { view_id } => Some(view_id.as_str()),
+        DatabaseViewPlacement::End => None,
+    };
+    reorder_views(connection, database_id, view_id, before_view_id)?;
+    let revision = view.revision + 1;
+    connection.execute(
+        "UPDATE database_views SET revision = ?1, updated_at = ?2 WHERE id = ?3",
+        params![revision, now, view_id],
+    )?;
+    let metadata_revision = connection.query_row(
+        "UPDATE database_containers SET metadata_revision = metadata_revision + 1, \
+         updated_at = ?1 WHERE block_id = ?2 RETURNING metadata_revision",
+        params![now, database_id],
+        |row| row.get::<_, i64>(0),
+    )?;
+    effects.database_ids.insert(database_id.to_owned());
+    effects.data_source_ids.insert(view.data_source_id);
+    effects.view_ids.insert(view_id.to_owned());
+    effects
+        .revisions
+        .insert(format!("view:{view_id}"), revision);
+    effects.revisions.insert(
+        format!("database:{database_id}:metadata"),
+        metadata_revision,
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
 fn delete_view(
     connection: &Connection,
     library_id: &str,
@@ -4574,13 +5822,29 @@ fn delete_view(
         view.revision,
         "Database View revision changed",
     )?;
+    let fallback_view_id = connection
+        .query_row(
+            "SELECT id FROM database_views \
+             WHERE database_block_id = ?1 AND lifecycle = 'active' AND id <> ?2 \
+             ORDER BY rank_key, id LIMIT 1",
+            params![database_id, view_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| {
+            StoreError::new(
+                StoreErrorCode::Conflict,
+                "A Database must keep at least one active View",
+                false,
+            )
+        })?;
     let was_default = container.default_view_id.as_deref() == Some(view_id);
     let metadata_revision = connection.query_row(
         "UPDATE database_containers SET \
-           default_view_id = CASE WHEN default_view_id = ?1 THEN NULL ELSE default_view_id END, \
-           metadata_revision = metadata_revision + 1, updated_at = ?2 WHERE block_id = ?3 \
+           default_view_id = CASE WHEN default_view_id = ?1 THEN ?2 ELSE default_view_id END, \
+           metadata_revision = metadata_revision + 1, updated_at = ?3 WHERE block_id = ?4 \
          RETURNING metadata_revision",
-        params![view_id, now, database_id],
+        params![view_id, fallback_view_id, now, database_id],
         |row| row.get::<_, i64>(0),
     )?;
     clear_view_projection(connection, view_id, now)?;
@@ -4815,7 +6079,7 @@ fn move_list_occurrences(
     project_id: &str,
     projection_project_id: Option<&str>,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
     expected_projection: &DatabaseListProjectionExpectation,
     initiator_occurrence_key: &str,
     selection: &DatabaseListMoveSelection,
@@ -4830,7 +6094,7 @@ fn move_list_occurrences(
         connection,
         library_id,
         view_id,
-        presentation_override,
+        preferences_override,
         &store_epoch,
         projection_project_id,
     )?;
@@ -4973,39 +6237,49 @@ fn undo_list_occurrence_move(
 }
 
 fn presentation_override_is_empty(presentation: &DatabaseViewPresentationOverrideInput) -> bool {
-    presentation.layout.is_none()
-        && presentation.sort.is_none()
-        && presentation.group.is_none()
+    presentation.group.is_none()
         && presentation.subgroup.is_none()
         && presentation.group_direction.is_none()
         && presentation.completion.is_none()
         && presentation.hierarchy.is_none()
-        && presentation.layouts.is_none()
+        && presentation.display.is_none()
+}
+
+fn rules_override_is_empty(rules: &DatabaseViewRulesOverrideInput) -> bool {
+    rules.property_filters.is_none() && rules.advanced_filter.is_none() && rules.sorts.is_none()
 }
 
 #[allow(clippy::too_many_arguments)]
-fn put_view_personal_presentation(
+fn put_view_personal_preferences(
     connection: &Connection,
     profile_id: &str,
     library_id: &str,
-    project_id: Option<&str>,
+    actor_project_id: &str,
+    authority_project_id: Option<&str>,
     view_id: &str,
     expected_revision: i64,
+    rules_override: &DatabaseViewRulesOverrideInput,
     presentation_override: &DatabaseViewPresentationOverrideInput,
     now: &str,
     effects: &mut MutationEffects,
 ) -> Result<(), StoreError> {
-    let view = authorize_personal_view(connection, library_id, project_id, view_id)?;
-    super::window::validate_presentation_override(
+    let view = authorize_personal_view(connection, library_id, authority_project_id, view_id)?;
+    let preferences_override = DatabaseViewPreferencesOverrideInput {
+        rules_override: rules_override.clone(),
+        presentation_override: presentation_override.clone(),
+    };
+    super::window::validate_preferences_override(
         connection,
         library_id,
+        actor_project_id,
+        authority_project_id,
         view_id,
-        presentation_override,
+        &preferences_override,
     )?;
     let current = connection
         .query_row(
-            "SELECT presentation_override_json, revision \
-             FROM database_view_personal_presentations \
+            "SELECT preferences_json, revision \
+             FROM database_view_personal_preferences \
              WHERE profile_id = ?1 AND view_id = ?2",
             params![profile_id, view_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
@@ -5015,17 +6289,19 @@ fn put_view_personal_presentation(
     require_revision(
         expected_revision,
         current_revision,
-        "Database View personal presentation changed",
+        "Database View personal preferences changed",
     )?;
-    let presentation_json = serde_json::to_string(presentation_override)
-        .map_err(|_| internal("View personal presentation could not be serialized"))?;
+    let preferences_json = serde_json::to_string(&preferences_override)
+        .map_err(|_| internal("View personal preferences could not be serialized"))?;
     if current
         .as_ref()
-        .is_some_and(|(stored, _)| stored == &presentation_json)
-        || (current.is_none() && presentation_override_is_empty(presentation_override))
+        .is_some_and(|(stored, _)| stored == &preferences_json)
+        || (current.is_none()
+            && rules_override_is_empty(rules_override)
+            && presentation_override_is_empty(presentation_override))
     {
         effects.revisions.insert(
-            format!("view_presentation:{profile_id}:{view_id}"),
+            format!("view_preferences:{profile_id}:{view_id}"),
             current_revision,
         );
         return Ok(());
@@ -5033,23 +6309,23 @@ fn put_view_personal_presentation(
 
     let revision = current_revision + 1;
     connection.execute(
-        "INSERT INTO database_view_personal_presentations(\
-           profile_id, view_id, presentation_override_json, revision, created_at, updated_at\
+        "INSERT INTO database_view_personal_preferences(\
+           profile_id, view_id, preferences_json, revision, created_at, updated_at\
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?5) \
          ON CONFLICT(profile_id, view_id) DO UPDATE SET \
-           presentation_override_json = excluded.presentation_override_json, \
+           preferences_json = excluded.preferences_json, \
            revision = excluded.revision, updated_at = excluded.updated_at",
-        params![profile_id, view_id, presentation_json, revision, now],
+        params![profile_id, view_id, preferences_json, revision, now],
     )?;
-    let value = DatabaseViewPersonalPresentation {
+    let value = DatabaseViewPersonalPreferences {
+        rules_override: rules_override.clone(),
         presentation_override: presentation_override.clone(),
         revision,
     };
-    effects.revisions.insert(
-        format!("view_presentation:{profile_id}:{view_id}"),
-        revision,
-    );
-    effects.personal_presentations.insert(view.id, value);
+    effects
+        .revisions
+        .insert(format!("view_preferences:{profile_id}:{view_id}"), revision);
+    effects.personal_preferences.insert(view.id, value);
     Ok(())
 }
 
@@ -5207,9 +6483,60 @@ pub(super) fn validate_view_definition(
     definition: &DatabaseViewDefinition,
     library_scope: bool,
 ) -> Result<(), StoreError> {
-    validate_view_filter(&definition.filter, 0, &mut 0)?;
-    if definition.presentation.sort.len() > MAX_VIEW_SORT_RULES {
+    let mut filter_ids = HashSet::new();
+    for filter in &definition.rules.property_filters {
+        validate_id(&filter.filter_id, "filter_id", MAX_ID_LENGTH)?;
+        if !filter_ids.insert(filter.filter_id.as_str()) {
+            return Err(invalid("Database View property filter identities repeat"));
+        }
+        if !matches!(filter.clause, DatabaseViewFilter::Clause { .. }) {
+            return Err(invalid(
+                "Database View property filter must contain one clause",
+            ));
+        }
+        validate_view_filter(&filter.clause, 0, &mut 0)?;
+    }
+    if let Some(filter) = &definition.rules.advanced_filter {
+        if !matches!(filter, DatabaseViewFilter::Group { .. }) {
+            return Err(invalid("Database View advanced filter must be a group"));
+        }
+        validate_view_filter(filter, 0, &mut 0)?;
+    }
+    if definition.rules.sorts.len() > MAX_VIEW_SORT_RULES {
         return Err(invalid("Database View sort exceeds its bound"));
+    }
+    let mut sort_fields = HashSet::new();
+    for sort in &definition.rules.sorts {
+        let identity = match &sort.field {
+            DatabaseViewSortField::Manual => "manual".to_owned(),
+            DatabaseViewSortField::Title => "title".to_owned(),
+            DatabaseViewSortField::Created => "created".to_owned(),
+            DatabaseViewSortField::Property { property_id } => format!("property:{property_id}"),
+        };
+        if !sort_fields.insert(identity) {
+            return Err(invalid("Database View sort fields repeat"));
+        }
+    }
+    if definition.presentation.conditional_colors.len() > 32 {
+        return Err(invalid(
+            "Database View conditional colors exceed their bound",
+        ));
+    }
+    let mut conditional_color_ids = HashSet::new();
+    for rule in &definition.presentation.conditional_colors {
+        validate_id(&rule.rule_id, "conditional_color_rule_id", MAX_ID_LENGTH)?;
+        if !conditional_color_ids.insert(rule.rule_id.as_str()) {
+            return Err(invalid("Database View conditional color identities repeat"));
+        }
+        let requires_value = !matches!(
+            rule.operator,
+            DatabasePropertyFilterOperator::IsEmpty | DatabasePropertyFilterOperator::IsNotEmpty
+        );
+        if requires_value != rule.value.is_some() {
+            return Err(invalid(
+                "Database View conditional color has invalid value arity",
+            ));
+        }
     }
     if view_group_property(definition).is_some()
         && view_group_property(definition) == view_subgroup_property(definition)
@@ -5223,12 +6550,13 @@ pub(super) fn validate_view_definition(
     {
         return Err(invalid("Database View hierarchy policy is invalid"));
     }
-    for layout in [
-        &definition.presentation.layouts.board,
-        &definition.presentation.layouts.list,
-    ] {
+    {
+        let layout = &definition.presentation.display;
         if layout.fields.len() > MAX_VIEW_DISPLAY_PROPERTIES {
             return Err(invalid("Database View layout display is invalid"));
+        }
+        if layout.property_order.len() > super::MAX_DATA_SOURCE_PROPERTIES {
+            return Err(invalid("Database View Property order is invalid"));
         }
         let mut identities = HashSet::new();
         for field in &layout.fields {
@@ -5242,6 +6570,13 @@ pub(super) fn validate_view_definition(
             };
             if !identities.insert(identity) {
                 return Err(invalid("Database View layout fields contain duplicates"));
+            }
+        }
+        let mut ordered_properties = HashSet::new();
+        for property_id in &layout.property_order {
+            validate_id(property_id, "property_id", MAX_PROPERTY_ID_LENGTH)?;
+            if !ordered_properties.insert(property_id) {
+                return Err(invalid("Database View Property order contains duplicates"));
             }
         }
     }
@@ -5318,7 +6653,7 @@ fn validate_view_property_capabilities(
     }) {
         return Err(invalid("Property cannot group a Database View"));
     }
-    for rule in &definition.presentation.sort {
+    for rule in &definition.rules.sorts {
         let DatabaseViewSortField::Property { property_id } = &rule.field else {
             continue;
         };
@@ -5329,15 +6664,51 @@ fn validate_view_property_capabilities(
             return Err(invalid("Property cannot sort a Database View"));
         }
     }
-    validate_filter_capabilities(
-        connection,
-        library_id,
-        project_id,
-        data_source_id,
-        &definition.filter,
-        property_semantics,
-        library_scope,
-    )
+    for rule in &definition.presentation.conditional_colors {
+        let property = property_semantics.get(&rule.property_id).ok_or_else(|| {
+            invalid("Database View conditional color references a missing Property")
+        })?;
+        let operator = conditional_filter_operator(rule.operator, &property.schema)?;
+        validate_filter_capabilities(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            &DatabaseViewFilter::Clause {
+                property_id: rule.property_id.clone(),
+                operator,
+                value: rule.value.clone().map(Some),
+            },
+            property_semantics,
+            library_scope,
+            false,
+        )?;
+    }
+    for filter in &definition.rules.property_filters {
+        validate_filter_capabilities(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            &filter.clause,
+            property_semantics,
+            library_scope,
+            true,
+        )?;
+    }
+    if let Some(filter) = &definition.rules.advanced_filter {
+        validate_filter_capabilities(
+            connection,
+            library_id,
+            project_id,
+            data_source_id,
+            filter,
+            property_semantics,
+            library_scope,
+            true,
+        )?;
+    }
+    Ok(())
 }
 
 fn validate_filter_capabilities(
@@ -5348,6 +6719,7 @@ fn validate_filter_capabilities(
     filter: &DatabaseViewFilter,
     property_semantics: &BTreeMap<String, ViewPropertySemantics>,
     library_scope: bool,
+    allow_empty_value: bool,
 ) -> Result<(), StoreError> {
     let DatabaseViewFilter::Clause {
         property_id,
@@ -5367,56 +6739,42 @@ fn validate_filter_capabilities(
                 child,
                 property_semantics,
                 library_scope,
+                allow_empty_value,
             )?;
         }
         return Ok(());
     };
-    let operator = match operator {
-        ViewFilterOperator::Equals => DatabasePropertyFilterOperator::Equals,
-        ViewFilterOperator::NotEquals => DatabasePropertyFilterOperator::NotEquals,
-        ViewFilterOperator::Contains => DatabasePropertyFilterOperator::Contains,
-        ViewFilterOperator::NotContains => DatabasePropertyFilterOperator::NotContains,
-        ViewFilterOperator::IsEmpty => DatabasePropertyFilterOperator::IsEmpty,
-        ViewFilterOperator::IsNotEmpty => DatabasePropertyFilterOperator::IsNotEmpty,
-    };
+    let property = property_semantics
+        .get(property_id)
+        .ok_or_else(|| invalid("Database View filter references a missing Property"))?;
+    if !property.capabilities.filter_operators.contains(operator) {
+        return Err(invalid("Property filter operator is unsupported"));
+    }
+    let value = value.as_ref().and_then(Option::as_ref);
+    if allow_empty_value && super::view_contract::filter_value_is_empty(*operator, value) {
+        return Ok(());
+    }
     if property_id == super::property_semantics::PRIORITY_PROPERTY_ID
         && matches!(
             operator,
-            DatabasePropertyFilterOperator::Equals | DatabasePropertyFilterOperator::NotEquals
+            ViewFilterOperator::SelectIs | ViewFilterOperator::SelectIsNot
         )
         && !value
-            .as_ref()
             .and_then(Value::as_str)
             .is_some_and(super::property_semantics::is_priority_option_id)
     {
         return Err(invalid("Priority filter references a noncanonical option"));
     }
-    let property = property_semantics
-        .get(property_id)
-        .ok_or_else(|| invalid("Database View filter references a missing Property"))?;
-    if !property.capabilities.filter_operators.contains(&operator) {
-        return Err(invalid("Property filter operator is unsupported"));
-    }
-    if matches!(
-        operator,
-        DatabasePropertyFilterOperator::Contains | DatabasePropertyFilterOperator::NotContains
-    ) && value
-        .as_ref()
-        .and_then(Value::as_str)
-        .is_none_or(str::is_empty)
-    {
-        return Err(invalid("Property membership filter requires an identity"));
+    if !filter_value_matches_operator(*operator, value) {
+        return Err(invalid("Property filter value does not match its operator"));
     }
     if matches!(property.schema, DatabasePropertySchema::Relation { .. })
         && matches!(
             operator,
-            DatabasePropertyFilterOperator::Contains | DatabasePropertyFilterOperator::NotContains
+            ViewFilterOperator::RelationContains | ViewFilterOperator::RelationDoesNotContain
         )
     {
-        let page_id = value
-            .as_ref()
-            .and_then(Value::as_str)
-            .ok_or_else(|| invalid("Relation Property filter requires a Page identity"))?;
+        let page_ids = filter_identity_values(value)?;
         let target_data_source_id =
             super::relation::target_data_source_id(connection, data_source_id, property_id)?;
         authorize_relation_target_read(
@@ -5427,15 +6785,134 @@ fn validate_filter_capabilities(
             library_scope,
         )?;
         if !library_scope {
-            crate::library::require_page_read_access(connection, library_id, project_id, page_id)?;
+            for page_id in &page_ids {
+                crate::library::require_page_read_access(
+                    connection, library_id, project_id, page_id,
+                )?;
+            }
         }
-        super::relation::validate_active_targets(
-            connection,
-            &target_data_source_id,
-            &[page_id.to_owned()],
-        )?;
+        super::relation::validate_active_targets(connection, &target_data_source_id, &page_ids)?;
     }
     Ok(())
+}
+
+fn conditional_filter_operator(
+    operator: DatabasePropertyFilterOperator,
+    schema: &DatabasePropertySchema,
+) -> Result<ViewFilterOperator, StoreError> {
+    use DatabasePropertyFilterOperator as Generic;
+    use DatabasePropertySchema as Schema;
+    use ViewFilterOperator as Typed;
+
+    let typed = match (operator, schema) {
+        (Generic::IsEmpty, _) => Typed::IsEmpty,
+        (Generic::IsNotEmpty, _) => Typed::IsNotEmpty,
+        (Generic::Equals, Schema::Text) => Typed::TextIs,
+        (Generic::NotEquals, Schema::Text) => Typed::TextIsNot,
+        (Generic::Contains, Schema::Text) => Typed::TextContains,
+        (Generic::NotContains, Schema::Text) => Typed::TextDoesNotContain,
+        (Generic::Equals, Schema::Number { .. }) => Typed::NumberEquals,
+        (Generic::NotEquals, Schema::Number { .. }) => Typed::NumberDoesNotEqual,
+        (Generic::Equals, Schema::Checkbox) => Typed::CheckboxIs,
+        (Generic::NotEquals, Schema::Checkbox) => Typed::CheckboxIsNot,
+        (Generic::Equals, Schema::Select) => Typed::SelectIs,
+        (Generic::NotEquals, Schema::Select) => Typed::SelectIsNot,
+        (Generic::Contains, Schema::MultiSelect) => Typed::MultiSelectContains,
+        (Generic::NotContains, Schema::MultiSelect) => Typed::MultiSelectDoesNotContain,
+        (Generic::Equals, Schema::Date { .. } | Schema::Datetime { .. }) => Typed::DateIs,
+        (Generic::NotEquals, Schema::Date { .. } | Schema::Datetime { .. }) => Typed::DateIsNot,
+        (Generic::Contains, Schema::Relation { .. }) => Typed::RelationContains,
+        (Generic::NotContains, Schema::Relation { .. }) => Typed::RelationDoesNotContain,
+        _ => {
+            return Err(invalid(
+                "Conditional color operator is unsupported for its Property",
+            ));
+        }
+    };
+    Ok(typed)
+}
+
+fn filter_value_matches_operator(operator: ViewFilterOperator, value: Option<&Value>) -> bool {
+    use ViewFilterOperator as Operator;
+
+    match operator {
+        Operator::IsEmpty | Operator::IsNotEmpty => value.is_none(),
+        Operator::TextIs
+        | Operator::TextIsNot
+        | Operator::TextContains
+        | Operator::TextDoesNotContain
+        | Operator::TextStartsWith
+        | Operator::TextEndsWith
+        | Operator::DateIs
+        | Operator::DateIsNot
+        | Operator::DateBefore
+        | Operator::DateAfter
+        | Operator::DateOnOrBefore
+        | Operator::DateOnOrAfter => value.is_some_and(Value::is_string),
+        Operator::NumberEquals
+        | Operator::NumberDoesNotEqual
+        | Operator::NumberGreaterThan
+        | Operator::NumberLessThan
+        | Operator::NumberGreaterThanOrEqualTo
+        | Operator::NumberLessThanOrEqualTo => value.is_some_and(Value::is_number),
+        Operator::CheckboxIs | Operator::CheckboxIsNot => value.is_some_and(Value::is_boolean),
+        Operator::SelectIs | Operator::SelectIsNot => value
+            .and_then(Value::as_str)
+            .is_some_and(|identity| !identity.is_empty()),
+        Operator::MultiSelectContains
+        | Operator::MultiSelectDoesNotContain
+        | Operator::MultiSelectContainsAll
+        | Operator::RelationContains
+        | Operator::RelationDoesNotContain => value
+            .and_then(Value::as_array)
+            .filter(|values| !values.is_empty())
+            .is_some_and(|values| {
+                values
+                    .iter()
+                    .all(|value| value.as_str().is_some_and(|identity| !identity.is_empty()))
+            }),
+        Operator::DateWithin => value.is_some_and(|value| {
+            value.get("start").is_some_and(Value::is_string)
+                && value.get("end").is_some_and(Value::is_string)
+        }),
+        Operator::DateRelativeTo => value.is_some_and(|value| {
+            value
+                .get("direction")
+                .and_then(Value::as_str)
+                .is_some_and(|direction| matches!(direction, "past" | "future"))
+                && value
+                    .get("count")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|count| count > 0 && count <= 10_000)
+                && value
+                    .get("unit")
+                    .and_then(Value::as_str)
+                    .is_some_and(|unit| matches!(unit, "day" | "week" | "month" | "year"))
+        }),
+        Operator::Equals | Operator::NotEquals | Operator::Contains | Operator::NotContains => {
+            false
+        }
+    }
+}
+
+fn filter_identity_values(value: Option<&Value>) -> Result<Vec<String>, StoreError> {
+    let Some(value) = value else {
+        return Err(invalid("Property membership filter requires an identity"));
+    };
+    if let Some(identity) = value.as_str().filter(|identity| !identity.is_empty()) {
+        return Ok(vec![identity.to_owned()]);
+    }
+    let identities = value
+        .as_array()
+        .filter(|values| !values.is_empty())
+        .and_then(|values| {
+            values
+                .iter()
+                .map(|value| value.as_str().filter(|identity| !identity.is_empty()))
+                .collect::<Option<Vec<_>>>()
+        })
+        .ok_or_else(|| invalid("Property membership filter requires identities"))?;
+    Ok(identities.into_iter().map(str::to_owned).collect())
 }
 
 fn validate_view_filter(
@@ -5479,22 +6956,28 @@ fn collect_view_property_ids(definition: &DatabaseViewDefinition) -> HashSet<Str
     {
         property_ids.insert(property_id.to_owned());
     }
-    for layout in [
-        &definition.presentation.layouts.board,
-        &definition.presentation.layouts.list,
-    ] {
+    {
+        let layout = &definition.presentation.display;
         for field in &layout.fields {
             if let DatabaseViewField::Property { property_id } = field {
                 property_ids.insert(property_id.to_owned());
             }
         }
     }
-    for rule in &definition.presentation.sort {
+    for rule in &definition.rules.sorts {
         if let DatabaseViewSortField::Property { property_id } = &rule.field {
             property_ids.insert(property_id.to_owned());
         }
     }
-    collect_filter_property_ids(&definition.filter, &mut property_ids);
+    for rule in &definition.presentation.conditional_colors {
+        property_ids.insert(rule.property_id.clone());
+    }
+    for filter in &definition.rules.property_filters {
+        collect_filter_property_ids(&filter.clause, &mut property_ids);
+    }
+    if let Some(filter) = &definition.rules.advanced_filter {
+        collect_filter_property_ids(filter, &mut property_ids);
+    }
     property_ids
 }
 
@@ -5528,7 +7011,7 @@ fn view_subgroup_property(definition: &DatabaseViewDefinition) -> Option<&str> {
 }
 
 fn view_fractional_direction(definition: &DatabaseViewDefinition) -> DatabaseViewSortDirection {
-    super::view_contract::fractional_order_direction(&definition.presentation.sort)
+    super::view_contract::fractional_order_direction(&definition.rules.sorts)
         .unwrap_or(DatabaseViewSortDirection::Asc)
 }
 
@@ -5766,19 +7249,21 @@ fn require_container(
 fn view_row(connection: &Connection, view_id: &str) -> Result<Option<ViewRow>, StoreError> {
     connection
         .query_row(
-            "SELECT id, database_block_id, data_source_id, config_json, rank_key, lifecycle, \
-               revision, created_at FROM database_views WHERE id = ?1",
+            "SELECT id, database_block_id, data_source_id, name, layout, config_json, rank_key, \
+               lifecycle, revision, created_at FROM database_views WHERE id = ?1",
             [view_id],
             |row| {
                 Ok(ViewRow {
                     id: row.get(0)?,
                     database_id: row.get(1)?,
                     data_source_id: row.get(2)?,
-                    config_json: row.get(3)?,
-                    rank_key: row.get(4)?,
-                    lifecycle: row.get(5)?,
-                    revision: row.get(6)?,
-                    created_at: row.get(7)?,
+                    name: row.get(3)?,
+                    layout: row.get(4)?,
+                    config_json: row.get(5)?,
+                    rank_key: row.get(6)?,
+                    lifecycle: row.get(7)?,
+                    revision: row.get(8)?,
+                    created_at: row.get(9)?,
                 })
             },
         )
@@ -5788,9 +7273,10 @@ fn view_row(connection: &Connection, view_id: &str) -> Result<Option<ViewRow>, S
 
 fn property_config_for_put(
     property_id: &str,
-    value_type: &str,
+    schema: &DatabasePropertySchema,
     existing: Option<&PropertyRow>,
 ) -> Result<Value, StoreError> {
+    let value_type = super::property_semantics::value_type(schema);
     if let Some(existing) = existing {
         if existing.value_type != value_type {
             return Err(StoreError::new(
@@ -5807,6 +7293,24 @@ fn property_config_for_put(
             )?)
             .map_err(|_| internal("Property option registry"));
         }
+        match schema {
+            DatabasePropertySchema::Number { format } => {
+                return Ok(json!({ "format": format }));
+            }
+            DatabasePropertySchema::Date { date_format } => {
+                return Ok(json!({ "date_format": date_format }));
+            }
+            DatabasePropertySchema::Datetime {
+                date_format,
+                time_format,
+            } => {
+                return Ok(json!({
+                    "date_format": date_format,
+                    "time_format": time_format,
+                }));
+            }
+            _ => {}
+        }
         let config = parse_json(&existing.config_json, "Property config")?;
         if config.as_object().is_none_or(|config| !config.is_empty()) {
             return Err(corrupt("Property config is not the canonical empty object"));
@@ -5816,7 +7320,18 @@ fn property_config_for_put(
     if matches!(value_type, "select" | "multi_select") {
         return Ok(json!({ "options": [] }));
     }
-    Ok(json!({}))
+    match schema {
+        DatabasePropertySchema::Number { format } => Ok(json!({ "format": format })),
+        DatabasePropertySchema::Date { date_format } => Ok(json!({ "date_format": date_format })),
+        DatabasePropertySchema::Datetime {
+            date_format,
+            time_format,
+        } => Ok(json!({
+            "date_format": date_format,
+            "time_format": time_format,
+        })),
+        _ => Ok(json!({})),
+    }
 }
 
 fn reorder_properties(
@@ -5842,6 +7357,46 @@ fn reorder_properties(
     let mut update = connection.prepare(
         "UPDATE data_source_properties SET rank_key = ?1 \
          WHERE data_source_id = ?2 AND id = ?3",
+    )?;
+    for (id, rank_key) in plan.rebalanced_rank_keys {
+        update.execute(params![rank_key, data_source_id, id])?;
+    }
+    update.execute(params![plan.rank_key, data_source_id, property_id])?;
+    Ok(())
+}
+
+fn reorder_page_layout_entries(
+    connection: &Connection,
+    data_source_id: &str,
+    property_id: &str,
+    placement: &DatabasePageLayoutPlacement,
+) -> Result<(), StoreError> {
+    let items = connection
+        .prepare(
+            "SELECT entry.property_id, entry.rank_key \
+             FROM data_source_page_layout_entries entry \
+             JOIN data_source_properties property \
+               ON property.data_source_id = entry.data_source_id \
+              AND property.id = entry.property_id \
+             WHERE entry.data_source_id = ?1 AND property.lifecycle = 'active' \
+             ORDER BY entry.rank_key, entry.property_id",
+        )?
+        .query_map([data_source_id], |row| {
+            Ok(RankedItem {
+                id: row.get(0)?,
+                rank_key: row.get(1)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let before_property_id = match placement {
+        DatabasePageLayoutPlacement::Before { property_id } => Some(property_id.as_str()),
+        DatabasePageLayoutPlacement::End => None,
+    };
+    let plan = plan_fractional_rank(&items, property_id, before_property_id)
+        .map_err(|error| rank_plan_error(error, "Page layout placement anchor changed"))?;
+    let mut update = connection.prepare(
+        "UPDATE data_source_page_layout_entries SET rank_key = ?1 \
+         WHERE data_source_id = ?2 AND property_id = ?3",
     )?;
     for (id, rank_key) in plan.rebalanced_rank_keys {
         update.execute(params![rank_key, data_source_id, id])?;
@@ -6338,9 +7893,9 @@ fn seal_commit(
     let operation_outcomes = effects.operation_outcomes;
     let personal_view_changes =
         effects
-            .personal_presentations
+            .personal_preferences
             .into_iter()
-            .map(|(view_id, value)| DatabasePersonalViewChange::Presentation { view_id, value })
+            .map(|(view_id, value)| DatabasePersonalViewChange::Preferences { view_id, value })
             .chain(effects.occurrence_disclosures.into_iter().map(
                 |((view_id, target), collapsed)| DatabasePersonalViewChange::OccurrenceDisclosure {
                     view_id,
@@ -6514,18 +8069,19 @@ fn property_row(
 ) -> Result<Option<PropertyRow>, StoreError> {
     connection
         .query_row(
-            "SELECT id, value_type, config_json, rank_key, lifecycle, schema_revision, created_at \
+            "SELECT id, name, value_type, config_json, rank_key, lifecycle, schema_revision, created_at \
              FROM data_source_properties WHERE data_source_id = ?1 AND id = ?2",
             params![data_source_id, property_id],
             |row| {
                 Ok(PropertyRow {
                     id: row.get(0)?,
-                    value_type: row.get(1)?,
-                    config_json: row.get(2)?,
-                    rank_key: row.get(3)?,
-                    lifecycle: row.get(4)?,
-                    revision: row.get(5)?,
-                    created_at: row.get(6)?,
+                    name: row.get(1)?,
+                    value_type: row.get(2)?,
+                    config_json: row.get(3)?,
+                    rank_key: row.get(4)?,
+                    lifecycle: row.get(5)?,
+                    revision: row.get(6)?,
+                    created_at: row.get(7)?,
                 })
             },
         )
@@ -6844,24 +8400,28 @@ mod tests {
     fn view_property_references_ignore_filter_values() {
         let definition = super::super::view_contract::decode_definition_value(json!({
             "schemaKey": "nodex.database-view",
-            "schemaVersion": 4,
-            "filter": {
-                "kind": "clause",
-                "propertyId": "status",
-                "operator": "equals",
-                "value": "due_date"
+            "schemaVersion": 6,
+            "rules": {
+                "propertyFilters": [],
+                "advancedFilter": {
+                    "kind": "group",
+                    "operator": "and",
+                    "children": [{
+                        "kind": "clause",
+                        "propertyId": "status",
+                        "operator": "select_is",
+                        "value": "due_date"
+                    }]
+                },
+                "sorts": []
             },
             "presentation": {
-                "sort": [],
                 "group": null,
                 "subgroup": null,
                 "groupDirection": "asc",
                 "completion": { "range": "all", "orderByRecency": false },
                 "hierarchy": { "showSubPages": true, "nestedSubPages": false },
-                "layouts": {
-                    "board": { "fields": [], "showEmptyGroups": false },
-                    "list": { "fields": [], "showEmptyGroups": false }
-                }
+                "display": { "fields": [], "showEmptyGroups": false }
             }
         }))
         .expect("valid View config");

@@ -30,7 +30,10 @@ interface DatabaseViewSelectProps {
   readonly contentWidth?: NodexDropdownContentWidth;
   readonly chrome?: NodexDropdownButtonTriggerProps["chrome"];
   readonly size?: NodexDropdownButtonTriggerProps["size"];
+  readonly showChevron?: boolean;
   readonly triggerStyle?: "default" | "settings";
+  /** Controls the trigger itself; popup sizing remains owned by `contentWidth`. */
+  readonly triggerWidth?: "content" | "fill";
 }
 
 export function DatabaseViewSelect({
@@ -44,11 +47,28 @@ export function DatabaseViewSelect({
   searchPlaceholder,
   className,
   contentWidth = "sm",
-  chrome = "filled",
+  chrome,
   size = "xs",
+  showChevron = true,
   triggerStyle = "default",
+  triggerWidth,
 }: DatabaseViewSelectProps) {
-  const triggerContent = <span className="min-w-0 flex-1 truncate text-left">{valueLabel}</span>;
+  const triggerContent = (
+    <span
+      className={cn(
+        "min-w-0 truncate text-left",
+        triggerWidth === "content" ? "flex-initial" : "flex-1",
+      )}
+    >
+      {valueLabel}
+    </span>
+  );
+  const triggerWidthClassName =
+    triggerWidth === "content"
+      ? "w-fit max-w-[180px]"
+      : triggerWidth === "fill"
+        ? "w-full"
+        : undefined;
 
   return (
     <NodexOptionPicker
@@ -71,7 +91,7 @@ export function DatabaseViewSelect({
           <NodexSettingsDropdownTrigger
             aria-label={ariaLabel}
             aria-disabled={disabled}
-            className={cn("min-w-0", className)}
+            className={cn("min-w-0", triggerWidthClassName, className)}
           >
             {triggerContent}
           </NodexSettingsDropdownTrigger>
@@ -81,7 +101,8 @@ export function DatabaseViewSelect({
             aria-disabled={disabled}
             size={size}
             chrome={chrome}
-            className={cn("min-w-0", className)}
+            showChevron={showChevron}
+            className={cn("min-w-0", triggerWidthClassName, className)}
           >
             {triggerContent}
           </NodexDropdownButtonTrigger>

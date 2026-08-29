@@ -8,6 +8,12 @@ import type {
 } from "../../src/shared/types";
 import type { WorkflowStatus } from "../../src/shared/workflow-status";
 import type {
+  DatabaseApplyResultV2,
+  DatabaseApplyV2,
+  DatabaseModuleReadRequestV2,
+  DatabaseModuleReadResultV2,
+} from "../../src/shared/database-module-v2";
+import type {
   SidebarSectionCreateInput,
   SidebarSectionItemWindow,
   SidebarSectionMoveItemInput,
@@ -79,6 +85,8 @@ export interface ScenarioSeedPort {
     count: number,
   ): Promise<{ readonly commitSeq: number; readonly propertyCount: number }>;
   readPrimaryDataSourcePropertyCount(projectId: string): Promise<number>;
+  readDatabase(request: DatabaseModuleReadRequestV2): Promise<DatabaseModuleReadResultV2>;
+  applyDatabase(request: DatabaseApplyV2): Promise<DatabaseApplyResultV2>;
   replaceOwnedDocument(input: ScenarioDocumentReplacement): Promise<{ readonly commitSeq: number }>;
   readPage(
     projectId: string,

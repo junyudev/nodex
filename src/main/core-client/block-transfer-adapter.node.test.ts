@@ -145,15 +145,17 @@ describe("Core Block Transfer Adapter", () => {
         placement: {
           kind: "direct",
           viewId: "view:target",
-          presentationOverride: {
-            layout: "board",
-            sort: [
-              {
-                field: { kind: "property", propertyId: "priority" },
-                direction: "asc",
-                nulls: "last",
-              },
-            ],
+          preferencesOverride: {
+            rulesOverride: {
+              sorts: [
+                {
+                  field: { kind: "property", propertyId: "priority" },
+                  direction: "asc",
+                  nulls: "last",
+                },
+              ],
+            },
+            presentationOverride: {},
           },
           groupKey: "ship",
           sortedPropertyValues: [
@@ -240,15 +242,17 @@ describe("Core Block Transfer Adapter", () => {
           placement: {
             kind: "direct",
             view_id: "view:target",
-            presentation_override: {
-              layout: "board",
-              sort: [
-                {
-                  field: { kind: "property", property_id: "priority" },
-                  direction: "asc",
-                  nulls: "last",
-                },
-              ],
+            preferences_override: {
+              rules_override: {
+                sorts: [
+                  {
+                    field: { kind: "property", property_id: "priority" },
+                    direction: "asc",
+                    nulls: "last",
+                  },
+                ],
+              },
+              presentation_override: {},
             },
             group_key: "ship",
             sorted_property_values: [
@@ -315,7 +319,7 @@ describe("Core Block Transfer Adapter", () => {
         placement: {
           kind: "list_occurrence",
           viewId: "view:target",
-          presentationOverride: { layout: "list" },
+          preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
           expectedProjection: {
             scopeKey: "list:view:target",
             schemaVersion: 2,
@@ -339,7 +343,10 @@ describe("Core Block Transfer Adapter", () => {
           placement: {
             kind: "list_occurrence",
             view_id: "view:target",
-            presentation_override: { layout: "list" },
+            preferences_override: {
+              rules_override: {},
+              presentation_override: {},
+            },
             expected_projection: {
               scope_key: "list:view:target",
               schema_version: 2,

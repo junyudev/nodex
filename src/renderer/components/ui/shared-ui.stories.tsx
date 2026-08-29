@@ -145,7 +145,7 @@ function CompactIconLabelTriggerDemo() {
         contentWidth="xs"
         triggerButton={
           <NodexDropdownButtonTrigger size="xs">
-            <EstimateIcon />
+            <EstimateIcon className="size-4" />
             <span>Estimate</span>
           </NodexDropdownButtonTrigger>
         }

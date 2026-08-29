@@ -9,8 +9,8 @@ import type {
 import type { LocalCommitCommandSuccess } from "./local-commit-delivery";
 import type { LibraryPageFileOwnershipMove } from "./library-module";
 import {
-  parseDatabaseViewPresentationOverride,
-  type DatabaseViewPresentationOverride,
+  parseDatabaseViewPreferencesOverride,
+  type DatabaseViewPreferencesOverride,
 } from "./database-kernel";
 import type {
   DatabaseListMoveTargetV2,
@@ -61,7 +61,7 @@ export type BlockTransferDataSourcePlacement =
   | {
       readonly kind: "direct";
       readonly viewId: string;
-      readonly presentationOverride: DatabaseViewPresentationOverride;
+      readonly preferencesOverride: DatabaseViewPreferencesOverride;
       readonly groupKey: string | null;
       readonly beforePageId?: BlockId;
       readonly sortedPropertyValues?: readonly BlockTransferPropertyValue[];
@@ -69,7 +69,7 @@ export type BlockTransferDataSourcePlacement =
   | {
       readonly kind: "list_occurrence";
       readonly viewId: string;
-      readonly presentationOverride: DatabaseViewPresentationOverride;
+      readonly preferencesOverride: DatabaseViewPreferencesOverride;
       readonly expectedProjection: DatabaseListProjectionExpectationV2;
       readonly target: DatabaseListMoveTargetV2;
     };
@@ -708,7 +708,7 @@ const parseIntentTarget = (
         assertExactKeys(
           placement,
           "blockTransferIntent.target.placement",
-          ["kind", "viewId", "presentationOverride", "groupKey"],
+          ["kind", "viewId", "preferencesOverride", "groupKey"],
           ["beforePageId", "sortedPropertyValues"],
         );
         const groupKey =
@@ -771,9 +771,7 @@ const parseIntentTarget = (
         return {
           kind: placement.kind,
           viewId: readString(placement, "viewId", "blockTransferIntent.target.placement"),
-          presentationOverride: parseDatabaseViewPresentationOverride(
-            placement.presentationOverride,
-          ),
+          preferencesOverride: parseDatabaseViewPreferencesOverride(placement.preferencesOverride),
           groupKey,
           ...(beforePageId ? { beforePageId } : {}),
           ...(sortedPropertyValues.length > 0 ? { sortedPropertyValues } : {}),
@@ -783,16 +781,14 @@ const parseIntentTarget = (
         assertExactKeys(placement, "blockTransferIntent.target.placement", [
           "kind",
           "viewId",
-          "presentationOverride",
+          "preferencesOverride",
           "expectedProjection",
           "target",
         ]);
         return {
           kind: placement.kind,
           viewId: readString(placement, "viewId", "blockTransferIntent.target.placement"),
-          presentationOverride: parseDatabaseViewPresentationOverride(
-            placement.presentationOverride,
-          ),
+          preferencesOverride: parseDatabaseViewPreferencesOverride(placement.preferencesOverride),
           expectedProjection: parseDatabaseListProjectionExpectationV2(
             placement.expectedProjection,
             "blockTransferIntent.target.placement.expectedProjection",
@@ -984,7 +980,7 @@ export const blockTransferIntentFromRequest = (
       placement: {
         kind: "direct",
         viewId: request.target.viewId,
-        presentationOverride: { layout: "board" },
+        preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
         groupKey: request.target.groupKey,
         ...(request.target.beforePageId ? { beforePageId: request.target.beforePageId } : {}),
       },

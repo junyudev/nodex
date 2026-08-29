@@ -243,7 +243,7 @@ const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
         data_source_id: "source:test",
         name: "All tasks",
         layout: "list",
-        definition: { filter: config.filter, presentation: config.presentation },
+        definition: { rules: config.rules, presentation: config.presentation },
         is_default: true,
         revision: 2,
         rank_key: "a",

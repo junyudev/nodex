@@ -386,7 +386,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(props?.presentationLayout).toBe("board");
   });
 
-  test("keeps layout selection in the personal View preference, not Session identity", async () => {
+  test("switches Board and List as durable View identities in the current Session tab", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
@@ -406,9 +406,11 @@ describe("workbench session shell / routes-threads", () => {
       invokeCalls.some(
         (call) =>
           call[0] === "window-session-view:tab-update" &&
-          call[1] === "session:alpha:database-view:db",
+          call[1] === "session:alpha:database-view:db" &&
+          (call[2] as { config?: { databaseViewId?: string } }).config?.databaseViewId ===
+            "database-view:alpha:primary-list",
       ),
-    ).toBe(false);
+    ).toBe(true);
     const dbToolbarTabList = screen.getByRole("tablist", { name: "Database views" });
     expect(
       within(dbToolbarTabList).getByRole("tab", { name: "List" }).getAttribute("aria-selected"),
@@ -419,17 +421,10 @@ describe("workbench session shell / routes-threads", () => {
         call[0] === "database-module:apply" &&
         call[1] === "alpha" &&
         (call[2] as { operations?: ReadonlyArray<{ kind?: string }> }).operations?.some(
-          (operation) => operation.kind === "put_view_personal_presentation",
+          (operation) => operation.kind === "put_view_personal_preferences",
         ),
     );
-    expect(preferenceWrite?.[2]).toMatchObject({
-      operations: [
-        {
-          kind: "put_view_personal_presentation",
-          presentationOverride: { layout: "list" },
-        },
-      ],
-    });
+    expect(preferenceWrite).toBeUndefined();
   });
 
   test("keeps two same-Project Database tabs bound to their own durable View identity", async () => {

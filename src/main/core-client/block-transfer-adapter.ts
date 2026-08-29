@@ -14,7 +14,7 @@ import { blockTransferFailure } from "../../shared/block-transfer-transport";
 import type { BlockLocation } from "../../shared/block-documents/contracts";
 import { CoreModuleResponseError } from "./core-client";
 import { applyResultCursor, rendererLocalCommitApply } from "./types";
-import { toCoreDatabaseViewPresentationOverride } from "./database-presentation-adapter";
+import { toCoreDatabaseViewPreferencesOverride } from "./database-presentation-adapter";
 import type { CoreClientPort, LibraryIntent, LibraryApplyResult } from "./types";
 
 export interface CoreBlockTransferAdapterInput {
@@ -93,8 +93,8 @@ const toCoreIntent = (intent: BlockTransferIntent): CoreTransferIntent => ({
               ? {
                   kind: intent.target.placement.kind,
                   view_id: intent.target.placement.viewId,
-                  presentation_override: toCoreDatabaseViewPresentationOverride(
-                    intent.target.placement.presentationOverride,
+                  preferences_override: toCoreDatabaseViewPreferencesOverride(
+                    intent.target.placement.preferencesOverride,
                   ),
                   group_key: intent.target.placement.groupKey,
                   before_page_id: intent.target.placement.beforePageId ?? null,
@@ -108,8 +108,8 @@ const toCoreIntent = (intent: BlockTransferIntent): CoreTransferIntent => ({
               : {
                   kind: intent.target.placement.kind,
                   view_id: intent.target.placement.viewId,
-                  presentation_override: toCoreDatabaseViewPresentationOverride(
-                    intent.target.placement.presentationOverride,
+                  preferences_override: toCoreDatabaseViewPreferencesOverride(
+                    intent.target.placement.preferencesOverride,
                   ),
                   expected_projection: {
                     scope_key: intent.target.placement.expectedProjection.scopeKey,

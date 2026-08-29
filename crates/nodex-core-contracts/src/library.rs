@@ -10,13 +10,13 @@ use crate::agent::{
 };
 use crate::database::{
     DatabaseGroupScope, DatabaseIntent, DatabaseListMoveTarget, DatabaseListProjectionExpectation,
-    DatabasePropertyDescriptor, DatabaseViewPresentationOverrideInput,
+    DatabasePageLayout, DatabasePropertyDescriptor, DatabaseViewPreferencesOverrideInput,
 };
 use crate::document::DocumentHeadRevision;
 use crate::workspace::{ProjectAppearance, ProjectLifecycle};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 41;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 42;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -414,7 +414,7 @@ pub enum LibraryBlockTransferTarget {
 pub enum LibraryBlockTransferDataSourcePlacement {
     Direct {
         view_id: String,
-        presentation_override: DatabaseViewPresentationOverrideInput,
+        preferences_override: DatabaseViewPreferencesOverrideInput,
         group_key: Option<String>,
         before_page_id: Option<String>,
         #[serde(default)]
@@ -422,7 +422,7 @@ pub enum LibraryBlockTransferDataSourcePlacement {
     },
     ListOccurrence {
         view_id: String,
-        presentation_override: DatabaseViewPresentationOverrideInput,
+        preferences_override: DatabaseViewPreferencesOverrideInput,
         expected_projection: DatabaseListProjectionExpectation,
         target: DatabaseListMoveTarget,
     },
@@ -970,7 +970,7 @@ pub enum LibraryNavigationNode {
         database_id: String,
         data_source_id: String,
         title: String,
-        default_layout: String,
+        layout: String,
         is_default: bool,
         revision: i64,
     },
@@ -1467,6 +1467,7 @@ pub enum LibraryPageDataSourceContext {
         database: Value,
         data_source: Value,
         properties: Vec<DatabasePropertyDescriptor>,
+        page_layout: DatabasePageLayout,
         values: std::collections::BTreeMap<String, Value>,
     },
 }

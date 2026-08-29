@@ -92,7 +92,7 @@ const model: DatabaseViewRenderModel = {
       databaseId,
       dataSourceId,
       name: "Focused work",
-      defaultLayout: "board",
+      layout: "board",
       config: (() => {
         const config = upgradeDatabaseViewConfigV2({
           schemaKey: "nodex.database-view",
@@ -106,18 +106,7 @@ const model: DatabaseViewRenderModel = {
           ...config,
           presentation: {
             ...config.presentation,
-            layouts: {
-              board: {
-                ...config.presentation.layouts.board,
-              },
-              list: {
-                ...config.presentation.layouts.list,
-                fields: [
-                  { kind: "intrinsic", field: "page_key" },
-                  ...config.presentation.layouts.list.fields,
-                ],
-              },
-            },
+            display: { ...config.presentation.display },
           },
         };
       })(),
@@ -271,17 +260,15 @@ export const BoardWithPageKey: Story = {
   args: {
     effectivePresentation: {
       layout: "board",
+      rules: model.query.view.config.rules,
       presentation: {
         ...model.query.view.config.presentation,
-        layouts: {
-          ...model.query.view.config.presentation.layouts,
-          board: {
-            ...model.query.view.config.presentation.layouts.board,
-            fields: [
-              { kind: "intrinsic", field: "page_key" },
-              ...model.query.view.config.presentation.layouts.board.fields,
-            ],
-          },
+        display: {
+          ...model.query.view.config.presentation.display,
+          fields: [
+            { kind: "intrinsic", field: "page_key" },
+            ...model.query.view.config.presentation.display.fields,
+          ],
         },
       },
     },
@@ -368,13 +355,13 @@ export const BoardListSelectionContinuity: Story = {
   render: () => <SelectionPreservingLayoutSwitch />,
 };
 
-const withLayout = (defaultLayout: "board" | "list"): DatabaseViewRenderModel => ({
+const withLayout = (layout: "board" | "list"): DatabaseViewRenderModel => ({
   ...model,
   query: {
     ...model.query,
     view: {
       ...model.query.view,
-      defaultLayout,
+      layout,
       config: {
         ...model.query.view.config,
         presentation: {
@@ -443,15 +430,13 @@ const withNestedList = (): DatabaseViewRenderModel => {
           presentation: {
             ...base.query.view.config.presentation,
             hierarchy: { showSubPages: true, nestedSubPages: true },
-            layouts: {
-              ...base.query.view.config.presentation.layouts,
-              list: {
-                fields: [
-                  { kind: "property", propertyId: tagsPropertyId },
-                  { kind: "intrinsic", field: "updated_at" },
-                ],
-                showEmptyGroups: false,
-              },
+            display: {
+              fields: [
+                { kind: "property", propertyId: tagsPropertyId },
+                { kind: "intrinsic", field: "updated_at" },
+              ],
+              propertyOrder: [tagsPropertyId],
+              showEmptyGroups: false,
             },
           },
         },
@@ -591,15 +576,12 @@ export const ListIdentityRhythm: Story = {
               ...base.query.view.config,
               presentation: {
                 ...base.query.view.config.presentation,
-                layouts: {
-                  ...base.query.view.config.presentation.layouts,
-                  list: {
-                    ...base.query.view.config.presentation.layouts.list,
-                    fields: [
-                      ...base.query.view.config.presentation.layouts.list.fields,
-                      { kind: "property", propertyId: statusPropertyId },
-                    ],
-                  },
+                display: {
+                  ...base.query.view.config.presentation.display,
+                  fields: [
+                    ...base.query.view.config.presentation.display.fields,
+                    { kind: "property", propertyId: statusPropertyId },
+                  ],
                 },
               },
             },
@@ -674,17 +656,14 @@ const withEmptyListGroups = (): DatabaseViewRenderModel => ({
     ...model.query,
     view: {
       ...model.query.view,
-      defaultLayout: "list",
+      layout: "list",
       config: {
         ...model.query.view.config,
         presentation: {
           ...model.query.view.config.presentation,
-          layouts: {
-            ...model.query.view.config.presentation.layouts,
-            list: {
-              ...model.query.view.config.presentation.layouts.list,
-              showEmptyGroups: true,
-            },
+          display: {
+            ...model.query.view.config.presentation.display,
+            showEmptyGroups: true,
           },
         },
       },
@@ -795,20 +774,17 @@ const withListFieldStress = (): DatabaseViewRenderModel => {
           presentation: {
             ...base.query.view.config.presentation,
             group: { propertyId: statusPropertyId },
-            layouts: {
-              ...base.query.view.config.presentation.layouts,
-              list: {
-                ...base.query.view.config.presentation.layouts.list,
-                fields: [
-                  { kind: "property", propertyId: priorityPropertyId },
-                  { kind: "property", propertyId: statusPropertyId },
-                  { kind: "property", propertyId: tagsPropertyId },
-                  { kind: "property", propertyId: estimatePropertyId },
-                  { kind: "property", propertyId: dueDatePropertyId },
-                  { kind: "property", propertyId: assigneePropertyId },
-                  { kind: "intrinsic", field: "updated_at" },
-                ],
-              },
+            display: {
+              ...base.query.view.config.presentation.display,
+              fields: [
+                { kind: "property", propertyId: priorityPropertyId },
+                { kind: "property", propertyId: statusPropertyId },
+                { kind: "property", propertyId: tagsPropertyId },
+                { kind: "property", propertyId: estimatePropertyId },
+                { kind: "property", propertyId: dueDatePropertyId },
+                { kind: "property", propertyId: assigneePropertyId },
+                { kind: "intrinsic", field: "updated_at" },
+              ],
             },
           },
         },
@@ -954,32 +930,29 @@ const withBoardPropertyChips = (): DatabaseViewRenderModel => {
       ...base.query,
       view: {
         ...base.query.view,
-        defaultLayout: "board",
+        layout: "board",
         config: {
           ...base.query.view.config,
           presentation: {
             ...base.query.view.config.presentation,
             group: null,
             subgroup: null,
-            layouts: {
-              ...base.query.view.config.presentation.layouts,
-              board: {
-                ...base.query.view.config.presentation.layouts.board,
-                fields: [
-                  { kind: "property", propertyId: priorityPropertyId },
-                  { kind: "property", propertyId: statusPropertyId },
-                  { kind: "property", propertyId: estimatePropertyId },
-                  { kind: "property", propertyId: tagsPropertyId },
-                  { kind: "property", propertyId: assigneePropertyId },
-                  { kind: "property", propertyId: dueDatePropertyId },
-                  { kind: "intrinsic", field: "created_at" },
-                  { kind: "property", propertyId: relationPropertyId },
-                  { kind: "property", propertyId: notesPropertyId },
-                  { kind: "property", propertyId: pointsPropertyId },
-                  { kind: "property", propertyId: approvedPropertyId },
-                  { kind: "intrinsic", field: "updated_at" },
-                ],
-              },
+            display: {
+              ...base.query.view.config.presentation.display,
+              fields: [
+                { kind: "property", propertyId: priorityPropertyId },
+                { kind: "property", propertyId: statusPropertyId },
+                { kind: "property", propertyId: estimatePropertyId },
+                { kind: "property", propertyId: tagsPropertyId },
+                { kind: "property", propertyId: assigneePropertyId },
+                { kind: "property", propertyId: dueDatePropertyId },
+                { kind: "intrinsic", field: "created_at" },
+                { kind: "property", propertyId: relationPropertyId },
+                { kind: "property", propertyId: notesPropertyId },
+                { kind: "property", propertyId: pointsPropertyId },
+                { kind: "property", propertyId: approvedPropertyId },
+                { kind: "intrinsic", field: "updated_at" },
+              ],
             },
           },
         },
@@ -1274,7 +1247,7 @@ const withSubgroups = (layout: "board" | "list"): DatabaseViewRenderModel => {
       ...model.query,
       view: {
         ...model.query.view,
-        defaultLayout: layout,
+        layout: layout,
         config: {
           ...model.query.view.config,
           presentation: {
@@ -1325,15 +1298,12 @@ const withPriorityGrouping = (): DatabaseViewRenderModel => {
             ...next.query.view.config.presentation,
             group: { propertyId: priorityPropertyId },
             subgroup: null,
-            layouts: {
-              ...next.query.view.config.presentation.layouts,
-              board: {
-                ...next.query.view.config.presentation.layouts.board,
-                fields: [
-                  { kind: "property", propertyId: priorityPropertyId },
-                  { kind: "property", propertyId: tagsPropertyId },
-                ],
-              },
+            display: {
+              ...next.query.view.config.presentation.display,
+              fields: [
+                { kind: "property", propertyId: priorityPropertyId },
+                { kind: "property", propertyId: tagsPropertyId },
+              ],
             },
           },
         },
@@ -1393,15 +1363,12 @@ const withCustomGrouping = (
             ...next.query.view.config.presentation,
             group: { propertyId: customGroupPropertyId },
             subgroup: null,
-            layouts: {
-              ...next.query.view.config.presentation.layouts,
-              board: {
-                ...next.query.view.config.presentation.layouts.board,
-                fields: [
-                  { kind: "property", propertyId: customGroupPropertyId },
-                  { kind: "property", propertyId: tagsPropertyId },
-                ],
-              },
+            display: {
+              ...next.query.view.config.presentation.display,
+              fields: [
+                { kind: "property", propertyId: customGroupPropertyId },
+                { kind: "property", propertyId: tagsPropertyId },
+              ],
             },
           },
         },

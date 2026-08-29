@@ -60,7 +60,6 @@ import {
   SplitIcon as LucideSplitIcon,
   Star as LucideStar,
   Sun as LucideSun,
-  Tags as LucideTags,
   TextCursorInput as LucideTextCursorInput,
   TriangleAlert as LucideTriangleAlert,
   UploadCloud as LucideUploadCloud,
@@ -301,7 +300,6 @@ export const SplitIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
 );
 export const Star: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideStar, "Star");
 export const Sun: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideSun, "Sun");
-export const Tags: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideTags, "Tags");
 export const TextCursorInput: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideTextCursorInput,
   "TextCursorInput",

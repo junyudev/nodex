@@ -90,7 +90,7 @@ export function verifyProtocol(): void {
       "-p",
       "nodex-core",
       "--lib",
-      "infrastructure::migration::tests::published_current_store_identity_matches_the_exact_schema",
+      "infrastructure::schema::tests::current_schema_artifact_matches_catalog",
       "--",
       "--exact",
     ]);

@@ -423,10 +423,10 @@ describe("workbench session shell / sidebar-projects", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Open DB view" }) !== null).toBe(true);
-      expect(screen.getByRole("option", { name: /Beta/ }) !== null).toBe(true);
+      expect(screen.getByRole("option", { name: /Board.*Beta/ }) !== null).toBe(true);
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("option", { name: /Beta/ }));
+      fireEvent.click(screen.getByRole("option", { name: /Board.*Beta/ }));
       await Promise.resolve();
     });
     await settleAsyncRender();

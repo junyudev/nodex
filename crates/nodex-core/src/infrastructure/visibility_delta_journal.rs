@@ -58,6 +58,61 @@ struct DirtyFact {
     new_row: Option<Value>,
 }
 
+/// Schema migrations may rewrite authority-bearing rows without publishing a
+/// product LocalCommit. The enclosing migration transaction owns this mode and
+/// removes it before validating or committing the target Store.
+pub(crate) fn enter_migration_maintenance_context(
+    connection: &Connection,
+) -> Result<bool, StoreError> {
+    let existing = connection
+        .query_row(
+            "SELECT mode, store_epoch, commit_seq FROM local_commit_visibility_context WHERE id = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    match existing {
+        None => {
+            connection.execute(
+                "INSERT INTO local_commit_visibility_context(id, mode, store_epoch, commit_seq) \
+                 VALUES (1, 'maintenance', NULL, NULL)",
+                [],
+            )?;
+            Ok(true)
+        }
+        Some((mode, None, None)) if mode == "maintenance" => Ok(false),
+        Some(_) => Err(corrupt(
+            "Store migration cannot borrow an active VisibilityDeltaJournal context",
+        )),
+    }
+}
+
+pub(crate) fn leave_migration_maintenance_context(
+    connection: &Connection,
+    owned: bool,
+) -> Result<(), StoreError> {
+    if !owned {
+        return Ok(());
+    }
+    let changed = connection.execute(
+        "DELETE FROM local_commit_visibility_context \
+         WHERE id = 1 AND mode = 'maintenance' AND store_epoch IS NULL AND commit_seq IS NULL",
+        [],
+    )?;
+    if changed == 1 {
+        return Ok(());
+    }
+    Err(corrupt(
+        "Store migration VisibilityDeltaJournal context diverged",
+    ))
+}
+
 struct PreMutationOverlayGraph<'connection> {
     connection: &'connection Connection,
 }

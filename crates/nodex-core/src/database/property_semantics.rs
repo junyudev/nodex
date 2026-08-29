@@ -1,6 +1,6 @@
 use nodex_core_contracts::database::{
-    DatabasePropertyCapabilities, DatabasePropertyFilterOperator, DatabasePropertySchema,
-    DatabaseRelationCardinality,
+    DatabaseDateFormat, DatabaseNumberFormat, DatabasePropertyCapabilities, DatabasePropertySchema,
+    DatabaseRelationCardinality, DatabaseTimeFormat, DatabaseViewFilterOperator,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -76,6 +76,10 @@ pub(crate) fn is_custom_property_id(value: &str) -> bool {
     is_compact_scoped_id(value, "p_")
 }
 
+pub(crate) fn is_required_property_id(value: &str) -> bool {
+    matches!(value, STATUS_PROPERTY_ID | TASK_PARENT_PROPERTY_ID)
+}
+
 pub(crate) fn is_custom_option_id(value: &str) -> bool {
     is_compact_scoped_id(value, "o_")
 }
@@ -116,9 +120,9 @@ pub(crate) fn schema_matches_canonical_property(
             matches!(schema, DatabasePropertySchema::Select)
         }
         "tags" => matches!(schema, DatabasePropertySchema::MultiSelect),
-        "due_date" => matches!(schema, DatabasePropertySchema::Date),
+        "due_date" => matches!(schema, DatabasePropertySchema::Date { .. }),
         "scheduled_start" | "scheduled_end" => {
-            matches!(schema, DatabasePropertySchema::Datetime)
+            matches!(schema, DatabasePropertySchema::Datetime { .. })
         }
         "assignee" => matches!(schema, DatabasePropertySchema::Text),
         TASK_PARENT_PROPERTY_ID => matches!(
@@ -189,29 +193,28 @@ pub(crate) fn option_config_from_storage(
 pub(crate) fn value_type(schema: &DatabasePropertySchema) -> &'static str {
     match schema {
         DatabasePropertySchema::Text => "text",
-        DatabasePropertySchema::Number => "number",
+        DatabasePropertySchema::Number { .. } => "number",
         DatabasePropertySchema::Checkbox => "checkbox",
         DatabasePropertySchema::Select => "select",
         DatabasePropertySchema::MultiSelect => "multi_select",
-        DatabasePropertySchema::Date => "date",
-        DatabasePropertySchema::Datetime => "datetime",
+        DatabasePropertySchema::Date { .. } => "date",
+        DatabasePropertySchema::Datetime { .. } => "datetime",
         DatabasePropertySchema::Relation { .. } => "relation",
     }
 }
 
 pub(crate) fn capabilities(schema: &DatabasePropertySchema) -> DatabasePropertyCapabilities {
-    use DatabasePropertyFilterOperator::{
-        Contains, Equals, IsEmpty, IsNotEmpty, NotContains, NotEquals,
-    };
+    use DatabaseViewFilterOperator::*;
 
-    let equality = vec![Equals, NotEquals, IsEmpty, IsNotEmpty];
     match schema {
         DatabasePropertySchema::Text => DatabasePropertyCapabilities {
             filter_operators: vec![
-                Equals,
-                NotEquals,
-                Contains,
-                NotContains,
+                TextIs,
+                TextIsNot,
+                TextContains,
+                TextDoesNotContain,
+                TextStartsWith,
+                TextEndsWith,
                 IsEmpty,
                 IsNotEmpty,
             ],
@@ -220,10 +223,9 @@ pub(crate) fn capabilities(schema: &DatabasePropertySchema) -> DatabasePropertyC
         },
         DatabasePropertySchema::MultiSelect => DatabasePropertyCapabilities {
             filter_operators: vec![
-                Equals,
-                NotEquals,
-                Contains,
-                NotContains,
+                MultiSelectContains,
+                MultiSelectDoesNotContain,
+                MultiSelectContainsAll,
                 IsEmpty,
                 IsNotEmpty,
             ],
@@ -231,20 +233,74 @@ pub(crate) fn capabilities(schema: &DatabasePropertySchema) -> DatabasePropertyC
             groupable: true,
         },
         DatabasePropertySchema::Relation { .. } => DatabasePropertyCapabilities {
-            filter_operators: vec![Contains, NotContains, IsEmpty, IsNotEmpty],
+            filter_operators: vec![
+                RelationContains,
+                RelationDoesNotContain,
+                IsEmpty,
+                IsNotEmpty,
+            ],
             sortable: false,
             groupable: false,
         },
-        DatabasePropertySchema::Number
-        | DatabasePropertySchema::Checkbox
-        | DatabasePropertySchema::Select
-        | DatabasePropertySchema::Date
-        | DatabasePropertySchema::Datetime => DatabasePropertyCapabilities {
-            filter_operators: equality,
+        DatabasePropertySchema::Number { .. } => DatabasePropertyCapabilities {
+            filter_operators: vec![
+                NumberEquals,
+                NumberDoesNotEqual,
+                NumberGreaterThan,
+                NumberLessThan,
+                NumberGreaterThanOrEqualTo,
+                NumberLessThanOrEqualTo,
+                IsEmpty,
+                IsNotEmpty,
+            ],
             sortable: true,
             groupable: true,
         },
+        DatabasePropertySchema::Checkbox => DatabasePropertyCapabilities {
+            filter_operators: vec![CheckboxIs, CheckboxIsNot],
+            sortable: true,
+            groupable: true,
+        },
+        DatabasePropertySchema::Select => DatabasePropertyCapabilities {
+            filter_operators: vec![SelectIs, SelectIsNot, IsEmpty, IsNotEmpty],
+            sortable: true,
+            groupable: true,
+        },
+        DatabasePropertySchema::Date { .. } | DatabasePropertySchema::Datetime { .. } => {
+            DatabasePropertyCapabilities {
+                filter_operators: vec![
+                    DateIs,
+                    DateIsNot,
+                    DateBefore,
+                    DateAfter,
+                    DateOnOrBefore,
+                    DateOnOrAfter,
+                    DateWithin,
+                    DateRelativeTo,
+                    IsEmpty,
+                    IsNotEmpty,
+                ],
+                sortable: true,
+                groupable: true,
+            }
+        }
     }
+}
+
+fn property_config_json(
+    connection: &Connection,
+    data_source_id: &str,
+    property_id: &str,
+) -> Result<String, StoreError> {
+    connection
+        .query_row(
+            "SELECT config_json FROM data_source_properties \
+             WHERE data_source_id = ?1 AND id = ?2",
+            params![data_source_id, property_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| corrupt("Property config is unavailable"))
 }
 
 pub(crate) fn schema_from_storage(
@@ -255,12 +311,63 @@ pub(crate) fn schema_from_storage(
 ) -> Result<DatabasePropertySchema, StoreError> {
     let schema = match stored_value_type {
         "text" => DatabasePropertySchema::Text,
-        "number" => DatabasePropertySchema::Number,
+        "number" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Config {
+                #[serde(default)]
+                format: DatabaseNumberFormat,
+            }
+            let config: Config = serde_json::from_str(&property_config_json(
+                connection,
+                data_source_id,
+                property_id,
+            )?)
+            .map_err(|_| corrupt("Number Property format is invalid"))?;
+            DatabasePropertySchema::Number {
+                format: config.format,
+            }
+        }
         "checkbox" => DatabasePropertySchema::Checkbox,
         "select" => DatabasePropertySchema::Select,
         "multi_select" => DatabasePropertySchema::MultiSelect,
-        "date" => DatabasePropertySchema::Date,
-        "datetime" => DatabasePropertySchema::Datetime,
+        "date" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Config {
+                #[serde(default)]
+                date_format: DatabaseDateFormat,
+            }
+            let config: Config = serde_json::from_str(&property_config_json(
+                connection,
+                data_source_id,
+                property_id,
+            )?)
+            .map_err(|_| corrupt("Date Property format is invalid"))?;
+            DatabasePropertySchema::Date {
+                date_format: config.date_format,
+            }
+        }
+        "datetime" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Config {
+                #[serde(default)]
+                date_format: DatabaseDateFormat,
+                #[serde(default)]
+                time_format: DatabaseTimeFormat,
+            }
+            let config: Config = serde_json::from_str(&property_config_json(
+                connection,
+                data_source_id,
+                property_id,
+            )?)
+            .map_err(|_| corrupt("Datetime Property format is invalid"))?;
+            DatabasePropertySchema::Datetime {
+                date_format: config.date_format,
+                time_format: config.time_format,
+            }
+        }
         "relation" => {
             let (target_data_source_id, cardinality) = connection
                 .query_row(

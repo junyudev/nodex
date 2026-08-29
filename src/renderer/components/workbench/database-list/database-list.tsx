@@ -57,7 +57,7 @@ import type {
   DatabaseJsonValue,
   DatabasePropertyOption,
   DatabaseViewField,
-  EffectiveDatabaseViewPresentation,
+  EffectiveDatabaseView,
 } from "../../../../shared/database-kernel";
 import { isPriority } from "../../../../shared/priority";
 import type {
@@ -130,7 +130,7 @@ import {
   type DatabaseListDndCommit,
 } from "./database-list-dnd";
 import {
-  databaseListPresentationOverride,
+  databaseListPreferencesOverride,
   useDatabaseListWindow,
   type DatabaseListWindowState,
 } from "./use-database-list-window";
@@ -172,7 +172,7 @@ const IDLE_OVERSCAN_PASSES = 3;
 
 interface DatabaseListProps {
   readonly model: DatabaseViewRenderModel;
-  readonly effectivePresentation?: EffectiveDatabaseViewPresentation;
+  readonly effectivePresentation?: EffectiveDatabaseView;
   readonly groupPagination?: ReadonlyMap<string, ColumnPaginationState>;
   readonly onLoadMoreGroup?: (scopeKey: string) => Promise<void> | void;
   readonly searchQuery: string;
@@ -457,13 +457,14 @@ export function DatabaseList({
   const presentation = effectivePresentation?.presentation ?? model.query.view.config.presentation;
   const effective = effectivePresentation ?? {
     layout: "list" as const,
+    rules: model.query.view.config.rules,
     presentation,
   };
   const usesCoreAuthority = model.authorization !== null;
   const coreWindow = useDatabaseListWindow({ model, effective });
   const grouped = presentation.group !== null;
   const subgrouped = presentation.subgroup !== null;
-  const listConfig = presentation.layouts.list;
+  const listConfig = presentation.display;
   const sessionListFields = useMemo(() => {
     return withForcedDatabaseListField(listConfig.fields, forcedDisplayField);
   }, [forcedDisplayField, listConfig.fields]);
@@ -595,6 +596,7 @@ export function DatabaseList({
       projectCoreDatabaseListRows({
         rows: coreWindow.rows,
         properties: model.query.properties,
+        conditionalColors: presentation.conditionalColors,
         collapsedOccurrenceKeys,
         groupLabel: (key) => groupLabel(model, presentation.group?.propertyId, key),
         subgroupLabel: (key) => groupLabel(model, presentation.subgroup?.propertyId, key),
@@ -616,6 +618,7 @@ export function DatabaseList({
       coreWindow.rows,
       model,
       presentation.group?.propertyId,
+      presentation.conditionalColors,
       presentation.subgroup?.propertyId,
       propertyOptionRegistries.options,
       compiledSearchQuery,
@@ -673,7 +676,7 @@ export function DatabaseList({
         ...model.query,
         view: {
           ...model.query.view,
-          defaultLayout: effective.layout,
+          layout: effective.layout,
           config: {
             ...model.query.view.config,
             presentation,
@@ -1362,7 +1365,7 @@ export function DatabaseList({
         const operation: DatabaseApplyOperationV2 = {
           kind: "move_list_occurrences",
           viewId: model.databaseViewId,
-          presentationOverride: databaseListPresentationOverride(effectiveRef.current),
+          preferencesOverride: databaseListPreferencesOverride(effectiveRef.current),
           expectedProjection: {
             scopeKey: latestProjection.scopeKey,
             schemaVersion: latestProjection.schemaVersion,
@@ -1536,7 +1539,7 @@ export function DatabaseList({
       placement: {
         kind: "list_occurrence",
         viewId: model.databaseViewId,
-        presentationOverride: databaseListPresentationOverride(effectiveRef.current),
+        preferencesOverride: databaseListPreferencesOverride(effectiveRef.current),
         expectedProjection,
         target: preview.target,
       },

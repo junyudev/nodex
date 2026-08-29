@@ -26,8 +26,16 @@ export interface WorkbenchSidebarPreferences {
   readonly collapsibleSections: SidebarCollapsibleSectionsState;
 }
 
+export type DatabaseViewTabDisplayMode = "icon_and_text" | "text_only" | "icon_only";
+
+export interface WorkbenchDatabaseViewTabPreferences {
+  readonly displayModeByDatabaseId: Readonly<Record<string, DatabaseViewTabDisplayMode>>;
+  readonly ruleBarOpenByViewId: Readonly<Record<string, boolean>>;
+}
+
 export interface WorkbenchProfilePreferences {
   readonly sidebar: WorkbenchSidebarPreferences;
+  readonly databaseViewTabs: WorkbenchDatabaseViewTabPreferences;
   readonly recentPageSessions: RecentPageSession[];
 }
 
@@ -47,6 +55,7 @@ function makeDefaultWorkbenchProfilePreferences(): WorkbenchProfilePreferences {
       width: CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(undefined),
     },
+    databaseViewTabs: { displayModeByDatabaseId: {}, ruleBarOpenByViewId: {} },
     recentPageSessions: [],
   };
 }
@@ -68,6 +77,38 @@ function normalizeRecentPageSessions(value: unknown): RecentPageSession[] {
     .slice(0, MAX_RECENT_PAGE_SESSIONS);
 }
 
+const DATABASE_VIEW_TAB_DISPLAY_MODES: ReadonlySet<string> = new Set([
+  "icon_and_text",
+  "text_only",
+  "icon_only",
+]);
+
+function normalizeDatabaseViewTabDisplayModes(
+  value: unknown,
+): Readonly<Record<string, DatabaseViewTabDisplayMode>> {
+  const record = readRecord(value);
+  if (!record) return {};
+  return Object.fromEntries(
+    Object.entries(record).flatMap(([databaseId, mode]) =>
+      typeof mode === "string" && DATABASE_VIEW_TAB_DISPLAY_MODES.has(mode)
+        ? [[databaseId, mode as DatabaseViewTabDisplayMode]]
+        : [],
+    ),
+  );
+}
+
+function normalizeRuleBarOpenStates(value: unknown): Readonly<Record<string, boolean>> {
+  const states = readRecord(value);
+  if (!states) return {};
+  return Object.fromEntries(
+    Object.entries(states)
+      .filter(
+        (entry): entry is [string, boolean] => Boolean(entry[0]) && typeof entry[1] === "boolean",
+      )
+      .slice(-128),
+  );
+}
+
 export function normalizeWorkbenchProfilePreferences(value: unknown): WorkbenchProfilePreferences {
   return normalizeWorkbenchProfilePreferencesAtBoundary(value);
 }
@@ -85,6 +126,7 @@ function normalizeWorkbenchProfilePreferencesAtBoundary(
   const record = readRecord(value);
   if (!record) return defaults;
   const sidebar = readRecord(record.sidebar);
+  const databaseViewTabs = readRecord(record.databaseViewTabs);
 
   return {
     sidebar: {
@@ -94,6 +136,12 @@ function normalizeWorkbenchProfilePreferencesAtBoundary(
         typeof sidebar?.width === "number" ? sidebar.width : defaults.sidebar.width,
       ),
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(sidebar?.collapsibleSections),
+    },
+    databaseViewTabs: {
+      displayModeByDatabaseId: normalizeDatabaseViewTabDisplayModes(
+        databaseViewTabs?.displayModeByDatabaseId,
+      ),
+      ruleBarOpenByViewId: normalizeRuleBarOpenStates(databaseViewTabs?.ruleBarOpenByViewId),
     },
     recentPageSessions: normalizeRecentPageSessions(record.recentPageSessions),
   };
@@ -275,6 +323,42 @@ export function useWorkbenchProfilePreferences() {
     [update],
   );
 
+  const setDatabaseViewTabDisplayMode = useCallback(
+    (databaseId: string, mode: DatabaseViewTabDisplayMode) => {
+      update((current) => {
+        if (current.databaseViewTabs.displayModeByDatabaseId[databaseId] === mode) return current;
+        return {
+          ...current,
+          databaseViewTabs: {
+            ...current.databaseViewTabs,
+            displayModeByDatabaseId: {
+              ...current.databaseViewTabs.displayModeByDatabaseId,
+              [databaseId]: mode,
+            },
+          },
+        };
+      });
+    },
+    [update],
+  );
+
+  const setDatabaseViewRuleBarOpen = useCallback(
+    (viewId: string, open: boolean) => {
+      update((current) => {
+        if (current.databaseViewTabs.ruleBarOpenByViewId[viewId] === open) return current;
+        const entries = Object.entries(current.databaseViewTabs.ruleBarOpenByViewId).filter(
+          ([candidate]) => candidate !== viewId,
+        );
+        const next = Object.fromEntries([...entries.slice(-127), [viewId, open]]);
+        return {
+          ...current,
+          databaseViewTabs: { ...current.databaseViewTabs, ruleBarOpenByViewId: next },
+        };
+      });
+    },
+    [update],
+  );
+
   const recordRecentPageLeave = useCallback(
     (projectId: string, pageId: string, titleSnapshot: string): string => {
       const id = crypto.randomUUID();
@@ -304,10 +388,13 @@ export function useWorkbenchProfilePreferences() {
   return useMemo(
     () => ({
       sidebar: preferences.sidebar,
+      databaseViewTabs: preferences.databaseViewTabs,
       recentPageSessions: preferences.recentPageSessions,
       setSidebarCollapsed,
       setSidebarWidth,
       setSidebarCollapsibleSectionCollapsed,
+      setDatabaseViewTabDisplayMode,
+      setDatabaseViewRuleBarOpen,
       recordRecentPageLeave,
       flush,
     }),
@@ -317,6 +404,8 @@ export function useWorkbenchProfilePreferences() {
       recordRecentPageLeave,
       setSidebarCollapsed,
       setSidebarCollapsibleSectionCollapsed,
+      setDatabaseViewTabDisplayMode,
+      setDatabaseViewRuleBarOpen,
       setSidebarWidth,
     ],
   );

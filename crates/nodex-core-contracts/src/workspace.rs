@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
@@ -325,25 +325,25 @@ pub struct ProjectWorkspaceThreadMoveMetadataPatch {
     pub execution_host_id: Option<String>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub cwd: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub managed_worktree_path: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub projectless_output_directory: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub projectless_workspace_browser_root: Option<Option<String>>,
@@ -557,55 +557,55 @@ pub struct ProjectWorkspaceManagedWorktreeLifecycleSnapshot {
 pub struct ProjectWorkspaceThreadPatch {
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub project_id: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub forked_from_id: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub parent_thread_id: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub thread_name: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub thread_source: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub service_name: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub agent_nickname: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub agent_role: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub agent_path: Option<Option<String>>,
@@ -613,25 +613,25 @@ pub struct ProjectWorkspaceThreadPatch {
     pub model_provider: Option<String>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub model_id: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub harness_id: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub reasoning_effort: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub service_tier: Option<Option<String>>,
@@ -639,25 +639,25 @@ pub struct ProjectWorkspaceThreadPatch {
     pub execution_host_id: Option<String>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub cwd: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub managed_worktree_path: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub projectless_output_directory: Option<Option<String>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub projectless_workspace_browser_root: Option<Option<String>>,
@@ -1197,14 +1197,6 @@ pub enum ProjectSessionIntent {
         page_id: String,
         page_access_project_id: String,
     },
-}
-
-fn deserialize_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    T::deserialize(deserializer).map(Some)
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

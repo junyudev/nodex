@@ -3,10 +3,10 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { CoreApiError, readDatabaseListWindow, readLibraryDatabaseListWindow } from "@/lib/api";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type {
-  DatabaseViewPresentationOverride,
-  EffectiveDatabaseViewPresentation,
+  DatabaseViewPreferencesOverride,
+  EffectiveDatabaseView,
 } from "../../../../shared/database-kernel";
-import { databaseViewGesturePresentationOverride } from "../../../../shared/database-view-presentation";
+import { databaseViewGesturePreferencesOverride } from "../../../../shared/database-view-presentation";
 import type {
   DatabaseListProjectionRowSnapshot,
   DatabaseListWindowInput,
@@ -53,10 +53,10 @@ const EMPTY_WINDOW_STATE: DatabaseListWindowState = Object.freeze({
   error: null,
 });
 
-/** A List request must never inherit the currently visible Board layout. */
-export const databaseListPresentationOverride = (
-  effective: EffectiveDatabaseViewPresentation,
-): DatabaseViewPresentationOverride => databaseViewGesturePresentationOverride(effective, "list");
+/** Freeze the complete List presentation at the start of a gesture. */
+export const databaseListPreferencesOverride = (
+  effective: EffectiveDatabaseView,
+): DatabaseViewPreferencesOverride => databaseViewGesturePreferencesOverride(effective);
 
 const projectionIdentity = (snapshot: AnyDatabaseListWindowSnapshot): string =>
   JSON.stringify({
@@ -149,14 +149,14 @@ interface DatabaseListWindowDescriptor {
 
 const descriptorFor = (
   model: DatabaseViewRenderModel,
-  effective: EffectiveDatabaseViewPresentation,
+  effective: EffectiveDatabaseView,
 ): DatabaseListWindowDescriptor => {
   const request = {
     accessContext: model.accessContext,
     input: {
       databaseViewId: model.databaseViewId,
       first: DATABASE_LIST_WINDOW_SIZE,
-      presentationOverride: databaseListPresentationOverride(effective),
+      preferencesOverride: databaseListPreferencesOverride(effective),
       minimumCommitCursor: {
         storeEpoch: model.storeEpoch,
         commitSeq: model.commitSeq,
@@ -166,7 +166,7 @@ const descriptorFor = (
   const presentationIdentity = JSON.stringify({
     accessContext: request.accessContext,
     databaseViewId: request.input.databaseViewId,
-    presentationOverride: request.input.presentationOverride,
+    preferencesOverride: request.input.preferencesOverride,
   });
   return {
     identity: JSON.stringify(request),
@@ -270,7 +270,7 @@ export class DatabaseListWindowStore {
     this.listeners.clear();
   }
 
-  setRequest(model: DatabaseViewRenderModel, effective: EffectiveDatabaseViewPresentation): void {
+  setRequest(model: DatabaseViewRenderModel, effective: EffectiveDatabaseView): void {
     if (model.authorization === null) {
       this.clearUnavailableAuthority();
       return;
@@ -537,7 +537,7 @@ export interface UseDatabaseListWindowResult extends DatabaseListWindowState {
 
 export const useDatabaseListWindow = (input: {
   readonly model: DatabaseViewRenderModel;
-  readonly effective: EffectiveDatabaseViewPresentation;
+  readonly effective: EffectiveDatabaseView;
 }): UseDatabaseListWindowResult => {
   const { model, effective } = input;
   const storeIdentity = storeIdentityFor(model);

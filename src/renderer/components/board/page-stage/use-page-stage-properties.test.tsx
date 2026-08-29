@@ -38,6 +38,7 @@ const tagsItem = {
   value: ["o_AAAAAAAA", "o_BBBBBBBB"],
   valueRevision: 1,
   error: null,
+  pageVisibility: "always_show",
 } as const;
 
 const statusProperty: DataSourcePropertyRecordV2 = {
@@ -60,6 +61,7 @@ const statusItem = {
   value: "plan",
   valueRevision: 4,
   error: null,
+  pageVisibility: "always_show",
 } as const;
 
 const pageModel: PageStagePageModel = {
@@ -84,6 +86,17 @@ const pageModel: PageStagePageModel = {
     },
     properties: [tagsItem],
     semanticProperties: readPageStageSemanticProperties([tagsItem]),
+    pageLayout: {
+      dataSourceId: parseDataSourceId("source-1"),
+      revision: 1,
+      entries: [
+        {
+          propertyId: tagsProperty.propertyId,
+          visibility: "always_show",
+          rankKey: "a0",
+        },
+      ],
+    },
   },
 };
 
@@ -145,6 +158,17 @@ describe("usePageStageProperties", () => {
         },
         properties: [statusItem],
         semanticProperties: readPageStageSemanticProperties([statusItem]),
+        pageLayout: {
+          dataSourceId: parseDataSourceId("source-1"),
+          revision: 1,
+          entries: [
+            {
+              propertyId: statusProperty.propertyId,
+              visibility: "always_show",
+              rankKey: "a0",
+            },
+          ],
+        },
       },
     };
     const hook = renderHook(() =>

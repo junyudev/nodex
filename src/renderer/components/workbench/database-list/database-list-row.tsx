@@ -1,4 +1,4 @@
-import { useCallback, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { PropertyOptionPicker } from "@/components/database/property-option-picker";
 import { NodexButton } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { isPriority } from "../../../../shared/priority";
 import type { DatabaseListPageIdentity } from "./database-list-grid";
 import { DatabaseListPriorityIcon } from "./database-list-icons";
 import type { DatabaseListPageRow } from "./database-list-model";
+import { databaseViewConditionalColorBackground } from "@/lib/database-view-render-model";
 import {
   databaseListDropIndicatorLeft,
   DatabaseListNestingLines,
@@ -143,10 +144,21 @@ export function DatabaseListRow({
       data-drop-position={dropEdge ?? undefined}
       data-database-view-page-presented={presented ? "true" : undefined}
       data-list-transient-kind={item.transientKind === "none" ? undefined : item.transientKind}
+      style={
+        item.row.conditionalColor
+          ? ({
+              "--database-list-conditional-bg": databaseViewConditionalColorBackground(
+                item.row.conditionalColor,
+              ),
+            } as CSSProperties)
+          : undefined
+      }
       className={cn(
         "group/list-row relative grid h-11 min-h-11 min-w-0 items-center gap-x-2 rounded-lg outline-none [grid-template-columns:subgrid] [grid-column:1/-1]",
         "before:absolute before:inset-x-2 before:inset-y-0 before:-z-0 before:rounded-lg before:content-['']",
         "hover:before:bg-[var(--database-list-row-hover)]",
+        item.row.conditionalColor &&
+          "before:bg-[var(--database-list-conditional-bg)] hover:before:bg-[color-mix(in_srgb,var(--foreground-tertiary)_5%,var(--database-list-conditional-bg))]",
         selected &&
           "before:bg-[var(--database-list-row-selected)] hover:before:bg-[var(--database-list-row-selected)]",
         selected && selectedBefore && "before:rounded-t-none",

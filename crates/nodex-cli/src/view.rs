@@ -433,7 +433,8 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 mod tests {
     use nodex_core_contracts::collection::{CollectionWindow, CollectionWindowAuthority};
     use nodex_core_contracts::database::{
-        DatabasePropertyCapabilities, DatabasePropertyFilterOperator, DatabaseRowSummary,
+        DatabasePropertyCapabilities, DatabasePropertyFilterOperator,
+        DatabasePropertyManagementPolicy, DatabasePropertySystemRole, DatabaseRowSummary,
         DatabaseViewGroupSummary, DatabaseViewGroups,
     };
     use nodex_core_contracts::{
@@ -499,10 +500,12 @@ mod tests {
                         "groupDirection": "asc",
                         "completion": { "range": "all", "orderByRecency": false },
                         "hierarchy": { "showSubPages": true, "nestedSubPages": false },
-                        "layouts": {
-                            "board": { "fields": [], "showEmptyGroups": false },
-                            "list": { "fields": [], "showEmptyGroups": false }
-                        }
+                        "display": {
+                            "fields": [],
+                            "showEmptyGroups": false,
+                            "showDescription": true
+                        },
+                        "conditionalColors": []
                     }
                 },
                 "is_default": true,
@@ -527,6 +530,23 @@ mod tests {
                     ],
                     sortable: true,
                     groupable: true,
+                },
+                system_role: Some(DatabasePropertySystemRole::Status),
+                non_empty_value_count: 0,
+                referenced_view_ids: Vec::new(),
+                management_policy: DatabasePropertyManagementPolicy {
+                    can_rename: true,
+                    can_reorder: true,
+                    can_change_type: false,
+                    can_duplicate: true,
+                    can_delete: false,
+                    can_restore: false,
+                    can_permanently_delete: false,
+                    can_manage_options: true,
+                    allowed_types: Vec::new(),
+                    blocked_reasons: vec![
+                        "This Property has a required Nodex system role".to_owned(),
+                    ],
                 },
                 option_count: 1,
                 rank_key: "a".to_owned(),

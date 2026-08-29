@@ -23,9 +23,9 @@ vi.mock("./api", async (importOriginal) => ({
 }));
 
 import {
-  resetDatabaseViewPresentationPreferencesForTests,
-  useDatabaseViewPresentationPreference,
-} from "./database-view-presentation-preferences";
+  resetDatabaseViewPersonalPreferencesForTests,
+  useDatabaseViewPersonalPreference,
+} from "./database-view-personal-preferences";
 
 const deferred = <Value,>() => {
   let resolve!: (value: Value) => void;
@@ -48,8 +48,8 @@ const presentationResult = (
     storeEpoch,
     commitSeq,
     value: {
-      kind: "view_personal_presentation" as const,
-      value: { presentationOverride, revision },
+      kind: "view_personal_preferences" as const,
+      value: { rulesOverride: {}, presentationOverride, revision },
     },
   },
 });
@@ -79,9 +79,9 @@ const disclosureWriteResult = (commitSeq: number) => ({
   localCommit: { status: "applied" as const },
 });
 
-describe("useDatabaseViewPresentationPreference", () => {
+describe("useDatabaseViewPersonalPreference", () => {
   beforeEach(() => {
-    resetDatabaseViewPresentationPreferencesForTests();
+    resetDatabaseViewPersonalPreferencesForTests();
     window.localStorage.clear();
     testState.changeListener = null;
     testState.readDatabaseModule.mockReset();
@@ -107,14 +107,12 @@ describe("useDatabaseViewPresentationPreference", () => {
           readonly read: { readonly mode: string };
         },
       ) =>
-        request.read.mode === "view_personal_presentation"
+        request.read.mode === "view_personal_preferences"
           ? presentation.promise
           : disclosure.promise,
     );
 
-    const { result } = renderHook(() =>
-      useDatabaseViewPresentationPreference("project-test", viewId),
-    );
+    const { result } = renderHook(() => useDatabaseViewPersonalPreference("project-test", viewId));
     await waitFor(() => expect(testState.readDatabaseModule).toHaveBeenCalledTimes(2));
 
     let collapseResult: Promise<boolean> | undefined;
@@ -160,21 +158,21 @@ describe("useDatabaseViewPresentationPreference", () => {
         },
       ) =>
         Promise.resolve(
-          request.read.mode === "view_personal_presentation"
-            ? presentationResult({ layout: "list" })
+          request.read.mode === "view_personal_preferences"
+            ? presentationResult()
             : disclosureResult([{ kind: "page", occurrenceKey: "ITEM_build/page" }]),
         ),
     );
 
-    const first = renderHook(() => useDatabaseViewPresentationPreference("project-test", viewId));
+    const first = renderHook(() => useDatabaseViewPersonalPreference("project-test", viewId));
     await waitFor(() => expect(first.result.current.loading).toBe(false));
     first.unmount();
-    const second = renderHook(() => useDatabaseViewPresentationPreference("project-test", viewId));
+    const second = renderHook(() => useDatabaseViewPersonalPreference("project-test", viewId));
 
     expect(second.result.current).toMatchObject({
-      presentationOverride: { layout: "list" },
+      presentationOverride: {},
       collapsedOccurrenceKeys: ["ITEM_build/page"],
-      presentationRevision: 4,
+      preferencesRevision: 4,
       loading: false,
       error: null,
     });
@@ -190,14 +188,12 @@ describe("useDatabaseViewPresentationPreference", () => {
         },
       ) =>
         Promise.resolve(
-          request.read.mode === "view_personal_presentation"
-            ? presentationResult({ layout: "list" })
+          request.read.mode === "view_personal_preferences"
+            ? presentationResult()
             : disclosureResult(),
         ),
     );
-    const { result } = renderHook(() =>
-      useDatabaseViewPresentationPreference("project-test", viewId),
-    );
+    const { result } = renderHook(() => useDatabaseViewPersonalPreference("project-test", viewId));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() =>
@@ -214,9 +210,10 @@ describe("useDatabaseViewPresentationPreference", () => {
         commitSeq: 11,
         personalViewChanges: [
           {
-            kind: "presentation",
+            kind: "preferences",
             viewId,
-            presentationOverride: { layout: "board" },
+            rulesOverride: {},
+            presentationOverride: {},
             revision: 5,
           },
           {
@@ -230,9 +227,9 @@ describe("useDatabaseViewPresentationPreference", () => {
     );
 
     expect(result.current).toMatchObject({
-      presentationOverride: { layout: "board" },
+      presentationOverride: {},
       collapsedOccurrenceKeys: ["ITEM_build/page"],
-      presentationRevision: 5,
+      preferencesRevision: 5,
     });
     expect(testState.readDatabaseModule).toHaveBeenCalledTimes(2);
   });
@@ -246,7 +243,7 @@ describe("useDatabaseViewPresentationPreference", () => {
         },
       ) =>
         Promise.resolve(
-          request.read.mode === "view_personal_presentation"
+          request.read.mode === "view_personal_preferences"
             ? presentationResult()
             : disclosureResult(),
         ),
@@ -256,9 +253,7 @@ describe("useDatabaseViewPresentationPreference", () => {
     testState.applyDatabaseModule
       .mockImplementationOnce(() => firstWrite.promise)
       .mockImplementationOnce(() => secondWrite.promise);
-    const { result } = renderHook(() =>
-      useDatabaseViewPresentationPreference("project-test", viewId),
-    );
+    const { result } = renderHook(() => useDatabaseViewPersonalPreference("project-test", viewId));
     await waitFor(() => expect(result.current.loading).toBe(false));
     const target = { kind: "page" as const, occurrenceKey: "ITEM_build/page" };
 
@@ -301,36 +296,34 @@ describe("useDatabaseViewPresentationPreference", () => {
         reads += 1;
         if (reads <= 2) {
           return Promise.resolve(
-            request.read.mode === "view_personal_presentation"
-              ? presentationResult({ layout: "list" }, 4, "epoch-one")
+            request.read.mode === "view_personal_preferences"
+              ? presentationResult({}, 4, "epoch-one")
               : disclosureResult([], "epoch-one"),
           );
         }
-        return request.read.mode === "view_personal_presentation"
+        return request.read.mode === "view_personal_preferences"
           ? epochTwoPresentation.promise
           : epochTwoDisclosure.promise;
       },
     );
-    const { result } = renderHook(() =>
-      useDatabaseViewPresentationPreference("project-test", viewId),
-    );
+    const { result } = renderHook(() => useDatabaseViewPersonalPreference("project-test", viewId));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     act(() => result.current.synchronizeStoreEpoch("epoch-two"));
     expect(result.current).toMatchObject({
-      presentationOverride: { layout: "list" },
+      presentationOverride: {},
       loading: true,
     });
 
     await act(async () => {
-      epochTwoPresentation.resolve(presentationResult({ layout: "board" }, 1, "epoch-two", 1));
+      epochTwoPresentation.resolve(presentationResult({}, 1, "epoch-two", 1));
       epochTwoDisclosure.resolve(disclosureResult([], "epoch-two", 1));
       await Promise.all([epochTwoPresentation.promise, epochTwoDisclosure.promise]);
     });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current).toMatchObject({
-      presentationOverride: { layout: "board" },
-      presentationRevision: 1,
+      presentationOverride: {},
+      preferencesRevision: 1,
       loading: false,
     });
   });

@@ -93,6 +93,7 @@ const emptyPropertyControls: PageStagePropertyControls = {
   properties: [],
   primaryProperties: [],
   sectionProperties: [],
+  hiddenLayoutProperties: [],
   semanticValues: null,
   hasScheduleCapability: false,
   options: {},

@@ -4,6 +4,7 @@ import type { DataSourcePropertyRecordV2 } from "../../shared/database-module-v2
 import { testPropertySemantics } from "../../shared/testing/database-property-record";
 import { parseDataSourceId, parseDataSourcePropertyId } from "../../shared/database-identities";
 import {
+  databaseViewSortDirectionLabels,
   hasCustomDatabaseViewSort,
   summarizeDatabaseViewFilter,
 } from "./database-view-rule-summary";
@@ -143,5 +144,29 @@ describe("database View rule summaries", () => {
         },
       ]),
     ).toBe(true);
+  });
+
+  test("uses direction language that matches the selected Property semantics", () => {
+    const numeric = {
+      ...property("p_number00", "Estimate"),
+      ...testPropertySemantics("number"),
+      valueType: "number" as const,
+    };
+    expect(
+      databaseViewSortDirectionLabels(
+        {
+          field: { kind: "property", propertyId: numeric.propertyId },
+          direction: "asc",
+          nulls: "last",
+        },
+        [numeric],
+      ),
+    ).toEqual(["Low to high", "High to low"]);
+    expect(
+      databaseViewSortDirectionLabels(
+        { field: { kind: "created" }, direction: "desc", nulls: "last" },
+        [],
+      ),
+    ).toEqual(["Earliest first", "Latest first"]);
   });
 });

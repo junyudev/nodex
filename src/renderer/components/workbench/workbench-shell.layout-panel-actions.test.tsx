@@ -2413,13 +2413,13 @@ describe("workbench session shell / layout-panel-actions", () => {
       ).toBe(true);
     });
     await waitFor(() => {
-      expect(screen.getByRole("option", { name: /Alpha/ }) !== null).toBe(true);
-      expect(screen.getByRole("option", { name: /Beta/ }) !== null).toBe(true);
+      expect(screen.getByRole("option", { name: /Board.*Alpha/ }) !== null).toBe(true);
+      expect(screen.getByRole("option", { name: /Board.*Beta/ }) !== null).toBe(true);
     });
 
     setInvokeCalls([]);
     await act(async () => {
-      fireEvent.click(screen.getByRole("option", { name: /Alpha/ }));
+      fireEvent.click(screen.getByRole("option", { name: /Board.*Alpha/ }));
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -2440,7 +2440,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       expect(screen.getByRole("dialog", { name: "Open DB view" }) !== null).toBe(true);
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("option", { name: /Beta/ }));
+      fireEvent.click(screen.getByRole("option", { name: /Board.*Beta/ }));
       await Promise.resolve();
     });
     await settleAsyncRender();

@@ -1197,14 +1197,19 @@ export interface components {
                 readonly created_at: string;
                 readonly data_source_id: string;
                 readonly lifecycle: string;
+                readonly management_policy: components["schemas"]["DatabasePropertyManagementPolicy"];
                 readonly name: string;
+                /** Format: int64 */
+                readonly non_empty_value_count: number;
                 /** Format: int32 */
                 readonly option_count: number;
                 readonly property_id: string;
                 readonly rank_key: string;
+                readonly referenced_view_ids: readonly string[];
                 /** Format: int64 */
                 readonly revision: number;
                 readonly schema: components["schemas"]["DatabasePropertySchema"];
+                readonly system_role?: null | components["schemas"]["DatabasePropertySystemRole"];
                 readonly updated_at: string;
             }[];
             readonly next_cursor?: string | null;
@@ -1215,6 +1220,8 @@ export interface components {
                 readonly color?: string | null;
                 readonly id: string;
                 readonly name: string;
+                /** Format: int64 */
+                readonly selected_page_count: number;
             }[];
             readonly next_cursor?: string | null;
         };
@@ -1881,6 +1888,8 @@ export interface components {
             readonly name: string;
             readonly updated_at: string;
         };
+        /** @enum {string} */
+        readonly DatabaseCurrencyCode: "usd" | "eur" | "gbp" | "jpy" | "cny";
         readonly DatabaseDataSourceDescriptor: {
             readonly data_source: components["schemas"]["DatabaseDataSourceRecord"];
         };
@@ -1903,8 +1912,14 @@ export interface components {
             readonly schema_revision: number;
             readonly updated_at: string;
         };
+        /** @enum {string} */
+        readonly DatabaseDateFormat: "full" | "month_day_year" | "day_month_year" | "year_month_day" | "relative";
         readonly DatabaseDescriptor: {
             readonly database: components["schemas"]["DatabaseContainerRecord"];
+        };
+        readonly DatabaseDuplicatePropertyOption: {
+            readonly new_option_id: string;
+            readonly source_option_id: string;
         };
         readonly DatabaseEvent: {
             readonly data_source_ids: readonly string[];
@@ -1965,6 +1980,56 @@ export interface components {
             /** Format: int64 */
             readonly expected_property_revision: number;
             /** @enum {string} */
+            readonly kind: "move_property";
+            readonly placement: components["schemas"]["DatabasePropertyPlacement"];
+            readonly property_id: string;
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_data_source_revision: number;
+            /** Format: int64 */
+            readonly expected_property_revision: number;
+            /** @enum {string} */
+            readonly kind: "change_property_type";
+            readonly property_id: string;
+            readonly schema: components["schemas"]["DatabasePropertySchema"];
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_data_source_revision: number;
+            /** Format: int64 */
+            readonly expected_property_revision: number;
+            /** @enum {string} */
+            readonly kind: "duplicate_property";
+            readonly name: string;
+            readonly new_property_id: string;
+            readonly option_ids: readonly components["schemas"]["DatabaseDuplicatePropertyOption"][];
+            readonly property_id: string;
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_data_source_revision: number;
+            /** Format: int64 */
+            readonly expected_property_revision: number;
+            /** @enum {string} */
+            readonly kind: "restore_property";
+            readonly property_id: string;
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_data_source_revision: number;
+            /** Format: int64 */
+            readonly expected_property_revision: number;
+            /** @enum {string} */
+            readonly kind: "permanently_delete_property";
+            readonly property_id: string;
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_data_source_revision: number;
+            /** Format: int64 */
+            readonly expected_property_revision: number;
+            /** @enum {string} */
             readonly kind: "delete_property";
             readonly property_id: string;
         } | {
@@ -1982,9 +2047,35 @@ export interface components {
             /** Format: int64 */
             readonly expected_property_revision: number;
             /** @enum {string} */
+            readonly kind: "move_option";
+            readonly option_id: string;
+            readonly placement: components["schemas"]["DatabaseOptionPlacement"];
+            readonly property_id: string;
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_property_revision: number;
+            /** @enum {string} */
             readonly kind: "delete_option";
             readonly option_id: string;
             readonly property_id: string;
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_property_revision: number;
+            /** @enum {string} */
+            readonly kind: "delete_option_and_clear_values";
+            readonly option_id: string;
+            readonly property_id: string;
+        } | {
+            readonly data_source_id: string;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "put_page_layout_entry";
+            readonly placement?: null | components["schemas"]["DatabasePageLayoutPlacement"];
+            readonly property_id: string;
+            readonly visibility: components["schemas"]["DatabasePagePropertyVisibility"];
         } | {
             readonly edits: readonly components["schemas"]["DatabasePropertyValueMutation"][];
             /** @enum {string} */
@@ -2010,6 +2101,30 @@ export interface components {
             readonly kind: "put_view";
             readonly layout: components["schemas"]["DatabaseViewLayout"];
             readonly name: string;
+            readonly view_id: string;
+        } | {
+            readonly database_id: string;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "duplicate_view";
+            readonly new_view_id: string;
+            readonly source_view_id: string;
+        } | {
+            readonly database_id: string;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "change_view_layout";
+            readonly layout: components["schemas"]["DatabaseViewLayout"];
+            readonly view_id: string;
+        } | {
+            readonly database_id: string;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "move_view";
+            readonly placement: components["schemas"]["DatabaseViewPlacement"];
             readonly view_id: string;
         } | {
             readonly database_id: string;
@@ -2044,7 +2159,7 @@ export interface components {
             readonly initiator_occurrence_key: string;
             /** @enum {string} */
             readonly kind: "move_list_occurrences";
-            readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+            readonly preferences_override: components["schemas"]["DatabaseViewPreferencesOverrideInput"];
             readonly selection: components["schemas"]["DatabaseListMoveSelection"];
             readonly target: components["schemas"]["DatabaseListMoveTarget"];
             readonly view_id: string;
@@ -2056,8 +2171,9 @@ export interface components {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
-            readonly kind: "put_view_personal_presentation";
+            readonly kind: "put_view_personal_preferences";
             readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+            readonly rules_override: components["schemas"]["DatabaseViewRulesOverrideInput"];
             readonly view_id: string;
         } | {
             readonly collapsed: boolean;
@@ -2190,6 +2306,17 @@ export interface components {
             /** Format: int64 */
             readonly window_start: number;
         };
+        readonly DatabaseNumberFormat: {
+            /** @enum {string} */
+            readonly kind: "plain";
+        } | {
+            /** @enum {string} */
+            readonly kind: "percent";
+        } | {
+            readonly currency_code: components["schemas"]["DatabaseCurrencyCode"];
+            /** @enum {string} */
+            readonly kind: "currency";
+        };
         readonly DatabaseOperationOutcome: {
             /** @enum {string} */
             readonly kind: "list_occurrence_move";
@@ -2205,6 +2332,14 @@ export interface components {
             /** Format: int32 */
             readonly operation_index: number;
             readonly restored_page_ids: readonly string[];
+        };
+        readonly DatabaseOptionPlacement: {
+            /** @enum {string} */
+            readonly kind: "before";
+            readonly option_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "end";
         };
         readonly DatabasePageKeyNamespace: {
             /** Format: int64 */
@@ -2227,6 +2362,25 @@ export interface components {
             readonly next_number: number;
             readonly prefix: string;
         };
+        readonly DatabasePageLayout: {
+            readonly data_source_id: string;
+            readonly entries: readonly components["schemas"]["DatabasePageLayoutEntry"][];
+            /** Format: int64 */
+            readonly revision: number;
+        };
+        readonly DatabasePageLayoutEntry: {
+            readonly property_id: string;
+            readonly rank_key: string;
+            readonly visibility: components["schemas"]["DatabasePagePropertyVisibility"];
+        };
+        readonly DatabasePageLayoutPlacement: {
+            /** @enum {string} */
+            readonly kind: "before";
+            readonly property_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "end";
+        };
         readonly DatabasePagePosition: {
             /** Format: int64 */
             readonly expected_position_revision: number;
@@ -2237,10 +2391,12 @@ export interface components {
             readonly page_id: string;
             readonly property_id: string;
         };
+        /** @enum {string} */
+        readonly DatabasePagePropertyVisibility: "always_show" | "hide_when_empty" | "always_hide";
         readonly DatabasePersonalViewChange: {
             /** @enum {string} */
-            readonly kind: "presentation";
-            readonly value: components["schemas"]["DatabaseViewPersonalPresentation"];
+            readonly kind: "preferences";
+            readonly value: components["schemas"]["DatabaseViewPersonalPreferences"];
             readonly view_id: string;
         } | {
             readonly collapsed: boolean;
@@ -2250,7 +2406,7 @@ export interface components {
             readonly view_id: string;
         };
         readonly DatabasePropertyCapabilities: {
-            readonly filter_operators: readonly components["schemas"]["DatabasePropertyFilterOperator"][];
+            readonly filter_operators: readonly components["schemas"]["DatabaseViewFilterOperator"][];
             readonly groupable: boolean;
             readonly sortable: boolean;
         };
@@ -2259,22 +2415,48 @@ export interface components {
             readonly created_at: string;
             readonly data_source_id: string;
             readonly lifecycle: string;
+            readonly management_policy: components["schemas"]["DatabasePropertyManagementPolicy"];
             readonly name: string;
+            /** Format: int64 */
+            readonly non_empty_value_count: number;
             /** Format: int32 */
             readonly option_count: number;
             readonly property_id: string;
             readonly rank_key: string;
+            readonly referenced_view_ids: readonly string[];
             /** Format: int64 */
             readonly revision: number;
             readonly schema: components["schemas"]["DatabasePropertySchema"];
+            readonly system_role?: null | components["schemas"]["DatabasePropertySystemRole"];
             readonly updated_at: string;
         };
         /** @enum {string} */
         readonly DatabasePropertyFilterOperator: "equals" | "not_equals" | "contains" | "not_contains" | "is_empty" | "is_not_empty";
+        readonly DatabasePropertyManagementPolicy: {
+            readonly allowed_types: readonly components["schemas"]["DatabasePropertyType"][];
+            readonly blocked_reasons: readonly string[];
+            readonly can_change_type: boolean;
+            readonly can_delete: boolean;
+            readonly can_duplicate: boolean;
+            readonly can_manage_options: boolean;
+            readonly can_permanently_delete: boolean;
+            readonly can_rename: boolean;
+            readonly can_reorder: boolean;
+            readonly can_restore: boolean;
+        };
+        readonly DatabasePropertyPlacement: {
+            /** @enum {string} */
+            readonly kind: "before";
+            readonly property_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "end";
+        };
         readonly DatabasePropertySchema: {
             /** @enum {string} */
             readonly kind: "text";
         } | {
+            readonly format?: components["schemas"]["DatabaseNumberFormat"];
             /** @enum {string} */
             readonly kind: "number";
         } | {
@@ -2287,11 +2469,14 @@ export interface components {
             /** @enum {string} */
             readonly kind: "multi_select";
         } | {
+            readonly date_format?: components["schemas"]["DatabaseDateFormat"];
             /** @enum {string} */
             readonly kind: "date";
         } | {
+            readonly date_format?: components["schemas"]["DatabaseDateFormat"];
             /** @enum {string} */
             readonly kind: "datetime";
+            readonly time_format?: components["schemas"]["DatabaseTimeFormat"];
         } | {
             readonly cardinality: components["schemas"]["DatabaseRelationCardinality"];
             /** @enum {string} */
@@ -2309,6 +2494,10 @@ export interface components {
             readonly kind: "relation";
             readonly remove_edge_ids: readonly string[];
         };
+        /** @enum {string} */
+        readonly DatabasePropertySystemRole: "status" | "task_parent";
+        /** @enum {string} */
+        readonly DatabasePropertyType: "text" | "number" | "checkbox" | "select" | "multi_select" | "date" | "datetime" | "relation";
         readonly DatabasePropertyValueEdit: {
             /** Format: int64 */
             readonly expected_value_revision: number;
@@ -2459,6 +2648,8 @@ export interface components {
             readonly expected_value_revision: number;
             readonly page_id: string;
         };
+        /** @enum {string} */
+        readonly DatabaseTimeFormat: "twelve_hour" | "twenty_four_hour";
         readonly DatabaseTransferTarget: {
             /** @enum {string} */
             readonly kind: "library";
@@ -2471,6 +2662,14 @@ export interface components {
             readonly data_source_id: string;
             /** @enum {string} */
             readonly kind: "data_source";
+        };
+        readonly DatabaseViewAdvancedFilterOverrideInput: {
+            /** @enum {string} */
+            readonly kind: "none";
+        } | {
+            readonly filter: components["schemas"]["DatabaseViewFilter"];
+            /** @enum {string} */
+            readonly kind: "filter";
         };
         readonly DatabaseViewCollapsedOccurrences: {
             readonly targets: readonly components["schemas"]["DatabaseViewDisclosureTarget"][];
@@ -2487,6 +2686,15 @@ export interface components {
             readonly order_by_recency?: boolean | null;
             readonly range?: null | components["schemas"]["DatabaseViewCompletedRangeInput"];
         };
+        /** @enum {string} */
+        readonly DatabaseViewConditionalColor: "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red";
+        readonly DatabaseViewConditionalColorRule: {
+            readonly color: components["schemas"]["DatabaseViewConditionalColor"];
+            readonly operator: components["schemas"]["DatabasePropertyFilterOperator"];
+            readonly propertyId: string;
+            readonly ruleId: string;
+            readonly value?: unknown;
+        };
         readonly DatabaseViewContext: {
             readonly data_source: components["schemas"]["DatabaseDataSourceRecord"];
             readonly database: components["schemas"]["DatabaseContainerRecord"];
@@ -2501,8 +2709,8 @@ export interface components {
          *     intentionally absent from the domain contract.
          */
         readonly DatabaseViewDefinition: {
-            readonly filter: components["schemas"]["DatabaseViewFilter"];
             readonly presentation: components["schemas"]["DatabaseViewPresentation"];
+            readonly rules: components["schemas"]["DatabaseViewRules"];
         };
         readonly DatabaseViewDisclosureTarget: {
             /** @enum {string} */
@@ -2546,7 +2754,7 @@ export interface components {
         /** @enum {string} */
         readonly DatabaseViewFilterGroupOperator: "and" | "or";
         /** @enum {string} */
-        readonly DatabaseViewFilterOperator: "equals" | "not_equals" | "contains" | "not_contains" | "is_empty" | "is_not_empty";
+        readonly DatabaseViewFilterOperator: "equals" | "not_equals" | "contains" | "not_contains" | "text_is" | "text_is_not" | "text_contains" | "text_does_not_contain" | "text_starts_with" | "text_ends_with" | "number_equals" | "number_does_not_equal" | "number_greater_than" | "number_less_than" | "number_greater_than_or_equal_to" | "number_less_than_or_equal_to" | "checkbox_is" | "checkbox_is_not" | "select_is" | "select_is_not" | "multi_select_contains" | "multi_select_does_not_contain" | "multi_select_contains_all" | "date_is" | "date_is_not" | "date_before" | "date_after" | "date_on_or_before" | "date_on_or_after" | "date_within" | "date_relative_to" | "relation_contains" | "relation_does_not_contain" | "is_empty" | "is_not_empty";
         readonly DatabaseViewGroup: {
             readonly propertyId: string;
         };
@@ -2600,58 +2808,65 @@ export interface components {
         readonly DatabaseViewLayout: "board" | "list";
         readonly DatabaseViewLayoutDisplay: {
             readonly fields: readonly components["schemas"]["DatabaseViewField"][];
+            readonly propertyOrder?: readonly string[];
             readonly showDescription?: boolean;
             readonly showEmptyGroups: boolean;
         };
         readonly DatabaseViewLayoutDisplayOverrideInput: {
             readonly fields?: readonly components["schemas"]["DatabaseViewFieldInput"][] | null;
+            readonly property_order?: readonly string[] | null;
             readonly show_description?: boolean | null;
             readonly show_empty_groups?: boolean | null;
-        };
-        /** @enum {string} */
-        readonly DatabaseViewLayoutInput: "board" | "list";
-        readonly DatabaseViewLayouts: {
-            readonly board: components["schemas"]["DatabaseViewLayoutDisplay"];
-            readonly list: components["schemas"]["DatabaseViewLayoutDisplay"];
-        };
-        readonly DatabaseViewLayoutsOverrideInput: {
-            readonly board?: null | components["schemas"]["DatabaseViewLayoutDisplayOverrideInput"];
-            readonly list?: null | components["schemas"]["DatabaseViewLayoutDisplayOverrideInput"];
         };
         /** @enum {string} */
         readonly DatabaseViewNullOrder: "first" | "last";
         /** @enum {string} */
         readonly DatabaseViewNullOrderInput: "first" | "last";
-        readonly DatabaseViewPersonalPresentation: {
+        readonly DatabaseViewPersonalPreferences: {
             readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
             /**
              * Format: int64
-             * @description Zero means that this Profile has never changed this View presentation.
+             * @description Zero means that this Profile has never changed this View.
              */
             readonly revision: number;
+            readonly rules_override: components["schemas"]["DatabaseViewRulesOverrideInput"];
+        };
+        readonly DatabaseViewPlacement: {
+            /** @enum {string} */
+            readonly kind: "before";
+            readonly view_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "end";
+        };
+        readonly DatabaseViewPreferencesOverrideInput: {
+            readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+            readonly rules_override: components["schemas"]["DatabaseViewRulesOverrideInput"];
         };
         readonly DatabaseViewPresentation: {
             readonly completion: components["schemas"]["DatabaseViewCompletion"];
+            readonly conditionalColors?: readonly components["schemas"]["DatabaseViewConditionalColorRule"][];
+            readonly display: components["schemas"]["DatabaseViewLayoutDisplay"];
             readonly group?: null | components["schemas"]["DatabaseViewGroup"];
             readonly groupDirection: components["schemas"]["DatabaseViewSortDirection"];
             readonly hierarchy: components["schemas"]["DatabaseViewHierarchy"];
-            readonly layouts: components["schemas"]["DatabaseViewLayouts"];
-            readonly sort: readonly components["schemas"]["DatabaseViewSort"][];
             readonly subgroup?: null | components["schemas"]["DatabaseViewGroup"];
         };
         /**
-         * @description A bounded Profile-local patch over a durable View presentation. Membership
-         *     filters and shared manual ranks are intentionally not overridable.
+         * @description A bounded Profile-local patch over a durable View definition. Shared manual
+         *     ranks remain View-global even when their presentation position is personal.
          */
         readonly DatabaseViewPresentationOverrideInput: {
             readonly completion?: null | components["schemas"]["DatabaseViewCompletionOverrideInput"];
+            readonly display?: null | components["schemas"]["DatabaseViewLayoutDisplayOverrideInput"];
             readonly group?: null | components["schemas"]["DatabaseViewGroupOverrideInput"];
             readonly group_direction?: null | components["schemas"]["DatabaseViewSortDirectionInput"];
             readonly hierarchy?: null | components["schemas"]["DatabaseViewHierarchyOverrideInput"];
-            readonly layout?: null | components["schemas"]["DatabaseViewLayoutInput"];
-            readonly layouts?: null | components["schemas"]["DatabaseViewLayoutsOverrideInput"];
-            readonly sort?: readonly components["schemas"]["DatabaseViewSortInput"][] | null;
             readonly subgroup?: null | components["schemas"]["DatabaseViewGroupOverrideInput"];
+        };
+        readonly DatabaseViewPropertyFilter: {
+            readonly clause: components["schemas"]["DatabaseViewFilter"];
+            readonly filterId: string;
         };
         readonly DatabaseViewReadTarget: {
             /** @enum {string} */
@@ -2667,7 +2882,7 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "presented_view";
-            readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+            readonly preferences_override: components["schemas"]["DatabaseViewPreferencesOverrideInput"];
             readonly view_id: string;
         };
         readonly DatabaseViewRecord: {
@@ -2684,6 +2899,16 @@ export interface components {
             readonly revision: number;
             readonly updated_at: string;
             readonly view_id: string;
+        };
+        readonly DatabaseViewRules: {
+            readonly advancedFilter?: null | components["schemas"]["DatabaseViewFilter"];
+            readonly propertyFilters?: readonly components["schemas"]["DatabaseViewPropertyFilter"][];
+            readonly sorts?: readonly components["schemas"]["DatabaseViewSort"][];
+        };
+        readonly DatabaseViewRulesOverrideInput: {
+            readonly advanced_filter?: null | components["schemas"]["DatabaseViewAdvancedFilterOverrideInput"];
+            readonly property_filters?: readonly components["schemas"]["DatabaseViewPropertyFilter"][] | null;
+            readonly sorts?: readonly components["schemas"]["DatabaseViewSortInput"][] | null;
         };
         readonly DatabaseViewSort: {
             readonly direction: components["schemas"]["DatabaseViewSortDirection"];
@@ -3487,14 +3712,14 @@ export interface components {
             readonly group_key?: string | null;
             /** @enum {string} */
             readonly kind: "direct";
-            readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+            readonly preferences_override: components["schemas"]["DatabaseViewPreferencesOverrideInput"];
             readonly sorted_property_values?: readonly components["schemas"]["LibraryPageCopyValue"][];
             readonly view_id: string;
         } | {
             readonly expected_projection: components["schemas"]["DatabaseListProjectionExpectation"];
             /** @enum {string} */
             readonly kind: "list_occurrence";
-            readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+            readonly preferences_override: components["schemas"]["DatabaseViewPreferencesOverrideInput"];
             readonly target: components["schemas"]["DatabaseListMoveTarget"];
             readonly view_id: string;
         };
@@ -3901,10 +4126,10 @@ export interface components {
         } | {
             readonly data_source_id: string;
             readonly database_id: string;
-            readonly default_layout: string;
             readonly is_default: boolean;
             /** @enum {string} */
             readonly kind: "view";
+            readonly layout: string;
             /** Format: int64 */
             readonly revision: number;
             readonly title: string;
@@ -4039,6 +4264,7 @@ export interface components {
             readonly kind: "member";
             readonly membership: components["schemas"]["LibraryPageMembership"];
             readonly page_key?: string | null;
+            readonly page_layout: components["schemas"]["DatabasePageLayout"];
             readonly properties: readonly components["schemas"]["DatabasePropertyDescriptor"][];
             readonly values: {
                 readonly [key: string]: unknown;
@@ -6118,6 +6344,56 @@ export interface components {
                 /** Format: int64 */
                 readonly expected_property_revision: number;
                 /** @enum {string} */
+                readonly kind: "move_property";
+                readonly placement: components["schemas"]["DatabasePropertyPlacement"];
+                readonly property_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_data_source_revision: number;
+                /** Format: int64 */
+                readonly expected_property_revision: number;
+                /** @enum {string} */
+                readonly kind: "change_property_type";
+                readonly property_id: string;
+                readonly schema: components["schemas"]["DatabasePropertySchema"];
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_data_source_revision: number;
+                /** Format: int64 */
+                readonly expected_property_revision: number;
+                /** @enum {string} */
+                readonly kind: "duplicate_property";
+                readonly name: string;
+                readonly new_property_id: string;
+                readonly option_ids: readonly components["schemas"]["DatabaseDuplicatePropertyOption"][];
+                readonly property_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_data_source_revision: number;
+                /** Format: int64 */
+                readonly expected_property_revision: number;
+                /** @enum {string} */
+                readonly kind: "restore_property";
+                readonly property_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_data_source_revision: number;
+                /** Format: int64 */
+                readonly expected_property_revision: number;
+                /** @enum {string} */
+                readonly kind: "permanently_delete_property";
+                readonly property_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_data_source_revision: number;
+                /** Format: int64 */
+                readonly expected_property_revision: number;
+                /** @enum {string} */
                 readonly kind: "delete_property";
                 readonly property_id: string;
             } | {
@@ -6135,9 +6411,35 @@ export interface components {
                 /** Format: int64 */
                 readonly expected_property_revision: number;
                 /** @enum {string} */
+                readonly kind: "move_option";
+                readonly option_id: string;
+                readonly placement: components["schemas"]["DatabaseOptionPlacement"];
+                readonly property_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_property_revision: number;
+                /** @enum {string} */
                 readonly kind: "delete_option";
                 readonly option_id: string;
                 readonly property_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_property_revision: number;
+                /** @enum {string} */
+                readonly kind: "delete_option_and_clear_values";
+                readonly option_id: string;
+                readonly property_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "put_page_layout_entry";
+                readonly placement?: null | components["schemas"]["DatabasePageLayoutPlacement"];
+                readonly property_id: string;
+                readonly visibility: components["schemas"]["DatabasePagePropertyVisibility"];
             } | {
                 readonly edits: readonly components["schemas"]["DatabasePropertyValueMutation"][];
                 /** @enum {string} */
@@ -6163,6 +6465,30 @@ export interface components {
                 readonly kind: "put_view";
                 readonly layout: components["schemas"]["DatabaseViewLayout"];
                 readonly name: string;
+                readonly view_id: string;
+            } | {
+                readonly database_id: string;
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "duplicate_view";
+                readonly new_view_id: string;
+                readonly source_view_id: string;
+            } | {
+                readonly database_id: string;
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "change_view_layout";
+                readonly layout: components["schemas"]["DatabaseViewLayout"];
+                readonly view_id: string;
+            } | {
+                readonly database_id: string;
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "move_view";
+                readonly placement: components["schemas"]["DatabaseViewPlacement"];
                 readonly view_id: string;
             } | {
                 readonly database_id: string;
@@ -6197,7 +6523,7 @@ export interface components {
                 readonly initiator_occurrence_key: string;
                 /** @enum {string} */
                 readonly kind: "move_list_occurrences";
-                readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+                readonly preferences_override: components["schemas"]["DatabaseViewPreferencesOverrideInput"];
                 readonly selection: components["schemas"]["DatabaseListMoveSelection"];
                 readonly target: components["schemas"]["DatabaseListMoveTarget"];
                 readonly view_id: string;
@@ -6209,8 +6535,9 @@ export interface components {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
-                readonly kind: "put_view_personal_presentation";
+                readonly kind: "put_view_personal_preferences";
                 readonly presentation_override: components["schemas"]["DatabaseViewPresentationOverrideInput"];
+                readonly rules_override: components["schemas"]["DatabaseViewRulesOverrideInput"];
                 readonly view_id: string;
             } | {
                 readonly collapsed: boolean;
@@ -6341,6 +6668,10 @@ export interface components {
                 readonly property_id: string;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
+                readonly data_source_id: string;
+                /** @enum {string} */
+                readonly kind: "page_layout";
+            } | {
                 readonly database_id: string;
                 /** @enum {string} */
                 readonly kind: "view_descriptor_window";
@@ -6402,7 +6733,7 @@ export interface components {
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
-                readonly kind: "view_personal_presentation";
+                readonly kind: "view_personal_preferences";
                 readonly view_id: string;
             } | {
                 /** @enum {string} */
@@ -8239,6 +8570,10 @@ export interface components {
                     readonly options: components["schemas"]["CollectionWindow_DatabasePropertyOption"];
                 } | {
                     /** @enum {string} */
+                    readonly kind: "page_layout";
+                    readonly value: components["schemas"]["DatabasePageLayout"];
+                } | {
+                    /** @enum {string} */
                     readonly kind: "view_descriptor_window";
                     readonly views: components["schemas"]["CollectionWindow_DatabaseViewRecord"];
                 } | {
@@ -8287,8 +8622,8 @@ export interface components {
                     readonly kind: "relation_candidate_window";
                 } | {
                     /** @enum {string} */
-                    readonly kind: "view_personal_presentation";
-                    readonly value: components["schemas"]["DatabaseViewPersonalPresentation"];
+                    readonly kind: "view_personal_preferences";
+                    readonly value: components["schemas"]["DatabaseViewPersonalPreferences"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "view_collapsed_occurrences";

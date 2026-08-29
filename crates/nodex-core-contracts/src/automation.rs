@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
@@ -288,13 +288,13 @@ pub enum PageOccurrenceUpdateScope {
 pub struct PageOccurrenceSchedulePatch {
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub scheduled_start_ms: Option<Option<i64>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub scheduled_end_ms: Option<Option<i64>>,
@@ -302,7 +302,7 @@ pub struct PageOccurrenceSchedulePatch {
     pub is_all_day: Option<bool>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub recurrence: Option<Option<PageRecurrenceConfig>>,
@@ -310,7 +310,7 @@ pub struct PageOccurrenceSchedulePatch {
     pub reminders: Option<Vec<PageReminderConfig>>,
     #[serde(
         default,
-        deserialize_with = "deserialize_present",
+        deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub schedule_timezone: Option<Option<String>>,
@@ -591,14 +591,6 @@ pub struct AutomationEvent {
 #[serde(rename_all = "snake_case")]
 pub enum AutomationEventKind {
     AutomationChanged,
-}
-
-fn deserialize_present<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    T::deserialize(deserializer).map(Some)
 }
 
 pub struct AutomationContract;

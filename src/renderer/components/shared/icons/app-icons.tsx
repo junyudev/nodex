@@ -4036,7 +4036,23 @@ export function CalendarOverdueIcon({ className, ...props }: SVGProps<SVGSVGElem
   );
 }
 
-export function TagIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+export function MultiSelectIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={cn("shrink-0", className)}
+      aria-hidden="true"
+    >
+      <path d="M17.5 4.063v1.875H6.875V4.063zM6.875 10.938H17.5V9.062H6.875zm0 5H17.5v-1.876H6.875zM3.75 3.75a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5m0 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5m0 5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5" />
+    </svg>
+  );
+}
+
+export function TagsIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

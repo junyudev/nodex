@@ -2,6 +2,7 @@ import { CanvasIcon, BoardIcon, DatabaseIcon } from "@/components/shared/icons";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createRef } from "react";
 import { fireEvent } from "@testing-library/react";
+import { act } from "react";
 
 import { render, textContent } from "../../test/dom";
 
@@ -63,7 +64,7 @@ describe("DbViewToolbar", () => {
     expect(getByLabelText("Database views").getAttribute("aria-label")).toBe("Database views");
     expect(getByText("Board").textContent).toBe("Board");
     expect(getByText("List").textContent).toBe("List");
-    expect(container.querySelectorAll('[data-tab-label-visible="true"]').length).toBe(1);
+    expect(container.querySelectorAll('[data-tab-label-visible="true"]').length).toBe(2);
     expect(getByLabelText("Search").getAttribute("aria-label")).toBe("Search");
     expect(
       getByTestId(DB_VIEW_TOOLBAR_TEST_ID).querySelector('[aria-hidden="true"]') !== null,
@@ -157,5 +158,124 @@ describe("DbViewToolbar", () => {
 
     expect(getByRole("button", { name: "Filter View" })).toBeTruthy();
     expect(getByRole("button", { name: "Display options" })).toBeTruthy();
+  });
+
+  test("opens the active View menu on click and keeps inactive clicks as selection", async () => {
+    const onSelectList = vi.fn();
+    const onRename = vi.fn();
+    const onDisplayModeChange = vi.fn();
+    const { DbViewToolbar } = await import("./db-view-toolbar");
+    const actionMenu = {
+      viewId: "board",
+      viewName: "Board",
+      viewIcon: BoardIcon,
+      dataSourceName: "Tasks",
+      displayMode: "icon_and_text" as const,
+      busy: false,
+      canDelete: true,
+      onRename,
+      onEdit: vi.fn(),
+      onOpenSource: vi.fn(),
+      onCopyLink: vi.fn(),
+      onDuplicate: vi.fn(),
+      onRequestDelete: vi.fn(),
+      onDisplayModeChange,
+    };
+    const view = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        items={[
+          { ...ITEMS[0]!, actionMenu },
+          {
+            ...ITEMS[1]!,
+            onSelect: onSelectList,
+            actionMenu: { ...actionMenu, viewId: "list", viewName: "List" },
+          },
+        ]}
+        activeSearchQuery=""
+        taskSearchOpen={false}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Board" }));
+      await Promise.resolve();
+    });
+    expect(view.getByRole("menu")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Rename" }));
+      await Promise.resolve();
+    });
+    expect(onRename).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "List" }));
+      await Promise.resolve();
+    });
+    expect(onSelectList).toHaveBeenCalledOnce();
+    expect(view.queryByRole("menu")).toBeNull();
+  });
+
+  test("targets a right-clicked View and applies its personal display mode", async () => {
+    const onDisplayModeChange = vi.fn();
+    const onDuplicateList = vi.fn();
+    const { DbViewToolbar } = await import("./db-view-toolbar");
+    const actionMenu = {
+      viewId: "board",
+      viewName: "Board",
+      viewIcon: BoardIcon,
+      dataSourceName: "Tasks",
+      displayMode: "icon_and_text" as const,
+      busy: false,
+      canDelete: true,
+      onRename: vi.fn(),
+      onEdit: vi.fn(),
+      onOpenSource: vi.fn(),
+      onCopyLink: vi.fn(),
+      onDuplicate: vi.fn(),
+      onRequestDelete: vi.fn(),
+      onDisplayModeChange,
+    };
+    const view = render(
+      <DbViewToolbar
+        {...BASE_PROPS}
+        items={[
+          { ...ITEMS[0]!, actionMenu },
+          {
+            ...ITEMS[1]!,
+            actionMenu: {
+              ...actionMenu,
+              viewId: "list",
+              viewName: "List",
+              onDuplicate: onDuplicateList,
+            },
+          },
+        ]}
+        activeSearchQuery=""
+        taskSearchOpen={false}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.contextMenu(view.getByRole("tab", { name: "List" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Duplicate view" }));
+      await Promise.resolve();
+    });
+    expect(onDuplicateList).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Board" }));
+      await Promise.resolve();
+      fireEvent.pointerMove(view.getByText("Display as"), { pointerType: "mouse" });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Icon only" }));
+      await Promise.resolve();
+    });
+    expect(onDisplayModeChange).toHaveBeenCalledWith("icon_only");
   });
 });

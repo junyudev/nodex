@@ -744,7 +744,7 @@ pub(crate) fn inferred_list_drop_sort_values(
             .map(|group| group.property_id.as_str()),
     ];
     let mut values = Vec::new();
-    for sort in &graph.presentation.sort {
+    for sort in &graph.sorts {
         let DatabaseViewSortField::Property { property_id } = &sort.field else {
             break;
         };
@@ -827,13 +827,13 @@ fn sorted_target_neighbors<'a>(
 }
 
 fn fractional_root_order(graph: &ListProjectionGraph) -> bool {
-    super::view_contract::fractional_order_direction(&graph.presentation.sort).is_some()
+    super::view_contract::fractional_order_direction(&graph.sorts).is_some()
 }
 
 fn fractional_root_order_descending(graph: &ListProjectionGraph) -> bool {
-    super::view_contract::fractional_order_direction(&graph.presentation.sort).is_some_and(
-        |direction| direction == nodex_core_contracts::database::DatabaseViewSortDirection::Desc,
-    )
+    super::view_contract::fractional_order_direction(&graph.sorts).is_some_and(|direction| {
+        direction == nodex_core_contracts::database::DatabaseViewSortDirection::Desc
+    })
 }
 
 fn ordered_child_pages(
@@ -1223,7 +1223,7 @@ fn view_manual_descending(
         .ok_or_else(|| not_found("The Database View is no longer active"))?;
     let definition = super::view_contract::decode_definition_json(&config_json).map_err(corrupt)?;
     Ok(
-        super::view_contract::fractional_order_direction(&definition.presentation.sort).map(
+        super::view_contract::fractional_order_direction(&definition.rules.sorts).map(
             |direction| {
                 direction == nodex_core_contracts::database::DatabaseViewSortDirection::Desc
             },

@@ -12,6 +12,7 @@ use chrono::SecondsFormat;
 use rusqlite::backup::Backup;
 use rusqlite::{Connection, MAIN_DB, params};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::database::repair_scheduled_page_indexes;
@@ -20,6 +21,8 @@ use crate::document::{
     migrate_block_children_contract, repair_document_schema_projections,
     validate_block_children_migration_source,
 };
+use crate::domain::fractional_rank::materialize_order;
+use crate::domain::identity::random_uuid_v7;
 
 use super::migration_progress::report_bounded_progress;
 #[cfg(test)]
@@ -31,12 +34,15 @@ use super::sqlite::{
     StoreError, StoreErrorCode, open_immutable_reader, validate_store, with_immediate_transaction,
 };
 use super::store_validation::{
-    validate_core_metadata, validate_current_store, validate_store_semantics,
+    DatabaseViewStorageContract, validate_core_metadata, validate_current_store,
+    validate_migration_source_semantics,
 };
 use super::store_validation_receipt::{self, StoreValidationReceipt};
 
 const BASELINE_STORE_REVISION: i64 = 130;
 const CURRENT_DOCUMENT_SCHEMA_REVISION: i64 = 135;
+const DATABASE_VIEW_V5_STORE_REVISION: i64 = 144;
+const DATABASE_VIEW_V6_STORE_REVISION: i64 = 146;
 const CORE_SCHEMA_OWNER: &str = "rust_core";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,6 +154,26 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         from_revision: 142,
         to_revision: 143,
         apply: migrate_v142_to_v143,
+    },
+    MigrationStep {
+        from_revision: 143,
+        to_revision: 144,
+        apply: migrate_v143_to_v144,
+    },
+    MigrationStep {
+        from_revision: 144,
+        to_revision: 145,
+        apply: migrate_v144_to_v145,
+    },
+    MigrationStep {
+        from_revision: 145,
+        to_revision: 146,
+        apply: migrate_v145_to_v146,
+    },
+    MigrationStep {
+        from_revision: 146,
+        to_revision: 147,
+        apply: migrate_v146_to_v147,
     },
 ];
 
@@ -362,7 +388,14 @@ fn validate_migration_source(
 ) -> Result<(), StoreError> {
     validate_store(connection)?;
     validate_migration_source_identity(connection, source_revision)?;
-    validate_store_semantics(connection)?;
+    let view_contract = if source_revision < DATABASE_VIEW_V5_STORE_REVISION {
+        DatabaseViewStorageContract::V4
+    } else if source_revision < DATABASE_VIEW_V6_STORE_REVISION {
+        DatabaseViewStorageContract::V5
+    } else {
+        DatabaseViewStorageContract::V6
+    };
+    validate_migration_source_semantics(connection, view_contract)?;
     if source_revision >= CURRENT_DOCUMENT_SCHEMA_REVISION {
         validate_restore_documents(connection)?;
     } else {
@@ -1283,6 +1316,81 @@ fn migrate_v141_to_v142(
     Ok(())
 }
 
+#[derive(Debug)]
+struct LegacyDatabaseView {
+    id: String,
+    database_id: String,
+    data_source_id: String,
+    name: String,
+    layout: String,
+    config_json: String,
+    revision: i64,
+    lifecycle: String,
+    created_at: String,
+    updated_at: String,
+}
+
+fn migrate_view_definition_for_layout(encoded: &str, layout: &str) -> Result<String, StoreError> {
+    let layout = match layout {
+        "board" => nodex_core_contracts::database::DatabaseViewLayout::Board,
+        "list" => nodex_core_contracts::database::DatabaseViewLayout::List,
+        _ => return Err(internal("Legacy Database View layout is unsupported")),
+    };
+    crate::database::view_contract::upgrade_legacy_definition_json(encoded, layout)
+        .map_err(internal)
+}
+
+fn migrate_view_override_for_layout(encoded: &str, layout: &str) -> Result<String, StoreError> {
+    let mut value = serde_json::from_str::<Value>(encoded)
+        .map_err(|_| internal("Legacy Database View preference is invalid"))?;
+    let root = value
+        .as_object_mut()
+        .ok_or_else(|| internal("Legacy Database View preference is not an object"))?;
+    root.remove("layout");
+    if let Some(mut layouts) = root
+        .remove("layouts")
+        .and_then(|candidate| candidate.as_object().cloned())
+        && let Some(display) = layouts.remove(layout)
+    {
+        root.insert("display".to_owned(), display);
+    }
+    serde_json::to_string(&value)
+        .map_err(|_| internal("Migrated Database View preference cannot be encoded"))
+}
+
+fn migrated_view_name(name: &str, layout: &str) -> String {
+    let normalized = name.trim();
+    if normalized.is_empty()
+        || normalized.eq_ignore_ascii_case("kanban")
+        || normalized.eq_ignore_ascii_case("board")
+        || normalized.eq_ignore_ascii_case("list")
+    {
+        return if layout == "board" { "Board" } else { "List" }.to_owned();
+    }
+    let suffix = if layout == "board" { "Board" } else { "List" };
+    format!("{normalized} · {suffix}")
+}
+
+fn unique_migrated_view_name(
+    database_id: &str,
+    candidate: String,
+    used_names: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) -> String {
+    let used = used_names.entry(database_id.to_owned()).or_default();
+    let mut suffix = 1_u64;
+    loop {
+        let name = if suffix == 1 {
+            candidate.clone()
+        } else {
+            format!("{candidate} {suffix}")
+        };
+        if used.insert(name.to_lowercase()) {
+            return name;
+        }
+        suffix += 1;
+    }
+}
+
 fn migrate_v142_to_v143(
     connection: &Connection,
     context: &MigrationContext,
@@ -1308,6 +1416,488 @@ fn migrate_v142_to_v143(
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
+}
+
+fn migrate_v143_to_v144(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v143_to_v144.sql"))?;
+    let views = connection
+        .prepare(
+            "SELECT id, database_block_id, data_source_id, name, layout, config_json, \
+                    revision, lifecycle, created_at, updated_at \
+             FROM database_views ORDER BY database_block_id, rank_key, id",
+        )?
+        .query_map([], |row| {
+            Ok(LegacyDatabaseView {
+                id: row.get(0)?,
+                database_id: row.get(1)?,
+                data_source_id: row.get(2)?,
+                name: row.get(3)?,
+                layout: row.get(4)?,
+                config_json: row.get(5)?,
+                revision: row.get(6)?,
+                lifecycle: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut expanded_orders = std::collections::BTreeMap::<String, Vec<String>>::new();
+    let mut used_names = std::collections::BTreeMap::new();
+    for view in views {
+        let retained_layout = view.layout.as_str();
+        let sibling_layout = match retained_layout {
+            "board" => "list",
+            "list" => "board",
+            _ => return Err(internal("Legacy Database View layout is unsupported")),
+        };
+        let sibling_id = random_uuid_v7()
+            .map_err(|_| internal("Migrated Database View identity entropy failed"))?;
+        let retained_name = unique_migrated_view_name(
+            &view.database_id,
+            migrated_view_name(&view.name, retained_layout),
+            &mut used_names,
+        );
+        let sibling_name = unique_migrated_view_name(
+            &view.database_id,
+            migrated_view_name(&view.name, sibling_layout),
+            &mut used_names,
+        );
+        expanded_orders
+            .entry(view.database_id.clone())
+            .or_default()
+            .extend([view.id.clone(), sibling_id.clone()]);
+        let retained_config =
+            migrate_view_definition_for_layout(&view.config_json, retained_layout)?;
+        let sibling_config = migrate_view_definition_for_layout(&view.config_json, sibling_layout)?;
+        connection.execute(
+            "UPDATE database_views SET name = ?1, config_json = ?2 WHERE id = ?3",
+            params![retained_name, retained_config, view.id],
+        )?;
+        connection.execute(
+            "INSERT INTO database_views( \
+               id, database_block_id, data_source_id, name, layout, config_json, revision, \
+               rank_key, lifecycle, created_at, updated_at \
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '0', ?8, ?9, ?10)",
+            params![
+                sibling_id,
+                view.database_id,
+                view.data_source_id,
+                sibling_name,
+                sibling_layout,
+                sibling_config,
+                view.revision,
+                view.lifecycle,
+                view.created_at,
+                view.updated_at,
+            ],
+        )?;
+        connection.execute(
+            "INSERT INTO database_view_page_positions( \
+               view_id, page_block_id, rank_key, revision, created_at, updated_at \
+             ) SELECT ?1, page_block_id, rank_key, revision, created_at, updated_at \
+               FROM database_view_page_positions WHERE view_id = ?2",
+            params![sibling_id, view.id],
+        )?;
+        connection.execute(
+            "INSERT INTO database_view_collapsed_occurrences( \
+               profile_id, view_id, target_kind, occurrence_key, collapsed_at \
+             ) SELECT profile_id, ?1, target_kind, occurrence_key, collapsed_at \
+               FROM database_view_collapsed_occurrences WHERE view_id = ?2",
+            params![sibling_id, view.id],
+        )?;
+        let preferences = connection
+            .prepare(
+                "SELECT profile_id, presentation_override_json, revision, created_at, updated_at \
+                 FROM database_view_personal_presentations WHERE view_id = ?1",
+            )?
+            .query_map([&view.id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (profile_id, encoded, revision, created_at, updated_at) in preferences {
+            let retained = migrate_view_override_for_layout(&encoded, retained_layout)?;
+            let sibling = migrate_view_override_for_layout(&encoded, sibling_layout)?;
+            connection.execute(
+                "UPDATE database_view_personal_presentations \
+                 SET presentation_override_json = ?1 WHERE profile_id = ?2 AND view_id = ?3",
+                params![retained, profile_id, view.id],
+            )?;
+            connection.execute(
+                "INSERT INTO database_view_personal_presentations( \
+                   profile_id, view_id, presentation_override_json, revision, created_at, updated_at \
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![profile_id, sibling_id, sibling, revision, created_at, updated_at],
+            )?;
+        }
+    }
+    for (database_id, view_ids) in expanded_orders {
+        let ranks = materialize_order(&view_ids).map_err(|error| {
+            internal(format!("Migrated View order is invalid: {}", error.message))
+        })?;
+        for (view_id, rank_key) in ranks {
+            connection.execute(
+                "UPDATE database_views SET rank_key = ?1 WHERE database_block_id = ?2 AND id = ?3",
+                params![rank_key, database_id, view_id],
+            )?;
+        }
+    }
+    connection.execute(
+        "INSERT INTO core_store_migration_history( \
+           source_revision, target_revision, source_schema_fingerprint, \
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object( \
+           'database_views', (SELECT count(*) FROM database_views), \
+           'page_layouts', (SELECT count(*) FROM data_source_page_layouts)))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v144_to_v145(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v144_to_v145.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history( \
+           source_revision, target_revision, source_schema_fingerprint, \
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object( \
+           'retired_property_ids', (SELECT count(*) FROM retired_data_source_property_ids)))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v145_to_v146(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v145_to_v146.sql"))?;
+
+    let views = connection
+        .prepare("SELECT id, data_source_id, config_json FROM database_views ORDER BY id")?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut property_types_by_source = std::collections::BTreeMap::new();
+    for (_, data_source_id, _) in &views {
+        if property_types_by_source.contains_key(data_source_id) {
+            continue;
+        }
+        let property_types = connection
+            .prepare(
+                "SELECT id, value_type FROM data_source_properties \
+                 WHERE data_source_id = ?1 ORDER BY id",
+            )?
+            .query_map([data_source_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<std::collections::BTreeMap<_, _>>>()?;
+        property_types_by_source.insert(data_source_id.clone(), property_types);
+    }
+    for (view_id, data_source_id, encoded) in &views {
+        let property_types = property_types_by_source
+            .get(data_source_id)
+            .ok_or_else(|| internal("Database View migration lost its Property registry"))?;
+        let upgraded =
+            crate::database::view_contract::upgrade_v5_definition_json(encoded, &|property_id| {
+                property_types.get(property_id).cloned()
+            })
+            .map_err(internal)?;
+        connection.execute(
+            "UPDATE database_views SET config_json = ?1 WHERE id = ?2",
+            params![upgraded, view_id],
+        )?;
+    }
+
+    let preferences = connection
+        .prepare(
+            "SELECT preference.profile_id, preference.view_id, view.data_source_id, \
+                    preference.preferences_json \
+             FROM database_view_personal_preferences preference \
+             JOIN database_views view ON view.id = preference.view_id \
+             ORDER BY preference.profile_id, preference.view_id",
+        )?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (profile_id, view_id, data_source_id, encoded) in preferences {
+        let property_types = property_types_by_source
+            .get(&data_source_id)
+            .ok_or_else(|| {
+                internal("Database View preference migration lost its Property registry")
+            })?;
+        let upgraded = upgrade_v5_preferences_json(&encoded, &|property_id| {
+            property_types.get(property_id).cloned()
+        })?;
+        connection.execute(
+            "UPDATE database_view_personal_preferences SET preferences_json = ?1 \
+             WHERE profile_id = ?2 AND view_id = ?3",
+            params![upgraded, profile_id, view_id],
+        )?;
+    }
+
+    connection.execute(
+        "INSERT INTO core_store_migration_history( \
+           source_revision, target_revision, source_schema_fingerprint, \
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object( \
+           'database_views', (SELECT count(*) FROM database_views), \
+           'personal_preferences', (SELECT count(*) FROM database_view_personal_preferences)))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn normalize_filter_value_arity(filter: &mut Value) -> Result<u64, StoreError> {
+    let node = filter
+        .as_object_mut()
+        .ok_or_else(|| internal("Database View filter repair found a non-object node"))?;
+    match node.get("kind").and_then(Value::as_str) {
+        Some("group") => {
+            let children = node
+                .get_mut("children")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| internal("Database View filter repair found invalid children"))?;
+            children.iter_mut().try_fold(0_u64, |count, child| {
+                normalize_filter_value_arity(child).map(|repaired| count + repaired)
+            })
+        }
+        Some("clause") => {
+            let operator = node
+                .get("operator")
+                .and_then(Value::as_str)
+                .ok_or_else(|| internal("Database View filter repair found no operator"))?;
+            let valueless = matches!(operator, "is_empty" | "is_not_empty");
+            if valueless && node.remove("value").is_some() {
+                return Ok(1);
+            }
+            if !valueless && !node.contains_key("value") {
+                node.insert("value".to_owned(), Value::Null);
+                return Ok(1);
+            }
+            Ok(0)
+        }
+        _ => Err(internal(
+            "Database View filter repair found an unsupported node kind",
+        )),
+    }
+}
+
+fn normalize_stored_view_filter_arities(value: &mut Value) -> Result<u64, StoreError> {
+    let mut repaired = 0;
+    if let Some(property_filters) = value
+        .pointer_mut("/rules/propertyFilters")
+        .and_then(Value::as_array_mut)
+    {
+        for filter in property_filters {
+            if let Some(clause) = filter.get_mut("clause") {
+                repaired += normalize_filter_value_arity(clause)?;
+            }
+        }
+    }
+    if let Some(advanced_filter) = value.pointer_mut("/rules/advancedFilter") {
+        if !advanced_filter.is_null() {
+            repaired += normalize_filter_value_arity(advanced_filter)?;
+        }
+    }
+    Ok(repaired)
+}
+
+fn normalize_stored_preference_filter_arities(value: &mut Value) -> Result<u64, StoreError> {
+    let mut repaired = 0;
+    if let Some(property_filters) = value
+        .pointer_mut("/rules_override/property_filters")
+        .and_then(Value::as_array_mut)
+    {
+        for filter in property_filters {
+            if let Some(clause) = filter.get_mut("clause") {
+                repaired += normalize_filter_value_arity(clause)?;
+            }
+        }
+    }
+    if let Some(advanced_filter) = value.pointer_mut("/rules_override/advanced_filter/filter") {
+        repaired += normalize_filter_value_arity(advanced_filter)?;
+    }
+    Ok(repaired)
+}
+
+fn migrate_v146_to_v147(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v146_to_v147.sql"))?;
+
+    let views = connection
+        .prepare("SELECT id, config_json FROM database_views ORDER BY id")?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut repaired_view_clauses = 0_u64;
+    for (view_id, encoded) in views {
+        let mut value = serde_json::from_str::<Value>(&encoded)
+            .map_err(|_| internal("Database View filter repair found invalid config JSON"))?;
+        let repaired = normalize_stored_view_filter_arities(&mut value)?;
+        if repaired == 0 {
+            continue;
+        }
+        repaired_view_clauses += repaired;
+        connection.execute(
+            "UPDATE database_views SET config_json = ?1 WHERE id = ?2",
+            params![value.to_string(), view_id],
+        )?;
+    }
+
+    let preferences = connection
+        .prepare(
+            "SELECT profile_id, view_id, preferences_json \
+             FROM database_view_personal_preferences ORDER BY profile_id, view_id",
+        )?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut repaired_preference_clauses = 0_u64;
+    for (profile_id, view_id, encoded) in preferences {
+        let mut value = serde_json::from_str::<Value>(&encoded)
+            .map_err(|_| internal("Database View filter repair found invalid preference JSON"))?;
+        let repaired = normalize_stored_preference_filter_arities(&mut value)?;
+        if repaired == 0 {
+            continue;
+        }
+        repaired_preference_clauses += repaired;
+        connection.execute(
+            "UPDATE database_view_personal_preferences SET preferences_json = ?1 \
+             WHERE profile_id = ?2 AND view_id = ?3",
+            params![value.to_string(), profile_id, view_id],
+        )?;
+    }
+    let repaired_view_clauses = i64::try_from(repaired_view_clauses)
+        .map_err(|_| internal("Database View filter repair count exceeded its bound"))?;
+    let repaired_preference_clauses = i64::try_from(repaired_preference_clauses)
+        .map_err(|_| internal("Database View preference repair count exceeded its bound"))?;
+
+    connection.execute(
+        "INSERT INTO core_store_migration_history( \
+           source_revision, target_revision, source_schema_fingerprint, \
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object( \
+           'repaired_view_filter_clauses', ?7, \
+           'repaired_preference_filter_clauses', ?8))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+            repaired_view_clauses,
+            repaired_preference_clauses,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn upgrade_v5_preferences_json(
+    encoded: &str,
+    property_type: &impl Fn(&str) -> Option<String>,
+) -> Result<String, StoreError> {
+    let mut presentation = serde_json::from_str::<Map<String, Value>>(encoded)
+        .map_err(|_| internal("Legacy Database View preference is invalid"))?;
+    let mut rules = Map::new();
+    // The v145 typed writer encoded an absent optional Filter as JSON null.
+    // That value means "inherit the shared Filter", not a malformed Filter AST.
+    if let Some(filter) = presentation
+        .remove("filter")
+        .filter(|filter| !filter.is_null())
+    {
+        let filter = crate::database::view_contract::upgrade_v5_filter_value(filter, property_type)
+            .map_err(internal)?;
+        let empty = filter
+            .get("kind")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| kind == "group")
+            && filter
+                .get("operator")
+                .and_then(Value::as_str)
+                .is_some_and(|operator| operator == "and")
+            && filter
+                .get("children")
+                .and_then(Value::as_array)
+                .is_some_and(Vec::is_empty);
+        let filter = if filter.get("kind").and_then(Value::as_str) == Some("clause") {
+            json!({ "kind": "group", "operator": "and", "children": [filter] })
+        } else {
+            filter
+        };
+        rules.insert(
+            "advanced_filter".to_owned(),
+            if empty {
+                json!({ "kind": "none" })
+            } else {
+                json!({ "kind": "filter", "filter": filter })
+            },
+        );
+    }
+    if let Some(sort) = presentation.remove("sort") {
+        rules.insert("sorts".to_owned(), sort);
+    }
+    serde_json::to_string(&json!({
+        "rules_override": rules,
+        "presentation_override": presentation,
+    }))
+    .map_err(|_| internal("Database View preferences cannot be encoded"))
 }
 
 fn install_fresh_profile(connection: &mut Connection, now: u64) -> Result<(), StoreError> {
@@ -1475,7 +2065,16 @@ fn with_schema_rebuild_transaction<T>(
     if foreign_keys_enabled {
         connection.pragma_update(None, "foreign_keys", false)?;
     }
-    let result = with_immediate_transaction(connection, |transaction| operation(transaction));
+    let result = with_immediate_transaction(connection, |transaction| {
+        let owns_maintenance_context =
+            super::visibility_delta_journal::enter_migration_maintenance_context(transaction)?;
+        let value = operation(transaction)?;
+        super::visibility_delta_journal::leave_migration_maintenance_context(
+            transaction,
+            owns_maintenance_context,
+        )?;
+        Ok(value)
+    });
     let restore = if foreign_keys_enabled {
         connection.pragma_update(None, "foreign_keys", true)
     } else {
@@ -1585,6 +2184,7 @@ mod tests {
     use std::os::unix::fs::symlink;
 
     use rusqlite::OptionalExtension;
+    use serde_json::{Value, json};
     use tempfile::tempdir;
 
     use super::super::sqlite::open_writer;
@@ -1632,6 +2232,15 @@ mod tests {
                    source_schema_fingerprint TEXT NOT NULL, \
                    target_schema_fingerprint TEXT NOT NULL, backup_name TEXT NOT NULL, \
                    completed_at_unix_ms INTEGER NOT NULL, evidence_json TEXT NOT NULL); \
+                 CREATE TABLE local_commit_visibility_context( \
+                   id INTEGER PRIMARY KEY CHECK (id = 1), \
+                   mode TEXT NOT NULL CHECK (mode IN ('active', 'overlay', 'maintenance')), \
+                   store_epoch TEXT, commit_seq INTEGER, \
+                   CHECK ( \
+                     (mode IN ('active', 'overlay') \
+                       AND store_epoch IS NOT NULL AND commit_seq IS NOT NULL) \
+                     OR (mode = 'maintenance' \
+                       AND store_epoch IS NULL AND commit_seq IS NULL))); \
                  INSERT INTO libraries(id, created_at) \
                    VALUES ('library-1', '2026-08-30T00:00:00.000Z'); \
                  INSERT INTO projects(id) VALUES ('project-1');",
@@ -1733,6 +2342,214 @@ mod tests {
     }
 
     #[test]
+    fn v146_preference_upgrade_separates_rules_from_presentation() {
+        let upgraded = upgrade_v5_preferences_json(
+            &json!({
+                "filter": {
+                    "kind": "clause",
+                    "propertyId": "tags",
+                    "operator": "contains",
+                    "value": "tag-a"
+                },
+                "sort": [{
+                    "field": { "kind": "created" },
+                    "direction": "desc",
+                    "nulls": "last"
+                }],
+                "group": null,
+                "display": { "showDescription": false }
+            })
+            .to_string(),
+            &|property_id| (property_id == "tags").then(|| "multi_select".to_owned()),
+        )
+        .expect("upgrade personal preferences");
+        let value = serde_json::from_str::<Value>(&upgraded).expect("preference JSON");
+
+        assert_eq!(
+            value["rules_override"]["advanced_filter"]["filter"]["children"][0]["operator"],
+            "multi_select_contains_all"
+        );
+        assert_eq!(
+            value["rules_override"]["advanced_filter"]["filter"]["children"][0]["value"],
+            json!(["tag-a"])
+        );
+        assert_eq!(value["rules_override"]["sorts"][0]["direction"], "desc");
+        assert!(value["presentation_override"].get("filter").is_none());
+        assert!(value["presentation_override"].get("sort").is_none());
+        assert_eq!(
+            value["presentation_override"]["display"]["showDescription"],
+            false
+        );
+    }
+
+    #[test]
+    fn v146_preference_upgrade_accepts_a_null_filter_override() {
+        let upgraded = upgrade_v5_preferences_json(
+            &json!({
+                "filter": null,
+                "sort": null,
+                "group": null,
+                "display": { "showDescription": null }
+            })
+            .to_string(),
+            &|_| None,
+        )
+        .expect("upgrade an empty personal filter override");
+        let value = serde_json::from_str::<Value>(&upgraded).expect("preference JSON");
+
+        assert!(value["rules_override"].get("advanced_filter").is_none());
+        assert!(value["rules_override"]["sorts"].is_null());
+        assert!(value["presentation_override"].get("filter").is_none());
+        assert!(value["presentation_override"]["group"].is_null());
+        assert!(value["presentation_override"]["display"]["showDescription"].is_null());
+    }
+
+    #[test]
+    fn v147_filter_repair_restores_the_operator_value_arity() {
+        let mut filter = json!({
+            "kind": "group",
+            "operator": "and",
+            "children": [
+                {
+                    "kind": "clause",
+                    "propertyId": "status",
+                    "operator": "select_is"
+                },
+                {
+                    "kind": "clause",
+                    "propertyId": "assignee",
+                    "operator": "is_empty",
+                    "value": null
+                }
+            ]
+        });
+
+        assert_eq!(
+            normalize_filter_value_arity(&mut filter).expect("repair"),
+            2
+        );
+        assert!(filter["children"][0].get("value").is_some());
+        assert!(filter["children"][0]["value"].is_null());
+        assert!(filter["children"][1].get("value").is_none());
+        assert_eq!(
+            normalize_filter_value_arity(&mut filter).expect("idempotent"),
+            0
+        );
+    }
+
+    #[test]
+    fn v147_migration_repairs_durable_and_personal_filter_json() {
+        let mut connection = Connection::open_in_memory().expect("Store");
+        install_current_schema(&mut connection).expect("current schema");
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .expect("maintenance writes");
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .expect("fixture without authority graph");
+        connection
+            .pragma_update(None, "user_version", 146)
+            .expect("mark v146 Store");
+        connection
+            .execute(
+                "INSERT INTO database_views( \
+                   id, database_block_id, data_source_id, name, layout, config_json, \
+                   revision, rank_key, lifecycle, created_at, updated_at \
+                 ) VALUES ('view:repair', 'database:repair', 'source:repair', 'Repair', \
+                   'board', ?1, 1, 'a', 'active', '2026-08-30T00:00:00.000Z', \
+                   '2026-08-30T00:00:00.000Z')",
+                [json!({
+                    "rules": {
+                        "propertyFilters": [],
+                        "advancedFilter": {
+                            "kind": "group",
+                            "operator": "and",
+                            "children": [{
+                                "kind": "clause",
+                                "propertyId": "status",
+                                "operator": "select_is"
+                            }]
+                        }
+                    }
+                })
+                .to_string()],
+            )
+            .expect("legacy View");
+        connection
+            .execute(
+                "INSERT INTO database_view_personal_preferences( \
+                   profile_id, view_id, preferences_json, revision, created_at, updated_at \
+                 ) VALUES ('profile:repair', 'view:repair', ?1, 1, \
+                   '2026-08-30T00:00:00.000Z', '2026-08-30T00:00:00.000Z')",
+                [json!({
+                    "rules_override": {
+                        "property_filters": [],
+                        "advanced_filter": {
+                            "kind": "filter",
+                            "filter": {
+                                "kind": "group",
+                                "operator": "and",
+                                "children": [{
+                                    "kind": "clause",
+                                    "propertyId": "assignee",
+                                    "operator": "select_is"
+                                }]
+                            }
+                        }
+                    },
+                    "presentation_override": {}
+                })
+                .to_string()],
+            )
+            .expect("legacy personal preferences");
+        let source = published_format(146).expect("v146 format");
+        let target = published_format(147).expect("v147 format");
+
+        migrate_v146_to_v147(
+            &connection,
+            &MigrationContext {
+                source_revision: 146,
+                target_revision: 147,
+                backup_name: "v146-filter-repair.db".to_owned(),
+                source_schema_fingerprint: source.schema_fingerprint,
+                target_schema_fingerprint: target.schema_fingerprint,
+                completed_at_unix_ms: 1,
+            },
+        )
+        .expect("repair filter arity");
+
+        let view = connection
+            .query_row(
+                "SELECT config_json FROM database_views WHERE id = 'view:repair'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .map(|encoded| serde_json::from_str::<Value>(&encoded).expect("View JSON"))
+            .expect("repaired View");
+        let preferences = connection
+            .query_row(
+                "SELECT preferences_json FROM database_view_personal_preferences \
+                 WHERE profile_id = 'profile:repair' AND view_id = 'view:repair'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .map(|encoded| serde_json::from_str::<Value>(&encoded).expect("preference JSON"))
+            .expect("repaired preferences");
+        assert!(view["rules"]["advancedFilter"]["children"][0]["value"].is_null());
+        assert!(
+            preferences["rules_override"]["advanced_filter"]["filter"]["children"][0]["value"]
+                .is_null()
+        );
+        assert_eq!(
+            connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .expect("version"),
+            147
+        );
+    }
+
+    #[test]
     fn migration_path_orders_every_revision_until_current() {
         let steps = [
             MigrationStep {
@@ -1810,6 +2627,457 @@ mod tests {
             "{}",
             differences.join("\n\n")
         );
+    }
+
+    #[test]
+    fn v143_kanban_view_migrates_to_distinct_board_and_list_views() {
+        let directory = tempdir().expect("Profile");
+        install_baseline_fixture(directory.path());
+        let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            for step in MIGRATION_STEPS
+                .iter()
+                .take_while(|step| step.to_revision <= 141)
+            {
+                let source = published_format(step.from_revision)?;
+                let target = published_format(step.to_revision)?;
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        backup_name: "v141-view-identity.db".to_owned(),
+                        source_schema_fingerprint: source.schema_fingerprint,
+                        target_schema_fingerprint: target.schema_fingerprint,
+                        completed_at_unix_ms: 1,
+                    },
+                )?;
+            }
+            Ok(())
+        })
+        .expect("install v141 schema");
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .expect("maintenance writes");
+        let library_id = connection
+            .query_row("SELECT id FROM libraries ORDER BY id LIMIT 1", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("Library");
+        let profile_id = connection
+            .query_row("SELECT id FROM profiles ORDER BY id LIMIT 1", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("Profile");
+        let database_id = "database:view-identity".to_owned();
+        let data_source_id = "source:view-identity".to_owned();
+        let view_id = "01890f44-7f00-7000-8000-000000000001".to_owned();
+        let deleted_view_id = "01890f44-7f00-7000-8000-000000000002".to_owned();
+        let board_display = serde_json::json!({
+            "fields": [{ "kind": "property", "propertyId": "status" }],
+            "propertyOrder": ["status"],
+            "showEmptyGroups": false,
+            "showDescription": true
+        });
+        let list_display = serde_json::json!({
+            "fields": [{ "kind": "property", "propertyId": "status" }],
+            "propertyOrder": ["status"],
+            "showEmptyGroups": true,
+            "showDescription": false
+        });
+        let legacy_definition = serde_json::json!({
+            "schemaKey": "nodex.database-view",
+            "schemaVersion": 4,
+            "filter": { "kind": "group", "operator": "and", "children": [] },
+            "presentation": {
+                "sort": [{
+                    "field": { "kind": "manual" },
+                    "direction": "asc",
+                    "nulls": "last"
+                }],
+                "group": null,
+                "subgroup": null,
+                "groupDirection": "asc",
+                "completion": { "range": "all", "orderByRecency": false },
+                "hierarchy": { "showSubPages": true, "nestedSubPages": false },
+                "layouts": {
+                    "board": {
+                        "fields": board_display["fields"].clone(),
+                        "showEmptyGroups": board_display["showEmptyGroups"].clone(),
+                        "showDescription": board_display["showDescription"].clone()
+                    },
+                    "list": {
+                        "fields": list_display["fields"].clone(),
+                        "showEmptyGroups": list_display["showEmptyGroups"].clone(),
+                        "showDescription": list_display["showDescription"].clone()
+                    }
+                }
+            }
+        });
+        connection
+            .execute(
+                "INSERT INTO blocks( \
+                   id, library_id, type, lifecycle, created_at, updated_at \
+                 ) VALUES (?1, ?2, 'database', 'active', '2026-08-29T00:00:00.000Z', \
+                   '2026-08-29T00:00:00.000Z')",
+                params![database_id, library_id],
+            )
+            .expect("legacy Database Block");
+        connection
+            .execute(
+                "INSERT INTO database_containers( \
+                   block_id, library_id, name, lifecycle, created_at, updated_at \
+                 ) VALUES (?1, ?2, 'Migration fixture', 'active', \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                params![database_id, library_id],
+            )
+            .expect("legacy Database");
+        connection
+            .execute(
+                "INSERT INTO data_sources( \
+                   id, library_id, home_database_block_id, name, schema_key, lifecycle, \
+                   rank_key, created_at, updated_at \
+                 ) VALUES (?1, ?2, ?3, 'Tasks', 'nodex.database', 'active', 'a', \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                params![data_source_id, library_id, database_id],
+            )
+            .expect("legacy Data Source");
+        connection
+            .execute(
+                "INSERT INTO data_source_properties( \
+                   data_source_id, id, name, value_type, config_json, rank_key, lifecycle, \
+                   created_at, updated_at \
+                 ) VALUES (?1, 'status', 'Status', 'select', '{\"options\":[]}', 'a', \
+                   'active', '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                [&data_source_id],
+            )
+            .expect("legacy Property");
+        connection
+            .execute(
+                "INSERT INTO database_views( \
+                   id, database_block_id, data_source_id, name, default_layout, config_json, \
+                   revision, rank_key, lifecycle, created_at, updated_at \
+                 ) VALUES (?1, ?2, ?3, 'kanban', 'board', ?4, 3, 'a', 'active', \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                params![
+                    view_id,
+                    database_id,
+                    data_source_id,
+                    legacy_definition.to_string()
+                ],
+            )
+            .expect("legacy View");
+        connection
+            .execute(
+                "INSERT INTO database_views( \
+                   id, database_block_id, data_source_id, name, default_layout, config_json, \
+                   revision, rank_key, lifecycle, created_at, updated_at \
+                 ) VALUES (?1, ?2, ?3, 'kanban', 'list', ?4, 5, 'b', 'deleted', \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                params![
+                    deleted_view_id,
+                    database_id,
+                    data_source_id,
+                    legacy_definition.to_string()
+                ],
+            )
+            .expect("deleted legacy View");
+        connection
+            .execute(
+                "UPDATE database_containers SET default_view_id = ?1 WHERE block_id = ?2",
+                params![view_id, database_id],
+            )
+            .expect("legacy default View");
+        connection
+            .execute(
+                "INSERT INTO blocks( \
+                   id, library_id, type, lifecycle, created_at, updated_at \
+                 ) VALUES ('page:view-identity', ?1, 'page', 'active', \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                [&library_id],
+            )
+            .expect("legacy positioned Page");
+        connection
+            .execute(
+                "INSERT INTO documents( \
+                   id, library_id, schema_key, schema_version, created_at, updated_at \
+                 ) VALUES ('document:view-identity', ?1, 'nodex.page', 3, \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                [&library_id],
+            )
+            .expect("legacy Page Document");
+        connection
+            .execute(
+                "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
+                 VALUES ('page:view-identity', 'document:view-identity', ?1, \
+                   '2026-08-29T00:00:00.000Z')",
+                [&library_id],
+            )
+            .expect("legacy Page Document ownership");
+        connection
+            .execute(
+                "INSERT INTO pages( \
+                   block_id, library_id, document_id, parent_kind, parent_id, created_at, updated_at \
+                 ) VALUES ('page:view-identity', ?1, 'document:view-identity', 'data_source', ?2, \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                params![library_id, data_source_id],
+            )
+            .expect("legacy Data Source Page");
+        connection
+            .execute(
+                "INSERT INTO data_source_page_memberships( \
+                   id, data_source_id, page_block_id, revision, created_at \
+                 ) VALUES ('membership:view-identity', ?1, 'page:view-identity', 1, \
+                   '2026-08-29T00:00:00.000Z')",
+                [&data_source_id],
+            )
+            .expect("legacy active membership");
+        connection
+            .execute(
+                "INSERT INTO database_view_page_positions( \
+                   view_id, page_block_id, rank_key, revision, created_at, updated_at \
+                 ) VALUES (?1, 'page:view-identity', 'position-a', 4, \
+                   '2026-08-29T00:00:00.000Z', '2026-08-29T00:00:00.000Z')",
+                [&view_id],
+            )
+            .expect("legacy manual position");
+        connection
+            .execute(
+                "INSERT INTO database_view_collapsed_occurrences( \
+                   profile_id, view_id, target_kind, occurrence_key, collapsed_at \
+                 ) VALUES (?1, ?2, 'group', 'GROUP_fixture', '2026-08-29T00:00:00.000Z')",
+                params![profile_id, view_id],
+            )
+            .expect("legacy collapsed group");
+        let property_count = 1;
+        connection
+            .execute(
+                "INSERT INTO database_view_personal_presentations( \
+                   profile_id, view_id, presentation_override_json, revision, created_at, updated_at \
+                 ) VALUES (?1, ?2, ?3, 7, '2026-08-29T00:00:00.000Z', \
+                   '2026-08-29T00:00:00.000Z')",
+                params![
+                    profile_id,
+                    view_id,
+                    serde_json::json!({
+                        "layout": "list",
+                        "layouts": {
+                            "board": { "cardPreview": "none" },
+                            "list": { "wrapProperties": true }
+                        },
+                        "visibleFields": ["title"]
+                    })
+                    .to_string(),
+                ],
+            )
+            .expect("legacy personal View presentation");
+
+        connection
+            .execute("DELETE FROM local_commit_visibility_context", [])
+            .expect("finish fixture maintenance writes");
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v141_to_v142(
+                transaction,
+                &MigrationContext {
+                    source_revision: 141,
+                    target_revision: 142,
+                    backup_name: "v141-view-identity.db".to_owned(),
+                    source_schema_fingerprint: published_format(141)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(142)?.schema_fingerprint,
+                    completed_at_unix_ms: 2,
+                },
+            )
+        })
+        .expect("install published v142 schema");
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v142_to_v143(
+                transaction,
+                &MigrationContext {
+                    source_revision: 142,
+                    target_revision: 143,
+                    backup_name: "v142-view-identity.db".to_owned(),
+                    source_schema_fingerprint: published_format(142)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(143)?.schema_fingerprint,
+                    completed_at_unix_ms: 3,
+                },
+            )
+        })
+        .expect("install published v143 schema");
+
+        validate_migration_source(&connection, 143)
+            .expect("published v143 View config is a valid migration source");
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v143_to_v144(
+                transaction,
+                &MigrationContext {
+                    source_revision: 143,
+                    target_revision: 144,
+                    backup_name: "v141-view-identity.db".to_owned(),
+                    source_schema_fingerprint: published_format(143)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(144)?.schema_fingerprint,
+                    completed_at_unix_ms: 4,
+                },
+            )
+        })
+        .expect("migrate View identities");
+
+        let views = connection
+            .prepare(
+                "SELECT id, name, layout, config_json, rank_key \
+                 FROM database_views WHERE database_block_id = ?1 ORDER BY rank_key, id",
+            )
+            .expect("migrated View query")
+            .query_map([&database_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .expect("migrated View rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("migrated Views");
+        assert_eq!(views.len(), 4);
+        assert_eq!(views[0].0, view_id);
+        assert_ne!(views[0].0, views[1].0);
+        assert_eq!(
+            (&views[0].1, &views[0].2),
+            (&"Board".to_owned(), &"board".to_owned())
+        );
+        assert_eq!(
+            (&views[1].1, &views[1].2),
+            (&"List".to_owned(), &"list".to_owned())
+        );
+        assert_ne!(views[0].4, views[1].4);
+        assert_eq!(
+            (&views[2].0, &views[2].1, &views[2].2),
+            (&deleted_view_id, &"List 2".to_owned(), &"list".to_owned())
+        );
+        assert_eq!(
+            (&views[3].1, &views[3].2),
+            (&"Board 2".to_owned(), &"board".to_owned())
+        );
+        assert_eq!(&views[3].0[14..15], "7");
+        assert!(matches!(&views[3].0[19..20], "8" | "9" | "a" | "b"));
+        let deleted_lifecycles = connection
+            .query_row(
+                "SELECT count(*) FROM database_views \
+                 WHERE database_block_id = ?1 AND lifecycle = 'deleted'",
+                [&database_id],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("deleted View siblings");
+        assert_eq!(deleted_lifecycles, 2);
+        for (encoded, expected_display) in
+            [(&views[0].3, board_display), (&views[1].3, list_display)]
+        {
+            let definition = serde_json::from_str::<Value>(encoded).expect("migrated definition");
+            assert_eq!(definition.get("schemaVersion"), Some(&Value::from(5)));
+            assert!(definition.pointer("/presentation/layouts").is_none());
+            assert_eq!(
+                definition.pointer("/presentation/display"),
+                Some(&expected_display)
+            );
+            crate::database::view_contract::decode_v5_definition_validation_json(encoded)
+                .expect("migrated definition satisfies the v5 typed contract");
+        }
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT default_view_id FROM database_containers WHERE block_id = ?1",
+                    [&database_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("default View"),
+            view_id
+        );
+
+        let preferences = connection
+            .prepare(
+                "SELECT presentation_override_json FROM database_view_personal_presentations \
+                 WHERE profile_id = ?1 AND view_id IN (?2, ?3) ORDER BY view_id",
+            )
+            .expect("personal View presentation query")
+            .query_map(params![profile_id, views[0].0, views[1].0], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("personal View presentation rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("personal View presentations");
+        assert_eq!(preferences.len(), 2);
+        for encoded in preferences {
+            let preference = serde_json::from_str::<Value>(&encoded).expect("migrated preference");
+            assert!(preference.get("layout").is_none());
+            assert!(preference.get("layouts").is_none());
+            assert!(preference.get("display").is_some());
+            assert_eq!(
+                preference.get("visibleFields"),
+                Some(&serde_json::json!(["title"]))
+            );
+        }
+        for table in [
+            "database_view_page_positions",
+            "database_view_collapsed_occurrences",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(
+                        &format!("SELECT count(*) FROM {table} WHERE view_id IN (?1, ?2)"),
+                        params![views[0].0, views[1].0],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .expect("copied View-scoped state"),
+                2
+            );
+        }
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM database_view_page_positions \
+                     WHERE view_id = ?1 AND rank_key = 'position-a' AND revision = 4",
+                    [&views[1].0],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("copied manual position"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM data_source_page_layout_entries \
+                     WHERE data_source_id = ?1 AND visibility = 'always_show'",
+                    [&data_source_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("seeded Page layout"),
+            property_count
+        );
+        let columns = connection
+            .prepare("SELECT name FROM pragma_table_info('database_views') ORDER BY cid")
+            .expect("View columns")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("View column rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("View columns");
+        assert!(columns.contains(&"layout".to_owned()));
+        assert!(!columns.contains(&"default_layout".to_owned()));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM local_commit_visibility_context",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("migration VisibilityDeltaJournal context"),
+            0
+        );
+        validate_schema_identity(&connection, 144).expect("exact published v144 schema");
     }
 
     #[test]
@@ -2247,7 +3515,7 @@ mod tests {
             .expect("migration history")
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("migration history rows");
-        assert_eq!(history.len(), 13);
+        assert_eq!(history.len(), 17);
         assert_eq!((history[0].0, history[0].1), (130, 131));
         assert_eq!((history[1].0, history[1].1), (131, 132));
         assert_eq!((history[2].0, history[2].1), (132, 133));
@@ -2261,6 +3529,10 @@ mod tests {
         assert_eq!((history[10].0, history[10].1), (140, 141));
         assert_eq!((history[11].0, history[11].1), (141, 142));
         assert_eq!((history[12].0, history[12].1), (142, 143));
+        assert_eq!((history[13].0, history[13].1), (143, 144));
+        assert_eq!((history[14].0, history[14].1), (144, 145));
+        assert_eq!((history[15].0, history[15].1), (145, 146));
+        assert_eq!((history[16].0, history[16].1), (146, 147));
         assert_eq!(
             history[0].2,
             published_format(130)
@@ -2322,13 +3594,43 @@ mod tests {
                 .schema_fingerprint
         );
         assert_eq!(
+            history[11].3,
+            published_format(142)
+                .expect("v142 format")
+                .schema_fingerprint
+        );
+        assert_eq!(
             history[12].3,
             published_format(143)
                 .expect("v143 format")
                 .schema_fingerprint
         );
+        assert_eq!(
+            history[13].3,
+            published_format(144)
+                .expect("v144 format")
+                .schema_fingerprint
+        );
+        assert_eq!(
+            history[14].3,
+            published_format(145)
+                .expect("v145 format")
+                .schema_fingerprint
+        );
+        assert_eq!(
+            history[15].3,
+            published_format(146)
+                .expect("v146 format")
+                .schema_fingerprint
+        );
+        assert_eq!(
+            history[16].3,
+            published_format(147)
+                .expect("v147 format")
+                .schema_fingerprint
+        );
         assert!(history.iter().all(|row| row.4 == history[0].4));
-        assert!(history[0].4.starts_with("v130-to-v143-"));
+        assert!(history[0].4.starts_with("v130-to-v147-"));
         assert!(history[0].4.ends_with(".db"));
         assert!(history.iter().all(|row| row.5 > 0));
         let backup_path = directory
@@ -2360,7 +3662,7 @@ mod tests {
                     |row| { row.get::<_, i64>(0) }
                 )
                 .expect("stable history"),
-            13
+            17
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -2395,7 +3697,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            13
+            17
         );
     }
 
@@ -2425,7 +3727,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            11
+            15
         );
         assert_eq!(
             connection
@@ -2523,8 +3825,8 @@ mod tests {
                 },
             )
             .expect("v136 migration history");
-        assert_eq!((source_revision, target_revision), (142, 143));
-        assert!(backup_name.starts_with("v136-to-v143-"));
+        assert_eq!((source_revision, target_revision), (146, 147));
+        assert!(backup_name.starts_with("v136-to-v147-"));
         let backup_path = directory
             .path()
             .join("backups/core-migrations")
@@ -2544,7 +3846,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("stable history"),
-            7
+            11
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -2789,7 +4091,7 @@ mod tests {
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
         fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(backup_directory.join(".v130-to-v143.pending.db"))
+        fs::create_dir(backup_directory.join(".v130-to-v147.pending.db"))
             .expect("non-file pending candidate");
         let mut connection = open_writer(&non_file.path().join("nodex.db")).expect("writer");
         let error = prepare_profile_store(&mut connection, non_file.path())
@@ -2799,7 +4101,7 @@ mod tests {
 
     #[test]
     fn migration_registry_is_contiguous_and_forward_only() {
-        assert_eq!(MIGRATION_STEPS.len(), 13);
+        assert_eq!(MIGRATION_STEPS.len(), 17);
         for (index, step) in MIGRATION_STEPS.iter().enumerate() {
             assert!(step.from_revision < step.to_revision);
             if let Some(next) = MIGRATION_STEPS.get(index + 1) {

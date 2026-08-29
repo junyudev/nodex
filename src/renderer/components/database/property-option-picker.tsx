@@ -308,6 +308,10 @@ export function PropertyOptionPicker({
     onCreateOption !== undefined &&
     canCreateDataSourcePropertyOption(options, query);
   const changeOpen = (next: boolean) => {
+    if (host === "embedded") {
+      setOpen(true);
+      return;
+    }
     if (next) {
       const selectedIndex = options.findIndex((option) => selectedSet.has(option.id));
       setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
@@ -338,10 +342,10 @@ export function PropertyOptionPicker({
   }, [host, open]);
 
   useEffect(() => {
-    if (!disabled || !open) return;
+    if (host === "embedded" || !disabled || !open) return;
     setOpen(false);
     onOpenChange?.(false);
-  }, [disabled, onOpenChange, open]);
+  }, [disabled, host, onOpenChange, open]);
 
   useEffect(() => {
     if (!open) {

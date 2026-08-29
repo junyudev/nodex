@@ -9,7 +9,7 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::events::ProjectionSnapshotAuthority;
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const DATABASE_CONTRACT_VERSION: u32 = 20;
+pub const DATABASE_CONTRACT_VERSION: u32 = 24;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -17,16 +17,69 @@ pub enum DatabaseRelationCardinality {
     One,
     Many,
 }
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseCurrencyCode {
+    #[default]
+    Usd,
+    Eur,
+    Gbp,
+    Jpy,
+    Cny,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DatabaseNumberFormat {
+    #[default]
+    Plain,
+    Percent,
+    Currency {
+        currency_code: DatabaseCurrencyCode,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseDateFormat {
+    #[default]
+    Full,
+    MonthDayYear,
+    DayMonthYear,
+    YearMonthDay,
+    Relative,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseTimeFormat {
+    #[default]
+    TwelveHour,
+    TwentyFourHour,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DatabasePropertySchema {
     Text,
-    Number,
+    Number {
+        #[serde(default)]
+        format: DatabaseNumberFormat,
+    },
     Checkbox,
     Select,
     MultiSelect,
-    Date,
-    Datetime,
+    Date {
+        #[serde(default)]
+        date_format: DatabaseDateFormat,
+    },
+    Datetime {
+        #[serde(default)]
+        date_format: DatabaseDateFormat,
+        #[serde(default)]
+        time_format: DatabaseTimeFormat,
+    },
     Relation {
         target_data_source_id: String,
         cardinality: DatabaseRelationCardinality,
@@ -46,9 +99,43 @@ pub enum DatabasePropertyFilterOperator {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DatabasePropertyCapabilities {
-    pub filter_operators: Vec<DatabasePropertyFilterOperator>,
+    pub filter_operators: Vec<DatabaseViewFilterOperator>,
     pub sortable: bool,
     pub groupable: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabasePropertySystemRole {
+    Status,
+    TaskParent,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabasePropertyType {
+    Text,
+    Number,
+    Checkbox,
+    Select,
+    MultiSelect,
+    Date,
+    Datetime,
+    Relation,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabasePropertyManagementPolicy {
+    pub can_rename: bool,
+    pub can_reorder: bool,
+    pub can_change_type: bool,
+    pub can_duplicate: bool,
+    pub can_delete: bool,
+    pub can_restore: bool,
+    pub can_permanently_delete: bool,
+    pub can_manage_options: bool,
+    pub allowed_types: Vec<DatabasePropertyType>,
+    pub blocked_reasons: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -58,12 +145,72 @@ pub struct DatabasePropertyDescriptor {
     pub name: String,
     pub schema: DatabasePropertySchema,
     pub capabilities: DatabasePropertyCapabilities,
+    pub system_role: Option<DatabasePropertySystemRole>,
+    pub non_empty_value_count: i64,
+    pub referenced_view_ids: Vec<String>,
+    pub management_policy: DatabasePropertyManagementPolicy,
     pub option_count: u32,
     pub rank_key: String,
     pub lifecycle: String,
     pub revision: i64,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabasePagePropertyVisibility {
+    AlwaysShow,
+    HideWhenEmpty,
+    AlwaysHide,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabasePageLayoutEntry {
+    pub property_id: String,
+    pub rank_key: String,
+    pub visibility: DatabasePagePropertyVisibility,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabasePageLayout {
+    pub data_source_id: String,
+    pub revision: i64,
+    pub entries: Vec<DatabasePageLayoutEntry>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DatabasePageLayoutPlacement {
+    Before { property_id: String },
+    End,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabaseDuplicatePropertyOption {
+    pub source_option_id: String,
+    pub new_option_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DatabaseOptionPlacement {
+    Before { option_id: String },
+    End,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DatabasePropertyPlacement {
+    Before { property_id: String },
+    End,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DatabaseViewPlacement {
+    Before { view_id: String },
+    End,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -142,28 +289,41 @@ pub enum DatabaseViewFieldInput {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DatabaseViewLayoutDisplayOverrideInput {
     pub fields: Option<Vec<DatabaseViewFieldInput>>,
+    pub property_order: Option<Vec<String>>,
     pub show_empty_groups: Option<bool>,
     pub show_description: Option<bool>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct DatabaseViewLayoutsOverrideInput {
-    pub board: Option<DatabaseViewLayoutDisplayOverrideInput>,
-    pub list: Option<DatabaseViewLayoutDisplayOverrideInput>,
-}
-
-/// A bounded Profile-local patch over a durable View presentation. Membership
-/// filters and shared manual ranks are intentionally not overridable.
+/// A bounded Profile-local patch over a durable View definition. Shared manual
+/// ranks remain View-global even when their presentation position is personal.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct DatabaseViewPresentationOverrideInput {
-    pub layout: Option<DatabaseViewLayoutInput>,
-    pub sort: Option<Vec<DatabaseViewSortInput>>,
     pub group: Option<DatabaseViewGroupOverrideInput>,
     pub subgroup: Option<DatabaseViewGroupOverrideInput>,
     pub group_direction: Option<DatabaseViewSortDirectionInput>,
     pub completion: Option<DatabaseViewCompletionOverrideInput>,
     pub hierarchy: Option<DatabaseViewHierarchyOverrideInput>,
-    pub layouts: Option<DatabaseViewLayoutsOverrideInput>,
+    pub display: Option<DatabaseViewLayoutDisplayOverrideInput>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DatabaseViewAdvancedFilterOverrideInput {
+    None,
+    Filter { filter: DatabaseViewFilter },
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabaseViewRulesOverrideInput {
+    pub property_filters: Option<Vec<DatabaseViewPropertyFilter>>,
+    pub advanced_filter: Option<DatabaseViewAdvancedFilterOverrideInput>,
+    pub sorts: Option<Vec<DatabaseViewSortInput>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DatabaseViewPreferencesOverrideInput {
+    pub rules_override: DatabaseViewRulesOverrideInput,
+    pub presentation_override: DatabaseViewPresentationOverrideInput,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -197,10 +357,41 @@ pub enum DatabaseViewFilterGroupOperator {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseViewFilterOperator {
+    /// Legacy v5 operators are accepted only while Store migration rewrites
+    /// them to their Property-typed v6 equivalents.
     Equals,
     NotEquals,
     Contains,
     NotContains,
+    TextIs,
+    TextIsNot,
+    TextContains,
+    TextDoesNotContain,
+    TextStartsWith,
+    TextEndsWith,
+    NumberEquals,
+    NumberDoesNotEqual,
+    NumberGreaterThan,
+    NumberLessThan,
+    NumberGreaterThanOrEqualTo,
+    NumberLessThanOrEqualTo,
+    CheckboxIs,
+    CheckboxIsNot,
+    SelectIs,
+    SelectIsNot,
+    MultiSelectContains,
+    MultiSelectDoesNotContain,
+    MultiSelectContainsAll,
+    DateIs,
+    DateIsNot,
+    DateBefore,
+    DateAfter,
+    DateOnOrBefore,
+    DateOnOrAfter,
+    DateWithin,
+    DateRelativeTo,
+    RelationContains,
+    RelationDoesNotContain,
     IsEmpty,
     IsNotEmpty,
 }
@@ -217,8 +408,12 @@ pub enum DatabaseViewFilter {
         #[serde(rename = "propertyId")]
         property_id: String,
         operator: DatabaseViewFilterOperator,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        value: Option<Value>,
+        #[serde(
+            default,
+            deserialize_with = "crate::deserialize_present",
+            skip_serializing_if = "Option::is_none"
+        )]
+        value: Option<Option<Value>>,
     },
 }
 
@@ -240,6 +435,24 @@ pub struct DatabaseViewSort {
     pub field: DatabaseViewSortField,
     pub direction: DatabaseViewSortDirection,
     pub nulls: DatabaseViewNullOrder,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DatabaseViewPropertyFilter {
+    pub filter_id: String,
+    pub clause: DatabaseViewFilter,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DatabaseViewRules {
+    #[serde(default)]
+    pub property_filters: Vec<DatabaseViewPropertyFilter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub advanced_filter: Option<DatabaseViewFilter>,
+    #[serde(default)]
+    pub sorts: Vec<DatabaseViewSort>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -296,9 +509,36 @@ pub enum DatabaseViewField {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DatabaseViewLayoutDisplay {
     pub fields: Vec<DatabaseViewField>,
+    #[serde(default)]
+    pub property_order: Vec<String>,
     pub show_empty_groups: bool,
     #[serde(default = "default_show_description")]
     pub show_description: bool,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseViewConditionalColor {
+    Gray,
+    Brown,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+    Pink,
+    Red,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DatabaseViewConditionalColorRule {
+    pub rule_id: String,
+    pub property_id: String,
+    pub operator: DatabasePropertyFilterOperator,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
+    pub color: DatabaseViewConditionalColor,
 }
 
 fn default_show_description() -> bool {
@@ -306,22 +546,16 @@ fn default_show_description() -> bool {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct DatabaseViewLayouts {
-    pub board: DatabaseViewLayoutDisplay,
-    pub list: DatabaseViewLayoutDisplay,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DatabaseViewPresentation {
-    pub sort: Vec<DatabaseViewSort>,
     pub group: Option<DatabaseViewGroup>,
     pub subgroup: Option<DatabaseViewGroup>,
     pub group_direction: DatabaseViewSortDirection,
     pub completion: DatabaseViewCompletion,
     pub hierarchy: DatabaseViewHierarchy,
-    pub layouts: DatabaseViewLayouts,
+    pub display: DatabaseViewLayoutDisplay,
+    #[serde(default)]
+    pub conditional_colors: Vec<DatabaseViewConditionalColorRule>,
 }
 
 /// Durable View policy. Storage schema markers are an adapter concern and are
@@ -329,7 +563,7 @@ pub struct DatabaseViewPresentation {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DatabaseViewDefinition {
-    pub filter: DatabaseViewFilter,
+    pub rules: DatabaseViewRules,
     pub presentation: DatabaseViewPresentation,
 }
 
@@ -382,7 +616,7 @@ pub enum DatabaseViewReadTarget {
     },
     PresentedView {
         view_id: String,
-        presentation_override: DatabaseViewPresentationOverrideInput,
+        preferences_override: DatabaseViewPreferencesOverrideInput,
     },
 }
 
@@ -428,6 +662,9 @@ pub enum DatabaseRead {
         data_source_id: String,
         property_id: String,
         window: CollectionWindowRequest,
+    },
+    PageLayout {
+        data_source_id: String,
     },
     ViewDescriptorWindow {
         database_id: String,
@@ -477,7 +714,7 @@ pub enum DatabaseRead {
         query: Option<String>,
         window: CollectionWindowRequest,
     },
-    ViewPersonalPresentation {
+    ViewPersonalPreferences {
         view_id: String,
     },
     ViewCollapsedOccurrences {
@@ -576,6 +813,7 @@ pub struct DatabasePropertyOption {
     pub id: String,
     pub name: String,
     pub color: Option<String>,
+    pub selected_page_count: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -604,6 +842,9 @@ pub enum DatabaseReadValue {
     },
     OptionWindow {
         options: CollectionWindow<DatabasePropertyOption>,
+    },
+    PageLayout {
+        value: DatabasePageLayout,
     },
     ViewDescriptorWindow {
         views: CollectionWindow<DatabaseViewRecord>,
@@ -641,8 +882,8 @@ pub enum DatabaseReadValue {
     RelationCandidateWindow {
         candidates: CollectionWindow<DatabaseRelationCandidate>,
     },
-    ViewPersonalPresentation {
-        value: DatabaseViewPersonalPresentation,
+    ViewPersonalPreferences {
+        value: DatabaseViewPersonalPreferences,
     },
     ViewCollapsedOccurrences {
         value: DatabaseViewCollapsedOccurrences,
@@ -650,9 +891,10 @@ pub enum DatabaseReadValue {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct DatabaseViewPersonalPresentation {
+pub struct DatabaseViewPersonalPreferences {
+    pub rules_override: DatabaseViewRulesOverrideInput,
     pub presentation_override: DatabaseViewPresentationOverrideInput,
-    /// Zero means that this Profile has never changed this View presentation.
+    /// Zero means that this Profile has never changed this View.
     pub revision: i64,
 }
 
@@ -679,9 +921,9 @@ pub struct DatabaseViewCollapsedOccurrences {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabasePersonalViewChange {
-    Presentation {
+    Preferences {
         view_id: String,
-        value: DatabaseViewPersonalPresentation,
+        value: DatabaseViewPersonalPreferences,
     },
     OccurrenceDisclosure {
         view_id: String,
@@ -693,7 +935,7 @@ pub enum DatabasePersonalViewChange {
 impl DatabasePersonalViewChange {
     pub fn view_id(&self) -> &str {
         match self {
-            Self::Presentation { view_id, .. } | Self::OccurrenceDisclosure { view_id, .. } => {
+            Self::Preferences { view_id, .. } | Self::OccurrenceDisclosure { view_id, .. } => {
                 view_id
             }
         }
@@ -945,6 +1187,41 @@ pub enum DatabaseIntent {
         schema: DatabasePropertySchema,
         before_property_id: Option<String>,
     },
+    MoveProperty {
+        data_source_id: String,
+        property_id: String,
+        expected_data_source_revision: i64,
+        expected_property_revision: i64,
+        placement: DatabasePropertyPlacement,
+    },
+    ChangePropertyType {
+        data_source_id: String,
+        property_id: String,
+        expected_data_source_revision: i64,
+        expected_property_revision: i64,
+        schema: DatabasePropertySchema,
+    },
+    DuplicateProperty {
+        data_source_id: String,
+        property_id: String,
+        expected_data_source_revision: i64,
+        expected_property_revision: i64,
+        new_property_id: String,
+        name: String,
+        option_ids: Vec<DatabaseDuplicatePropertyOption>,
+    },
+    RestoreProperty {
+        data_source_id: String,
+        property_id: String,
+        expected_data_source_revision: i64,
+        expected_property_revision: i64,
+    },
+    PermanentlyDeleteProperty {
+        data_source_id: String,
+        property_id: String,
+        expected_data_source_revision: i64,
+        expected_property_revision: i64,
+    },
     DeleteProperty {
         data_source_id: String,
         property_id: String,
@@ -959,11 +1236,31 @@ pub enum DatabaseIntent {
         color: Option<String>,
         expected_property_revision: i64,
     },
+    MoveOption {
+        data_source_id: String,
+        property_id: String,
+        option_id: String,
+        expected_property_revision: i64,
+        placement: DatabaseOptionPlacement,
+    },
     DeleteOption {
         data_source_id: String,
         property_id: String,
         option_id: String,
         expected_property_revision: i64,
+    },
+    DeleteOptionAndClearValues {
+        data_source_id: String,
+        property_id: String,
+        option_id: String,
+        expected_property_revision: i64,
+    },
+    PutPageLayoutEntry {
+        data_source_id: String,
+        expected_revision: i64,
+        property_id: String,
+        visibility: DatabasePagePropertyVisibility,
+        placement: Option<DatabasePageLayoutPlacement>,
     },
     EditPropertyValues {
         edits: Vec<DatabasePropertyValueMutation>,
@@ -984,6 +1281,24 @@ pub enum DatabaseIntent {
         definition: DatabaseViewDefinition,
         is_default: bool,
         before_view_id: Option<String>,
+    },
+    DuplicateView {
+        database_id: String,
+        source_view_id: String,
+        expected_revision: i64,
+        new_view_id: String,
+    },
+    ChangeViewLayout {
+        database_id: String,
+        view_id: String,
+        expected_revision: i64,
+        layout: DatabaseViewLayout,
+    },
+    MoveView {
+        database_id: String,
+        view_id: String,
+        expected_revision: i64,
+        placement: DatabaseViewPlacement,
     },
     DeleteView {
         database_id: String,
@@ -1009,7 +1324,7 @@ pub enum DatabaseIntent {
     },
     MoveListOccurrences {
         view_id: String,
-        presentation_override: DatabaseViewPresentationOverrideInput,
+        preferences_override: DatabaseViewPreferencesOverrideInput,
         expected_projection: DatabaseListProjectionExpectation,
         initiator_occurrence_key: String,
         selection: DatabaseListMoveSelection,
@@ -1018,9 +1333,10 @@ pub enum DatabaseIntent {
     UndoListOccurrenceMove {
         recipe: DatabaseListMoveUndoRecipe,
     },
-    PutViewPersonalPresentation {
+    PutViewPersonalPreferences {
         view_id: String,
         expected_revision: i64,
+        rules_override: DatabaseViewRulesOverrideInput,
         presentation_override: DatabaseViewPresentationOverrideInput,
     },
     SetViewOccurrenceDisclosure {
@@ -1276,4 +1592,63 @@ impl VersionedModuleContract for DatabaseContract {
 
     const VERSION: u32 = DATABASE_CONTRACT_VERSION;
     const MODULE: ModuleName = ModuleName::Database;
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{DatabaseViewFilter, DatabaseViewFilterOperator};
+
+    #[test]
+    fn filter_clause_round_trip_preserves_missing_null_and_concrete_values() {
+        let cases = [
+            (
+                json!({
+                    "kind": "clause",
+                    "propertyId": "status",
+                    "operator": "is_empty"
+                }),
+                None,
+            ),
+            (
+                json!({
+                    "kind": "clause",
+                    "propertyId": "status",
+                    "operator": "select_is",
+                    "value": null
+                }),
+                Some(None),
+            ),
+            (
+                json!({
+                    "kind": "clause",
+                    "propertyId": "status",
+                    "operator": "select_is",
+                    "value": "triage"
+                }),
+                Some(Some(json!("triage"))),
+            ),
+        ];
+
+        for (encoded, expected_value) in cases {
+            let decoded = serde_json::from_value::<DatabaseViewFilter>(encoded.clone())
+                .expect("decode filter clause");
+            let DatabaseViewFilter::Clause {
+                operator, value, ..
+            } = &decoded
+            else {
+                panic!("filter clause");
+            };
+            assert!(matches!(
+                operator,
+                DatabaseViewFilterOperator::IsEmpty | DatabaseViewFilterOperator::SelectIs
+            ));
+            assert_eq!(value, &expected_value);
+            assert_eq!(
+                serde_json::to_value(decoded).expect("encode filter clause"),
+                encoded
+            );
+        }
+    }
 }

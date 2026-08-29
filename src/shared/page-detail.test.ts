@@ -13,6 +13,7 @@ import {
   parsePageDetailResult,
   type PageDetailResult,
 } from "./page-detail";
+import { testPropertyManagement } from "./testing/database-property-record";
 import { authorizedReadStampFixture } from "./testing/authorized-read-stamp-fixture";
 
 const timestamp = "2026-07-16T00:00:00.000Z";
@@ -99,10 +100,11 @@ const memberResult = (): PageDetailResult => ({
           name: "Status",
           schema: { kind: "select" },
           capabilities: {
-            filterOperators: ["equals", "not_equals", "is_empty", "is_not_empty"],
+            filterOperators: ["select_is", "select_is_not", "is_empty", "is_not_empty"],
             sortable: true,
             groupable: true,
           },
+          ...testPropertyManagement(),
           valueType: "select",
           config: {},
           optionCount: 1,
@@ -113,6 +115,11 @@ const memberResult = (): PageDetailResult => ({
           updatedAt: timestamp,
         },
       ],
+      pageLayout: {
+        dataSourceId,
+        revision: 1,
+        entries: [{ propertyId: statusPropertyId, rankKey: "a0", visibility: "always_show" }],
+      },
       values: {
         status: {
           propertyId: statusPropertyId,

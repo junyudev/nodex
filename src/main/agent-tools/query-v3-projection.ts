@@ -59,7 +59,7 @@ export const projectNodexAgentQueryV3Data = (
             viewId: result.value.view.viewId,
             dataSourceId: result.value.view.dataSourceId,
             name: result.value.view.name,
-            defaultLayout: result.value.view.defaultLayout,
+            layout: result.value.view.layout,
           },
         }
       : {}),

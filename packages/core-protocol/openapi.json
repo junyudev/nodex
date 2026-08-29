@@ -4936,6 +4936,9 @@
                 "name",
                 "schema",
                 "capabilities",
+                "non_empty_value_count",
+                "referenced_view_ids",
+                "management_policy",
                 "option_count",
                 "rank_key",
                 "lifecycle",
@@ -4956,8 +4959,15 @@
                 "lifecycle": {
                   "type": "string"
                 },
+                "management_policy": {
+                  "$ref": "#/components/schemas/DatabasePropertyManagementPolicy"
+                },
                 "name": {
                   "type": "string"
+                },
+                "non_empty_value_count": {
+                  "type": "integer",
+                  "format": "int64"
                 },
                 "option_count": {
                   "type": "integer",
@@ -4970,12 +4980,28 @@
                 "rank_key": {
                   "type": "string"
                 },
+                "referenced_view_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "revision": {
                   "type": "integer",
                   "format": "int64"
                 },
                 "schema": {
                   "$ref": "#/components/schemas/DatabasePropertySchema"
+                },
+                "system_role": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DatabasePropertySystemRole"
+                    }
+                  ]
                 },
                 "updated_at": {
                   "type": "string"
@@ -5007,7 +5033,8 @@
               "type": "object",
               "required": [
                 "id",
-                "name"
+                "name",
+                "selected_page_count"
               ],
               "properties": {
                 "color": {
@@ -5021,6 +5048,10 @@
                 },
                 "name": {
                   "type": "string"
+                },
+                "selected_page_count": {
+                  "type": "integer",
+                  "format": "int64"
                 }
               }
             }
@@ -7582,6 +7613,16 @@
           }
         }
       },
+      "DatabaseCurrencyCode": {
+        "type": "string",
+        "enum": [
+          "usd",
+          "eur",
+          "gbp",
+          "jpy",
+          "cny"
+        ]
+      },
       "DatabaseDataSourceDescriptor": {
         "type": "object",
         "required": [
@@ -7664,6 +7705,16 @@
           }
         }
       },
+      "DatabaseDateFormat": {
+        "type": "string",
+        "enum": [
+          "full",
+          "month_day_year",
+          "day_month_year",
+          "year_month_day",
+          "relative"
+        ]
+      },
       "DatabaseDescriptor": {
         "type": "object",
         "required": [
@@ -7672,6 +7723,21 @@
         "properties": {
           "database": {
             "$ref": "#/components/schemas/DatabaseContainerRecord"
+          }
+        }
+      },
+      "DatabaseDuplicatePropertyOption": {
+        "type": "object",
+        "required": [
+          "source_option_id",
+          "new_option_id"
+        ],
+        "properties": {
+          "new_option_id": {
+            "type": "string"
+          },
+          "source_option_id": {
+            "type": "string"
           }
         }
       },
@@ -7882,6 +7948,189 @@
               "property_id",
               "expected_data_source_revision",
               "expected_property_revision",
+              "placement",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_data_source_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_property_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move_property"
+                ]
+              },
+              "placement": {
+                "$ref": "#/components/schemas/DatabasePropertyPlacement"
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "property_id",
+              "expected_data_source_revision",
+              "expected_property_revision",
+              "schema",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_data_source_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_property_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "change_property_type"
+                ]
+              },
+              "property_id": {
+                "type": "string"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/DatabasePropertySchema"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "property_id",
+              "expected_data_source_revision",
+              "expected_property_revision",
+              "new_property_id",
+              "name",
+              "option_ids",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_data_source_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_property_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "duplicate_property"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "new_property_id": {
+                "type": "string"
+              },
+              "option_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DatabaseDuplicatePropertyOption"
+                }
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "property_id",
+              "expected_data_source_revision",
+              "expected_property_revision",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_data_source_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_property_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restore_property"
+                ]
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "property_id",
+              "expected_data_source_revision",
+              "expected_property_revision",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_data_source_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_property_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "permanently_delete_property"
+                ]
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "property_id",
+              "expected_data_source_revision",
+              "expected_property_revision",
               "kind"
             ],
             "properties": {
@@ -7955,6 +8204,41 @@
               "property_id",
               "option_id",
               "expected_property_revision",
+              "placement",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_property_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move_option"
+                ]
+              },
+              "option_id": {
+                "type": "string"
+              },
+              "placement": {
+                "$ref": "#/components/schemas/DatabaseOptionPlacement"
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "property_id",
+              "option_id",
+              "expected_property_revision",
               "kind"
             ],
             "properties": {
@@ -7976,6 +8260,78 @@
               },
               "property_id": {
                 "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "property_id",
+              "option_id",
+              "expected_property_revision",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_property_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_option_and_clear_values"
+                ]
+              },
+              "option_id": {
+                "type": "string"
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "expected_revision",
+              "property_id",
+              "visibility",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "put_page_layout_entry"
+                ]
+              },
+              "placement": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DatabasePageLayoutPlacement"
+                  }
+                ]
+              },
+              "property_id": {
+                "type": "string"
+              },
+              "visibility": {
+                "$ref": "#/components/schemas/DatabasePagePropertyVisibility"
               }
             }
           },
@@ -8079,6 +8435,99 @@
               },
               "name": {
                 "type": "string"
+              },
+              "view_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "source_view_id",
+              "expected_revision",
+              "new_view_id",
+              "kind"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "duplicate_view"
+                ]
+              },
+              "new_view_id": {
+                "type": "string"
+              },
+              "source_view_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "view_id",
+              "expected_revision",
+              "layout",
+              "kind"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "change_view_layout"
+                ]
+              },
+              "layout": {
+                "$ref": "#/components/schemas/DatabaseViewLayout"
+              },
+              "view_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "view_id",
+              "expected_revision",
+              "placement",
+              "kind"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move_view"
+                ]
+              },
+              "placement": {
+                "$ref": "#/components/schemas/DatabaseViewPlacement"
               },
               "view_id": {
                 "type": "string"
@@ -8217,7 +8666,7 @@
             "type": "object",
             "required": [
               "view_id",
-              "presentation_override",
+              "preferences_override",
               "expected_projection",
               "initiator_occurrence_key",
               "selection",
@@ -8237,8 +8686,8 @@
                   "move_list_occurrences"
                 ]
               },
-              "presentation_override": {
-                "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+              "preferences_override": {
+                "$ref": "#/components/schemas/DatabaseViewPreferencesOverrideInput"
               },
               "selection": {
                 "$ref": "#/components/schemas/DatabaseListMoveSelection"
@@ -8274,6 +8723,7 @@
             "required": [
               "view_id",
               "expected_revision",
+              "rules_override",
               "presentation_override",
               "kind"
             ],
@@ -8285,11 +8735,14 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "put_view_personal_presentation"
+                  "put_view_personal_preferences"
                 ]
               },
               "presentation_override": {
                 "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+              },
+              "rules_override": {
+                "$ref": "#/components/schemas/DatabaseViewRulesOverrideInput"
               },
               "view_id": {
                 "type": "string"
@@ -8735,6 +9188,56 @@
           }
         }
       },
+      "DatabaseNumberFormat": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "plain"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "percent"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "currency_code",
+              "kind"
+            ],
+            "properties": {
+              "currency_code": {
+                "$ref": "#/components/schemas/DatabaseCurrencyCode"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "currency"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "DatabaseOperationOutcome": {
         "oneOf": [
           {
@@ -8803,6 +9306,42 @@
                 "items": {
                   "type": "string"
                 }
+              }
+            }
+          }
+        ]
+      },
+      "DatabaseOptionPlacement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "option_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "before"
+                ]
+              },
+              "option_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "end"
+                ]
               }
             }
           }
@@ -8886,6 +9425,84 @@
           }
         }
       },
+      "DatabasePageLayout": {
+        "type": "object",
+        "required": [
+          "data_source_id",
+          "revision",
+          "entries"
+        ],
+        "properties": {
+          "data_source_id": {
+            "type": "string"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabasePageLayoutEntry"
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DatabasePageLayoutEntry": {
+        "type": "object",
+        "required": [
+          "property_id",
+          "rank_key",
+          "visibility"
+        ],
+        "properties": {
+          "property_id": {
+            "type": "string"
+          },
+          "rank_key": {
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/DatabasePagePropertyVisibility"
+          }
+        }
+      },
+      "DatabasePageLayoutPlacement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "property_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "before"
+                ]
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "end"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "DatabasePagePosition": {
         "type": "object",
         "required": [
@@ -8921,6 +9538,14 @@
           }
         }
       },
+      "DatabasePagePropertyVisibility": {
+        "type": "string",
+        "enum": [
+          "always_show",
+          "hide_when_empty",
+          "always_hide"
+        ]
+      },
       "DatabasePersonalViewChange": {
         "oneOf": [
           {
@@ -8934,11 +9559,11 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "presentation"
+                  "preferences"
                 ]
               },
               "value": {
-                "$ref": "#/components/schemas/DatabaseViewPersonalPresentation"
+                "$ref": "#/components/schemas/DatabaseViewPersonalPreferences"
               },
               "view_id": {
                 "type": "string"
@@ -8984,7 +9609,7 @@
           "filter_operators": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/DatabasePropertyFilterOperator"
+              "$ref": "#/components/schemas/DatabaseViewFilterOperator"
             }
           },
           "groupable": {
@@ -9003,6 +9628,9 @@
           "name",
           "schema",
           "capabilities",
+          "non_empty_value_count",
+          "referenced_view_ids",
+          "management_policy",
           "option_count",
           "rank_key",
           "lifecycle",
@@ -9023,8 +9651,15 @@
           "lifecycle": {
             "type": "string"
           },
+          "management_policy": {
+            "$ref": "#/components/schemas/DatabasePropertyManagementPolicy"
+          },
           "name": {
             "type": "string"
+          },
+          "non_empty_value_count": {
+            "type": "integer",
+            "format": "int64"
           },
           "option_count": {
             "type": "integer",
@@ -9037,12 +9672,28 @@
           "rank_key": {
             "type": "string"
           },
+          "referenced_view_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "revision": {
             "type": "integer",
             "format": "int64"
           },
           "schema": {
             "$ref": "#/components/schemas/DatabasePropertySchema"
+          },
+          "system_role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DatabasePropertySystemRole"
+              }
+            ]
           },
           "updated_at": {
             "type": "string"
@@ -9058,6 +9709,95 @@
           "not_contains",
           "is_empty",
           "is_not_empty"
+        ]
+      },
+      "DatabasePropertyManagementPolicy": {
+        "type": "object",
+        "required": [
+          "can_rename",
+          "can_reorder",
+          "can_change_type",
+          "can_duplicate",
+          "can_delete",
+          "can_restore",
+          "can_permanently_delete",
+          "can_manage_options",
+          "allowed_types",
+          "blocked_reasons"
+        ],
+        "properties": {
+          "allowed_types": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabasePropertyType"
+            }
+          },
+          "blocked_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "can_change_type": {
+            "type": "boolean"
+          },
+          "can_delete": {
+            "type": "boolean"
+          },
+          "can_duplicate": {
+            "type": "boolean"
+          },
+          "can_manage_options": {
+            "type": "boolean"
+          },
+          "can_permanently_delete": {
+            "type": "boolean"
+          },
+          "can_rename": {
+            "type": "boolean"
+          },
+          "can_reorder": {
+            "type": "boolean"
+          },
+          "can_restore": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DatabasePropertyPlacement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "property_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "before"
+                ]
+              },
+              "property_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "end"
+                ]
+              }
+            }
+          }
         ]
       },
       "DatabasePropertySchema": {
@@ -9082,6 +9822,9 @@
               "kind"
             ],
             "properties": {
+              "format": {
+                "$ref": "#/components/schemas/DatabaseNumberFormat"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -9138,6 +9881,9 @@
               "kind"
             ],
             "properties": {
+              "date_format": {
+                "$ref": "#/components/schemas/DatabaseDateFormat"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -9152,11 +9898,17 @@
               "kind"
             ],
             "properties": {
+              "date_format": {
+                "$ref": "#/components/schemas/DatabaseDateFormat"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
                   "datetime"
                 ]
+              },
+              "time_format": {
+                "$ref": "#/components/schemas/DatabaseTimeFormat"
               }
             }
           },
@@ -9242,6 +9994,26 @@
               }
             }
           }
+        ]
+      },
+      "DatabasePropertySystemRole": {
+        "type": "string",
+        "enum": [
+          "status",
+          "task_parent"
+        ]
+      },
+      "DatabasePropertyType": {
+        "type": "string",
+        "enum": [
+          "text",
+          "number",
+          "checkbox",
+          "select",
+          "multi_select",
+          "date",
+          "datetime",
+          "relation"
         ]
       },
       "DatabasePropertyValueEdit": {
@@ -9791,6 +10563,13 @@
           }
         }
       },
+      "DatabaseTimeFormat": {
+        "type": "string",
+        "enum": [
+          "twelve_hour",
+          "twenty_four_hour"
+        ]
+      },
       "DatabaseTransferTarget": {
         "oneOf": [
           {
@@ -9843,6 +10622,42 @@
                 "type": "string",
                 "enum": [
                   "data_source"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "DatabaseViewAdvancedFilterOverrideInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "none"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "filter",
+              "kind"
+            ],
+            "properties": {
+              "filter": {
+                "$ref": "#/components/schemas/DatabaseViewFilter"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "filter"
                 ]
               }
             }
@@ -9920,6 +10735,45 @@
           }
         }
       },
+      "DatabaseViewConditionalColor": {
+        "type": "string",
+        "enum": [
+          "gray",
+          "brown",
+          "orange",
+          "yellow",
+          "green",
+          "blue",
+          "purple",
+          "pink",
+          "red"
+        ]
+      },
+      "DatabaseViewConditionalColorRule": {
+        "type": "object",
+        "required": [
+          "ruleId",
+          "propertyId",
+          "operator",
+          "color"
+        ],
+        "properties": {
+          "color": {
+            "$ref": "#/components/schemas/DatabaseViewConditionalColor"
+          },
+          "operator": {
+            "$ref": "#/components/schemas/DatabasePropertyFilterOperator"
+          },
+          "propertyId": {
+            "type": "string"
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "value": {}
+        },
+        "additionalProperties": false
+      },
       "DatabaseViewContext": {
         "type": "object",
         "required": [
@@ -9962,15 +10816,15 @@
         "type": "object",
         "description": "Durable View policy. Storage schema markers are an adapter concern and are\nintentionally absent from the domain contract.",
         "required": [
-          "filter",
+          "rules",
           "presentation"
         ],
         "properties": {
-          "filter": {
-            "$ref": "#/components/schemas/DatabaseViewFilter"
-          },
           "presentation": {
             "$ref": "#/components/schemas/DatabaseViewPresentation"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/DatabaseViewRules"
           }
         },
         "additionalProperties": false
@@ -10161,6 +11015,35 @@
           "not_equals",
           "contains",
           "not_contains",
+          "text_is",
+          "text_is_not",
+          "text_contains",
+          "text_does_not_contain",
+          "text_starts_with",
+          "text_ends_with",
+          "number_equals",
+          "number_does_not_equal",
+          "number_greater_than",
+          "number_less_than",
+          "number_greater_than_or_equal_to",
+          "number_less_than_or_equal_to",
+          "checkbox_is",
+          "checkbox_is_not",
+          "select_is",
+          "select_is_not",
+          "multi_select_contains",
+          "multi_select_does_not_contain",
+          "multi_select_contains_all",
+          "date_is",
+          "date_is_not",
+          "date_before",
+          "date_after",
+          "date_on_or_before",
+          "date_on_or_after",
+          "date_within",
+          "date_relative_to",
+          "relation_contains",
+          "relation_does_not_contain",
           "is_empty",
           "is_not_empty"
         ]
@@ -10357,6 +11240,12 @@
               "$ref": "#/components/schemas/DatabaseViewField"
             }
           },
+          "propertyOrder": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "showDescription": {
             "type": "boolean"
           },
@@ -10378,6 +11267,15 @@
               "$ref": "#/components/schemas/DatabaseViewFieldInput"
             }
           },
+          "property_order": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
           "show_description": {
             "type": [
               "boolean",
@@ -10388,54 +11286,6 @@
             "type": [
               "boolean",
               "null"
-            ]
-          }
-        }
-      },
-      "DatabaseViewLayoutInput": {
-        "type": "string",
-        "enum": [
-          "board",
-          "list"
-        ]
-      },
-      "DatabaseViewLayouts": {
-        "type": "object",
-        "required": [
-          "board",
-          "list"
-        ],
-        "properties": {
-          "board": {
-            "$ref": "#/components/schemas/DatabaseViewLayoutDisplay"
-          },
-          "list": {
-            "$ref": "#/components/schemas/DatabaseViewLayoutDisplay"
-          }
-        },
-        "additionalProperties": false
-      },
-      "DatabaseViewLayoutsOverrideInput": {
-        "type": "object",
-        "properties": {
-          "board": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/DatabaseViewLayoutDisplayOverrideInput"
-              }
-            ]
-          },
-          "list": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/DatabaseViewLayoutDisplayOverrideInput"
-              }
             ]
           }
         }
@@ -10454,9 +11304,10 @@
           "last"
         ]
       },
-      "DatabaseViewPersonalPresentation": {
+      "DatabaseViewPersonalPreferences": {
         "type": "object",
         "required": [
+          "rules_override",
           "presentation_override",
           "revision"
         ],
@@ -10467,22 +11318,84 @@
           "revision": {
             "type": "integer",
             "format": "int64",
-            "description": "Zero means that this Profile has never changed this View presentation."
+            "description": "Zero means that this Profile has never changed this View."
+          },
+          "rules_override": {
+            "$ref": "#/components/schemas/DatabaseViewRulesOverrideInput"
+          }
+        }
+      },
+      "DatabaseViewPlacement": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "view_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "before"
+                ]
+              },
+              "view_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "end"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "DatabaseViewPreferencesOverrideInput": {
+        "type": "object",
+        "required": [
+          "rules_override",
+          "presentation_override"
+        ],
+        "properties": {
+          "presentation_override": {
+            "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+          },
+          "rules_override": {
+            "$ref": "#/components/schemas/DatabaseViewRulesOverrideInput"
           }
         }
       },
       "DatabaseViewPresentation": {
         "type": "object",
         "required": [
-          "sort",
           "groupDirection",
           "completion",
           "hierarchy",
-          "layouts"
+          "display"
         ],
         "properties": {
           "completion": {
             "$ref": "#/components/schemas/DatabaseViewCompletion"
+          },
+          "conditionalColors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseViewConditionalColorRule"
+            }
+          },
+          "display": {
+            "$ref": "#/components/schemas/DatabaseViewLayoutDisplay"
           },
           "group": {
             "oneOf": [
@@ -10500,15 +11413,6 @@
           "hierarchy": {
             "$ref": "#/components/schemas/DatabaseViewHierarchy"
           },
-          "layouts": {
-            "$ref": "#/components/schemas/DatabaseViewLayouts"
-          },
-          "sort": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DatabaseViewSort"
-            }
-          },
           "subgroup": {
             "oneOf": [
               {
@@ -10524,7 +11428,7 @@
       },
       "DatabaseViewPresentationOverrideInput": {
         "type": "object",
-        "description": "A bounded Profile-local patch over a durable View presentation. Membership\nfilters and shared manual ranks are intentionally not overridable.",
+        "description": "A bounded Profile-local patch over a durable View definition. Shared manual\nranks remain View-global even when their presentation position is personal.",
         "properties": {
           "completion": {
             "oneOf": [
@@ -10533,6 +11437,16 @@
               },
               {
                 "$ref": "#/components/schemas/DatabaseViewCompletionOverrideInput"
+              }
+            ]
+          },
+          "display": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DatabaseViewLayoutDisplayOverrideInput"
               }
             ]
           },
@@ -10566,35 +11480,6 @@
               }
             ]
           },
-          "layout": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/DatabaseViewLayoutInput"
-              }
-            ]
-          },
-          "layouts": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/DatabaseViewLayoutsOverrideInput"
-              }
-            ]
-          },
-          "sort": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/DatabaseViewSortInput"
-            }
-          },
           "subgroup": {
             "oneOf": [
               {
@@ -10606,6 +11491,22 @@
             ]
           }
         }
+      },
+      "DatabaseViewPropertyFilter": {
+        "type": "object",
+        "required": [
+          "filterId",
+          "clause"
+        ],
+        "properties": {
+          "clause": {
+            "$ref": "#/components/schemas/DatabaseViewFilter"
+          },
+          "filterId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "DatabaseViewReadTarget": {
         "oneOf": [
@@ -10663,7 +11564,7 @@
             "type": "object",
             "required": [
               "view_id",
-              "presentation_override",
+              "preferences_override",
               "kind"
             ],
             "properties": {
@@ -10673,8 +11574,8 @@
                   "presented_view"
                 ]
               },
-              "presentation_override": {
-                "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+              "preferences_override": {
+                "$ref": "#/components/schemas/DatabaseViewPreferencesOverrideInput"
               },
               "view_id": {
                 "type": "string"
@@ -10736,6 +11637,67 @@
           },
           "view_id": {
             "type": "string"
+          }
+        }
+      },
+      "DatabaseViewRules": {
+        "type": "object",
+        "properties": {
+          "advancedFilter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DatabaseViewFilter"
+              }
+            ]
+          },
+          "propertyFilters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseViewPropertyFilter"
+            }
+          },
+          "sorts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseViewSort"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DatabaseViewRulesOverrideInput": {
+        "type": "object",
+        "properties": {
+          "advanced_filter": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DatabaseViewAdvancedFilterOverrideInput"
+              }
+            ]
+          },
+          "property_filters": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DatabaseViewPropertyFilter"
+            }
+          },
+          "sorts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DatabaseViewSortInput"
+            }
           }
         }
       },
@@ -14108,7 +15070,7 @@
             "type": "object",
             "required": [
               "view_id",
-              "presentation_override",
+              "preferences_override",
               "kind"
             ],
             "properties": {
@@ -14130,8 +15092,8 @@
                   "direct"
                 ]
               },
-              "presentation_override": {
-                "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+              "preferences_override": {
+                "$ref": "#/components/schemas/DatabaseViewPreferencesOverrideInput"
               },
               "sorted_property_values": {
                 "type": "array",
@@ -14148,7 +15110,7 @@
             "type": "object",
             "required": [
               "view_id",
-              "presentation_override",
+              "preferences_override",
               "expected_projection",
               "target",
               "kind"
@@ -14163,8 +15125,8 @@
                   "list_occurrence"
                 ]
               },
-              "presentation_override": {
-                "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+              "preferences_override": {
+                "$ref": "#/components/schemas/DatabaseViewPreferencesOverrideInput"
               },
               "target": {
                 "$ref": "#/components/schemas/DatabaseListMoveTarget"
@@ -15817,7 +16779,7 @@
               "database_id",
               "data_source_id",
               "title",
-              "default_layout",
+              "layout",
               "is_default",
               "revision",
               "kind"
@@ -15829,9 +16791,6 @@
               "database_id": {
                 "type": "string"
               },
-              "default_layout": {
-                "type": "string"
-              },
               "is_default": {
                 "type": "boolean"
               },
@@ -15840,6 +16799,9 @@
                 "enum": [
                   "view"
                 ]
+              },
+              "layout": {
+                "type": "string"
               },
               "revision": {
                 "type": "integer",
@@ -16354,6 +17316,7 @@
               "database",
               "data_source",
               "properties",
+              "page_layout",
               "values",
               "kind"
             ],
@@ -16374,6 +17337,9 @@
                   "string",
                   "null"
                 ]
+              },
+              "page_layout": {
+                "$ref": "#/components/schemas/DatabasePageLayout"
               },
               "properties": {
                 "type": "array",
@@ -25260,6 +26226,189 @@
                     "property_id",
                     "expected_data_source_revision",
                     "expected_property_revision",
+                    "placement",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_data_source_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "expected_property_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "move_property"
+                      ]
+                    },
+                    "placement": {
+                      "$ref": "#/components/schemas/DatabasePropertyPlacement"
+                    },
+                    "property_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "property_id",
+                    "expected_data_source_revision",
+                    "expected_property_revision",
+                    "schema",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_data_source_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "expected_property_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "change_property_type"
+                      ]
+                    },
+                    "property_id": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "$ref": "#/components/schemas/DatabasePropertySchema"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "property_id",
+                    "expected_data_source_revision",
+                    "expected_property_revision",
+                    "new_property_id",
+                    "name",
+                    "option_ids",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_data_source_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "expected_property_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "duplicate_property"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "new_property_id": {
+                      "type": "string"
+                    },
+                    "option_ids": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DatabaseDuplicatePropertyOption"
+                      }
+                    },
+                    "property_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "property_id",
+                    "expected_data_source_revision",
+                    "expected_property_revision",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_data_source_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "expected_property_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "restore_property"
+                      ]
+                    },
+                    "property_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "property_id",
+                    "expected_data_source_revision",
+                    "expected_property_revision",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_data_source_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "expected_property_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "permanently_delete_property"
+                      ]
+                    },
+                    "property_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "property_id",
+                    "expected_data_source_revision",
+                    "expected_property_revision",
                     "kind"
                   ],
                   "properties": {
@@ -25333,6 +26482,41 @@
                     "property_id",
                     "option_id",
                     "expected_property_revision",
+                    "placement",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_property_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "move_option"
+                      ]
+                    },
+                    "option_id": {
+                      "type": "string"
+                    },
+                    "placement": {
+                      "$ref": "#/components/schemas/DatabaseOptionPlacement"
+                    },
+                    "property_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "property_id",
+                    "option_id",
+                    "expected_property_revision",
                     "kind"
                   ],
                   "properties": {
@@ -25354,6 +26538,78 @@
                     },
                     "property_id": {
                       "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "property_id",
+                    "option_id",
+                    "expected_property_revision",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_property_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "delete_option_and_clear_values"
+                      ]
+                    },
+                    "option_id": {
+                      "type": "string"
+                    },
+                    "property_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "data_source_id",
+                    "expected_revision",
+                    "property_id",
+                    "visibility",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "expected_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "put_page_layout_entry"
+                      ]
+                    },
+                    "placement": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/DatabasePageLayoutPlacement"
+                        }
+                      ]
+                    },
+                    "property_id": {
+                      "type": "string"
+                    },
+                    "visibility": {
+                      "$ref": "#/components/schemas/DatabasePagePropertyVisibility"
                     }
                   }
                 },
@@ -25457,6 +26713,99 @@
                     },
                     "name": {
                       "type": "string"
+                    },
+                    "view_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "database_id",
+                    "source_view_id",
+                    "expected_revision",
+                    "new_view_id",
+                    "kind"
+                  ],
+                  "properties": {
+                    "database_id": {
+                      "type": "string"
+                    },
+                    "expected_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "duplicate_view"
+                      ]
+                    },
+                    "new_view_id": {
+                      "type": "string"
+                    },
+                    "source_view_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "database_id",
+                    "view_id",
+                    "expected_revision",
+                    "layout",
+                    "kind"
+                  ],
+                  "properties": {
+                    "database_id": {
+                      "type": "string"
+                    },
+                    "expected_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "change_view_layout"
+                      ]
+                    },
+                    "layout": {
+                      "$ref": "#/components/schemas/DatabaseViewLayout"
+                    },
+                    "view_id": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "database_id",
+                    "view_id",
+                    "expected_revision",
+                    "placement",
+                    "kind"
+                  ],
+                  "properties": {
+                    "database_id": {
+                      "type": "string"
+                    },
+                    "expected_revision": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "move_view"
+                      ]
+                    },
+                    "placement": {
+                      "$ref": "#/components/schemas/DatabaseViewPlacement"
                     },
                     "view_id": {
                       "type": "string"
@@ -25595,7 +26944,7 @@
                   "type": "object",
                   "required": [
                     "view_id",
-                    "presentation_override",
+                    "preferences_override",
                     "expected_projection",
                     "initiator_occurrence_key",
                     "selection",
@@ -25615,8 +26964,8 @@
                         "move_list_occurrences"
                       ]
                     },
-                    "presentation_override": {
-                      "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+                    "preferences_override": {
+                      "$ref": "#/components/schemas/DatabaseViewPreferencesOverrideInput"
                     },
                     "selection": {
                       "$ref": "#/components/schemas/DatabaseListMoveSelection"
@@ -25652,6 +27001,7 @@
                   "required": [
                     "view_id",
                     "expected_revision",
+                    "rules_override",
                     "presentation_override",
                     "kind"
                   ],
@@ -25663,11 +27013,14 @@
                     "kind": {
                       "type": "string",
                       "enum": [
-                        "put_view_personal_presentation"
+                        "put_view_personal_preferences"
                       ]
                     },
                     "presentation_override": {
                       "$ref": "#/components/schemas/DatabaseViewPresentationOverrideInput"
+                    },
+                    "rules_override": {
+                      "$ref": "#/components/schemas/DatabaseViewRulesOverrideInput"
                     },
                     "view_id": {
                       "type": "string"
@@ -26215,6 +27568,24 @@
               {
                 "type": "object",
                 "required": [
+                  "data_source_id",
+                  "kind"
+                ],
+                "properties": {
+                  "data_source_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "page_layout"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "database_id",
                   "window",
                   "kind"
@@ -26503,7 +27874,7 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "view_personal_presentation"
+                      "view_personal_preferences"
                     ]
                   },
                   "view_id": {
@@ -34828,6 +36199,24 @@
                       {
                         "type": "object",
                         "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "page_layout"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/DatabasePageLayout"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "views",
                           "kind"
                         ],
@@ -35051,11 +36440,11 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "view_personal_presentation"
+                              "view_personal_preferences"
                             ]
                           },
                           "value": {
-                            "$ref": "#/components/schemas/DatabaseViewPersonalPresentation"
+                            "$ref": "#/components/schemas/DatabaseViewPersonalPreferences"
                           }
                         }
                       },

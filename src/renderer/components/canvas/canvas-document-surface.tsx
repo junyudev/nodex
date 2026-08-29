@@ -268,7 +268,7 @@ function CanvasEditor({
 
   useEffect(() => {
     let active = true;
-    let presentationRevision = 0;
+    let preferencesRevision = 0;
     const fileResolver = new CanvasBinaryFileResolver();
     let binding: CanvasSceneBinding | null = null;
     let presence: CanvasPresenceController | null = null;
@@ -391,13 +391,13 @@ function CanvasEditor({
     });
 
     async function presentScene(materialization: PortableCanvasScene): Promise<void> {
-      const revision = ++presentationRevision;
+      const revision = ++preferencesRevision;
       try {
         const [files, collaboration] = await Promise.all([
           fileResolver.resolve(materialization.files),
           collaborationPromise,
         ]);
-        if (!active || revision !== presentationRevision) return;
+        if (!active || revision !== preferencesRevision) return;
 
         const api = excalidrawApiRef.current;
         if (!api) {
@@ -427,7 +427,7 @@ function CanvasEditor({
         setResolvedScene({ materialization, files });
         setSceneError(null);
       } catch (error) {
-        if (!active || revision !== presentationRevision) return;
+        if (!active || revision !== preferencesRevision) return;
         setSceneError(error instanceof Error ? error.message : String(error));
       }
     }

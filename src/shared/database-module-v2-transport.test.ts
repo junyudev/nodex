@@ -81,9 +81,39 @@ const propertyRecord = () => ({
   name: "Teams",
   schema: { kind: "multi_select" },
   capabilities: {
-    filterOperators: ["contains", "not_contains", "is_empty", "is_not_empty"],
+    filterOperators: [
+      "multi_select_contains",
+      "multi_select_does_not_contain",
+      "multi_select_contains_all",
+      "is_empty",
+      "is_not_empty",
+    ],
     sortable: true,
     groupable: true,
+  },
+  systemRole: null,
+  nonEmptyValueCount: 0,
+  referencedViewIds: [],
+  managementPolicy: {
+    canRename: true,
+    canReorder: true,
+    canChangeType: true,
+    canDuplicate: true,
+    canDelete: true,
+    canRestore: false,
+    canPermanentlyDelete: false,
+    canManageOptions: true,
+    allowedTypes: [
+      "text",
+      "number",
+      "checkbox",
+      "select",
+      "multi_select",
+      "date",
+      "datetime",
+      "relation",
+    ],
+    blockedReasons: [],
   },
   valueType: "multi_select",
   config: {},
@@ -176,6 +206,19 @@ describe("Database Module v2 transport boundary", () => {
         ...propertyRecord(),
         schema: { kind: "text" },
         valueType: "text",
+        capabilities: {
+          ...propertyRecord().capabilities,
+          filterOperators: [
+            "text_is",
+            "text_is_not",
+            "text_contains",
+            "text_does_not_contain",
+            "text_starts_with",
+            "text_ends_with",
+            "is_empty",
+            "is_not_empty",
+          ],
+        },
         optionCount: 1,
       }),
     ).toThrow("optionCount diverges from its Property schema");
@@ -352,10 +395,11 @@ describe("Database Module v2 transport boundary", () => {
         actor: {},
         operations: [
           {
-            kind: "put_view_personal_presentation",
+            kind: "put_view_personal_preferences",
             viewId: "view-1",
             expectedRevision: 4,
-            presentationOverride: { layout: "list" },
+            rulesOverride: {},
+            presentationOverride: {},
           },
           {
             kind: "set_view_occurrence_disclosure",
@@ -370,10 +414,11 @@ describe("Database Module v2 transport boundary", () => {
     );
     expect(bound.operations).toEqual([
       {
-        kind: "put_view_personal_presentation",
+        kind: "put_view_personal_preferences",
         viewId: "view-1",
         expectedRevision: 4,
-        presentationOverride: { layout: "list" },
+        rulesOverride: {},
+        presentationOverride: {},
       },
       {
         kind: "set_view_occurrence_disclosure",
@@ -383,7 +428,7 @@ describe("Database Module v2 transport boundary", () => {
       },
     ]);
 
-    for (const mode of ["view_personal_presentation", "view_collapsed_occurrences"] as const) {
+    for (const mode of ["view_personal_preferences", "view_collapsed_occurrences"] as const) {
       expect(
         bindDatabaseModuleReadV2(
           {
@@ -786,15 +831,15 @@ describe("Database Module v2 transport boundary", () => {
     expect(
       parseDatabaseModuleReadResultV2(
         envelope({
-          kind: "view_personal_presentation",
-          value: { presentationOverride: { layout: "list" }, revision: 5 },
+          kind: "view_personal_preferences",
+          value: { rulesOverride: {}, presentationOverride: {}, revision: 5 },
         }),
       ),
     ).toMatchObject({
       ok: true,
       value: {
         value: {
-          kind: "view_personal_presentation",
+          kind: "view_personal_preferences",
           value: { revision: 5 },
         },
       },

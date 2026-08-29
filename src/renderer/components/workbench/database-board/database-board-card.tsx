@@ -1,4 +1,8 @@
-import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from "react";
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react";
 import { createPortal } from "react-dom";
 
 import { BoardPageKey } from "@/components/board/board-page-key";
@@ -12,9 +16,10 @@ import type {
 import type { DataSourcePagePropertyMenuSource } from "@/components/database/data-source-page-property-menu-source";
 import { PropertyEditorFeedback } from "@/components/database/property-editor-feedback";
 import { readDatabasePropertyOptions } from "@/lib/database-view-authoring";
-import type {
-  DatabaseViewRenderModel,
-  DatabaseViewRenderRow,
+import {
+  databaseViewConditionalColorBackground,
+  type DatabaseViewRenderModel,
+  type DatabaseViewRenderRow,
 } from "@/lib/database-view-render-model";
 import {
   readDataSourceRelationTargetDescriptor,
@@ -314,6 +319,11 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
   const previewShadow = document.documentElement.classList.contains("dark")
     ? "0 4px 12px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1), 0 0 0 1px color-mix(in srgb, var(--column-accent, rgba(255,255,255,0.07)) 20%, transparent)"
     : "0 4px 12px rgba(25,25,25,0.027), 0 1px 2px rgba(25,25,25,0.02), 0 0 0 1px color-mix(in srgb, var(--column-accent, rgba(42,28,0,0.07)) 15%, transparent)";
+  const cardSurfaceStyle = {
+    "--database-board-card-surface": row.conditionalColor
+      ? databaseViewConditionalColorBackground(row.conditionalColor)
+      : "var(--card)",
+  } as CSSProperties;
   const handleCardClick = (event: ReactMouseEvent<HTMLElement>): void => {
     if (event.defaultPrevented) return;
     if (
@@ -374,20 +384,23 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
       onDragStart={!previewRect && draggable ? (event) => onDragStartPage(row, event) : undefined}
       onDragEnd={!previewRect && draggable ? onDragEndPage : undefined}
       className={cn(
-        "bn-drag-exclude group/card relative min-h-10 min-w-0 cursor-pointer overflow-hidden rounded-lg bg-(--card) outline-none select-none",
-        "hover:bg-[color-mix(in_srgb,var(--column-accent,var(--foreground-tertiary))_8%,var(--card))]",
-        !previewRect && selected && "bg-[color-mix(in_srgb,var(--accent-blue)_6%,var(--card))]",
+        "bn-drag-exclude group/card relative min-h-10 min-w-0 cursor-pointer overflow-hidden rounded-lg bg-[var(--database-board-card-surface)] outline-none select-none",
+        "hover:bg-[color-mix(in_srgb,var(--column-accent,var(--foreground-tertiary))_8%,var(--database-board-card-surface))]",
+        !previewRect &&
+          selected &&
+          "bg-[color-mix(in_srgb,var(--accent-blue)_6%,var(--database-board-card-surface))]",
         !previewRect && dragging && "opacity-45",
       )}
       style={
         previewRect
           ? {
+              ...cardSurfaceStyle,
               boxShadow: previewShadow,
               minHeight: previewRect.height,
               pointerEvents: "none",
               width: previewRect.width,
             }
-          : { boxShadow: `${elevationShadow}, ${ringShadow}` }
+          : { ...cardSurfaceStyle, boxShadow: `${elevationShadow}, ${ringShadow}` }
       }
     >
       {!previewRect && presented ? <PagePresenceRail /> : null}

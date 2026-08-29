@@ -30,7 +30,11 @@ import type {
   MovePagesInput,
 } from "./types";
 import { invoke } from "./api";
-import { getBoardProjectStore, type LocalProjectionCursor } from "./board-store";
+import {
+  getBoardProjectStore,
+  type DatabaseViewTransform,
+  type LocalProjectionCursor,
+} from "./board-store";
 import { getDatabaseRowDetail, setDatabaseRowDetail } from "./database-row-detail-store";
 import { deleteBoardPage, moveBoardPage, moveBoardPages } from "./board-page-mutation-command";
 import { isPageMetadataPatch } from "./page-detail-metadata-runtime";
@@ -41,7 +45,8 @@ import {
 import { createBoardPage } from "./board-page-create-command";
 import type {
   DatabaseViewPresentationOverride,
-  EffectiveDatabaseViewPresentation,
+  DatabaseViewRulesOverride,
+  EffectiveDatabaseView,
 } from "../../shared/database-kernel";
 import {
   applyOptimisticDatabaseViewBoardDrop,
@@ -52,12 +57,17 @@ import {
   commitDatabaseViewOperations,
   type DatabaseViewMutationReceipt,
 } from "./database-view-row-mutations";
-import { withEffectiveDatabaseViewPresentation } from "./database-view-render-model";
+import {
+  withEffectiveDatabaseView,
+  withPublishedDatabaseViewDefinition,
+  type DatabaseViewRenderModel,
+  type PublishedDatabaseViewDefinitionPatch,
+} from "./database-view-render-model";
 
 export interface DatabaseViewBoardPageDropIntent {
   readonly pageIds: readonly string[];
   /** The exact personal/durable presentation rendered at drag time. */
-  readonly presentation: EffectiveDatabaseViewPresentation;
+  readonly presentation: EffectiveDatabaseView;
   readonly target: {
     readonly groupKey: string | null;
     readonly subgroupKey: string | null;
@@ -65,6 +75,14 @@ export interface DatabaseViewBoardPageDropIntent {
   };
   /** Property values inferred by the rendered slot at mouse-up. */
   readonly propertyValues: readonly DatabaseViewDropPropertyValue[];
+}
+
+export interface DatabaseViewDefinitionPublicationIntent {
+  readonly kind: "rules" | "presentation";
+  readonly patch: PublishedDatabaseViewDefinitionPatch;
+  readonly commit: (
+    canonicalModel: DatabaseViewRenderModel,
+  ) => Promise<DatabaseViewMutationReceipt>;
 }
 
 interface UseBoardOptions {
@@ -79,10 +97,12 @@ interface UseBoardOptions {
    * passing `null` explicitly restores the durable View presentation.
    */
   presentationOverride?: DatabaseViewPresentationOverride | null;
+  rulesOverride?: DatabaseViewRulesOverride | null;
   presentationOverrideReady?: boolean;
 }
 
 const MAX_CALENDAR_OCCURRENCES = 1_000;
+const DATABASE_VIEW_DEFINITION_PUBLICATION_LANE = "database-view:definition-publication";
 
 type NewPageOccurrenceAction = Omit<PageOccurrenceActionInput, "operationId">;
 type NewPageOccurrenceComplete = Omit<PageOccurrenceCompleteInput, "operationId" | "createdPageId">;
@@ -147,6 +167,7 @@ export function useBoard(options: UseBoardOptions) {
     options,
     "presentationOverride",
   );
+  const ownsRulesOverride = Object.prototype.hasOwnProperty.call(options, "rulesOverride");
   const {
     projectId,
     databaseViewId,
@@ -154,6 +175,7 @@ export function useBoard(options: UseBoardOptions) {
     onMutation,
     enabled = true,
     presentationOverride,
+    rulesOverride,
     presentationOverrideReady = true,
   } = options;
   const store = useMemo(
@@ -163,6 +185,12 @@ export function useBoard(options: UseBoardOptions) {
   const setPresentationOverride = useCallback(
     (next: DatabaseViewPresentationOverride | null) => {
       store.setPresentationOverride(next && Object.keys(next).length > 0 ? next : null);
+    },
+    [store],
+  );
+  const setRulesOverride = useCallback(
+    (next: DatabaseViewRulesOverride | null) => {
+      store.setRulesOverride(next && Object.keys(next).length > 0 ? next : null);
     },
     [store],
   );
@@ -176,6 +204,11 @@ export function useBoard(options: UseBoardOptions) {
     presentationOverrideReady,
     setPresentationOverride,
   ]);
+
+  useEffect(() => {
+    if (!ownsRulesOverride || !presentationOverrideReady) return;
+    setRulesOverride(rulesOverride ?? null);
+  }, [ownsRulesOverride, presentationOverrideReady, rulesOverride, setRulesOverride]);
 
   const subscribe = useCallback(
     (listener: () => void) => (enabled ? store.subscribe(listener) : () => undefined),
@@ -205,6 +238,37 @@ export function useBoard(options: UseBoardOptions) {
     if (!databaseViewId) return true;
     return store.getSnapshot().databaseView?.readOnlyReason === null;
   }, [databaseViewId, store]);
+
+  const publishDatabaseViewDefinition = useCallback(
+    async (
+      input: DatabaseViewDefinitionPublicationIntent,
+    ): Promise<DatabaseViewMutationReceipt> => {
+      if (!databaseViewId) throw new Error("A durable Database View is required for publication");
+      const visibleModel = store.getSnapshot().databaseView;
+      if (!visibleModel) throw new Error("The Database View is not loaded");
+      if (visibleModel.readOnlyReason) throw new Error(visibleModel.readOnlyReason);
+
+      const apply: DatabaseViewTransform = (model) =>
+        withPublishedDatabaseViewDefinition(model, input.patch);
+      const outcome = await store.runOptimisticDatabaseViewMutation({
+        kind: `database:view:${input.kind}:publish`,
+        conflictKeys: [`database-view:definition:${input.kind}`],
+        remoteLane: DATABASE_VIEW_DEFINITION_PUBLICATION_LANE,
+        apply,
+        runRemote: input.commit,
+        getCommitCursor: (receipt) => ({
+          storeEpoch: receipt.storeEpoch,
+          commitSeq: receipt.commitSeq,
+        }),
+      });
+      if (!outcome.ok) {
+        throw outcome.error ?? new Error("The Database View settings could not be published");
+      }
+      if (!outcome.result) throw new Error("The Database View publication returned no receipt");
+      return outcome.result;
+    },
+    [databaseViewId, store],
+  );
 
   const createPage = useCallback(
     async (
@@ -396,10 +460,7 @@ export function useBoard(options: UseBoardOptions) {
       if (!requireWritableSelectedView()) return false;
       const visibleAuthority = store.getSnapshot().databaseView;
       if (!visibleAuthority) return false;
-      const visibleModel = withEffectiveDatabaseViewPresentation(
-        visibleAuthority,
-        input.presentation,
-      );
+      const visibleModel = withEffectiveDatabaseView(visibleAuthority, input.presentation);
       const initialOperations = buildDatabaseViewBoardDropOperations({
         model: visibleModel,
         pageIds: input.pageIds,
@@ -416,7 +477,7 @@ export function useBoard(options: UseBoardOptions) {
         conflictKeys: input.pageIds.map((pageId) => `card:${pageId}:position`),
         remoteLane: BOARD_PLACEMENT_REMOTE_LANE,
         apply: (canonicalModel) => {
-          const model = withEffectiveDatabaseViewPresentation(canonicalModel, input.presentation);
+          const model = withEffectiveDatabaseView(canonicalModel, input.presentation);
           const projected = applyOptimisticDatabaseViewBoardDrop(model, {
             pageIds: input.pageIds,
             target: input.target,
@@ -429,10 +490,7 @@ export function useBoard(options: UseBoardOptions) {
           return projected === model ? canonicalModel : projected;
         },
         runRemote: async (canonicalAuthority) => {
-          const canonicalModel = withEffectiveDatabaseViewPresentation(
-            canonicalAuthority,
-            input.presentation,
-          );
+          const canonicalModel = withEffectiveDatabaseView(canonicalAuthority, input.presentation);
           const operations = buildDatabaseViewBoardDropOperations({
             model: canonicalModel,
             pageIds: input.pageIds,
@@ -638,6 +696,8 @@ export function useBoard(options: UseBoardOptions) {
     groupPagination: snapshot.groupPagination,
     totalRows: snapshot.totalRows,
     setPresentationOverride,
+    setRulesOverride,
+    publishDatabaseViewDefinition,
     clearLastMutationError,
     refresh: fetchBoard,
     loadMore,

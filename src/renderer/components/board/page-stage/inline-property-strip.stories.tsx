@@ -58,6 +58,7 @@ function InlinePropertyStripStory() {
         ["priority", "status", "estimate", "due_date"].includes(item.property.propertyId),
       ),
       sectionProperties: pageStageSectionProperties(properties, semantic),
+      hiddenLayoutProperties: [],
       semanticValues: pageStageSemanticValues(semantic),
       hasScheduleCapability: hasPageStageScheduleCapability(semantic),
       options: OPTIONS,

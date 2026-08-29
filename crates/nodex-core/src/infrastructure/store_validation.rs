@@ -16,6 +16,13 @@ use super::sqlite::{StoreError, StoreErrorCode, validate_store};
 
 const CORE_SCHEMA_OWNER: &str = "rust_core";
 
+#[derive(Clone, Copy)]
+pub(crate) enum DatabaseViewStorageContract {
+    V4,
+    V5,
+    V6,
+}
+
 /// Validates the complete current Store contract through one deep interface.
 pub(crate) fn validate_current_store(connection: &Connection) -> Result<(), StoreError> {
     let started_at = Instant::now();
@@ -274,9 +281,24 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
     )
 }
 
-/// Validates revision-independent semantic authority shared by the current
-/// Store and an exact migration source.
+/// Validates semantic authority encoded by the current Store contract.
 pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), StoreError> {
+    validate_store_semantics_for_view_contract(connection, DatabaseViewStorageContract::V6)
+}
+
+/// Validates semantic authority while decoding versioned storage envelopes
+/// with the exact contract owned by the migration source revision.
+pub(crate) fn validate_migration_source_semantics(
+    connection: &Connection,
+    view_contract: DatabaseViewStorageContract,
+) -> Result<(), StoreError> {
+    validate_store_semantics_for_view_contract(connection, view_contract)
+}
+
+fn validate_store_semantics_for_view_contract(
+    connection: &Connection,
+    view_contract: DatabaseViewStorageContract,
+) -> Result<(), StoreError> {
     let started_at = Instant::now();
     validate_codex_thread_timestamp_invariants(connection)?;
     let canonical_timestamp_started_at = Instant::now();
@@ -291,7 +313,7 @@ pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), St
     validate_thread_recency(connection)?;
     validate_page_key_invariants(connection)?;
     validate_database_relation_invariants(connection)?;
-    validate_database_priority_invariants(connection)?;
+    validate_database_priority_invariants_for_view_contract(connection, view_contract)?;
     validate_library_content_ownership(connection)?;
     validate_canvas_resource_grants(connection)?;
     validate_document_block_tombstones(connection)?;
@@ -422,6 +444,16 @@ pub(crate) fn validate_codex_thread_timestamp_invariants(
 pub(crate) fn validate_database_priority_invariants(
     connection: &Connection,
 ) -> Result<(), StoreError> {
+    validate_database_priority_invariants_for_view_contract(
+        connection,
+        DatabaseViewStorageContract::V6,
+    )
+}
+
+fn validate_database_priority_invariants_for_view_contract(
+    connection: &Connection,
+    view_contract: DatabaseViewStorageContract,
+) -> Result<(), StoreError> {
     let properties = connection
         .prepare(
             "SELECT data_source_id, value_type, config_json \
@@ -523,11 +555,20 @@ pub(crate) fn validate_database_priority_invariants(
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (view_id, raw) in views {
-        let definition = crate::database::view_contract::decode_definition_json(&raw)
-            .map_err(|_| corrupt(format!("Database View {view_id} config is invalid")))?;
-        validate_priority_filter(&view_id, &definition.filter)?;
-        let groups_by_priority = definition
-            .presentation
+        let projection = match view_contract {
+            DatabaseViewStorageContract::V4 => {
+                crate::database::view_contract::decode_legacy_definition_validation_json(&raw)
+            }
+            DatabaseViewStorageContract::V5 => {
+                crate::database::view_contract::decode_v5_definition_validation_json(&raw)
+            }
+            DatabaseViewStorageContract::V6 => {
+                crate::database::view_contract::decode_definition_validation_json(&raw)
+            }
+        }
+        .map_err(|_| corrupt(format!("Database View {view_id} config is invalid")))?;
+        validate_priority_filter(&view_id, &projection.filter)?;
+        let groups_by_priority = projection
             .group
             .as_ref()
             .is_some_and(|group| group.property_id == "priority");
@@ -588,6 +629,7 @@ fn validate_priority_filter(view_id: &str, filter: &DatabaseViewFilter) -> Resul
             )
             && !value
                 .as_ref()
+                .and_then(Option::as_ref)
                 .and_then(Value::as_str)
                 .is_some_and(is_priority_option_id) =>
         {

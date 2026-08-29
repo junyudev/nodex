@@ -1,4 +1,4 @@
-import type { DatabaseViewPresentationOverride, DatabaseViewLayout } from "./database-kernel";
+import type { DatabaseViewPreferencesOverride, DatabaseViewLayout } from "./database-kernel";
 import type { DatabaseViewQueryResultV2, DataSourcePageRowV2 } from "./database-module-v2";
 import type { BoardSummary, DatabasePageSummary } from "./types";
 import type { ContentAccessContext } from "./content-access-context";
@@ -29,7 +29,7 @@ export interface DatabaseViewDefinition<ProjectScope extends string | null = str
    */
   readonly projectId: ProjectScope;
   readonly name: string;
-  readonly defaultLayout: DatabaseViewLayout;
+  readonly layout: DatabaseViewLayout;
   readonly config: Readonly<Record<string, DatabaseViewJsonValue>>;
   readonly isPrimary: boolean;
   readonly createdAt: string;
@@ -69,8 +69,8 @@ export interface DatabaseViewWindowInput {
   readonly after?: string;
   readonly first?: number;
   readonly groupScope?: DatabaseViewGroupScopeInput;
-  /** Profile-local presentation patch, valid only with an explicit View. */
-  readonly presentationOverride?: DatabaseViewPresentationOverride | null;
+  /** Profile-local query and presentation patch, valid only with an explicit View. */
+  readonly preferencesOverride?: DatabaseViewPreferencesOverride | null;
   /** Do not return a projection snapshot older than this local commit. */
   readonly minimumCommitSeq?: number;
   /**
@@ -143,8 +143,8 @@ export type LibraryDatabaseListWindowSnapshot = DatabaseListWindowSnapshot<null>
 export interface DatabaseViewGroupsInput {
   readonly databaseViewId?: string;
   readonly databaseId?: string;
-  /** Profile-local presentation patch, valid only with an explicit View. */
-  readonly presentationOverride?: DatabaseViewPresentationOverride | null;
+  /** Profile-local query and presentation patch, valid only with an explicit View. */
+  readonly preferencesOverride?: DatabaseViewPreferencesOverride | null;
   /** Do not return a projection snapshot older than this local commit. */
   readonly minimumCommitSeq?: number;
   readonly minimumCommitCursor?: ProjectionCursor;

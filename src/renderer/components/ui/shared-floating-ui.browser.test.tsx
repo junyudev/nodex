@@ -19,8 +19,8 @@ const settleFloatingSurface = async (): Promise<void> => {
   await Promise.resolve();
 };
 
-function ProbeIcon({ testId }: { testId: string }) {
-  return <Circle data-testid={testId} className="size-3 fill-current" aria-hidden="true" />;
+function ProbeIcon({ testId, className = "size-3" }: { testId: string; className?: string }) {
+  return <Circle data-testid={testId} className={`${className} fill-current`} aria-hidden="true" />;
 }
 
 function DialogPopoverEscapeProbe() {
@@ -128,16 +128,22 @@ describe("shared floating UI in Chromium", () => {
           ]}
           triggerButton={
             <NodexDropdownButtonTrigger size="xs" shape="pill" showChevron={false}>
-              <ProbeIcon testId="dropdown-chip-status-icon" />
+              <ProbeIcon testId="dropdown-chip-status-icon" className="size-4" />
               Triage
             </NodexDropdownButtonTrigger>
           }
         />
+        <NodexDropdownButtonTrigger size="rule" aria-label="Rule selector">
+          Rule
+        </NodexDropdownButtonTrigger>
       </div>,
     );
 
     expect(view.getByTestId("property-chip-status-icon").getBoundingClientRect().width).toBe(16);
     expect(view.getByTestId("dropdown-chip-status-icon").getBoundingClientRect().width).toBe(16);
+    const ruleChevron = view.getByRole("button", { name: "Rule selector" }).querySelector("svg");
+    if (!ruleChevron) throw new Error("Expected a rule selector chevron.");
+    expect(ruleChevron.getBoundingClientRect().width).toBe(14);
     const dropdownTrigger = view.getByTestId("dropdown-chip-status-icon").closest("button");
     if (!dropdownTrigger) throw new Error("Expected a compact dropdown trigger.");
 

@@ -1340,7 +1340,7 @@ function installStoryApi(readSessionsByProject: () => Record<string, ProjectSess
                 databaseBlockId: databaseId,
                 projectId,
                 name: "Tasks",
-                defaultLayout: "board",
+                layout: "board",
                 config: {},
                 isPrimary: true,
                 createdAt: CREATED_AT,
@@ -1375,7 +1375,7 @@ function installStoryApi(readSessionsByProject: () => Record<string, ProjectSess
                   databaseId,
                   dataSourceId,
                   name: "Tasks",
-                  defaultLayout: "board",
+                  layout: "board",
                   config: {
                     schemaKey: "nodex.database-view",
                     schemaVersion: 2,

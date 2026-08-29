@@ -1,14 +1,18 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { DatabaseViewConfigV2, DatabaseViewPresentationConfig } from "./database-kernel";
+import type {
+  DatabaseViewConfigV2,
+  DatabaseViewPresentationConfig,
+  DatabaseViewRules,
+} from "./database-kernel";
 import {
   DatabaseMutationContractError,
-  parseDatabaseViewConfigV4,
+  parseDatabaseViewConfigV6,
   parseDatabaseViewPresentationOverride,
 } from "./database-kernel";
 import {
   compactDatabaseViewPresentationOverride,
-  databaseViewGesturePresentationOverride,
   databaseViewFractionalOrderDirection,
+  databaseViewGesturePresentationOverride,
   databaseViewPrimaryManualOrderDirection,
   resolveEffectiveDatabaseView,
   upgradeDatabaseViewConfigV2,
@@ -26,64 +30,63 @@ const capabilities: DatabaseViewCapabilities = {
 };
 
 const presentation: DatabaseViewPresentationConfig = {
-  sort: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
+  conditionalColors: [],
   group: { propertyId: "status" },
   subgroup: null,
   groupDirection: "asc",
   completion: { range: "all", orderByRecency: false },
   hierarchy: { showSubPages: true, nestedSubPages: false },
-  layouts: {
-    board: {
-      fields: [{ kind: "property", propertyId: "priority" }],
-      showEmptyGroups: false,
-    },
-    list: {
-      fields: [
-        { kind: "property", propertyId: "priority" },
-        { kind: "intrinsic", field: "updated_at" },
-      ],
-      showEmptyGroups: false,
-    },
+  display: {
+    fields: [
+      { kind: "property", propertyId: "priority" },
+      { kind: "intrinsic", field: "updated_at" },
+    ],
+    propertyOrder: ["priority"],
+    showEmptyGroups: false,
+    showDescription: true,
   },
 };
 
-describe("Database View presentation", () => {
-  test("freezes the complete effective presentation that authored a gesture", () => {
-    const effective = {
-      layout: "board" as const,
-      presentation: {
-        ...presentation,
-        sort: [
-          {
-            field: { kind: "property" as const, propertyId: "priority" },
-            direction: "desc" as const,
-            nulls: "last" as const,
-          },
-        ],
-        group: { propertyId: "priority" },
-        layouts: {
-          board: {
-            ...presentation.layouts.board,
-            showDescription: false,
-          },
-          list: {
-            ...presentation.layouts.list,
-            showDescription: true,
-          },
-        },
-      },
-    };
+const rules: DatabaseViewRules = {
+  propertyFilters: [],
+  advancedFilter: null,
+  sorts: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
+};
 
-    expect(databaseViewGesturePresentationOverride(effective, "list")).toEqual({
-      layout: "list",
-      sort: effective.presentation.sort,
-      group: effective.presentation.group,
+describe("Database View presentation", () => {
+  test("freezes a gesture without creating a second layout identity", () => {
+    const effective = resolveEffectiveDatabaseView(
+      "board",
+      presentation,
+      { group: { propertyId: "priority" }, display: { showDescription: false } },
+      capabilities,
+    );
+
+    expect(databaseViewGesturePresentationOverride(effective)).toEqual({
+      group: { propertyId: "priority" },
       subgroup: null,
       groupDirection: "asc",
       completion: { range: "all", orderByRecency: false },
       hierarchy: { showSubPages: true, nestedSubPages: false },
-      layouts: effective.presentation.layouts,
+      display: effective.presentation.display,
     });
+  });
+
+  test("keeps the durable layout authoritative over personal presentation", () => {
+    const effective = resolveEffectiveDatabaseView(
+      "board",
+      presentation,
+      { display: { fields: [{ kind: "property", propertyId: "estimate" }] } },
+      capabilities,
+    );
+
+    expect(effective.layout).toBe("board");
+    expect(effective.presentation.display.fields).toEqual([
+      { kind: "property", propertyId: "estimate" },
+    ]);
+    expect(() => parseDatabaseViewPresentationOverride({ layout: "list" })).toThrow(
+      DatabaseMutationContractError,
+    );
   });
 
   test("resolves primary manual order independently from fractional tie-breaking", () => {
@@ -95,113 +98,93 @@ describe("Database View presentation", () => {
       },
     ];
     expect(databaseViewPrimaryManualOrderDirection([])).toBe("asc");
-    expect(databaseViewPrimaryManualOrderDirection(presentation.sort)).toBe("asc");
+    expect(databaseViewPrimaryManualOrderDirection(rules.sorts)).toBe("asc");
     expect(databaseViewPrimaryManualOrderDirection(propertySort)).toBeNull();
-    expect(databaseViewFractionalOrderDirection([])).toBe("asc");
     expect(databaseViewFractionalOrderDirection(propertySort)).toBe("asc");
     expect(
       databaseViewFractionalOrderDirection([
         propertySort[0]!,
-        {
-          field: { kind: "manual" },
-          direction: "desc",
-          nulls: "last",
-        },
+        { field: { kind: "manual" }, direction: "desc", nulls: "last" },
       ]),
     ).toBe("desc");
-    expect(
-      databaseViewFractionalOrderDirection([
-        {
-          field: { kind: "title" },
-          direction: "asc",
-          nulls: "last",
-        },
-      ]),
-    ).toBeNull();
   });
 
-  test("rejects the canonical UUID as a presentation field", () => {
-    expect(() =>
-      parseDatabaseViewConfigV4({
+  test("parses only the canonical v6 rules and presentation shape", () => {
+    expect(
+      parseDatabaseViewConfigV6({
         schemaKey: "nodex.database-view",
-        schemaVersion: 4,
-        filter: { kind: "group", operator: "and", children: [] },
+        schemaVersion: 6,
+        rules,
+        presentation,
+      }),
+    ).toEqual({
+      schemaKey: "nodex.database-view",
+      schemaVersion: 6,
+      rules,
+      presentation,
+    });
+    expect(() =>
+      parseDatabaseViewConfigV6({
+        schemaKey: "nodex.database-view",
+        schemaVersion: 6,
+        rules,
         presentation: {
           ...presentation,
-          layouts: {
-            ...presentation.layouts,
-            list: {
-              ...presentation.layouts.list,
-              fields: [
-                { kind: "intrinsic", field: "page_id" },
-                ...presentation.layouts.list.fields,
-              ],
-            },
+          display: {
+            ...presentation.display,
+            fields: [{ kind: "intrinsic", field: "page_id" }],
           },
         },
       }),
     ).toThrow(DatabaseMutationContractError);
-  });
-
-  test("parses sparse Profile overrides without accepting query fields", () => {
-    expect(
-      parseDatabaseViewPresentationOverride({
-        layout: "list",
-        group: null,
-        groupDirection: "desc",
-        completion: { range: "past_week" },
-        layouts: {
-          list: {
-            fields: [{ kind: "property", propertyId: "priority" }],
-          },
-        },
-      }),
-    ).toEqual({
-      layout: "list",
-      group: null,
-      groupDirection: "desc",
-      completion: { range: "past_week" },
-      layouts: {
-        list: {
-          fields: [{ kind: "property", propertyId: "priority" }],
-        },
-      },
-    });
     expect(() =>
-      parseDatabaseViewPresentationOverride({
-        filter: { kind: "group", operator: "and", children: [] },
-      }),
-    ).toThrow(DatabaseMutationContractError);
-  });
-
-  test("defaults legacy description visibility and accepts a personal hide override", () => {
-    const parsed = parseDatabaseViewConfigV4({
-      schemaKey: "nodex.database-view",
-      schemaVersion: 4,
-      filter: { kind: "group", operator: "and", children: [] },
-      presentation: {
-        ...presentation,
-        layouts: {
-          board: {
-            fields: presentation.layouts.board.fields,
-            showEmptyGroups: false,
-          },
-          list: presentation.layouts.list,
+      parseDatabaseViewConfigV6({
+        schemaKey: "nodex.database-view",
+        schemaVersion: 6,
+        rules: {
+          propertyFilters: [
+            {
+              filterId: "filter-tags",
+              clause: {
+                kind: "clause",
+                propertyId: "tags",
+                operator: "multi_select_contains",
+                value: "legacy-scalar",
+              },
+            },
+          ],
+          advancedFilter: null,
+          sorts: [],
         },
-      },
-    });
-
-    expect(parsed.presentation.layouts.board.showDescription).toBe(true);
-    expect(
-      parseDatabaseViewPresentationOverride({
-        layouts: { board: { showDescription: false } },
+        presentation,
       }),
-    ).toEqual({
-      layouts: { board: { showDescription: false } },
-    });
+    ).toThrow("non-empty identity list");
+    expect(() =>
+      parseDatabaseViewConfigV6({
+        schemaKey: "nodex.database-view",
+        schemaVersion: 6,
+        rules: {
+          propertyFilters: [],
+          advancedFilter: {
+            kind: "group",
+            operator: "and",
+            children: [
+              {
+                kind: "clause",
+                propertyId: "due",
+                operator: "date_relative_to",
+                value: { direction: "past", count: 0, unit: "week" },
+              },
+            ],
+          },
+          sorts: [],
+        },
+        presentation,
+      }),
+    ).toThrow("count must be an integer");
   });
 
-  test("upgrades v2 without preserving title visibility as a presentation option", () => {
+  test("upgrades v2 to one canonical display", () => {
     const config: DatabaseViewConfigV2 = {
       schemaKey: "nodex.database-view",
       schemaVersion: 2,
@@ -211,133 +194,114 @@ describe("Database View presentation", () => {
       display: { propertyIds: ["priority", "estimate"], showTitle: false },
     };
 
-    expect(upgradeDatabaseViewConfigV2(config)).toEqual({
-      schemaKey: "nodex.database-view",
-      schemaVersion: 4,
-      filter: config.filter,
-      presentation: {
-        sort: config.sort,
-        group: config.group,
-        subgroup: null,
-        groupDirection: "asc",
-        completion: { range: "all", orderByRecency: false },
-        hierarchy: { showSubPages: true, nestedSubPages: false },
-        layouts: {
-          board: {
-            fields: [
-              { kind: "property", propertyId: "priority" },
-              { kind: "property", propertyId: "estimate" },
-            ],
-            showEmptyGroups: false,
-            showDescription: true,
-          },
-          list: {
-            fields: [
-              { kind: "property", propertyId: "priority" },
-              { kind: "property", propertyId: "estimate" },
-            ],
-            showEmptyGroups: false,
-            showDescription: true,
-          },
-        },
-      },
+    expect(upgradeDatabaseViewConfigV2(config).presentation.display).toEqual({
+      fields: [
+        { kind: "property", propertyId: "priority" },
+        { kind: "property", propertyId: "estimate" },
+      ],
+      propertyOrder: ["priority", "estimate"],
+      showEmptyGroups: false,
+      showDescription: true,
     });
   });
 
   test("normalizes stale properties and capability-dependent controls", () => {
     const effective = resolveEffectiveDatabaseView(
-      "board",
+      "list",
       presentation,
       {
-        layout: "list",
-        sort: [
-          { field: { kind: "property", propertyId: "notes" }, direction: "asc", nulls: "last" },
-          { field: { kind: "property", propertyId: "priority" }, direction: "desc", nulls: "last" },
-          { field: { kind: "property", propertyId: "priority" }, direction: "asc", nulls: "first" },
-        ],
         group: { propertyId: "priority" },
         subgroup: { propertyId: "priority" },
         completion: { range: "past_week", orderByRecency: true },
-        layouts: {
-          list: {
-            fields: [
-              { kind: "property", propertyId: "missing" },
-              { kind: "property", propertyId: "estimate" },
-              { kind: "property", propertyId: "estimate" },
-            ],
-            showEmptyGroups: true,
-          },
+        display: {
+          fields: [
+            { kind: "property", propertyId: "missing" },
+            { kind: "property", propertyId: "estimate" },
+            { kind: "property", propertyId: "estimate" },
+          ],
+          propertyOrder: ["missing", "estimate", "priority", "estimate"],
+          showEmptyGroups: true,
         },
       },
       capabilities,
+      rules,
+      {
+        sorts: [
+          { field: { kind: "property", propertyId: "notes" }, direction: "asc", nulls: "last" },
+          {
+            field: { kind: "property", propertyId: "priority" },
+            direction: "desc",
+            nulls: "last",
+          },
+        ],
+      },
     );
 
     expect(effective).toMatchObject({
       layout: "list",
-      presentation: {
-        sort: [
-          { field: { kind: "property", propertyId: "priority" }, direction: "desc", nulls: "last" },
+      rules: {
+        sorts: [
+          {
+            field: { kind: "property", propertyId: "priority" },
+            direction: "desc",
+            nulls: "last",
+          },
         ],
+      },
+      presentation: {
         group: { propertyId: "priority" },
         subgroup: null,
-        completion: { range: "past_week", orderByRecency: true },
-        layouts: {
-          list: {
-            fields: [{ kind: "property", propertyId: "estimate" }],
-            showEmptyGroups: true,
-          },
+        display: {
+          fields: [{ kind: "property", propertyId: "estimate" }],
+          propertyOrder: ["estimate", "priority", "status", "notes"],
+          showEmptyGroups: true,
         },
       },
     });
   });
 
-  test("hides completion and empty-group semantics without real capabilities", () => {
-    const effective = resolveEffectiveDatabaseView(
-      "list",
+  test("keeps a complete View-owned order for shown and hidden Properties", () => {
+    const durable = resolveEffectiveDatabaseView("board", presentation, undefined, capabilities);
+    const desired = resolveEffectiveDatabaseView(
+      "board",
       presentation,
-      {
-        completion: { range: "past_day", orderByRecency: true },
-        group: { propertyId: "estimate" },
-        layouts: { list: { showEmptyGroups: true } },
-      },
-      { properties: capabilities.properties },
+      { display: { propertyOrder: ["notes", "estimate", "priority", "status"] } },
+      capabilities,
     );
 
-    expect(effective.presentation.group).toBeNull();
-    expect(effective.presentation.completion).toEqual({
-      range: "all",
-      orderByRecency: false,
+    expect(desired.presentation.display.propertyOrder).toEqual([
+      "notes",
+      "estimate",
+      "priority",
+      "status",
+    ]);
+    expect(compactDatabaseViewPresentationOverride(durable, desired)).toEqual({
+      display: { propertyOrder: ["notes", "estimate", "priority", "status"] },
     });
-    expect(effective.presentation.layouts.list.showEmptyGroups).toBe(false);
   });
 
-  test("compacts overrides and round-trips through the effective resolver", () => {
+  test("compacts and round-trips a personal presentation delta", () => {
     const durable = resolveEffectiveDatabaseView("board", presentation, undefined, capabilities);
     const desired = resolveEffectiveDatabaseView(
       "board",
       presentation,
       {
-        layout: "list",
         group: { propertyId: "priority" },
         groupDirection: "desc",
         completion: { range: "past_month" },
-        layouts: {
-          list: {
-            fields: [{ kind: "property", propertyId: "estimate" }],
-          },
-        },
+        display: { fields: [{ kind: "property", propertyId: "estimate" }] },
       },
       capabilities,
     );
     const compact = compactDatabaseViewPresentationOverride(durable, desired);
 
     expect(compact).toEqual({
-      layout: "list",
       group: { propertyId: "priority" },
       groupDirection: "desc",
       completion: { range: "past_month" },
-      layouts: {
-        list: { fields: [{ kind: "property", propertyId: "estimate" }] },
+      display: {
+        fields: [{ kind: "property", propertyId: "estimate" }],
+        propertyOrder: ["priority", "estimate", "status", "notes"],
       },
     });
     expect(

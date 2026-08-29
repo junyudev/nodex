@@ -1,4 +1,5 @@
 import type { LibraryPageDetail, PageDetail } from "../../shared/page-detail";
+import type { DatabasePageLayoutV2 } from "../../shared/database-module-v2";
 import type { PageRunInTarget, RecurrenceConfig, ReminderConfig } from "../../shared/types";
 import type { PortableRichText } from "../../shared/block-documents/portable-rich-text";
 import {
@@ -41,6 +42,7 @@ export type PageStageDatabaseContext =
       };
       readonly properties: readonly PageStageDataSourceProperty[];
       readonly semanticProperties: PageStageSemanticProperties;
+      readonly pageLayout: DatabasePageLayoutV2;
     };
 
 export interface PageStagePageModel {
@@ -187,6 +189,7 @@ export const projectPageDetailToStageModel = (
       },
       properties,
       semanticProperties: readPageStageSemanticProperties(properties),
+      pageLayout: detail.dataSourceContext.pageLayout,
     },
   };
 };

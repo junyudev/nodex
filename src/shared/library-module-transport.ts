@@ -1816,7 +1816,7 @@ const parseNavigationNode = (value: unknown, label: string): LibraryNavigationNo
       "databaseId",
       "dataSourceId",
       "title",
-      "defaultLayout",
+      "layout",
       "isDefault",
       "revision",
     ]);
@@ -1826,7 +1826,7 @@ const parseNavigationNode = (value: unknown, label: string): LibraryNavigationNo
       databaseId: parseDatabaseId(node.databaseId),
       dataSourceId: parseDataSourceId(node.dataSourceId),
       title: string(node.title, `${label}.title`, 256),
-      defaultLayout: parseViewLayout(node.defaultLayout, `${label}.defaultLayout`),
+      layout: parseViewLayout(node.layout, `${label}.layout`),
       isDefault: boolean(node.isDefault, `${label}.isDefault`),
       revision: revision(node.revision, `${label}.revision`),
     };

@@ -12,7 +12,10 @@ import {
 } from "../../shared/database-identities";
 import { testPropertySemantics } from "../../shared/testing/database-property-record";
 import { upgradeDatabaseViewConfigV2 } from "../../shared/database-view-presentation";
-import { buildDatabaseViewRenderModel } from "./database-view-render-model";
+import {
+  buildDatabaseViewRenderModel,
+  withPublishedDatabaseViewDefinition,
+} from "./database-view-render-model";
 
 const timestamp = "2026-07-12T00:00:00.000Z";
 const projectId = "project-alpha";
@@ -60,7 +63,7 @@ const makeSnapshot = (
     databaseId,
     dataSourceId,
     name: input.primary === false ? "Focused work" : "Primary board",
-    defaultLayout: "board" as const,
+    layout: "board" as const,
     config: upgradeDatabaseViewConfigV2({
       schemaKey: "nodex.database-view" as const,
       schemaVersion: 2 as const,
@@ -282,7 +285,19 @@ describe("Database View render model", () => {
         value: { ...query, view: filteredView },
       },
     });
-    expect(model.query.view.config.filter).toEqual(filteredView.config.filter);
+    expect(model.query.view.config.rules).toEqual(filteredView.config.rules);
+  });
+
+  test("hands published rules to durable metadata without replacing the visible projection", () => {
+    const model = buildDatabaseViewRenderModel(makeSnapshot());
+    const rules = { ...model.query.view.config.rules, sorts: [] };
+
+    const published = withPublishedDatabaseViewDefinition(model, { rules });
+
+    expect(published.query.view.config.rules).toBe(rules);
+    expect(published.query.rows).toBe(model.query.rows);
+    expect(published.columns).toBe(model.columns);
+    expect(withPublishedDatabaseViewDefinition(published, { rules })).toBe(published);
   });
 
   test("rejects resources from a different Library", () => {

@@ -1,6 +1,7 @@
 import type { ScenarioDomainRecipe } from "./contracts";
 import { boardDenseScenario } from "./scenarios/board-dense";
 import { databaseContextMenuPerformanceScenario } from "./scenarios/database-context-menu-performance";
+import { databaseSettingsConfigurationScenario } from "./scenarios/database-settings-configuration";
 import { nfmCodeBlockActionsScenario } from "./scenarios/nfm-code-block-actions";
 import { nfmEquationAndMermaidScenario } from "./scenarios/nfm-equation-and-mermaid";
 import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-activity";
@@ -9,6 +10,7 @@ import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sectio
 const scenarios = new Map<string, ScenarioDomainRecipe>([
   [boardDenseScenario.id, boardDenseScenario],
   [databaseContextMenuPerformanceScenario.id, databaseContextMenuPerformanceScenario],
+  [databaseSettingsConfigurationScenario.id, databaseSettingsConfigurationScenario],
   [pageRelatedChatActivityScenario.id, pageRelatedChatActivityScenario],
   [nfmCodeBlockActionsScenario.id, nfmCodeBlockActionsScenario],
   [nfmEquationAndMermaidScenario.id, nfmEquationAndMermaidScenario],

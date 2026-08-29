@@ -78,9 +78,9 @@ export const ensurePrimaryDataSourcePropertyCount = async (
 
   const schemas = [
     { kind: "text" },
-    { kind: "number" },
+    { kind: "number", format: { kind: "plain" } },
     { kind: "checkbox" },
-    { kind: "date" },
+    { kind: "date", dateFormat: "full" },
   ] as const satisfies readonly DatabasePropertySchemaV2[];
   let schemaRevision = initial.descriptor.dataSource.schemaRevision;
   let commitSeq = initial.snapshot.commitSeq;

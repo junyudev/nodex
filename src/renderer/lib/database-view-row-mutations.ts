@@ -73,12 +73,11 @@ export const buildDatabaseViewPropertyValueOperations = (input: {
 };
 
 const hasEmptyAndFilter = (model: DatabaseViewRenderModel): boolean =>
-  model.query.view.config.filter.kind === "group" &&
-  model.query.view.config.filter.operator === "and" &&
-  model.query.view.config.filter.children.length === 0;
+  model.query.view.config.rules.propertyFilters.length === 0 &&
+  model.query.view.config.rules.advancedFilter === null;
 
 export const databaseViewSupportsManualReorder = (model: DatabaseViewRenderModel): boolean =>
-  databaseViewPrimaryManualOrderDirection(model.query.view.config.presentation.sort) !== null;
+  databaseViewPrimaryManualOrderDirection(model.query.view.config.rules.sorts) !== null;
 
 export const buildDatabaseViewMoveOperations = (input: {
   readonly model: DatabaseViewRenderModel;
@@ -116,8 +115,7 @@ export const buildDatabaseViewMoveOperations = (input: {
   if (!moving) return [];
   desired.splice(targetIndex, 0, moving);
   const authorityOrder =
-    databaseViewPrimaryManualOrderDirection(input.model.query.view.config.presentation.sort) ===
-    "desc"
+    databaseViewPrimaryManualOrderDirection(input.model.query.view.config.rules.sorts) === "desc"
       ? [...desired].reverse()
       : desired;
 
@@ -244,8 +242,7 @@ export const buildDatabaseViewMovePageRunOperations = (input: {
 
   if (desired.every((row, index) => row === visibleGroup[index])) return [];
   const authorityOrder =
-    databaseViewPrimaryManualOrderDirection(input.model.query.view.config.presentation.sort) ===
-    "desc"
+    databaseViewPrimaryManualOrderDirection(input.model.query.view.config.rules.sorts) === "desc"
       ? [...desired].reverse()
       : desired;
   return [

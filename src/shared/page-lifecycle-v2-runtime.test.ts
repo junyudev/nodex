@@ -16,6 +16,7 @@ import {
   type PageLifecycleOwnedBlockAuthorityV2,
   type PageLifecyclePreflightSnapshotV2,
 } from "./page-lifecycle-v2-runtime";
+import { testPropertyManagement } from "./testing/database-property-record";
 import { upgradeDatabaseViewConfigV2 } from "./database-view-presentation";
 import type { DatabasePage } from "./types";
 
@@ -108,7 +109,7 @@ const preflight = (
         databaseId,
         dataSourceId,
         name: "Board",
-        defaultLayout: "board",
+        layout: "board",
         config: upgradeDatabaseViewConfigV2({
           schemaKey: "nodex.database-view",
           schemaVersion: 2,
@@ -131,10 +132,17 @@ const preflight = (
           name: "Tags",
           schema: { kind: "multi_select" },
           capabilities: {
-            filterOperators: ["contains", "not_contains", "is_empty", "is_not_empty"],
+            filterOperators: [
+              "multi_select_contains",
+              "multi_select_does_not_contain",
+              "multi_select_contains_all",
+              "is_empty",
+              "is_not_empty",
+            ],
             sortable: true,
             groupable: true,
           },
+          ...testPropertyManagement(),
           valueType: "multi_select",
           config: { options: [{ id: "o_AAAAAAAA", name: "Release" }] },
           optionCount: 1,

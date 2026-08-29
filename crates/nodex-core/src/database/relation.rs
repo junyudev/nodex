@@ -1583,6 +1583,7 @@ fn collect_relation_filter_targets(
     };
     let page_id = value
         .as_ref()
+        .and_then(Option::as_ref)
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| corrupt("Relation Property filter operand is invalid"))?;
@@ -1680,7 +1681,7 @@ mod tests {
         let filter = DatabaseViewFilter::Clause {
             property_id: "p_blocked0".to_owned(),
             operator: DatabaseViewFilterOperator::Contains,
-            value: Some(json!("page:secret")),
+            value: Some(Some(json!("page:secret"))),
         };
         validate_view_filter_read_access(
             &connection,

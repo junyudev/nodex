@@ -20,16 +20,16 @@ import type { PresentedDataSourcePropertyOption } from "@/lib/data-source-proper
 import type { DataSourcePropertyOptionRegistryState } from "./data-source-property-editor-binding";
 import type { DatabasePropertyValuePresentation } from "./property-value-chip";
 
-const SEMANTIC_OPTION_ORDERS: Readonly<
-  Record<"status" | "priority" | "estimate", readonly string[]>
-> = {
+export type SemanticSelectPropertyKind = "status" | "priority" | "estimate";
+
+const SEMANTIC_OPTION_ORDERS: Readonly<Record<SemanticSelectPropertyKind, readonly string[]>> = {
   status: WORKFLOW_STATUS_ORDER,
   priority: BOARD_PRIORITY_OPTIONS.map((option) => option.value),
   estimate: ["xs", "s", "m", "l", "xl"],
 };
 
 export const orderSemanticPropertyOptions = (
-  kind: "status" | "priority" | "estimate",
+  kind: SemanticSelectPropertyKind,
   options: readonly DatabasePropertyOption[],
 ): readonly DatabasePropertyOption[] => {
   const rank = new Map(SEMANTIC_OPTION_ORDERS[kind].map((optionId, index) => [optionId, index]));
@@ -44,7 +44,7 @@ export const orderSemanticPropertyOptions = (
 };
 
 const defaultSemanticPropertyOptions = (
-  kind: "status" | "priority" | "estimate",
+  kind: SemanticSelectPropertyKind,
 ): readonly DatabasePropertyOption[] => {
   if (kind === "status") {
     return WORKFLOW_STATUS_ORDER.map((id) => ({ id, name: WORKFLOW_STATUS_LABELS[id] }));
@@ -62,7 +62,7 @@ const defaultSemanticPropertyOptions = (
 };
 
 export const presentSemanticPropertyOptions = (
-  kind: "status" | "priority" | "estimate",
+  kind: SemanticSelectPropertyKind,
   options: readonly DatabasePropertyOption[],
   selectedId: string | null,
   registryState: DataSourcePropertyOptionRegistryState,
@@ -85,37 +85,55 @@ export const presentSemanticPropertyOptions = (
   );
 };
 
-const semanticOption = (
-  kind: "status" | "priority" | "estimate",
-  option: PresentedDataSourcePropertyOption,
-): ReactNode => {
+export function SemanticPropertyOptionIcon({
+  kind,
+  option,
+  className,
+}: {
+  readonly kind: SemanticSelectPropertyKind;
+  readonly option: Pick<PresentedDataSourcePropertyOption, "id" | "name">;
+  readonly className?: string;
+}) {
+  if (kind === "status" && isWorkflowStatus(option.id)) {
+    return <StatusIcon statusId={option.id} label={option.name} className={className} />;
+  }
+  if (kind === "priority" && isPriority(option.id)) {
+    return <PriorityValueIcon priority={option.id} className={className} />;
+  }
+  if (kind === "estimate") {
+    const visual = estimateStyles[option.id as Estimate];
+    if (visual) return <EstimateIcon className={className} />;
+  }
+  return null;
+}
+
+export function SemanticPropertyOption({
+  kind,
+  option,
+}: {
+  readonly kind: SemanticSelectPropertyKind;
+  readonly option: PresentedDataSourcePropertyOption;
+}) {
   if (kind === "status" && isWorkflowStatus(option.id)) {
     return <StatusLabel statusId={option.id} label={option.name} />;
   }
-  if (kind === "priority" && isPriority(option.id)) {
+  if (
+    (kind === "priority" && isPriority(option.id)) ||
+    (kind === "estimate" && estimateStyles[option.id as Estimate])
+  ) {
     return (
       <span className="inline-flex min-w-0 max-w-full items-center gap-2 text-sm/5 text-token-text-primary">
-        <PriorityValueIcon
-          priority={option.id}
+        <SemanticPropertyOptionIcon
+          kind={kind}
+          option={option}
           className="size-4 text-token-description-foreground"
         />
         <span className="truncate">{option.name}</span>
       </span>
     );
   }
-  if (kind === "estimate") {
-    const visual = estimateStyles[option.id as Estimate];
-    if (visual) {
-      return (
-        <span className="inline-flex min-w-0 max-w-full items-center gap-2 text-sm/5 text-token-text-primary">
-          <EstimateIcon className="size-4 text-token-description-foreground" />
-          <span className="truncate">{option.name}</span>
-        </span>
-      );
-    }
-  }
   return <PropertyOptionToken option={option} />;
-};
+}
 
 export function SemanticSelectPropertyEditor({
   host,
@@ -134,6 +152,7 @@ export function SemanticSelectPropertyEditor({
   searchLeading,
   contentClassName,
   emptyOptionLabel,
+  allowClear,
   onRequestOptions,
   onOpenChange,
   onCommit,
@@ -143,7 +162,7 @@ export function SemanticSelectPropertyEditor({
   onChange,
 }: {
   readonly host?: PropertyOptionPickerHost;
-  readonly kind: "status" | "priority" | "estimate";
+  readonly kind: SemanticSelectPropertyKind;
   readonly label: string;
   readonly triggerAriaLabel?: string;
   readonly triggerPrefix?: ReactNode;
@@ -158,6 +177,7 @@ export function SemanticSelectPropertyEditor({
   readonly searchLeading?: ReactNode;
   readonly contentClassName?: string;
   readonly emptyOptionLabel?: string;
+  readonly allowClear?: boolean;
   readonly onRequestOptions?: () => void;
   readonly onOpenChange?: (open: boolean) => void;
   readonly onCommit?: () => void;
@@ -219,12 +239,12 @@ export function SemanticSelectPropertyEditor({
       searchPlaceholder={searchPlaceholder}
       searchLeading={searchLeading}
       contentClassName={contentClassName}
-      allowClear={kind !== "status"}
+      allowClear={allowClear ?? kind !== "status"}
       emptyOptionLabel={emptyOptionLabel}
       onOpenChange={onOpenChange}
       onCommit={onCommit}
       onSelectedIdsChange={(ids) => onChange(ids[0] ?? null)}
-      renderOption={(option) => semanticOption(kind, option)}
+      renderOption={(option) => <SemanticPropertyOption kind={kind} option={option} />}
     />
   );
 }

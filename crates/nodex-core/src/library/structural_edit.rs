@@ -186,7 +186,7 @@ struct DatabaseViewSnapshot {
     view_id: String,
     source_id: String,
     name: String,
-    default_layout: String,
+    layout: String,
     config_json: String,
     revision: i64,
     rank_key: String,
@@ -3815,7 +3815,7 @@ fn capture_database(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     database.views = connection
         .prepare(
-            "SELECT view.id, view.data_source_id, view.name, view.default_layout, view.config_json, \
+            "SELECT view.id, view.data_source_id, view.name, view.layout, view.config_json, \
                     view.revision, view.rank_key, view.lifecycle \
              FROM database_views view WHERE view.database_block_id = ?1 \
              ORDER BY view.rank_key, view.id",
@@ -3825,7 +3825,7 @@ fn capture_database(
                 view_id: row.get(0)?,
                 source_id: row.get(1)?,
                 name: row.get(2)?,
-                default_layout: row.get(3)?,
+                layout: row.get(3)?,
                 config_json: row.get(4)?,
                 revision: row.get(5)?,
                 rank_key: row.get(6)?,
@@ -6989,7 +6989,7 @@ fn stage_database_clone(
     for view in &database.views {
         connection.execute(
             "INSERT INTO database_views( \
-               id, database_block_id, data_source_id, name, default_layout, config_json, \
+               id, database_block_id, data_source_id, name, layout, config_json, \
                revision, rank_key, lifecycle, created_at, updated_at \
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?9)",
             params![
@@ -6997,7 +6997,7 @@ fn stage_database_clone(
                 database_id,
                 mapped(data_source_ids, &view.source_id, "Data Source")?,
                 view.name,
-                view.default_layout,
+                view.layout,
                 view.config_json,
                 view.rank_key,
                 view.lifecycle,
@@ -7449,7 +7449,7 @@ fn remap_snapshot(
                             source_id: mapped(data_source_ids, &item.source_id, "Data Source")?
                                 .clone(),
                             name: item.name.clone(),
-                            default_layout: item.default_layout.clone(),
+                            layout: item.layout.clone(),
                             config_json: item.config_json.clone(),
                             revision: 1,
                             rank_key: item.rank_key.clone(),

@@ -962,10 +962,11 @@ mod tests {
         DatabaseIntent, DatabaseListMoveTarget, DatabaseListProjectionExpectation,
         DatabaseListProjectionRow, DatabasePagePropertyAddress, DatabasePropertyValueEdit,
         DatabasePropertyValueInput, DatabasePropertyValueMutation, DatabaseRead, DatabaseReadValue,
-        DatabaseViewGroupOverrideInput, DatabaseViewLayoutDisplayOverrideInput,
-        DatabaseViewLayoutInput, DatabaseViewLayoutsOverrideInput, DatabaseViewNullOrderInput,
+        DatabaseViewGroupOverrideInput, DatabaseViewLayout, DatabaseViewLayoutDisplayOverrideInput,
+        DatabaseViewNullOrderInput, DatabaseViewPreferencesOverrideInput,
         DatabaseViewPresentationOverrideInput, DatabaseViewReadTarget,
-        DatabaseViewSortDirectionInput, DatabaseViewSortFieldInput, DatabaseViewSortInput,
+        DatabaseViewRulesOverrideInput, DatabaseViewSortDirectionInput, DatabaseViewSortFieldInput,
+        DatabaseViewSortInput,
     };
     use nodex_core_contracts::document::{
         DocumentBlockOperation as ContractDocumentBlockOperation, DocumentBlockUpdatePatch,
@@ -2404,34 +2405,48 @@ mod tests {
                         params![SOURCE, NOW],
                     )?;
                     transaction.execute(
+                        "INSERT INTO data_source_page_layouts( \
+                           data_source_id, revision, created_at, updated_at \
+                         ) VALUES (?1, 1, ?2, ?2)",
+                        params![SOURCE, NOW],
+                    )?;
+                    for (property_id, rank_key) in
+                        [("status", "a"), ("tags", "b"), ("task_parent", "c")]
+                    {
+                        transaction.execute(
+                            "INSERT INTO data_source_page_layout_entries( \
+                               data_source_id, property_id, rank_key, visibility \
+                             ) VALUES (?1, ?2, ?3, 'always_show')",
+                            params![SOURCE, property_id, rank_key],
+                        )?;
+                    }
+                    transaction.execute(
                         r#"INSERT INTO database_views(
-                           id, database_block_id, data_source_id, name, default_layout, config_json,
+                           id, database_block_id, data_source_id, name, layout, config_json,
                            rank_key, created_at, updated_at
                          ) VALUES (?1, ?2, ?3, 'All', 'list',
-                           '{"schemaKey":"nodex.database-view","schemaVersion":4,
-                             "filter":{"kind":"group","operator":"and","children":[]},
-                             "presentation":{"sort":[],"group":null,"subgroup":null,
+                           '{"schemaKey":"nodex.database-view","schemaVersion":6,
+                             "rules":{"propertyFilters":[],"advancedFilter":null,"sorts":[]},
+                             "presentation":{"group":null,"subgroup":null,
                                "groupDirection":"asc",
                                "completion":{"range":"all","orderByRecency":false},
                                "hierarchy":{"showSubPages":true,"nestedSubPages":false},
-                               "layouts":{"board":{"fields":[],"showEmptyGroups":false},
-                                 "list":{"fields":[],"showEmptyGroups":false}}}}',
+                               "display":{"fields":[],"showEmptyGroups":false}}}',
                            'a', ?4, ?4)"#,
                         params![VIEW, DATABASE, SOURCE, NOW],
                     )?;
                     transaction.execute(
                         r#"INSERT INTO database_views(
-                           id, database_block_id, data_source_id, name, default_layout, config_json,
+                           id, database_block_id, data_source_id, name, layout, config_json,
                            rank_key, lifecycle, created_at, updated_at
                          ) VALUES (?1, ?2, ?3, 'Deleted', 'list',
-                           '{"schemaKey":"nodex.database-view","schemaVersion":4,
-                             "filter":{"kind":"group","operator":"and","children":[]},
-                             "presentation":{"sort":[],"group":null,"subgroup":null,
+                           '{"schemaKey":"nodex.database-view","schemaVersion":6,
+                             "rules":{"propertyFilters":[],"advancedFilter":null,"sorts":[]},
+                             "presentation":{"group":null,"subgroup":null,
                                "groupDirection":"asc",
                                "completion":{"range":"all","orderByRecency":false},
                                "hierarchy":{"showSubPages":true,"nestedSubPages":false},
-                               "layouts":{"board":{"fields":[],"showEmptyGroups":false},
-                                 "list":{"fields":[],"showEmptyGroups":false}}}}',
+                               "display":{"fields":[],"showEmptyGroups":false}}}',
                            'b', 'deleted', ?4, ?4)"#,
                         params![DELETED_VIEW, DATABASE, SOURCE, NOW],
                     )?;
@@ -4871,6 +4886,7 @@ mod tests {
         const DATABASE: &str = "018f0000-0000-7000-8000-000000000321";
         const DATA_SOURCE: &str = "018f0000-0000-7000-8000-000000000322";
         const VIEW: &str = "018f0000-0000-7000-8000-000000000323";
+        const LIST_VIEW: &str = "018f0000-0000-7000-8000-000000000324";
         let context = BoundModuleContext {
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
@@ -4995,6 +5011,39 @@ mod tests {
                 Ok(())
             })
             .expect("bind primary Database and shared audience");
+        let database = DatabaseModule::new("profile-1", "library-1", &kernel);
+        database
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "duplicate-list-transfer-view".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::DuplicateView {
+                        database_id: DATABASE.to_owned(),
+                        source_view_id: VIEW.to_owned(),
+                        expected_revision: 1,
+                        new_view_id: LIST_VIEW.to_owned(),
+                    }],
+                },
+            )
+            .expect("duplicate a distinct List transfer View");
+        database
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "use-list-layout-for-transfer-target".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::ChangeViewLayout {
+                        database_id: DATABASE.to_owned(),
+                        view_id: LIST_VIEW.to_owned(),
+                        expected_revision: 1,
+                        layout: DatabaseViewLayout::List,
+                    }],
+                },
+            )
+            .expect("configure the distinct transfer View as List");
         let roots = kernel
             .readers()
             .read_default(|connection| {
@@ -5412,21 +5461,27 @@ mod tests {
                                 placement: Box::new(
                                     LibraryBlockTransferDataSourcePlacement::Direct {
                                         view_id: VIEW.to_owned(),
-                                        presentation_override:
-                                            DatabaseViewPresentationOverrideInput {
-                                                layout: Some(DatabaseViewLayoutInput::Board),
-                                                sort: Some(vec![DatabaseViewSortInput {
+                                        preferences_override:
+                                            DatabaseViewPreferencesOverrideInput {
+                                                rules_override: DatabaseViewRulesOverrideInput {
+                                                    sorts: Some(vec![DatabaseViewSortInput {
                                                     field: DatabaseViewSortFieldInput::Property {
                                                         property_id: "estimate".to_owned(),
                                                     },
                                                     direction: DatabaseViewSortDirectionInput::Asc,
                                                     nulls: DatabaseViewNullOrderInput::Last,
-                                                }]),
-                                                group: Some(
-                                                    DatabaseViewGroupOverrideInput::Property {
-                                                        property_id: "priority".to_owned(),
+                                                    }]),
+                                                    ..Default::default()
+                                                },
+                                                presentation_override:
+                                                    DatabaseViewPresentationOverrideInput {
+                                                        group: Some(
+                                                            DatabaseViewGroupOverrideInput::Property {
+                                                                property_id: "priority".to_owned(),
+                                                            },
+                                                        ),
+                                                        ..Default::default()
                                                     },
-                                                ),
                                                 ..Default::default()
                                             },
                                         group_key: Some("p2-medium".to_owned()),
@@ -5509,7 +5564,7 @@ mod tests {
                 data_source_id: DATA_SOURCE.to_owned(),
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
-                    presentation_override: Default::default(),
+                    preferences_override: Default::default(),
                     group_key: Some("ship".to_owned()),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
@@ -5554,7 +5609,6 @@ mod tests {
             2
         );
 
-        let database = DatabaseModule::new("profile-1", "library-1", &kernel);
         let read_list = || {
             let result = database
                 .read(
@@ -5563,11 +5617,9 @@ mod tests {
                         contract_version: DATABASE_CONTRACT_VERSION,
                         read: DatabaseRead::ListWindow {
                             target: DatabaseViewReadTarget::PresentedView {
-                                view_id: VIEW.to_owned(),
-                                presentation_override: DatabaseViewPresentationOverrideInput {
-                                    layout: Some(DatabaseViewLayoutInput::List),
-                                    ..Default::default()
-                                },
+                                view_id: LIST_VIEW.to_owned(),
+                                preferences_override: DatabaseViewPreferencesOverrideInput::default(
+                                ),
                             },
                             window: CollectionWindowRequest {
                                 after: None,
@@ -5604,11 +5656,8 @@ mod tests {
             effect_hash: list_before.projection.effect_hash.clone(),
         };
         let list_placement = LibraryBlockTransferDataSourcePlacement::ListOccurrence {
-            view_id: VIEW.to_owned(),
-            presentation_override: DatabaseViewPresentationOverrideInput {
-                layout: Some(DatabaseViewLayoutInput::List),
-                ..Default::default()
-            },
+            view_id: LIST_VIEW.to_owned(),
+            preferences_override: DatabaseViewPreferencesOverrideInput::default(),
             expected_projection: list_expectation.clone(),
             target: DatabaseListMoveTarget::Group {
                 occurrence_key: ship_occurrence_key,
@@ -5762,12 +5811,9 @@ mod tests {
                                 data_source_id: DATA_SOURCE.to_owned(),
                                 placement: Box::new(
                                     LibraryBlockTransferDataSourcePlacement::ListOccurrence {
-                                        view_id: VIEW.to_owned(),
-                                        presentation_override:
-                                            DatabaseViewPresentationOverrideInput {
-                                                layout: Some(DatabaseViewLayoutInput::List),
-                                                ..Default::default()
-                                            },
+                                        view_id: LIST_VIEW.to_owned(),
+                                        preferences_override:
+                                            DatabaseViewPreferencesOverrideInput::default(),
                                         expected_projection: DatabaseListProjectionExpectation {
                                             scope_key: root_list
                                                 .projection
@@ -5860,19 +5906,19 @@ mod tests {
             )
             .expect("undo root List transfer");
 
-        let priority_presentation = DatabaseViewPresentationOverrideInput {
-            layout: Some(DatabaseViewLayoutInput::List),
-            group: Some(DatabaseViewGroupOverrideInput::Property {
-                property_id: "priority".to_owned(),
-            }),
-            layouts: Some(DatabaseViewLayoutsOverrideInput {
-                board: None,
-                list: Some(DatabaseViewLayoutDisplayOverrideInput {
+        let priority_presentation = DatabaseViewPreferencesOverrideInput {
+            presentation_override: DatabaseViewPresentationOverrideInput {
+                group: Some(DatabaseViewGroupOverrideInput::Property {
+                    property_id: "priority".to_owned(),
+                }),
+                display: Some(DatabaseViewLayoutDisplayOverrideInput {
                     fields: None,
+                    property_order: None,
                     show_empty_groups: Some(true),
                     show_description: None,
                 }),
-            }),
+                ..Default::default()
+            },
             ..Default::default()
         };
         let priority_window = database
@@ -5882,8 +5928,8 @@ mod tests {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ListWindow {
                         target: DatabaseViewReadTarget::PresentedView {
-                            view_id: VIEW.to_owned(),
-                            presentation_override: priority_presentation.clone(),
+                            view_id: LIST_VIEW.to_owned(),
+                            preferences_override: priority_presentation.clone(),
                         },
                         window: CollectionWindowRequest {
                             after: None,
@@ -5932,8 +5978,8 @@ mod tests {
                                 data_source_id: DATA_SOURCE.to_owned(),
                                 placement: Box::new(
                                     LibraryBlockTransferDataSourcePlacement::ListOccurrence {
-                                        view_id: VIEW.to_owned(),
-                                        presentation_override: priority_presentation,
+                                        view_id: LIST_VIEW.to_owned(),
+                                        preferences_override: priority_presentation,
                                         expected_projection:
                                             DatabaseListProjectionExpectation {
                                                 scope_key: priority_window
@@ -6039,7 +6085,7 @@ mod tests {
                                 data_source_id: DATA_SOURCE.to_owned(),
                                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                                     view_id: VIEW.to_owned(),
-                                    presentation_override: Default::default(),
+                                    preferences_override: Default::default(),
                                     group_key: Some("ship".to_owned()),
                                     before_page_id: None,
                                     sorted_property_values: Vec::new(),
@@ -6188,7 +6234,7 @@ mod tests {
                                 data_source_id: DATA_SOURCE.to_owned(),
                                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                                     view_id: VIEW.to_owned(),
-                                    presentation_override: Default::default(),
+                                    preferences_override: Default::default(),
                                     group_key: Some("ship".to_owned()),
                                     before_page_id: None,
                                     sorted_property_values: Vec::new(),
@@ -6542,7 +6588,7 @@ mod tests {
                 data_source_id: DATA_SOURCE.to_owned(),
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
-                    presentation_override: Default::default(),
+                    preferences_override: Default::default(),
                     group_key: Some("ship".to_owned()),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
@@ -7160,7 +7206,7 @@ mod tests {
                 data_source_id: DATA_SOURCE.to_owned(),
                 placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id: VIEW.to_owned(),
-                    presentation_override: Default::default(),
+                    preferences_override: Default::default(),
                     group_key: Some("ship".to_owned()),
                     before_page_id: None,
                     sorted_property_values: Vec::new(),
@@ -7292,7 +7338,7 @@ mod tests {
                                 placement: Box::new(
                                     LibraryBlockTransferDataSourcePlacement::Direct {
                                         view_id: VIEW.to_owned(),
-                                        presentation_override: Default::default(),
+                                        preferences_override: Default::default(),
                                         group_key: Some("ship".to_owned()),
                                         before_page_id: None,
                                         sorted_property_values: Vec::new(),

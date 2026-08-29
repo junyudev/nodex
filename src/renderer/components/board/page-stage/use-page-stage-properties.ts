@@ -17,6 +17,7 @@ import {
   type PageStagePropertyEdit,
 } from "@/lib/page-stage-properties";
 import type { PageStagePageModel } from "@/lib/page-stage-page";
+import { isPageStagePropertyHiddenByLayout } from "@/lib/page-stage-property-layout";
 import type { PageStageMetadataMutationResult, PageStageProps } from "./types";
 
 export interface PageStagePropertyControls {
@@ -24,6 +25,7 @@ export interface PageStagePropertyControls {
   readonly properties: readonly PageStageDataSourceProperty[];
   readonly primaryProperties: readonly PageStageDataSourceProperty[];
   readonly sectionProperties: readonly PageStageDataSourceProperty[];
+  readonly hiddenLayoutProperties: readonly PageStageDataSourceProperty[];
   readonly semanticValues: ReturnType<typeof pageStageSemanticValues> | null;
   readonly hasScheduleCapability: boolean;
   readonly options: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
@@ -317,14 +319,29 @@ export function usePageStageProperties(input: {
     [pendingPropertyCounts],
   );
 
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    const hiddenLayoutProperties = properties.filter(isPageStagePropertyHiddenByLayout);
+    const visibleProperties = properties.filter(
+      (property) => !isPageStagePropertyHiddenByLayout(property),
+    );
+    const scheduleVisible =
+      semantic !== null &&
+      semantic.scheduledStart !== null &&
+      semantic.scheduledEnd !== null &&
+      !isPageStagePropertyHiddenByLayout(semantic.scheduledStart.item) &&
+      !isPageStagePropertyHiddenByLayout(semantic.scheduledEnd.item);
+    return {
       pageId: pageModel?.page.id ?? null,
       properties,
-      primaryProperties: properties.filter(isPageStagePrimaryProperty),
-      sectionProperties: semantic ? pageStageSectionProperties(properties, semantic) : properties,
+      primaryProperties: visibleProperties.filter(isPageStagePrimaryProperty),
+      sectionProperties:
+        semantic && scheduleVisible
+          ? pageStageSectionProperties(visibleProperties, semantic)
+          : visibleProperties.filter((property) => !isPageStagePrimaryProperty(property)),
+      hiddenLayoutProperties,
       semanticValues: semantic ? pageStageSemanticValues(semantic) : null,
-      hasScheduleCapability: semantic ? hasPageStageScheduleCapability(semantic) : false,
+      hasScheduleCapability:
+        semantic && scheduleVisible ? hasPageStageScheduleCapability(semantic) : false,
       options,
       optionRegistryStates,
       requestOptions,
@@ -343,29 +360,28 @@ export function usePageStageProperties(input: {
       loadRelationTargetDescriptor,
       refreshRelationValue,
       ...(openRelationPage ? { openRelationPage } : {}),
-    }),
-    [
-      busyPropertyIds,
-      edit,
-      errors,
-      loadRelationTargets,
-      options,
-      optionRegistryStates,
-      requestOptions,
-      requestMoreOptions,
-      optionRegistryHasMore,
-      optionRegistryLoadingMore,
-      patchRelation,
-      replaceRelation,
-      patchMultiSelect,
-      createOptionAndSelect,
-      properties,
-      pageModel?.page.id,
-      searchRelationCandidates,
-      loadRelationTargetDescriptor,
-      refreshRelationValue,
-      openRelationPage,
-      semantic,
-    ],
-  );
+    };
+  }, [
+    busyPropertyIds,
+    edit,
+    errors,
+    loadRelationTargets,
+    options,
+    optionRegistryStates,
+    requestOptions,
+    requestMoreOptions,
+    optionRegistryHasMore,
+    optionRegistryLoadingMore,
+    patchRelation,
+    replaceRelation,
+    patchMultiSelect,
+    createOptionAndSelect,
+    properties,
+    pageModel?.page.id,
+    searchRelationCandidates,
+    loadRelationTargetDescriptor,
+    refreshRelationValue,
+    openRelationPage,
+    semantic,
+  ]);
 }

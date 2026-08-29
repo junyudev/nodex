@@ -4,6 +4,7 @@ import type {
 } from "@/lib/database-view-render-model";
 import { projectDataSourcePageRowToDatabaseViewRenderRow } from "@/lib/database-view-render-model";
 import type { DataSourcePropertyRecordV2 } from "../../../../shared/database-module-v2";
+import type { DatabaseViewConditionalColorRule } from "../../../../shared/database-kernel";
 import type { DatabaseListProjectionRowSnapshot } from "../../../../shared/database-views";
 
 export const DATABASE_LIST_GROUP_HEIGHT = 38;
@@ -319,6 +320,7 @@ export interface CoreDatabaseListProjection {
 export const projectCoreDatabaseListRows = (input: {
   readonly rows: readonly DatabaseListProjectionRowSnapshot[];
   readonly properties: readonly DataSourcePropertyRecordV2[];
+  readonly conditionalColors?: readonly DatabaseViewConditionalColorRule[];
   readonly collapsedOccurrenceKeys: ReadonlySet<string>;
   readonly groupLabel: (key: string | null) => string;
   readonly subgroupLabel: (key: string | null) => string;
@@ -336,7 +338,11 @@ export const projectCoreDatabaseListRows = (input: {
       (snapshot) =>
         [
           snapshot.occurrenceKey,
-          projectDataSourcePageRowToDatabaseViewRenderRow(snapshot.row, input.properties),
+          projectDataSourcePageRowToDatabaseViewRenderRow(
+            snapshot.row,
+            input.properties,
+            input.conditionalColors,
+          ),
         ] as const,
     ),
   );

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  withEffectiveDatabaseViewPresentation,
+  withEffectiveDatabaseView,
   type DatabaseViewRenderModel,
 } from "./database-view-render-model";
 import {
@@ -110,22 +110,23 @@ const model: DatabaseViewRenderModel = {
       databaseId,
       dataSourceId,
       name: "Work",
-      defaultLayout: "board",
+      layout: "board",
       config: {
         schemaKey: "nodex.database-view",
-        schemaVersion: 4,
-        filter: { kind: "group", operator: "and", children: [] },
+        schemaVersion: 6,
+        rules: {
+          propertyFilters: [],
+          advancedFilter: null,
+          sorts: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
+        },
         presentation: {
-          sort: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
+          conditionalColors: [],
           group: { propertyId: statusId },
           subgroup: { propertyId: priorityId },
           groupDirection: "asc",
           completion: { range: "all", orderByRecency: false },
           hierarchy: { showSubPages: true, nestedSubPages: false },
-          layouts: {
-            board: { fields: [], showEmptyGroups: true },
-            list: { fields: [], showEmptyGroups: true },
-          },
+          display: { fields: [], propertyOrder: [], showEmptyGroups: true },
         },
       },
       isDefault: true,
@@ -189,17 +190,17 @@ const prioritySortedModel = (): DatabaseViewRenderModel => ({
       ...model.query.view,
       config: {
         ...model.query.view.config,
-        presentation: {
-          ...model.query.view.config.presentation,
-          sort: [
+        rules: {
+          ...model.query.view.config.rules,
+          sorts: [
             {
               field: { kind: "property", propertyId: priorityId },
               direction: "desc",
               nulls: "last",
             },
           ],
-          subgroup: null,
         },
+        presentation: { ...model.query.view.config.presentation, subgroup: null },
       },
     },
     rows: model.query.rows.map((candidate) => ({
@@ -222,19 +223,22 @@ describe("buildDatabaseViewBoardDropOperations", () => {
         })),
       },
     };
-    const effectiveModel = withEffectiveDatabaseViewPresentation(priorityProjectedModel, {
+    const effectiveModel = withEffectiveDatabaseView(priorityProjectedModel, {
       layout: "board",
-      presentation: {
-        ...model.query.view.config.presentation,
-        group: { propertyId: priorityId },
-        subgroup: null,
-        sort: [
+      rules: {
+        ...model.query.view.config.rules,
+        sorts: [
           {
             field: { kind: "property", propertyId: priorityId },
             direction: "asc",
             nulls: "last",
           },
         ],
+      },
+      presentation: {
+        ...model.query.view.config.presentation,
+        group: { propertyId: priorityId },
+        subgroup: null,
       },
     });
 
@@ -363,10 +367,7 @@ describe("buildDatabaseViewBoardDropOperations", () => {
           ...model.query.view,
           config: {
             ...model.query.view.config,
-            presentation: {
-              ...model.query.view.config.presentation,
-              sort: [],
-            },
+            rules: { ...model.query.view.config.rules, sorts: [] },
           },
         },
       },
@@ -653,9 +654,9 @@ describe("buildDatabaseViewBoardDropOperations", () => {
             ...model.query.view,
             config: {
               ...model.query.view.config,
-              presentation: {
-                ...model.query.view.config.presentation,
-                sort: [
+              rules: {
+                ...model.query.view.config.rules,
+                sorts: [
                   {
                     field: { kind: "property", propertyId: priorityId },
                     direction: "asc",
@@ -681,9 +682,9 @@ describe("buildDatabaseViewBoardDropOperations", () => {
             ...model.query.view,
             config: {
               ...model.query.view.config,
-              presentation: {
-                ...model.query.view.config.presentation,
-                sort: [
+              rules: {
+                ...model.query.view.config.rules,
+                sorts: [
                   {
                     field: { kind: "property", propertyId: unavailablePropertyId },
                     direction: "asc",
@@ -749,9 +750,9 @@ describe("buildDatabaseViewBoardDropOperations", () => {
             ...model.query.view,
             config: {
               ...model.query.view.config,
-              presentation: {
-                ...model.query.view.config.presentation,
-                sort: [{ field: { kind: "title" }, direction: "asc", nulls: "last" }],
+              rules: {
+                ...model.query.view.config.rules,
+                sorts: [{ field: { kind: "title" }, direction: "asc", nulls: "last" }],
               },
             },
           },

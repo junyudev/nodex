@@ -15,7 +15,16 @@ import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
 import type {
   DatabaseJsonValue,
   DatabasePropertyValueType,
-  EffectiveDatabaseViewPresentation,
+  DatabaseViewConditionalColor,
+  DatabaseViewConditionalColorRule,
+  DatabaseViewLayout,
+  DatabaseViewPresentationConfig,
+  DatabaseViewRules,
+  EffectiveDatabaseView,
+} from "../../shared/database-kernel";
+import {
+  evaluateDatabaseViewConditionalColor,
+  stableStringifyDatabaseJson,
 } from "../../shared/database-kernel";
 import type { DatabaseId, DatabaseViewId, DataSourceId } from "../../shared/database-identities";
 import { readDatabasePropertyOptions } from "./database-view-authoring";
@@ -39,6 +48,12 @@ export interface DatabaseViewRenderModel {
   readonly columns: readonly DatabaseViewRenderColumn[];
   readonly query: DatabaseViewQueryResultV2;
   readonly readOnlyReason: string | null;
+}
+
+export interface PublishedDatabaseViewDefinitionPatch {
+  readonly layout?: DatabaseViewLayout;
+  readonly rules?: DatabaseViewRules;
+  readonly presentation?: DatabaseViewPresentationConfig;
 }
 
 export type DatabaseViewAccessContext =
@@ -69,7 +84,12 @@ export interface DatabaseViewRenderRow {
   readonly documentHeadSeq: number;
   readonly metadataRevision: number;
   readonly createdAt: Date;
+  readonly conditionalColor?: DatabaseViewConditionalColor | null;
 }
+
+export const databaseViewConditionalColorBackground = (
+  color: DatabaseViewConditionalColor,
+): string => `var(--${color}-bg)`;
 
 /**
  * Stable key of one independently paged group window: `key:<group>` for a
@@ -147,6 +167,7 @@ const readStringList = (
 export const projectDataSourcePageRowToDatabaseViewRenderRow = (
   row: DataSourcePageRowV2,
   properties: readonly DataSourcePropertyRecordV2[],
+  conditionalColors: readonly DatabaseViewConditionalColorRule[] = [],
 ): DatabaseViewRenderRow => {
   const statusValue = readNullableString(row, propertyById(properties, "status"));
   const priorityValue = readNullableString(row, propertyById(properties, "priority"));
@@ -185,6 +206,10 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
     documentHeadSeq: row.page.documentHeadSeq,
     metadataRevision: row.page.metadataRevision,
     createdAt: new Date(row.page.createdAt),
+    conditionalColor: evaluateDatabaseViewConditionalColor(
+      conditionalColors,
+      (propertyId) => row.values[propertyId]?.value,
+    ),
   };
 };
 
@@ -215,7 +240,11 @@ export const buildDatabaseViewColumns = (
   );
   const rows = query.rows.map((row) => ({
     row,
-    renderRow: projectDataSourcePageRowToDatabaseViewRenderRow(row, query.properties),
+    renderRow: projectDataSourcePageRowToDatabaseViewRenderRow(
+      row,
+      query.properties,
+      query.view.config.presentation.conditionalColors,
+    ),
   }));
   if (!statusGrouped) {
     if (!groupPropertyId) {
@@ -300,15 +329,15 @@ export const buildDatabaseViewColumns = (
  * window reaches the shared store, so gesture compilation must not infer its
  * grouping and sorting semantics from the older durable snapshot.
  */
-export const withEffectiveDatabaseViewPresentation = (
+export const withEffectiveDatabaseView = (
   model: DatabaseViewRenderModel,
-  effective: EffectiveDatabaseViewPresentation,
+  effective: EffectiveDatabaseView,
 ): DatabaseViewRenderModel => {
   const query = {
     ...model.query,
     view: {
       ...model.query.view,
-      defaultLayout: effective.layout,
+      layout: effective.layout,
       config: {
         ...model.query.view.config,
         presentation: effective.presentation,
@@ -319,6 +348,41 @@ export const withEffectiveDatabaseViewPresentation = (
     ...model,
     columns: buildDatabaseViewColumns(query, effective.presentation.group?.propertyId ?? null),
     query,
+  };
+};
+
+/**
+ * Hands already-rendered effective settings to durable View metadata without
+ * rebuilding its projection. The current rows and columns already represent
+ * this coordinate; a receipt-fenced optimistic journal retains this patch only
+ * until a canonical read materializes the same definition.
+ */
+export const withPublishedDatabaseViewDefinition = (
+  model: DatabaseViewRenderModel,
+  patch: PublishedDatabaseViewDefinitionPatch,
+): DatabaseViewRenderModel => {
+  const layout = patch.layout ?? model.query.view.layout;
+  const config = {
+    ...model.query.view.config,
+    ...(patch.rules === undefined ? {} : { rules: patch.rules }),
+    ...(patch.presentation === undefined ? {} : { presentation: patch.presentation }),
+  };
+  if (
+    layout === model.query.view.layout &&
+    stableStringifyDatabaseJson(config) === stableStringifyDatabaseJson(model.query.view.config)
+  ) {
+    return model;
+  }
+  return {
+    ...model,
+    query: {
+      ...model.query,
+      view: {
+        ...model.query.view,
+        layout,
+        config,
+      },
+    },
   };
 };
 

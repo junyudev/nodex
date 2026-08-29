@@ -521,7 +521,7 @@ describe("Library Module transport", () => {
               databaseId: uuidV7(33),
               dataSourceId: uuidV7(34),
               title: "Board",
-              defaultLayout: "board",
+              layout: "board",
               isDefault: true,
               revision: 1,
             },

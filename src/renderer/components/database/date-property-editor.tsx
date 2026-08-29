@@ -17,6 +17,11 @@ import {
   todayAsIsoDate,
 } from "@/lib/data-source-property-date";
 import { cn } from "@/lib/utils";
+import { formatDatabaseDate } from "@/lib/database-property-display-format";
+import type {
+  DatabaseDateFormatV2,
+  DatabaseTimeFormatV2,
+} from "../../../shared/database-module-v2";
 import {
   DATABASE_PAGE_PROPERTY_EMPTY_TRIGGER_CLASS_NAME,
   PropertyEmptyValue,
@@ -37,18 +42,6 @@ export const preloadDatePropertyCalendar = () => {
 const LazyNodexDateCalendar = lazy(async () => ({
   default: (await preloadDatePropertyCalendar()).NodexDateCalendar,
 }));
-
-const formatListDate = (date: Date): string => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const candidate = new Date(date);
-  candidate.setHours(0, 0, 0, 0);
-  const dayOffset = Math.round((candidate.getTime() - today.getTime()) / 86_400_000);
-  if (dayOffset === 0) return "Today";
-  if (dayOffset === 1) return "Tomorrow";
-  if (dayOffset === -1) return "Yesterday";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
-};
 
 export type DatePropertyEditorHost = "popover" | "embedded";
 
@@ -86,6 +79,8 @@ export function DatePropertyEditor({
   revision,
   disabled,
   presentation,
+  dateFormat = "full",
+  timeFormat = "twelve_hour",
   triggerIcon,
   host = "popover",
   onRequestClose,
@@ -97,6 +92,8 @@ export function DatePropertyEditor({
   readonly revision: number;
   readonly disabled: boolean;
   readonly presentation: DatabasePropertyValuePresentation;
+  readonly dateFormat?: DatabaseDateFormatV2;
+  readonly timeFormat?: DatabaseTimeFormatV2;
   readonly triggerIcon?: ReactNode;
   readonly host?: DatePropertyEditorHost;
   readonly onRequestClose?: () => void;
@@ -171,14 +168,11 @@ export function DatePropertyEditor({
 
   const selected = parseIsoDateToLocalDate(dateInput);
   const display = selected
-    ? presentation === "list" || presentation === "board"
-      ? formatListDate(mode === "datetime" && value ? new Date(value) : selected)
-      : new Intl.DateTimeFormat(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-          ...(mode === "datetime" ? { hour: "numeric", minute: "2-digit" } : {}),
-        }).format(mode === "datetime" && value ? new Date(value) : selected)
+    ? formatDatabaseDate({
+        date: mode === "datetime" && value ? new Date(value) : selected,
+        dateFormat,
+        ...(mode === "datetime" ? { timeFormat } : {}),
+      })
     : null;
   const cancelDraft = () => {
     skipBlurCommitRef.current = true;

@@ -147,7 +147,7 @@ describe("cross-surface Block transfer drag", () => {
         placement: {
           kind: "direct",
           viewId: "view-a",
-          presentationOverride: { layout: "board" },
+          preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
           groupKey: "in-progress",
           beforePageId: "card-b",
         },
@@ -168,7 +168,7 @@ describe("cross-surface Block transfer drag", () => {
         placement: {
           kind: "direct",
           viewId: "view-a",
-          presentationOverride: { layout: "board" },
+          preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
           groupKey: "in-progress",
           beforePageId: "card-b",
         },

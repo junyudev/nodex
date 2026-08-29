@@ -1,17 +1,20 @@
 import type {
   DatabaseViewCompletedRange,
   DatabaseViewConfigV2,
-  DatabaseViewConfigV4,
+  DatabaseViewConfigV6,
   DatabaseViewField,
   DatabaseViewLayout,
   DatabaseViewLayoutDisplayConfig,
   DatabaseViewPresentationConfig,
   DatabaseViewPresentationOverride,
+  DatabaseViewPreferencesOverride,
+  DatabaseViewRules,
+  DatabaseViewRulesOverride,
   DatabaseViewSort,
-  EffectiveDatabaseViewPresentation,
+  EffectiveDatabaseView,
 } from "./database-kernel";
 
-const MAX_SORT_RULES = 4;
+const MAX_SORT_RULES = 128;
 const MAX_DISPLAY_FIELDS = 64;
 
 const COMPLETED_RANGES: readonly DatabaseViewCompletedRange[] = [
@@ -127,18 +130,37 @@ const normalizedLayout = (
   group: DatabaseViewPresentationConfig["group"],
   properties: ReadonlyMap<string, DatabaseViewPropertyCapability>,
   intrinsicFields: ReadonlySet<string>,
-): DatabaseViewLayoutDisplayConfig => ({
-  fields: normalizedFields(layout.fields, properties, intrinsicFields),
-  showEmptyGroups:
-    layout.showEmptyGroups && group !== null && properties.get(group.propertyId)?.finite === true,
-  showDescription: layout.showDescription !== false,
-});
+): DatabaseViewLayoutDisplayConfig => {
+  const normalizedDisplayFields = normalizedFields(layout.fields, properties, intrinsicFields);
+  const propertyOrder: string[] = [];
+  const seenProperties = new Set<string>();
+  for (const propertyId of layout.propertyOrder ?? []) {
+    if (!properties.has(propertyId) || seenProperties.has(propertyId)) continue;
+    seenProperties.add(propertyId);
+    propertyOrder.push(propertyId);
+  }
+  for (const field of normalizedDisplayFields) {
+    if (field.kind !== "property" || seenProperties.has(field.propertyId)) continue;
+    seenProperties.add(field.propertyId);
+    propertyOrder.push(field.propertyId);
+  }
+  for (const propertyId of properties.keys()) {
+    if (seenProperties.has(propertyId)) continue;
+    propertyOrder.push(propertyId);
+  }
+  return {
+    fields: normalizedDisplayFields,
+    propertyOrder,
+    showEmptyGroups:
+      layout.showEmptyGroups && group !== null && properties.get(group.propertyId)?.finite === true,
+    showDescription: layout.showDescription !== false,
+  };
+};
 
 const overlayPresentation = (
   durable: DatabaseViewPresentationConfig,
   override: DatabaseViewPresentationOverride | undefined,
 ): DatabaseViewPresentationConfig => ({
-  sort: override?.sort ?? durable.sort,
   group: override && "group" in override ? (override.group ?? null) : durable.group,
   subgroup: override && "subgroup" in override ? (override.subgroup ?? null) : durable.subgroup,
   groupDirection: override?.groupDirection ?? durable.groupDirection,
@@ -150,22 +172,31 @@ const overlayPresentation = (
     showSubPages: override?.hierarchy?.showSubPages ?? durable.hierarchy.showSubPages,
     nestedSubPages: override?.hierarchy?.nestedSubPages ?? durable.hierarchy.nestedSubPages,
   },
-  layouts: {
-    board: {
-      fields: override?.layouts?.board?.fields ?? durable.layouts.board.fields,
-      showEmptyGroups:
-        override?.layouts?.board?.showEmptyGroups ?? durable.layouts.board.showEmptyGroups,
-      showDescription:
-        override?.layouts?.board?.showDescription ?? durable.layouts.board.showDescription,
-    },
-    list: {
-      fields: override?.layouts?.list?.fields ?? durable.layouts.list.fields,
-      showEmptyGroups:
-        override?.layouts?.list?.showEmptyGroups ?? durable.layouts.list.showEmptyGroups,
-      showDescription:
-        override?.layouts?.list?.showDescription ?? durable.layouts.list.showDescription,
-    },
+  display: {
+    fields: override?.display?.fields ?? durable.display.fields,
+    propertyOrder: override?.display?.propertyOrder ?? durable.display.propertyOrder,
+    showEmptyGroups: override?.display?.showEmptyGroups ?? durable.display.showEmptyGroups,
+    showDescription: override?.display?.showDescription ?? durable.display.showDescription,
   },
+  conditionalColors: durable.conditionalColors,
+});
+
+const EMPTY_DATABASE_VIEW_RULES: DatabaseViewRules = {
+  propertyFilters: [],
+  advancedFilter: null,
+  sorts: [],
+};
+
+const overlayRules = (
+  durable: DatabaseViewRules,
+  override: DatabaseViewRulesOverride | undefined,
+): DatabaseViewRules => ({
+  propertyFilters: override?.propertyFilters ?? durable.propertyFilters,
+  advancedFilter:
+    override && "advancedFilter" in override
+      ? (override.advancedFilter ?? null)
+      : durable.advancedFilter,
+  sorts: override?.sorts ?? durable.sorts,
 });
 
 /**
@@ -173,11 +204,13 @@ const overlayPresentation = (
  * Invalid or stale Profile fields fail closed to the durable Source contract.
  */
 export const resolveEffectiveDatabaseView = (
-  defaultLayout: DatabaseViewLayout,
+  layout: DatabaseViewLayout,
   durable: DatabaseViewPresentationConfig,
   override: DatabaseViewPresentationOverride | undefined,
   capabilities: DatabaseViewCapabilities,
-): EffectiveDatabaseViewPresentation => {
+  durableRules: DatabaseViewRules = EMPTY_DATABASE_VIEW_RULES,
+  rulesOverride?: DatabaseViewRulesOverride,
+): EffectiveDatabaseView => {
   const properties = new Map(
     capabilities.properties.map((property) => [property.propertyId, property]),
   );
@@ -185,6 +218,7 @@ export const resolveEffectiveDatabaseView = (
     capabilities.intrinsicFields ?? ["page_key", "created_at", "updated_at"],
   );
   const overlaid = overlayPresentation(durable, override);
+  const overlaidRules = overlayRules(durableRules, rulesOverride);
   const group = normalizedGroup(overlaid.group, properties);
   const candidateSubgroup = normalizedGroup(overlaid.subgroup, properties);
   const subgroup =
@@ -194,9 +228,15 @@ export const resolveEffectiveDatabaseView = (
     properties.has(capabilities.taskStatusPropertyId);
 
   return {
-    layout: override?.layout ?? defaultLayout,
+    layout,
+    rules: {
+      propertyFilters: overlaidRules.propertyFilters.filter((filter) =>
+        properties.has(filter.clause.propertyId),
+      ),
+      advancedFilter: overlaidRules.advancedFilter,
+      sorts: normalizedSort(overlaidRules.sorts, properties),
+    },
     presentation: {
-      sort: normalizedSort(overlaid.sort, properties),
       group,
       subgroup,
       groupDirection: overlaid.groupDirection,
@@ -210,20 +250,15 @@ export const resolveEffectiveDatabaseView = (
         showSubPages: overlaid.hierarchy.showSubPages,
         nestedSubPages: overlaid.hierarchy.showSubPages && overlaid.hierarchy.nestedSubPages,
       },
-      layouts: {
-        board: normalizedLayout(
-          overlaid.layouts.board,
-          group && (!subgroup || properties.get(subgroup.propertyId)?.finite) ? group : null,
-          properties,
-          intrinsicFields,
-        ),
-        list: normalizedLayout(
-          overlaid.layouts.list,
-          group && (!subgroup || properties.get(subgroup.propertyId)?.finite) ? group : null,
-          properties,
-          intrinsicFields,
-        ),
-      },
+      display: normalizedLayout(
+        overlaid.display,
+        group && (!subgroup || properties.get(subgroup.propertyId)?.finite) ? group : null,
+        properties,
+        intrinsicFields,
+      ),
+      conditionalColors: overlaid.conditionalColors.filter((rule) =>
+        properties.has(rule.propertyId),
+      ),
     },
   };
 };
@@ -233,8 +268,8 @@ const equal = (left: unknown, right: unknown): boolean =>
 
 /** Produces the minimal Profile-local patch relative to the durable default. */
 export const compactDatabaseViewPresentationOverride = (
-  durable: EffectiveDatabaseViewPresentation,
-  effective: EffectiveDatabaseViewPresentation,
+  durable: EffectiveDatabaseView,
+  effective: EffectiveDatabaseView,
 ): DatabaseViewPresentationOverride | null => {
   const completion: {
     range?: DatabaseViewCompletedRange;
@@ -256,10 +291,14 @@ export const compactDatabaseViewPresentationOverride = (
   ): Partial<DatabaseViewLayoutDisplayConfig> | undefined => {
     const result: {
       fields?: readonly DatabaseViewField[];
+      propertyOrder?: readonly string[];
       showEmptyGroups?: boolean;
       showDescription?: boolean;
     } = {};
     if (!equal(baseline.fields, current.fields)) result.fields = current.fields;
+    if (!equal(baseline.propertyOrder, current.propertyOrder)) {
+      result.propertyOrder = current.propertyOrder;
+    }
     if (baseline.showEmptyGroups !== current.showEmptyGroups) {
       result.showEmptyGroups = current.showEmptyGroups;
     }
@@ -269,29 +308,16 @@ export const compactDatabaseViewPresentationOverride = (
     return Object.keys(result).length > 0 ? result : undefined;
   };
 
-  const board = compactLayout(
-    durable.presentation.layouts.board,
-    effective.presentation.layouts.board,
-  );
-  const list = compactLayout(
-    durable.presentation.layouts.list,
-    effective.presentation.layouts.list,
-  );
+  const display = compactLayout(durable.presentation.display, effective.presentation.display);
   const override: {
-    layout?: DatabaseViewLayout;
-    sort?: readonly DatabaseViewSort[];
     group?: DatabaseViewPresentationConfig["group"];
     subgroup?: DatabaseViewPresentationConfig["subgroup"];
     groupDirection?: DatabaseViewPresentationConfig["groupDirection"];
     completion?: DatabaseViewPresentationOverride["completion"];
     hierarchy?: DatabaseViewPresentationOverride["hierarchy"];
-    layouts?: DatabaseViewPresentationOverride["layouts"];
+    display?: DatabaseViewPresentationOverride["display"];
   } = {};
 
-  if (durable.layout !== effective.layout) override.layout = effective.layout;
-  if (!equal(durable.presentation.sort, effective.presentation.sort)) {
-    override.sort = effective.presentation.sort;
-  }
   if (!equal(durable.presentation.group, effective.presentation.group)) {
     override.group = effective.presentation.group;
   }
@@ -318,7 +344,7 @@ export const compactDatabaseViewPresentationOverride = (
     hierarchy.nestedSubPages = effective.presentation.hierarchy.nestedSubPages;
   }
   if (Object.keys(hierarchy).length > 0) override.hierarchy = hierarchy;
-  if (board || list) override.layouts = { ...(board ? { board } : {}), ...(list ? { list } : {}) };
+  if (display) override.display = display;
   return Object.keys(override).length > 0 ? override : null;
 };
 
@@ -328,43 +354,80 @@ export const compactDatabaseViewPresentationOverride = (
  * durable View after Profile-local presentation has changed its axes or sort.
  */
 export const databaseViewGesturePresentationOverride = (
-  effective: EffectiveDatabaseViewPresentation,
-  layout: DatabaseViewLayout = effective.layout,
+  effective: EffectiveDatabaseView,
 ): DatabaseViewPresentationOverride => ({
-  layout,
-  sort: effective.presentation.sort,
   group: effective.presentation.group,
   subgroup: effective.presentation.subgroup,
   groupDirection: effective.presentation.groupDirection,
   completion: { ...effective.presentation.completion },
   hierarchy: { ...effective.presentation.hierarchy },
-  layouts: {
-    board: { ...effective.presentation.layouts.board },
-    list: { ...effective.presentation.layouts.list },
-  },
+  display: { ...effective.presentation.display },
 });
 
+/** Freezes every personal preference that gave a pointer gesture its meaning. */
+export const databaseViewGesturePreferencesOverride = (
+  effective: EffectiveDatabaseView,
+): DatabaseViewPreferencesOverride => ({
+  rulesOverride: {
+    propertyFilters: effective.rules.propertyFilters,
+    advancedFilter: effective.rules.advancedFilter,
+    sorts: effective.rules.sorts,
+  },
+  presentationOverride: databaseViewGesturePresentationOverride(effective),
+});
+
+/** Produces the minimal Profile-local query patch relative to the durable View rules. */
+export const compactDatabaseViewRulesOverride = (
+  durable: DatabaseViewRules,
+  effective: DatabaseViewRules,
+): DatabaseViewRulesOverride | null => {
+  const override: {
+    propertyFilters?: DatabaseViewRulesOverride["propertyFilters"];
+    advancedFilter?: DatabaseViewRulesOverride["advancedFilter"];
+    sorts?: DatabaseViewRulesOverride["sorts"];
+  } = {};
+  if (!equal(durable.propertyFilters, effective.propertyFilters)) {
+    override.propertyFilters = effective.propertyFilters;
+  }
+  if (!equal(durable.advancedFilter, effective.advancedFilter)) {
+    override.advancedFilter = effective.advancedFilter;
+  }
+  if (!equal(durable.sorts, effective.sorts)) override.sorts = effective.sorts;
+  return Object.keys(override).length > 0 ? override : null;
+};
+
 /** Deterministically upgrades the durable v2 presentation shape. */
-export const upgradeDatabaseViewConfigV2 = (config: DatabaseViewConfigV2): DatabaseViewConfigV4 => {
+export const upgradeDatabaseViewConfigV2 = (config: DatabaseViewConfigV2): DatabaseViewConfigV6 => {
   const fields = config.display.propertyIds.map((propertyId): DatabaseViewField => ({
     kind: "property",
     propertyId,
   }));
   return {
     schemaKey: "nodex.database-view",
-    schemaVersion: 4,
-    filter: config.filter,
+    schemaVersion: 6,
+    rules: {
+      propertyFilters: [],
+      advancedFilter:
+        config.filter.kind === "group" && config.filter.children.length === 0
+          ? null
+          : config.filter.kind === "group"
+            ? config.filter
+            : { kind: "group", operator: "and", children: [config.filter] },
+      sorts: config.sort,
+    },
     presentation: {
-      sort: config.sort,
       group: config.group,
       subgroup: null,
       groupDirection: "asc",
       completion: { range: "all", orderByRecency: false },
       hierarchy: { showSubPages: true, nestedSubPages: false },
-      layouts: {
-        board: { fields, showEmptyGroups: false, showDescription: true },
-        list: { fields, showEmptyGroups: false, showDescription: true },
+      display: {
+        fields,
+        propertyOrder: [...config.display.propertyIds],
+        showEmptyGroups: false,
+        showDescription: true,
       },
+      conditionalColors: [],
     },
   };
 };

@@ -133,3 +133,67 @@ test("projects every Core application event through one discriminated boundary",
     value: { backupIds: ["backup:one"], readinessChanged: true },
   });
 });
+
+test("repairs historical personal filter drafts before strict renderer parsing", () => {
+  const database = createCoreLocalCommitFixture({
+    commitSeq: 6,
+    storeEpoch: "epoch:test",
+    operationId: "operation:personal-filter-draft",
+    payload: {
+      module: "database",
+      library_id: "library:test",
+      event: {
+        kind: "database_changed",
+        project_id: "project:one",
+        database_ids: [],
+        data_source_ids: [],
+        page_ids: [],
+        view_ids: [],
+        personal_view_changes: [
+          {
+            kind: "preferences",
+            view_id: "view:one",
+            value: {
+              rules_override: {
+                advanced_filter: {
+                  kind: "filter",
+                  filter: {
+                    kind: "group",
+                    operator: "and",
+                    children: [
+                      {
+                        kind: "clause",
+                        propertyId: "assignee",
+                        operator: "select_is",
+                      },
+                    ],
+                  },
+                },
+              },
+              presentation_override: {},
+              revision: 1,
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  expect(
+    projectCoreApplicationEvent(envelope(database), database.atoms[0]!, "library:test"),
+  ).toMatchObject({
+    kind: "database",
+    value: {
+      personalViewChanges: [
+        {
+          kind: "preferences",
+          rulesOverride: {
+            advancedFilter: {
+              children: [{ propertyId: "assignee", operator: "select_is", value: null }],
+            },
+          },
+        },
+      ],
+    },
+  });
+});

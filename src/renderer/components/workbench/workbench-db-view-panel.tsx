@@ -1,4 +1,5 @@
-import { CanvasIcon, BoardIcon, DatabaseIcon } from "@/components/shared/icons";
+import { CanvasIcon, BoardIcon, DatabaseIcon, PlusIcon } from "@/components/shared/icons";
+import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import {
   useCallback,
   useEffect,
@@ -16,26 +17,40 @@ import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type {
   DatabaseViewField,
   DatabaseViewLayout,
-  EffectiveDatabaseViewPresentation,
+  DatabaseViewRules,
+  EffectiveDatabaseView,
 } from "../../../shared/database-kernel";
 import {
   compactDatabaseViewPresentationOverride,
+  compactDatabaseViewRulesOverride,
   resolveEffectiveDatabaseView,
 } from "../../../shared/database-view-presentation";
+import {
+  clearDatabaseViewRulesOverrideScope,
+  effectiveDatabaseViewFilter,
+  type DatabaseViewRuleScope,
+} from "../../../shared/database-view-rules";
+import { useDatabaseViewRulesController } from "@/lib/use-database-view-rules-controller";
 import type { ColumnPaginationState } from "@/lib/board-store";
-import type { DatabaseViewDisclosureTargetV2 } from "../../../shared/database-module-v2";
-import { DatabaseManagementDialogController } from "./database-management-dialog-controller";
+import type {
+  DatabaseViewDisclosureTargetV2,
+  DatabaseViewRecordV2,
+} from "../../../shared/database-module-v2";
 import { DbViewToolbar, type DbViewToolbarItem } from "./db-view-toolbar";
 import { DatabaseViewSurface } from "./database-view-surface";
 import { DatabaseList } from "./database-list/database-list";
-import { DatabaseViewDisplayOptions } from "./database-view-display-options";
-import { DatabaseViewFilter } from "./database-view-filter";
-import { DatabaseViewSort } from "./database-view-sort";
-import { DatabaseViewRulesSummaryRow } from "./database-view-rules-summary-row";
+import { DatabaseViewRulesBar, DatabaseViewRuleToolbarControls } from "./database-view-rules-bar";
 import { usePropertyOptionRegistries } from "@/components/database/use-property-option-registries";
 import { collectRequiredPropertyOptionIds } from "@/lib/database-option-registry-requirements";
-import { useDatabaseViewPresentationPreference } from "@/lib/database-view-presentation-preferences";
+import { useDatabaseViewPersonalPreference } from "@/lib/database-view-personal-preferences";
+import { resolveDatabaseViewPresentationActivity } from "@/lib/database-view-presentation-activity";
+import { useWorkbenchProfilePreferences } from "@/lib/use-workbench-profile-preferences";
 import { commitDatabaseViewOperations } from "@/lib/database-view-row-mutations";
+import {
+  duplicateDatabaseViewOperation,
+  reorderDatabaseViewOperation,
+} from "@/lib/database-settings-operations";
+import { writeTextToClipboard } from "@/lib/clipboard";
 import type { OpenPageTabHandler } from "./workbench-page-stage-panel";
 import { primaryCanvasBlockId } from "../../../shared/block-documents";
 import type { OpenCanvasStageHandler } from "@/lib/use-workbench-panel-openers";
@@ -62,28 +77,42 @@ import {
   DatabasePageChatActivityBoundary,
   useDatabasePageChatActivityRuntime,
 } from "./database-page-chat-activity-runtime";
+import { useDatabaseSettingsRuntime } from "./database-settings/use-database-settings-runtime";
+import { DatabaseSettingsRail } from "./database-settings/database-settings-rail";
+import {
+  backDatabaseSettingsRoute,
+  openDatabaseSettingsRoute,
+  pushDatabaseSettingsRoute,
+  reconcileDatabaseSettingsRouteStack,
+  replaceDatabaseSettingsRoute,
+  type DatabaseSettingsRoute,
+  type DatabaseSettingsRouteStack,
+} from "./database-settings/database-settings-route";
+import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-identities";
+import { createUuidV7 } from "../../../shared/uuid-v7";
+import { serializeNfm } from "../../../shared/nfm";
+import { DatabaseViewDeleteConfirmationDialog } from "./database-view-action-menu";
 
-const DB_VIEW_TABS: Array<{
-  id: "board" | "list";
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-}> = [
-  { id: "board", label: "Board", icon: BoardIcon },
-  { id: "list", label: "List", icon: DatabaseIcon },
-];
+const databaseViewLayoutIcon = (
+  layout: DatabaseViewLayout,
+): ComponentType<{ className?: string }> => (layout === "board" ? BoardIcon : DatabaseIcon);
 
 const EMPTY_DATABASE_PROPERTIES = [] as const;
+const EMPTY_DATABASE_VIEW_RULES: DatabaseViewRules = Object.freeze({
+  propertyFilters: [],
+  advancedFilter: null,
+  sorts: [],
+});
 
 const durableDatabaseToolbarItem = (
   model: DatabaseViewRenderModel,
-  presentationLayout: DatabaseViewLayout = model.query.view.defaultLayout,
+  presentationLayout: DatabaseViewLayout = model.query.view.layout,
 ): DbViewToolbarItem => {
   const presentationId = presentationLayout;
-  const item = DB_VIEW_TABS.find((candidate) => candidate.id === presentationId);
   return {
-    id: presentationId,
-    label: item?.label ?? model.viewName,
-    icon: item?.icon ?? DatabaseIcon,
+    id: model.databaseViewId,
+    label: model.viewName,
+    icon: databaseViewLayoutIcon(presentationId),
     active: true,
     onSelect: () => undefined,
   };
@@ -101,7 +130,7 @@ export function DatabaseViewTabSurface({
 
 function DatabaseViewTabSurfaceContent({
   model,
-  presentationLayout = model.query.view.defaultLayout,
+  presentationLayout = model.query.view.layout,
   effectivePresentation,
   toolbarItems,
   destinationItems,
@@ -113,11 +142,13 @@ function DatabaseViewTabSurfaceContent({
   taskSearchInputRef,
   managementControl,
   databaseViewControls,
-  rulesSummaryRow,
+  rulesBar,
   overlay,
+  settingsRail,
   onSearchQueryChange,
   onOpenTaskSearch,
   onCloseTaskSearch,
+  onReorderViews,
   onOpenPage,
   pageActionPort,
   onCommitted,
@@ -135,7 +166,7 @@ function DatabaseViewTabSurfaceContent({
 }: {
   readonly model: DatabaseViewRenderModel;
   readonly presentationLayout?: DatabaseViewLayout;
-  readonly effectivePresentation?: EffectiveDatabaseViewPresentation;
+  readonly effectivePresentation?: EffectiveDatabaseView;
   readonly toolbarItems?: DbViewToolbarItem[];
   readonly destinationItems?: DbViewToolbarItem[];
   readonly groupPagination?: ReadonlyMap<string, ColumnPaginationState>;
@@ -146,11 +177,16 @@ function DatabaseViewTabSurfaceContent({
   readonly taskSearchInputRef: RefObject<HTMLInputElement | null>;
   readonly managementControl?: ReactNode;
   readonly databaseViewControls?: ReactNode;
-  readonly rulesSummaryRow?: ReactNode;
+  readonly rulesBar?: ReactNode;
   readonly overlay?: ReactNode;
+  readonly settingsRail?: ReactNode;
   readonly onSearchQueryChange: (value: string) => void;
   readonly onOpenTaskSearch: (selectQuery?: boolean) => void;
   readonly onCloseTaskSearch: () => void;
+  readonly onReorderViews?: (
+    movedViewId: string,
+    orderedViewIds: readonly string[],
+  ) => boolean | Promise<boolean>;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   readonly pageActionPort?: DatabaseViewPageActionPort;
   readonly onCommitted?: () => void | Promise<void>;
@@ -179,13 +215,14 @@ function DatabaseViewTabSurfaceContent({
   const mutationHistory = providedMutationHistory ?? localMutationHistory;
   const presentation = effectivePresentation ?? {
     layout: presentationLayout,
+    rules: model.query.view.config.rules,
     presentation: model.query.view.config.presentation,
   };
   const activeToolbarItems = toolbarItems ?? [
     durableDatabaseToolbarItem(model, presentation.layout),
   ];
   return (
-    <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary">
+    <div className="relative flex h-full min-h-0 flex-col bg-token-main-surface-primary">
       <DbViewToolbar
         items={activeToolbarItems}
         destinationItems={destinationItems}
@@ -196,56 +233,62 @@ function DatabaseViewTabSurfaceContent({
         taskSearchInputRef={taskSearchInputRef}
         managementControl={managementControl}
         databaseViewControls={databaseViewControls}
-        rulesSummaryRow={rulesSummaryRow}
         onSearchQueryChange={onSearchQueryChange}
         onOpenTaskSearch={onOpenTaskSearch}
         onCloseTaskSearch={onCloseTaskSearch}
+        onReorderViews={onReorderViews}
       />
-      {overlay}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {presentation.layout === "list" ? (
-          <DatabaseList
-            model={model}
-            effectivePresentation={presentation}
-            groupPagination={groupPagination}
-            onLoadMoreGroup={onLoadMoreGroup}
-            searchQuery={activeSearchQuery}
-            onOpenPage={onOpenPage}
-            pageActionPort={pageActionPort}
-            onCommitted={onCommitted}
-            presentedPageIds={presentedPageIds}
-            initialSelectedPageIds={initialSelectedPageIds}
-            onSelectedPageIdsChange={onSelectedPageIdsChange}
-            collapsedOccurrenceKeys={collapsedOccurrenceKeys}
-            onOccurrenceDisclosureChange={onOccurrenceDisclosureChange}
-            forcedDisplayField={forcedDisplayField}
-            pageCreateSurfaceId={pageCreateSurfaceId}
-            onRequestCreatePage={onRequestCreatePage}
-            scrollStateKey={`database-view:${model.databaseViewId}:list`}
-            mutationHistory={mutationHistory}
-            pageChatActivityByPageId={pageChatRuntime.activityByPageId}
-            onRemovePageChatRelation={pageChatRuntime.removeRelation}
-          />
-        ) : (
-          <DatabaseViewSurface
-            model={model}
-            effectivePresentation={presentation}
-            groupPagination={groupPagination}
-            onLoadMoreGroup={onLoadMoreGroup}
-            searchQuery={activeSearchQuery}
-            onOpenPage={onOpenPage}
-            pageActionPort={pageActionPort}
-            onCommitted={onCommitted}
-            onMoveBoardPages={onMoveBoardPages}
-            keyboardSurface={keyboardSurface}
-            presentedPageIds={presentedPageIds}
-            initialSelectedPageIds={initialSelectedPageIds}
-            onSelectedPageIdsChange={onSelectedPageIdsChange}
-            pageCreateSurfaceId={pageCreateSurfaceId}
-            onRequestCreatePage={onRequestCreatePage}
-            mutationHistory={mutationHistory}
-          />
-        )}
+      <div className="relative flex min-h-0 flex-1">
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          {rulesBar}
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            {overlay}
+            {presentation.layout === "list" ? (
+              <DatabaseList
+                model={model}
+                effectivePresentation={presentation}
+                groupPagination={groupPagination}
+                onLoadMoreGroup={onLoadMoreGroup}
+                searchQuery={activeSearchQuery}
+                onOpenPage={onOpenPage}
+                pageActionPort={pageActionPort}
+                onCommitted={onCommitted}
+                presentedPageIds={presentedPageIds}
+                initialSelectedPageIds={initialSelectedPageIds}
+                onSelectedPageIdsChange={onSelectedPageIdsChange}
+                collapsedOccurrenceKeys={collapsedOccurrenceKeys}
+                onOccurrenceDisclosureChange={onOccurrenceDisclosureChange}
+                forcedDisplayField={forcedDisplayField}
+                pageCreateSurfaceId={pageCreateSurfaceId}
+                onRequestCreatePage={onRequestCreatePage}
+                scrollStateKey={`database-view:${model.databaseViewId}:list`}
+                mutationHistory={mutationHistory}
+                pageChatActivityByPageId={pageChatRuntime.activityByPageId}
+                onRemovePageChatRelation={pageChatRuntime.removeRelation}
+              />
+            ) : (
+              <DatabaseViewSurface
+                model={model}
+                effectivePresentation={presentation}
+                groupPagination={groupPagination}
+                onLoadMoreGroup={onLoadMoreGroup}
+                searchQuery={activeSearchQuery}
+                onOpenPage={onOpenPage}
+                pageActionPort={pageActionPort}
+                onCommitted={onCommitted}
+                onMoveBoardPages={onMoveBoardPages}
+                keyboardSurface={keyboardSurface}
+                presentedPageIds={presentedPageIds}
+                initialSelectedPageIds={initialSelectedPageIds}
+                onSelectedPageIdsChange={onSelectedPageIdsChange}
+                pageCreateSurfaceId={pageCreateSurfaceId}
+                onRequestCreatePage={onRequestCreatePage}
+                mutationHistory={mutationHistory}
+              />
+            )}
+          </div>
+        </div>
+        {settingsRail}
       </div>
     </div>
   );
@@ -265,6 +308,7 @@ export function DbViewSessionTab({
   onOpenRelatedChat,
   onSendPageToChat,
   onOpenCanvasStage,
+  onSelectDatabaseView,
   targetLeafId,
 }: {
   readonly sessionId: string;
@@ -281,6 +325,7 @@ export function DbViewSessionTab({
   readonly onOpenRelatedChat?: (sessionId: string) => Promise<void> | void;
   readonly onSendPageToChat?: (input: SendPageToChatInput) => Promise<void> | void;
   readonly onOpenCanvasStage: OpenCanvasStageHandler;
+  readonly onSelectDatabaseView?: (viewId: string, title: string) => void;
   readonly targetLeafId: string;
 }) {
   if (tab.kind !== "db_view") {
@@ -291,35 +336,58 @@ export function DbViewSessionTab({
   const surfaceId = `database-view:${sessionId}:${tab.id}:${databaseViewId}`;
   const listClientSessionId = `${tab.id}:database-view`;
   const [listPageCreateRegistrationToken] = useState(() => crypto.randomUUID());
-  const personalPreference = useDatabaseViewPresentationPreference(
-    projectId,
-    String(databaseViewId),
-  );
+  const personalPreference = useDatabaseViewPersonalPreference(projectId, String(databaseViewId));
+  const { databaseViewTabs, setDatabaseViewTabDisplayMode, setDatabaseViewRuleBarOpen } =
+    useWorkbenchProfilePreferences();
   const presentationOverride = personalPreference.presentationOverride;
+  const rulesOverride = personalPreference.rulesOverride;
   const synchronizePreferenceStoreEpoch = personalPreference.synchronizeStoreEpoch;
   const runtime = useBoard({
     projectId,
     databaseViewId,
     sessionId: listClientSessionId,
     presentationOverride,
+    rulesOverride,
     presentationOverrideReady: !personalPreference.loading,
     enabled: !personalPreference.loading,
   });
   const databaseView = runtime.databaseView;
+  const settings = useDatabaseSettingsRuntime({
+    projectId,
+    databaseId: databaseView?.databaseId ?? null,
+    activeViewId: String(databaseViewId),
+  });
   const mutationHistory = useDatabaseViewMutationHistory(
     `${databaseView?.storeEpoch ?? "pending"}:${databaseViewId}`,
   );
   const [publishingPresentation, setPublishingPresentation] = useState(false);
+  const [rulePublishError, setRulePublishError] = useState<string | null>(null);
+  const presentationActivity = resolveDatabaseViewPresentationActivity({
+    loading: personalPreference.loading,
+    saving: personalPreference.saving,
+    publishing: publishingPresentation,
+  });
   const [taskSearchOpen, setTaskSearchOpen] = useState(false);
-  const [databaseManagerOpen, setDatabaseManagerOpen] = useState(false);
-  const [openViewPanel, setOpenViewPanel] = useState<"filter" | "sort" | "display" | null>(null);
+  const [settingsRouteStack, setSettingsRouteStack] = useState<DatabaseSettingsRouteStack | null>(
+    null,
+  );
+  const [viewNameFocusRequest, setViewNameFocusRequest] = useState(0);
+  const [deleteViewRequest, setDeleteViewRequest] = useState<{
+    readonly viewId: string;
+    readonly viewName: string;
+  } | null>(null);
+  const settingsTriggerRef = useRef<HTMLDivElement | null>(null);
+  const previousSettingsOwnerRef = useRef<{
+    viewId: ReturnType<typeof parseDatabaseViewId>;
+    dataSourceId: DatabaseViewRenderModel["dataSourceId"];
+  } | null>(null);
   const ruleOptionRequirements = useMemo(
     () =>
       databaseView
         ? collectRequiredPropertyOptionIds({
             properties: databaseView.query.properties,
             rows: databaseView.query.rows,
-            filter: databaseView.query.view.config.filter,
+            filter: effectiveDatabaseViewFilter(databaseView.query.view.config.rules),
           })
         : {},
     [databaseView],
@@ -330,10 +398,6 @@ export function DbViewSessionTab({
     requiredOptionIds: ruleOptionRequirements,
   });
   const [selectedPageIds, setSelectedPageIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [forcedDisplayField, setForcedDisplayField] = useState<DatabaseViewField | null>(null);
-  useEffect(() => {
-    if (openViewPanel !== "display") setForcedDisplayField(null);
-  }, [openViewPanel]);
   const taskSearchInputRef = useRef<HTMLInputElement | null>(null);
   const lastHandledTaskSearchOpenTickRef = useRef(taskSearchOpenTick);
   const searchQuery =
@@ -358,10 +422,11 @@ export function DbViewSessionTab({
     () =>
       databaseView
         ? resolveEffectiveDatabaseView(
-            databaseView.query.view.defaultLayout,
+            databaseView.query.view.layout,
             databaseView.query.view.config.presentation,
             undefined,
             presentationCapabilities,
+            databaseView.query.view.config.rules,
           )
         : null,
     [databaseView, presentationCapabilities],
@@ -370,14 +435,19 @@ export function DbViewSessionTab({
     () =>
       databaseView
         ? resolveEffectiveDatabaseView(
-            databaseView.query.view.defaultLayout,
+            databaseView.query.view.layout,
             databaseView.query.view.config.presentation,
             presentationOverride,
             presentationCapabilities,
+            databaseView.query.view.config.rules,
+            rulesOverride,
           )
         : null,
-    [databaseView, presentationCapabilities, presentationOverride],
+    [databaseView, presentationCapabilities, presentationOverride, rulesOverride],
   );
+  const effectiveFilter = effectivePresentation
+    ? effectiveDatabaseViewFilter(effectivePresentation.rules)
+    : null;
   const currentProject = useMemo(
     () => projects.find((project) => project.id === projectId) ?? null,
     [projectId, projects],
@@ -441,17 +511,126 @@ export function DbViewSessionTab({
     synchronizePreferenceStoreEpoch(databaseView.storeEpoch);
   }, [databaseView, synchronizePreferenceStoreEpoch]);
   const updateEffectivePresentation = useCallback(
-    (next: EffectiveDatabaseViewPresentation) => {
+    (next: EffectiveDatabaseView) => {
       if (!durableEffectivePresentation) return;
-      const nextOverride = compactDatabaseViewPresentationOverride(
+      const presentation = compactDatabaseViewPresentationOverride(
         durableEffectivePresentation,
         next,
       );
-      runtime.setPresentationOverride(nextOverride);
-      void personalPreference.setPresentationOverride(nextOverride);
+      runtime.setPresentationOverride(presentation);
+      void personalPreference.setPresentationOverride(presentation);
     },
     [durableEffectivePresentation, personalPreference, runtime],
   );
+  const updateEffectiveRules = useCallback(
+    (next: DatabaseViewRules) => {
+      if (!databaseView) return;
+      const compact = compactDatabaseViewRulesOverride(databaseView.query.view.config.rules, next);
+      runtime.setRulesOverride(compact);
+      void personalPreference.setRulesOverride(compact);
+    },
+    [databaseView, personalPreference, runtime],
+  );
+  const ruleBarOpen = databaseViewTabs.ruleBarOpenByViewId[String(databaseViewId)] ?? false;
+  const resetEffectiveRules = useCallback(
+    (scope: DatabaseViewRuleScope) => {
+      const remaining = clearDatabaseViewRulesOverrideScope(rulesOverride ?? {}, scope);
+      runtime.setRulesOverride(remaining);
+      void personalPreference.setRulesOverride(remaining);
+    },
+    [personalPreference, rulesOverride, runtime],
+  );
+  const publishEffectiveRules = useCallback(
+    async (scope: DatabaseViewRuleScope) => {
+      if (!databaseView || !effectivePresentation || publishingPresentation) return;
+      setPublishingPresentation(true);
+      setRulePublishError(null);
+      try {
+        const currentPreferences = await personalPreference.flushPreferences();
+        const publishFilters = scope === "filters" || scope === "all";
+        const publishSorts = scope === "sorts" || scope === "all";
+        const durableRules = databaseView.query.view.config.rules;
+        const nextRules: DatabaseViewRules = {
+          propertyFilters: publishFilters
+            ? effectivePresentation.rules.propertyFilters
+            : durableRules.propertyFilters,
+          advancedFilter: publishFilters
+            ? effectivePresentation.rules.advancedFilter
+            : durableRules.advancedFilter,
+          sorts: publishSorts ? effectivePresentation.rules.sorts : durableRules.sorts,
+        };
+        const remainingRulesOverride = clearDatabaseViewRulesOverrideScope(
+          currentPreferences.rulesOverride,
+          scope,
+        );
+        const receipt = await runtime.publishDatabaseViewDefinition({
+          kind: "rules",
+          patch: { rules: nextRules },
+          commit: async (canonicalModel) => {
+            const committed = await commitDatabaseViewOperations({
+              model: canonicalModel,
+              operations: [
+                {
+                  kind: "put_view",
+                  databaseId: canonicalModel.databaseId,
+                  dataSourceId: canonicalModel.dataSourceId,
+                  viewId: canonicalModel.databaseViewId,
+                  expectedRevision: canonicalModel.query.view.revision,
+                  name: canonicalModel.query.view.name,
+                  layout: canonicalModel.query.view.layout,
+                  config: { ...canonicalModel.query.view.config, rules: nextRules },
+                  isDefault: canonicalModel.query.view.isDefault,
+                },
+                {
+                  kind: "put_view_personal_preferences",
+                  viewId: canonicalModel.databaseViewId,
+                  expectedRevision: currentPreferences.revision,
+                  rulesOverride: remainingRulesOverride ?? {},
+                  presentationOverride: currentPreferences.presentationOverride,
+                },
+              ],
+            });
+            if (!committed) throw new Error("The View rules no longer require publication");
+            return committed;
+          },
+        });
+        const preferenceRevision =
+          Object.entries(receipt.committedRevisions).find(
+            ([key]) =>
+              key.startsWith("view_preferences:") &&
+              key.endsWith(`:${databaseView.databaseViewId}`),
+          )?.[1] ?? currentPreferences.revision;
+        runtime.setRulesOverride(remainingRulesOverride);
+        personalPreference.acceptPreferencesCommitted({
+          rulesOverride: remainingRulesOverride,
+          presentationOverride: currentPreferences.presentationOverride,
+          revision: preferenceRevision,
+          commitSeq: receipt.commitSeq,
+        });
+      } catch (cause) {
+        setRulePublishError(
+          cause instanceof Error ? cause.message : "View rules could not be saved for everyone",
+        );
+      } finally {
+        setPublishingPresentation(false);
+      }
+    },
+    [databaseView, effectivePresentation, personalPreference, publishingPresentation, runtime],
+  );
+  const rulesController = useDatabaseViewRulesController({
+    ownerKey: String(databaseViewId),
+    rules: effectivePresentation?.rules ?? EMPTY_DATABASE_VIEW_RULES,
+    barOpen: ruleBarOpen,
+    onBarOpenChange: (open) => setDatabaseViewRuleBarOpen(String(databaseViewId), open),
+    onRulesChange: updateEffectiveRules,
+    filtersPersonal:
+      rulesOverride?.propertyFilters !== undefined || rulesOverride?.advancedFilter !== undefined,
+    sortsPersonal: rulesOverride?.sorts !== undefined,
+    busy: presentationActivity.interactionLocked,
+    error: rulePublishError ?? personalPreference.error,
+    onReset: resetEffectiveRules,
+    onPublish: (scope) => void publishEffectiveRules(scope),
+  });
   const publishEffectivePresentation = useCallback(async () => {
     if (
       !databaseView ||
@@ -462,45 +641,56 @@ export function DbViewSessionTab({
       return;
     setPublishingPresentation(true);
     try {
-      const currentPresentation = await personalPreference.flushPresentation();
-      const receipt = await commitDatabaseViewOperations({
-        model: databaseView,
-        operations: [
-          {
-            kind: "put_view",
-            databaseId: databaseView.databaseId,
-            dataSourceId: databaseView.dataSourceId,
-            viewId: databaseView.databaseViewId,
-            expectedRevision: databaseView.query.view.revision,
-            name: databaseView.query.view.name,
-            defaultLayout: effectivePresentation.layout,
-            config: {
-              ...databaseView.query.view.config,
-              presentation: effectivePresentation.presentation,
-            },
-            isDefault: databaseView.query.view.isDefault,
-          },
-          {
-            kind: "put_view_personal_presentation",
-            viewId: databaseView.databaseViewId,
-            expectedRevision: currentPresentation.revision,
-            presentationOverride: {},
-          },
-        ],
+      const currentPresentation = await personalPreference.flushPreferences();
+      const receipt = await runtime.publishDatabaseViewDefinition({
+        kind: "presentation",
+        patch: {
+          layout: effectivePresentation.layout,
+          presentation: effectivePresentation.presentation,
+        },
+        commit: async (canonicalModel) => {
+          const committed = await commitDatabaseViewOperations({
+            model: canonicalModel,
+            operations: [
+              {
+                kind: "put_view",
+                databaseId: canonicalModel.databaseId,
+                dataSourceId: canonicalModel.dataSourceId,
+                viewId: canonicalModel.databaseViewId,
+                expectedRevision: canonicalModel.query.view.revision,
+                name: canonicalModel.query.view.name,
+                layout: effectivePresentation.layout,
+                config: {
+                  ...canonicalModel.query.view.config,
+                  presentation: effectivePresentation.presentation,
+                },
+                isDefault: canonicalModel.query.view.isDefault,
+              },
+              {
+                kind: "put_view_personal_preferences",
+                viewId: canonicalModel.databaseViewId,
+                expectedRevision: currentPresentation.revision,
+                rulesOverride: currentPresentation.rulesOverride,
+                presentationOverride: {},
+              },
+            ],
+          });
+          if (!committed) throw new Error("The View presentation no longer requires publication");
+          return committed;
+        },
       });
-      const preferenceRevision = receipt
-        ? (Object.entries(receipt.committedRevisions).find(
-            ([key]) =>
-              key.startsWith("view_presentation:") &&
-              key.endsWith(`:${databaseView.databaseViewId}`),
-          )?.[1] ?? currentPresentation.revision)
-        : currentPresentation.revision;
-      personalPreference.acceptPresentationCommitted({
+      const preferenceRevision =
+        Object.entries(receipt.committedRevisions).find(
+          ([key]) =>
+            key.startsWith("view_preferences:") && key.endsWith(`:${databaseView.databaseViewId}`),
+        )?.[1] ?? currentPresentation.revision;
+      runtime.setPresentationOverride(null);
+      personalPreference.acceptPreferencesCommitted({
+        rulesOverride: currentPresentation.rulesOverride,
         presentationOverride: null,
         revision: preferenceRevision,
-        commitSeq: receipt?.commitSeq ?? databaseView.commitSeq,
+        commitSeq: receipt.commitSeq,
       });
-      await runtime.refresh();
     } finally {
       setPublishingPresentation(false);
     }
@@ -521,6 +711,58 @@ export function DbViewSessionTab({
     });
   }, []);
 
+  const closeSettings = useCallback(() => {
+    setSettingsRouteStack(null);
+    window.requestAnimationFrame(() => {
+      settingsTriggerRef.current?.querySelector<HTMLElement>("button")?.focus();
+    });
+  }, []);
+
+  const openSettingsForView = useCallback(
+    (viewId: string, route?: DatabaseSettingsRoute) => {
+      if (!databaseView) return;
+      const root: DatabaseSettingsRoute = {
+        kind: "root",
+        databaseId: parseDatabaseId(databaseView.databaseId),
+        viewId: parseDatabaseViewId(viewId),
+      };
+      setSettingsRouteStack(
+        route && route.kind !== "root"
+          ? pushDatabaseSettingsRoute(openDatabaseSettingsRoute(root), route)
+          : openDatabaseSettingsRoute(root),
+      );
+    },
+    [databaseView],
+  );
+  const openSettings = useCallback(
+    (route?: DatabaseSettingsRoute) => {
+      if (!databaseView) return;
+      openSettingsForView(databaseView.databaseViewId, route);
+    },
+    [databaseView, openSettingsForView],
+  );
+
+  useEffect(() => {
+    if (!databaseView) return;
+    const nextOwner = {
+      viewId: parseDatabaseViewId(databaseView.databaseViewId),
+      dataSourceId: databaseView.dataSourceId,
+    };
+    const previousOwner = previousSettingsOwnerRef.current;
+    previousSettingsOwnerRef.current = nextOwner;
+    if (!previousOwner || !settingsRouteStack) return;
+    setSettingsRouteStack(
+      reconcileDatabaseSettingsRouteStack({
+        stack: settingsRouteStack,
+        databaseId: parseDatabaseId(databaseView.databaseId),
+        previousViewId: previousOwner.viewId,
+        nextViewId: nextOwner.viewId,
+        previousDataSourceId: previousOwner.dataSourceId,
+        nextDataSourceId: nextOwner.dataSourceId,
+      }),
+    );
+  }, [databaseView, settingsRouteStack]);
+
   useEffect(() => {
     if (taskSearchOpenTick <= 0 || taskSearchOpenTick === lastHandledTaskSearchOpenTickRef.current)
       return;
@@ -528,7 +770,12 @@ export function DbViewSessionTab({
     openTaskSearch(true);
   }, [openTaskSearch, taskSearchOpenTick]);
 
-  if (!databaseView || !effectivePresentation || !durableEffectivePresentation) {
+  if (
+    !databaseView ||
+    !effectiveFilter ||
+    !effectivePresentation ||
+    !durableEffectivePresentation
+  ) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-sm text-token-description-foreground">
         {runtime.error ?? "Opening Database…"}
@@ -536,20 +783,119 @@ export function DbViewSessionTab({
     );
   }
 
-  const toolbarItems = DB_VIEW_TABS.map((item) => {
-    const layout = item.id;
-    return {
-      id: item.id,
-      label: item.label,
-      icon: item.icon,
-      active: effectivePresentation.layout === layout,
-      onSelect: () =>
-        updateEffectivePresentation({
-          ...effectivePresentation,
-          layout,
-        }),
-    };
-  });
+  const activeViews =
+    settings.authority?.database.views.filter((view) => view.lifecycle === "active") ?? [];
+  const tabDisplayMode =
+    databaseViewTabs.displayModeByDatabaseId[databaseView.databaseId] ?? "icon_and_text";
+  const selectTargetView = (view: DatabaseViewRecordV2): void => {
+    if (view.viewId === databaseView.databaseViewId) return;
+    onSelectDatabaseView?.(view.viewId, view.name);
+  };
+  const openTargetViewSettings = (view: DatabaseViewRecordV2, focusName = false): void => {
+    selectTargetView(view);
+    openSettingsForView(view.viewId);
+    if (focusName) setViewNameFocusRequest((request) => request + 1);
+  };
+  const toolbarItems = settings.authority?.database.views
+    .filter((view) => view.lifecycle === "active")
+    .map((view): DbViewToolbarItem => ({
+      id: view.viewId,
+      label: view.name,
+      icon: databaseViewLayoutIcon(view.layout),
+      active: view.viewId === databaseView.databaseViewId,
+      onSelect: () => selectTargetView(view),
+      actionMenu: {
+        viewId: view.viewId,
+        viewName: view.name,
+        viewIcon: databaseViewLayoutIcon(view.layout),
+        dataSourceName:
+          settings.authority?.database.dataSources.find(
+            (source) => source.dataSourceId === view.dataSourceId,
+          )?.name ?? "Data source",
+        displayMode: tabDisplayMode,
+        busy: settings.pendingKey !== null,
+        canDelete: activeViews.length > 1,
+        onRename: () => openTargetViewSettings(view, true),
+        onEdit: () => openTargetViewSettings(view),
+        onOpenSource: () => {
+          selectTargetView(view);
+          const root: DatabaseSettingsRoute = {
+            kind: "root",
+            databaseId: parseDatabaseId(databaseView.databaseId),
+            viewId: view.viewId,
+          };
+          setSettingsRouteStack(
+            pushDatabaseSettingsRoute(openDatabaseSettingsRoute(root), {
+              kind: "source_properties",
+              dataSourceId: view.dataSourceId,
+            }),
+          );
+        },
+        onCopyLink: async () => {
+          const copied = await writeTextToClipboard(
+            serializeNfm([
+              {
+                type: "databaseViewRef",
+                databaseViewId: view.viewId,
+                displayHint: view.name,
+                children: [],
+              },
+            ]),
+          );
+          if (copied) toast.success("Copied exact View link");
+          else toast.danger("Couldn’t copy the View link");
+        },
+        onDuplicate: async () => {
+          const viewId = parseDatabaseViewId(createUuidV7());
+          const next = await settings.mutate({
+            pendingKey: `duplicate-view:${view.viewId}`,
+            preferredViewId: viewId,
+            buildOperations: (authority) => {
+              const current = authority.database.views.find(
+                (candidate) => candidate.lifecycle === "active" && candidate.viewId === view.viewId,
+              );
+              return current ? [duplicateDatabaseViewOperation({ view: current, viewId })] : [];
+            },
+          });
+          const duplicate = next?.database.views.find((candidate) => candidate.viewId === viewId);
+          if (!duplicate) return;
+          onSelectDatabaseView?.(duplicate.viewId, duplicate.name);
+          openSettingsForView(duplicate.viewId);
+          setViewNameFocusRequest((request) => request + 1);
+          void runtime.refresh();
+        },
+        onRequestDelete: () => setDeleteViewRequest({ viewId: view.viewId, viewName: view.name }),
+        onDisplayModeChange: (mode) => setDatabaseViewTabDisplayMode(databaseView.databaseId, mode),
+      },
+    })) ?? [durableDatabaseToolbarItem(databaseView, effectivePresentation.layout)];
+  const activeViewActionMenu = toolbarItems.find((item) => item.active)?.actionMenu;
+  const reorderViews = async (
+    movedViewId: string,
+    orderedViewIds: readonly string[],
+  ): Promise<boolean> => {
+    if (!settings.authority || settings.pendingKey !== null) return false;
+    const operation = reorderDatabaseViewOperation(
+      settings.authority.database.views,
+      movedViewId,
+      orderedViewIds,
+    );
+    if (!operation) return false;
+    const next = await settings.mutate({
+      pendingKey: `reorder-view:${movedViewId}`,
+      preferredViewId: databaseView.databaseViewId,
+      buildOperations: (authority) => {
+        const current = reorderDatabaseViewOperation(
+          authority.database.views,
+          movedViewId,
+          orderedViewIds,
+        );
+        return current ? [current] : [];
+      },
+    });
+    if (!next) return false;
+    void runtime.refresh();
+    return true;
+  };
   const searchShortcutLabel =
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC")
       ? "⌘F"
@@ -565,115 +911,193 @@ export function DbViewSessionTab({
   };
 
   return (
-    <DatabaseViewTabSurface
-      model={databaseView}
-      presentationLayout={effectivePresentation.layout}
-      effectivePresentation={effectivePresentation}
-      forcedDisplayField={forcedDisplayField}
-      toolbarItems={toolbarItems}
-      destinationItems={[
-        {
-          id: "primary-canvas",
-          label: "Canvas",
-          icon: CanvasIcon,
-          onSelect: () => {
-            void onOpenCanvasStage(projectId, primaryCanvasBlockId(projectId), "Canvas", {
-              targetPanelId: tab.panelId,
-              targetLeafId,
-            });
+    <>
+      <DatabaseViewTabSurface
+        model={databaseView}
+        presentationLayout={effectivePresentation.layout}
+        effectivePresentation={effectivePresentation}
+        toolbarItems={toolbarItems}
+        onReorderViews={reorderViews}
+        destinationItems={[
+          {
+            id: "new-database-view",
+            label: "New view",
+            icon: PlusIcon,
+            onSelect: () =>
+              openSettings({
+                kind: "create_view",
+                databaseId: parseDatabaseId(databaseView.databaseId),
+                dataSourceId: databaseView.dataSourceId,
+              }),
           },
-        },
-      ]}
-      groupPagination={runtime.groupPagination}
-      onLoadMoreGroup={runtime.loadMoreGroup}
-      activeSearchQuery={searchQuery}
-      taskSearchOpen={taskSearchOpen}
-      searchShortcutLabel={searchShortcutLabel}
-      taskSearchInputRef={taskSearchInputRef}
-      managementControl={
-        <NodexIconButton
-          icon={DatabaseIcon}
-          size="sm"
-          active={databaseManagerOpen}
-          ariaLabel="Manage Databases"
-          title="Manage Databases"
-          onClick={() => setDatabaseManagerOpen(true)}
-        />
-      }
-      databaseViewControls={
-        <>
-          <DatabaseViewFilter
-            model={databaseView}
+          {
+            id: "primary-canvas",
+            label: "Canvas",
+            icon: CanvasIcon,
+            onSelect: () => {
+              void onOpenCanvasStage(projectId, primaryCanvasBlockId(projectId), "Canvas", {
+                targetPanelId: tab.panelId,
+                targetLeafId,
+              });
+            },
+          },
+        ]}
+        groupPagination={runtime.groupPagination}
+        onLoadMoreGroup={runtime.loadMoreGroup}
+        activeSearchQuery={searchQuery}
+        taskSearchOpen={taskSearchOpen}
+        searchShortcutLabel={searchShortcutLabel}
+        taskSearchInputRef={taskSearchInputRef}
+        managementControl={
+          <div ref={settingsTriggerRef}>
+            <NodexIconButton
+              icon={SlidersHorizontal}
+              size="sm"
+              active={settingsRouteStack !== null}
+              ariaLabel="Database settings"
+              title="Database settings"
+              onClick={() => (settingsRouteStack ? closeSettings() : openSettings())}
+            />
+          </div>
+        }
+        databaseViewControls={
+          <>
+            <DatabaseViewRuleToolbarControls
+              controller={rulesController}
+              properties={databaseView.query.properties}
+            />
+            <NodexIconButton
+              icon={SlidersHorizontal}
+              size="sm"
+              active={settingsRouteStack?.at(-1)?.kind === "view_display"}
+              ariaLabel="Display options"
+              title="Display options"
+              onClick={() =>
+                openSettings({
+                  kind: "view_display",
+                  viewId: parseDatabaseViewId(databaseView.databaseViewId),
+                })
+              }
+            />
+          </>
+        }
+        rulesBar={
+          <DatabaseViewRulesBar
+            controller={rulesController}
+            config={databaseView.query.view.config}
+            properties={databaseView.query.properties}
             optionRegistries={ruleOptionRegistries.options}
             onRequestPropertyOptions={ruleOptionRegistries.requestOptions}
-            onCommitted={runtime.refresh}
-            open={openViewPanel === "filter"}
-            onOpenChange={(open) => setOpenViewPanel(open ? "filter" : null)}
+            accessContext={databaseView.accessContext}
           />
-          <DatabaseViewSort
-            effective={effectivePresentation}
-            properties={databaseView.query.properties}
-            busy={publishingPresentation || personalPreference.saving}
-            open={openViewPanel === "sort"}
-            onOpenChange={(open) => setOpenViewPanel(open ? "sort" : null)}
-            onChange={updateEffectivePresentation}
-          />
-          <DatabaseViewDisplayOptions
-            effective={effectivePresentation}
-            durable={durableEffectivePresentation}
-            properties={databaseView.query.properties}
-            busy={publishingPresentation || personalPreference.loading || personalPreference.saving}
-            error={personalPreference.error}
-            open={openViewPanel === "display"}
-            onOpenChange={(open) => setOpenViewPanel(open ? "display" : null)}
-            onChange={updateEffectivePresentation}
-            onReset={() => void personalPreference.setPresentationOverride(null)}
-            onPublish={publishEffectivePresentation}
-            onForcedFieldChange={setForcedDisplayField}
-          />
-        </>
-      }
-      rulesSummaryRow={
-        <DatabaseViewRulesSummaryRow
-          filter={databaseView.query.view.config.filter}
-          effective={effectivePresentation}
-          properties={databaseView.query.properties}
-          optionRegistries={ruleOptionRegistries.options}
-          onOpenFilter={() => setOpenViewPanel("filter")}
-          onOpenSort={() => setOpenViewPanel("sort")}
+        }
+        settingsRail={
+          settingsRouteStack ? (
+            <DatabaseSettingsRail
+              runtime={settings}
+              routeStack={settingsRouteStack}
+              model={databaseView}
+              effectivePresentation={effectivePresentation}
+              durablePresentation={durableEffectivePresentation}
+              viewNameFocusRequest={viewNameFocusRequest}
+              viewActionMenu={activeViewActionMenu}
+              presentationActivity={presentationActivity}
+              presentationError={personalPreference.error}
+              optionRegistries={ruleOptionRegistries.options}
+              onRequestPropertyOptions={ruleOptionRegistries.requestOptions}
+              onChangePresentation={updateEffectivePresentation}
+              onResetPresentation={() => void personalPreference.setPresentationOverride(null)}
+              onPublishPresentation={publishEffectivePresentation}
+              onProjectionCommitted={runtime.refresh}
+              onSelectView={(viewId, title) => onSelectDatabaseView?.(viewId, title)}
+              onPush={(route) =>
+                setSettingsRouteStack((current) =>
+                  current ? pushDatabaseSettingsRoute(current, route) : current,
+                )
+              }
+              onReplace={(route) =>
+                setSettingsRouteStack((current) =>
+                  current ? replaceDatabaseSettingsRoute(current, route) : current,
+                )
+              }
+              onBack={() =>
+                setSettingsRouteStack((current) => {
+                  if (!current) return null;
+                  const next = backDatabaseSettingsRoute(current);
+                  if (next) return next;
+                  window.requestAnimationFrame(() => {
+                    settingsTriggerRef.current?.querySelector<HTMLElement>("button")?.focus();
+                  });
+                  return null;
+                })
+              }
+              onClose={closeSettings}
+            />
+          ) : null
+        }
+        onSearchQueryChange={(value) => setSearchQuery(projectId, value)}
+        onOpenTaskSearch={openTaskSearch}
+        onCloseTaskSearch={() => setTaskSearchOpen(false)}
+        onOpenPage={(pageId, titleSnapshot, openMode) => {
+          void onOpenPageTab(projectId, pageId, titleSnapshot, {
+            placement: { kind: "adjacent-right", sourceSurfaceId: tab.id },
+            openMode,
+          });
+        }}
+        pageActionPort={pageActionPort}
+        onCommitted={runtime.refresh}
+        onMoveBoardPages={runtime.moveDatabaseViewPages}
+        keyboardSurface={{ surfaceId, presentationId: tab.id }}
+        presentedPageIds={presentedPageIds}
+        initialSelectedPageIds={selectedPageIds}
+        onSelectedPageIdsChange={setSelectedPageIds}
+        collapsedOccurrenceKeys={personalPreference.collapsedOccurrenceKeys}
+        onOccurrenceDisclosureChange={(target, collapsed) => {
+          void personalPreference.setOccurrenceDisclosure(target, collapsed);
+        }}
+        pageCreateSurfaceId={surfaceId}
+        onRequestCreatePage={requestListPageCreate}
+        mutationHistory={mutationHistory}
+      />
+      {deleteViewRequest ? (
+        <DatabaseViewDeleteConfirmationDialog
+          viewName={deleteViewRequest.viewName}
+          busy={settings.pendingKey !== null}
+          onClose={() => setDeleteViewRequest(null)}
+          onConfirm={async () => {
+            const target = settings.authority?.database.views.find(
+              (view) => view.lifecycle === "active" && view.viewId === deleteViewRequest.viewId,
+            );
+            if (!target || activeViews.length <= 1) {
+              setDeleteViewRequest(null);
+              return;
+            }
+            const next = await settings.mutate({
+              pendingKey: `delete-view:${target.viewId}`,
+              preferredViewId: databaseView.databaseViewId,
+              buildOperations: (authority) => {
+                const current = authority.database.views.find(
+                  (view) => view.lifecycle === "active" && view.viewId === target.viewId,
+                );
+                return current
+                  ? [
+                      {
+                        kind: "delete_view" as const,
+                        databaseId: current.databaseId,
+                        viewId: current.viewId,
+                        expectedRevision: current.revision,
+                      },
+                    ]
+                  : [];
+              },
+            });
+            if (!next) return;
+            setDeleteViewRequest(null);
+            onSelectDatabaseView?.(next.view.viewId, next.view.name);
+            void runtime.refresh();
+          }}
         />
-      }
-      overlay={
-        <DatabaseManagementDialogController
-          projectId={projectId}
-          initialDatabaseId={databaseView.databaseId}
-          open={databaseManagerOpen}
-          onOpenChange={setDatabaseManagerOpen}
-        />
-      }
-      onSearchQueryChange={(value) => setSearchQuery(projectId, value)}
-      onOpenTaskSearch={openTaskSearch}
-      onCloseTaskSearch={() => setTaskSearchOpen(false)}
-      onOpenPage={(pageId, titleSnapshot, openMode) => {
-        void onOpenPageTab(projectId, pageId, titleSnapshot, {
-          placement: { kind: "adjacent-right", sourceSurfaceId: tab.id },
-          openMode,
-        });
-      }}
-      pageActionPort={pageActionPort}
-      onCommitted={runtime.refresh}
-      onMoveBoardPages={runtime.moveDatabaseViewPages}
-      keyboardSurface={{ surfaceId, presentationId: tab.id }}
-      presentedPageIds={presentedPageIds}
-      initialSelectedPageIds={selectedPageIds}
-      onSelectedPageIdsChange={setSelectedPageIds}
-      collapsedOccurrenceKeys={personalPreference.collapsedOccurrenceKeys}
-      onOccurrenceDisclosureChange={(target, collapsed) => {
-        void personalPreference.setOccurrenceDisclosure(target, collapsed);
-      }}
-      pageCreateSurfaceId={surfaceId}
-      onRequestCreatePage={requestListPageCreate}
-      mutationHistory={mutationHistory}
-    />
+      ) : null}
+    </>
   );
 }

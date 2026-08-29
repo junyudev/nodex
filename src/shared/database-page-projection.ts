@@ -651,7 +651,7 @@ export const projectDatabaseViewReference = (
       databaseBlockId: query.view.databaseId,
       projectId: input.accessContext.kind === "project" ? input.accessContext.projectId : null,
       name: query.view.name,
-      defaultLayout: query.view.defaultLayout,
+      layout: query.view.layout,
       config: JSON.parse(stableStringifyDatabaseJson(query.view.config)) as Readonly<
         Record<string, DatabaseViewJsonValue>
       >,

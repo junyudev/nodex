@@ -8,13 +8,14 @@ use nodex_core_contracts::database::{
     DatabaseAgentDataSourceQuery, DatabaseDataSourceQueryWindow, DatabaseGroupScope,
     DatabaseListGroupSummary, DatabaseListProjectionRow, DatabaseListTransientKind,
     DatabaseListWindow, DatabaseRowDetail, DatabaseRowSummary, DatabaseRowsById,
-    DatabaseViewCompletedRange, DatabaseViewCompletedRangeInput, DatabaseViewCompletion,
-    DatabaseViewContextRow, DatabaseViewDefinition, DatabaseViewField, DatabaseViewFieldInput,
-    DatabaseViewFilter, DatabaseViewFilterGroupOperator, DatabaseViewFilterOperator,
-    DatabaseViewGroup, DatabaseViewGroupOverrideInput, DatabaseViewGroupSummary,
-    DatabaseViewGroups, DatabaseViewHierarchy, DatabaseViewIntrinsicField, DatabaseViewLayout,
-    DatabaseViewLayoutDisplay, DatabaseViewLayoutInput, DatabaseViewLayouts, DatabaseViewNullOrder,
-    DatabaseViewNullOrderInput, DatabaseViewPresentation, DatabaseViewPresentationOverrideInput,
+    DatabaseViewAdvancedFilterOverrideInput, DatabaseViewCompletedRange,
+    DatabaseViewCompletedRangeInput, DatabaseViewCompletion, DatabaseViewContextRow,
+    DatabaseViewDefinition, DatabaseViewField, DatabaseViewFieldInput, DatabaseViewFilter,
+    DatabaseViewFilterGroupOperator, DatabaseViewFilterOperator, DatabaseViewGroup,
+    DatabaseViewGroupOverrideInput, DatabaseViewGroupSummary, DatabaseViewGroups,
+    DatabaseViewHierarchy, DatabaseViewIntrinsicField, DatabaseViewLayout,
+    DatabaseViewLayoutDisplay, DatabaseViewNullOrder, DatabaseViewNullOrderInput,
+    DatabaseViewPreferencesOverrideInput, DatabaseViewPresentation, DatabaseViewRules,
     DatabaseViewSort, DatabaseViewSortDirection, DatabaseViewSortDirectionInput,
     DatabaseViewSortField, DatabaseViewSortFieldInput, DatabaseViewWindow,
     MAX_VIEW_GROUP_SUMMARIES,
@@ -27,6 +28,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::authorization::{authorize_required, project_primary_database};
+use super::view_contract::MAX_VIEW_SORT_RULES;
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
 use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
@@ -35,7 +37,6 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 const MAX_FILTER_DEPTH: usize = 8;
 const MAX_FILTER_NODES: usize = 1_024;
-const MAX_SORT_RULES: usize = 4;
 const MAX_DISPLAY_PROPERTIES: usize = 64;
 const MAX_ROWS_BY_ID: usize = 100;
 const MAX_LIST_PROJECTION_MODELS: usize = 100_000;
@@ -233,17 +234,11 @@ pub(super) fn presented_view_window(
     connection: &Connection,
     library_id: &str,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseViewWindow, StoreError> {
     let mut view = resolve_view(connection, library_id, view_id)?;
-    apply_presentation_override(&mut view.config.presentation, presentation_override)?;
-    if let Some(layout) = presentation_override.layout {
-        view.layout = match layout {
-            DatabaseViewLayoutInput::Board => ViewLayout::Board,
-            DatabaseViewLayoutInput::List => ViewLayout::List,
-        };
-    }
+    apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
     let projection = projection_snapshot_authority(
@@ -294,17 +289,11 @@ pub(super) fn presented_list_window(
     connection: &Connection,
     library_id: &str,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseListWindow, StoreError> {
     let mut view = resolve_view(connection, library_id, view_id)?;
-    apply_presentation_override(&mut view.config.presentation, presentation_override)?;
-    if let Some(layout) = presentation_override.layout {
-        view.layout = match layout {
-            DatabaseViewLayoutInput::Board => ViewLayout::Board,
-            DatabaseViewLayoutInput::List => ViewLayout::List,
-        };
-    }
+    apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
     let projection = projection_snapshot_authority(
@@ -346,16 +335,10 @@ pub(super) fn direct_drop_presentation(
     connection: &Connection,
     library_id: &str,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
 ) -> Result<DirectDropPresentation, StoreError> {
     let mut view = resolve_view(connection, library_id, view_id)?;
-    apply_presentation_override(&mut view.config.presentation, presentation_override)?;
-    if let Some(layout) = presentation_override.layout {
-        view.layout = match layout {
-            DatabaseViewLayoutInput::Board => ViewLayout::Board,
-            DatabaseViewLayoutInput::List => ViewLayout::List,
-        };
-    }
+    apply_definition_override(&mut view.config, preferences_override)?;
     if !matches!(view.layout, ViewLayout::Board) {
         return Err(invalid(
             "Direct Block transfer placement requires a Board presentation",
@@ -375,7 +358,7 @@ pub(super) fn direct_drop_presentation(
             .map(|group| group.property_id.as_str()),
     ];
     let mut writable_sort_property_ids = Vec::new();
-    for sort in &view.config.presentation.sort {
+    for sort in &view.config.rules.sorts {
         let ViewSortField::Property { property_id } = &sort.field else {
             break;
         };
@@ -398,18 +381,12 @@ pub(crate) fn presented_list_projection(
     connection: &Connection,
     library_id: &str,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
     store_epoch: &str,
     project_id: Option<&str>,
 ) -> Result<PresentedListProjection, StoreError> {
     let mut view = resolve_view(connection, library_id, view_id)?;
-    apply_presentation_override(&mut view.config.presentation, presentation_override)?;
-    if let Some(layout) = presentation_override.layout {
-        view.layout = match layout {
-            DatabaseViewLayoutInput::Board => ViewLayout::Board,
-            DatabaseViewLayoutInput::List => ViewLayout::List,
-        };
-    }
+    apply_definition_override(&mut view.config, preferences_override)?;
     if !matches!(view.layout, ViewLayout::List) {
         return Err(invalid(
             "Semantic List movement requires a List presentation",
@@ -454,6 +431,7 @@ pub(crate) struct ListProjectionGraph {
     pub(crate) data_source_id: String,
     pub(crate) view_id: String,
     pub(crate) presentation: DatabaseViewPresentation,
+    pub(crate) sorts: Vec<DatabaseViewSort>,
     pub(crate) rows: Vec<DatabaseListProjectionRow>,
     pub(crate) groups: Vec<DatabaseListGroupSummary>,
     pub(crate) total_occurrence_count: i64,
@@ -837,7 +815,7 @@ fn configured_list_group_paths(
     connection: &Connection,
     view: &ResolvedView,
 ) -> Result<Vec<ListGroupPath>, StoreError> {
-    if !view.config.presentation.layouts.list.show_empty_groups {
+    if !view.config.presentation.display.show_empty_groups {
         return Ok(Vec::new());
     }
     let Some(group) = &view.config.presentation.group else {
@@ -1274,6 +1252,7 @@ fn build_list_projection_graph(
         data_source_id: view.data_source_id.clone(),
         view_id: view.view_id.clone(),
         presentation: view.config.presentation.clone(),
+        sorts: view.config.rules.sorts.clone(),
         rows,
         groups,
         total_occurrence_count,
@@ -1506,7 +1485,8 @@ fn row_window_for(
     let position_view = bind(&mut parameters, SqlValue::Text(view.view_id.clone()));
     let source = bind(&mut parameters, SqlValue::Text(view.data_source_id.clone()));
     let database = bind(&mut parameters, SqlValue::Text(view.database_id.clone()));
-    let filter = compile_filter(&view.config.filter, &mut parameters, 1, &mut 0)?;
+    let effective_filter = super::view_contract::effective_filter(&view.config.rules);
+    let filter = compile_filter(&effective_filter, &mut parameters, 1, &mut 0)?;
     let completion = compile_completion_predicate(view, &mut parameters)?;
     let (database_values_projection, property_revisions_projection) =
         compact_value_projections_with(&view.config, projection_property_ids, &mut parameters)?;
@@ -1721,17 +1701,11 @@ pub(crate) fn presented_view_groups(
     connection: &Connection,
     library_id: &str,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
     read: ViewGroupsRead<'_>,
 ) -> Result<DatabaseViewGroups, StoreError> {
     let mut view = resolve_view(connection, library_id, view_id)?;
-    apply_presentation_override(&mut view.config.presentation, presentation_override)?;
-    if let Some(layout) = presentation_override.layout {
-        view.layout = match layout {
-            DatabaseViewLayoutInput::Board => ViewLayout::Board,
-            DatabaseViewLayoutInput::List => ViewLayout::List,
-        };
-    }
+    apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
     let projection = projection_snapshot_authority(
@@ -1757,7 +1731,8 @@ fn view_groups_for(
     let subgroup_select = effective_subgroup.as_deref().unwrap_or("NULL");
     let position_view = bind(&mut parameters, SqlValue::Text(view.view_id.clone()));
     let source = bind(&mut parameters, SqlValue::Text(view.data_source_id.clone()));
-    let filter = compile_filter(&view.config.filter, &mut parameters, 1, &mut 0)?;
+    let effective_filter = super::view_contract::effective_filter(&view.config.rules);
+    let filter = compile_filter(&effective_filter, &mut parameters, 1, &mut 0)?;
     let completion = compile_completion_predicate(view, &mut parameters)?;
     let candidate_cte = format!(
         "WITH candidate_rows AS (\
@@ -1903,10 +1878,7 @@ fn view_groups_for(
 }
 
 fn show_empty_groups(view: &ResolvedView) -> bool {
-    match view.layout {
-        ViewLayout::Board => view.config.presentation.layouts.board.show_empty_groups,
-        ViewLayout::List => view.config.presentation.layouts.list.show_empty_groups,
-    }
+    view.config.presentation.display.show_empty_groups
 }
 
 fn finite_group_keys(
@@ -2390,7 +2362,7 @@ fn resolve_view(
     connection
         .query_row(
             "SELECT view.database_block_id, view.data_source_id, view.config_json, \
-               view.default_layout, view.revision, view.lifecycle, container.lifecycle, \
+               view.layout, view.revision, view.lifecycle, container.lifecycle, \
                source.lifecycle, \
                EXISTS(SELECT 1 FROM data_source_properties status_property \
                  WHERE status_property.data_source_id = view.data_source_id \
@@ -2453,8 +2425,12 @@ fn resolve_view(
                 {
                     return Err(not_found("Database View is not active"));
                 }
-                validate_filter(&config.filter, 1, &mut 0)?;
-                if config.presentation.sort.len() > MAX_SORT_RULES {
+                validate_filter(
+                    &super::view_contract::effective_filter(&config.rules),
+                    1,
+                    &mut 0,
+                )?;
+                if config.rules.sorts.len() > MAX_VIEW_SORT_RULES {
                     return Err(invalid("Database View has too many sort rules"));
                 }
                 if let Some(group) = &config.presentation.group {
@@ -2535,13 +2511,23 @@ fn resolve_agent_data_source_query(
     }
     let empty_layout = DatabaseViewLayoutDisplay {
         fields: Vec::new(),
+        property_order: Vec::new(),
         show_empty_groups: false,
         show_description: true,
     };
     let definition = DatabaseViewDefinition {
-        filter: query.filter.clone(),
+        rules: DatabaseViewRules {
+            property_filters: Vec::new(),
+            advanced_filter: Some(match &query.filter {
+                DatabaseViewFilter::Group { .. } => query.filter.clone(),
+                clause => DatabaseViewFilter::Group {
+                    operator: DatabaseViewFilterGroupOperator::And,
+                    children: vec![clause.clone()],
+                },
+            }),
+            sorts: query.sort.clone(),
+        },
         presentation: DatabaseViewPresentation {
-            sort: query.sort.clone(),
             group: None,
             subgroup: None,
             group_direction: DatabaseViewSortDirection::Asc,
@@ -2553,10 +2539,8 @@ fn resolve_agent_data_source_query(
                 show_sub_pages: false,
                 nested_sub_pages: false,
             },
-            layouts: DatabaseViewLayouts {
-                board: empty_layout.clone(),
-                list: empty_layout,
-            },
+            display: empty_layout,
+            conditional_colors: Vec::new(),
         },
     };
     super::mutation::validate_view_definition(
@@ -2701,19 +2685,14 @@ fn refresh_effective_presentation(
     {
         view.config.presentation.subgroup = None;
     }
-    view.config
-        .presentation
-        .sort
-        .retain(|rule| match &rule.field {
-            ViewSortField::Property { property_id } => properties
-                .get(property_id)
-                .is_some_and(|value_type| value_type != "relation"),
-            ViewSortField::Manual | ViewSortField::Title | ViewSortField::Created => true,
-        });
-    for layout in [
-        &mut view.config.presentation.layouts.board,
-        &mut view.config.presentation.layouts.list,
-    ] {
+    view.config.rules.sorts.retain(|rule| match &rule.field {
+        ViewSortField::Property { property_id } => properties
+            .get(property_id)
+            .is_some_and(|value_type| value_type != "relation"),
+        ViewSortField::Manual | ViewSortField::Title | ViewSortField::Created => true,
+    });
+    {
+        let layout = &mut view.config.presentation.display;
         let mut seen = BTreeSet::new();
         layout.fields.retain(|field| {
             let key = match field {
@@ -2729,6 +2708,10 @@ fn refresh_effective_presentation(
             };
             seen.insert(key)
         });
+        let mut seen_properties = BTreeSet::new();
+        layout.property_order.retain(|property_id| {
+            properties.contains_key(property_id) && seen_properties.insert(property_id.clone())
+        });
     }
     let finite = |group: &Option<ViewGroup>| {
         group.as_ref().is_some_and(|group| {
@@ -2741,8 +2724,7 @@ fn refresh_effective_presentation(
         && (view.config.presentation.subgroup.is_none()
             || finite(&view.config.presentation.subgroup));
     if !empty_groups_supported {
-        view.config.presentation.layouts.board.show_empty_groups = false;
-        view.config.presentation.layouts.list.show_empty_groups = false;
+        view.config.presentation.display.show_empty_groups = false;
     }
     normalize_completion_capability(
         &mut view.config.presentation.completion,
@@ -2778,17 +2760,41 @@ fn view_field_override(input: &DatabaseViewFieldInput) -> Result<ViewField, Stor
     }
 }
 
-fn apply_presentation_override(
-    presentation: &mut ViewPresentation,
-    input: &DatabaseViewPresentationOverrideInput,
+fn apply_definition_override(
+    definition: &mut ViewConfig,
+    input: &DatabaseViewPreferencesOverrideInput,
 ) -> Result<(), StoreError> {
-    if let Some(sort) = &input.sort {
-        if sort.len() > MAX_SORT_RULES {
+    let rules_override = &input.rules_override;
+    if let Some(property_filters) = &rules_override.property_filters {
+        definition.rules.property_filters = property_filters.clone();
+    }
+    if let Some(advanced_filter) = &rules_override.advanced_filter {
+        definition.rules.advanced_filter = match advanced_filter {
+            DatabaseViewAdvancedFilterOverrideInput::None => None,
+            DatabaseViewAdvancedFilterOverrideInput::Filter { filter } => Some(filter.clone()),
+        };
+    }
+    if let Some(sort) = &rules_override.sorts {
+        if sort.len() > MAX_VIEW_SORT_RULES {
             return Err(invalid(
-                "Database View presentation override has too many sort rules",
+                "Database View rules override has too many sort rules",
             ));
         }
-        presentation.sort = sort
+        let mut sort_fields = HashSet::new();
+        for rule in sort {
+            let identity = match &rule.field {
+                DatabaseViewSortFieldInput::Manual => "manual".to_owned(),
+                DatabaseViewSortFieldInput::Title => "title".to_owned(),
+                DatabaseViewSortFieldInput::Created => "created".to_owned(),
+                DatabaseViewSortFieldInput::Property { property_id } => {
+                    format!("property:{property_id}")
+                }
+            };
+            if !sort_fields.insert(identity) {
+                return Err(invalid("Database View rules override sort fields repeat"));
+            }
+        }
+        definition.rules.sorts = sort
             .iter()
             .map(|rule| {
                 let field = match &rule.field {
@@ -2816,6 +2822,8 @@ fn apply_presentation_override(
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
     }
+    let presentation = &mut definition.presentation;
+    let input = &input.presentation_override;
     if let Some(group) = &input.group {
         presentation.group = view_group_override(group)?;
     }
@@ -2863,43 +2871,65 @@ fn apply_presentation_override(
             presentation.hierarchy.nested_sub_pages = false;
         }
     }
-    if let Some(layouts) = &input.layouts {
-        for (target, source) in [
-            (&mut presentation.layouts.board, layouts.board.as_ref()),
-            (&mut presentation.layouts.list, layouts.list.as_ref()),
-        ] {
-            let Some(source) = source else { continue };
-            if let Some(fields) = &source.fields {
-                if fields.len() > MAX_DISPLAY_PROPERTIES {
+    if let Some(source) = &input.display {
+        let target = &mut presentation.display;
+        if let Some(fields) = &source.fields {
+            if fields.len() > MAX_DISPLAY_PROPERTIES {
+                return Err(invalid(
+                    "Database View presentation override displays too many Properties",
+                ));
+            }
+            target.fields = fields
+                .iter()
+                .map(view_field_override)
+                .collect::<Result<Vec<_>, _>>()?;
+        }
+        if let Some(property_order) = &source.property_order {
+            if property_order.len() > super::MAX_DATA_SOURCE_PROPERTIES {
+                return Err(invalid(
+                    "Database View presentation override orders too many Properties",
+                ));
+            }
+            let mut seen = BTreeSet::new();
+            for property_id in property_order {
+                validate_property_id(property_id)?;
+                if !seen.insert(property_id) {
                     return Err(invalid(
-                        "Database View presentation override displays too many Properties",
+                        "Database View presentation override Property order repeats identities",
                     ));
                 }
-                target.fields = fields
-                    .iter()
-                    .map(view_field_override)
-                    .collect::<Result<Vec<_>, _>>()?;
             }
-            if let Some(show_empty_groups) = source.show_empty_groups {
-                target.show_empty_groups = show_empty_groups;
-            }
-            if let Some(show_description) = source.show_description {
-                target.show_description = show_description;
-            }
+            target.property_order = property_order.clone();
+        }
+        if let Some(show_empty_groups) = source.show_empty_groups {
+            target.show_empty_groups = show_empty_groups;
+        }
+        if let Some(show_description) = source.show_description {
+            target.show_description = show_description;
         }
     }
     Ok(())
 }
 
-pub(super) fn validate_presentation_override(
+pub(super) fn validate_preferences_override(
     connection: &Connection,
     library_id: &str,
+    actor_project_id: &str,
+    authority_project_id: Option<&str>,
     view_id: &str,
-    presentation_override: &DatabaseViewPresentationOverrideInput,
+    preferences_override: &DatabaseViewPreferencesOverrideInput,
 ) -> Result<(), StoreError> {
     let mut view = resolve_view(connection, library_id, view_id)?;
-    apply_presentation_override(&mut view.config.presentation, presentation_override)?;
-    refresh_effective_presentation(connection, &mut view)
+    apply_definition_override(&mut view.config, preferences_override)?;
+    refresh_effective_presentation(connection, &mut view)?;
+    super::mutation::validate_view_definition(
+        connection,
+        library_id,
+        actor_project_id,
+        &view.data_source_id,
+        &view.config,
+        authority_project_id.is_none(),
+    )
 }
 
 fn summary_by_id(
@@ -3097,10 +3127,8 @@ fn projected_property_ids_with(
     additional_property_ids: &BTreeSet<String>,
 ) -> Result<BTreeSet<String>, StoreError> {
     let mut property_ids = BTreeSet::new();
-    for layout in [
-        &config.presentation.layouts.board,
-        &config.presentation.layouts.list,
-    ] {
+    {
+        let layout = &config.presentation.display;
         if layout.fields.len() > MAX_DISPLAY_PROPERTIES {
             return Err(invalid("Database View displays too many Properties"));
         }
@@ -3250,7 +3278,7 @@ fn sort_components(
     effective_subgroup: Option<&str>,
     parameters: &mut Vec<SqlValue>,
 ) -> Result<Vec<SortComponent>, StoreError> {
-    if config.presentation.sort.len() > MAX_SORT_RULES {
+    if config.rules.sorts.len() > MAX_VIEW_SORT_RULES {
         return Err(invalid("Database View has too many sort rules"));
     }
     let mut components = Vec::new();
@@ -3289,7 +3317,7 @@ fn sort_components(
         Some(completed) => format!("CASE WHEN {completed} THEN NULL ELSE {expression} END"),
         None => expression,
     };
-    if config.presentation.sort.is_empty() {
+    if config.rules.sorts.is_empty() {
         let rank = active_expression("position.rank_key".to_owned());
         components.push(SortComponent {
             expression: format!("CASE WHEN {rank} IS NULL THEN 1 ELSE 0 END"),
@@ -3309,7 +3337,7 @@ fn sort_components(
         }
         return Ok(components);
     }
-    for rule in &config.presentation.sort {
+    for rule in &config.rules.sorts {
         let expression = active_expression(match &rule.field {
             ViewSortField::Manual => "position.rank_key".to_owned(),
             ViewSortField::Title => "model.title".to_owned(),
@@ -3337,12 +3365,12 @@ fn sort_components(
         });
     }
     let has_explicit_manual = config
-        .presentation
-        .sort
+        .rules
+        .sorts
         .iter()
         .any(|rule| rule.field == ViewSortField::Manual);
     if !has_explicit_manual
-        && super::view_contract::fractional_order_direction(&config.presentation.sort).is_some()
+        && super::view_contract::fractional_order_direction(&config.rules.sorts).is_some()
     {
         let rank = active_expression("position.rank_key".to_owned());
         components.push(SortComponent {
@@ -3415,55 +3443,136 @@ fn compile_filter(
                     AND relation_edge.property_id = {edge_property})"
             );
             let empty = format!("({scalar_empty} AND NOT {edge_exists})");
-            match operator {
-                FilterOperator::IsEmpty => Ok(empty),
-                FilterOperator::IsNotEmpty => Ok(format!("NOT {empty}")),
-                FilterOperator::Equals | FilterOperator::NotEquals => {
-                    let expected = bind(
-                        parameters,
-                        SqlValue::Text(
-                            serde_json::to_string(value.as_ref().unwrap_or(&Value::Null))
-                                .map_err(|_| invalid("Database filter value is invalid"))?,
-                        ),
-                    );
-                    let equals = format!("({current} IS json_extract({expected}, '$'))");
-                    Ok(match operator {
-                        FilterOperator::Equals => equals,
-                        FilterOperator::NotEquals => format!("NOT {equals}"),
-                        _ => unreachable!(),
-                    })
-                }
-                FilterOperator::Contains | FilterOperator::NotContains => {
-                    let expected = bind(
-                        parameters,
-                        SqlValue::Text(
-                            serde_json::to_string(value.as_ref().unwrap_or(&Value::Null))
-                                .map_err(|_| invalid("Database filter value is invalid"))?,
-                        ),
-                    );
-                    let contains = format!(
-                        "(({current_type} = 'text' \
-                            AND instr(CAST({current} AS TEXT), \
-                              CAST(json_extract({expected}, '$') AS TEXT)) > 0) \
-                          OR ({current_type} = 'array' \
-                            AND EXISTS (SELECT 1 FROM json_each({current}) item \
-                              WHERE item.value IS json_extract({expected}, '$'))) \
-                          OR EXISTS(SELECT 1 FROM data_source_relation_edges relation_edge \
-                            WHERE relation_edge.source_data_source_id = membership.data_source_id \
-                              AND relation_edge.source_membership_id = membership.id \
-                              AND relation_edge.property_id = {edge_property} \
-                              AND relation_edge.target_page_block_id \
-                                IS json_extract({expected}, '$')))"
-                    );
-                    Ok(match operator {
-                        FilterOperator::Contains => contains,
-                        FilterOperator::NotContains => format!("NOT {contains}"),
-                        _ => unreachable!(),
-                    })
-                }
+            if matches!(operator, FilterOperator::IsEmpty) {
+                return Ok(empty);
             }
+            if matches!(operator, FilterOperator::IsNotEmpty) {
+                return Ok(format!("NOT {empty}"));
+            }
+            let expected_value = value
+                .as_ref()
+                .and_then(Option::as_ref)
+                .unwrap_or(&Value::Null);
+            let expected = bind(
+                parameters,
+                SqlValue::Text(
+                    serde_json::to_string(expected_value)
+                        .map_err(|_| invalid("Database filter value is invalid"))?,
+                ),
+            );
+            let expected_scalar = format!("json_extract({expected}, '$')");
+            let equals = format!("({current} IS {expected_scalar})");
+            let text_contains = format!(
+                "({current_type} = 'text' AND instr(lower(CAST({current} AS TEXT)), \
+                  lower(CAST({expected_scalar} AS TEXT))) > 0)"
+            );
+            let array_contains_any = format!(
+                "({current_type} = 'array' AND EXISTS (SELECT 1 FROM json_each({current}) item \
+                  WHERE item.value IN (SELECT expected_item.value FROM json_each({expected}) expected_item)))"
+            );
+            let array_contains_all = format!(
+                "({current_type} = 'array' AND NOT EXISTS (SELECT 1 FROM json_each({expected}) expected_item \
+                  WHERE NOT EXISTS (SELECT 1 FROM json_each({current}) item \
+                    WHERE item.value IS expected_item.value)))"
+            );
+            let relation_contains = format!(
+                "EXISTS(SELECT 1 FROM data_source_relation_edges relation_edge \
+                  WHERE relation_edge.source_data_source_id = membership.data_source_id \
+                    AND relation_edge.source_membership_id = membership.id \
+                    AND relation_edge.property_id = {edge_property} \
+                    AND (relation_edge.target_page_block_id IS {expected_scalar} \
+                      OR relation_edge.target_page_block_id IN \
+                        (SELECT expected_item.value FROM json_each({expected}) expected_item)))"
+            );
+            let expression = match operator {
+                FilterOperator::Equals
+                | FilterOperator::TextIs
+                | FilterOperator::NumberEquals
+                | FilterOperator::CheckboxIs
+                | FilterOperator::SelectIs
+                | FilterOperator::DateIs => equals,
+                FilterOperator::NotEquals
+                | FilterOperator::TextIsNot
+                | FilterOperator::NumberDoesNotEqual
+                | FilterOperator::CheckboxIsNot
+                | FilterOperator::SelectIsNot
+                | FilterOperator::DateIsNot => format!("NOT {equals}"),
+                FilterOperator::Contains | FilterOperator::TextContains => text_contains,
+                FilterOperator::NotContains | FilterOperator::TextDoesNotContain => {
+                    format!("NOT {text_contains}")
+                }
+                FilterOperator::TextStartsWith => format!(
+                    "({current_type} = 'text' AND lower(CAST({current} AS TEXT)) \
+                      LIKE lower(CAST({expected_scalar} AS TEXT)) || '%')"
+                ),
+                FilterOperator::TextEndsWith => format!(
+                    "({current_type} = 'text' AND lower(CAST({current} AS TEXT)) \
+                      LIKE '%' || lower(CAST({expected_scalar} AS TEXT)))"
+                ),
+                FilterOperator::NumberGreaterThan => {
+                    format!("(CAST({current} AS REAL) > CAST({expected_scalar} AS REAL))")
+                }
+                FilterOperator::NumberLessThan => {
+                    format!("(CAST({current} AS REAL) < CAST({expected_scalar} AS REAL))")
+                }
+                FilterOperator::NumberGreaterThanOrEqualTo => {
+                    format!("(CAST({current} AS REAL) >= CAST({expected_scalar} AS REAL))")
+                }
+                FilterOperator::NumberLessThanOrEqualTo => {
+                    format!("(CAST({current} AS REAL) <= CAST({expected_scalar} AS REAL))")
+                }
+                FilterOperator::MultiSelectContains => array_contains_any,
+                FilterOperator::MultiSelectDoesNotContain => format!("NOT {array_contains_any}"),
+                FilterOperator::MultiSelectContainsAll => array_contains_all,
+                FilterOperator::DateBefore => format!("({current} < {expected_scalar})"),
+                FilterOperator::DateAfter => format!("({current} > {expected_scalar})"),
+                FilterOperator::DateOnOrBefore => format!("({current} <= {expected_scalar})"),
+                FilterOperator::DateOnOrAfter => format!("({current} >= {expected_scalar})"),
+                FilterOperator::DateWithin => format!(
+                    "({current} >= json_extract({expected}, '$.start') \
+                      AND {current} <= json_extract({expected}, '$.end'))"
+                ),
+                FilterOperator::DateRelativeTo => {
+                    let (direction, count, unit) = relative_date_parts(expected_value)?;
+                    let sign = if direction == "past" { "-" } else { "+" };
+                    let modifier =
+                        bind(parameters, SqlValue::Text(format!("{sign}{count} {unit}")));
+                    if direction == "past" {
+                        format!(
+                            "({current} >= datetime('now', {modifier}) AND {current} <= datetime('now'))"
+                        )
+                    } else {
+                        format!(
+                            "({current} >= datetime('now') AND {current} <= datetime('now', {modifier}))"
+                        )
+                    }
+                }
+                FilterOperator::RelationContains => relation_contains,
+                FilterOperator::RelationDoesNotContain => format!("NOT {relation_contains}"),
+                FilterOperator::IsEmpty | FilterOperator::IsNotEmpty => unreachable!(),
+            };
+            Ok(expression)
         }
     }
+}
+
+fn relative_date_parts(value: &Value) -> Result<(&str, u64, &str), StoreError> {
+    let direction = value
+        .get("direction")
+        .and_then(Value::as_str)
+        .filter(|direction| matches!(*direction, "past" | "future"))
+        .ok_or_else(|| invalid("Relative date direction is invalid"))?;
+    let count = value
+        .get("count")
+        .and_then(Value::as_u64)
+        .filter(|count| *count > 0 && *count <= 10_000)
+        .ok_or_else(|| invalid("Relative date count is invalid"))?;
+    let unit = value
+        .get("unit")
+        .and_then(Value::as_str)
+        .filter(|unit| matches!(*unit, "day" | "week" | "month" | "year"))
+        .ok_or_else(|| invalid("Relative date unit is invalid"))?;
+    Ok((direction, count, unit))
 }
 
 fn compile_keyset_predicate(

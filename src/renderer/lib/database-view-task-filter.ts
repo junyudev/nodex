@@ -134,7 +134,12 @@ const choiceFromNodes = (
       includeEmpty = true;
       continue;
     }
-    if (node.operator !== "equals" || typeof node.value !== "string") return null;
+    if (
+      (node.operator !== "select_is" && node.operator !== "equals") ||
+      typeof node.value !== "string"
+    ) {
+      return null;
+    }
     selectedOptionIds.push(node.value);
   }
   return { selectedOptionIds, includeEmpty };
@@ -147,17 +152,35 @@ const tagsFromNodes = (
 ): DatabaseTaskTagFilter | null => {
   const clauses = nodes.flatMap((node) => (node.kind === "clause" ? [node] : []));
   if (clauses.length !== nodes.length) return null;
-  if (
-    clauses.some((clause) => clause.propertyId !== propertyId || typeof clause.value !== "string")
-  )
-    return null;
+  if (clauses.some((clause) => clause.propertyId !== propertyId)) return null;
   const filterOperators = new Set(clauses.map((clause) => clause.operator));
   if (filterOperators.size > 1) return null;
   const filterOperator = clauses[0]?.operator;
-  if (filterOperator !== "contains" && filterOperator !== "not_contains") return null;
+  if (
+    filterOperator !== "contains" &&
+    filterOperator !== "not_contains" &&
+    filterOperator !== "multi_select_contains" &&
+    filterOperator !== "multi_select_does_not_contain" &&
+    filterOperator !== "multi_select_contains_all"
+  ) {
+    return null;
+  }
+  const selectedOptionIds = clauses.flatMap((clause) =>
+    Array.isArray(clause.value)
+      ? clause.value.filter((value): value is string => typeof value === "string")
+      : typeof clause.value === "string"
+        ? [clause.value]
+        : [],
+  );
+  if (selectedOptionIds.length === 0) return null;
   return {
-    selectedOptionIds: clauses.map((clause) => clause.value as string),
-    mode: filterOperator === "not_contains" ? "none" : operator === "and" ? "all" : "any",
+    selectedOptionIds: [...new Set(selectedOptionIds)],
+    mode:
+      filterOperator === "not_contains" || filterOperator === "multi_select_does_not_contain"
+        ? "none"
+        : filterOperator === "multi_select_contains_all" || operator === "and"
+          ? "all"
+          : "any",
   };
 };
 
@@ -266,7 +289,7 @@ const choiceCriterion = (
   const children: DatabaseViewFilterNode[] = value.selectedOptionIds.map((optionId) => ({
     kind: "clause",
     propertyId: property.propertyId,
-    operator: "equals",
+    operator: "select_is",
     value: optionId,
   }));
   if (value.includeEmpty) {
@@ -299,24 +322,22 @@ const choiceCriterion = (
 };
 
 const tagOperator = (mode: DatabaseTaskTagMode): DatabaseViewFilterOperator =>
-  mode === "none" ? "not_contains" : "contains";
+  mode === "none"
+    ? "multi_select_does_not_contain"
+    : mode === "all"
+      ? "multi_select_contains_all"
+      : "multi_select_contains";
 
 const tagsCriterion = (
   property: DatabaseTaskFilterProperty,
   value: DatabaseTaskTagFilter,
 ): DatabaseViewFilterNode | null => {
   if (value.selectedOptionIds.length === 0) return null;
-  const children: DatabaseViewFilterNode[] = value.selectedOptionIds.map((optionId) => ({
+  return {
     kind: "clause",
     propertyId: property.propertyId,
     operator: tagOperator(value.mode),
-    value: optionId,
-  }));
-  if (children.length === 1) return children[0]!;
-  return {
-    kind: "group",
-    operator: value.mode === "any" ? "or" : "and",
-    children,
+    value: value.selectedOptionIds,
   };
 };
 

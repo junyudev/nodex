@@ -70,7 +70,7 @@ const model = (): DatabaseViewRenderModel => {
     databaseId,
     dataSourceId,
     name: "All",
-    defaultLayout: "list" as const,
+    layout: "list" as const,
     config: upgradeDatabaseViewConfigV2({
       schemaKey: "nodex.database-view" as const,
       schemaVersion: 2 as const,
@@ -273,10 +273,7 @@ describe("selected Database View Page mutations", () => {
           ...baseModel.query.view,
           config: {
             ...baseModel.query.view.config,
-            presentation: {
-              ...baseModel.query.view.config.presentation,
-              sort: [],
-            },
+            rules: { ...baseModel.query.view.config.rules, sorts: [] },
           },
         },
       },

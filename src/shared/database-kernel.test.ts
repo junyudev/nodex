@@ -1,12 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   canonicalizeDatabaseMutationIntent,
+  evaluateDatabaseViewConditionalColor,
   evaluateDatabaseViewFilter,
   normalizeDatabasePropertyValue,
   parseDatabaseMutationRequest,
   parseDatabasePropertyConfig,
   parseDatabaseViewConfig,
   parseDatabaseViewConfigV2,
+  parseDatabaseViewConfigV6,
   type DatabaseMutationRequest,
   type DatabaseViewConfig,
 } from "./database-kernel";
@@ -18,6 +20,26 @@ const viewConfig = (): DatabaseViewConfig => ({
   sort: [{ field: { kind: "manual" }, direction: "asc", nulls: "last" }],
   group: null,
   display: { propertyIds: [], showTitle: true },
+});
+
+const viewConfigV6 = () => ({
+  schemaKey: "nodex.database-view" as const,
+  schemaVersion: 6 as const,
+  rules: { propertyFilters: [], advancedFilter: null, sorts: [] },
+  presentation: {
+    group: null,
+    subgroup: null,
+    groupDirection: "asc",
+    completion: { range: "all", orderByRecency: false },
+    hierarchy: { showSubPages: true, nestedSubPages: false },
+    display: {
+      fields: [],
+      propertyOrder: [],
+      showEmptyGroups: false,
+      showDescription: true,
+    },
+    conditionalColors: [],
+  },
 });
 
 const request = (): DatabaseMutationRequest => ({
@@ -35,7 +57,7 @@ const request = (): DatabaseMutationRequest => ({
       initialView: {
         viewId: "view-1",
         name: "Table",
-        defaultLayout: "list",
+        layout: "list",
         config: viewConfig(),
       },
     },
@@ -52,6 +74,123 @@ const fails = (operation: () => void): boolean => {
 };
 
 describe("general Database mutation contract", () => {
+  test("normalizes omitted empty rules and accepts incomplete rule-authoring drafts", () => {
+    expect(
+      parseDatabaseViewConfigV6({
+        ...viewConfigV6(),
+        rules: {},
+      }).rules,
+    ).toEqual({ propertyFilters: [], advancedFilter: null, sorts: [] });
+
+    const draft = {
+      kind: "clause",
+      propertyId: "tags",
+      operator: "multi_select_contains",
+      value: [],
+    };
+    expect(
+      parseDatabaseViewConfigV6({
+        ...viewConfigV6(),
+        rules: {
+          propertyFilters: [{ filterId: "filter-draft", clause: draft }],
+          advancedFilter: { kind: "group", operator: "and", children: [draft] },
+          sorts: [],
+        },
+      }).rules.propertyFilters[0]?.clause,
+    ).toEqual(draft);
+  });
+
+  test("accepts the full sort budget and rejects duplicate fields", () => {
+    const sorts = Array.from({ length: 128 }, (_, index) => ({
+      field: {
+        kind: "property" as const,
+        propertyId: `p_${index.toString(36).padStart(8, "0")}`,
+      },
+      direction: "asc" as const,
+      nulls: "last" as const,
+    }));
+    expect(
+      parseDatabaseViewConfigV6({
+        ...viewConfigV6(),
+        rules: { ...viewConfigV6().rules, sorts },
+      }).rules.sorts,
+    ).toHaveLength(128);
+    expect(() =>
+      parseDatabaseViewConfigV6({
+        ...viewConfigV6(),
+        rules: { ...viewConfigV6().rules, sorts: [sorts[0], sorts[0]] },
+      }),
+    ).toThrow("contains duplicate fields");
+  });
+
+  test("resolves the first matching conditional color with typed empty and membership semantics", () => {
+    const values = new Map<string, unknown>([
+      ["status", "build"],
+      ["tags", ["urgent", "frontend"]],
+      ["estimate", 0],
+      ["done", false],
+      ["notes", ""],
+    ]);
+    const evaluate = (rules: Parameters<typeof evaluateDatabaseViewConditionalColor>[0]) =>
+      evaluateDatabaseViewConditionalColor(rules, (propertyId) => values.get(propertyId) as never);
+
+    expect(
+      evaluate([
+        {
+          ruleId: "rule-1",
+          propertyId: "status",
+          operator: "equals",
+          value: "build",
+          color: "orange",
+        },
+        {
+          ruleId: "rule-2",
+          propertyId: "tags",
+          operator: "contains",
+          value: "urgent",
+          color: "red",
+        },
+      ]),
+    ).toBe("orange");
+    expect(
+      evaluate([
+        {
+          ruleId: "rule-3",
+          propertyId: "notes",
+          operator: "is_empty",
+          color: "gray",
+        },
+      ]),
+    ).toBe("gray");
+    expect(
+      evaluate([
+        {
+          ruleId: "rule-4",
+          propertyId: "estimate",
+          operator: "is_not_empty",
+          color: "blue",
+        },
+        {
+          ruleId: "rule-5",
+          propertyId: "done",
+          operator: "is_empty",
+          color: "pink",
+        },
+      ]),
+    ).toBe("blue");
+    expect(
+      evaluate([
+        {
+          ruleId: "rule-6",
+          propertyId: "tags",
+          operator: "not_contains",
+          value: "urgent",
+          color: "purple",
+        },
+      ]),
+    ).toBeNull();
+  });
+
   test("validates compact local Property identities in View config v2", () => {
     expect(
       parseDatabaseViewConfigV2({
@@ -159,7 +298,7 @@ describe("general Database mutation contract", () => {
               viewId: "unrelated-view",
               expectedRevision: 0,
               name: "Unrelated",
-              defaultLayout: "list",
+              layout: "list",
               config: viewConfig(),
               isPrimary: false,
             },
@@ -278,7 +417,7 @@ describe("general Database mutation contract", () => {
           initialView: {
             viewId: "view-1",
             name: "Loose",
-            defaultLayout: "list",
+            layout: "list",
             config: {},
           },
         },

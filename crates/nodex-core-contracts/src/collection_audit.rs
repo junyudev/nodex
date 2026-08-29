@@ -77,12 +77,15 @@ fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
             ReadBudgetPolicy::Identity
         }
         // Group summaries are capped at MAX_VIEW_GROUP_SUMMARIES with an
-        // explicit truncation flag, so the response cardinality is finite.
-        DatabaseRead::ViewGroups { .. } => ReadBudgetPolicy::FixedDomain,
+        // explicit truncation flag. Page layout has at most the Source's
+        // bounded 200 Properties, so both response cardinalities are finite.
+        DatabaseRead::ViewGroups { .. } | DatabaseRead::PageLayout { .. } => {
+            ReadBudgetPolicy::FixedDomain
+        }
         DatabaseRead::Database { .. }
         | DatabaseRead::DataSource { .. }
         | DatabaseRead::View { .. }
-        | DatabaseRead::ViewPersonalPresentation { .. }
+        | DatabaseRead::ViewPersonalPreferences { .. }
         | DatabaseRead::ViewCollapsedOccurrences { .. }
         | DatabaseRead::RowDetail { .. } => ReadBudgetPolicy::Identity,
     }
@@ -180,6 +183,12 @@ fn every_read_variant_has_an_explicit_budget_policy() {
             window: Default::default(),
         }),
         ReadBudgetPolicy::CollectionWindow
+    );
+    assert_eq!(
+        database_policy(&DatabaseRead::PageLayout {
+            data_source_id: "data-source:audit".to_owned(),
+        }),
+        ReadBudgetPolicy::FixedDomain
     );
     assert_eq!(
         workspace_policy(&ProjectWorkspaceRead::Project {

@@ -59,7 +59,7 @@ const snapshot = (): DatabaseModuleReadSnapshotV2 => ({
         databaseId: parseDatabaseId("database-1"),
         dataSourceId: parseDataSourceId("source-1"),
         name: "Board",
-        defaultLayout: "board",
+        layout: "board",
         config: upgradeDatabaseViewConfigV2({
           schemaKey: "nodex.database-view",
           schemaVersion: 2,

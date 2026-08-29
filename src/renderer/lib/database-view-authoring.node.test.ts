@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { DatabaseViewFilterNode, DatabaseViewConfigV4 } from "../../shared/database-kernel";
+import type { DatabaseViewFilterNode, DatabaseViewConfigV6 } from "../../shared/database-kernel";
 import { upgradeDatabaseViewConfigV2 } from "../../shared/database-view-presentation";
 import type {
   DatabaseViewRecordV2,
@@ -19,6 +19,7 @@ import {
   filterOperatorsForProperty,
   databaseViewConfigsEqual,
   databaseViewMoveBeforeId,
+  databaseViewReorderBeforeId,
   emptyDatabaseViewConfig,
   moveDatabaseViewSort,
   removeDatabaseViewFilterNode,
@@ -54,7 +55,7 @@ const view = (id: string): DatabaseViewRecordV2 => ({
   databaseId: parseDatabaseId("database-1"),
   dataSourceId: parseDataSourceId("source-1"),
   name: id,
-  defaultLayout: "list",
+  layout: "list",
   config: upgradeDatabaseViewConfigV2({
     schemaKey: "nodex.database-view",
     schemaVersion: 2,
@@ -72,12 +73,9 @@ const view = (id: string): DatabaseViewRecordV2 => ({
 });
 
 describe("durable Database View authoring", () => {
-  test("defaults readable ID to List while keeping Board opt-in", () => {
+  test("starts a new View with one empty display configuration", () => {
     const config = emptyDatabaseViewConfig();
-    expect(config.presentation.layouts.board.fields).toEqual([]);
-    expect(config.presentation.layouts.list.fields).toEqual([
-      { kind: "intrinsic", field: "page_key" },
-    ]);
+    expect(config.presentation.display.fields).toEqual([]);
   });
 
   test("derives server-owned logical anchors for adjacent View moves", () => {
@@ -87,6 +85,15 @@ describe("durable Database View authoring", () => {
     expect(databaseViewMoveBeforeId(views, "b", "down")).toBe(null);
     expect(databaseViewMoveBeforeId(views, "a", "up")).toBeUndefined();
     expect(databaseViewMoveBeforeId(views, "c", "down")).toBeUndefined();
+  });
+
+  test("compiles arbitrary tab-list reorder into one logical anchor", () => {
+    const views = [view("a"), view("b"), view("c"), view("d")];
+
+    expect(databaseViewReorderBeforeId(views, "d", ["a", "d", "b", "c"])).toBe("b");
+    expect(databaseViewReorderBeforeId(views, "a", ["b", "c", "d", "a"])).toBeNull();
+    expect(databaseViewReorderBeforeId(views, "b", ["a", "b", "c", "d"])).toBeUndefined();
+    expect(databaseViewReorderBeforeId(views, "b", ["a", "b", "c"])).toBeUndefined();
   });
 
   test("updates nested filters immutably and preserves value arity", () => {
@@ -112,19 +119,25 @@ describe("durable Database View authoring", () => {
     expect(removed.kind === "group" ? removed.children.length : -1).toBe(1);
   });
 
-  test("authors negative membership filters with scalar set members", () => {
+  test("authors typed membership and relative-date values", () => {
     const multiSelect = property("multi_select");
-    expect(filterOperatorsForProperty(multiSelect)).toContain("not_contains");
-    expect(databaseFilterClauseWithOperator(multiSelect, "not_contains")).toEqual({
+    expect(filterOperatorsForProperty(multiSelect)).toContain("multi_select_does_not_contain");
+    expect(databaseFilterClauseWithOperator(multiSelect, "multi_select_does_not_contain")).toEqual({
       kind: "clause",
       propertyId: multiSelect.propertyId,
-      operator: "not_contains",
-      value: "o_AAAAAAAA",
+      operator: "multi_select_does_not_contain",
+      value: [],
+    });
+    expect(databaseFilterClauseWithOperator(property("date"), "date_relative_to")).toEqual({
+      kind: "clause",
+      propertyId: "p_AAAAAAAA",
+      operator: "date_relative_to",
+      value: { direction: "past", count: 1, unit: "week" },
     });
   });
 
   test("compares canonical configs and reorders sort precedence", () => {
-    const base: DatabaseViewConfigV4 = upgradeDatabaseViewConfigV2({
+    const base: DatabaseViewConfigV6 = upgradeDatabaseViewConfigV2({
       schemaKey: "nodex.database-view",
       schemaVersion: 2,
       filter: { kind: "group", operator: "and", children: [] },
@@ -135,21 +148,21 @@ describe("durable Database View authoring", () => {
       group: null,
       display: { propertyIds: [], showTitle: true },
     });
-    const moved = moveDatabaseViewSort(base.presentation.sort, 1, "up");
+    const moved = moveDatabaseViewSort(base.rules.sorts, 1, "up");
     expect(moved[0]?.field.kind).toBe("manual");
     expect(
       databaseViewConfigsEqual(base, {
         ...base,
-        presentation: {
-          ...base.presentation,
-          sort: [...base.presentation.sort],
+        rules: {
+          ...base.rules,
+          sorts: [...base.rules.sorts],
         },
       }),
     ).toBe(true);
     expect(
       databaseViewConfigsEqual(base, {
         ...base,
-        presentation: { ...base.presentation, sort: moved },
+        rules: { ...base.rules, sorts: moved },
       }),
     ).toBe(false);
   });
