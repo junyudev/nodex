@@ -492,8 +492,8 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("worktrees:list", () =>
-      managedWorktreeCatalog.list.pipe(
+    registerEffectHandle("worktrees:list", (_, hostId: string) =>
+      managedWorktreeCatalog.list(hostId).pipe(
         Effect.map((records) => [...records]),
         Effect.mapError((cause) => new CodexIpcError({ operation: "worktrees:list", cause })),
       ),

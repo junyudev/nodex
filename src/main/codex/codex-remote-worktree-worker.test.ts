@@ -8,7 +8,10 @@ import { assert, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import type { CodexWorktreeWorkerCreateInput } from "./codex-worktree-worker-protocol";
 import { makeCodexRemoteWorktreeWorker } from "./codex-remote-worktree-worker";
-import type { CodexWorktreeWorkerHostMessage } from "../worktree-worker/worktree-worker-protocol";
+import {
+  CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
+  type CodexWorktreeWorkerHostMessage,
+} from "../worktree-worker/worktree-worker-protocol";
 
 const createInput = (): CodexWorktreeWorkerCreateInput => ({
   requestId: "request-1",
@@ -74,7 +77,7 @@ const makeSshChild = () => {
           type: "ready",
           epoch: 1,
           hostId: "ssh:devbox",
-          protocolVersion: 5,
+          protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
         })}\n`,
       );
       child.stdout.write(

@@ -8,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
 import type { ManagedWorktreeSettings } from "../../shared/types";
 import { AutomationApplication } from "../automation-application/AutomationApplication";
 import {
@@ -106,7 +107,6 @@ const buildRuntime = (
               ManagedWorktreeConfiguration,
               ManagedWorktreeConfiguration.of({
                 settings: Effect.sync(options.settings ?? (() => disabledSettings)),
-                knownRoots: Effect.succeed([]),
                 update: () => Effect.die("unused"),
               }),
             ),
@@ -174,15 +174,16 @@ it.effect("collapses requests admitted during a sweep into one immediate rerun",
     const firstStarted = yield* Deferred.make<void>();
     const releaseFirst = yield* Deferred.make<void>();
     const rerunFinished = yield* Deferred.make<void>();
-    let sweeps = 0;
+    let inventoryReads = 0;
     const managed = managedWorktrees({
       list: () =>
         Effect.gen(function* () {
-          sweeps += 1;
-          if (sweeps === 1) {
+          inventoryReads += 1;
+          if (inventoryReads === 1) {
             yield* Deferred.succeed(firstStarted, undefined);
             yield* Deferred.await(releaseFirst);
-          } else {
+          }
+          if (inventoryReads === 4) {
             yield* Deferred.succeed(rerunFinished, undefined);
           }
           return { entries: [] };
@@ -204,7 +205,7 @@ it.effect("collapses requests admitted during a sweep into one immediate rerun",
     yield* Deferred.succeed(releaseFirst, undefined);
     yield* Deferred.await(rerunFinished);
 
-    assert.strictEqual(sweeps, 2);
+    assert.strictEqual(inventoryReads, 4);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -268,6 +269,100 @@ it.effect("plans from one Core snapshot and prunes through the physical lifecycl
     );
     assert.deepEqual(removed, ["/managed/0000/repository", "/managed/0001/repository"]);
 
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("revalidates current inventory and new pending protection before deletion", () =>
+  Effect.gen(function* () {
+    const removed: string[] = [];
+    let listCalls = 0;
+    let pendingReads = 0;
+    const entry = (index: number) => ({
+      worktreeGitRoot: `/managed/${String(index).padStart(4, "0")}/repository`,
+      repositoryPath: "/repositories/repository",
+      createdAtMs: Date.parse("2026-08-13T00:00:00.000Z") + index,
+      ownerThreadId: null,
+      ownerReadFailed: false,
+    });
+    const managed = managedWorktrees({
+      list: () =>
+        Effect.sync(() => {
+          listCalls += 1;
+          return {
+            entries: listCalls === 1 ? [entry(0), entry(1), entry(2)] : [entry(1), entry(2)],
+          };
+        }),
+      remove: (input) =>
+        Effect.sync(() => {
+          removed.push(input.worktreeGitRoot);
+          return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+        }),
+    });
+    const { runtime, scope } = yield* buildRuntime({
+      settings: () => ({ ...disabledSettings, autoDeleteEnabled: true }),
+      executionHosts: executionHosts(["local"]),
+      managedWorktrees: managed,
+      pendingWorktrees: pendingWorktrees(() => {
+        pendingReads += 1;
+        return pendingReads === 1
+          ? []
+          : ([
+              { hostId: "local", worktreeGitRoot: entry(1).worktreeGitRoot },
+            ] as unknown as readonly CodexPendingWorktreeEntry[]);
+      }),
+    });
+
+    yield* TestClock.setTime(Date.parse("2026-08-14T00:00:00.000Z"));
+    const plan = yield* runtime.run;
+
+    assert.strictEqual(plan.status, "planned");
+    assert.strictEqual(listCalls, 2);
+    assert.deepEqual(removed, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("replans with the current retention limit before deletion", () =>
+  Effect.gen(function* () {
+    const removed: string[] = [];
+    let settingsReads = 0;
+    const managed = managedWorktrees({
+      list: () =>
+        Effect.succeed({
+          entries: Array.from({ length: 3 }, (_, index) => ({
+            worktreeGitRoot: `/managed/${String(index).padStart(4, "0")}/repository`,
+            repositoryPath: "/repositories/repository",
+            createdAtMs: Date.parse("2026-08-13T00:00:00.000Z") + index,
+            ownerThreadId: null,
+            ownerReadFailed: false,
+          })),
+        }),
+      remove: (input) =>
+        Effect.sync(() => {
+          removed.push(input.worktreeGitRoot);
+          return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+        }),
+    });
+    const { runtime, scope } = yield* buildRuntime({
+      settings: () => {
+        settingsReads += 1;
+        return {
+          ...disabledSettings,
+          autoDeleteEnabled: true,
+          autoDeleteLimit: settingsReads === 1 ? 1 : 3,
+        };
+      },
+      executionHosts: executionHosts(["local"]),
+      managedWorktrees: managed,
+    });
+
+    yield* TestClock.setTime(Date.parse("2026-08-14T00:00:00.000Z"));
+    const plan = yield* runtime.run;
+
+    assert.strictEqual(plan.status, "planned");
+    assert.deepEqual(plan.status === "planned" ? plan.delete : [], []);
+    assert.deepEqual(removed, []);
     yield* Scope.close(scope, Exit.void);
   }),
 );

@@ -1,15 +1,13 @@
-import { describe, expect, vi, test } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-assets-"));
 
-vi.mock("./assets-deps", () => ({
-  getNodexHome: () => fixtureRoot,
-}));
+import { makeProfileAssets } from "./assets";
 
-const assetService = await import("./assets");
+const assetService = makeProfileAssets({ assetsRootPath: path.join(fixtureRoot, "assets") });
 
 function resetFixture(): void {
   fs.rmSync(fixtureRoot, { recursive: true, force: true });

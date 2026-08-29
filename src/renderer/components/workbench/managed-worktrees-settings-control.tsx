@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RefreshIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
+import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -18,13 +19,15 @@ import { invoke } from "@/lib/api";
 import type {
   ManagedWorktreeRecord,
   ManagedWorktreeSettings,
+  CodexExecutionHostSettings,
   UpdateManagedWorktreeSettingsInput,
 } from "@/lib/types";
 
 export interface ManagedWorktreesSettingsService {
   getSettings(): Promise<ManagedWorktreeSettings>;
+  getExecutionHosts(): Promise<CodexExecutionHostSettings>;
   updateSettings(input: UpdateManagedWorktreeSettingsInput): Promise<ManagedWorktreeSettings>;
-  list(): Promise<ManagedWorktreeRecord[]>;
+  list(hostId: string): Promise<ManagedWorktreeRecord[]>;
   delete(hostId: string, worktreePath: string): Promise<boolean>;
 }
 
@@ -36,8 +39,9 @@ const DEFAULT_SETTINGS: ManagedWorktreeSettings = {
 
 const DEFAULT_SERVICE: ManagedWorktreesSettingsService = {
   getSettings: async () => await invoke("worktrees:settings:get"),
+  getExecutionHosts: async () => await invoke("worktrees:execution-hosts:get"),
   updateSettings: async (input) => await invoke("worktrees:settings:update", input),
-  list: async () => await invoke("worktrees:list"),
+  list: async (hostId) => await invoke("worktrees:list", hostId),
   delete: async (hostId, worktreePath) => await invoke("worktrees:delete", hostId, worktreePath),
 };
 
@@ -191,6 +195,10 @@ export function ManagedWorktreesSettingControl({
   onOpenThread,
 }: ManagedWorktreesSettingControlProps) {
   const [settings, setSettings] = useState<ManagedWorktreeSettings | null>(null);
+  const [executionHosts, setExecutionHosts] = useState<CodexExecutionHostSettings>({
+    sshHosts: [],
+  });
+  const [selectedHostId, setSelectedHostId] = useState("local");
   const [rootDraft, setRootDraft] = useState("");
   const [limitDraft, setLimitDraft] = useState<string | null>(null);
   const [records, setRecords] = useState<ManagedWorktreeRecord[]>([]);
@@ -205,23 +213,24 @@ export function ManagedWorktreesSettingControl({
     setLoading(true);
     setLoadError(null);
     try {
-      const [nextSettings, nextRecords] = await Promise.all([
+      const [nextSettings, nextHosts, nextRecords] = await Promise.all([
         service.getSettings(),
-        service.list(),
+        service.getExecutionHosts(),
+        service.list(selectedHostId),
       ]);
       setSettings(nextSettings);
-      setRootDraft(nextSettings.worktreeRoot ?? "");
+      setExecutionHosts(nextHosts);
+      const selectedRemote = nextHosts.sshHosts.find((host) => host.id === selectedHostId);
+      setRootDraft(selectedRemote?.managedRoot ?? nextSettings.worktreeRoot ?? "");
       setLimitDraft(null);
       setRecords(nextRecords);
-    } catch (error) {
-      setLoadError(
-        error instanceof Error ? error.message : "Something went wrong while loading worktrees.",
-      );
+    } catch {
+      setLoadError("Something went wrong while loading worktrees.");
       setRecords([]);
     } finally {
       setLoading(false);
     }
-  }, [service]);
+  }, [selectedHostId, service]);
 
   useEffect(() => {
     if (!open) return;
@@ -240,6 +249,7 @@ export function ManagedWorktreesSettingControl({
         setSettings(next);
         setRootDraft(next.worktreeRoot ?? "");
         setLimitDraft(null);
+        if (patch.worktreeRoot !== undefined) await load();
         if (successMessage) toast.success(successMessage);
         return true;
       } catch {
@@ -255,12 +265,20 @@ export function ManagedWorktreesSettingControl({
         setSavingSetting(false);
       }
     },
-    [savingSetting, service],
+    [load, savingSetting, service],
   );
 
   const resolvedSettings = settings ?? DEFAULT_SETTINGS;
+  const selectedRemoteHost = executionHosts.sshHosts.find((host) => host.id === selectedHostId);
+  const selectedHostIsLocal = selectedHostId === "local";
+  const hostOptions = [
+    { value: "local", label: "Local" },
+    ...executionHosts.sshHosts
+      .filter((host) => host.enabled)
+      .map((host) => ({ value: host.id, label: host.displayName })),
+  ];
   const groupedRecords = useMemo(() => groupManagedWorktrees(records), [records]);
-  const controlsDisabled = savingSetting || (loading && settings === null);
+  const controlsDisabled = !selectedHostIsLocal || savingSetting || (loading && settings === null);
 
   const saveRoot = useCallback(() => {
     if (controlsDisabled) return;
@@ -287,8 +305,31 @@ export function ManagedWorktreesSettingControl({
     <div className="flex min-w-0 flex-col gap-10">
       <NodexSettingsSection>
         <NodexSettingsRow
+          label="Execution host"
+          description="Inventory is scoped to one host and its current managed root"
+        >
+          <NodexOptionPicker
+            value={selectedHostId}
+            options={hostOptions}
+            search="none"
+            onValueChange={(hostId) => {
+              setSelectedHostId(hostId);
+              setRecords([]);
+            }}
+            triggerButton={
+              <NodexDropdownButtonTrigger aria-label="Execution host" className="w-56" size="sm">
+                {hostOptions.find((host) => host.value === selectedHostId)?.label ?? "Local"}
+              </NodexDropdownButtonTrigger>
+            }
+          />
+        </NodexSettingsRow>
+        <NodexSettingsRow
           label="Worktree root"
-          description="Directory where Nodex creates managed worktrees; leave blank to use the default location"
+          description={
+            selectedRemoteHost
+              ? "Remote roots are managed with this execution host's SSH configuration"
+              : "Directory where Nodex creates managed worktrees; leave blank to use the default location"
+          }
         >
           <input
             aria-label="Worktree root"

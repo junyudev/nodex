@@ -15,8 +15,8 @@ import type {
 import { MainConfig, type MainConfigValue } from "../app/MainConfig";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { safeBroadcastToWindows } from "../ipc-safe-send";
-import { getAppUpdateSettings, updateAppUpdateSettings } from "../local-store/config";
 import { getLogger } from "../logging/logger";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import type { MacAppUpdaterEvent, MacAppUpdaterPlatform } from "../mac-app-updater";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
@@ -51,11 +51,6 @@ export class AppUpdateRuntime extends Context.Service<
 
 export interface AppUpdateRuntimeOptions {
   readonly createUpdaterPlatform?: (config: MainConfigValue) => MacAppUpdaterPlatform | null;
-  readonly readSettings?: (buildDefaultChannel: AppUpdateSettings["channel"]) => AppUpdateSettings;
-  readonly persistSettings?: (
-    input: UpdateAppUpdateSettingsInput,
-    buildDefaultChannel: AppUpdateSettings["channel"],
-  ) => AppUpdateSettings;
 }
 
 const createUpdaterPlatform = (config: MainConfigValue): MacAppUpdaterPlatform | null => {
@@ -79,11 +74,12 @@ export const layer = (
 ): Layer.Layer<
   AppUpdateRuntime,
   never,
-  ElectronApp | ElectronWindowHost | MainConfig | ScopedCallbackRuntime
+  ApplicationSettings | ElectronApp | ElectronWindowHost | MainConfig | ScopedCallbackRuntime
 > =>
   Layer.effect(
     AppUpdateRuntime,
     Effect.gen(function* () {
+      const applicationSettings = yield* ApplicationSettings;
       const app = yield* ElectronApp;
       const callbacks = yield* ScopedCallbackRuntime;
       const config = yield* MainConfig;
@@ -101,7 +97,8 @@ export const layer = (
         }
       });
       const buildDefaultChannel = updaterPlatform?.buildDefaultChannel ?? "stable";
-      const settings = (options.readSettings ?? getAppUpdateSettings)(buildDefaultChannel);
+      const settings = (yield* applicationSettings.snapshot(buildDefaultChannel).pipe(Effect.orDie))
+        .appUpdate;
       const state = yield* Ref.make<AppUpdateRuntimeState>(
         initialAppUpdateState({
           buildDefaultChannel,
@@ -304,20 +301,22 @@ export const layer = (
             if (channelChanged && updater !== null) {
               yield* fromUpdater("set-update-channel", () => updater.setChannel(next.channel));
             }
-            const persisted = yield* Effect.try({
-              try: () =>
-                (options.persistSettings ?? updateAppUpdateSettings)(input, buildDefaultChannel),
-              catch: (cause) =>
-                new AppUpdateRuntimeError({ operation: "persist-update-settings", cause }),
-            }).pipe(
-              Effect.tapError(() =>
-                channelChanged && updater !== null
-                  ? fromUpdater("rollback-update-channel", () =>
-                      updater.setChannel(current.settings.channel),
-                    ).pipe(Effect.ignore)
-                  : Effect.void,
-              ),
-            );
+            const persisted = yield* applicationSettings
+              .update({ type: "update-app-update", input }, { buildDefaultChannel })
+              .pipe(
+                Effect.map((snapshot) => snapshot.appUpdate),
+                Effect.mapError(
+                  (cause) =>
+                    new AppUpdateRuntimeError({ operation: "persist-update-settings", cause }),
+                ),
+                Effect.tapError(() =>
+                  channelChanged && updater !== null
+                    ? fromUpdater("rollback-update-channel", () =>
+                        updater.setChannel(current.settings.channel),
+                      ).pipe(Effect.ignore)
+                    : Effect.void,
+                ),
+              );
             yield* Ref.update(state, (value) => ({
               ...value,
               automaticCheckStarted: channelChanged ? false : value.automaticCheckStarted,

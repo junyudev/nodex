@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getNodexHome } from "../local-store/config";
 import {
   isLogLevelEnabled,
   resolveLogSinkLevels,
@@ -69,11 +68,6 @@ interface BackendLogFile {
 const LOG_FILE_PATTERN = /^backend-(\d{4}-\d{2}-\d{2})(?:-(\d+))?\.log$/;
 const SENSITIVE_FIELD_PATTERN =
   /(?:pass(word)?|secret|token|api[-_]?key|authorization|cookie|session|credential)/i;
-const IS_TEST_RUNTIME =
-  process.env.NODE_ENV === "test" ||
-  process.env.BUN_ENV === "test" ||
-  process.argv.some((value) => value.toLowerCase().includes("test"));
-const IS_PACKAGED_RUNTIME = parseBooleanEnv(process.env.NODEX_INTERNAL_APP_PACKAGED, false);
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
@@ -97,18 +91,25 @@ function parseIntegerEnv(value: string | undefined, fallback: number, minimum: n
   return Math.max(minimum, parsed);
 }
 
-function createLoggerConfig(): LoggerConfig {
-  const defaultLogDir = path.join(getNodexHome(), "logs");
-  const configuredLogDir = process.env.NODEX_LOG_DIR?.trim();
-  const defaultSinkEnabled = !IS_TEST_RUNTIME && !IS_PACKAGED_RUNTIME;
-  const sinkLevels = resolveLogSinkLevels(process.env);
+function createLoggerConfig(input: {
+  readonly cwd: string;
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly nodexHome: string;
+}): LoggerConfig {
+  const environment = input.environment;
+  const defaultLogDir = path.join(input.nodexHome, "logs");
+  const configuredLogDir = environment.NODEX_LOG_DIR?.trim();
+  const isTestRuntime = environment.NODE_ENV === "test" || environment.BUN_ENV === "test";
+  const isPackagedRuntime = parseBooleanEnv(environment.NODEX_INTERNAL_APP_PACKAGED, false);
+  const defaultSinkEnabled = !isTestRuntime && !isPackagedRuntime;
+  const sinkLevels = resolveLogSinkLevels(environment);
   const maxFileBytes = parseIntegerEnv(
-    process.env.NODEX_LOG_MAX_FILE_BYTES,
+    environment.NODEX_LOG_MAX_FILE_BYTES,
     DEFAULT_MAX_FILE_BYTES,
     1_024,
   );
   const configuredMaxTotalBytes = parseIntegerEnv(
-    process.env.NODEX_LOG_MAX_TOTAL_BYTES,
+    environment.NODEX_LOG_MAX_TOTAL_BYTES,
     DEFAULT_MAX_TOTAL_BYTES,
     1_024,
   );
@@ -117,31 +118,31 @@ function createLoggerConfig(): LoggerConfig {
     consoleLevel: sinkLevels.console,
     fileLevel: sinkLevels.file,
     observerLevel: sinkLevels.observer,
-    consoleEnabled: parseBooleanEnv(process.env.NODEX_LOG_CONSOLE, defaultSinkEnabled),
-    fileEnabled: parseBooleanEnv(process.env.NODEX_LOG_FILE, defaultSinkEnabled),
-    maxStringLength: parseIntegerEnv(process.env.NODEX_LOG_MAX_STRING_LENGTH, 1_200, 80),
-    maxArrayLength: parseIntegerEnv(process.env.NODEX_LOG_MAX_ARRAY_LENGTH, 20, 1),
-    maxObjectEntries: parseIntegerEnv(process.env.NODEX_LOG_MAX_OBJECT_ENTRIES, 40, 1),
-    maxDepth: parseIntegerEnv(process.env.NODEX_LOG_MAX_DEPTH, 6, 2),
-    retentionDays: parseIntegerEnv(process.env.NODEX_LOG_RETENTION_DAYS, 14, 1),
+    consoleEnabled: parseBooleanEnv(environment.NODEX_LOG_CONSOLE, defaultSinkEnabled),
+    fileEnabled: parseBooleanEnv(environment.NODEX_LOG_FILE, defaultSinkEnabled),
+    maxStringLength: parseIntegerEnv(environment.NODEX_LOG_MAX_STRING_LENGTH, 1_200, 80),
+    maxArrayLength: parseIntegerEnv(environment.NODEX_LOG_MAX_ARRAY_LENGTH, 20, 1),
+    maxObjectEntries: parseIntegerEnv(environment.NODEX_LOG_MAX_OBJECT_ENTRIES, 40, 1),
+    maxDepth: parseIntegerEnv(environment.NODEX_LOG_MAX_DEPTH, 6, 2),
+    retentionDays: parseIntegerEnv(environment.NODEX_LOG_RETENTION_DAYS, 14, 1),
     maxFileBytes,
     maxTotalBytes: Math.max(maxFileBytes, configuredMaxTotalBytes),
-    maxQueueEntries: parseIntegerEnv(process.env.NODEX_LOG_MAX_QUEUE_ENTRIES, 10_000, 1),
+    maxQueueEntries: parseIntegerEnv(environment.NODEX_LOG_MAX_QUEUE_ENTRIES, 10_000, 1),
     maxQueueBytes: parseIntegerEnv(
-      process.env.NODEX_LOG_MAX_QUEUE_BYTES,
+      environment.NODEX_LOG_MAX_QUEUE_BYTES,
       DEFAULT_MAX_QUEUE_BYTES,
       1_024,
     ),
     streamHighWaterMarkBytes: parseIntegerEnv(
-      process.env.NODEX_LOG_STREAM_BUFFER_BYTES,
+      environment.NODEX_LOG_STREAM_BUFFER_BYTES,
       DEFAULT_STREAM_HIGH_WATER_MARK_BYTES,
       1_024,
     ),
-    flushTimeoutMs: parseIntegerEnv(process.env.NODEX_LOG_FLUSH_TIMEOUT_MS, 2_000, 100),
+    flushTimeoutMs: parseIntegerEnv(environment.NODEX_LOG_FLUSH_TIMEOUT_MS, 2_000, 100),
     logDir: configuredLogDir
       ? path.isAbsolute(configuredLogDir)
         ? configuredLogDir
-        : path.resolve(process.cwd(), configuredLogDir)
+        : path.resolve(input.cwd, configuredLogDir)
       : defaultLogDir,
   };
 }
@@ -704,7 +705,12 @@ class BackendLoggerImpl implements BackendLogger {
   }
 }
 
-let loggerConfig = createLoggerConfig();
+const initialLoggerSource = {
+  cwd: process.cwd(),
+  environment: { NODEX_LOG_CONSOLE: "false", NODEX_LOG_FILE: "false" },
+  nodexHome: path.join(process.cwd(), ".nodex-unconfigured"),
+};
+let loggerConfig = createLoggerConfig(initialLoggerSource);
 let logObservers = new Set<LogObserverSubscription>();
 let logFileWriter = new RotatingJsonlLogWriter(loggerConfig);
 let rootLogger: BackendLogger = new BackendLoggerImpl(loggerConfig, logFileWriter, logObservers, {
@@ -713,13 +719,26 @@ let rootLogger: BackendLogger = new BackendLoggerImpl(loggerConfig, logFileWrite
 });
 
 function resetLoggerInternals(): void {
-  loggerConfig = createLoggerConfig();
+  loggerConfig = createLoggerConfig({
+    cwd: process.cwd(),
+    environment: process.env,
+    nodexHome: process.env.NODEX_HOME?.trim() || path.join(process.cwd(), ".nodex-test"),
+  });
   logObservers = new Set<LogObserverSubscription>();
   logFileWriter = new RotatingJsonlLogWriter(loggerConfig);
   rootLogger = new BackendLoggerImpl(loggerConfig, logFileWriter, logObservers, {
     app: "nodex",
     scope: "backend",
   });
+}
+
+/** Binds all pre-created logger children to the immutable Profile authority. */
+export function configureBackendLogger(input: {
+  readonly cwd: string;
+  readonly environment: Readonly<NodeJS.ProcessEnv>;
+  readonly nodexHome: string;
+}): void {
+  Object.assign(loggerConfig, createLoggerConfig(input));
 }
 
 export function getLogger(bindings?: Record<string, unknown>): BackendLogger {

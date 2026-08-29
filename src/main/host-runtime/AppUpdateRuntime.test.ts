@@ -14,6 +14,10 @@ import type {
 } from "../mac-app-updater";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
+import {
+  ApplicationSettings,
+  type ApplicationSettingsSnapshot,
+} from "../settings/ApplicationSettings";
 import { reduceAppUpdateStatus } from "./AppUpdatePolicy";
 import { AppUpdateRuntime, layer } from "./AppUpdateRuntime";
 
@@ -99,19 +103,25 @@ const buildHarness = (input: {
       all: Effect.succeed([window] as never),
     } as unknown as ElectronWindowHost["Service"]);
     const scope = yield* Scope.make();
+    const settings = ApplicationSettings.of({
+      snapshot: () =>
+        Effect.succeed({ appUpdate: persistedSettings } as ApplicationSettingsSnapshot),
+      update: (command) => {
+        if (command.type === "update-app-update") {
+          persistedSettings = { ...persistedSettings, ...command.input };
+        }
+        return Effect.succeed({ appUpdate: persistedSettings } as ApplicationSettingsSnapshot);
+      },
+    });
     const context = yield* Layer.buildWithScope(
       layer({
         createUpdaterPlatform: () => updater,
-        persistSettings: (update) => {
-          persistedSettings = { ...persistedSettings, ...update };
-          return persistedSettings;
-        },
-        readSettings: () => persistedSettings,
       }).pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ElectronApp, app),
             Layer.succeed(ElectronWindowHost, windows),
+            Layer.succeed(ApplicationSettings, settings),
             mainConfigLayer({
               appVersion: "0.2.1",
               isPackaged: input.isPackaged ?? true,

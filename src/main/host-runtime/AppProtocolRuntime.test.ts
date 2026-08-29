@@ -60,6 +60,7 @@ it.effect("owns application protocol handlers with the Main Scope", () =>
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",
+                profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",
                 profileId: "test",
                 projectRootPath: "/repo",

@@ -11,15 +11,7 @@ import {
   COMPOSER_IMAGE_FILE_EXTENSIONS,
   prepareComposerPickedFiles,
 } from "../../composer-picked-files";
-import {
-  materializeCanvasImage,
-  materializeLocalResource,
-  readManagedAssetImage,
-  readManagedAssetPreview,
-  resolveAssetPath,
-  saveUploadedImage,
-  saveUploadedResource,
-} from "../../local-store/assets";
+import { ProfileAssets } from "../../local-store/ProfileAssets";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -39,10 +31,11 @@ type Handler<Channel extends keyof IpcApi> = (
 export const live: Layer.Layer<
   never,
   never,
-  ElectronDesktop | ElectronClipboard | ElectronIpc | MainConfig | WindowRuntime
+  ElectronDesktop | ElectronClipboard | ElectronIpc | MainConfig | ProfileAssets | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const assets = yield* ProfileAssets;
     const clipboard = yield* ElectronClipboard;
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
@@ -72,7 +65,7 @@ export const live: Layer.Layer<
             const parsed = typeof source === "string" ? parseAssetSource(source) : null;
             if (!parsed) return null;
             try {
-              return resolveAssetPath(parsed.fileName);
+              return assets.resolveAssetPath(parsed.fileName);
             } catch {
               return null;
             }
@@ -81,19 +74,23 @@ export const live: Layer.Layer<
       ),
     );
     yield* handle("asset:image:save", (event, input) =>
-      authorize(event).pipe(Effect.andThen(run("save-image", () => saveUploadedImage(input)))),
+      authorize(event).pipe(
+        Effect.andThen(run("save-image", () => assets.saveUploadedImage(input))),
+      ),
     );
     yield* handle("asset:canvas-image:materialize", (event, input) =>
       authorize(event).pipe(
-        Effect.andThen(run("materialize-canvas-image", () => materializeCanvasImage(input))),
+        Effect.andThen(run("materialize-canvas-image", () => assets.materializeCanvasImage(input))),
       ),
     );
     yield* handle("asset:image:read", (event, source) =>
-      authorize(event).pipe(Effect.andThen(run("read-image", () => readManagedAssetImage(source)))),
+      authorize(event).pipe(
+        Effect.andThen(run("read-image", () => assets.readManagedAssetImage(source))),
+      ),
     );
     yield* handle("asset:resource:save", (event, input) =>
       authorize(event).pipe(
-        Effect.andThen(run("save-resource", () => saveUploadedResource(input))),
+        Effect.andThen(run("save-resource", () => assets.saveUploadedResource(input))),
       ),
     );
     yield* handle("asset:resource:materialize", (event, path) =>
@@ -101,21 +98,25 @@ export const live: Layer.Layer<
         Effect.andThen(
           run("materialize-resource", () => {
             if (typeof path !== "string") throw new Error("Local resource path is required");
-            return materializeLocalResource(path);
+            return assets.materializeLocalResource(path);
           }),
         ),
       ),
     );
     yield* handle("asset:preview:read", (event, input) =>
       authorize(event).pipe(
-        Effect.andThen(run("read-preview", () => readManagedAssetPreview(input))),
+        Effect.andThen(run("read-preview", () => assets.readManagedAssetPreview(input))),
       ),
     );
     yield* handle("clipboard:write-image", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(
           typeof input?.source === "string"
-            ? run("write-clipboard-image", () => writeImageToClipboard(input.source!, clipboard))
+            ? run("write-clipboard-image", () =>
+                writeImageToClipboard(input.source!, clipboard, {
+                  resolveAssetPath: assets.resolveAssetPath,
+                }),
+              )
             : Effect.succeed({ ok: false, message: "Could not copy image." } as const),
         ),
       ),

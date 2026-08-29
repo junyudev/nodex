@@ -14,6 +14,7 @@ interface LintReport {
 
 interface ExpectedDiagnostic {
   readonly code: string;
+  readonly count?: number;
   readonly filename: string;
 }
 
@@ -116,18 +117,23 @@ function verifyInvalidFixtures(
 
   const actual = result.report.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
   for (const expectation of expected) {
-    const matched = actual.some(
+    const actualCount = actual.filter(
       (diagnostic) =>
         diagnostic.code === expectation.code && diagnostic.filename === expectation.filename,
-    );
-    if (!matched) {
+    ).length;
+    const expectedCount = expectation.count ?? 1;
+    if (actualCount !== expectedCount) {
       throw new Error(
-        `Missing ${expectation.code} for ${expectation.filename}: ${JSON.stringify(actual)}`,
+        `Expected ${expectedCount} ${expectation.code} diagnostic(s) for ${expectation.filename}, received ${actualCount}: ${JSON.stringify(actual)}`,
       );
     }
   }
 
-  if (actual.length !== expected.length) {
+  const expectedCount = expected.reduce(
+    (total, expectation) => total + (expectation.count ?? 1),
+    0,
+  );
+  if (actual.length !== expectedCount) {
     throw new Error(`Unexpected tooling fixture diagnostics: ${JSON.stringify(actual)}`);
   }
 }
@@ -218,6 +224,11 @@ verifyInvalidFixtures([
     filename: "scripts/fixtures/tooling/nodex/manual-effect-runtime-invalid.test-support.ts",
   },
   {
+    code: "nodex(no-ambient-profile-authority)",
+    count: 3,
+    filename: "scripts/fixtures/tooling/nodex/profile-settings-ambient-invalid.ts",
+  },
+  {
     code: "nodex(no-native-title-tooltip)",
     filename: "scripts/fixtures/tooling/nodex/native-title-invalid.tsx",
   },
@@ -229,6 +240,7 @@ verifyValidFixtures([
   "src/renderer/components/ui/context-menu.tsx",
   "src/renderer/components/shared/icons/generic-icons.tsx",
   "scripts/fixtures/tooling/nodex/manual-effect-runtime-valid.test.ts",
+  "scripts/fixtures/tooling/nodex/profile-settings-authority-valid.ts",
   "scripts/fixtures/tooling/nodex/native-title-valid.tsx",
 ]);
 

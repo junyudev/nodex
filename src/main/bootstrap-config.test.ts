@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import path from "node:path";
-import { resolveBootstrapNodexHome } from "./bootstrap-config";
+import { resolveBootstrapConfig } from "./bootstrap-config";
 
 function makeVirtualFs(files: Record<string, string>) {
   return {
@@ -9,18 +9,21 @@ function makeVirtualFs(files: Record<string, string>) {
   };
 }
 
-describe("resolveBootstrapNodexHome", () => {
+describe("resolveBootstrapConfig", () => {
   test("prefers NODEX_HOME and resolves relative env paths from cwd", () => {
     const cwd = "/workspace/project";
 
     expect(
-      resolveBootstrapNodexHome({
+      resolveBootstrapConfig({
         isPackaged: false,
         cwd,
         env: { NODEX_HOME: "relative-data" },
         homeDir: "/home/user",
       }),
-    ).toBe(path.join(cwd, "relative-data"));
+    ).toMatchObject({
+      nodexHome: path.join(cwd, "relative-data"),
+      profileSettingsPath: path.join(cwd, "relative-data", "config.toml"),
+    });
   });
 
   test("requires an explicit Profile for unpackaged Desktop startup", () => {
@@ -29,7 +32,7 @@ describe("resolveBootstrapNodexHome", () => {
     });
 
     expect(() =>
-      resolveBootstrapNodexHome({
+      resolveBootstrapConfig({
         isPackaged: false,
         cwd: "/workspace/project",
         env: {},
@@ -50,7 +53,7 @@ describe("resolveBootstrapNodexHome", () => {
     });
 
     expect(
-      resolveBootstrapNodexHome({
+      resolveBootstrapConfig({
         isPackaged: true,
         cwd,
         env: {},
@@ -58,7 +61,11 @@ describe("resolveBootstrapNodexHome", () => {
         exists: files.exists,
         readFile: files.readFile,
       }),
-    ).toBe(path.join(cwd, "project-data"));
+    ).toMatchObject({
+      nodexHome: path.join(cwd, "project-data"),
+      projectBootstrapConfigPath: "/workspace/project/.nodex/config.toml",
+      userBootstrapConfigPath: "/home/user/.nodex/config.toml",
+    });
   });
 
   test("expands tilde config paths and falls back to the default Nodex home", () => {
@@ -67,7 +74,7 @@ describe("resolveBootstrapNodexHome", () => {
     });
 
     expect(
-      resolveBootstrapNodexHome({
+      resolveBootstrapConfig({
         isPackaged: true,
         cwd: "/workspace/project",
         env: {},
@@ -75,16 +82,39 @@ describe("resolveBootstrapNodexHome", () => {
         exists: files.exists,
         readFile: files.readFile,
       }),
-    ).toBe("/home/user/custom-nodex");
+    ).toMatchObject({
+      nodexHome: "/home/user/custom-nodex",
+      profileSettingsPath: "/home/user/custom-nodex/config.toml",
+    });
 
     expect(
-      resolveBootstrapNodexHome({
+      resolveBootstrapConfig({
         isPackaged: true,
         cwd: "/workspace/project",
         env: {},
         homeDir: "/home/user",
         exists: () => false,
       }),
-    ).toBe("/home/user/.nodex");
+    ).toMatchObject({
+      nodexHome: "/home/user/.nodex",
+      profileSettingsPath: "/home/user/.nodex/config.toml",
+    });
+  });
+
+  test("fails closed when an existing bootstrap config is malformed", () => {
+    const files = makeVirtualFs({
+      "/home/user/.nodex/config.toml": "[server\n",
+    });
+
+    expect(() =>
+      resolveBootstrapConfig({
+        isPackaged: true,
+        cwd: "/workspace/project",
+        env: {},
+        homeDir: "/home/user",
+        exists: files.exists,
+        readFile: files.readFile,
+      }),
+    ).toThrow();
   });
 });

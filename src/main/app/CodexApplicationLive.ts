@@ -120,7 +120,10 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig> = L
         new MainApplicationError({ phase: "startup", operation: "resolve-codex-runtime", cause }),
     });
     const providerCredentialStore = yield* Effect.try({
-      try: createElectronProviderCredentialStore,
+      try: () =>
+        createElectronProviderCredentialStore(
+          `${config.nodexHome}/secrets/provider-credentials.v1.json`,
+        ),
       catch: (cause) =>
         new MainApplicationError({ phase: "startup", operation: "provider-credentials", cause }),
     });

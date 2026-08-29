@@ -51,6 +51,7 @@ it.effect("registers and releases the Remote Hosted PiP ingress with the Main Sc
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",
+                profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",
                 profileId: "test",
                 projectRootPath: "/repo",

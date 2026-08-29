@@ -615,7 +615,7 @@ test("keeps a managed Task recoverable across renderer and full app restarts @su
       .poll(
         async () => {
           try {
-            records = await invokeIpc(page, "worktrees:list");
+            records = await invokeIpc(page, "worktrees:list", "local");
             return Array.isArray(records);
           } catch {
             return false;

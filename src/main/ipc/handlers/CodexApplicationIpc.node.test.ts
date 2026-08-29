@@ -193,6 +193,7 @@ it.effect("registers application channels directly against their owning modules"
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",
+                profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",
                 profileId: "test",
                 projectRootPath: "/repo",

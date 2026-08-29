@@ -37,6 +37,7 @@ describe("clipboard image writer", () => {
     const writeCalls: FakeImage[] = [];
     const result = await writeImageToClipboard("/Users/me/image.png", imagePlatform(writeCalls), {
       readFile: async (filePath) => Buffer.from(filePath),
+      resolveAssetPath: (fileName) => fileName,
     });
 
     expect(result.ok).toBe(true);

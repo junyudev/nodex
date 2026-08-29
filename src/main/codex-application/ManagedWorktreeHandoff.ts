@@ -395,16 +395,12 @@ export const live: Layer.Layer<
         const host = yield* executionHosts
           .resolve(preparation.destination.hostId, "rollback-handoff")
           .pipe(Effect.mapError((cause) => error("resolve-rollback-host", threadId, cause)));
-        const root = yield* host
-          .resolveManagedRoot(prepared.managedWorktreePath)
-          .pipe(Effect.mapError((cause) => error("resolve-rollback-root", threadId, cause)));
         return yield* host
           .request({
             operation: "rollback-handoff",
             input: {
               requestId: `handoff:rollback:${randomUUID()}`,
               hostId: preparation.destination.hostId,
-              managedRoot: root,
               prepared,
             },
           })
@@ -432,20 +428,15 @@ export const live: Layer.Layer<
         const prepared = preparation.prepared;
         return executionHosts.resolve(preparation.destination.hostId, "cleanup-handoff").pipe(
           Effect.flatMap((host) =>
-            host.resolveManagedRoot(prepared.managedWorktreePath).pipe(
-              Effect.flatMap((managedRoot) =>
-                host.request({
-                  operation: "cleanup-handoff",
-                  input: {
-                    requestId: `handoff:cleanup:${randomUUID()}`,
-                    hostId: preparation.destination.hostId,
-                    managedRoot,
-                    prepared,
-                    outcome,
-                  },
-                }),
-              ),
-            ),
+            host.request({
+              operation: "cleanup-handoff",
+              input: {
+                requestId: `handoff:cleanup:${randomUUID()}`,
+                hostId: preparation.destination.hostId,
+                prepared,
+                outcome,
+              },
+            }),
           ),
           Effect.map((result) => result.warnings),
           Effect.catch((cause) =>

@@ -163,13 +163,13 @@ for (const file of ["src/shared/ipc-api.ts"]) {
 }
 
 const retainedLocalStoreFiles = new Set([
-  "assets-deps.ts",
+  "ProfileAssets.ts",
   "assets.test.ts",
   "assets.ts",
   "codex-scheduled-automation-schedule.test.ts",
   "codex-scheduled-automation-schedule.ts",
-  "config.test.ts",
-  "config.ts",
+  "managed-blob-path.node.test.ts",
+  "managed-blob-path.ts",
   "notifier.test.ts",
   "notifier.ts",
   "persisted-atoms.test.ts",

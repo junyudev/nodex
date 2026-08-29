@@ -21,7 +21,13 @@ const ORIGINAL_ENV = {
 
 async function importLoggerModule() {
   vi.resetModules();
-  return import("./logger");
+  const loggerModule = await import("./logger");
+  loggerModule.configureBackendLogger({
+    cwd: process.cwd(),
+    environment: { ...process.env },
+    nodexHome: process.env.NODEX_HOME?.trim() || path.join(process.cwd(), ".nodex-test"),
+  });
+  return loggerModule;
 }
 
 function restoreEnv(): void {

@@ -104,6 +104,10 @@ function quoteForPosixShell(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+async function listWorktreeAllocations(worktreesRoot: string): Promise<string[]> {
+  return (await readdir(worktreesRoot)).filter((name) => name !== ".metadata_never_index");
+}
+
 afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
 });
@@ -396,7 +400,11 @@ describe("createManagedWorktree starting state", () => {
     expect(allocatedRoots).not.toBe(null);
     expect(worktreeExistedAtAllocation).toBe(false);
     expect(tokenDirectoryExistedAtAllocation).toBe(true);
-    expect((await readdir(path.join(nodexHome, "worktrees"))).length).toBe(0);
+    const worktreesRoot = path.join(nodexHome, "worktrees");
+    expect(await listWorktreeAllocations(worktreesRoot)).toEqual([]);
+    if (process.platform === "darwin") {
+      expect(existsSync(path.join(worktreesRoot, ".metadata_never_index"))).toBe(true);
+    }
     const worktreeList = await runCommand(
       "git",
       ["worktree", "list", "--porcelain"],
@@ -699,7 +707,7 @@ describe("createManagedWorktree starting state", () => {
       }),
     ).rejects.toThrow("Failed to copy all untracked working tree files");
 
-    expect((await readdir(path.join(nodexHome, "worktrees"))).length).toBe(0);
+    expect(await listWorktreeAllocations(path.join(nodexHome, "worktrees"))).toEqual([]);
     const worktreeList = await runCommand(
       "git",
       ["worktree", "list", "--porcelain"],
@@ -729,7 +737,7 @@ describe("createManagedWorktree starting state", () => {
     ).rejects.toThrow("Failed to copy all untracked working tree files");
 
     expect(await readFile(outsidePath, "utf8")).toBe("outside remains\n");
-    expect((await readdir(path.join(nodexHome, "worktrees"))).length).toBe(0);
+    expect(await listWorktreeAllocations(path.join(nodexHome, "worktrees"))).toEqual([]);
   });
 
   test("fails without creating a worktree when dirty-state capture fails", async () => {
@@ -971,7 +979,7 @@ describe("createManagedWorktree cancellation", () => {
     expect(message).toBe("Request canceled");
     await waitFor(async () => !isProcessAlive(hookPid), "the canceled git hook process to exit");
     const worktreesRoot = path.join(nodexHome, "worktrees");
-    expect((await readdir(worktreesRoot)).length).toBe(0);
+    expect(await listWorktreeAllocations(worktreesRoot)).toEqual([]);
     const worktreeList = await runCommand(
       "git",
       ["worktree", "list", "--porcelain"],
@@ -1064,7 +1072,7 @@ describe("createManagedWorktree cancellation", () => {
       repositoryPath,
     );
     expect(worktreeList.stdout.includes(existing.worktreeGitRoot)).toBe(true);
-    const worktreeTokens = await readdir(path.join(nodexHome, "worktrees"));
+    const worktreeTokens = await listWorktreeAllocations(path.join(nodexHome, "worktrees"));
     expect(worktreeTokens.length).toBe(1);
   });
 });

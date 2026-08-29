@@ -32,6 +32,7 @@ describe("isolated scenario Profile", () => {
     expect(path.dirname(profile.runRoot)).toBe(temporaryRoot);
     expect(path.basename(profile.runRoot)).toMatch(/^ndx-scn-/u);
     expect(profile.nodexHome).toBe(path.join(profile.runRoot, ".nodex"));
+    expect(profile.settingsPath).toBe(path.join(profile.nodexHome, "config.toml"));
     expect(profile.codexHome).not.toBe(process.env.CODEX_HOME);
     expect(JSON.parse(await readFile(profile.manifestPath, "utf8"))).toMatchObject({
       version: 1,

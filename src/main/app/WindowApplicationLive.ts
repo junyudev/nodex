@@ -52,7 +52,6 @@ import {
   RendererClientRuntime,
   live as rendererClientRuntimeLive,
 } from "../host-runtime/RendererClientRuntime";
-import { getCommandKeymapState } from "../local-store/config";
 import { getLogger } from "../logging/logger";
 import { LibraryModule } from "../library-application/LibraryModule";
 import {
@@ -84,6 +83,7 @@ import { live as windowShutdownLive, WindowShutdown } from "../window-runtime/Wi
 import { MainConfig } from "./MainConfig";
 import { MainCleanup } from "./MainCleanup";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 
 const appUpdates = appUpdateRuntimeLive;
 const desktopNotifications = desktopNotificationRuntimeLive;
@@ -172,12 +172,13 @@ const applicationMenu = Layer.unwrap(
     const appUpdates = yield* AppUpdateRuntime;
     const applicationWindows = yield* ApplicationWindowRuntime;
     const config = yield* MainConfig;
+    const settings = yield* ApplicationSettings;
     const desktop = yield* ElectronDesktop;
     const windows = yield* WindowRuntime;
     return applicationMenuRuntimeLive({
       checkForUpdates: appUpdates.check,
       environmentPath: config.environmentPath ?? undefined,
-      initialCommandKeymap: getCommandKeymapState(),
+      initialCommandKeymap: (yield* settings.snapshot().pipe(Effect.orDie)).commandKeymap,
       isPackaged: config.isPackaged,
       platform: config.platform as NodeJS.Platform,
       requestNewWindow: applicationWindows.requestNew,
@@ -228,6 +229,7 @@ export const live: Layer.Layer<
   | WindowShutdown,
   ApplicationHostRuntimeError,
   | ApplicationInitializationRuntime
+  | ApplicationSettings
   | ApplicationWindowShellRuntime
   | BrowserApplication
   | ChatGptDesktop

@@ -33,7 +33,7 @@ import {
 } from "../../browser/browser-event-routing";
 import { BrowserPresentationRuntime } from "../../host-runtime/BrowserPresentationRuntime";
 import { safeBroadcastToWindows, safeSendToWebContents } from "../../ipc-safe-send";
-import { saveUploadedImage } from "../../local-store/assets";
+import { ProfileAssets } from "../../local-store/ProfileAssets";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
@@ -78,6 +78,7 @@ export const live: Layer.Layer<
   | ElectronIpc
   | ElectronWindowHost
   | MainConfig
+  | ProfileAssets
   | WindowSessionCatalog
 > = Layer.effectDiscard(
   Effect.gen(function* () {
@@ -85,6 +86,7 @@ export const live: Layer.Layer<
     const browser = yield* BrowserApplication;
     const { events, history, localServers, localServerThumbnail, projection } = browser;
     const config = yield* MainConfig;
+    const assets = yield* ProfileAssets;
     const ipc = yield* ElectronIpc;
     const windows = yield* ElectronWindowHost;
     const windowSessions = yield* WindowSessionCatalog;
@@ -297,7 +299,7 @@ export const live: Layer.Layer<
                 quality: "best",
               });
             }
-            const saved = saveUploadedImage({
+            const saved = assets.saveUploadedImage({
               name: `browser-annotation-${Date.now()}.png`,
               mimeType: "image/png",
               bytes: evidenceImage.toPNG(),

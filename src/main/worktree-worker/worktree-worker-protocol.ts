@@ -29,7 +29,7 @@ import {
   CODEX_WORKTREE_WORKER_OPERATIONS,
 } from "../codex/codex-worktree-worker-protocol";
 
-export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 5 as const;
+export const CODEX_WORKTREE_WORKER_PROTOCOL_VERSION = 6 as const;
 
 export type CodexWorktreeWorkerHostMessage =
   | {
@@ -169,13 +169,7 @@ function isCreateInput(value: unknown): value is CodexWorktreeWorkerCreateInput 
 function isPathInput(
   value: unknown,
 ): value is Record<string, unknown> & CodexWorktreeWorkerPathInput {
-  return (
-    isRecord(value) &&
-    isIdentity(value) &&
-    isAbsolutePath(value.managedRoot) &&
-    isAbsolutePath(value.worktreeGitRoot) &&
-    isPathWithin(value.managedRoot, value.worktreeGitRoot)
-  );
+  return isRecord(value) && isIdentity(value) && isAbsolutePath(value.worktreeGitRoot);
 }
 
 function isListInput(value: unknown): value is CodexWorktreeWorkerListInput {
@@ -197,7 +191,6 @@ function isInspectInput(value: unknown): value is CodexWorktreeWorkerInspectInpu
     hasOnlyKeys(value, [
       "requestId",
       "hostId",
-      "managedRoot",
       "worktreeGitRoot",
       "cwd",
       "candidateRepositoryPaths",
@@ -224,7 +217,7 @@ function isRemovalReason(value: unknown): boolean {
 function isSnapshotInput(value: unknown): value is CodexWorktreeWorkerSnapshotInput {
   return (
     isPathInput(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "managedRoot", "worktreeGitRoot", "reason"]) &&
+    hasOnlyKeys(value, ["requestId", "hostId", "worktreeGitRoot", "reason"]) &&
     isRemovalReason(value.reason)
   );
 }
@@ -232,14 +225,7 @@ function isSnapshotInput(value: unknown): value is CodexWorktreeWorkerSnapshotIn
 function isRemoveInput(value: unknown): value is CodexWorktreeWorkerRemoveInput {
   return (
     isPathInput(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "managedRoot",
-      "worktreeGitRoot",
-      "reason",
-      "snapshotPolicy",
-    ]) &&
+    hasOnlyKeys(value, ["requestId", "hostId", "worktreeGitRoot", "reason", "snapshotPolicy"]) &&
     isRemovalReason(value.reason) &&
     (value.snapshotPolicy === "required" ||
       value.snapshotPolicy === "best-effort" ||
@@ -256,7 +242,6 @@ function isRestoreInput(value: unknown): value is CodexWorktreeWorkerRestoreInpu
     hasOnlyKeys(value, [
       "requestId",
       "hostId",
-      "managedRoot",
       "worktreeGitRoot",
       "cwd",
       "candidateRepositoryPaths",
@@ -269,13 +254,7 @@ function isRestoreInput(value: unknown): value is CodexWorktreeWorkerRestoreInpu
 function isSetOwnerInput(value: unknown): value is CodexWorktreeWorkerSetOwnerInput {
   return (
     isPathInput(value) &&
-    hasOnlyKeys(value, [
-      "requestId",
-      "hostId",
-      "managedRoot",
-      "worktreeGitRoot",
-      "ownerThreadId",
-    ]) &&
+    hasOnlyKeys(value, ["requestId", "hostId", "worktreeGitRoot", "ownerThreadId"]) &&
     isNonEmptyString(value.ownerThreadId, 1_024)
   );
 }
@@ -339,9 +318,7 @@ function isPrepareHandoffInput(value: unknown): value is CodexWorktreeWorkerPrep
     isAbsolutePath(value.sourceCwd) &&
     isAbsolutePath(value.sourceWorkspaceRoot) &&
     isPathWithin(value.sourceWorkspaceRoot, value.sourceCwd) &&
-    (value.sourceManagedWorktreePath === null ||
-      (isAbsolutePath(value.sourceManagedWorktreePath) &&
-        isPathWithin(value.managedRoot, value.sourceManagedWorktreePath))) &&
+    (value.sourceManagedWorktreePath === null || isAbsolutePath(value.sourceManagedWorktreePath)) &&
     (value.destinationCheckoutRoot === null || isAbsolutePath(value.destinationCheckoutRoot))
   );
 }
@@ -349,22 +326,18 @@ function isPrepareHandoffInput(value: unknown): value is CodexWorktreeWorkerPrep
 function isRollbackHandoffInput(value: unknown): value is CodexWorktreeWorkerRollbackHandoffInput {
   return (
     isRecord(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "managedRoot", "prepared"]) &&
+    hasOnlyKeys(value, ["requestId", "hostId", "prepared"]) &&
     isIdentity(value) &&
-    isAbsolutePath(value.managedRoot) &&
-    isPreparedHandoff(value.prepared) &&
-    isPathWithin(value.managedRoot, value.prepared.managedWorktreePath)
+    isPreparedHandoff(value.prepared)
   );
 }
 
 function isCleanupHandoffInput(value: unknown): value is CodexWorktreeWorkerCleanupHandoffInput {
   return (
     isRecord(value) &&
-    hasOnlyKeys(value, ["requestId", "hostId", "managedRoot", "prepared", "outcome"]) &&
+    hasOnlyKeys(value, ["requestId", "hostId", "prepared", "outcome"]) &&
     isIdentity(value) &&
-    isAbsolutePath(value.managedRoot) &&
     isPreparedHandoff(value.prepared) &&
-    isPathWithin(value.managedRoot, value.prepared.managedWorktreePath) &&
     (value.outcome === "committed" || value.outcome === "rolled-back")
   );
 }

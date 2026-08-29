@@ -58,20 +58,32 @@ export function resolveManagedWorktreeSnapshotRef(worktreePath: string): string 
   return `${SNAPSHOT_REF_PREFIX}${resolveManagedWorktreeId(worktreePath)}`;
 }
 
-function assertManagedWorktreePath(
-  managedRoot: string,
-  worktreeGitRoot: string,
-): {
-  readonly managedRoot: string;
-  readonly worktreeGitRoot: string;
-} {
-  const resolvedManagedRoot = path.resolve(managedRoot.trim());
+const LEGACY_MANAGED_PARENT_PATTERN = /^[0-9a-f]{4}$/iu;
+const CURRENT_MANAGED_WORKTREE_PATTERN = /^\d{6}-\d{4}-[0-9a-f]{8}$/iu;
+
+export function isLegacyManagedWorktreeParent(name: string): boolean {
+  return LEGACY_MANAGED_PARENT_PATTERN.test(name);
+}
+
+export function isCurrentManagedWorktreeDirectory(name: string): boolean {
+  return CURRENT_MANAGED_WORKTREE_PATTERN.test(name);
+}
+
+function assertExactManagedWorktreePath(worktreeGitRoot: string): string {
   const resolvedWorktreeRoot = path.resolve(worktreeGitRoot.trim());
-  const relative = path.relative(resolvedManagedRoot, resolvedWorktreeRoot);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error("Worktree path is outside the managed root");
+  const filesystemRoot = path.parse(resolvedWorktreeRoot).root;
+  if (!worktreeGitRoot.trim() || resolvedWorktreeRoot === filesystemRoot) {
+    throw new Error("Managed worktree target is invalid");
   }
-  return { managedRoot: resolvedManagedRoot, worktreeGitRoot: resolvedWorktreeRoot };
+  const parentName = path.basename(path.dirname(resolvedWorktreeRoot));
+  const targetName = path.basename(resolvedWorktreeRoot);
+  if (
+    !isLegacyManagedWorktreeParent(parentName) &&
+    !isCurrentManagedWorktreeDirectory(targetName)
+  ) {
+    throw new Error("Managed worktree target does not match an allocation layout");
+  }
+  return resolvedWorktreeRoot;
 }
 
 function isPathWithin(parentPath: string, candidatePath: string): boolean {
@@ -143,7 +155,7 @@ export async function snapshotManagedWorktree(
     readonly operation?: "snapshot" | "remove";
   } = {},
 ): Promise<CodexWorktreeWorkerSnapshotResult> {
-  const { worktreeGitRoot } = assertManagedWorktreePath(input.managedRoot, input.worktreeGitRoot);
+  const worktreeGitRoot = assertExactManagedWorktreePath(input.worktreeGitRoot);
   options.onEvent?.({
     operation: options.operation ?? "snapshot",
     type: "snapshot-started",
@@ -218,7 +230,7 @@ export async function inspectManagedWorktree(
   input: CodexWorktreeWorkerInspectInput,
   signal?: AbortSignal,
 ): Promise<CodexWorktreeWorkerInspectResult> {
-  const { worktreeGitRoot } = assertManagedWorktreePath(input.managedRoot, input.worktreeGitRoot);
+  const worktreeGitRoot = assertExactManagedWorktreePath(input.worktreeGitRoot);
   if (!isPathWithin(worktreeGitRoot, input.cwd)) {
     throw new Error("Worktree cwd is outside the worktree root");
   }
@@ -278,7 +290,7 @@ export async function restoreManagedWorktree(
     readonly onEvent?: (event: CodexWorktreeWorkerEvent) => void;
   } = {},
 ): Promise<CodexWorktreeWorkerRestoreResult> {
-  const { worktreeGitRoot } = assertManagedWorktreePath(input.managedRoot, input.worktreeGitRoot);
+  const worktreeGitRoot = assertExactManagedWorktreePath(input.worktreeGitRoot);
   options.onEvent?.({ operation: "restore", type: "restore-started" });
   const inspected = await inspectManagedWorktree(input, options.signal);
   if (inspected.availability.state === "available") {
@@ -376,7 +388,7 @@ export async function removeRetainedManagedWorktree(
     readonly loadBaseEnvironment?: () => Promise<NodeJS.ProcessEnv>;
   } = {},
 ): Promise<CodexWorktreeWorkerRemoveResult> {
-  const { worktreeGitRoot } = assertManagedWorktreePath(input.managedRoot, input.worktreeGitRoot);
+  const worktreeGitRoot = assertExactManagedWorktreePath(input.worktreeGitRoot);
   const existing = await stat(worktreeGitRoot).catch(() => null);
   if (!existing?.isDirectory()) {
     return { removed: false, alreadyMissing: true, snapshot: null, warnings: [] };
@@ -401,7 +413,18 @@ export async function removeRetainedManagedWorktree(
     if (input.snapshotPolicy === "required") throw error;
     warnings.push(error instanceof Error ? error.message : String(error));
   }
-  const repositoryPath = await resolveRepositoryPath(worktreeGitRoot, options.signal);
+  const repositoryPath = await resolveRepositoryPath(worktreeGitRoot, options.signal).catch(
+    (error) => {
+      throwIfCodexRequestAborted(options.signal);
+      if (input.snapshotPolicy === "required") throw error;
+      warnings.push(error instanceof Error ? error.message : String(error));
+      return null;
+    },
+  );
+  if (repositoryPath === null) {
+    await removeManagedWorktree(worktreeGitRoot);
+    return { removed: true, alreadyMissing: false, snapshot, warnings };
+  }
   const selectedEnvironment = await runCodexGitCommand(
     ["config", "--worktree", "--get", LOCAL_ENVIRONMENT_CONFIG_KEY],
     worktreeGitRoot,
@@ -466,6 +489,12 @@ export async function listManagedWorktreesOnHost(
     for (const worktreeEntry of worktreeEntries) {
       throwIfCodexRequestAborted(signal);
       if (!worktreeEntry.isDirectory() || worktreeEntry.isSymbolicLink()) continue;
+      if (
+        !isLegacyManagedWorktreeParent(tokenEntry.name) &&
+        !isCurrentManagedWorktreeDirectory(worktreeEntry.name)
+      ) {
+        continue;
+      }
       if (entries.length >= MAX_LISTED_WORKTREES) {
         throw new Error("Managed worktree inventory exceeds its host bound");
       }
@@ -478,7 +507,6 @@ export async function listManagedWorktreesOnHost(
           () => ({ ownerThreadId: null, ownerReadFailed: true }),
         ),
       ]);
-      if (!repositoryPath) continue;
       entries.push({
         worktreeGitRoot,
         repositoryPath,

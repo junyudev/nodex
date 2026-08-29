@@ -172,6 +172,9 @@ const makeFixture = (
       pageEmulation: makeBrowserPageEmulationRuntimeUnsafe(),
       pageStore: pages.runtime,
       runtimeRegistry: makeBrowserRuntimeRegistry(),
+      saveBrowserImage: () => {
+        throw new Error("Unexpected browser image save");
+      },
       siteStatus: { cachedCommentModeBlocked: () => null },
       webContentsListeners: yield* makeBrowserWebContentsListenerRuntime,
     });

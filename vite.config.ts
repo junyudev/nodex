@@ -209,6 +209,7 @@ export default defineConfig({
       "eslint/no-unsafe-finally": "error",
       "eslint/no-unsafe-optional-chaining": "error",
       "nodex/no-manual-effect-runtime-in-tests": "error",
+      "nodex/no-ambient-profile-authority": "error",
       "nodex/no-native-title-tooltip": "error",
       "oxc/const-comparisons": "error",
       "react/iframe-missing-sandbox": "error",

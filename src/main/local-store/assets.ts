@@ -2,7 +2,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { createHash, randomUUID } from "node:crypto";
 
-import { getNodexHome } from "./assets-deps";
 import { getAssetSource, isSafeAssetFileName, parseAssetSource } from "../../shared/assets";
 import {
   MAX_MANAGED_IMAGE_BYTES,
@@ -72,20 +71,8 @@ const EXTENSION_TO_TEXT_MIME: Record<string, string> = {
   ".zsh": "text/x-shellscript",
 };
 
-function getAssetPaths(): { readonly pathPrefix: string; readonly rootPath: string } {
-  const rootPath = path.resolve(path.join(getNodexHome(), "assets"));
-  return {
-    pathPrefix: `${rootPath}${path.sep}`,
-    rootPath,
-  };
-}
-
 export function isSupportedImageMimeType(mimeType: string): boolean {
   return mimeType in IMAGE_MIME_TO_EXTENSION;
-}
-
-export function getAssetsRootPath(): string {
-  return getAssetPaths().rootPath;
 }
 
 function assertAssetPathInsideRoot(targetPath: string, assetsRootPath: string): void {
@@ -98,10 +85,6 @@ function assertAssetPathInsideRoot(targetPath: string, assetsRootPath: string): 
   throw new Error("Invalid asset path");
 }
 
-function resolveFlatAssetPath(fileName: string): string {
-  return resolveAssetPathInRoot(getAssetsRootPath(), fileName);
-}
-
 export function resolveAssetPathInRoot(assetsRootPath: string, fileName: string): string {
   if (!isSafeAssetFileName(fileName)) {
     throw new Error("Invalid file name");
@@ -110,10 +93,6 @@ export function resolveAssetPathInRoot(assetsRootPath: string, fileName: string)
   const resolvedPath = path.resolve(assetsRootPath, fileName);
   assertAssetPathInsideRoot(resolvedPath, assetsRootPath);
   return resolvedPath;
-}
-
-export function resolveAssetPath(fileName: string): string {
-  return resolveFlatAssetPath(fileName);
 }
 
 export function getMimeTypeForAssetFile(fileName: string): string {
@@ -168,10 +147,6 @@ function writeAssetBytesAtRoot(assetsRootPath: string, fileName: string, bytes: 
     if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
   }
   return absolutePath;
-}
-
-function writeAssetBytes(fileName: string, bytes: Buffer): string {
-  return writeAssetBytesAtRoot(getAssetsRootPath(), fileName, bytes);
 }
 
 const decodeInlineImageDataUrl = (
@@ -295,11 +270,12 @@ export function materializeInlineImageAtRoot(
   return { source: getAssetSource(fileName), fileName, mimeType };
 }
 
-export function materializeCanvasImage(
+function materializeCanvasImageAtRoot(
   input: ManagedAssetUploadInput,
+  assetsRootPath: string,
 ): ManagedCanvasImageMaterializationResult {
   const upload = normalizeAssetUploadInput(input);
-  return materializeCanvasImageBytesAtRoot(upload.bytes, upload.mimeType, getAssetsRootPath());
+  return materializeCanvasImageBytesAtRoot(upload.bytes, upload.mimeType, assetsRootPath);
 }
 
 function inferMimeTypeFromLocalPath(localPath: string): string {
@@ -398,7 +374,10 @@ function normalizeAssetUploadInput(input: ManagedAssetUploadInput): {
   };
 }
 
-export function saveUploadedImage(input: ManagedAssetUploadInput): ManagedImageSaveResult {
+function saveUploadedImageAtRoot(
+  input: ManagedAssetUploadInput,
+  assetsRootPath: string,
+): ManagedImageSaveResult {
   const upload = normalizeAssetUploadInput(input);
   if (!isSupportedImageMimeType(upload.mimeType)) {
     throw new Error(`Unsupported image type: ${upload.mimeType || "unknown"}`);
@@ -410,7 +389,7 @@ export function saveUploadedImage(input: ManagedAssetUploadInput): ManagedImageS
 
   const extension = IMAGE_MIME_TO_EXTENSION[upload.mimeType] ?? "";
   const fileName = `${crypto.randomUUID()}${extension}`;
-  writeAssetBytes(fileName, upload.bytes);
+  writeAssetBytesAtRoot(assetsRootPath, fileName, upload.bytes);
 
   return {
     source: getAssetSource(fileName),
@@ -418,7 +397,10 @@ export function saveUploadedImage(input: ManagedAssetUploadInput): ManagedImageS
   };
 }
 
-export function saveUploadedResource(input: ManagedAssetUploadInput): ManagedResourceSaveResult {
+function saveUploadedResourceAtRoot(
+  input: ManagedAssetUploadInput,
+  assetsRootPath: string,
+): ManagedResourceSaveResult {
   const upload = normalizeAssetUploadInput(input);
   if (upload.bytes.byteLength > MAX_RESOURCE_UPLOAD_BYTES) {
     throw new Error("Resource exceeds 64MB upload limit");
@@ -431,7 +413,7 @@ export function saveUploadedResource(input: ManagedAssetUploadInput): ManagedRes
   );
   const extension = resolveStoredExtension(upload.name, normalizedMimeType);
   const fileName = `${crypto.randomUUID()}${extension}`;
-  writeAssetBytes(fileName, upload.bytes);
+  writeAssetBytesAtRoot(assetsRootPath, fileName, upload.bytes);
 
   return {
     source: getAssetSource(fileName),
@@ -442,7 +424,10 @@ export function saveUploadedResource(input: ManagedAssetUploadInput): ManagedRes
   };
 }
 
-export function materializeLocalResource(localPath: string): ManagedResourceSaveResult {
+function materializeLocalResourceAtRoot(
+  localPath: string,
+  assetsRootPath: string,
+): ManagedResourceSaveResult {
   const trimmedLocalPath = localPath.trim();
   if (!path.isAbsolute(trimmedLocalPath)) {
     throw new Error("Local resource path must be absolute");
@@ -457,7 +442,7 @@ export function materializeLocalResource(localPath: string): ManagedResourceSave
     const manifest = buildFolderManifest(normalizedLocalPath);
     const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2), "utf8");
     const fileName = `${crypto.randomUUID()}.json`;
-    writeAssetBytes(fileName, manifestBytes);
+    writeAssetBytesAtRoot(assetsRootPath, fileName, manifestBytes);
     return {
       source: getAssetSource(fileName),
       fileName,
@@ -475,7 +460,7 @@ export function materializeLocalResource(localPath: string): ManagedResourceSave
   const extension = resolveStoredExtension(normalizedLocalPath, mimeType);
   const fileName = `${crypto.randomUUID()}${extension}`;
   const fileBytes = fs.readFileSync(normalizedLocalPath);
-  writeAssetBytes(fileName, fileBytes);
+  writeAssetBytesAtRoot(assetsRootPath, fileName, fileBytes);
 
   return {
     source: getAssetSource(fileName),
@@ -486,8 +471,8 @@ export function materializeLocalResource(localPath: string): ManagedResourceSave
   };
 }
 
-function readAssetFileBounded(fileName: string, maxBytes: number): Buffer {
-  const absolutePath = resolveFlatAssetPath(fileName);
+function readAssetFileBounded(assetsRootPath: string, fileName: string, maxBytes: number): Buffer {
+  const absolutePath = resolveAssetPathInRoot(assetsRootPath, fileName);
   if (!fs.existsSync(absolutePath)) {
     throw new Error("Asset not found");
   }
@@ -512,12 +497,15 @@ function parseManagedAssetFileName(source: string): string {
   return parsed.fileName;
 }
 
-export function readManagedAssetImage(source: string): ManagedAssetImageBytes {
+function readManagedAssetImageAtRoot(
+  source: string,
+  assetsRootPath: string,
+): ManagedAssetImageBytes {
   const fileName = parseManagedAssetFileName(source);
   const mimeType = getImageMimeTypeForAssetFile(fileName);
   if (!mimeType) throw new Error("Managed asset is not a supported image");
 
-  const bytes = readAssetFileBounded(fileName, MAX_MANAGED_IMAGE_BYTES);
+  const bytes = readAssetFileBounded(assetsRootPath, fileName, MAX_MANAGED_IMAGE_BYTES);
   if (bytes.byteLength > MAX_MANAGED_IMAGE_BYTES) {
     throw new Error("Image exceeds 10MB upload limit");
   }
@@ -564,14 +552,17 @@ function isTextPreviewMimeType(mimeType: string): boolean {
   );
 }
 
-export function readManagedAssetPreview(input: ManagedAssetPreviewInput): ManagedAssetPreview {
+function readManagedAssetPreviewAtRoot(
+  input: ManagedAssetPreviewInput,
+  assetsRootPath: string,
+): ManagedAssetPreview {
   const fileName = parseManagedAssetFileName(input.source);
   const mimeType = getMimeTypeForAssetFile(fileName);
   if (input.kind === "text") {
     if (!isTextPreviewMimeType(mimeType)) {
       throw new Error("Managed asset is not text-previewable");
     }
-    const bytes = readAssetFileBounded(fileName, MAX_MANAGED_PREVIEW_BYTES);
+    const bytes = readAssetFileBounded(assetsRootPath, fileName, MAX_MANAGED_PREVIEW_BYTES);
     const text = bytes.toString("utf8");
     const preview = createManagedTextPreview(text);
     return {
@@ -583,7 +574,7 @@ export function readManagedAssetPreview(input: ManagedAssetPreviewInput): Manage
   if (mimeType !== "application/json") {
     throw new Error("Managed folder manifest must be JSON");
   }
-  const bytes = readAssetFileBounded(fileName, MAX_MANAGED_PREVIEW_BYTES);
+  const bytes = readAssetFileBounded(assetsRootPath, fileName, MAX_MANAGED_PREVIEW_BYTES);
   if (bytes.byteLength > MAX_MANAGED_PREVIEW_BYTES) {
     throw new Error("Managed folder manifest exceeds preview limit");
   }
@@ -592,4 +583,35 @@ export function readManagedAssetPreview(input: ManagedAssetPreviewInput): Manage
     throw new Error("Managed folder manifest is invalid");
   }
   return { kind: "folder", manifest: parsed };
+}
+
+export interface ProfileAssetsService {
+  readonly rootPath: string;
+  readonly resolveAssetPath: (fileName: string) => string;
+  readonly materializeCanvasImage: (
+    input: ManagedAssetUploadInput,
+  ) => ManagedCanvasImageMaterializationResult;
+  readonly saveUploadedImage: (input: ManagedAssetUploadInput) => ManagedImageSaveResult;
+  readonly saveUploadedResource: (input: ManagedAssetUploadInput) => ManagedResourceSaveResult;
+  readonly materializeLocalResource: (localPath: string) => ManagedResourceSaveResult;
+  readonly readManagedAssetImage: (source: string) => ManagedAssetImageBytes;
+  readonly readManagedAssetPreview: (input: ManagedAssetPreviewInput) => ManagedAssetPreview;
+}
+
+/** Binds all managed-asset operations to one immutable Profile root. */
+export function makeProfileAssets(input: {
+  readonly assetsRootPath: string;
+}): ProfileAssetsService {
+  const rootPath = path.resolve(input.assetsRootPath);
+  const service: ProfileAssetsService = {
+    rootPath,
+    resolveAssetPath: (fileName) => resolveAssetPathInRoot(rootPath, fileName),
+    materializeCanvasImage: (upload) => materializeCanvasImageAtRoot(upload, rootPath),
+    saveUploadedImage: (upload) => saveUploadedImageAtRoot(upload, rootPath),
+    saveUploadedResource: (upload) => saveUploadedResourceAtRoot(upload, rootPath),
+    materializeLocalResource: (localPath) => materializeLocalResourceAtRoot(localPath, rootPath),
+    readManagedAssetImage: (source) => readManagedAssetImageAtRoot(source, rootPath),
+    readManagedAssetPreview: (preview) => readManagedAssetPreviewAtRoot(preview, rootPath),
+  };
+  return Object.freeze(service);
 }

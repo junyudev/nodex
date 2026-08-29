@@ -178,7 +178,6 @@ const makeHarness = (
   });
   const managedWorktrees = ManagedWorktreeConfiguration.of({
     settings: Effect.succeed({ worktreeRoot: null, autoDeleteEnabled: true, autoDeleteLimit: 15 }),
-    knownRoots: Effect.succeed([]),
     update: () => Effect.die("unused"),
   });
   const layer = executionHostRuntimeLive({

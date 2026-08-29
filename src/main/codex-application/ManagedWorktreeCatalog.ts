@@ -11,6 +11,10 @@ import type {
   UpdateManagedWorktreeSettingsInput,
 } from "../../shared/types";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
+import type {
+  DesktopManagedWorktreeSummary,
+  DesktopManagedWorktreeWindow,
+} from "../core-client/project-workspace-adapter";
 import {
   normalizeWorktreePathForIdentity,
   resolveWorktreePathComparisonKey,
@@ -44,7 +48,9 @@ export interface ManagedWorktreeCatalogOptions {
 export class ManagedWorktreeCatalog extends Context.Service<
   ManagedWorktreeCatalog,
   {
-    readonly list: Effect.Effect<readonly ManagedWorktreeRecord[], ManagedWorktreeCatalogError>;
+    readonly list: (
+      hostId: string,
+    ) => Effect.Effect<readonly ManagedWorktreeRecord[], ManagedWorktreeCatalogError>;
     readonly inspectThread: (
       threadId: string,
     ) => Effect.Effect<ManagedWorktreeAvailability, ManagedWorktreeCatalogError>;
@@ -161,101 +167,110 @@ export const make = (
         };
       });
 
-    const list = runOwned(
-      Effect.gen(function* () {
-        const hostIds = (yield* executionHosts.hosts("list")).map((host) => host.hostId);
-        const [physicalByHost, lifecycle, projects] = yield* Effect.all(
-          [
-            Effect.forEach(
-              hostIds,
-              (hostId) =>
-                managed.list(hostId).pipe(
-                  Effect.map((inventory) => ({ hostId, inventory })),
-                  Effect.mapError((cause) => fail("list", cause)),
-                ),
-              { concurrency: "unbounded" },
-            ),
-            project("list", workspace.readManagedWorktreeLifecycleSnapshot),
-            project("list", workspace.listProjects),
-          ] as const,
-          { concurrency: "unbounded" },
-        );
-        const projectNameById = new Map(
-          projects.map((project) => [project.id, project.name] as const),
-        );
-        const permanentRoots = new Set(
-          (yield* Effect.forEach(
-            lifecycle.projects.flatMap((entry) => entry.sourceRoots),
-            (root) => resolvePath("list", root),
+    const list = (hostId: string) =>
+      runOwned(
+        Effect.gen(function* () {
+          const normalizedHostId = hostId.trim();
+          if (!normalizedHostId)
+            return yield* fail("list", new Error("Execution host is required"));
+          const [inventory, lifecycle, projects] = yield* Effect.all(
+            [
+              managed.list(normalizedHostId).pipe(Effect.mapError((cause) => fail("list", cause))),
+              project("list", workspace.readManagedWorktreeLifecycleSnapshot),
+              project("list", workspace.listProjects),
+            ] as const,
             { concurrency: "unbounded" },
-          )).map((root) => `${CODEX_APP_LOCAL_HOST_ID}\0${root}`),
-        );
-        const consumersByPath = new Map<string, typeof lifecycle.consumers>();
-        for (const consumer of lifecycle.consumers) {
-          const key = `${consumer.executionHostId}\0${normalizeWorktreePathForIdentity(
-            consumer.managedWorktreePath,
-          )}`;
-          consumersByPath.set(key, [...(consumersByPath.get(key) ?? []), consumer]);
-        }
-        const physicalEntries = physicalByHost.flatMap(({ hostId, inventory }) =>
-          inventory.entries.map((entry) => ({ hostId, entry })),
-        );
-        const records = yield* Effect.forEach(
-          physicalEntries,
-          ({
-            hostId,
+          );
+          const summaries: DesktopManagedWorktreeSummary[] = [];
+          let after: string | null = null;
+          let projectionRevision: number | null = null;
+          for (let page = 0; page < 250; page += 1) {
+            const summaryWindow: DesktopManagedWorktreeWindow = yield* project(
+              "list",
+              workspace.listManagedWorktreeWindow({ after, first: 200 }),
+            );
+            if (
+              projectionRevision !== null &&
+              summaryWindow.projectionRevision !== projectionRevision
+            ) {
+              return yield* fail("list", new Error("Worktree metadata changed while listing"));
+            }
+            projectionRevision = summaryWindow.projectionRevision;
+            summaries.push(...summaryWindow.items);
+            after = summaryWindow.nextCursor;
+            if (!after) break;
+            if (page === 249) {
+              return yield* fail("list", new Error("Worktree metadata exceeded its page bound"));
+            }
+          }
+          const summaryByThreadId = new Map(
+            summaries.map((summary) => [summary.threadId, summary] as const),
+          );
+          const projectNameById = new Map(
+            projects.map((project) => [project.id, project.name] as const),
+          );
+          const permanentRoots = new Set(
+            (yield* Effect.forEach(
+              lifecycle.projects.flatMap((entry) => entry.sourceRoots),
+              (root) => resolvePath("list", root),
+              { concurrency: "unbounded" },
+            )).map((root) => `${CODEX_APP_LOCAL_HOST_ID}\0${root}`),
+          );
+          const consumersByPath = new Map<string, typeof lifecycle.consumers>();
+          for (const consumer of lifecycle.consumers) {
+            const key = `${consumer.executionHostId}\0${normalizeWorktreePathForIdentity(
+              consumer.managedWorktreePath,
+            )}`;
+            consumersByPath.set(key, [...(consumersByPath.get(key) ?? []), consumer]);
+          }
+          const physicalEntries = inventory.entries.map((entry) => ({
+            hostId: normalizedHostId,
             entry,
-          }): Effect.Effect<ManagedWorktreeRecord | null, ManagedWorktreeCatalogError> =>
-            Effect.gen(function* () {
-              const normalizedPath = normalizeWorktreePathForIdentity(entry.worktreeGitRoot);
-              const comparisonKey = yield* resolvePath("list", entry.worktreeGitRoot);
-              if (permanentRoots.has(`${hostId}\0${comparisonKey}`)) return null;
-              const consumers = consumersByPath.get(`${hostId}\0${normalizedPath}`) ?? [];
-              const conversations = yield* Effect.forEach(
-                consumers,
-                (consumer) =>
-                  Effect.all(
-                    [
-                      project("list", workspace.getThread(consumer.threadId)),
-                      consumer.sessionId
-                        ? project("list", workspace.getProjectSession(consumer.sessionId))
-                        : Effect.succeed(null),
-                    ] as const,
-                    { concurrency: "unbounded" },
-                  ).pipe(
-                    Effect.map(([thread, session]) => ({
-                      threadId: consumer.threadId,
-                      projectId: consumer.projectId,
-                      projectName: consumer.projectId
-                        ? (projectNameById.get(consumer.projectId) ?? null)
-                        : null,
-                      sessionId: consumer.sessionId,
-                      sessionTitle: session?.displayTitle ?? null,
-                      threadName: thread?.threadName ?? null,
-                      archived: consumer.archived,
-                      updatedAt: consumer.updatedAt,
-                    })),
+          }));
+          const records = yield* Effect.forEach(
+            physicalEntries,
+            ({
+              hostId,
+              entry,
+            }): Effect.Effect<ManagedWorktreeRecord | null, ManagedWorktreeCatalogError> =>
+              Effect.gen(function* () {
+                const normalizedPath = normalizeWorktreePathForIdentity(entry.worktreeGitRoot);
+                const comparisonKey = yield* resolvePath("list", entry.worktreeGitRoot);
+                if (permanentRoots.has(`${hostId}\0${comparisonKey}`)) return null;
+                const consumers = consumersByPath.get(`${hostId}\0${normalizedPath}`) ?? [];
+                const conversations = consumers.map((consumer) => {
+                  const summary = summaryByThreadId.get(consumer.threadId);
+                  return {
+                    threadId: consumer.threadId,
+                    projectId: consumer.projectId,
+                    projectName: consumer.projectId
+                      ? (projectNameById.get(consumer.projectId) ?? null)
+                      : null,
+                    sessionId: consumer.sessionId,
+                    sessionTitle: summary?.sessionTitle ?? null,
+                    threadName: summary?.threadName ?? null,
+                    archived: consumer.archived,
+                    updatedAt: consumer.updatedAt,
+                  };
+                });
+                return {
+                  hostId,
+                  path: entry.worktreeGitRoot,
+                  exists: true,
+                  repositoryPath: entry.repositoryPath,
+                  createdAtMs: entry.createdAtMs,
+                  conversations: conversations.sort(
+                    (left, right) => right.updatedAt - left.updatedAt,
                   ),
-                { concurrency: "unbounded" },
-              );
-              return {
-                hostId,
-                path: entry.worktreeGitRoot,
-                exists: true,
-                repositoryPath: entry.repositoryPath,
-                createdAtMs: entry.createdAtMs,
-                conversations: conversations.sort(
-                  (left, right) => right.updatedAt - left.updatedAt,
-                ),
-              };
-            }),
-          { concurrency: "unbounded" },
-        );
-        return records
-          .filter((record): record is ManagedWorktreeRecord => record !== null)
-          .sort((left, right) => (right.createdAtMs ?? 0) - (left.createdAtMs ?? 0));
-      }),
-    );
+                };
+              }),
+            { concurrency: "unbounded" },
+          );
+          return records
+            .filter((record): record is ManagedWorktreeRecord => record !== null)
+            .sort((left, right) => (right.createdAtMs ?? 0) - (left.createdAtMs ?? 0));
+        }),
+      );
 
     return ManagedWorktreeCatalog.of({
       list,
@@ -344,11 +359,25 @@ export const make = (
       delete: (hostId, worktreePath) =>
         runOwned(
           Effect.gen(function* () {
+            const inventory = yield* managed
+              .list(hostId)
+              .pipe(Effect.mapError((cause) => fail("delete", cause)));
+            const normalizedPath = normalizeWorktreePathForIdentity(worktreePath);
+            if (
+              !inventory.entries.some(
+                (entry) =>
+                  normalizeWorktreePathForIdentity(entry.worktreeGitRoot) === normalizedPath,
+              )
+            ) {
+              return yield* fail(
+                "delete",
+                new Error("Worktree is no longer present in the current host inventory"),
+              );
+            }
             const lifecycle = yield* project(
               "delete",
               workspace.readManagedWorktreeLifecycleSnapshot,
             );
-            const normalizedPath = normalizeWorktreePathForIdentity(worktreePath);
             const consumers = lifecycle.consumers.filter(
               (consumer) =>
                 consumer.executionHostId === hostId &&

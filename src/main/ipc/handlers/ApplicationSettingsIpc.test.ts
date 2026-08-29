@@ -2,6 +2,9 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
@@ -10,6 +13,10 @@ import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { StoreAdministrationSchedulerRuntime } from "../../host-runtime/StoreAdministrationSchedulerRuntime";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import {
+  ApplicationSettings,
+  make as makeApplicationSettings,
+} from "../../settings/ApplicationSettings";
 import { ApplicationSettingsIpcError, live } from "./ApplicationSettingsIpc";
 
 type Handler = (
@@ -20,6 +27,11 @@ type Handler = (
 it.effect("owns the complete application settings ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
+    const settingsRoot = mkdtempSync(path.join(tmpdir(), "nodex-application-settings-ipc-"));
+    const settings = yield* makeApplicationSettings({
+      environment: {},
+      settingsPath: path.join(settingsRoot, "config.toml"),
+    });
     const ipc = ElectronIpc.of({
       handle: (channel, handler) =>
         Effect.acquireRelease(
@@ -29,8 +41,18 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       on: () => Effect.void,
     } as ElectronIpc["Service"]);
     const menus = ApplicationMenuRuntime.of({ refresh: () => undefined });
+    let keymapAdmissionsInFlight = 0;
+    let peakKeymapAdmissions = 0;
     const dictation = DictationRuntime.of({
-      syncCommandKeymap: () => Effect.succeed(null),
+      syncCommandKeymap: () =>
+        Effect.gen(function* () {
+          keymapAdmissionsInFlight += 1;
+          peakKeymapAdmissions = Math.max(peakKeymapAdmissions, keymapAdmissionsInFlight);
+          yield* Effect.yieldNow;
+          keymapAdmissionsInFlight -= 1;
+          return null;
+        }),
+      restoreCommandKeymap: () => Effect.void,
     } as unknown as DictationRuntime["Service"]);
     const schedulers = StoreAdministrationSchedulerRuntime.of({
       configureBackup: () => Effect.void,
@@ -45,6 +67,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ApplicationMenuRuntime, menus),
+            Layer.succeed(ApplicationSettings, settings),
             Layer.succeed(DictationRuntime, dictation),
             Layer.succeed(StoreAdministrationSchedulerRuntime, schedulers),
             Layer.succeed(ElectronIpc, ipc),
@@ -96,6 +119,24 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       kind: "modifier-required",
       message: "Shortcut must include Cmd/Ctrl or Alt.",
     });
+    const keybindingResults = yield* Effect.all(
+      [
+        handlers.get("set-codex-command-keybinding")!(event, "settings", {
+          type: "set",
+          keybinding: { key: "CmdOrCtrl+Shift+1" },
+        }),
+        handlers.get("set-codex-command-keybinding")!(event, "newWindow", {
+          type: "set",
+          keybinding: { key: "CmdOrCtrl+Shift+2" },
+        }),
+      ],
+      { concurrency: "unbounded" },
+    );
+    assert.deepEqual(
+      keybindingResults.map((result) => (result as { readonly type: string }).type),
+      ["applied", "applied"],
+    );
+    assert.strictEqual(peakKeymapAdmissions, 1);
     const invalid = yield* Effect.result(
       handlers.get("settings:backup:update")!(event, {
         autoEnabled: true,
@@ -109,5 +150,6 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(handlers.size, 0);
+    rmSync(settingsRoot, { recursive: true, force: true });
   }),
 );

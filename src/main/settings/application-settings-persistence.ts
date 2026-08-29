@@ -1,19 +1,15 @@
 import * as path from "path";
 import {
   closeSync,
-  existsSync,
   fsyncSync,
   mkdirSync,
   openSync,
-  readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from "fs";
 import { randomUUID } from "crypto";
-import { homedir } from "os";
-import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
-import { resolveNodexHomePath } from "../nodex-home";
+import { stringify as stringifyToml } from "smol-toml";
 import {
   applyCommandKeybindingUpdate,
   createCommandKeymapState,
@@ -50,8 +46,9 @@ import type {
   WindowRestoreSettings,
 } from "../../shared/types";
 import { normalizeCodexSshExecutionHostConfig } from "../codex/codex-ssh-execution-host";
+import { readSettingsTomlDocument, type SettingsTomlDocument } from "./settings-document";
 
-// ─── TOML [server] config (user-level + CWD walk-up for project-level) ───
+// ─── Profile-local TOML [server] settings ───
 
 interface ServerTomlConfig {
   home?: string;
@@ -84,7 +81,6 @@ interface ServerTomlConfig {
   git_commit_instructions?: string;
   git_pr_instructions?: string;
   worktree_root?: string;
-  worktree_known_roots?: string[];
   worktree_auto_delete_enabled?: boolean;
   worktree_auto_delete_limit?: number;
   execution_hosts?: unknown[];
@@ -94,20 +90,13 @@ interface RootTomlConfig extends Record<string, unknown> {
   server?: ServerTomlConfig;
 }
 
-export interface LocalSettingsSource {
-  readonly cwd: string;
+export interface ApplicationSettingsDocumentSource {
   readonly environment: Readonly<NodeJS.ProcessEnv>;
-  readonly userHome: string;
+  readonly settingsPath: string;
+  readonly document?: SettingsTomlDocument;
 }
 
-const currentProcessSettingsSource = (): LocalSettingsSource => ({
-  cwd: process.cwd(),
-  environment: process.env,
-  userHome: process.env.HOME?.trim() || homedir(),
-});
-
 const BACKUP_AUTO_DEFAULT = false;
-const DATABASE_FILE_NAME = "nodex.db";
 const BACKUP_INTERVAL_DEFAULT = 6;
 const BACKUP_RETENTION_DEFAULT = 28;
 const BACKUP_RETENTION_GIB_DEFAULT = 32;
@@ -130,72 +119,41 @@ const TELEMETRY_AUTO_CAPTURE_ENABLED_DEFAULT = false;
 const CODEX_THREAD_DETAIL_LEVEL_DEFAULT: CodexThreadDetailLevel = "STEPS_COMMANDS";
 const CODEX_GIT_BRANCH_PREFIX_DEFAULT = "codex/";
 const WORKTREE_AUTO_DELETE_LIMIT_DEFAULT = 15;
+const EXECUTION_HOST_LIMIT = 32;
+
+function serverSectionFromDocument(
+  parsed: SettingsTomlDocument,
+  configPath: string,
+): ServerTomlConfig | null {
+  const server = parsed.server;
+  if (server === undefined) return null;
+  if (!server || typeof server !== "object" || Array.isArray(server)) {
+    throw new Error(`Settings [server] must be a TOML table: ${configPath}`);
+  }
+  return server as ServerTomlConfig;
+}
 
 function readServerSection(configPath: string): ServerTomlConfig | null {
-  try {
-    const raw = readFileSync(configPath, "utf8");
-    const parsed = parseToml(raw) as Record<string, unknown>;
-    return (parsed.server as ServerTomlConfig) ?? null;
-  } catch {
-    return null;
+  return serverSectionFromDocument(readSettingsTomlDocument(configPath), configPath);
+}
+
+function loadServerTomlConfig(source: ApplicationSettingsDocumentSource): ServerTomlConfig {
+  if (source.document) {
+    return serverSectionFromDocument(source.document, source.settingsPath) ?? {};
   }
+  return readServerSection(source.settingsPath) ?? {};
 }
 
-function findProjectConfig(source: LocalSettingsSource): string | null {
-  let dir = source.cwd;
-  for (;;) {
-    const candidate = path.join(dir, ".nodex", "config.toml");
-    if (existsSync(candidate)) return candidate;
-    const parent = path.dirname(dir);
-    if (parent === dir) return null;
-    dir = parent;
-  }
+function loadProfileServerTomlConfig(source: ApplicationSettingsDocumentSource): ServerTomlConfig {
+  return loadServerTomlConfig(source);
 }
 
-function loadServerTomlConfig(source: LocalSettingsSource): ServerTomlConfig {
-  const merged: ServerTomlConfig = {};
-
-  // User-level (~/.nodex/config.toml)
-  const homeConfig = path.join(source.userHome, ".nodex", "config.toml");
-  const homeServer = readServerSection(homeConfig);
-  if (homeServer) Object.assign(merged, homeServer);
-
-  // Project-level (CWD walk-up) overrides user-level
-  const projectConfig = findProjectConfig(source);
-  if (projectConfig) {
-    const projectServer = readServerSection(projectConfig);
-    if (projectServer) Object.assign(merged, projectServer);
-  }
-
-  return merged;
-}
-
-function loadUserServerTomlConfig(source: LocalSettingsSource): ServerTomlConfig {
-  const homeConfig = path.join(source.userHome, ".nodex", "config.toml");
-  return readServerSection(homeConfig) ?? {};
-}
-
-function getUserConfigPath(source: LocalSettingsSource): string {
-  return path.join(source.userHome, ".nodex", "config.toml");
+function getProfileSettingsPath(source: ApplicationSettingsDocumentSource): string {
+  return source.settingsPath;
 }
 
 function readTomlConfig(configPath: string): RootTomlConfig {
-  if (!existsSync(configPath)) {
-    return {};
-  }
-
-  try {
-    const raw = readFileSync(configPath, "utf8");
-    const parsed = parseToml(raw);
-    if (parsed && typeof parsed === "object") {
-      return parsed as RootTomlConfig;
-    }
-    return {};
-  } catch (error) {
-    throw new Error(`Could not read config file at ${configPath}: ${(error as Error).message}`, {
-      cause: error,
-    });
-  }
+  return readSettingsTomlDocument(configPath) as RootTomlConfig;
 }
 
 function writeTomlConfig(configPath: string, nextToml: RootTomlConfig): void {
@@ -235,31 +193,17 @@ function writeTomlConfig(configPath: string, nextToml: RootTomlConfig): void {
   }
 }
 
-function writeUserServerTomlConfig(
-  source: LocalSettingsSource,
+function writeProfileServerTomlConfig(
+  source: ApplicationSettingsDocumentSource,
   nextServer: ServerTomlConfig,
 ): void {
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   nextToml.server = nextServer;
-  writeTomlConfig(userConfigPath, nextToml);
+  writeTomlConfig(profileSettingsPath, nextToml);
 }
 
-// ─── Getters (resolution: env → TOML → default) ───
-
-export function getNodexHome(source = currentProcessSettingsSource()): string {
-  const serverToml = loadServerTomlConfig(source);
-  return resolveNodexHomePath({
-    cwd: source.cwd,
-    env: source.environment,
-    userHome: source.userHome,
-    configuredHome: serverToml.home,
-  });
-}
-
-export function getDatabasePath(source = currentProcessSettingsSource()): string {
-  return path.join(getNodexHome(source), DATABASE_FILE_NAME);
-}
+// ─── Getters (resolution: env → Profile TOML → default) ───
 
 function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) return fallback;
@@ -457,7 +401,7 @@ function telemetrySettingsFromConfig(
   };
 }
 
-export function getBackupSettings(source = currentProcessSettingsSource()): BackupSettings {
+export function getBackupSettings(source: ApplicationSettingsDocumentSource): BackupSettings {
   const serverToml = loadServerTomlConfig(source);
   const environment = source.environment;
   const fromToml = backupSettingsFromConfig(serverToml);
@@ -490,7 +434,7 @@ export function getBackupSettings(source = currentProcessSettingsSource()): Back
 
 export function updateBackupSettings(
   input: UpdateBackupSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): BackupSettings {
   if (typeof input.autoEnabled !== "boolean") {
     throw new Error("autoEnabled must be a boolean");
@@ -506,8 +450,8 @@ export function updateBackupSettings(
     ),
   };
 
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   const nextServer = {
     ...(nextToml.server ?? {}),
     backup_auto_enabled: nextSettings.autoEnabled,
@@ -518,11 +462,11 @@ export function updateBackupSettings(
 
   nextToml.server = nextServer;
 
-  writeTomlConfig(userConfigPath, nextToml);
+  writeTomlConfig(profileSettingsPath, nextToml);
   return getBackupSettings(source);
 }
 
-export function getHistorySettings(source = currentProcessSettingsSource()): HistorySettings {
+export function getHistorySettings(source: ApplicationSettingsDocumentSource): HistorySettings {
   const serverToml = loadServerTomlConfig(source);
   const environment = source.environment;
   const fromToml =
@@ -543,14 +487,14 @@ export function getHistorySettings(source = currentProcessSettingsSource()): His
 
 export function updateHistorySettings(
   input: UpdateHistorySettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): HistorySettings {
   const nextSettings = {
     retentionCount: normalizeIntegerInput(input.retentionCount, 0, "retentionCount"),
   };
 
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   const nextServer = {
     ...(nextToml.server ?? {}),
     history_retention: nextSettings.retentionCount,
@@ -558,16 +502,16 @@ export function updateHistorySettings(
 
   nextToml.server = nextServer;
 
-  writeTomlConfig(userConfigPath, nextToml);
+  writeTomlConfig(profileSettingsPath, nextToml);
   return getHistorySettings(source);
 }
 
 export function getDiagnosticsSettings(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): DiagnosticsSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
+  const profileServerToml = loadProfileServerTomlConfig(source);
   const environmentSource = source.environment;
-  const fromToml = diagnosticsSettingsFromConfig(userServerToml);
+  const fromToml = diagnosticsSettingsFromConfig(profileServerToml);
   const envOverrides = {
     enabled: environmentSource.NODEX_SENTRY_ENABLED !== undefined,
     dsn: environmentSource.SENTRY_DSN !== undefined,
@@ -646,7 +590,7 @@ export function getDiagnosticsSettings(
 
 export function updateDiagnosticsSettings(
   input: UpdateDiagnosticsSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): DiagnosticsSettings {
   if (typeof input.enabled !== "boolean") {
     throw new Error("enabled must be a boolean");
@@ -673,8 +617,8 @@ export function updateDiagnosticsSettings(
     throw new Error("replayEnabled must be a boolean");
   }
 
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   const nextServer: ServerTomlConfig = {
     ...(nextToml.server ?? {}),
     diagnostics_enabled: nextSettings.enabled,
@@ -697,14 +641,14 @@ export function updateDiagnosticsSettings(
 
   nextToml.server = nextServer;
 
-  writeTomlConfig(userConfigPath, nextToml);
+  writeTomlConfig(profileSettingsPath, nextToml);
   return getDiagnosticsSettings(source);
 }
 
-export function getTelemetrySettings(source = currentProcessSettingsSource()): TelemetrySettings {
-  const userServerToml = loadUserServerTomlConfig(source);
+export function getTelemetrySettings(source: ApplicationSettingsDocumentSource): TelemetrySettings {
+  const profileServerToml = loadProfileServerTomlConfig(source);
   const environmentSource = source.environment;
-  const fromToml = telemetrySettingsFromConfig(userServerToml);
+  const fromToml = telemetrySettingsFromConfig(profileServerToml);
   const envOverrides = {
     enabled: environmentSource.NODEX_TELEMETRY_ENABLED !== undefined,
     clientKey: environmentSource.STATSIG_CLIENT_KEY !== undefined,
@@ -740,7 +684,7 @@ export function getTelemetrySettings(source = currentProcessSettingsSource()): T
 
 export function updateTelemetrySettings(
   input: UpdateTelemetrySettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): TelemetrySettings {
   if (typeof input.enabled !== "boolean") {
     throw new Error("enabled must be a boolean");
@@ -758,8 +702,8 @@ export function updateTelemetrySettings(
     autoCaptureEnabled: input.autoCaptureEnabled,
   };
 
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   const nextServer: ServerTomlConfig = {
     ...(nextToml.server ?? {}),
     telemetry_enabled: nextSettings.enabled,
@@ -774,15 +718,15 @@ export function updateTelemetrySettings(
 
   nextToml.server = nextServer;
 
-  writeTomlConfig(userConfigPath, nextToml);
+  writeTomlConfig(profileSettingsPath, nextToml);
   return getTelemetrySettings(source);
 }
 
 export function getThreadNotificationSettings(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): ThreadNotificationSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
-  return threadNotificationSettingsFromConfig(userServerToml);
+  const profileServerToml = loadProfileServerTomlConfig(source);
+  return threadNotificationSettingsFromConfig(profileServerToml);
 }
 
 function isCodexThreadDetailLevel(value: unknown): value is CodexThreadDetailLevel {
@@ -790,51 +734,51 @@ function isCodexThreadDetailLevel(value: unknown): value is CodexThreadDetailLev
 }
 
 export function getCodexDeveloperInstructionSettings(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CodexDeveloperInstructionSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
+  const profileServerToml = loadProfileServerTomlConfig(source);
   return {
-    detailLevel: isCodexThreadDetailLevel(userServerToml.codex_thread_detail_level)
-      ? userServerToml.codex_thread_detail_level
+    detailLevel: isCodexThreadDetailLevel(profileServerToml.codex_thread_detail_level)
+      ? profileServerToml.codex_thread_detail_level
       : CODEX_THREAD_DETAIL_LEVEL_DEFAULT,
   };
 }
 
 export function updateCodexDeveloperInstructionSettings(
   input: UpdateCodexDeveloperInstructionSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CodexDeveloperInstructionSettings {
   if (!isCodexThreadDetailLevel(input.detailLevel)) {
     throw new Error("detailLevel must be one of STEPS_PROSE, STEPS_COMMANDS, or STEPS_EXECUTION");
   }
-  writeUserServerTomlConfig(source, {
-    ...loadUserServerTomlConfig(source),
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
     codex_thread_detail_level: input.detailLevel,
   });
   return getCodexDeveloperInstructionSettings(source);
 }
 
-export function getCodexGitSettings(source = currentProcessSettingsSource()): CodexGitSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
+export function getCodexGitSettings(source: ApplicationSettingsDocumentSource): CodexGitSettings {
+  const profileServerToml = loadProfileServerTomlConfig(source);
   return {
     branchPrefix:
-      typeof userServerToml.git_branch_prefix === "string"
-        ? userServerToml.git_branch_prefix
+      typeof profileServerToml.git_branch_prefix === "string"
+        ? profileServerToml.git_branch_prefix
         : CODEX_GIT_BRANCH_PREFIX_DEFAULT,
     commitInstructions:
-      typeof userServerToml.git_commit_instructions === "string"
-        ? userServerToml.git_commit_instructions
+      typeof profileServerToml.git_commit_instructions === "string"
+        ? profileServerToml.git_commit_instructions
         : "",
     pullRequestInstructions:
-      typeof userServerToml.git_pr_instructions === "string"
-        ? userServerToml.git_pr_instructions
+      typeof profileServerToml.git_pr_instructions === "string"
+        ? profileServerToml.git_pr_instructions
         : "",
   };
 }
 
 export function updateCodexGitSettings(
   input: UpdateCodexGitSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CodexGitSettings {
   const entries = Object.entries(input);
   if (entries.length === 0) return getCodexGitSettings(source);
@@ -846,53 +790,41 @@ export function updateCodexGitSettings(
     throw new Error("Git setting values must be strings");
   }
 
-  const next = { ...loadUserServerTomlConfig(source) };
+  const next = { ...loadProfileServerTomlConfig(source) };
   if (input.branchPrefix !== undefined) next.git_branch_prefix = input.branchPrefix;
   if (input.commitInstructions !== undefined)
     next.git_commit_instructions = input.commitInstructions;
   if (input.pullRequestInstructions !== undefined)
     next.git_pr_instructions = input.pullRequestInstructions;
-  writeUserServerTomlConfig(source, next);
+  writeProfileServerTomlConfig(source, next);
   return getCodexGitSettings(source);
 }
 
 export function getManagedWorktreeSettings(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): ManagedWorktreeSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
+  const profileServerToml = loadProfileServerTomlConfig(source);
   return {
     worktreeRoot:
-      typeof userServerToml.worktree_root === "string" && userServerToml.worktree_root.trim()
-        ? path.resolve(userServerToml.worktree_root.trim())
+      typeof profileServerToml.worktree_root === "string" && profileServerToml.worktree_root.trim()
+        ? path.resolve(profileServerToml.worktree_root.trim())
         : null,
     autoDeleteEnabled:
-      typeof userServerToml.worktree_auto_delete_enabled === "boolean"
-        ? userServerToml.worktree_auto_delete_enabled
+      typeof profileServerToml.worktree_auto_delete_enabled === "boolean"
+        ? profileServerToml.worktree_auto_delete_enabled
         : true,
     autoDeleteLimit:
-      typeof userServerToml.worktree_auto_delete_limit === "number" &&
-      Number.isSafeInteger(userServerToml.worktree_auto_delete_limit) &&
-      userServerToml.worktree_auto_delete_limit >= 1
-        ? userServerToml.worktree_auto_delete_limit
+      typeof profileServerToml.worktree_auto_delete_limit === "number" &&
+      Number.isSafeInteger(profileServerToml.worktree_auto_delete_limit) &&
+      profileServerToml.worktree_auto_delete_limit >= 1
+        ? profileServerToml.worktree_auto_delete_limit
         : WORKTREE_AUTO_DELETE_LIMIT_DEFAULT,
   };
 }
 
-export function getKnownManagedWorktreeRoots(source = currentProcessSettingsSource()): string[] {
-  const userServerToml = loadUserServerTomlConfig(source);
-  if (!Array.isArray(userServerToml.worktree_known_roots)) return [];
-  return Array.from(
-    new Set(
-      userServerToml.worktree_known_roots
-        .filter((root): root is string => typeof root === "string" && root.trim().length > 0)
-        .map((root) => path.resolve(root.trim())),
-    ),
-  );
-}
-
 export function updateManagedWorktreeSettings(
   input: UpdateManagedWorktreeSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): ManagedWorktreeSettings {
   const allowedKeys = new Set(["worktreeRoot", "autoDeleteEnabled", "autoDeleteLimit"]);
   if (Object.keys(input).some((key) => !allowedKeys.has(key))) {
@@ -914,22 +846,15 @@ export function updateManagedWorktreeSettings(
   ) {
     throw new Error("worktreeRoot must be a string or null");
   }
-  const next = { ...loadUserServerTomlConfig(source) };
+  const next = { ...loadProfileServerTomlConfig(source) };
+  // Historical roots were an accidental discovery/authorization registry. A
+  // managed settings write canonicalizes legacy documents to the single-root model.
+  delete (next as Record<string, unknown>).worktree_known_roots;
   if (input.worktreeRoot !== undefined) {
-    const knownRoots = new Set(
-      Array.isArray(next.worktree_known_roots)
-        ? next.worktree_known_roots.filter((root): root is string => typeof root === "string")
-        : [],
-    );
-    if (typeof next.worktree_root === "string" && next.worktree_root.trim()) {
-      knownRoots.add(path.resolve(next.worktree_root.trim()));
-    }
     const normalized = input.worktreeRoot?.trim() ?? "";
     if (normalized) {
       next.worktree_root = path.resolve(normalized);
-      knownRoots.add(next.worktree_root);
     } else delete next.worktree_root;
-    next.worktree_known_roots = [...knownRoots].sort();
   }
   if (input.autoDeleteEnabled !== undefined) {
     next.worktree_auto_delete_enabled = input.autoDeleteEnabled;
@@ -937,15 +862,20 @@ export function updateManagedWorktreeSettings(
   if (input.autoDeleteLimit !== undefined) {
     next.worktree_auto_delete_limit = input.autoDeleteLimit;
   }
-  writeUserServerTomlConfig(source, next);
+  writeProfileServerTomlConfig(source, next);
   return getManagedWorktreeSettings(source);
 }
 
 export function getCodexExecutionHostSettings(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CodexExecutionHostSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
-  const hosts = Array.isArray(userServerToml.execution_hosts) ? userServerToml.execution_hosts : [];
+  const profileServerToml = loadProfileServerTomlConfig(source);
+  const hosts = Array.isArray(profileServerToml.execution_hosts)
+    ? profileServerToml.execution_hosts
+    : [];
+  if (hosts.length > EXECUTION_HOST_LIMIT) {
+    throw new Error(`Execution host settings exceed the ${EXECUTION_HOST_LIMIT} host bound`);
+  }
   const sshHosts = hosts.map((candidate, index) => {
     try {
       return normalizeCodexSshExecutionHostConfig(candidate as never);
@@ -966,7 +896,7 @@ export function getCodexExecutionHostSettings(
 
 export function updateCodexExecutionHostSettings(
   input: UpdateCodexExecutionHostSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CodexExecutionHostSettings {
   if (
     typeof input !== "object" ||
@@ -978,31 +908,36 @@ export function updateCodexExecutionHostSettings(
     throw new Error("Invalid execution host settings update");
   }
   const normalized = input.sshHosts.map(normalizeCodexSshExecutionHostConfig);
+  if (normalized.length > EXECUTION_HOST_LIMIT) {
+    throw new Error(`Execution host settings exceed the ${EXECUTION_HOST_LIMIT} host bound`);
+  }
   const identities = new Set<string>();
   for (const host of normalized) {
     if (identities.has(host.id)) throw new Error(`Duplicate SSH execution host id: ${host.id}`);
     identities.add(host.id);
   }
-  const next = { ...loadUserServerTomlConfig(source), execution_hosts: normalized };
-  writeUserServerTomlConfig(source, next);
+  const next = { ...loadProfileServerTomlConfig(source), execution_hosts: normalized };
+  writeProfileServerTomlConfig(source, next);
   return getCodexExecutionHostSettings(source);
 }
 
 export function getCommandKeybindingOverrides(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CommandKeybindingOverrides {
-  const userServerToml = loadUserServerTomlConfig(source);
-  return normalizeCommandKeybindingOverrides(userServerToml.command_keybindings);
+  const profileServerToml = loadProfileServerTomlConfig(source);
+  return normalizeCommandKeybindingOverrides(profileServerToml.command_keybindings);
 }
 
-export function getCommandKeymapState(source = currentProcessSettingsSource()): CommandKeymapState {
+export function getCommandKeymapState(
+  source: ApplicationSettingsDocumentSource,
+): CommandKeymapState {
   return createCommandKeymapState(getCommandKeybindingOverrides(source));
 }
 
 export function updateCommandKeybinding(
   commandId: string,
   update: CommandKeybindingUpdate,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CommandKeymapState {
   const currentOverrides = getCommandKeybindingOverrides(source);
   const nextOverrides = applyCommandKeybindingUpdate(currentOverrides, commandId, update);
@@ -1010,70 +945,29 @@ export function updateCommandKeybinding(
   return getCommandKeymapState(source);
 }
 
-export interface PreparedCommandKeymapMutation {
-  readonly previousState: CommandKeymapState;
-  readonly nextState: CommandKeymapState;
-  readonly commit: () => CommandKeymapState;
-}
-
-/** Separates OS-global shortcut admission from the durable settings commit. */
-export function prepareCommandKeybindingUpdate(
-  commandId: string,
-  update: CommandKeybindingUpdate,
-  source = currentProcessSettingsSource(),
-): PreparedCommandKeymapMutation {
-  const currentOverrides = getCommandKeybindingOverrides(source);
-  const nextOverrides = applyCommandKeybindingUpdate(currentOverrides, commandId, update);
-  const previousState = createCommandKeymapState(currentOverrides);
-  const nextState = createCommandKeymapState(nextOverrides);
-  return {
-    previousState,
-    nextState,
-    commit: () => {
-      writeCommandKeybindingOverrides(source, nextOverrides);
-      return nextState;
-    },
-  };
-}
-
 export function resetCommandKeybindings(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): CommandKeymapState {
   writeCommandKeybindingOverrides(source, {});
   return getCommandKeymapState(source);
 }
 
-export function prepareCommandKeybindingsReset(
-  source = currentProcessSettingsSource(),
-): PreparedCommandKeymapMutation {
-  const previousState = getCommandKeymapState(source);
-  const nextState = createCommandKeymapState({});
-  return {
-    previousState,
-    nextState,
-    commit: () => {
-      writeCommandKeybindingOverrides(source, {});
-      return nextState;
-    },
-  };
-}
-
 function writeCommandKeybindingOverrides(
-  source: LocalSettingsSource,
+  source: ApplicationSettingsDocumentSource,
   overrides: CommandKeybindingOverrides,
 ): void {
-  const nextServer: ServerTomlConfig = { ...loadUserServerTomlConfig(source) };
+  const nextServer: ServerTomlConfig = { ...loadProfileServerTomlConfig(source) };
   if (Object.keys(overrides).length === 0) {
     delete nextServer.command_keybindings;
   } else {
     nextServer.command_keybindings = overrides;
   }
-  writeUserServerTomlConfig(source, nextServer);
+  writeProfileServerTomlConfig(source, nextServer);
 }
 
 export function updateThreadNotificationSettings(
   input: UpdateThreadNotificationSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): ThreadNotificationSettings {
   if (input.turnMode !== "off" && input.turnMode !== "unfocused" && input.turnMode !== "always") {
     throw new Error("turnMode must be one of off, unfocused, or always");
@@ -1091,8 +985,8 @@ export function updateThreadNotificationSettings(
     questionsEnabled: input.questionsEnabled,
   };
 
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   const nextServer = {
     ...(nextToml.server ?? {}),
     thread_notifications_turn_mode: nextSettings.turnMode,
@@ -1102,22 +996,22 @@ export function updateThreadNotificationSettings(
 
   nextToml.server = nextServer;
 
-  writeTomlConfig(userConfigPath, nextToml);
+  writeTomlConfig(profileSettingsPath, nextToml);
   return getThreadNotificationSettings(source);
 }
 
 export function getAppUpdateSettings(
+  source: ApplicationSettingsDocumentSource,
   buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
-  source = currentProcessSettingsSource(),
 ): AppUpdateSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
-  return appUpdateSettingsFromConfig(userServerToml, buildDefaultChannel);
+  const profileServerToml = loadProfileServerTomlConfig(source);
+  return appUpdateSettingsFromConfig(profileServerToml, buildDefaultChannel);
 }
 
 export function updateAppUpdateSettings(
   input: UpdateAppUpdateSettingsInput,
+  source: ApplicationSettingsDocumentSource,
   buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
-  source = currentProcessSettingsSource(),
 ): AppUpdateSettings {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     throw new Error("App update settings input must be an object");
@@ -1139,8 +1033,8 @@ export function updateAppUpdateSettings(
     throw new Error("channel must be stable or nightly");
   }
 
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   const nextServer = {
     ...(nextToml.server ?? {}),
     ...(input.automaticChecksEnabled === undefined
@@ -1153,27 +1047,27 @@ export function updateAppUpdateSettings(
 
   nextToml.server = nextServer;
 
-  writeTomlConfig(userConfigPath, nextToml);
-  return getAppUpdateSettings(buildDefaultChannel, source);
+  writeTomlConfig(profileSettingsPath, nextToml);
+  return getAppUpdateSettings(source, buildDefaultChannel);
 }
 
 export function getWindowRestoreSettings(
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): WindowRestoreSettings {
-  const userServerToml = loadUserServerTomlConfig(source);
-  return windowRestoreSettingsFromConfig(userServerToml);
+  const profileServerToml = loadProfileServerTomlConfig(source);
+  return windowRestoreSettingsFromConfig(profileServerToml);
 }
 
 export function updateWindowRestoreSettings(
   input: UpdateWindowRestoreSettingsInput,
-  source = currentProcessSettingsSource(),
+  source: ApplicationSettingsDocumentSource,
 ): WindowRestoreSettings {
   if (input.policy !== "all" && input.policy !== "last-window" && input.policy !== "none") {
     throw new Error("policy must be one of all, last-window, or none");
   }
 
-  const userConfigPath = getUserConfigPath(source);
-  const nextToml = readTomlConfig(userConfigPath);
+  const profileSettingsPath = getProfileSettingsPath(source);
+  const nextToml = readTomlConfig(profileSettingsPath);
   const nextServer = {
     ...(nextToml.server ?? {}),
     window_restore_policy: input.policy,
@@ -1181,10 +1075,6 @@ export function updateWindowRestoreSettings(
 
   nextToml.server = nextServer;
 
-  writeTomlConfig(userConfigPath, nextToml);
+  writeTomlConfig(profileSettingsPath, nextToml);
   return getWindowRestoreSettings(source);
-}
-
-export function getHistoryRetention(source = currentProcessSettingsSource()): number {
-  return getHistorySettings(source).retentionCount;
 }

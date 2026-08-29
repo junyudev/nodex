@@ -62,6 +62,7 @@ function service(input?: {
   let settings = input?.settings ?? DEFAULT_SETTINGS;
   const waitForever = new Promise<never>(() => undefined);
   return {
+    getExecutionHosts: async () => ({ sshHosts: [] }),
     getSettings: async () => {
       if (input?.pending) return await waitForever;
       if (input?.error) throw new Error("offline");

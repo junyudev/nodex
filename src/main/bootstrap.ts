@@ -2,11 +2,12 @@ import { app, BrowserWindow, dialog } from "electron";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import { configureInstanceScopePaths } from "./instance-scope";
-import { resolveBootstrapNodexHome } from "./bootstrap-config";
+import { resolveBootstrapConfig } from "./bootstrap-config";
 import { BootstrapRuntimeEventQueue } from "./bootstrap-events";
 import { writeBootstrapLog } from "./bootstrap-log";
 import { resolveLogSinkLevels } from "./logging/log-level";
-import { getDiagnosticsSettings } from "./local-store/config";
+import { configureBackendLogger } from "./logging/logger";
+import { getDiagnosticsSettings } from "./settings/application-settings-persistence";
 import { captureMainException, initializeMainSentry } from "./observability/sentry-main";
 import { electronMainSentryAdapter } from "./observability/sentry-electron-main-adapter";
 import {
@@ -31,11 +32,17 @@ import {
 } from "./core-client/isolated-run-ownership";
 
 process.env.NODEX_INTERNAL_APP_PACKAGED = app.isPackaged ? "true" : "false";
-
-const nodexHome = resolveBootstrapNodexHome({ isPackaged: app.isPackaged });
-process.env.NODEX_HOME = nodexHome;
 const inheritedIsolatedRunId = process.env[ISOLATED_RUN_ID_ENV];
 delete process.env[ISOLATED_RUN_ID_ENV];
+
+const bootstrapConfig = resolveBootstrapConfig({ isPackaged: app.isPackaged });
+const { nodexHome } = bootstrapConfig;
+process.env.NODEX_HOME = nodexHome;
+configureBackendLogger({
+  cwd: process.cwd(),
+  environment: bootstrapConfig.environment,
+  nodexHome,
+});
 configureInstanceScopePaths(app, nodexHome);
 const runtimeQueue = new BootstrapRuntimeEventQueue();
 let primaryIsolatedRunId: string | null = null;
@@ -56,10 +63,13 @@ function logBootstrap(
   fields: Record<string, unknown> = {},
 ): void {
   const defaultSinkEnabled = !app.isPackaged;
-  const sinkLevels = resolveLogSinkLevels(process.env);
+  const sinkLevels = resolveLogSinkLevels(bootstrapConfig.environment);
   writeBootstrapLog(nodexHome, level, message, fields, {
-    consoleEnabled: parseBooleanEnv(process.env.NODEX_LOG_CONSOLE, defaultSinkEnabled),
-    fileEnabled: parseBooleanEnv(process.env.NODEX_LOG_FILE, defaultSinkEnabled),
+    consoleEnabled: parseBooleanEnv(
+      bootstrapConfig.environment.NODEX_LOG_CONSOLE,
+      defaultSinkEnabled,
+    ),
+    fileEnabled: parseBooleanEnv(bootstrapConfig.environment.NODEX_LOG_FILE, defaultSinkEnabled),
     consoleLevel: sinkLevels.console,
     fileLevel: sinkLevels.file,
   });
@@ -72,7 +82,10 @@ function initializeBootstrapDiagnostics(): Promise<boolean> {
       arch: process.arch,
       isPackaged: app.isPackaged,
       platform: process.platform,
-      settings: getDiagnosticsSettings(),
+      settings: getDiagnosticsSettings({
+        environment: bootstrapConfig.environment,
+        settingsPath: bootstrapConfig.profileSettingsPath,
+      }),
       adapter: electronMainSentryAdapter,
     }).catch((error: unknown) => {
       logBootstrap("warn", "Sentry diagnostics failed to initialize", { error });
@@ -208,29 +221,26 @@ async function handleApplicationFailure(exit: Extract<MainExit, { readonly _tag:
 
 function launchMainApplication(): void {
   const startupEvents = runtimeQueue.takePendingEvents();
-  const environment = Object.fromEntries(
-    Object.entries(process.env).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string",
-    ),
-  );
   const foundation = MainFoundationLive.make({
-    assistantStreamingDebug: process.env.NODEX_ASSISTANT_STREAMING_DEBUG === "1",
+    assistantStreamingDebug: bootstrapConfig.environment.NODEX_ASSISTANT_STREAMING_DEBUG === "1",
     appVersion: app.getVersion(),
     arch: process.arch,
     argv: [...process.argv],
-    composerAppshotHelperPath: process.env.NODEX_COMPOSER_APPSHOT_HELPER?.trim() || null,
+    composerAppshotHelperPath:
+      bootstrapConfig.environment.NODEX_COMPOSER_APPSHOT_HELPER?.trim() || null,
     documentsPath: app.getPath("documents"),
-    environment,
-    environmentPath: process.env.PATH ?? null,
+    environment: bootstrapConfig.environment,
+    environmentPath: bootstrapConfig.environment.PATH ?? null,
     homeDirectory: app.getPath("home"),
-    initialProjectsDirectory: process.env.NODEX_INITIAL_PROJECTS_DIR ?? null,
+    initialProjectsDirectory: bootstrapConfig.environment.NODEX_INITIAL_PROJECTS_DIR ?? null,
     isDefaultApp: process.defaultApp === true,
     isPackaged: app.isPackaged,
     nodexHome,
     platform: process.platform,
+    profileSettingsPath: bootstrapConfig.profileSettingsPath,
     profileId: nodexHome,
     projectRootPath: app.getAppPath(),
-    rendererUrl: process.env.ELECTRON_RENDERER_URL ?? null,
+    rendererUrl: bootstrapConfig.environment.ELECTRON_RENDERER_URL ?? null,
     resourcesPath: process.resourcesPath,
     runtimeBinaryPath: process.execPath,
   });
@@ -243,7 +253,7 @@ function launchMainApplication(): void {
       runStartupGate: Effect.tryPromise({
         try: async () => {
           await mainSentryInitialization;
-          assertRustDataAuthorityEnvironment(process.env);
+          assertRustDataAuthorityEnvironment(bootstrapConfig.environment);
           return await runMacApplicationsInstallerGate(createMacApplicationsInstallerEnvironment());
         },
         catch: (cause) =>

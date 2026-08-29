@@ -3,7 +3,6 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ClipboardWriteImageResult } from "../shared/ipc-api";
 import { parseAssetSource } from "../shared/assets";
-import { resolveAssetPath } from "./local-store/assets";
 import type { ElectronClipboardPort } from "./platform/electron/ElectronClipboard";
 
 interface NativeImageLike {
@@ -96,19 +95,22 @@ async function createNativeImageFromSource(
 }
 
 function resolveClipboardImageWriterDeps(
-  deps: ClipboardImageWriterDeps = {},
+  deps: ClipboardImageWriterDeps,
 ): Required<ClipboardImageWriterDeps> {
+  if (!deps.resolveAssetPath) {
+    throw new Error("Managed asset path resolver is required");
+  }
   return {
     fetchImpl: deps.fetchImpl ?? fetch,
     readFile: deps.readFile ?? fs.readFile,
-    resolveAssetPath: deps.resolveAssetPath ?? resolveAssetPath,
+    resolveAssetPath: deps.resolveAssetPath,
   };
 }
 
 export async function writeImageToClipboard(
   source: string,
   platform: ClipboardImagePlatform,
-  deps: ClipboardImageWriterDeps = {},
+  deps: ClipboardImageWriterDeps,
 ): Promise<ClipboardWriteImageResult> {
   const normalizedSource = source.trim();
   if (!normalizedSource) {

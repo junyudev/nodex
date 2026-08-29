@@ -7,6 +7,8 @@ import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import { ProfileAssets } from "../../local-store/ProfileAssets";
+import { makeProfileAssets } from "../../local-store/assets";
 import { live } from "./ApplicationSyncIpc";
 
 it.effect("owns synchronous preload ingress with the Main Scope", () =>
@@ -29,6 +31,10 @@ it.effect("owns synchronous preload ingress with the Main Scope", () =>
             Layer.succeed(ElectronSyncIpc, ipc),
             Layer.succeed(ElectronClipboard, {} as ElectronClipboard["Service"]),
             mainConfigLayer(),
+            Layer.succeed(
+              ProfileAssets,
+              ProfileAssets.of(makeProfileAssets({ assetsRootPath: "/tmp/nodex-test/assets" })),
+            ),
             Layer.succeed(WindowRuntime, {
               has: () => true,
             } as unknown as WindowRuntime["Service"]),

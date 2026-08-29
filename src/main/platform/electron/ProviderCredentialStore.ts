@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { safeStorage } from "electron";
 import type { AgentProviderCredentialStatus } from "../../../shared/agent-runtime";
-import { getNodexHome } from "../../local-store/config";
 
 const CREDENTIAL_FILE_VERSION = 1;
 const MAX_API_KEY_LENGTH = 16 * 1024;
@@ -251,9 +250,9 @@ export class ProviderCredentialStore {
   }
 }
 
-export function createElectronProviderCredentialStore(): ProviderCredentialStore {
+export function createElectronProviderCredentialStore(filePath: string): ProviderCredentialStore {
   return new ProviderCredentialStore({
-    filePath: path.join(getNodexHome(), "secrets", "provider-credentials.v1.json"),
+    filePath,
     encryption: {
       isAvailable: () => safeStorage.isEncryptionAvailable(),
       encryptString: (plaintext) => safeStorage.encryptString(plaintext),

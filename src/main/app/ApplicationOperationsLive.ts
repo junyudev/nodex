@@ -20,7 +20,6 @@ import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDelive
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
 import { live as reminderSchedulerLive } from "../host-runtime/ReminderSchedulerRuntime";
 import { live as storeAdministrationSchedulerLive } from "../host-runtime/StoreAdministrationSchedulerRuntime";
-import { getBackupSettings, getHistorySettings } from "../local-store/config";
 import { CodexPlatform } from "./CodexApplicationLive";
 import { MainConfig } from "./MainConfig";
 
@@ -75,10 +74,7 @@ const projectionDelivery = projectionDeliveryLive.pipe(
 );
 const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelivery));
 const reminders = reminderSchedulerLive({}).pipe(Layer.provideMerge(coreEvents));
-const storeSchedulers = storeAdministrationSchedulerLive({
-  readBackupSettings: getBackupSettings,
-  readBlockRetentionCount: () => getHistorySettings().retentionCount,
-}).pipe(Layer.provideMerge(reminders));
+const storeSchedulers = storeAdministrationSchedulerLive({}).pipe(Layer.provideMerge(reminders));
 
 /** Application operations that depend on the Core, host, and canonical Conversation graphs. */
 export const live = storeSchedulers;

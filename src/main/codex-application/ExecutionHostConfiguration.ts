@@ -7,13 +7,7 @@ import type {
   ManagedWorktreeSettings,
   UpdateCodexExecutionHostSettingsInput,
 } from "../../shared/types";
-import {
-  getCodexExecutionHostSettings,
-  getKnownManagedWorktreeRoots,
-  getManagedWorktreeSettings,
-  updateCodexExecutionHostSettings,
-  updateManagedWorktreeSettings,
-} from "../local-store/config";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 
 export class ExecutionHostConfigurationError extends Schema.TaggedError<ExecutionHostConfigurationError>()(
   "ExecutionHostConfigurationError",
@@ -34,37 +28,51 @@ export class ManagedWorktreeConfiguration extends Context.Service<
   ManagedWorktreeConfiguration,
   {
     readonly settings: Effect.Effect<ManagedWorktreeSettings, ExecutionHostConfigurationError>;
-    readonly knownRoots: Effect.Effect<readonly string[], ExecutionHostConfigurationError>;
     readonly update: (
       input: Partial<ManagedWorktreeSettings>,
     ) => Effect.Effect<ManagedWorktreeSettings, ExecutionHostConfigurationError>;
   }
 >()("nodex/main/codex-application/ManagedWorktreeConfiguration") {}
 
-const attempt = <A>(operation: string, evaluate: () => A) =>
-  Effect.try({
-    try: evaluate,
-    catch: (cause) => new ExecutionHostConfigurationError({ operation, cause }),
-  });
-
 /** Owns the Profile-local authority for host and managed-worktree configuration. */
-export const live: Layer.Layer<ExecutionHostConfiguration | ManagedWorktreeConfiguration> =
-  Layer.merge(
-    Layer.succeed(
-      ExecutionHostConfiguration,
-      ExecutionHostConfiguration.of({
-        settings: attempt("read-execution-hosts", getCodexExecutionHostSettings),
-        update: (input) =>
-          attempt("update-execution-hosts", () => updateCodexExecutionHostSettings(input)),
-      }),
-    ),
-    Layer.succeed(
-      ManagedWorktreeConfiguration,
-      ManagedWorktreeConfiguration.of({
-        settings: attempt("read-managed-worktrees", getManagedWorktreeSettings),
-        knownRoots: attempt("read-known-managed-roots", getKnownManagedWorktreeRoots),
-        update: (input) =>
-          attempt("update-managed-worktrees", () => updateManagedWorktreeSettings(input)),
-      }),
-    ),
-  );
+export const live: Layer.Layer<
+  ExecutionHostConfiguration | ManagedWorktreeConfiguration,
+  never,
+  ApplicationSettings
+> = Layer.unwrap(
+  Effect.gen(function* () {
+    const settings = yield* ApplicationSettings;
+    const mapError = (operation: string) => (cause: unknown) =>
+      new ExecutionHostConfigurationError({ operation, cause });
+    return Layer.merge(
+      Layer.succeed(
+        ExecutionHostConfiguration,
+        ExecutionHostConfiguration.of({
+          settings: settings.snapshot().pipe(
+            Effect.map((snapshot) => snapshot.executionHosts),
+            Effect.mapError(mapError("read-execution-hosts")),
+          ),
+          update: (input) =>
+            settings.update({ type: "update-execution-hosts", input }).pipe(
+              Effect.map((snapshot) => snapshot.executionHosts),
+              Effect.mapError(mapError("update-execution-hosts")),
+            ),
+        }),
+      ),
+      Layer.succeed(
+        ManagedWorktreeConfiguration,
+        ManagedWorktreeConfiguration.of({
+          settings: settings.snapshot().pipe(
+            Effect.map((snapshot) => snapshot.managedWorktrees),
+            Effect.mapError(mapError("read-managed-worktrees")),
+          ),
+          update: (input) =>
+            settings.update({ type: "update-managed-worktrees", input }).pipe(
+              Effect.map((snapshot) => snapshot.managedWorktrees),
+              Effect.mapError(mapError("update-managed-worktrees")),
+            ),
+        }),
+      ),
+    );
+  }),
+);

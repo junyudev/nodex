@@ -4,8 +4,8 @@ import * as Stream from "effect/Stream";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
 import { makeCodexThreadNotificationHandler } from "../codex/codex-thread-notification-handler";
-import { getThreadNotificationSettings } from "../local-store/config";
 import { getLogger } from "../logging/logger";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
@@ -17,6 +17,7 @@ export const live: Layer.Layer<
   never,
   never,
   | CodexApplicationEventHub
+  | ApplicationSettings
   | CodexRendererConversationRegistry
   | DesktopNotificationRuntime
   | RendererClientRuntime
@@ -24,13 +25,15 @@ export const live: Layer.Layer<
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const events = yield* CodexApplicationEventHub;
+    const applicationSettings = yield* ApplicationSettings;
     const conversations = yield* CodexRendererConversationRegistry;
     const notifications = yield* DesktopNotificationRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const windows = yield* WindowRuntime;
     let accepting = true;
+    let currentSettings = (yield* applicationSettings.snapshot().pipe(Effect.orDie)).notifications;
     const handle = makeCodexThreadNotificationHandler({
-      getSettings: getThreadNotificationSettings,
+      getSettings: () => currentSettings,
       isAppForegrounded: () => conversations.hasForegroundClient(),
       isConversationPresentedInForeground: (conversationId) =>
         conversations.isPresentedInForeground(conversationId),
@@ -70,17 +73,23 @@ export const live: Layer.Layer<
       }),
     );
     yield* events.events.pipe(
-      Stream.runForEach((event) =>
-        Effect.sync(() => {
-          if (event.kind === "threadNotification") {
-            handle(event.value);
-            return;
-          }
-          if (event.kind === "rendererConversationPresentedInForeground") {
-            notifications.dismiss({ conversationId: event.value });
-          }
-        }),
-      ),
+      Stream.runForEach((event) => {
+        if (event.kind === "rendererConversationPresentedInForeground") {
+          return Effect.sync(() => notifications.dismiss({ conversationId: event.value }));
+        }
+        if (event.kind !== "threadNotification") return Effect.void;
+        return applicationSettings.snapshot().pipe(
+          Effect.tap((snapshot) =>
+            Effect.sync(() => {
+              currentSettings = snapshot.notifications;
+              handle(event.value);
+            }),
+          ),
+          Effect.catch((cause) =>
+            Effect.sync(() => logger.warn("Could not read notification settings", { cause })),
+          ),
+        );
+      }),
       Effect.forkScoped({ startImmediately: true }),
     );
   }),

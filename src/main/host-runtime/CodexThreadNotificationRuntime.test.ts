@@ -4,6 +4,9 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { assert, it } from "@effect/vitest";
 import type { DesktopNotificationActionPayload } from "../../shared/types";
 import {
@@ -14,6 +17,10 @@ import { CodexRendererConversationRegistry } from "../codex-application/CodexRen
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { DesktopNotificationRuntime } from "./DesktopNotificationRuntime";
 import { RendererClientRuntime } from "./RendererClientRuntime";
+import {
+  ApplicationSettings,
+  make as makeApplicationSettings,
+} from "../settings/ApplicationSettings";
 import { live } from "./CodexThreadNotificationRuntime";
 
 it.effect("releases every Codex notification listener with the Main Scope", () =>
@@ -24,6 +31,11 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
     let dispatchedActionCount = 0;
     let dismissedCount = 0;
     const applicationEvents = yield* PubSub.unbounded<CodexApplicationEvent>();
+    const settingsRoot = mkdtempSync(path.join(tmpdir(), "nodex-notification-settings-"));
+    const settings = yield* makeApplicationSettings({
+      environment: {},
+      settingsPath: path.join(settingsRoot, "config.toml"),
+    });
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
       live.pipe(
@@ -35,6 +47,7 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
                 PubSub.publishUnsafe(applicationEvents, event);
               },
             } as never),
+            Layer.succeed(ApplicationSettings, settings),
             Layer.succeed(CodexRendererConversationRegistry, {
               hasForegroundClient: () => false,
               isPresentedInForeground: () => false,
@@ -113,5 +126,6 @@ it.effect("releases every Codex notification listener with the Main Scope", () =
       actionType: "open",
     });
     assert.strictEqual(dispatchedActionCount, 0);
+    rmSync(settingsRoot, { recursive: true, force: true });
   }),
 );

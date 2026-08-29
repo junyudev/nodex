@@ -12,6 +12,7 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { afterAll, beforeAll } from "vite-plus/test";
 import type { CodexWorktreeWorkerCreateInput } from "../codex/codex-worktree-worker-protocol";
+import { CODEX_WORKTREE_WORKER_PROTOCOL_VERSION } from "../worktree-worker/worktree-worker-protocol";
 import { localLive, WorktreeWorkerRuntime } from "./WorktreeWorkerRuntime";
 
 let fixtureRoot = "";
@@ -82,7 +83,7 @@ port.postMessage({
   type: "ready",
   epoch: workerData.epoch,
   hostId: workerData.hostId,
-  protocolVersion: 5,
+  protocolVersion: ${CODEX_WORKTREE_WORKER_PROTOCOL_VERSION},
 });
 `,
     "utf8",

@@ -2,22 +2,31 @@
 
 ## Resolution
 
-Nodex configuration uses TOML. Profile selection and Desktop settings may be
-read from the user config and, for cwd-launched CLI/development processes, the
-nearest project config. Supported environment variables override TOML. The
-executable parser and tests in `src/main/local-store/config.ts` are the source
-of truth for accepted keys, bounds, defaults, and override reporting.
+Nodex configuration uses TOML, but Profile selection and Profile runtime
+settings have different authorities. Bootstrap reads only `server.home` from
+the user config and nearest project config to select a Profile. After that
+selection, Desktop settings come exclusively from the selected Profile's
+`config.toml`. The executable readers and behavioral tests under
+`src/main/settings/` are the source of truth for accepted keys, bounds,
+defaults, and override reporting.
 
 Profile home resolves in this order:
 
 1. nonblank `NODEX_HOME`;
-2. nearest `.nodex/config.toml` found from the current directory;
-3. `~/.nodex/config.toml`;
+2. `server.home` in the nearest `.nodex/config.toml` found from the current
+   directory;
+3. `server.home` in `~/.nodex/config.toml`;
 4. the default `~/.nodex` home.
 
 A Dock-launched app has no repository cwd and therefore uses environment/user
 configuration. Malformed, oversized, or non-UTF-8 configuration fails closed
 instead of selecting another Profile silently.
+
+The selected Profile owns one absolute settings document at
+`${NODEX_HOME}/config.toml`. The default Profile therefore keeps the familiar
+`~/.nodex/config.toml` path. A custom or isolated Profile gets a separate
+document; project configuration does not overlay its backup, notification,
+Git, worktree, execution-host, keyboard, update, or window settings.
 
 An unpackaged Desktop process requires an explicit nonblank `NODEX_HOME` and
 does not fall back to project or user configuration. The supported `vp run dev`
@@ -35,8 +44,12 @@ The `[server]` table currently owns these product setting families:
 - opt-in diagnostics and optional renderer Session Replay;
 - opt-in product telemetry and separately opt-in safe web analytics.
 
-Settings → Backups and Settings → General update the user config through typed
-Main operations. An environment override remains effective and the UI marks the
+Settings → Backups and Settings → General update the selected Profile document
+through serialized typed Main operations. Unrelated TOML sections survive each
+atomic replacement, and concurrent setting-family updates cannot overwrite one
+another. Existing but malformed, oversized, non-UTF-8, symlinked, or
+non-regular documents fail closed and are not replaced. An environment
+override captured during bootstrap remains effective and the UI marks the
 affected control as managed. Backup scheduling reapplies immediately; settings
 that require restart say so in the UI.
 

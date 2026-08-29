@@ -42,7 +42,7 @@ import {
   resolveMacDictationHelperExecutable,
 } from "../dictation/mac-dictation-native-helper-client";
 import { createSystemMicrophonePermissionService } from "../dictation/system-microphone-permission-service";
-import { getCommandKeymapState } from "../local-store/config";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { ElectronPrivacy } from "../platform/electron/ElectronPrivacy";
 import { RendererClientRuntime } from "./RendererClientRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
@@ -148,11 +148,12 @@ export const live = (options: {
 }): Layer.Layer<
   DictationRuntime,
   never,
-  MainConfig | ElectronPrivacy | RendererClientRuntime | WindowRuntime
+  ApplicationSettings | MainConfig | ElectronPrivacy | RendererClientRuntime | WindowRuntime
 > =>
   Layer.effect(
     DictationRuntime,
     Effect.gen(function* () {
+      const applicationSettings = yield* ApplicationSettings;
       const config = yield* MainConfig;
       const privacy = yield* ElectronPrivacy;
       const rendererClients = yield* RendererClientRuntime;
@@ -235,8 +236,9 @@ export const live = (options: {
           Effect.forever,
           Effect.forkScoped({ startImmediately: true }),
         );
+        const initialApplicationSettings = yield* applicationSettings.snapshot().pipe(Effect.orDie);
         yield* attemptPromise("initialize-global-dictation", () =>
-          globalManager!.initialize(getCommandKeymapState()),
+          globalManager!.initialize(initialApplicationSettings.commandKeymap),
         ).pipe(
           Effect.catch((error) =>
             Effect.logWarning("Global dictation shortcuts are unavailable").pipe(

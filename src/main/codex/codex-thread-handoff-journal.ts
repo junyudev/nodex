@@ -51,6 +51,8 @@ export interface CodexCrossHostPreparedHandoff {
   readonly destinationTemporaryRef: string;
   readonly sourceStagingRoot: string;
   readonly destinationStagingRoot: string;
+  readonly destinationManagedRoot: string;
+  readonly destinationCodexHome: string;
   readonly relayRoot: string;
   readonly sourceBundle: CodexExecutionHostFileDescriptor;
   readonly destinationBundle: CodexExecutionHostFileDescriptor;
@@ -149,6 +151,8 @@ const preparedSchema = z.discriminatedUnion("direction", [
       destinationTemporaryRef: z.string().min(1).max(1_024),
       sourceStagingRoot: absolutePath,
       destinationStagingRoot: absolutePath,
+      destinationManagedRoot: absolutePath,
+      destinationCodexHome: absolutePath,
       relayRoot: absolutePath,
       sourceBundle: fileDescriptorSchema,
       destinationBundle: fileDescriptorSchema,

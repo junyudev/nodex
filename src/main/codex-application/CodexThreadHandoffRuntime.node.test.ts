@@ -101,9 +101,7 @@ const makeExecutionHosts = Effect.gen(function* () {
   };
   const host = {
     descriptor,
-    knownManagedRoots: [descriptor.managedRoot],
     transfer: null,
-    resolveManagedRoot: () => Effect.succeed(descriptor.managedRoot),
     request: () => Effect.die("unused"),
   };
   return ExecutionHostRuntime.of({

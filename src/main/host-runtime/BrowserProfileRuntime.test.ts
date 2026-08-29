@@ -53,6 +53,9 @@ it.layer(NodeServices.layer)("BrowserProfileRuntime", (it) => {
             electron: browserElectronPlatform,
             events: { publish: () => undefined },
             runtimeRegistry: makeBrowserRuntimeRegistry(),
+            saveBrowserImage: () => {
+              throw new Error("Unexpected browser image save");
+            },
             fork: (effect) => void runBackground(effect),
             pageEmulation: makeBrowserPageEmulationRuntimeUnsafe(),
             siteStatus: { cachedCommentModeBlocked: () => null },

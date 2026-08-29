@@ -33,6 +33,10 @@ import {
   type ElectronNotificationInput,
 } from "../platform/electron/ElectronDesktop";
 import {
+  ApplicationSettings,
+  type ApplicationSettingsSnapshot,
+} from "../settings/ApplicationSettings";
+import {
   CodexScheduledAutomationRetryError,
   type CodexScheduledAutomationRunContext,
 } from "./ScheduledAutomationPolicy";
@@ -316,20 +320,31 @@ const buildHarness = (input: {
     );
     const storeContext = yield* Layer.buildWithScope(
       storeAdministrationSchedulerLive({
-        readBackupSettings: () =>
-          input.initialBackup ?? {
-            autoEnabled: false,
-            intervalHours: 24,
-            retentionCount: 5,
-            retentionGiB: 32,
-          },
-        readBlockRetentionCount: input.readBlockRetentionCount ?? (() => 100),
         timing: input.storeTiming,
       }).pipe(
         Layer.provide(
-          Layer.merge(
+          Layer.mergeAll(
             Layer.succeed(CoreAuthority, authority),
             Layer.succeed(StoreAdministration, input.administration ?? defaultAdministration()),
+            Layer.succeed(
+              ApplicationSettings,
+              ApplicationSettings.of({
+                snapshot: () =>
+                  Effect.succeed({
+                    backup: input.initialBackup ?? {
+                      autoEnabled: false,
+                      intervalHours: 24,
+                      retentionCount: 5,
+                      retentionGiB: 32,
+                    },
+                    history: {
+                      retentionCount: (input.readBlockRetentionCount ?? (() => 100))(),
+                      envOverrides: { retentionCount: false },
+                    },
+                  } as ApplicationSettingsSnapshot),
+                update: () => Effect.die("unused"),
+              }),
+            ),
           ),
         ),
       ),

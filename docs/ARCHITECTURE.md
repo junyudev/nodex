@@ -730,13 +730,18 @@ See [the Workbench shell specification](docs/product-specs/workbench-shell.md), 
 
 Electron's synchronous bootstrap configures the Profile paths, diagnostics, privileged schemes, isolated-run ownership, and single-instance lock before readiness. It does not construct process services. After `app.whenReady()`, the Main composition root acquires the desktop Layer graph directly. Its pre-Core state first installs the renderer protocol and shows a restricted startup renderer; Core migration events update that renderer, and the first fully capable application renderer replaces it after the remaining graph is acquired. No dynamically imported lifecycle root or import-time process observer participates in startup. Failed acquisition releases everything already owned; normal and authority-driven quit use the same process Scope.
 
-Host settings are read from the canonical user TOML plus the current project
-overlay at the point of use. The settings adapter has no import-time cache or
-process-global revision: an explicit source identifies its CWD, environment and
-user home, so independent Profiles and test runtimes cannot inherit one
-another's configuration view. User mutations preserve unrelated TOML sections
-and publish a fully flushed sibling staging file with an atomic rename; readers
-therefore observe either the previous or the complete next document.
+Synchronous bootstrap is the only ambient configuration-discovery seam. It
+reads only `server.home` from user/project TOML, selects one Profile, and
+publishes an immutable `nodexHome`, absolute `profileSettingsPath`, and
+environment snapshot to `MainConfig`. The Profile-scoped `ApplicationSettings`
+Module owns all later typed reads and mutations. It never re-derives authority
+from the current directory, OS home, or mutable process environment. One writer
+semaphore serializes read-modify-write transactions; mutations preserve
+unrelated TOML sections and publish a fully flushed sibling staging file with
+an atomic rename. Each snapshot parses one bounded document generation, so its
+revision and every projected setting share the same byte identity. Profile
+assets, logs, databases, and credentials receive their roots separately from
+the same immutable Profile identity rather than borrowing Settings discovery.
 
 Application scheduling is split by authority rather than hidden behind a
 process-wide scheduler facade. `ReminderSchedulerRuntime` owns reminder claims,

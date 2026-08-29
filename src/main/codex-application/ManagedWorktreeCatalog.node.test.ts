@@ -60,6 +60,8 @@ const makeProjectWorkspace = (
   ({
     getThread: () => Effect.succeed(null),
     getProjectSession: () => Effect.succeed(null),
+    listManagedWorktreeWindow: () =>
+      Effect.succeed({ items: [], nextCursor: null, projectionRevision: 1 }),
     listProjects: Effect.succeed([]),
     readManagedWorktreeLifecycleSnapshot: Effect.succeed({
       projectionRevision: 1,
@@ -130,7 +132,6 @@ const makeCatalog = (
       ManagedWorktreeConfiguration,
       ManagedWorktreeConfiguration.of({
         settings: Effect.sync(settings.read),
-        knownRoots: Effect.succeed([]),
         update: (input) => Effect.sync(() => settings.update(input)),
       }),
     ),
@@ -166,6 +167,8 @@ it.effect("owns product inventory, inspection, restoration, and projection publi
       [threadOne.threadId, threadOne],
       [threadTwo.threadId, threadTwo],
     ]);
+    let threadReads = 0;
+    let sessionReads = 0;
     const sessions = new Map<string, ProjectSession>([
       [
         "session-one",
@@ -205,9 +208,42 @@ it.effect("owns product inventory, inspection, restoration, and projection publi
       ],
     ]);
     const projectWorkspace = makeProjectWorkspace({
-      getThread: (threadId) => Effect.succeed(threads.get(threadId) ?? null),
-      getProjectSession: (sessionId) => Effect.succeed(sessions.get(sessionId) ?? null),
+      getThread: (threadId) =>
+        Effect.sync(() => {
+          threadReads += 1;
+          return threads.get(threadId) ?? null;
+        }),
+      getProjectSession: (sessionId) =>
+        Effect.sync(() => {
+          sessionReads += 1;
+          return sessions.get(sessionId) ?? null;
+        }),
       listProjects: Effect.succeed([{ id: "project-one", name: "Repository" } as Project]),
+      listManagedWorktreeWindow: () =>
+        Effect.succeed({
+          items: [
+            {
+              threadId: threadOne.threadId,
+              projectId: "project-one",
+              sessionId: "session-one",
+              sessionTitle: "Newest",
+              threadName: "First",
+              path: sharedPath,
+              linkedAt: threadOne.linkedAt,
+            },
+            {
+              threadId: threadTwo.threadId,
+              projectId: "project-one",
+              sessionId: "session-two",
+              sessionTitle: "Older",
+              threadName: "Second",
+              path: sharedPath,
+              linkedAt: threadTwo.linkedAt,
+            },
+          ],
+          nextCursor: null,
+          projectionRevision: 7,
+        }),
       readManagedWorktreeLifecycleSnapshot: Effect.succeed({
         projectionRevision: 7,
         consumers: [
@@ -305,7 +341,7 @@ it.effect("owns product inventory, inspection, restoration, and projection publi
       publish: (event) => events.push(event),
     });
 
-    assert.deepEqual(yield* catalog.list, [
+    assert.deepEqual(yield* catalog.list("local"), [
       {
         hostId: "local",
         path: sharedPath,
@@ -336,6 +372,8 @@ it.effect("owns product inventory, inspection, restoration, and projection publi
         ],
       },
     ]);
+    assert.strictEqual(threadReads, 0);
+    assert.strictEqual(sessionReads, 0);
     assert.strictEqual((yield* catalog.inspectThread(threadOne.threadId)).state, "restorable");
     assert.deepEqual(inspected, [
       {
@@ -423,6 +461,98 @@ it.effect("keeps inspection total while preserving restoration failures", () =>
   }),
 );
 
+it.effect("joins 100 worktrees and 500 consumers from one bulk projection", () =>
+  Effect.gen(function* () {
+    const paths = Array.from({ length: 100 }, (_, index) => `/managed/beef/worktree-${index}`);
+    const consumers = paths.flatMap((managedWorktreePath, worktreeIndex) =>
+      Array.from({ length: 5 }, (_, consumerIndex) => {
+        const index = worktreeIndex * 5 + consumerIndex;
+        return {
+          threadId: `thread-${index}`,
+          projectId: "project-one",
+          sessionId: `session-${index}`,
+          executionHostId: "local",
+          cwd: managedWorktreePath,
+          managedWorktreePath,
+          runtimeWorkspaceRoots: [managedWorktreePath],
+          archived: false,
+          pinnedOrder: null,
+          statusType: "idle" as const,
+          statusActiveFlags: [],
+          createdAt: index,
+          updatedAt: index,
+          linkedAt: "2026-08-29T00:00:00.000Z",
+        };
+      }),
+    );
+    let bulkReads = 0;
+    let threadReads = 0;
+    let sessionReads = 0;
+    const projectWorkspace = makeProjectWorkspace({
+      getThread: () =>
+        Effect.sync(() => {
+          threadReads += 1;
+          return null;
+        }),
+      getProjectSession: () =>
+        Effect.sync(() => {
+          sessionReads += 1;
+          return null;
+        }),
+      listProjects: Effect.succeed([{ id: "project-one", name: "Repository" } as Project]),
+      listManagedWorktreeWindow: (input) =>
+        Effect.sync(() => {
+          bulkReads += 1;
+          const start = input?.after ? Number.parseInt(input.after, 10) : 0;
+          const end = Math.min(start + (input?.first ?? 200), consumers.length);
+          return {
+            items: consumers.slice(start, end).map((consumer) => ({
+              threadId: consumer.threadId,
+              projectId: "project-one",
+              sessionId: consumer.sessionId,
+              sessionTitle: `Session ${consumer.threadId}`,
+              threadName: `Thread ${consumer.threadId}`,
+              path: consumer.managedWorktreePath,
+              linkedAt: consumer.linkedAt,
+            })),
+            nextCursor: end < consumers.length ? String(end) : null,
+            projectionRevision: 9,
+          };
+        }),
+      readManagedWorktreeLifecycleSnapshot: Effect.succeed({
+        projectionRevision: 9,
+        consumers,
+        projects: [],
+      }),
+    });
+    const managed = makeManaged({
+      list: () =>
+        Effect.succeed({
+          entries: paths.map((worktreeGitRoot, index) => ({
+            worktreeGitRoot,
+            repositoryPath: `/repositories/source-${index}`,
+            createdAtMs: index,
+            ownerThreadId: null,
+            ownerReadFailed: false,
+          })),
+        }),
+    });
+    const scope = yield* Scope.make();
+    const catalog = yield* makeCatalog(scope, projectWorkspace, managed);
+    const records = yield* catalog.list("local");
+
+    assert.strictEqual(records.length, 100);
+    assert.strictEqual(
+      records.reduce((total, record) => total + record.conversations.length, 0),
+      500,
+    );
+    assert.strictEqual(bulkReads, 3);
+    assert.strictEqual(threadReads, 0);
+    assert.strictEqual(sessionReads, 0);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 it.effect("commits settings side effects and archives every consumer before deletion", () =>
   Effect.gen(function* () {
     const worktreePath = "/managed/shared/repository";
@@ -462,6 +592,18 @@ it.effect("commits settings side effects and archives every consumer before dele
         }),
     });
     const managed = makeManaged({
+      list: () =>
+        Effect.succeed({
+          entries: [
+            {
+              worktreeGitRoot: worktreePath,
+              repositoryPath: null,
+              createdAtMs: 1,
+              ownerThreadId: null,
+              ownerReadFailed: true,
+            },
+          ],
+        }),
       remove: (input) =>
         Effect.sync(() => {
           calls.push(`remove:${input.hostId}:${input.reason}`);
@@ -513,6 +655,36 @@ it.effect("commits settings side effects and archives every consumer before dele
       "archive:thread-two:true",
       "remove:local:settings-delete",
     ]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects a stale settings deletion before archive or worker mutation", () =>
+  Effect.gen(function* () {
+    let archiveCalls = 0;
+    let removeCalls = 0;
+    const projectWorkspace = makeProjectWorkspace({
+      setThreadArchived: () =>
+        Effect.sync(() => {
+          archiveCalls += 1;
+          return { threads: [] };
+        }),
+    });
+    const managed = makeManaged({
+      list: () => Effect.succeed({ entries: [] }),
+      remove: () =>
+        Effect.sync(() => {
+          removeCalls += 1;
+          return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+        }),
+    });
+    const scope = yield* Scope.make();
+    const catalog = yield* makeCatalog(scope, projectWorkspace, managed);
+
+    const result = yield* Effect.exit(catalog.delete("local", "/managed/beef/stale"));
+    assert.isTrue(Exit.isFailure(result));
+    assert.strictEqual(archiveCalls, 0);
+    assert.strictEqual(removeCalls, 0);
     yield* Scope.close(scope, Exit.void);
   }),
 );

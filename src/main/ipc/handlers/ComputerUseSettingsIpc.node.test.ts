@@ -55,6 +55,7 @@ it.effect("registers and releases Computer Use settings channels with the Main S
                 isDefaultApp: false,
                 isPackaged: false,
                 nodexHome: "/tmp/nodex-test",
+                profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",
                 profileId: "test",
                 projectRootPath: "/repo",

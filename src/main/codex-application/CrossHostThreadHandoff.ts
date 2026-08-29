@@ -211,12 +211,12 @@ export const live = (options: {
                     stagingRoot: prepared.destinationStagingRoot,
                     repositoryPath: prepared.destinationRepositoryPath,
                     temporaryRef: prepared.destinationTemporaryRef,
-                    managedRoot: destination.value.descriptor.managedRoot,
+                    managedRoot: prepared.destinationManagedRoot,
                     createdWorktreePath: prepared.managedWorktreePath,
                     createdRolloutPath: prepared.destinationRolloutCreated
                       ? prepared.destinationRollout.path
                       : null,
-                    destinationCodexHome: destination.value.descriptor.codexHome,
+                    destinationCodexHome: prepared.destinationCodexHome,
                     outcome,
                   },
                 })
@@ -602,6 +602,8 @@ export const live = (options: {
               destinationTemporaryRef: imported.temporaryRef,
               sourceStagingRoot: source.descriptor.handoffStagingRoot,
               destinationStagingRoot: destination.descriptor.handoffStagingRoot,
+              destinationManagedRoot: destination.descriptor.managedRoot,
+              destinationCodexHome: destination.descriptor.codexHome,
               relayRoot,
               sourceBundle: exported.bundle,
               destinationBundle,

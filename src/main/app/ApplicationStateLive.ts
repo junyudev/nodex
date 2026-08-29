@@ -9,7 +9,7 @@ import {
   ApplicationBootstrapIpc,
   live as applicationBootstrapIpcLive,
 } from "../ipc/handlers/ApplicationBootstrapIpc";
-import { getWindowRestoreSettings } from "../local-store/config";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronIpc } from "../platform/electron/ElectronIpc";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
@@ -54,7 +54,9 @@ const started = Layer.effect(
   Effect.gen(function* () {
     yield* ApplicationBootstrapIpc;
     const applicationShell = yield* ApplicationWindowShellRuntime;
-    applicationShell.openInitial(getWindowRestoreSettings().policy);
+    const settings = yield* ApplicationSettings;
+    const snapshot = yield* settings.snapshot().pipe(Effect.orDie);
+    applicationShell.openInitial(snapshot.windowRestore.policy);
     return applicationShell;
   }),
 ).pipe(Layer.provideMerge(bootstrapIpc));
@@ -72,6 +74,7 @@ export const live: Layer.Layer<
   | ElectronIpc
   | ElectronSessionHost
   | MainConfig
+  | ApplicationSettings
   | MainShutdown
   | ScopedCallbackRuntime
 > = started;

@@ -1134,6 +1134,11 @@ export async function createManagedWorktree(
     ? path.resolve(input.managedRoot)
     : path.join(nodexHome, "worktrees");
   await runAbortChecked(signal, () => mkdir(worktreesRoot, { recursive: true }));
+  if (process.platform === "darwin") {
+    await runAbortChecked(signal, () =>
+      writeFile(path.join(worktreesRoot, ".metadata_never_index"), "", { flag: "a" }),
+    );
+  }
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     throwIfRequestAborted(signal);

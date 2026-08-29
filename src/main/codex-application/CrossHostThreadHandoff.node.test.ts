@@ -90,8 +90,6 @@ const makeHost = (input: {
       capabilities: ["export-handoff", "import-handoff", "cleanup-transfer-handoff"],
       supportsFileTransfer: true,
     },
-    knownManagedRoots: [path.join(input.root, "worktrees")],
-    resolveManagedRoot: () => Effect.succeed(path.join(input.root, "worktrees")),
     request: workerRequest(input.id),
     transfer: {
       describe: (sourcePath) =>

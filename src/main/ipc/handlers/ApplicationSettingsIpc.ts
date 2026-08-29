@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import {
@@ -8,6 +9,7 @@ import {
   CommandKeybindingValidationError,
   type CommandKeybindingMutationResult,
   type CommandKeybindingUpdate,
+  type CommandKeymapState,
 } from "../../../shared/command-keybindings";
 import type {
   UpdateBackupSettingsInput,
@@ -20,35 +22,21 @@ import type {
   UpdateWindowRestoreSettingsInput,
 } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
+import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
+import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { StoreAdministrationSchedulerRuntime } from "../../host-runtime/StoreAdministrationSchedulerRuntime";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
-import {
-  getBackupSettings,
-  getCodexDeveloperInstructionSettings,
-  getCodexGitSettings,
-  getCommandKeymapState,
-  getDiagnosticsSettings,
-  getHistorySettings,
-  getTelemetrySettings,
-  getThreadNotificationSettings,
-  getWindowRestoreSettings,
-  prepareCommandKeybindingUpdate,
-  prepareCommandKeybindingsReset,
-  updateBackupSettings,
-  updateCodexDeveloperInstructionSettings,
-  updateCodexGitSettings,
-  updateDiagnosticsSettings,
-  updateHistorySettings,
-  updateTelemetrySettings,
-  updateThreadNotificationSettings,
-  updateWindowRestoreSettings,
-} from "../../local-store/config";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import {
+  ApplicationSettings,
+  prepareCommandKeymapMutation,
+  type ApplicationSettingsCommand,
+  type ApplicationSettingsSnapshot,
+  type PreparedCommandKeymapMutation,
+} from "../../settings/ApplicationSettings";
 import { readThirdPartyNotices } from "../../third-party-notices";
-import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 
 export class ApplicationSettingsIpcError extends Schema.TaggedError<ApplicationSettingsIpcError>()(
   "ApplicationSettingsIpcError",
@@ -117,10 +105,14 @@ const CommandKeybindingMutation = z.discriminatedUnion("type", [
   z.object({ type: z.literal("reset") }).strict(),
 ]) satisfies z.ZodType<CommandKeybindingUpdate>;
 
+const settingsError = (operation: string) => (cause: unknown) =>
+  new ApplicationSettingsIpcError({ operation, cause });
+
 export const live: Layer.Layer<
   never,
   never,
   | ApplicationMenuRuntime
+  | ApplicationSettings
   | DictationRuntime
   | StoreAdministrationSchedulerRuntime
   | ElectronIpc
@@ -128,12 +120,14 @@ export const live: Layer.Layer<
   | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
+    const applicationSettings = yield* ApplicationSettings;
     const config = yield* MainConfig;
     const dictation = yield* DictationRuntime;
     const ipc = yield* ElectronIpc;
     const menus = yield* ApplicationMenuRuntime;
     const schedulers = yield* StoreAdministrationSchedulerRuntime;
     const windows = yield* WindowRuntime;
+    const keybindingMutations = yield* Semaphore.make(1);
     const authorize = (event: IpcMainInvokeEvent, capability: string) =>
       Effect.try({
         try: () => {
@@ -149,111 +143,169 @@ export const live: Layer.Layer<
             throw new Error(`${capability} requires an active Nodex window`);
           }
         },
-        catch: (cause) =>
-          new ApplicationSettingsIpcError({ operation: "authorize-renderer", cause }),
+        catch: settingsError("authorize-renderer"),
       });
-    const run = <A>(operation: string, action: () => A) =>
-      Effect.try({
-        try: action,
-        catch: (cause) => new ApplicationSettingsIpcError({ operation, cause }),
-      });
-    const handleRead = (channel: string, capability: string, read: () => unknown) =>
+    const parse = <A>(operation: string, evaluate: () => A) =>
+      Effect.try({ try: evaluate, catch: settingsError(operation) });
+    const read = <A>(operation: string, select: (snapshot: ApplicationSettingsSnapshot) => A) =>
+      applicationSettings
+        .snapshot()
+        .pipe(Effect.map(select), Effect.mapError(settingsError(operation)));
+    const update = <A>(
+      operation: string,
+      command: ApplicationSettingsCommand,
+      select: (snapshot: ApplicationSettingsSnapshot) => A,
+    ) =>
+      applicationSettings
+        .update(command)
+        .pipe(Effect.map(select), Effect.mapError(settingsError(operation)));
+    const handleRead = <A>(
+      channel: string,
+      capability: string,
+      select: (snapshot: ApplicationSettingsSnapshot) => A,
+    ) =>
       ipc.handle(channel, (event) =>
-        authorize(event, capability).pipe(Effect.andThen(run(`read-${channel}`, read))),
+        authorize(event, capability).pipe(Effect.andThen(read(`read-${channel}`, select))),
       );
-    const broadcastKeymap = (state: ReturnType<typeof getCommandKeymapState>): void => {
+    const broadcastKeymap = (state: CommandKeymapState): void => {
       menus.refresh(state);
       safeBroadcastToWindows(windows.all(), COMMAND_KEYBINDINGS_CHANGED_CHANNEL, [state]);
     };
     const commitKeymap = (
-      mutation: ReturnType<typeof prepareCommandKeybindingUpdate>,
-    ): Effect.Effect<CommandKeybindingMutationResult, unknown> =>
+      mutation: PreparedCommandKeymapMutation,
+    ): Effect.Effect<CommandKeybindingMutationResult, ApplicationSettingsIpcError> =>
       dictation.syncCommandKeymap(mutation.nextState).pipe(
-        Effect.flatMap((rejection): Effect.Effect<CommandKeybindingMutationResult, unknown> =>
-          rejection
-            ? Effect.succeed({
-                type: "rejected" as const,
-                state: mutation.previousState,
-                reason: rejection,
-              } satisfies CommandKeybindingMutationResult)
-            : run("commit-command-keybindings", mutation.commit).pipe(
-                Effect.tap((state) => Effect.sync(() => broadcastKeymap(state))),
-                Effect.map(
-                  (state) =>
-                    ({ type: "applied" as const, state }) satisfies CommandKeybindingMutationResult,
-                ),
+        Effect.flatMap((rejection) => {
+          if (rejection) {
+            return Effect.succeed<CommandKeybindingMutationResult>({
+              type: "rejected" as const,
+              state: mutation.previousState,
+              reason: rejection,
+            });
+          }
+          return applicationSettings
+            .update(mutation.command, { expectedRevision: mutation.expectedRevision })
+            .pipe(
+              Effect.map((snapshot) => snapshot.commandKeymap),
+              Effect.tap((state) => Effect.sync(() => broadcastKeymap(state))),
+              Effect.map(
+                (state) =>
+                  ({ type: "applied" as const, state }) satisfies CommandKeybindingMutationResult,
               ),
-        ),
+              Effect.mapError(settingsError("commit-command-keybindings")),
+            );
+        }),
         Effect.catch((cause) =>
           dictation
             .restoreCommandKeymap(mutation.previousState)
             .pipe(Effect.ignore, Effect.andThen(Effect.fail(cause))),
         ),
+        Effect.mapError((cause) =>
+          cause instanceof ApplicationSettingsIpcError
+            ? cause
+            : settingsError("synchronize-command-keybindings")(cause),
+        ),
       );
-    const prepareKeymapMutation = (
-      operation: string,
-      prepare: () => ReturnType<typeof prepareCommandKeybindingUpdate>,
-    ) =>
-      run(operation, () => {
-        try {
-          return { type: "prepared" as const, mutation: prepare() };
-        } catch (error) {
-          if (!(error instanceof CommandKeybindingValidationError)) throw error;
-          return {
-            type: "rejected" as const,
-            result: {
+    const prepareKeymap = (
+      command: PreparedCommandKeymapMutation["command"],
+    ): Effect.Effect<
+      | { readonly type: "prepared"; readonly mutation: PreparedCommandKeymapMutation }
+      | { readonly type: "rejected"; readonly result: CommandKeybindingMutationResult },
+      ApplicationSettingsIpcError
+    > =>
+      applicationSettings.snapshot().pipe(
+        Effect.mapError(settingsError("read-command-keybindings")),
+        Effect.flatMap((snapshot) =>
+          Effect.try({
+            try: () => ({
+              type: "prepared" as const,
+              mutation: prepareCommandKeymapMutation(snapshot, command),
+            }),
+            catch: (cause) =>
+              cause instanceof CommandKeybindingValidationError
+                ? cause
+                : settingsError("prepare-command-keybindings")(cause),
+          }),
+        ),
+        Effect.catch((cause) => {
+          if (!(cause instanceof CommandKeybindingValidationError)) return Effect.fail(cause);
+          return applicationSettings.snapshot().pipe(
+            Effect.map((snapshot) => ({
               type: "rejected" as const,
-              state: getCommandKeymapState(),
-              reason: error.rejection,
-            },
-          };
-        }
-      });
-    const finishKeymapMutation = (
-      prepared:
-        | {
-            readonly type: "prepared";
-            readonly mutation: ReturnType<typeof prepareCommandKeybindingUpdate>;
-          }
-        | { readonly type: "rejected"; readonly result: CommandKeybindingMutationResult },
-    ) =>
-      prepared.type === "rejected"
-        ? Effect.succeed(prepared.result)
-        : commitKeymap(prepared.mutation);
+              result: {
+                type: "rejected" as const,
+                state: snapshot.commandKeymap,
+                reason: cause.rejection,
+              },
+            })),
+            Effect.mapError(settingsError("read-command-keybindings")),
+          );
+        }),
+      );
+    const mutateKeymap = (command: PreparedCommandKeymapMutation["command"]) =>
+      keybindingMutations.withPermits(1)(
+        prepareKeymap(command).pipe(
+          Effect.flatMap((prepared) =>
+            prepared.type === "rejected"
+              ? Effect.succeed(prepared.result)
+              : commitKeymap(prepared.mutation),
+          ),
+        ),
+      );
 
-    yield* handleRead("settings:backup:get", "Backup settings", getBackupSettings);
+    yield* handleRead("settings:backup:get", "Backup settings", (value) => value.backup);
     yield* ipc.handle("settings:backup:update", (event, input: unknown) =>
       authorize(event, "Backup settings").pipe(
-        Effect.andThen(
-          run("update-backup-settings", () => updateBackupSettings(BackupUpdate.parse(input))),
+        Effect.andThen(parse("parse-backup-settings", () => BackupUpdate.parse(input))),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-backup-settings",
+            { type: "update-backup", input: parsed },
+            (value) => value.backup,
+          ),
         ),
-        Effect.tap((settings) => schedulers.configureBackup(settings)),
+        Effect.tap((value) => schedulers.configureBackup(value)),
       ),
     );
-    yield* handleRead("settings:history:get", "History settings", getHistorySettings);
+    yield* handleRead("settings:history:get", "History settings", (value) => value.history);
     yield* ipc.handle("settings:history:update", (event, input: unknown) =>
       authorize(event, "History settings").pipe(
-        Effect.andThen(
-          run("update-history-settings", () => updateHistorySettings(HistoryUpdate.parse(input))),
-        ),
-      ),
-    );
-    yield* handleRead("settings:diagnostics:get", "Diagnostics settings", getDiagnosticsSettings);
-    yield* ipc.handle("settings:diagnostics:update", (event, input: unknown) =>
-      authorize(event, "Diagnostics settings").pipe(
-        Effect.andThen(
-          run("update-diagnostics-settings", () =>
-            updateDiagnosticsSettings(DiagnosticsUpdate.parse(input)),
+        Effect.andThen(parse("parse-history-settings", () => HistoryUpdate.parse(input))),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-history-settings",
+            { type: "update-history", input: parsed },
+            (value) => value.history,
           ),
         ),
       ),
     );
-    yield* handleRead("settings:telemetry:get", "Telemetry settings", getTelemetrySettings);
+    yield* handleRead(
+      "settings:diagnostics:get",
+      "Diagnostics settings",
+      (value) => value.diagnostics,
+    );
+    yield* ipc.handle("settings:diagnostics:update", (event, input: unknown) =>
+      authorize(event, "Diagnostics settings").pipe(
+        Effect.andThen(parse("parse-diagnostics-settings", () => DiagnosticsUpdate.parse(input))),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-diagnostics-settings",
+            { type: "update-diagnostics", input: parsed },
+            (value) => value.diagnostics,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead("settings:telemetry:get", "Telemetry settings", (value) => value.telemetry);
     yield* ipc.handle("settings:telemetry:update", (event, input: unknown) =>
       authorize(event, "Telemetry settings").pipe(
-        Effect.andThen(
-          run("update-telemetry-settings", () =>
-            updateTelemetrySettings(TelemetryUpdate.parse(input)),
+        Effect.andThen(parse("parse-telemetry-settings", () => TelemetryUpdate.parse(input))),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-telemetry-settings",
+            { type: "update-telemetry", input: parsed },
+            (value) => value.telemetry,
           ),
         ),
       ),
@@ -261,13 +313,18 @@ export const live: Layer.Layer<
     yield* handleRead(
       "settings:thread-notifications:get",
       "Thread notification settings",
-      getThreadNotificationSettings,
+      (value) => value.notifications,
     );
     yield* ipc.handle("settings:thread-notifications:update", (event, input: unknown) =>
       authorize(event, "Thread notification settings").pipe(
         Effect.andThen(
-          run("update-thread-notification-settings", () =>
-            updateThreadNotificationSettings(ThreadNotificationUpdate.parse(input)),
+          parse("parse-thread-notification-settings", () => ThreadNotificationUpdate.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-thread-notification-settings",
+            { type: "update-thread-notifications", input: parsed },
+            (value) => value.notifications,
           ),
         ),
       ),
@@ -275,35 +332,52 @@ export const live: Layer.Layer<
     yield* handleRead(
       "settings:codex-developer:get",
       "Developer instruction settings",
-      getCodexDeveloperInstructionSettings,
+      (value) => value.developer,
     );
     yield* ipc.handle("settings:codex-developer:update", (event, input: unknown) =>
       authorize(event, "Developer instruction settings").pipe(
         Effect.andThen(
-          run("update-developer-instruction-settings", () =>
-            updateCodexDeveloperInstructionSettings(DeveloperInstructionUpdate.parse(input)),
+          parse("parse-developer-instruction-settings", () =>
+            DeveloperInstructionUpdate.parse(input),
+          ),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-developer-instruction-settings",
+            { type: "update-developer-instructions", input: parsed },
+            (value) => value.developer,
           ),
         ),
       ),
     );
-    yield* handleRead("settings:git:get", "Git settings", getCodexGitSettings);
+    yield* handleRead("settings:git:get", "Git settings", (value) => value.git);
     yield* ipc.handle("settings:git:update", (event, input: unknown) =>
       authorize(event, "Git settings").pipe(
-        Effect.andThen(
-          run("update-git-settings", () => updateCodexGitSettings(GitUpdate.parse(input))),
+        Effect.andThen(parse("parse-git-settings", () => GitUpdate.parse(input))),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-git-settings",
+            { type: "update-git", input: parsed },
+            (value) => value.git,
+          ),
         ),
       ),
     );
     yield* handleRead(
       "settings:window-restore:get",
       "Window restore settings",
-      getWindowRestoreSettings,
+      (value) => value.windowRestore,
     );
     yield* ipc.handle("settings:window-restore:update", (event, input: unknown) =>
       authorize(event, "Window restore settings").pipe(
         Effect.andThen(
-          run("update-window-restore-settings", () =>
-            updateWindowRestoreSettings(WindowRestoreUpdate.parse(input)),
+          parse("parse-window-restore-settings", () => WindowRestoreUpdate.parse(input)),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-window-restore-settings",
+            { type: "update-window-restore", input: parsed },
+            (value) => value.windowRestore,
           ),
         ),
       ),
@@ -319,38 +393,34 @@ export const live: Layer.Layer<
                 isPackaged: config.isPackaged,
                 resourcesPath: config.resourcesPath,
               }),
-            catch: (cause) =>
-              new ApplicationSettingsIpcError({ operation: "read-third-party-notices", cause }),
+            catch: settingsError("read-third-party-notices"),
           }),
         ),
       ),
     );
-    yield* handleRead("codex-command-keymap-state", "Command keybindings", getCommandKeymapState);
-    yield* ipc.handle(
-      "set-codex-command-keybinding",
-      (event, commandId: unknown, update: unknown) =>
-        authorize(event, "Command keybindings").pipe(
-          Effect.andThen(
-            prepareKeymapMutation("prepare-command-keybinding", () => {
-              if (typeof commandId !== "string") throw new Error("commandId must be a string");
-              return prepareCommandKeybindingUpdate(
-                commandId,
-                CommandKeybindingMutation.parse(update),
-              );
-            }),
-          ),
-          Effect.flatMap(finishKeymapMutation),
+    yield* handleRead(
+      "codex-command-keymap-state",
+      "Command keybindings",
+      (value) => value.commandKeymap,
+    );
+    yield* ipc.handle("set-codex-command-keybinding", (event, commandId: unknown, input: unknown) =>
+      authorize(event, "Command keybindings").pipe(
+        Effect.andThen(
+          parse("parse-command-keybinding", () => {
+            if (typeof commandId !== "string") throw new Error("commandId must be a string");
+            return {
+              type: "update-command-keybinding" as const,
+              commandId,
+              input: CommandKeybindingMutation.parse(input),
+            };
+          }),
         ),
+        Effect.flatMap(mutateKeymap),
+      ),
     );
     yield* ipc.handle("reset-codex-command-keybindings", (event) =>
       authorize(event, "Command keybindings").pipe(
-        Effect.andThen(
-          prepareKeymapMutation(
-            "prepare-command-keybindings-reset",
-            prepareCommandKeybindingsReset,
-          ),
-        ),
-        Effect.flatMap(finishKeymapMutation),
+        Effect.andThen(mutateKeymap({ type: "reset-command-keybindings" })),
       ),
     );
   }),

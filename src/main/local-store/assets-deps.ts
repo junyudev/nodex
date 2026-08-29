@@ -1,1 +1,0 @@
-export { getNodexHome } from "./config";

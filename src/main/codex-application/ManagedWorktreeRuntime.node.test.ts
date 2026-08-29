@@ -44,18 +44,7 @@ const makeExecutionHosts = (
     } as const;
     const host: ExecutionHost = {
       descriptor,
-      knownManagedRoots: ["/managed"],
       transfer: null,
-      resolveManagedRoot: (worktreePath) =>
-        worktreePath.startsWith("/managed/")
-          ? Effect.succeed("/managed")
-          : Effect.fail(
-              new ExecutionHostRuntimeError({
-                operation: "resolve-managed-root",
-                hostId: "local",
-                cause: new Error("outside managed root"),
-              }),
-            ),
       request,
     };
     return ExecutionHostRuntime.of({
@@ -114,6 +103,28 @@ it.effect("maps every removal reason to a closed snapshot policy", () =>
     assert.strictEqual(snapshotPolicyForManagedWorktreeRemoval("failed-create"), "ephemeral");
     assert.strictEqual(snapshotPolicyForManagedWorktreeRemoval("retry"), "ephemeral");
     assert.strictEqual(snapshotPolicyForManagedWorktreeRemoval("cancel"), "ephemeral");
+  }),
+);
+
+it.effect("sends one inventory request for the host current root", () =>
+  Effect.gen(function* () {
+    const requests: CodexWorktreeWorkerRequest[] = [];
+    const { managed, scope } = yield* acquire(
+      worktreeRequest((request) => {
+        requests.push(request);
+        return request.operation === "list"
+          ? Effect.succeed({ entries: [] })
+          : Effect.die("unexpected operation");
+      }),
+    );
+
+    assert.deepEqual(yield* managed.list("local"), { entries: [] });
+    assert.strictEqual(requests.length, 1);
+    assert.strictEqual(requests[0]?.operation, "list");
+    if (requests[0]?.operation === "list") {
+      assert.strictEqual(requests[0].input.managedRoot, "/managed");
+    }
+    yield* Scope.close(scope, Exit.void);
   }),
 );
 

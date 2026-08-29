@@ -13,6 +13,7 @@ import {
   type StoreAdministrationError,
 } from "../core-runtime/StoreAdministration";
 import { getLogger } from "../logging/logger";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { SchedulerOperationError } from "./SchedulerOperation";
 import {
   STORE_MAINTENANCE_SCHEDULES,
@@ -37,8 +38,6 @@ export interface StoreAdministrationSchedulerTiming {
 }
 
 export interface StoreAdministrationSchedulerRuntimeOptions {
-  readonly readBackupSettings: () => BackupSchedulerSettings;
-  readonly readBlockRetentionCount: () => number;
   readonly timing?: StoreAdministrationSchedulerTiming;
 }
 
@@ -52,11 +51,16 @@ export class StoreAdministrationSchedulerRuntime extends Context.Service<
 
 export const live = (
   options: StoreAdministrationSchedulerRuntimeOptions,
-): Layer.Layer<StoreAdministrationSchedulerRuntime, never, CoreAuthority | StoreAdministration> =>
+): Layer.Layer<
+  StoreAdministrationSchedulerRuntime,
+  never,
+  ApplicationSettings | CoreAuthority | StoreAdministration
+> =>
   Layer.effect(
     StoreAdministrationSchedulerRuntime,
     Effect.gen(function* () {
       const administration = yield* StoreAdministration;
+      const applicationSettings = yield* ApplicationSettings;
       const authority = yield* CoreAuthority;
       const activation = yield* Deferred.make<void>();
       const backupLock = yield* Semaphore.make(1);
@@ -140,14 +144,16 @@ export const live = (
           Effect.gen(function* () {
             const idleInterval = Math.max(250, schedule.idleInterval ?? schedule.interval);
             if (!(yield* authorityReady)) return idleInterval;
-            const input = yield* Effect.try({
-              try: () => maintenanceInput(lane, options.readBlockRetentionCount()),
-              catch: (cause) =>
-                new SchedulerOperationError({
-                  operation: `build-${lane}-maintenance-input`,
-                  cause,
-                }),
-            });
+            const settings = yield* applicationSettings.snapshot().pipe(
+              Effect.mapError(
+                (cause) =>
+                  new SchedulerOperationError({
+                    operation: `read-${lane}-maintenance-settings`,
+                    cause,
+                  }),
+              ),
+            );
+            const input = maintenanceInput(lane, settings.history.retentionCount);
             const plan = yield* administration.planMaintenance(input);
             if (plan.dueTasks.length === 0 || plan.workToken === null) {
               if (plan.nextWakeAt === null) return idleInterval;
@@ -198,7 +204,8 @@ export const live = (
           Effect.forkScoped,
         );
       }
-      yield* FiberHandle.run(backupHandle, backupSchedule(options.readBackupSettings()), {
+      const initialSettings = yield* applicationSettings.snapshot().pipe(Effect.orDie);
+      yield* FiberHandle.run(backupHandle, backupSchedule(initialSettings.backup), {
         startImmediately: true,
       });
 

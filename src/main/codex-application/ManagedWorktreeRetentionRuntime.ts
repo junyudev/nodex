@@ -114,20 +114,15 @@ export const live = (
           nowMs,
         });
 
-      const sweep: Effect.Effect<
-        CodexManagedWorktreeRetentionPlan,
-        ManagedWorktreeRetentionRuntimeError
-      > = Effect.gen(function* () {
-        const settings = yield* configuration.settings.pipe(
-          Effect.mapError((cause) => error("read-settings", cause)),
-        );
-        const nowMs = yield* Clock.currentTimeMillis;
-        if (!settings.autoDeleteEnabled) return skippedPlan(settings, true, nowMs);
-
-        const metadata = yield* Effect.all(
+      const readPlan = Effect.fn("ManagedWorktreeRetentionRuntime.readPlan")(function* (
+        settings: ManagedWorktreeSettings,
+        nowMs: number,
+        phase: "read" | "revalidate",
+      ) {
+        const [lifecycle, physicalByHost] = yield* Effect.all(
           [
             workspace.readManagedWorktreeLifecycleSnapshot.pipe(
-              Effect.mapError((cause) => error("read-lifecycle", cause)),
+              Effect.mapError((cause) => error(`${phase}-lifecycle`, cause)),
             ),
             executionHosts.hosts("list").pipe(
               Effect.flatMap((hosts) =>
@@ -136,39 +131,30 @@ export const live = (
                   (host) =>
                     managed.list(host.hostId).pipe(
                       Effect.map((inventory) => ({ hostId: host.hostId, inventory })),
-                      Effect.mapError((cause) => error("list-worktrees", cause)),
+                      Effect.mapError((cause) => error(`${phase}-worktrees`, cause)),
                     ),
-                  { concurrency: "unbounded" },
+                  { concurrency: 2 },
                 ),
               ),
             ),
           ] as const,
           { concurrency: "unbounded" },
-        ).pipe(
-          Effect.map(([lifecycle, physicalByHost]) => ({ lifecycle, physicalByHost })),
-          Effect.catch((cause) =>
-            Effect.logWarning(
-              "Managed worktree retention skipped because metadata is incomplete",
-            ).pipe(Effect.annotateLogs({ cause: String(cause.cause) }), Effect.as(null)),
-          ),
         );
-        if (!metadata) return skippedPlan(settings, false, nowMs);
-
-        const physicalEntries = metadata.physicalByHost.flatMap(({ hostId, inventory }) =>
+        const physicalEntries = physicalByHost.flatMap(({ hostId, inventory }) =>
           inventory.entries.map((entry) => ({ hostId, entry })),
         );
         const localPermanentKeys = new Set(
           yield* Effect.forEach(
-            metadata.lifecycle.projects.flatMap((project) => project.sourceRoots),
+            lifecycle.projects.flatMap((project) => project.sourceRoots),
             (root) =>
-              fromPromise("resolve-permanent-root", () => resolveWorktreePathComparisonKey(root)),
+              fromPromise(`${phase}-permanent-root`, () => resolveWorktreePathComparisonKey(root)),
             { concurrency: "unbounded" },
           ),
         );
         const pathProtections: CodexManagedWorktreeRetentionPathProtection[] = [];
         for (const { hostId, entry } of physicalEntries) {
           if (hostId !== CODEX_APP_LOCAL_HOST_ID) continue;
-          const comparisonKey = yield* fromPromise("resolve-worktree-root", () =>
+          const comparisonKey = yield* fromPromise(`${phase}-worktree-root`, () =>
             resolveWorktreePathComparisonKey(entry.worktreeGitRoot),
           );
           if (!localPermanentKeys.has(comparisonKey)) continue;
@@ -192,16 +178,16 @@ export const live = (
 
         const automationProtection = new Map(
           yield* Effect.forEach(
-            metadata.lifecycle.consumers,
+            lifecycle.consumers,
             (consumer) =>
               automation.runs.get(consumer.threadId).pipe(
-                Effect.mapError((cause) => error("read-automation-protection", cause)),
+                Effect.mapError((cause) => error(`${phase}-automation-protection`, cause)),
                 Effect.map((run) => [consumer.threadId, run !== null] as const),
               ),
             { concurrency: 8 },
           ),
         );
-        for (const consumer of metadata.lifecycle.consumers) {
+        for (const consumer of lifecycle.consumers) {
           const reason =
             consumer.pinnedOrder !== null
               ? "pinned"
@@ -218,8 +204,8 @@ export const live = (
           });
         }
 
-        const plan = planManagedWorktreeRetention({
-          enabled: true,
+        return planManagedWorktreeRetention({
+          enabled: settings.autoDeleteEnabled,
           keepCount: settings.autoDeleteLimit,
           metadataComplete: true,
           records: physicalEntries.map(({ hostId, entry }) => ({
@@ -229,7 +215,7 @@ export const live = (
             ownerThreadId: entry.ownerThreadId,
             ownerReadFailed: entry.ownerReadFailed,
           })),
-          threadMetadata: metadata.lifecycle.consumers.map((consumer) => ({
+          threadMetadata: lifecycle.consumers.map((consumer) => ({
             threadId: consumer.threadId,
             updatedAtMs: consumer.updatedAt,
             pinned: consumer.pinnedOrder !== null,
@@ -240,6 +226,26 @@ export const live = (
           protectPreMigrationOwnerlessWorktrees: true,
           nowMs,
         });
+      });
+
+      const sweep: Effect.Effect<
+        CodexManagedWorktreeRetentionPlan,
+        ManagedWorktreeRetentionRuntimeError
+      > = Effect.gen(function* () {
+        const settings = yield* configuration.settings.pipe(
+          Effect.mapError((cause) => error("read-settings", cause)),
+        );
+        const nowMs = yield* Clock.currentTimeMillis;
+        if (!settings.autoDeleteEnabled) return skippedPlan(settings, true, nowMs);
+
+        const plan = yield* readPlan(settings, nowMs, "read").pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning(
+              "Managed worktree retention skipped because metadata is incomplete",
+            ).pipe(Effect.annotateLogs({ cause: String(cause.cause) }), Effect.as(null)),
+          ),
+        );
+        if (!plan) return skippedPlan(settings, false, nowMs);
         if (plan.status !== "planned") return plan;
 
         yield* Effect.logInfo("Managed worktree retention plan").pipe(
@@ -264,8 +270,16 @@ export const live = (
             }),
           );
         }
+        const freshSettings = yield* configuration.settings.pipe(
+          Effect.mapError((cause) => error("revalidate-settings", cause)),
+        );
+        if (!freshSettings.autoDeleteEnabled) {
+          return skippedPlan(freshSettings, true, nowMs);
+        }
+        const freshPlan = yield* readPlan(freshSettings, nowMs, "revalidate");
+        if (freshPlan.status !== "planned") return freshPlan;
         const results = yield* Effect.forEach(
-          plan.delete,
+          freshPlan.delete,
           (item) =>
             Effect.exit(
               managed.remove({
@@ -286,7 +300,7 @@ export const live = (
             }),
           );
         }
-        return plan;
+        return freshPlan;
       });
 
       const drainAvailable = Effect.gen(function* () {

@@ -13,11 +13,8 @@ import type {
 } from "../../shared/codex-queued-follow-up-state";
 import { CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION } from "../../shared/codex-queued-follow-up-state";
 import type { CodexLiveFileAttachment, CodexPromptInput } from "../../shared/types";
-import {
-  getAssetsRootPath,
-  publishContentAddressedAsset,
-  resolveAssetPathInRoot,
-} from "../local-store/assets";
+import { publishContentAddressedAsset, resolveAssetPathInRoot } from "../local-store/assets";
+import { ProfileAssets } from "../local-store/ProfileAssets";
 
 const MANIFEST_FILE_PREFIX = "queued-follow-up-v1-";
 const PAYLOAD_ASSET_FILE_PREFIX = "queued-follow-up-payload-";
@@ -386,7 +383,7 @@ function hydrateAtRoot(
 }
 
 export function makeCodexQueuedFollowUpPayloadStore(
-  assetsRootPath = getAssetsRootPath(),
+  assetsRootPath: string,
 ): CodexQueuedFollowUpPayloadStore["Service"] {
   const attempt = <A>(
     operation: "freeze" | "hydrate",
@@ -402,5 +399,14 @@ export function makeCodexQueuedFollowUpPayloadStore(
   });
 }
 
-export const codexQueuedFollowUpPayloadStoreLive: Layer.Layer<CodexQueuedFollowUpPayloadStore> =
-  Layer.succeed(CodexQueuedFollowUpPayloadStore, makeCodexQueuedFollowUpPayloadStore());
+export const codexQueuedFollowUpPayloadStoreLive: Layer.Layer<
+  CodexQueuedFollowUpPayloadStore,
+  never,
+  ProfileAssets
+> = Layer.effect(
+  CodexQueuedFollowUpPayloadStore,
+  Effect.gen(function* () {
+    const assets = yield* ProfileAssets;
+    return makeCodexQueuedFollowUpPayloadStore(assets.rootPath);
+  }),
+);

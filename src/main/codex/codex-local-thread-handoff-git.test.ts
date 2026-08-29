@@ -94,7 +94,6 @@ describe("local thread handoff Git transaction", () => {
       {
         requestId: "rollback-to-worktree",
         hostId: "local",
-        managedRoot: fixture.managedRoot,
         prepared,
       },
       options(),
@@ -156,7 +155,6 @@ describe("local thread handoff Git transaction", () => {
       {
         requestId: "rollback-to-checkout",
         hostId: "local",
-        managedRoot: fixture.managedRoot,
         prepared: toCheckout,
       },
       options(),

@@ -124,11 +124,7 @@ export interface ExecutionHostFileTransfer {
 
 export interface ExecutionHost {
   readonly descriptor: ExecutionHostDescriptor;
-  readonly knownManagedRoots: readonly string[];
   readonly transfer: ExecutionHostFileTransfer | null;
-  readonly resolveManagedRoot: (
-    worktreePath: string,
-  ) => Effect.Effect<string, ExecutionHostRuntimeError>;
   readonly request: <Operation extends CodexWorktreeWorkerOperation>(
     request: Extract<CodexWorktreeWorkerRequest, { readonly operation: Operation }>,
     options?: WorktreeWorkerRequestOptions,
@@ -173,7 +169,6 @@ export class ExecutionHostRuntime extends Context.Service<
 
 interface RegisteredExecutionHost {
   readonly descriptor: ExecutionHostDescriptor;
-  readonly knownManagedRoots: ReadonlySet<string>;
   readonly worker: WorktreeWorkerRuntime["Service"];
   readonly transfer: CodexExecutionHostFileTransferPort | null;
 }
@@ -196,11 +191,6 @@ const sameConfig = (
   right: CodexSshExecutionHostConfig | undefined,
 ): boolean =>
   left !== undefined && right !== undefined && JSON.stringify(left) === JSON.stringify(right);
-
-const within = (root: string, candidate: string): boolean => {
-  const relative = path.relative(path.resolve(root), path.resolve(candidate));
-  return relative.length > 0 && !relative.startsWith("..") && !path.isAbsolute(relative);
-};
 
 export const live = (
   options: ExecutionHostRuntimeOptions,
@@ -281,22 +271,7 @@ export const live = (
         const hostId = registration.descriptor.hostId;
         return {
           descriptor: { ...registration.descriptor },
-          knownManagedRoots: [...registration.knownManagedRoots].sort(),
           transfer: transferCapability(hostId, registration.transfer),
-          resolveManagedRoot: (worktreePath) =>
-            Effect.try({
-              try: () => {
-                const candidate = path.resolve(worktreePath.trim());
-                const root = [...registration.knownManagedRoots]
-                  .filter((knownRoot) => within(knownRoot, candidate))
-                  .sort((left, right) => right.length - left.length)[0];
-                if (!root) {
-                  throw new Error("Worktree path is outside every authorized managed root");
-                }
-                return root;
-              },
-              catch: (cause) => error("resolve-managed-root", cause, hostId),
-            }),
           request: (request, requestOptions) =>
             registration.worker
               .request(request, requestOptions)
@@ -350,21 +325,13 @@ export const live = (
       const managedWorktreeSettings = yield* managedWorktreeConfiguration.settings.pipe(
         Effect.mapError((cause) => error("read-managed-worktree-settings", cause)),
       );
-      const knownManagedRoots = yield* managedWorktreeConfiguration.knownRoots.pipe(
-        Effect.mapError((cause) => error("read-managed-worktree-roots", cause)),
-      );
       const localManagedRoot =
         managedWorktreeSettings.worktreeRoot ?? path.join(nodexHome, "worktrees");
-      const localKnownManagedRoots = [
-        path.join(nodexHome, "worktrees"),
-        ...knownManagedRoots,
-        localManagedRoot,
-      ];
       const handoffStagingRoot = path.join(runtimeStateHome, "handoffs");
       const localFileTransfer = new CodexLocalExecutionHostFileTransfer({
         hostId: CODEX_APP_LOCAL_HOST_ID,
         stagingRoot: handoffStagingRoot,
-        allowedReadRoots: [runtimeStateHome, ...localKnownManagedRoots],
+        allowedReadRoots: [runtimeStateHome, localManagedRoot],
       });
       yield* register({
         descriptor: {
@@ -379,7 +346,6 @@ export const live = (
           capabilities: WORKTREE_CAPABILITIES,
           supportsFileTransfer: true,
         },
-        knownManagedRoots: new Set(localKnownManagedRoots),
         worker: localWorktreeWorker,
         transfer: localFileTransfer,
       });
@@ -468,7 +434,6 @@ export const live = (
                           capabilities: WORKTREE_CAPABILITIES,
                           supportsFileTransfer: true,
                         },
-                        knownManagedRoots: new Set([config.managedRoot]),
                         worker,
                         transfer: transport,
                       });
@@ -572,7 +537,11 @@ export const live = (
               return new Map(current).set(CODEX_APP_LOCAL_HOST_ID, {
                 ...local,
                 descriptor: { ...local.descriptor, managedRoot: normalized },
-                knownManagedRoots: new Set([...local.knownManagedRoots, normalized]),
+                transfer: new CodexLocalExecutionHostFileTransfer({
+                  hostId: CODEX_APP_LOCAL_HOST_ID,
+                  stagingRoot: handoffStagingRoot,
+                  allowedReadRoots: [runtimeStateHome, normalized],
+                }),
               });
             });
           }),

@@ -59,7 +59,7 @@ import {
   type BrowserContextMenuParams,
 } from "../browser/browser-context-menu";
 import { fetchBrowserImage } from "../browser/browser-image-attachment";
-import { saveUploadedImage } from "../local-store/assets";
+import type { ProfileAssetsService } from "../local-store/assets";
 import type { BrowserSidebarEventPublisher } from "../browser/BrowserSidebarEventHub";
 import type { SiteStatusPolicyRuntime } from "../browser-use/site-status-policy-service";
 import type {
@@ -93,7 +93,7 @@ interface BrowserStateDeps {
   pageEmulation: BrowserPageEmulationRuntime;
   fork: (effect: Effect.Effect<void>) => void;
   siteStatus: Pick<SiteStatusPolicyRuntime, "cachedCommentModeBlocked">;
-  saveBrowserImage?: typeof saveUploadedImage;
+  saveBrowserImage: ProfileAssetsService["saveUploadedImage"];
 }
 
 export type BrowserLocalServerThumbnailAdmission =
@@ -314,7 +314,7 @@ export class BrowserState {
   private readonly pageEmulation: BrowserPageEmulationRuntime;
   private readonly runtimeRegistry: BrowserRuntimeRegistry;
   private readonly webContentsListeners: BrowserWebContentsListenerRuntime;
-  private readonly saveBrowserImage: typeof saveUploadedImage;
+  private readonly saveBrowserImage: ProfileAssetsService["saveUploadedImage"];
   private readonly siteStatus: Pick<SiteStatusPolicyRuntime, "cachedCommentModeBlocked">;
   private pageStore: BrowserPageRuntime | null;
   private historyStore: Pick<BrowserHistoryRuntime, "clear" | "record"> | null;
@@ -333,7 +333,7 @@ export class BrowserState {
     this.historyStore = deps.historyStore ?? null;
     this.runtimeRegistry = deps.runtimeRegistry;
     this.webContentsListeners = deps.webContentsListeners;
-    this.saveBrowserImage = deps.saveBrowserImage ?? saveUploadedImage;
+    this.saveBrowserImage = deps.saveBrowserImage;
     this.siteStatus = deps.siteStatus;
   }
 

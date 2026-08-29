@@ -418,6 +418,7 @@ export type {
   ManagedWorktreeAvailability,
   ManagedWorktreeRestoreResult,
   ManagedWorktreeSettings,
+  CodexExecutionHostSettings,
   UpdateManagedWorktreeSettingsInput,
   WorktreeEnvironmentOption,
   WorktreeEnvironmentPlatform,

@@ -7,6 +7,8 @@ import {
   live as browserApplicationLive,
 } from "../browser-application/BrowserApplication";
 import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-client";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { ProfileAssets } from "../local-store/ProfileAssets";
 import { ChatGptDesktop, live as chatGptDesktopLive } from "../codex-application/ChatGptDesktop";
 import {
   ComposerExternalSuggestions,
@@ -210,6 +212,8 @@ export const live: Layer.Layer<
   | BrowserUseRuntimeError
   | ExecutionHostRuntimeError,
   | CodexGateway
+  | ApplicationSettings
+  | ProfileAssets
   | CodexPlatform
   | MainConfig
   | ScopedCallbackRuntime

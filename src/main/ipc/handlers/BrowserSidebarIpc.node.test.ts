@@ -23,6 +23,8 @@ import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
 import { browserElectronPlatform } from "../../platform/electron/BrowserElectronPlatform";
 import { WindowSessionCatalog } from "../../window-runtime/WindowSessionCatalog";
+import { ProfileAssets } from "../../local-store/ProfileAssets";
+import { makeProfileAssets } from "../../local-store/assets";
 import { live } from "./BrowserSidebarIpc";
 
 type Handler = (
@@ -56,6 +58,9 @@ it.effect(
         electron: browserElectronPlatform,
         events,
         runtimeRegistry: makeBrowserRuntimeRegistry(),
+        saveBrowserImage: () => {
+          throw new Error("Unexpected browser image save");
+        },
         fork: (effect) => void runBackground(effect),
         pageEmulation: makeBrowserPageEmulationRuntimeUnsafe(),
         siteStatus: { cachedCommentModeBlocked: () => null },
@@ -105,6 +110,10 @@ it.effect(
               Layer.succeed(BrowserApplication, application),
               Layer.succeed(ElectronIpc, ipc),
               Layer.succeed(
+                ProfileAssets,
+                ProfileAssets.of(makeProfileAssets({ assetsRootPath: "/tmp/nodex-test/assets" })),
+              ),
+              Layer.succeed(
                 ElectronWindowHost,
                 ElectronWindowHost.of({
                   all: Effect.succeed([]),
@@ -129,6 +138,7 @@ it.effect(
                   isDefaultApp: false,
                   isPackaged: false,
                   nodexHome: "/tmp/nodex-test",
+                  profileSettingsPath: "/tmp/nodex-test/config.toml",
                   platform: "darwin",
                   profileId: "test",
                   projectRootPath: "/repo",

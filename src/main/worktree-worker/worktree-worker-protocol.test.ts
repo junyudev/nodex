@@ -59,7 +59,7 @@ describe("worktree worker protocol", () => {
     }
   });
 
-  test("rejects version drift, unknown operations, and managed-root escapes", () => {
+  test("rejects version drift and unknown operations", () => {
     expect(
       isCodexWorktreeWorkerHostMessage({
         ...createRequest(),
@@ -72,24 +72,63 @@ describe("worktree worker protocol", () => {
         request: { operation: "guess-from-shape", input: createRequest().request.input },
       }),
     ).toBe(false);
+  });
+
+  test("accepts exact targets from an earlier managed root and rejects stale authority", () => {
+    const removeRequest = {
+      type: "request",
+      protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
+      id: "remove:1",
+      request: {
+        operation: "remove",
+        input: {
+          requestId: "remove:1",
+          hostId: "local",
+          worktreeGitRoot: "/old-managed-root/abcd/repo",
+          reason: "cancel",
+          snapshotPolicy: "ephemeral",
+        },
+      },
+    } as const;
+    expect(isCodexWorktreeWorkerHostMessage(removeRequest)).toBe(true);
     expect(
       isCodexWorktreeWorkerHostMessage({
-        type: "request",
-        protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
-        id: "remove:1",
+        ...removeRequest,
         request: {
-          operation: "remove",
+          ...removeRequest.request,
           input: {
-            requestId: "remove:1",
-            hostId: "local",
-            managedRoot: "/managed",
-            worktreeGitRoot: "/outside/repo",
-            reason: "cancel",
-            snapshotPolicy: "ephemeral",
+            ...removeRequest.request.input,
+            managedRoot: "/current-managed-root",
           },
         },
       }),
     ).toBe(false);
+  });
+
+  test("allows handoff from an old root into the current destination root", () => {
+    expect(
+      isCodexWorktreeWorkerHostMessage({
+        type: "request",
+        protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
+        id: "prepare-handoff:1",
+        request: {
+          operation: "prepare-handoff",
+          input: {
+            requestId: "prepare-handoff:1",
+            hostId: "local",
+            managedRoot: "/current-managed-root",
+            nodexHome: "/nodex-home",
+            projectId: "project-1",
+            threadId: "thread-1",
+            threadTitle: "Move task",
+            sourceCwd: "/old-managed-root/abcd/repo/packages/app",
+            sourceWorkspaceRoot: "/old-managed-root/abcd/repo",
+            sourceManagedWorktreePath: "/old-managed-root/abcd/repo",
+            destinationCheckoutRoot: null,
+          },
+        },
+      }),
+    ).toBe(true);
   });
 
   test("requires event and result operations to agree with their payload", () => {

@@ -233,6 +233,11 @@ early-event buffer. It does not acquire an application service. After readiness,
 Profile-scoped Main resource graph and builds the Core, Codex, Window, IPC, Browser, Terminal,
 worker, scheduler, updater, and notification Layers inside it. A required acquisition failure
 returns its Cause and rolls back every resource already acquired by that same Scope.
+Bootstrap fixes the selected Profile's settings path once. Runtime settings reads and mutations use
+that path through one serialized Profile-scoped owner; they never rediscover configuration from the
+current directory or OS home. Isolated development and Electron scenarios therefore keep their own
+Nodex and Agent homes while inheriting the launcher's normal HOME for Git, SSH, credential helpers,
+shells, and user tooling.
 The graph acquires canonical Window Session shells before Core opens the Store. Each shell is the
 final BrowserWindow and WebContents with restored bounds, native material, final preload, and an
 inline parser-time brand frame. Before authority acquisition, only bootstrap IPC exists and the

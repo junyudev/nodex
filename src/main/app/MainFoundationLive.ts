@@ -7,6 +7,8 @@ import * as ElectronIpc from "../platform/electron/ElectronIpc";
 import * as ElectronSessionHost from "../platform/electron/ElectronSessionHost";
 import * as ElectronWindowHost from "../platform/electron/ElectronWindowHost";
 import * as BrowserProfileHelperNode from "../platform/node/BrowserProfileHelperNode";
+import * as ApplicationSettings from "../settings/ApplicationSettings";
+import * as ProfileAssets from "../local-store/ProfileAssets";
 import * as MainConfig from "./MainConfig";
 import * as MainCleanup from "./MainCleanup";
 import * as MainObservability from "./MainObservability";
@@ -26,6 +28,8 @@ export type MainFoundation =
   | ElectronSessionHost.ElectronSessionHost
   | ElectronWindowHost.ElectronWindowHost
   | BrowserProfileHelperPlatform
+  | ApplicationSettings.ApplicationSettings
+  | ProfileAssets.ProfileAssets
   | NodeServices.NodeServices;
 
 const electronPlatform = Layer.mergeAll(
@@ -47,5 +51,8 @@ export const make = (config: unknown): Layer.Layer<MainFoundation, MainConfig.Ma
     ScopedCallbackRuntime.layer,
     nodePlatform,
   );
-  return electronPlatform.pipe(Layer.provideMerge(base));
+  const profileServices = Layer.merge(ApplicationSettings.live, ProfileAssets.live).pipe(
+    Layer.provideMerge(base),
+  );
+  return electronPlatform.pipe(Layer.provideMerge(profileServices));
 };

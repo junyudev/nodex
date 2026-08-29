@@ -13,7 +13,7 @@ import {
 } from "../../../shared/preload-file-access";
 import { MainConfig } from "../../app/MainConfig";
 import { inspectClipboardPasteItems } from "../../clipboard-paste-inspector";
-import { resolveAssetPath } from "../../local-store/assets";
+import { ProfileAssets } from "../../local-store/ProfileAssets";
 import { resolveManagedBlobPath } from "../../local-store/managed-blob-path";
 import { captureMainException } from "../../observability/sentry-main";
 import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
@@ -24,10 +24,11 @@ import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 export const live: Layer.Layer<
   never,
   never,
-  ElectronClipboard | ElectronSyncIpc | MainConfig | WindowRuntime
+  ElectronClipboard | ElectronSyncIpc | MainConfig | ProfileAssets | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const assets = yield* ProfileAssets;
     const clipboard = yield* ElectronClipboard;
     const ipc = yield* ElectronSyncIpc;
     const windows = yield* WindowRuntime;
@@ -58,7 +59,7 @@ export const live: Layer.Layer<
           return;
         }
         const parsed = parseAssetSource(source);
-        event.returnValue = parsed ? resolveAssetPath(parsed.fileName) : null;
+        event.returnValue = parsed ? assets.resolveAssetPath(parsed.fileName) : null;
       } catch {
         event.returnValue = null;
       }

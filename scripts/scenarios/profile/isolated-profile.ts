@@ -28,6 +28,7 @@ export interface IsolatedProfile {
   readonly runId: string;
   readonly runRoot: string;
   readonly nodexHome: string;
+  readonly settingsPath: string;
   readonly codexHome: string;
   readonly initialProjectsDirectory: string;
   readonly artifactsDirectory: string;
@@ -106,6 +107,7 @@ const descriptorFrom = (
   runId: manifest.runId,
   runRoot,
   nodexHome: path.join(runRoot, ".nodex"),
+  settingsPath: path.join(runRoot, ".nodex/config.toml"),
   codexHome: path.join(runRoot, ".nodex/agent"),
   initialProjectsDirectory: path.join(runRoot, "workspace"),
   artifactsDirectory: path.join(runRoot, "artifacts"),

@@ -212,16 +212,42 @@ The Worktrees settings surface owns three Main-persisted preferences:
 - `Auto-delete limit`: an integer of at least one, defaulting to 15. The saved
   value remains when automatic deletion is disabled.
 
+Each execution host has exactly one current managed root. That root controls
+future creation and physical inventory discovery; changing it replaces the
+previous discovery root and does not create root history. Existing Chats keep
+their exact Core-owned execution locations, so inspection, restore, archive,
+handoff, and cleanup continue to target those paths after the current root
+changes. A legacy `worktree_known_roots` value is ignored and is removed on the
+next canonical worktree-settings write; Nodex neither scans nor deletes those
+paths implicitly.
+
+The surface queries one selected host at a time and defaults to Local. Local
+worktree and retention preferences are editable only while Local is selected.
+An enabled SSH host shows a read-only inventory and the managed root from that
+host's execution-host configuration; local preferences are never projected as
+remote settings.
+
 Disabling automatic deletion requires an explicit danger confirmation. The
 surface explains that disabling it transfers disk-usage management to the
 user, while enabling it prunes older managed worktrees only after snapshots
 make them restorable.
 
+One inventory refresh sends one worker request for the selected host's current
+root. The worker recognizes legacy four-hex allocation parents and current
+`YYMMDD-HHMM-xxxxxxxx` allocation directories. Unrelated and symlinked
+two-level directories are ignored. A correctly named entry remains visible
+when its Git metadata is missing or damaged; its source repository is unknown
+so the user can still identify and remove residue. A missing or unreadable root
+produces an empty inventory, while an unexpected host/worker failure uses the
+surface's retryable load failure.
+
 The inventory groups physical worktrees by source repository and lists every
-associated Chat. Permanent Project roots are excluded. Targeted deletion first
-archives the associated Chats without triggering per-Chat cleanup, then asks
-the lifecycle owner to remove the physical worktree once. The Chat records and
-execution locations remain available for inspection and restoration.
+associated Chat using a bounded bulk Core projection. Permanent Project roots
+are excluded. Targeted deletion first revalidates that exact host/path against
+a fresh physical inventory, archives the associated Chats without triggering
+per-Chat cleanup, then asks the lifecycle owner to remove the physical
+worktree once. The Chat records and execution locations remain available for
+inspection and restoration.
 
 ## Automatic retention
 
@@ -249,6 +275,11 @@ guard is active. Deletions use the required
 snapshot policy, are deduplicated by host and path, and run with bounded
 concurrency. One failure does not authorize bypassing protection for another
 candidate.
+
+Immediately before physical removal, retention recomputes the plan from the
+current settings, host inventories, lifecycle, automation, pending, newborn,
+and permanent-root facts. A changed limit, disappeared entry, or newly
+protected candidate therefore cannot be deleted from a stale plan.
 
 Scheduled automations use the same creation, owner, snapshot, cleanup, and
 retention lifecycle and the same host worker as interactive creation. A

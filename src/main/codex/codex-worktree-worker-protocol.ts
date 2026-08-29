@@ -110,10 +110,11 @@ export interface CodexWorktreeWorkerCreateResult {
   readonly shellEnvironment: CodexStoredShellEnvironment | null;
 }
 
-export interface CodexWorktreeWorkerPathInput extends CodexWorktreeWorkerRequestIdentity {
-  readonly managedRoot: string;
+export interface CodexWorktreeWorkerTargetInput extends CodexWorktreeWorkerRequestIdentity {
   readonly worktreeGitRoot: string;
 }
+
+export type CodexWorktreeWorkerPathInput = CodexWorktreeWorkerTargetInput;
 
 export interface CodexWorktreeWorkerListInput extends CodexWorktreeWorkerRequestIdentity {
   readonly managedRoot: string;
@@ -121,6 +122,7 @@ export interface CodexWorktreeWorkerListInput extends CodexWorktreeWorkerRequest
 
 export interface CodexWorktreeWorkerListEntry {
   readonly worktreeGitRoot: string;
+  /** Null means a named managed residue exists but its Git identity cannot be resolved. */
   readonly repositoryPath: string | null;
   readonly createdAtMs: number | null;
   readonly ownerThreadId: string | null;
@@ -236,7 +238,6 @@ export type CodexWorktreeWorkerPreparedHandoff =
     };
 
 export interface CodexWorktreeWorkerRollbackHandoffInput extends CodexWorktreeWorkerRequestIdentity {
-  readonly managedRoot: string;
   readonly prepared: CodexWorktreeWorkerPreparedHandoff;
 }
 
@@ -246,7 +247,6 @@ export interface CodexWorktreeWorkerRollbackHandoffResult {
 }
 
 export interface CodexWorktreeWorkerCleanupHandoffInput extends CodexWorktreeWorkerRequestIdentity {
-  readonly managedRoot: string;
   readonly prepared: CodexWorktreeWorkerPreparedHandoff;
   readonly outcome: "committed" | "rolled-back";
 }

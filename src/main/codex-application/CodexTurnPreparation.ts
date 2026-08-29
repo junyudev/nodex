@@ -30,7 +30,7 @@ import type {
   CodexSteerTurnInput,
 } from "../../shared/types";
 import type { CodexCanonicalSteeringUserMessageItem } from "../../shared/codex-conversation-state/codex-conversation-state";
-import { resolveAssetPath } from "../local-store/assets";
+import { ProfileAssets } from "../local-store/ProfileAssets";
 import { buildTurnPermissionOverrides } from "../codex/codex-permission-resolver";
 import { AgentProviderRuntime } from "./AgentProviderRuntime";
 import { CodexAttachments } from "./CodexAttachments";
@@ -146,7 +146,10 @@ const parseEffort = (value: string): CodexReasoningEffort | null => {
   return normalized;
 };
 
-const imageInput = (source: string): TurnStartParams["input"][number] => {
+const imageInput = (
+  source: string,
+  resolveAssetPath: (fileName: string) => string,
+): TurnStartParams["input"][number] => {
   const normalized = source.trim();
   if (
     normalized.startsWith("http://") ||
@@ -189,6 +192,7 @@ export const make: Effect.Effect<
   | CodexPreferences
   | CodexThreadSettingsRuntime
   | ComposerCatalog
+  | ProfileAssets
 > = Effect.gen(function* () {
   const agentProviders = yield* AgentProviderRuntime;
   const attachments = yield* CodexAttachments;
@@ -198,6 +202,7 @@ export const make: Effect.Effect<
   const preferences = yield* CodexPreferences;
   const threadSettings = yield* CodexThreadSettingsRuntime;
   const composerCatalog = yield* ComposerCatalog;
+  const assets = yield* ProfileAssets;
 
   const resolveAgentConfigOverrides = Effect.fn("CodexTurnPreparation.agentConfigOverrides")(
     function* (
@@ -258,7 +263,9 @@ export const make: Effect.Effect<
     const prepared = preparedInput
       ? preparedInput
       : yield* Effect.tryPromise(() =>
-          prepareCodexPrompt(prompt, promptInput, { resolveImageInput: imageInput }),
+          prepareCodexPrompt(prompt, promptInput, {
+            resolveImageInput: (source) => imageInput(source, assets.resolveAssetPath),
+          }),
         );
     const overrides = yield* resolveAgentConfigOverrides(
       prepared.agentConfigs,

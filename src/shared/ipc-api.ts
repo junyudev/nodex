@@ -1895,7 +1895,7 @@ export interface IpcApi {
     ];
     result: ProtocolDynamicToolCallResponse | null;
   };
-  "worktrees:list": { args: []; result: ManagedWorktreeRecord[] };
+  "worktrees:list": { args: [hostId: string]; result: ManagedWorktreeRecord[] };
   "worktrees:settings:get": { args: []; result: ManagedWorktreeSettings };
   "worktrees:settings:update": {
     args: [input: UpdateManagedWorktreeSettingsInput];

@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   inspectManagedWorktree,
+  isCurrentManagedWorktreeDirectory,
+  isLegacyManagedWorktreeParent,
   listManagedWorktreesOnHost,
   removeRetainedManagedWorktree,
   resolveManagedWorktreeId,
@@ -48,13 +50,20 @@ function snapshotInput(input: Awaited<ReturnType<typeof fixture>>) {
   return {
     requestId: "snapshot:1",
     hostId: "local",
-    managedRoot: input.managedRoot,
     worktreeGitRoot: input.worktreeGitRoot,
     reason: "archive" as const,
   };
 }
 
 describe("managed worktree data-safety effects", () => {
+  test("recognizes only the two supported allocation layouts", () => {
+    expect(isLegacyManagedWorktreeParent("a1B2")).toBe(true);
+    expect(isLegacyManagedWorktreeParent("a1b23")).toBe(false);
+    expect(isCurrentManagedWorktreeDirectory("260829-1430-a1B2c3D4")).toBe(true);
+    expect(isCurrentManagedWorktreeDirectory("20260829-1430-a1b2c3d4")).toBe(false);
+    expect(isCurrentManagedWorktreeDirectory("260829-143-a1b2c3d4")).toBe(false);
+  });
+
   test("snapshots the final materialized tree without mutating the real index", async () => {
     const input = await fixture();
     await writeFile(path.join(input.worktreeGitRoot, "tracked.txt"), "working tree\n");
@@ -106,7 +115,6 @@ describe("managed worktree data-safety effects", () => {
     const snapshot = await snapshotManagedWorktree({
       requestId: "snapshot:unborn",
       hostId: "local",
-      managedRoot,
       worktreeGitRoot,
       reason: "archive",
     });
@@ -138,7 +146,6 @@ describe("managed worktree data-safety effects", () => {
     const inspectionInput = {
       requestId: "inspect:1",
       hostId: "local",
-      managedRoot: input.managedRoot,
       worktreeGitRoot: input.worktreeGitRoot,
       cwd: nestedCwd,
       candidateRepositoryPaths: [input.repositoryPath],
@@ -254,11 +261,16 @@ describe("managed worktree data-safety effects", () => {
     ).toContain(resolveManagedWorktreeSnapshotRef(failing.worktreeGitRoot));
   });
 
-  test("lists only contained two-level managed worktrees", async () => {
+  test("lists only supported two-level layouts and retains unresolved residue", async () => {
     const input = await fixture();
     await mkdir(path.join(input.managedRoot, "token", "not-a-repository"), {
       recursive: true,
     });
+    const legacyResidue = path.join(input.managedRoot, "c0de", "damaged");
+    const currentResidue = path.join(input.managedRoot, "bucket", "260829-1430-a1b2c3d4");
+    await mkdir(legacyResidue, { recursive: true });
+    await mkdir(currentResidue, { recursive: true });
+    await symlink(legacyResidue, path.join(input.managedRoot, "c0de", "linked-residue"), "dir");
     const result = await listManagedWorktreesOnHost({
       requestId: "list:1",
       hostId: "local",
@@ -272,8 +284,43 @@ describe("managed worktree data-safety effects", () => {
           ownerThreadId: null,
           ownerReadFailed: false,
         }),
+        expect.objectContaining({ worktreeGitRoot: legacyResidue, repositoryPath: null }),
+        expect.objectContaining({ worktreeGitRoot: currentResidue, repositoryPath: null }),
       ]),
     );
+    expect(result.entries).toHaveLength(3);
+  });
+
+  test("removes an exact unresolved residue under best-effort policy", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "nodex-managed-residue-remove-"));
+    roots.push(root);
+    const worktreeGitRoot = path.join(root, "bucket", "260829-1234-deadbeef");
+    await mkdir(worktreeGitRoot, { recursive: true });
+    await writeFile(path.join(worktreeGitRoot, "partial.txt"), "incomplete creation");
+
+    const result = await removeRetainedManagedWorktree({
+      requestId: "remove-residue",
+      hostId: "local",
+      worktreeGitRoot,
+      reason: "settings-delete",
+      snapshotPolicy: "best-effort",
+    });
+
+    expect(result.removed).toBe(true);
+    expect(result.alreadyMissing).toBe(false);
+    expect(result.snapshot).toBeNull();
+    expect(result.warnings.length).toBeGreaterThan(0);
+    await expect(statDirectory(worktreeGitRoot)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("treats a missing current root as an empty inventory", async () => {
+    await expect(
+      listManagedWorktreesOnHost({
+        requestId: "list:missing",
+        hostId: "local",
+        managedRoot: path.join(tmpdir(), `missing-managed-${crypto.randomUUID()}`),
+      }),
+    ).resolves.toEqual({ entries: [] });
   });
 });
 

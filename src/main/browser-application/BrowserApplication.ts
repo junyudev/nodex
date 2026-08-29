@@ -4,6 +4,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import { ProfileAssets } from "../local-store/ProfileAssets";
 import type {
   BrowserBrowsingDataClearResult,
   BrowserBrowsingDataKind,
@@ -196,12 +197,13 @@ export const live = (
 ): Layer.Layer<
   BrowserApplication,
   BrowserApplicationError,
-  BrowserSiteStatusRuntime | ElectronNet | FileSystem.FileSystem
+  BrowserSiteStatusRuntime | ElectronNet | FileSystem.FileSystem | ProfileAssets
 > =>
   Layer.effect(
     BrowserApplication,
     Effect.gen(function* () {
       const siteStatus = yield* BrowserSiteStatusRuntime;
+      const assets = yield* ProfileAssets;
       const electronNet = yield* ElectronNet;
       const events = yield* makeBrowserSidebarEventHub;
       const earlyPageRestores =
@@ -242,6 +244,7 @@ export const live = (
         pageStore: pages,
         runtimeRegistry,
         siteStatus,
+        saveBrowserImage: assets.saveUploadedImage,
         webContentsListeners,
       });
 
