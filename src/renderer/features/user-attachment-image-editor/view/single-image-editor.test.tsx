@@ -1,9 +1,10 @@
 import { act } from "react";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { fireEvent, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "../../../test/browser-globals";
 import { renderWithMaitai, settleAsyncRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
+import { IMAGE_REMOVE_BACKGROUND_PROMPT } from "../model/image-edit-submission";
 import type { EditableImageDescriptor, ImageEditSubmissionIntent } from "../model/types";
 import { SingleImageEditor } from "./single-image-editor";
 
@@ -98,6 +99,55 @@ describe("SingleImageEditor", () => {
       mode: "resize",
       promptRaw: "Make the aspect ratio 9:16",
     });
+  });
+
+  test("submits Remove BG immediately with its own pending state and the original image", async () => {
+    let resolveSubmission: ((submitted: boolean) => void) | undefined;
+    const submission = new Promise<boolean>((resolve) => {
+      resolveSubmission = resolve;
+    });
+    const onSubmitIntent = vi.fn<(intent: ImageEditSubmissionIntent) => Promise<boolean>>(
+      () => submission,
+    );
+    const image: EditableImageDescriptor = {
+      id: "uploaded-image",
+      alt: "Uploaded reference",
+      attachmentSrc: IMAGE_SRC,
+      source: "uploaded",
+      src: IMAGE_SRC,
+    };
+    const view = renderEditor(image, onSubmitIntent);
+    const removeBackground = await view.findByRole("button", { name: "Remove BG" });
+    const erase = view.getByRole("button", { name: "Erase" });
+    const resize = view.getByRole("button", { name: "Resize" });
+    expect(
+      within(view.getByRole("toolbar", { name: "Image tools" }))
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent),
+    ).toEqual(["Comment", "Remove BG", "Erase", "Resize"]);
+
+    await act(async () => {
+      fireEvent.click(removeBackground);
+      await Promise.resolve();
+    });
+
+    expect(onSubmitIntent).toHaveBeenCalledOnce();
+    expect(onSubmitIntent.mock.calls[0]?.[0]).toMatchObject({
+      attachmentIds: ["uploaded-image"],
+      attachments: [{ image, role: "original" }],
+      mode: "remove_background",
+      promptRaw: IMAGE_REMOVE_BACKGROUND_PROMPT,
+    });
+    expect(removeBackground.getAttribute("aria-busy")).toBe("true");
+    expect(resize.getAttribute("aria-busy")).toBeNull();
+    expect((erase as HTMLButtonElement).disabled).toBe(true);
+    expect((resize as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      resolveSubmission?.(true);
+      await submission;
+    });
+    await waitFor(() => expect(removeBackground.getAttribute("aria-busy")).toBeNull());
   });
 
   test("uses the generated-image loading field without exposing zoom", () => {

@@ -17,11 +17,13 @@ Nodex gives uploaded and generated images one shared preview and editing system.
 
 ## Focused image tools
 
-The focused view has Comment, Remove, and Resize. At container widths up to 630px labels become visually hidden, and at 450px or below the edit pill is hidden. Images fit without enlarging past natural size. Manual zoom offers 25%, 50%, 100%, 150%, and 200% plus continuous 10–400% Ctrl-wheel or pinch zoom with a stable anchor. Overflowed images pan with a captured non-touch pointer. Zoom-anchor correction and pointer pan are normalized by the current application-window zoom. In a full-width generated view, the image center accounts for half of the 72px rail reserve and mirrors that inline offset in RTL.
+The focused view has Comment, Remove BG, Erase, and Resize. At container widths up to 630px labels become visually hidden, and at 450px or below the edit pill is hidden. Images fit without enlarging past natural size. Manual zoom offers 25%, 50%, 100%, 150%, and 200% plus continuous 10–400% Ctrl-wheel or pinch zoom with a stable anchor. Overflowed images pan with a captured non-touch pointer. Zoom-anchor correction and pointer pan are normalized by the current application-window zoom. In a full-width generated view, the image center accounts for half of the 72px rail reserve and mirrors that inline offset in RTL.
 
 Comment mode normalizes marker coordinates. New comments save with Enter; existing comments save with Cmd/Ctrl+Enter and support Delete, Cancel, and Escape. Composer-owned comments serialize immediately before submission as ordered `Image N` instructions with locale-formatted percentage coordinates. General text is appended as `Additional instructions`.
 
-Remove mode draws a natural-image-size canvas with a 5–130 brush slider, default 70, pointer capture, undo, redo, and cancel. Send constructs a black PNG with white strokes and submits original plus mask with `Remove the area marked in the second image from the first image`.
+Remove BG is an immediate original-only image edit. It submits `Remove the background from this image. Keep all foreground subjects unchanged and fully intact, with clean, smooth edges. Make the background transparent.` through the normal image-edit lane, without a local segmentation step, confirmation surface, or mask attachment. Its pending indicator belongs only to that action while the other focused tools remain locked.
+
+Erase mode draws a natural-image-size canvas with a 5–130 brush slider, default 70, pointer capture, undo, redo, and cancel. Send constructs a black PNG with white strokes and submits original plus mask with `Remove the area marked in the second image from the first image`.
 
 Resize offers Square 1:1, Portrait 3:4, Story 9:16, Landscape 4:3, and Widescreen 16:9. Selection submits the original with `Make the aspect ratio {ratio}`.
 
@@ -31,7 +33,7 @@ The mounted root or side Composer is the single writable owner for image-edit se
 
 New Chat, projectless tasks, Project tasks, and idle existing tasks use the normal Composer send boundary. The first edit from New Chat creates the task with the current run context; an edit sent during an active turn enters the ordinary queued-follow-up lane and is never steered. When no matching Composer is mounted, only an existing task may use the bounded direct-thread fallback. Failure preserves the editor and Composer drafts.
 
-Remove submits the original followed by a newly generated `image-mask.png`; Resize submits the original; comments submit their referenced images in display order; Multi-select submits the selected generated images. The Composer reuses an existing original attachment by id instead of rebuilding it from an editor display URL. Every path compiles to standard image or local-image prompt inputs. Image-input capability and asset-read failures are reported before transport rather than creating an empty or punctuation-only attachment.
+Erase submits the original followed by a newly generated `image-mask.png`; Remove BG and Resize submit the original only; comments submit their referenced images in display order; Multi-select submits the selected generated images. The Composer reuses an existing original attachment by id instead of rebuilding it from an editor display URL. Every path compiles to standard image or local-image prompt inputs. Image-input capability and asset-read failures are reported before transport rather than creating an empty or punctuation-only attachment.
 
 ## Generated-image Canvas
 
@@ -55,4 +57,4 @@ Trusted local images replace the standalone download icon with an `Open` split c
 
 Loading, failed, retrying, downloading, pinning, and submitting states belong to the nearest surface. Failed resolution offers Retry where reversible. Submission errors preserve comments, mask history, and selection. Capability rejection leaves tools inactive and reports the failure without creating partial draft state. Editor Send actions use the dedicated blue accent-action treatment with a light foreground in both themes and stable disabled/loading geometry.
 
-Interactive images, toolbars, view toggles, markers, menus, downloads, and retry controls have accessible names. `aria-pressed` communicates selection. Arrow keys navigate lightboxes and the rail. Escape first cancels the innermost comment editor, then exits the active Comment/Remove/Multi-select tool, and finally closes dialogs at the outer layer. Reduced-motion users receive immediate view switching and static loading affordances.
+Interactive images, toolbars, view toggles, markers, menus, downloads, and retry controls have accessible names. `aria-pressed` communicates selection. Arrow keys navigate lightboxes and the rail. Escape first cancels the innermost comment editor, then exits the active Comment/Erase/Multi-select tool, and finally closes dialogs at the outer layer. Reduced-motion users receive immediate view switching and static loading affordances.

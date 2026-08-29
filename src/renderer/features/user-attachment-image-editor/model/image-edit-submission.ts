@@ -13,6 +13,9 @@ import type {
 export const IMAGE_REMOVE_PROMPT =
   "Remove the area marked in the second image from the first image";
 
+export const IMAGE_REMOVE_BACKGROUND_PROMPT =
+  "Remove the background from this image. Keep all foreground subjects unchanged and fully intact, with clean, smooth edges. Make the background transparent.";
+
 export const IMAGE_ASPECT_RATIO_OPTIONS: readonly {
   label: "Square" | "Portrait" | "Story" | "Landscape" | "Widescreen";
   ratio: ImageAspectRatio;
@@ -82,6 +85,22 @@ export function buildResizeSubmissionIntent(args: {
     entrypoint: args.entrypoint,
     mode: "resize",
     promptRaw: buildImageResizePrompt(args.aspectRatio),
+  });
+}
+
+export function buildRemoveBackgroundSubmissionIntent(args: {
+  entrypoint: ImagePreviewEntrypoint;
+  image: EditableImageDescriptor;
+}): ImageEditSubmissionIntent {
+  return createImageEditSubmissionIntent({
+    analytics: {
+      hasGeneralInstruction: false,
+      selectedImageCount: 1,
+    },
+    attachments: [createAttachmentInput(args.image, "original")],
+    entrypoint: args.entrypoint,
+    mode: "remove_background",
+    promptRaw: IMAGE_REMOVE_BACKGROUND_PROMPT,
   });
 }
 

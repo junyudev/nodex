@@ -11,7 +11,7 @@ export type ImageSourceClassification = "uploaded" | "generated";
 export type ImageEditorView = "single" | "playground";
 export type SingleImageTool = "navigate" | "comment" | "remove";
 export type PlaygroundTool = "navigate" | "comment" | "select";
-export type ImageEditMode = "comment" | "remove" | "resize" | "select";
+export type ImageEditMode = "comment" | "remove" | "remove_background" | "resize" | "select";
 export type ImageAspectRatio = "1:1" | "3:4" | "9:16" | "4:3" | "16:9";
 
 /** Stable, serializable identity for the mounted Composer that owns image edits. */

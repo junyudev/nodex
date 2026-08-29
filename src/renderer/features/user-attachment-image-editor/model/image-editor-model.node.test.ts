@@ -17,9 +17,11 @@ import {
 } from "./generated-image-canvas-presentation";
 import {
   IMAGE_ASPECT_RATIO_OPTIONS,
+  IMAGE_REMOVE_BACKGROUND_PROMPT,
   IMAGE_REMOVE_PROMPT,
   buildCommentSubmissionIntent,
   buildImageResizePrompt,
+  buildRemoveBackgroundSubmissionIntent,
   buildRemoveSubmissionIntent,
   buildResizeSubmissionIntent,
   buildSelectionSubmissionIntent,
@@ -704,6 +706,28 @@ describe("image-edit submission intents", () => {
     expect(intent.attachmentIds).toEqual(["original-attachment", "mask-attachment"]);
     expect(intent.attachments.map((attachment) => attachment.role)).toEqual(["original", "mask"]);
     expect(intent.analytics.selectedImageCount).toBe(1);
+  });
+
+  test("removes the background with one original and the exact transformation instruction", () => {
+    const image = makeImage("original");
+    const intent = buildRemoveBackgroundSubmissionIntent({
+      entrypoint: "image_click",
+      image,
+    });
+
+    expect(intent).toMatchObject({
+      analytics: {
+        hasGeneralInstruction: false,
+        selectedImageCount: 1,
+      },
+      attachmentIds: ["original-attachment"],
+      attachments: [{ image, role: "original" }],
+      entrypoint: "image_click",
+      isImageEditFollowUp: true,
+      mode: "remove_background",
+      promptRaw: IMAGE_REMOVE_BACKGROUND_PROMPT,
+      queuePolicy: "queue-while-active",
+    });
   });
 
   test("retains original image numbering and attachments when only later images have comments", () => {

@@ -5,7 +5,8 @@ import {
   FolderOpenIcon,
   ImageEditorTabIcon,
   ImageCommentIcon,
-  ImageRemoveIcon,
+  ImageEraseIcon,
+  ImageRemoveBackgroundIcon,
   ImageResizeIcon,
   LandscapeAspectRatioIcon,
   LoadingIcon,
@@ -28,6 +29,7 @@ import {
 import { useResolvedImageAsset } from "../adapters/use-resolved-image-asset";
 import {
   buildCommentSubmissionIntent,
+  buildRemoveBackgroundSubmissionIntent,
   buildRemoveSubmissionIntent,
   buildResizeSubmissionIntent,
   IMAGE_ASPECT_RATIO_OPTIONS,
@@ -54,6 +56,10 @@ const ASPECT_RATIO_ICONS = {
   "4:3": LandscapeAspectRatioIcon,
   "16:9": WidescreenAspectRatioIcon,
 } satisfies Record<ImageAspectRatio, typeof SquareAspectRatioIcon>;
+
+const IMAGE_TOOL_BUTTON_CLASS = "!h-9 !gap-1.5 !rounded-full !px-2 !py-0 !text-sm !leading-5";
+
+type ImmediateImageEditAction = "remove_background" | "resize";
 
 export interface SingleImageEditorProps {
   comments: readonly ImageComment[];
@@ -199,13 +205,15 @@ export function SingleImageEditor({
   const [manualZoomPercent, setManualZoomPercent] = useState<number | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [descriptorRetryRequested, setDescriptorRetryRequested] = useState(false);
+  const [pendingAction, setPendingAction] = useState<ImmediateImageEditAction | null>(null);
   const displaySrc = asset.previewSrc;
   const isLoading = image.loading === true || asset.isLoading;
   const hasError =
     (image.error != null && !descriptorRetryRequested) ||
     asset.isError ||
     (!isLoading && !displaySrc);
-  const canEdit = !isLoading && !hasError && displaySrc !== null && !isSubmitting;
+  const canEdit =
+    !isLoading && !hasError && displaySrc !== null && !isSubmitting && pendingAction === null;
 
   const selectTool = (tool: SingleImageTool) => {
     setUncontrolledTool(tool);
@@ -246,6 +254,19 @@ export function SingleImageEditor({
     const submitted = await onSubmitIntent(intent);
     if (submitted) selectTool(nextTool);
     return submitted;
+  };
+
+  const submitImmediateIntent = async (
+    action: ImmediateImageEditAction,
+    intent: ImageEditSubmissionIntent,
+  ): Promise<boolean> => {
+    if (pendingAction !== null) return false;
+    setPendingAction(action);
+    try {
+      return await submitAndExit(intent);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   const handleDownload = async () => {
@@ -311,26 +332,54 @@ export function SingleImageEditor({
     >
       {activeTool !== "remove" && activeTool !== "comment" ? (
         <div className="relative flex shrink-0 justify-center gap-2 px-4 pt-2">
-          <ImageEditorToolbarPill className="[@container_(max-width:450px)]:hidden">
+          <ImageEditorToolbarPill
+            ariaLabel="Image tools"
+            variant="imageTools"
+            className="[@container_(max-width:450px)]:hidden"
+          >
             <NodexButton
               variant="ghost"
               size="composer"
               disabled={!canEdit}
-              className="!h-token-button-composer-sm !gap-1 !rounded-full !px-2 !text-base"
+              className={IMAGE_TOOL_BUTTON_CLASS}
               onClick={() => selectTool("comment")}
             >
-              <ImageCommentIcon aria-hidden="true" className="icon-xs" />
+              <ImageCommentIcon aria-hidden="true" className="icon-sm" />
               <span className="[@container_(max-width:630px)]:sr-only">Comment</span>
             </NodexButton>
             <NodexButton
               variant="ghost"
               size="composer"
               disabled={!canEdit}
-              className="!h-token-button-composer-sm !gap-1 !rounded-full !px-2 !text-base"
+              aria-label="Remove BG"
+              aria-busy={pendingAction === "remove_background" || undefined}
+              className={IMAGE_TOOL_BUTTON_CLASS}
+              onClick={() =>
+                void submitImmediateIntent(
+                  "remove_background",
+                  buildRemoveBackgroundSubmissionIntent({
+                    entrypoint,
+                    image,
+                  }),
+                )
+              }
+            >
+              {pendingAction === "remove_background" ? (
+                <LoadingIcon aria-hidden="true" className="icon-xxs animate-spin" />
+              ) : (
+                <ImageRemoveBackgroundIcon aria-hidden="true" className="icon-sm" />
+              )}
+              <span className="[@container_(max-width:630px)]:sr-only">Remove BG</span>
+            </NodexButton>
+            <NodexButton
+              variant="ghost"
+              size="composer"
+              disabled={!canEdit}
+              className={IMAGE_TOOL_BUTTON_CLASS}
               onClick={() => selectTool("remove")}
             >
-              <ImageRemoveIcon aria-hidden="true" className="icon-xs" />
-              <span className="[@container_(max-width:630px)]:sr-only">Remove</span>
+              <ImageEraseIcon aria-hidden="true" className="icon-sm" />
+              <span className="[@container_(max-width:630px)]:sr-only">Erase</span>
             </NodexButton>
             <NodexDropdownMenu
               align="center"
@@ -343,8 +392,8 @@ export function SingleImageEditor({
                   size="composer"
                   disabled={!canEdit}
                   aria-label="Resize"
-                  aria-busy={isSubmitting || undefined}
-                  className="!h-token-button-composer-sm !gap-1 !rounded-full !px-2 !text-base"
+                  aria-busy={pendingAction === "resize" || undefined}
+                  className={IMAGE_TOOL_BUTTON_CLASS}
                   onClick={() =>
                     trackImageToolOpen({
                       imageSource: image.source,
@@ -353,8 +402,8 @@ export function SingleImageEditor({
                     })
                   }
                 >
-                  {isSubmitting ? (
-                    <LoadingIcon aria-hidden="true" className="icon-sm animate-spin" />
+                  {pendingAction === "resize" ? (
+                    <LoadingIcon aria-hidden="true" className="icon-xxs animate-spin" />
                   ) : (
                     <ImageResizeIcon aria-hidden="true" className="icon-sm" />
                   )}
@@ -369,7 +418,8 @@ export function SingleImageEditor({
                     key={ratio}
                     leftSlot={<Icon aria-hidden="true" className="icon-sm" />}
                     onSelect={() =>
-                      void submitAndExit(
+                      void submitImmediateIntent(
+                        "resize",
                         buildResizeSubmissionIntent({
                           aspectRatio: ratio,
                           entrypoint,
@@ -401,6 +451,7 @@ export function SingleImageEditor({
               commentCount={comments.length}
               emptyMessage="Click on the image to add comments"
               isSubmitting={isSubmitting}
+              variant="imageTools"
               onCancel={() => {
                 onCommentsChange([]);
                 selectTool("navigate");

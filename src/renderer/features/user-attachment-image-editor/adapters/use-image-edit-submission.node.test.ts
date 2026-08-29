@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import { buildRemoveSubmissionIntent } from "../model/image-edit-submission";
+import {
+  buildRemoveBackgroundSubmissionIntent,
+  buildRemoveSubmissionIntent,
+  IMAGE_REMOVE_BACKGROUND_PROMPT,
+} from "../model/image-edit-submission";
 import type { EditableImageDescriptor } from "../model/types";
 import { compileImageEditPromptInput } from "./use-image-edit-submission";
 
@@ -13,6 +17,29 @@ const MASK: EditableImageDescriptor = {
 };
 
 describe("direct image edit prompt compilation", () => {
+  test("compiles background removal as an original-only image edit", () => {
+    const original: EditableImageDescriptor = {
+      id: "original",
+      alt: "Original",
+      attachmentSrc: "data:image/png;base64,b3JpZ2luYWw=",
+      dataUrl: "data:image/png;base64,b3JpZ2luYWw=",
+      source: "uploaded",
+      src: "data:image/png;base64,b3JpZ2luYWw=",
+    };
+
+    expect(
+      compileImageEditPromptInput(
+        buildRemoveBackgroundSubmissionIntent({
+          entrypoint: "image_click",
+          image: original,
+        }),
+      ),
+    ).toEqual({
+      text: IMAGE_REMOVE_BACKGROUND_PROMPT,
+      images: [{ source: original.dataUrl }],
+    });
+  });
+
   test("ignores a mislabeled dataUrl and keeps the canonical managed source", () => {
     const original: EditableImageDescriptor = {
       id: "managed",

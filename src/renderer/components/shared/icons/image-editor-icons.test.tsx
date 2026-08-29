@@ -14,8 +14,10 @@ import {
   ImageCommentMarkerShape,
   ImageCommentIcon,
   ImageEditorTabIcon,
+  ImageEraseIcon,
   ImageMultiSelectIcon,
   ImageRedoIcon,
+  ImageRemoveBackgroundIcon,
   ImageRemoveBrushTrackShape,
   ImageRemoveIcon,
   ImageUndoIcon,
@@ -70,9 +72,11 @@ describe("image-editor semantic icons", () => {
     expect(canvasSvg?.querySelectorAll("path")).toHaveLength(4);
   });
 
-  test("renders tab, comment, remove, resize, history, and selection identities", () => {
+  test("renders tab, comment, erase, background, resize, history, and selection identities", () => {
     const tab = render(<ImageEditorTabIcon />).container.querySelector("svg");
     const comment = render(<ImageCommentIcon />).container.querySelector("svg");
+    const erase = render(<ImageEraseIcon />).container.querySelector("svg");
+    const removeBackground = render(<ImageRemoveBackgroundIcon />).container.querySelector("svg");
     const remove = render(<ImageRemoveIcon />).container.querySelector("svg");
     const resize = render(<ImageResizeIcon />).container.querySelector("svg");
     const undo = render(<ImageUndoIcon />).container.querySelector("svg");
@@ -82,6 +86,13 @@ describe("image-editor semantic icons", () => {
     expect(tab?.getAttribute("viewBox")).toBe("0 0 24 24");
     expect(tab?.querySelectorAll("path")).toHaveLength(3);
     expect(comment?.querySelectorAll("path")).toHaveLength(2);
+    expect(erase?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(erase?.querySelector("path")?.getAttribute("fill-rule")).toBe("evenodd");
+    expect(removeBackground?.getAttribute("viewBox")).toBe("0 0 20 20");
+    expect(removeBackground?.querySelector("path")?.getAttribute("fill-rule")).toBe("evenodd");
+    expect(removeBackground?.querySelector("path")?.getAttribute("d")).not.toBe(
+      erase?.querySelector("path")?.getAttribute("d"),
+    );
     expect(remove?.querySelector("path")?.getAttribute("transform")).toBe(
       "translate(2 2) scale(1.25)",
     );
