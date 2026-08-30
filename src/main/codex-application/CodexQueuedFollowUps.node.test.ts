@@ -11,7 +11,10 @@ import type {
   CodexQueuedFollowUp,
   CodexSteerTurnInput,
 } from "../../shared/types";
-import { CODEX_INTERRUPTED_STEER_REASON } from "../../shared/codex-queued-follow-up-state";
+import {
+  CODEX_ENDED_STEER_REASON,
+  CODEX_INTERRUPTED_STEER_REASON,
+} from "../../shared/codex-queued-follow-up-state";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { RendererClientRuntime } from "../host-runtime/RendererClientRuntime";
 import { CodexConversationProjection } from "./CodexConversationProjection";
@@ -133,6 +136,7 @@ const makeHarness = (
   } = {},
 ) =>
   Effect.gen(function* () {
+    let activeTurnId = options.activeTurnId ?? null;
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(conversationEntityMapLive, scope);
     const conversations = Context.get(context, ConversationEntityMap);
@@ -160,7 +164,7 @@ const makeHarness = (
     const projection = CodexConversationProjection.of({
       read: () =>
         Effect.succeed({
-          canonical: canonical(options.activeTurnId ?? null),
+          canonical: canonical(activeTurnId),
           snapshot: conversations.current(threadId)?.readSnapshot() ?? null,
         }),
     } as unknown as CodexConversationProjection["Service"]);
@@ -174,7 +178,14 @@ const makeHarness = (
       Effect.provideService(ConversationEntityMap, conversations),
       Effect.provideService(Scope.Scope, scope),
     );
-    return { conversations, queued, scope };
+    return {
+      conversations,
+      queued,
+      scope,
+      setActiveTurnId: (turnId: string | null) => {
+        activeTurnId = turnId;
+      },
+    };
   });
 
 const emptyState = (): DurableTestState => ({
@@ -417,6 +428,55 @@ it.effect("freezes recovered steers and pauses every unfailed row in one termina
         ["already queued", "interrupted"],
       ],
     );
+    assert.strictEqual(state.ledger.entries.length, 2);
+    yield* close(harness.scope);
+  }),
+);
+
+it.effect("keeps a steer that loses the terminal race as a failed queue head", () =>
+  Effect.gen(function* () {
+    const state = emptyState();
+    let submissions = 0;
+    const harness = yield* makeHarness(state, {
+      activeTurnId: "turn-active",
+      submit: () =>
+        Effect.sync(() => {
+          submissions += 1;
+        }),
+    });
+    yield* harness.queued.enqueue({ threadId, prompt: "already queued" });
+    const recovered: CodexQueuedFollowUp = {
+      followUpId: "follow-up-final-response-race",
+      clientUserMessageId: "client-final-response-race",
+      threadId,
+      prompt: "steer during the final response",
+      promptInput: { text: "steer during the final response" },
+      createdAtMs: 1,
+      collaborationMode: null,
+      serviceTier: null,
+      summary: null,
+      pause: null,
+      payloadRef: null,
+    };
+
+    yield* harness.queued.acceptTerminalOutcomeInCurrentLane({
+      threadId,
+      rows: [recovered],
+      interrupted: false,
+    });
+    harness.setActiveTurnId(null);
+    yield* harness.queued.requestDispatch(threadId);
+    yield* Effect.yieldNow;
+
+    const projection = harness.conversations.current(threadId)?.readQueuedFollowUpProjection();
+    assert.deepEqual(
+      projection?.entries.map((entry) => [entry.prompt, entry.pause]),
+      [
+        ["steer during the final response", { kind: "failed", reason: CODEX_ENDED_STEER_REASON }],
+        ["already queued", null],
+      ],
+    );
+    assert.strictEqual(submissions, 0);
     assert.strictEqual(state.ledger.entries.length, 2);
     yield* close(harness.scope);
   }),

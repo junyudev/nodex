@@ -225,7 +225,7 @@ describe("Codex 30751 turn lifecycle", () => {
     expect(result.disposition).toBe("missingTurn");
   });
 
-  test("removes pending steers and emits their complete recovery rows once in canonical order", () => {
+  test("removes pending steers and emits their terminal recovery rows once in canonical order", () => {
     const started = reduceCodexConversationTurnLifecycle(appendPlaceholder(), {
       conversationId: THREAD_ID,
       method: "turn/started",
@@ -274,35 +274,37 @@ describe("Codex 30751 turn lifecycle", () => {
         },
       ],
     };
-    const update = {
-      conversationId: THREAD_ID,
-      method: "turn/completed" as const,
-      observedAtMs: 120,
-      turn: {
-        id: "turn-1",
-        status: "interrupted" as const,
-        error: null,
-        startedAt: null,
-        completedAt: 1,
-        durationMs: 20,
-      },
-    };
+    for (const terminalStatus of ["completed", "interrupted"] as const) {
+      const update = {
+        conversationId: THREAD_ID,
+        method: "turn/completed" as const,
+        observedAtMs: 120,
+        turn: {
+          id: "turn-1",
+          status: terminalStatus,
+          error: null,
+          startedAt: null,
+          completedAt: 1,
+          durationMs: 20,
+        },
+      };
 
-    const completed = reduceCodexConversationTurnLifecycle(state, update);
-    expect(completed.effects).toEqual([
-      {
-        type: "restoreUnacceptedSteers",
-        terminalStatus: "interrupted",
-        rows: [
-          expect.objectContaining({ followUpId: "follow-up-first" }),
-          expect.objectContaining({ followUpId: "follow-up-second" }),
-        ],
-      },
-    ]);
-    expect(completed.state.turns[0]?.items.map((item) => item.id)).toEqual(["accepted"]);
+      const completed = reduceCodexConversationTurnLifecycle(state, update);
+      expect(completed.effects).toEqual([
+        {
+          type: "restoreUnacceptedSteers",
+          terminalStatus,
+          rows: [
+            expect.objectContaining({ followUpId: "follow-up-first" }),
+            expect.objectContaining({ followUpId: "follow-up-second" }),
+          ],
+        },
+      ]);
+      expect(completed.state.turns[0]?.items.map((item) => item.id)).toEqual(["accepted"]);
 
-    const replay = reduceCodexConversationTurnLifecycle(completed.state, update);
-    expect(replay.effects).toEqual([]);
-    expect(replay.state.turns[0]?.items.map((item) => item.id)).toEqual(["accepted"]);
+      const replay = reduceCodexConversationTurnLifecycle(completed.state, update);
+      expect(replay.effects).toEqual([]);
+      expect(replay.state.turns[0]?.items.map((item) => item.id)).toEqual(["accepted"]);
+    }
   });
 });
