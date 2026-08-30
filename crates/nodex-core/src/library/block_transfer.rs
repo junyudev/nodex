@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use nodex_core_contracts::database::DatabaseViewPreferencesOverrideInput;
 use nodex_core_contracts::library::{
     LibraryBlockLocation, LibraryBlockTransferDataSourcePlacement,
     LibraryBlockTransferDocumentCommit, LibraryBlockTransferDocumentHead,
@@ -12,7 +13,8 @@ use nodex_core_contracts::library::{
     LibraryBlockTransferUndoResult, LibraryBlockTransferUndoToken, LibraryCommitValue,
     LibraryPageCopyDestination, LibraryPageCopyPositionAnchor, LibraryPageCopyValue,
     LibraryPageCopyViewPlacement, LibraryPageFileOwnershipMove, LibraryPagePromotionPolicy,
-    LibraryPageViewPlacementResult, LibraryPlacementAnchor, LibraryReceipt,
+    LibraryPageRelocationUndoResult, LibraryPageViewPlacementResult, LibraryPlacementAnchor,
+    LibraryReceipt,
 };
 use nodex_core_contracts::{BoundModuleContext, ModuleName};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -138,6 +140,40 @@ pub(super) struct AgentPageMoveTransferAuthority {
     pub(super) actor_project_id: String,
 }
 
+#[derive(Clone, Copy)]
+enum PageOwnershipTransferAuthority<'a> {
+    ProjectBound { project_id: &'a str },
+    Agent(&'a AgentPageMoveTransferAuthority),
+    TrustedLibrary(&'a super::mutation::LibraryMutationAuthority),
+}
+
+enum PageOwnershipHistory {
+    None,
+    RecordRelocation,
+    UndoRelocation {
+        recipe: PageRelocationUndoRecipeV2,
+        token: LibraryBlockTransferUndoToken,
+    },
+}
+
+impl PageOwnershipTransferAuthority<'_> {
+    fn actor_project_id(&self) -> &str {
+        match self {
+            Self::ProjectBound { project_id } => project_id,
+            Self::Agent(authority) => &authority.actor_project_id,
+            Self::TrustedLibrary(authority) => &authority.actor_project_id,
+        }
+    }
+
+    fn is_agent(&self) -> bool {
+        matches!(self, Self::Agent(_))
+    }
+
+    fn is_prevalidated(&self) -> bool {
+        !matches!(self, Self::ProjectBound { .. })
+    }
+}
+
 pub(super) struct PreparedTransfer {
     source_authority: DocumentAuthorityRow,
     target_authority: DocumentAuthorityRow,
@@ -182,6 +218,7 @@ pub(super) struct PreparedPageParentTransfer {
 }
 
 const BLOCK_TRANSFER_UNDO_RECIPE_VERSION: u32 = 2;
+const PAGE_RELOCATION_UNDO_RECIPE_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -234,6 +271,66 @@ struct BlockTransferUndoSchemaRestoreV1 {
 
 struct PendingBlockTransferUndoRecipe {
     recipe: BlockTransferUndoRecipeV1,
+    token: LibraryBlockTransferUndoToken,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PageRelocationUndoRecipeV2 {
+    version: u32,
+    project_id: String,
+    library_id: String,
+    store_epoch: String,
+    page_id: String,
+    result_parent: PageRelocationUndoParentV2,
+    result_location_revision: i64,
+    source: PageRelocationUndoSourceV2,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PageRelocationUndoPositionV2 {
+    view_id: String,
+    rank_key: String,
+    revision: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum PageRelocationUndoParentV2 {
+    Library { library_id: String },
+    Page { page_id: String },
+    DataSource { data_source_id: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum PageRelocationUndoSourceV2 {
+    Library {
+        previous_sibling_id: Option<String>,
+        next_sibling_id: Option<String>,
+    },
+    Page {
+        page_id: String,
+        document_id: String,
+        parent_block_id: Option<String>,
+        previous_sibling_id: Option<String>,
+        next_sibling_id: Option<String>,
+    },
+    DataSource {
+        data_source_id: String,
+        default_view_id: String,
+        positions: Vec<PageRelocationUndoPositionV2>,
+    },
+}
+
+struct PreparedPageRelocationUndoV2 {
+    page_id: String,
+    source: PageRelocationUndoSourceV2,
+}
+
+struct PendingPageRelocationUndoRecipe {
+    recipe: PageRelocationUndoRecipeV2,
     token: LibraryBlockTransferUndoToken,
 }
 
@@ -413,6 +510,23 @@ pub(super) enum PreparedBlockTransfer {
     Ordinary(Box<PreparedTransfer>),
     PageParent(Box<PreparedPageParentTransfer>),
     PageOwnership(Box<PreparedPageOwnershipTransfer>),
+}
+
+fn preserve_page_relocation_source_values(
+    prepared: &mut PreparedBlockTransfer,
+) -> Result<(), StoreError> {
+    let PreparedBlockTransfer::PageOwnership(prepared) = prepared else {
+        return Err(corrupt("Page relocation Undo selected the wrong compiler"));
+    };
+    let PreparedPageOwnershipTarget::DataSource { destination } = &mut prepared.target else {
+        return Err(corrupt("Page relocation Undo lost its source Database"));
+    };
+    // Direct placement normally derives Property writes from the target View.
+    // Undo is different: the historical source membership already owns the
+    // exact dormant values, so applying a missing group key would overwrite
+    // the restored row (for example, clearing its workflow status).
+    destination.values.clear();
+    Ok(())
 }
 
 impl PreparedBlockTransfer {
@@ -728,7 +842,51 @@ pub(super) fn prepare_for_agent_page_move(
         library_id,
         operation_id,
         intent,
-        Some(authority),
+        PageOwnershipTransferAuthority::Agent(authority),
+        cache,
+    )
+    .map(Box::new)
+    .map(PreparedBlockTransfer::PageOwnership)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn prepare_for_semantic_page_move(
+    connection: &Connection,
+    cache: Option<&Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    intent: &LibraryBlockTransferLogicalIntent,
+    authority: &super::mutation::LibraryMutationAuthority,
+) -> Result<PreparedBlockTransfer, StoreError> {
+    validate_id(operation_id, "operation_id")?;
+    validate_intent(library_id, intent)?;
+    let current_epoch = crate::document::read_store_epoch(connection)?;
+    if current_epoch != store_epoch {
+        return Err(StoreError::new(
+            StoreErrorCode::StaleStoreEpoch,
+            "Block transfer targets a stale store epoch",
+            true,
+        ));
+    }
+    validate_causal_dependencies(connection, context, store_epoch, intent)?;
+    if !uses_page_ownership_parent_compiler(connection, intent)? {
+        return Err(invalid(
+            "Library Page movement requires Page ownership roots",
+        ));
+    }
+    let transfer_authority = match authority.requesting_project_id.as_deref() {
+        Some(project_id) => PageOwnershipTransferAuthority::ProjectBound { project_id },
+        None => PageOwnershipTransferAuthority::TrustedLibrary(authority),
+    };
+    prepare_page_ownership_transfer(
+        connection,
+        context,
+        library_id,
+        operation_id,
+        intent,
+        transfer_authority,
         cache,
     )
     .map(Box::new)
@@ -778,13 +936,14 @@ pub(super) fn prepare_for_apply(
     }
     validate_causal_dependencies(connection, context, store_epoch, intent)?;
     if uses_page_ownership_parent_compiler(connection, intent)? {
+        let project_id = bound_project_id(context)?;
         return prepare_page_ownership_transfer(
             connection,
             context,
             library_id,
             operation_id,
             intent,
-            None,
+            PageOwnershipTransferAuthority::ProjectBound { project_id },
             cache,
         )
         .map(Box::new)
@@ -874,6 +1033,7 @@ pub(super) fn apply(
     assets_root: &Path,
     prepared: PreparedBlockTransfer,
 ) -> Result<LibraryApplyOutcome, StoreError> {
+    let project_id = bound_project_id(context)?;
     apply_with_authority(
         connection,
         context,
@@ -883,7 +1043,8 @@ pub(super) fn apply(
         request_hash,
         intent,
         assets_root,
-        None,
+        PageOwnershipTransferAuthority::ProjectBound { project_id },
+        PageOwnershipHistory::None,
         None,
         prepared,
     )
@@ -912,8 +1073,42 @@ pub(super) fn apply_agent_page_move(
         request_hash,
         intent,
         assets_root,
-        Some(authority),
+        PageOwnershipTransferAuthority::Agent(authority),
+        PageOwnershipHistory::None,
         Some(scope),
+        prepared,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn apply_semantic_page_move(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request_hash: &str,
+    intent: &LibraryBlockTransferLogicalIntent,
+    assets_root: &Path,
+    authority: &super::mutation::LibraryMutationAuthority,
+    prepared: PreparedBlockTransfer,
+) -> Result<LibraryApplyOutcome, StoreError> {
+    let transfer_authority = match authority.requesting_project_id.as_deref() {
+        Some(project_id) => PageOwnershipTransferAuthority::ProjectBound { project_id },
+        None => PageOwnershipTransferAuthority::TrustedLibrary(authority),
+    };
+    apply_with_authority(
+        connection,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request_hash,
+        intent,
+        assets_root,
+        transfer_authority,
+        PageOwnershipHistory::RecordRelocation,
+        None,
         prepared,
     )
 }
@@ -928,7 +1123,8 @@ fn apply_with_authority(
     request_hash: &str,
     intent: &LibraryBlockTransferLogicalIntent,
     assets_root: &Path,
-    agent_authority: Option<&AgentPageMoveTransferAuthority>,
+    authority: PageOwnershipTransferAuthority<'_>,
+    history: PageOwnershipHistory,
     attached_scope: Option<&DurableMutationScope<'_>>,
     prepared_transfer: PreparedBlockTransfer,
 ) -> Result<LibraryApplyOutcome, StoreError> {
@@ -943,8 +1139,14 @@ fn apply_with_authority(
     }
     validate_causal_dependencies(connection, context, store_epoch, intent)?;
     let read_set = prepared_transfer.read_set();
-    if agent_authority.is_none() {
-        revalidate_command_authority(connection, context, library_id, intent)?;
+    match authority {
+        PageOwnershipTransferAuthority::ProjectBound { .. } => {
+            revalidate_command_authority(connection, context, library_id, intent)?;
+        }
+        PageOwnershipTransferAuthority::TrustedLibrary(authority) => {
+            require_project_in_library(connection, &authority.actor_project_id, library_id)?;
+        }
+        PageOwnershipTransferAuthority::Agent(_) => {}
     }
     revalidate_read_set(connection, &read_set)?;
     if uses_page_ownership_parent_compiler(connection, intent)? {
@@ -961,12 +1163,17 @@ fn apply_with_authority(
             request_hash,
             intent,
             assets_root,
-            agent_authority,
+            authority,
+            history,
             attached_scope,
             *prepared,
         );
     }
-    if agent_authority.is_some() || attached_scope.is_some() {
+    if !matches!(
+        authority,
+        PageOwnershipTransferAuthority::ProjectBound { .. }
+    ) || attached_scope.is_some()
+    {
         return Err(invalid(
             "Agent Page-move authority requires Page ownership roots",
         ));
@@ -1197,6 +1404,7 @@ fn apply_with_authority(
                     canvas_mutation: None,
                     block_transfer: Some(result.clone()),
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -1660,11 +1868,11 @@ fn prepare_page_ownership_transfer(
     library_id: &str,
     operation_id: &str,
     intent: &LibraryBlockTransferLogicalIntent,
-    agent_authority: Option<&AgentPageMoveTransferAuthority>,
+    authority: PageOwnershipTransferAuthority<'_>,
     cache: Option<&Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
 ) -> Result<PreparedPageOwnershipTransfer, StoreError> {
     check_request_interruption()?;
-    let requesting_project_id = bound_project_id(context)?;
+    let requesting_project_id = authority.actor_project_id();
     require_project_in_library(connection, requesting_project_id, library_id)?;
     let mut source_document_base = None;
     let source = match &intent.source {
@@ -1686,7 +1894,7 @@ fn prepare_page_ownership_transfer(
                     requesting_project_id,
                     data_source_id,
                 )?
-            } else if agent_authority.is_some() {
+            } else if authority.is_prevalidated() {
                 validate_page_transfer_data_source_source_prevalidated(
                     connection,
                     library_id,
@@ -1707,7 +1915,7 @@ fn prepare_page_ownership_transfer(
         }
         LibraryBlockTransferSource::Page { page_id } => {
             let document_id = resolve_page_document(connection, library_id, page_id)?;
-            let base = if agent_authority.is_some() {
+            let base = if authority.is_prevalidated() {
                 load_page_ownership_document_prevalidated(
                     connection,
                     library_id,
@@ -1738,7 +1946,7 @@ fn prepare_page_ownership_transfer(
             }
         }
         LibraryBlockTransferSource::Document { document_id } => {
-            let base = if agent_authority.is_some() {
+            let base = if authority.is_prevalidated() {
                 load_page_ownership_document_prevalidated(
                     connection,
                     library_id,
@@ -1795,7 +2003,7 @@ fn prepare_page_ownership_transfer(
             data_source_id,
             placement,
         } => {
-            let destination = if let Some(authority) = agent_authority {
+            let destination = if authority.is_prevalidated() {
                 let LibraryBlockTransferDataSourcePlacement::Direct {
                     view_id,
                     preferences_override: _,
@@ -1817,7 +2025,7 @@ fn prepare_page_ownership_transfer(
                 resolve_page_transfer_data_source_destination_prevalidated(
                     connection,
                     library_id,
-                    &authority.actor_project_id,
+                    authority.actor_project_id(),
                     data_source_id,
                     view_id,
                     group_key.as_deref(),
@@ -1840,7 +2048,7 @@ fn prepare_page_ownership_transfer(
             before_block_id,
         } => {
             let document_id = resolve_page_document(connection, library_id, page_id)?;
-            let base = if agent_authority.is_some() {
+            let base = if authority.is_prevalidated() {
                 load_page_ownership_document_prevalidated(
                     connection,
                     library_id,
@@ -1970,7 +2178,7 @@ fn prepare_page_ownership_transfer(
         ) = row;
         // Agent Page movement has already authorized each exact source Page
         // against its call-scoped overlay at the operation boundary.
-        if agent_authority.is_none() {
+        if !authority.is_prevalidated() {
             if intent.mode == LibraryBlockTransferMode::Copy {
                 super::require_page_read_access(
                     connection,
@@ -2290,7 +2498,8 @@ fn apply_page_ownership_transfer(
     request_hash: &str,
     intent: &LibraryBlockTransferLogicalIntent,
     assets_root: &Path,
-    agent_authority: Option<&AgentPageMoveTransferAuthority>,
+    authority: PageOwnershipTransferAuthority<'_>,
+    history: PageOwnershipHistory,
     attached_scope: Option<&DurableMutationScope<'_>>,
     mut prepared: PreparedPageOwnershipTransfer,
 ) -> Result<LibraryApplyOutcome, StoreError> {
@@ -2309,7 +2518,7 @@ fn apply_page_ownership_transfer(
                 &now,
             );
         }
-        let requesting_project_id = bound_project_id(context)?;
+        let requesting_project_id = authority.actor_project_id();
         let mut affected_database_ids = BTreeSet::new();
         let mut affected_view_ids = BTreeSet::new();
         let mut committed_revisions = BTreeMap::new();
@@ -2321,6 +2530,14 @@ fn apply_page_ownership_transfer(
             .iter()
             .map(|root| root.page_id.clone())
             .collect::<Vec<_>>();
+        let prepared_relocation_undo = if matches!(history, PageOwnershipHistory::RecordRelocation)
+        {
+            Some(capture_page_relocation_undo_source(
+                connection, library_id, &prepared,
+            )?)
+        } else {
+            None
+        };
         // Remove Page shells from their old Document before changing the typed
         // parent. The Page invariant forbids a Library/Data Source root from
         // simultaneously remaining in a Document index.
@@ -2355,7 +2572,7 @@ fn apply_page_ownership_transfer(
                 .as_ref()
                 .map_or(0, |membership| membership.revision);
             let transfer_page = |target| {
-                if agent_authority.is_some() {
+                if authority.is_prevalidated() {
                     transfer_existing_page_for_agent_move_prevalidated(
                         connection,
                         library_id,
@@ -2490,6 +2707,20 @@ fn apply_page_ownership_transfer(
                 scope.evidence(),
             )?);
         }
+        if let PageOwnershipHistory::UndoRelocation { recipe, token } = &history {
+            let (restored_view_ids, restored_revisions) =
+                restore_page_relocation_positions(connection, recipe, &now)?;
+            affected_view_ids.extend(restored_view_ids);
+            committed_revisions.extend(restored_revisions);
+            let consumed = connection.execute(
+                "UPDATE block_transfer_undo_recipes SET consumed_at = ?1 \
+                 WHERE transfer_operation_id = ?2 AND consumed_at IS NULL",
+                params![now, token.transfer_operation_id],
+            )?;
+            if consumed != 1 {
+                return Err(conflict("Page relocation was already undone"));
+            }
+        }
         let result_block_ids = root_page_ids;
         // Agent Page moves merge every touched Document into one deterministic
         // batch after the per-Page typed-parent transfers. Until that batch is
@@ -2502,6 +2733,23 @@ fn apply_page_ownership_transfer(
         } else {
             read_final_locations(connection, &result_block_ids)?
         };
+        let pending_relocation_undo = prepared_relocation_undo
+            .map(|prepared_undo| {
+                let result_location_revision = final_location_revisions
+                    .get(&prepared_undo.page_id)
+                    .copied()
+                    .ok_or_else(|| corrupt("Page relocation lost its final location revision"))?;
+                seal_page_relocation_undo_recipe(
+                    operation_id,
+                    store_epoch,
+                    library_id,
+                    requesting_project_id,
+                    &prepared.target,
+                    result_location_revision,
+                    prepared_undo,
+                )
+            })
+            .transpose()?;
         let affected_database_ids = affected_database_ids.into_iter().collect::<Vec<_>>();
         let affected_view_ids = affected_view_ids.into_iter().collect::<Vec<_>>();
         let page_etags = result_block_ids
@@ -2525,53 +2773,88 @@ fn apply_page_ownership_transfer(
             | PreparedPageOwnershipTarget::Document { .. } => None,
         };
         let target_view_id = target_view.map(|view| view.view_id.as_str());
-        let move_etags = if agent_authority.is_none() {
+        let move_etags = if !authority.is_agent() {
             result_block_ids
                 .iter()
                 .map(|page_id| {
-                    crate::database::mint_page_move_etag(
-                        connection,
-                        library_id,
-                        requesting_project_id,
-                        store_epoch,
-                        page_id,
-                        target_view_id,
-                    )
+                    if authority.is_prevalidated() {
+                        crate::database::mint_page_move_etag_prevalidated(
+                            connection,
+                            library_id,
+                            requesting_project_id,
+                            store_epoch,
+                            page_id,
+                            target_view_id,
+                        )
+                    } else {
+                        crate::database::mint_page_move_etag(
+                            connection,
+                            library_id,
+                            requesting_project_id,
+                            store_epoch,
+                            page_id,
+                            target_view_id,
+                        )
+                    }
                     .map(|etag| (page_id.clone(), etag))
                 })
                 .collect::<Result<BTreeMap<_, _>, _>>()?
         } else {
             BTreeMap::new()
         };
-        let page_view_placements = target_view
-            .map(|view| {
-                result_block_ids
-                    .iter()
-                    .map(|page_id| {
-                        connection
-                            .query_row(
-                                "SELECT revision FROM database_view_page_positions \
-                                 WHERE view_id = ?1 AND page_block_id = ?2",
-                                params![view.view_id, page_id],
-                                |row| {
-                                    Ok(LibraryPageViewPlacementResult {
-                                        view_id: view.view_id.clone(),
-                                        group_key: view.group_key.clone(),
-                                        position_revision: row.get(0)?,
-                                    })
-                                },
-                            )
-                            .map(|placement| (page_id.clone(), placement))
-                            .map_err(StoreError::from)
-                    })
-                    .collect::<Result<BTreeMap<_, _>, _>>()
-            })
-            .transpose()?
-            .unwrap_or_default();
+        let mut page_view_placements = BTreeMap::new();
+        if let Some(view) = target_view {
+            for page_id in &result_block_ids {
+                let position_revision = connection
+                    .query_row(
+                        "SELECT revision FROM database_view_page_positions \
+                         WHERE view_id = ?1 AND page_block_id = ?2",
+                        params![view.view_id, page_id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .optional()?;
+                let Some(position_revision) = position_revision else {
+                    continue;
+                };
+                page_view_placements.insert(
+                    page_id.clone(),
+                    LibraryPageViewPlacementResult {
+                        view_id: view.view_id.clone(),
+                        group_key: view.group_key.clone(),
+                        position_revision,
+                    },
+                );
+            }
+        }
         // Transfer accepts a bounded run of Page roots, so the receipt keeps a
         // root-indexed map rather than a singular key. `None` remains
         // meaningful after a move to Library or another Page.
         let page_keys = read_current_page_keys(connection, library_id, &result_block_ids)?;
+        let relocation_undo_result = match &history {
+            PageOwnershipHistory::UndoRelocation { recipe, token } => {
+                let final_location = final_locations
+                    .get(&recipe.page_id)
+                    .cloned()
+                    .ok_or_else(|| corrupt("Relocation Undo lost the restored Page location"))?;
+                let final_location_revision = final_location_revisions
+                    .get(&recipe.page_id)
+                    .copied()
+                    .ok_or_else(|| corrupt("Relocation Undo lost the restored Page revision"))?;
+                Some(LibraryPageRelocationUndoResult {
+                    transfer_operation_id: token.transfer_operation_id.clone(),
+                    page_id: recipe.page_id.clone(),
+                    final_location,
+                    final_location_revision,
+                    document_commits: document_commits
+                        .iter()
+                        .map(|commit| commit.public.clone())
+                        .collect(),
+                    affected_database_ids: affected_database_ids.clone(),
+                    page_key: page_keys.get(&recipe.page_id).cloned().flatten(),
+                })
+            }
+            PageOwnershipHistory::None | PageOwnershipHistory::RecordRelocation => None,
+        };
         let result = LibraryBlockTransferResult {
             mode: LibraryBlockTransferMode::Move,
             source_root_block_ids: intent.root_block_ids.clone(),
@@ -2590,7 +2873,9 @@ fn apply_page_ownership_transfer(
             move_etags,
             page_view_placements,
             file_ownership_moves: Vec::new(),
-            undo_token: None,
+            undo_token: pending_relocation_undo
+                .as_ref()
+                .map(|pending| pending.token.clone()),
         };
         committed_revisions.extend(
             final_location_revisions
@@ -2644,7 +2929,11 @@ fn apply_page_ownership_transfer(
             operation_id,
             MutationEffects {
                 project_id: requesting_project_id.to_owned(),
-                operation_kind: "transfer_blocks",
+                operation_kind: if relocation_undo_result.is_some() {
+                    "undo_page_relocation"
+                } else {
+                    "transfer_blocks"
+                },
                 change_kind: "block_mutation",
                 did_mutate: true,
                 created_target: None,
@@ -2659,8 +2948,9 @@ fn apply_page_ownership_transfer(
                 page_copy: None,
                 page_files: None,
                 canvas_mutation: None,
-                block_transfer: Some(result.clone()),
+                block_transfer: relocation_undo_result.is_none().then(|| result.clone()),
                 block_transfer_undo: None,
+                page_relocation_undo: relocation_undo_result,
                 structural_edit: None,
                 page_lifecycle: None,
                 block_property_mutation: None,
@@ -2682,6 +2972,9 @@ fn apply_page_ownership_transfer(
                     event_sequence,
                     &now,
                 )?;
+                if let Some(pending) = &pending_relocation_undo {
+                    persist_page_relocation_undo_recipe(connection, pending, &now)?;
+                }
                 persist_operation_checkpoints(
                     connection,
                     context,
@@ -2873,6 +3166,7 @@ fn apply_page_ownership_copy(
             canvas_mutation: None,
             block_transfer: Some(result.clone()),
             block_transfer_undo: None,
+            page_relocation_undo: None,
             structural_edit: None,
             page_lifecycle: None,
             block_property_mutation: None,
@@ -3660,6 +3954,297 @@ fn persist_page_parent_undo_recipe(
     Ok(())
 }
 
+fn capture_page_relocation_undo_source(
+    connection: &Connection,
+    library_id: &str,
+    prepared: &PreparedPageOwnershipTransfer,
+) -> Result<PreparedPageRelocationUndoV2, StoreError> {
+    let [root] = prepared.roots.as_slice() else {
+        return Err(invalid(
+            "Reversible Page relocation requires exactly one Page root",
+        ));
+    };
+
+    let source = match &prepared.source {
+        PreparedPageOwnershipSource::Library => {
+            let (previous_sibling_id, next_sibling_id) =
+                library_sibling_anchors(connection, library_id, &root.page_id)?;
+            PageRelocationUndoSourceV2::Library {
+                previous_sibling_id,
+                next_sibling_id,
+            }
+        }
+        PreparedPageOwnershipSource::Document {
+            document_id,
+            page_id,
+        } => {
+            let document = prepared
+                .source_document
+                .as_ref()
+                .ok_or_else(|| corrupt("Page relocation source Document was not prepared"))?;
+            let placement = materialized_sibling_placement(
+                &document.base_materialization.block_tree,
+                &root.page_id,
+                None,
+            )
+            .ok_or_else(|| corrupt("Page relocation source shell has no Document placement"))?;
+            PageRelocationUndoSourceV2::Page {
+                page_id: page_id.clone(),
+                document_id: document_id.clone(),
+                parent_block_id: placement.parent_block_id,
+                previous_sibling_id: placement.previous_sibling_id,
+                next_sibling_id: placement.next_sibling_id,
+            }
+        }
+        PreparedPageOwnershipSource::DataSource { data_source_id } => {
+            let default_view_id = connection
+                .query_row(
+                    "SELECT container.default_view_id FROM data_sources source \
+                     JOIN database_containers container \
+                       ON container.block_id = source.home_database_block_id \
+                     JOIN database_views view ON view.id = container.default_view_id \
+                     WHERE source.id = ?1 AND source.library_id = ?2 \
+                       AND source.lifecycle = 'active' AND container.lifecycle = 'active' \
+                       AND view.lifecycle = 'active' AND view.data_source_id = source.id",
+                    params![data_source_id, library_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| conflict("Source Database no longer has an active default View"))?;
+            let positions = connection
+                .prepare(
+                    "SELECT position.view_id, position.rank_key, position.revision \
+                     FROM database_view_page_positions position \
+                     JOIN database_views view ON view.id = position.view_id \
+                     WHERE position.page_block_id = ?1 AND view.data_source_id = ?2 \
+                       AND view.lifecycle = 'active' ORDER BY position.view_id",
+                )?
+                .query_map(params![root.page_id, data_source_id], |row| {
+                    Ok(PageRelocationUndoPositionV2 {
+                        view_id: row.get(0)?,
+                        rank_key: row.get(1)?,
+                        revision: row.get(2)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            PageRelocationUndoSourceV2::DataSource {
+                data_source_id: data_source_id.clone(),
+                default_view_id,
+                positions,
+            }
+        }
+    };
+    Ok(PreparedPageRelocationUndoV2 {
+        page_id: root.page_id.clone(),
+        source,
+    })
+}
+
+fn seal_page_relocation_undo_recipe(
+    operation_id: &str,
+    store_epoch: &str,
+    library_id: &str,
+    project_id: &str,
+    target: &PreparedPageOwnershipTarget,
+    result_location_revision: i64,
+    prepared: PreparedPageRelocationUndoV2,
+) -> Result<PendingPageRelocationUndoRecipe, StoreError> {
+    let result_parent = match target {
+        PreparedPageOwnershipTarget::Library { .. } => PageRelocationUndoParentV2::Library {
+            library_id: library_id.to_owned(),
+        },
+        PreparedPageOwnershipTarget::Document { page_id, .. } => PageRelocationUndoParentV2::Page {
+            page_id: page_id.clone(),
+        },
+        PreparedPageOwnershipTarget::DataSource { destination } => {
+            PageRelocationUndoParentV2::DataSource {
+                data_source_id: destination.data_source_id.clone(),
+            }
+        }
+    };
+    let recipe = PageRelocationUndoRecipeV2 {
+        version: PAGE_RELOCATION_UNDO_RECIPE_VERSION,
+        project_id: project_id.to_owned(),
+        library_id: library_id.to_owned(),
+        store_epoch: store_epoch.to_owned(),
+        page_id: prepared.page_id,
+        result_parent,
+        result_location_revision,
+        source: prepared.source,
+    };
+    let recipe_json = serde_json::to_vec(&recipe)
+        .map_err(|_| internal("Page relocation Undo recipe cannot be encoded"))?;
+    let token = LibraryBlockTransferUndoToken {
+        transfer_operation_id: operation_id.to_owned(),
+        recipe_hash: sha256(&recipe_json),
+        store_epoch: store_epoch.to_owned(),
+    };
+    Ok(PendingPageRelocationUndoRecipe { recipe, token })
+}
+
+struct PageRelocationSiblingPlacement {
+    parent_block_id: Option<String>,
+    previous_sibling_id: Option<String>,
+    next_sibling_id: Option<String>,
+}
+
+fn materialized_sibling_placement(
+    blocks: &[MaterializedBlockNode],
+    target_block_id: &str,
+    parent_block_id: Option<&str>,
+) -> Option<PageRelocationSiblingPlacement> {
+    for (index, block) in blocks.iter().enumerate() {
+        if block.id == target_block_id {
+            return Some(PageRelocationSiblingPlacement {
+                parent_block_id: parent_block_id.map(str::to_owned),
+                previous_sibling_id: index
+                    .checked_sub(1)
+                    .and_then(|previous| blocks.get(previous))
+                    .map(|sibling| sibling.id.clone()),
+                next_sibling_id: blocks.get(index + 1).map(|sibling| sibling.id.clone()),
+            });
+        }
+        if let Some(placement) =
+            materialized_sibling_placement(&block.children, target_block_id, Some(&block.id))
+        {
+            return Some(placement);
+        }
+    }
+    None
+}
+
+fn library_sibling_anchors(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+) -> Result<(Option<String>, Option<String>), StoreError> {
+    let rank_key = connection
+        .query_row(
+            "SELECT rank_key FROM library_block_placements \
+             WHERE library_id = ?1 AND block_id = ?2",
+            params![library_id, page_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| conflict("Page no longer has its source Library placement"))?;
+    let previous = connection
+        .query_row(
+            "SELECT block_id FROM library_block_placements \
+             WHERE library_id = ?1 AND (rank_key < ?2 OR (rank_key = ?2 AND block_id < ?3)) \
+             ORDER BY rank_key DESC, block_id DESC LIMIT 1",
+            params![library_id, rank_key, page_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let next = connection
+        .query_row(
+            "SELECT block_id FROM library_block_placements \
+             WHERE library_id = ?1 AND (rank_key > ?2 OR (rank_key = ?2 AND block_id > ?3)) \
+             ORDER BY rank_key, block_id LIMIT 1",
+            params![library_id, rank_key, page_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    Ok((previous, next))
+}
+
+fn persist_page_relocation_undo_recipe(
+    connection: &Connection,
+    pending: &PendingPageRelocationUndoRecipe,
+    now: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO block_transfer_undo_recipes(\
+           transfer_operation_id, project_id, library_id, store_epoch, recipe_hash, \
+           recipe_json, consumed_at, created_at\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)",
+        params![
+            pending.token.transfer_operation_id,
+            pending.recipe.project_id,
+            pending.recipe.library_id,
+            pending.recipe.store_epoch,
+            pending.token.recipe_hash,
+            serde_json::to_string(&pending.recipe)
+                .map_err(|_| internal("Page relocation Undo recipe cannot be encoded"))?,
+            now,
+        ],
+    )?;
+    Ok(())
+}
+
+fn restore_page_relocation_positions(
+    connection: &Connection,
+    recipe: &PageRelocationUndoRecipeV2,
+    now: &str,
+) -> Result<(Vec<String>, BTreeMap<String, i64>), StoreError> {
+    let PageRelocationUndoSourceV2::DataSource {
+        data_source_id,
+        positions,
+        ..
+    } = &recipe.source
+    else {
+        return Ok((Vec::new(), BTreeMap::new()));
+    };
+    let membership_id = connection
+        .query_row(
+            "SELECT id FROM data_source_page_memberships \
+             WHERE data_source_id = ?1 AND page_block_id = ?2 AND removed_at IS NULL",
+            params![data_source_id, recipe.page_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| corrupt("Restored Page lost its source Database membership"))?;
+    for position in positions {
+        let still_active = connection
+            .query_row(
+                "SELECT 1 FROM database_views \
+                 WHERE id = ?1 AND data_source_id = ?2 AND lifecycle = 'active'",
+                params![position.view_id, data_source_id],
+                |_| Ok(()),
+            )
+            .optional()?;
+        if still_active.is_none() {
+            return Err(conflict(
+                "Source Database Views changed after the Page moved",
+            ));
+        }
+    }
+    connection.execute(
+        "DELETE FROM database_view_page_positions WHERE page_block_id = ?1",
+        [&recipe.page_id],
+    )?;
+    let mut revisions = BTreeMap::new();
+    let mut view_ids = Vec::with_capacity(positions.len());
+    for position in positions {
+        let revision = position.revision + 2;
+        connection.execute(
+            "INSERT INTO database_view_page_positions(\
+               view_id, page_block_id, rank_key, revision, created_at, updated_at\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            params![
+                position.view_id,
+                recipe.page_id,
+                position.rank_key,
+                revision,
+                now
+            ],
+        )?;
+        revisions.insert(
+            format!("viewPosition:{}:{}", position.view_id, recipe.page_id),
+            revision,
+        );
+        view_ids.push(position.view_id.clone());
+    }
+    crate::database::refresh_copied_page_projection(
+        connection,
+        &recipe.page_id,
+        Some(&membership_id),
+        Some(data_source_id),
+        now,
+    )?;
+    Ok((view_ids, revisions))
+}
+
 fn apply_page_parent_transfer(
     connection: &Connection,
     command: PageParentApplyCommand<'_>,
@@ -3982,6 +4567,7 @@ fn apply_page_parent_transfer(
                     canvas_mutation: None,
                     block_transfer: Some(result.clone()),
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -5609,6 +6195,12 @@ fn persist_operation_checkpoints(
     change_log_seq: i64,
     now: &str,
 ) -> Result<(), StoreError> {
+    let mut checkpoint_context = context.clone();
+    if checkpoint_context.project_id.is_none() {
+        checkpoint_context.project_id = Some(nodex_core_contracts::ProjectId(
+            super::mutation::resolve_library_actor_project_id(connection, &context.library_id.0)?,
+        ));
+    }
     for commit in commits {
         let authority = read_document_authority(connection, &commit.public.document_id)?
             .ok_or_else(|| corrupt("Committed transfer Document disappeared"))?;
@@ -5624,7 +6216,7 @@ fn persist_operation_checkpoints(
                 source_mutation_id: Some(operation_id),
                 source_change_seq: Some(change_log_seq),
                 actor: Some(actor),
-                context,
+                context: &checkpoint_context,
                 now,
             },
         )?;
@@ -5693,6 +6285,68 @@ fn read_block_transfer_undo_recipe(
                 stored,
             )?);
     }
+    Ok(recipe)
+}
+
+fn read_page_relocation_undo_recipe(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    token: &LibraryBlockTransferUndoToken,
+    authority: &super::mutation::LibraryMutationAuthority,
+) -> Result<PageRelocationUndoRecipeV2, StoreError> {
+    let row = connection
+        .query_row(
+            "SELECT project_id, library_id, store_epoch, recipe_hash, recipe_json, consumed_at \
+             FROM block_transfer_undo_recipes WHERE transfer_operation_id = ?1",
+            [&token.transfer_operation_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or_else(|| not_found("Page relocation Undo is no longer available"))?;
+    let project_scope_matches = authority
+        .requesting_project_id
+        .as_deref()
+        .is_none_or(|project_id| project_id == row.0);
+    if row.1 != library_id
+        || row.2 != token.store_epoch
+        || row.3 != token.recipe_hash
+        || !project_scope_matches
+        || context.library_id.0 != library_id
+    {
+        return Err(unauthorized(
+            "Page relocation Undo token is outside this scope",
+        ));
+    }
+    if row.5.is_some() {
+        return Err(conflict("Page relocation was already undone"));
+    }
+    if sha256(row.4.as_bytes()) != token.recipe_hash {
+        return Err(corrupt("Stored Page relocation Undo recipe hash changed"));
+    }
+    let version = serde_json::from_str::<serde_json::Value>(&row.4)
+        .ok()
+        .and_then(|value| value.get("version").and_then(serde_json::Value::as_u64));
+    if version != Some(u64::from(PAGE_RELOCATION_UNDO_RECIPE_VERSION)) {
+        return Err(conflict("Page relocation Undo is no longer available"));
+    }
+    let recipe = serde_json::from_str::<PageRelocationUndoRecipeV2>(&row.4)
+        .map_err(|_| corrupt("Stored Page relocation Undo recipe is invalid"))?;
+    if recipe.project_id != row.0 || recipe.library_id != row.1 || recipe.store_epoch != row.2 {
+        return Err(corrupt(
+            "Stored Page relocation Undo recipe identity changed",
+        ));
+    }
+    require_project_in_library(connection, &recipe.project_id, library_id)?;
     Ok(recipe)
 }
 
@@ -5901,6 +6555,282 @@ fn restore_undo_schema(
             property_revision,
         ),
     ]))
+}
+
+fn page_relocation_result_parent_matches(
+    expected: &PageRelocationUndoParentV2,
+    library_id: &str,
+    parent_kind: &str,
+    parent_id: &str,
+) -> bool {
+    match expected {
+        PageRelocationUndoParentV2::Library {
+            library_id: expected_library_id,
+        } => {
+            parent_kind == "library" && parent_id == expected_library_id && parent_id == library_id
+        }
+        PageRelocationUndoParentV2::Page { page_id } => {
+            parent_kind == "page" && parent_id == page_id
+        }
+        PageRelocationUndoParentV2::DataSource { data_source_id } => {
+            parent_kind == "data_source" && parent_id == data_source_id
+        }
+    }
+}
+
+fn resolve_page_relocation_sibling_anchor(
+    sibling_ids: &[String],
+    previous_sibling_id: Option<&str>,
+    next_sibling_id: Option<&str>,
+) -> Result<Option<String>, StoreError> {
+    if let Some(next_sibling_id) = next_sibling_id
+        && sibling_ids.iter().any(|sibling| sibling == next_sibling_id)
+    {
+        return Ok(Some(next_sibling_id.to_owned()));
+    }
+    if let Some(previous_sibling_id) = previous_sibling_id
+        && let Some(previous_index) = sibling_ids
+            .iter()
+            .position(|sibling| sibling == previous_sibling_id)
+    {
+        return Ok(sibling_ids.get(previous_index + 1).cloned());
+    }
+    if previous_sibling_id.is_none() && next_sibling_id.is_none() {
+        return Ok(sibling_ids.first().cloned());
+    }
+    Err(conflict(
+        "Page relocation source position changed and cannot be restored safely",
+    ))
+}
+
+fn resolve_library_page_relocation_anchor(
+    connection: &Connection,
+    library_id: &str,
+    previous_sibling_id: Option<&str>,
+    next_sibling_id: Option<&str>,
+) -> Result<Option<String>, StoreError> {
+    let sibling_ids = connection
+        .prepare(
+            "SELECT placement.block_id FROM library_block_placements placement \
+             JOIN blocks block ON block.id = placement.block_id \
+             WHERE placement.library_id = ?1 AND block.library_id = ?1 \
+               AND block.lifecycle = 'active' \
+             ORDER BY placement.rank_key, placement.block_id",
+        )?
+        .query_map([library_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    resolve_page_relocation_sibling_anchor(&sibling_ids, previous_sibling_id, next_sibling_id)
+}
+
+fn resolve_document_page_relocation_anchor(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+    document_id: &str,
+    parent_block_id: Option<&str>,
+    previous_sibling_id: Option<&str>,
+    next_sibling_id: Option<&str>,
+) -> Result<Option<String>, StoreError> {
+    let current_document_id = resolve_page_document(connection, library_id, page_id)?;
+    if current_document_id != document_id {
+        return Err(conflict(
+            "Page relocation source Document is no longer available for Undo",
+        ));
+    }
+    let document =
+        load_page_ownership_document_prevalidated(connection, library_id, document_id, None)?;
+    let sibling_ids = match parent_block_id {
+        Some(parent_block_id) => {
+            materialized_child_ids(&document.base_materialization.block_tree, parent_block_id)
+                .ok_or_else(|| conflict("Page relocation source parent changed before Undo"))?
+        }
+        None => document
+            .base_materialization
+            .block_tree
+            .iter()
+            .map(|sibling| sibling.id.clone())
+            .collect(),
+    };
+    resolve_page_relocation_sibling_anchor(&sibling_ids, previous_sibling_id, next_sibling_id)
+}
+
+fn materialized_child_ids(
+    blocks: &[MaterializedBlockNode],
+    parent_block_id: &str,
+) -> Option<Vec<String>> {
+    for block in blocks {
+        if block.id == parent_block_id {
+            return Some(
+                block
+                    .children
+                    .iter()
+                    .map(|child| child.id.clone())
+                    .collect(),
+            );
+        }
+        if let Some(children) = materialized_child_ids(&block.children, parent_block_id) {
+            return Some(children);
+        }
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn undo_page_relocation(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request_hash: &str,
+    token: &LibraryBlockTransferUndoToken,
+    assets_root: &Path,
+) -> Result<LibraryApplyOutcome, StoreError> {
+    if token.store_epoch != store_epoch {
+        return Err(StoreError::new(
+            StoreErrorCode::StaleStoreEpoch,
+            "Page relocation Undo targets a stale store epoch",
+            true,
+        ));
+    }
+    let authority =
+        super::mutation::resolve_library_mutation_authority(connection, context, library_id)?;
+    let recipe =
+        read_page_relocation_undo_recipe(connection, context, library_id, token, &authority)?;
+    let (parent_kind, parent_id, location_revision) = connection
+        .query_row(
+            "SELECT page.parent_kind, page.parent_id, block.placement_revision FROM pages page \
+             JOIN blocks block ON block.id = page.block_id \
+               AND block.library_id = page.library_id \
+             JOIN documents document ON document.id = page.document_id \
+               AND document.library_id = page.library_id \
+             WHERE page.block_id = ?1 AND page.library_id = ?2 \
+               AND block.type = 'page' AND block.lifecycle = 'active' \
+               AND document.readiness = 'ready'",
+            params![recipe.page_id, library_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or_else(|| conflict("Moved Page is no longer available for Undo"))?;
+    if location_revision != recipe.result_location_revision
+        || !page_relocation_result_parent_matches(
+            &recipe.result_parent,
+            library_id,
+            &parent_kind,
+            &parent_id,
+        )
+    {
+        return Err(conflict("Page moved again after this relocation"));
+    }
+    let source = match parent_kind.as_str() {
+        "library" if parent_id == library_id => LibraryBlockTransferSource::Library {
+            library_id: library_id.to_owned(),
+        },
+        "page" => LibraryBlockTransferSource::Page { page_id: parent_id },
+        "data_source" => LibraryBlockTransferSource::DataSource {
+            data_source_id: parent_id,
+        },
+        _ => return Err(corrupt("Moved Page has inconsistent parent authority")),
+    };
+    let target = match &recipe.source {
+        PageRelocationUndoSourceV2::Library {
+            previous_sibling_id,
+            next_sibling_id,
+        } => LibraryBlockTransferTarget::Library {
+            library_id: library_id.to_owned(),
+            before_block_id: resolve_library_page_relocation_anchor(
+                connection,
+                library_id,
+                previous_sibling_id.as_deref(),
+                next_sibling_id.as_deref(),
+            )?,
+        },
+        PageRelocationUndoSourceV2::Page {
+            page_id,
+            document_id,
+            parent_block_id,
+            previous_sibling_id,
+            next_sibling_id,
+        } => LibraryBlockTransferTarget::Page {
+            page_id: page_id.clone(),
+            parent_block_id: parent_block_id.clone(),
+            before_block_id: resolve_document_page_relocation_anchor(
+                connection,
+                library_id,
+                page_id,
+                document_id,
+                parent_block_id.as_deref(),
+                previous_sibling_id.as_deref(),
+                next_sibling_id.as_deref(),
+            )?,
+        },
+        PageRelocationUndoSourceV2::DataSource {
+            data_source_id,
+            default_view_id,
+            ..
+        } => LibraryBlockTransferTarget::DataSource {
+            data_source_id: data_source_id.clone(),
+            placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
+                view_id: default_view_id.clone(),
+                preferences_override: DatabaseViewPreferencesOverrideInput::default(),
+                group_key: None,
+                before_page_id: None,
+                sorted_property_values: Vec::new(),
+            }),
+        },
+    };
+    let intent = LibraryBlockTransferLogicalIntent {
+        actor: serde_json::json!({ "kind": "electron_host", "command": "undo_page_relocation" }),
+        mode: LibraryBlockTransferMode::Move,
+        root_block_ids: vec![recipe.page_id.clone()],
+        causal_dependencies: Vec::new(),
+        source,
+        target,
+        promotion_policy: LibraryPagePromotionPolicy::Literal,
+    };
+    let mut prepared = prepare_for_semantic_page_move(
+        connection,
+        None,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        &intent,
+        &authority,
+    )?;
+    if matches!(
+        &recipe.source,
+        PageRelocationUndoSourceV2::DataSource { .. }
+    ) {
+        preserve_page_relocation_source_values(&mut prepared)?;
+    }
+    let transfer_authority = match authority.requesting_project_id.as_deref() {
+        Some(project_id) => PageOwnershipTransferAuthority::ProjectBound { project_id },
+        None => PageOwnershipTransferAuthority::TrustedLibrary(&authority),
+    };
+    apply_with_authority(
+        connection,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request_hash,
+        &intent,
+        assets_root,
+        transfer_authority,
+        PageOwnershipHistory::UndoRelocation {
+            recipe,
+            token: token.clone(),
+        },
+        None,
+        prepared,
+    )
 }
 
 pub(super) fn undo(
@@ -6138,6 +7068,7 @@ pub(super) fn undo(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: Some(result),
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -6323,6 +7254,40 @@ mod tests {
             content: Some(json!([])),
             children,
         }
+    }
+
+    #[test]
+    fn page_relocation_undo_anchor_prefers_next_then_previous_successor_and_fails_closed() {
+        let siblings = ["first", "previous", "inserted", "next", "last"]
+            .map(str::to_owned)
+            .to_vec();
+        assert_eq!(
+            resolve_page_relocation_sibling_anchor(&siblings, Some("previous"), Some("next"))
+                .expect("next sibling remains authoritative"),
+            Some("next".to_owned())
+        );
+
+        let without_next = ["first", "previous", "inserted", "last"]
+            .map(str::to_owned)
+            .to_vec();
+        assert_eq!(
+            resolve_page_relocation_sibling_anchor(&without_next, Some("previous"), Some("next"))
+                .expect("previous sibling still proves the local slot"),
+            Some("inserted".to_owned())
+        );
+        assert_eq!(
+            resolve_page_relocation_sibling_anchor(&without_next, None, None)
+                .expect("an originally unique child restores at the current start"),
+            Some("first".to_owned())
+        );
+
+        let conflict = resolve_page_relocation_sibling_anchor(
+            &["unrelated".to_owned()],
+            Some("previous"),
+            Some("next"),
+        )
+        .expect_err("missing anchors cannot silently append");
+        assert_eq!(conflict.code, StoreErrorCode::RevisionConflict);
     }
 
     #[test]

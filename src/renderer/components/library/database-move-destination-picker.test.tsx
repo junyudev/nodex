@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
-import { LibraryMoveDestinationPickerSurface } from "./library-move-destination-picker";
+import { DatabaseMoveDestinationPickerSurface } from "./database-move-destination-picker";
 
 const destination = {
   pageId: "page-product",
@@ -14,12 +14,12 @@ const destination = {
   updatedAt: "2026-08-11T00:00:00.000Z",
 } as const;
 
-describe("LibraryMoveDestinationPickerSurface", () => {
+describe("DatabaseMoveDestinationPickerSurface", () => {
   test("skips the current location and immediately accepts the focused destination", async () => {
     const onAccept = vi.fn();
     const onToggle = vi.fn();
     render(
-      <LibraryMoveDestinationPickerSurface
+      <DatabaseMoveDestinationPickerSurface
         ariaLabel="Move Roadmap to"
         query=""
         sections={[

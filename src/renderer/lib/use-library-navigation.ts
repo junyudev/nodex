@@ -13,6 +13,8 @@ import {
   type LibraryApplyOperation,
   type LibraryModuleReadRequest,
   type LibraryNavigationParent,
+  type LibraryPageRelocationDestinationScope,
+  type LibraryPageRelocationUndoToken,
   type LibraryReadValue,
   type LibraryResourceTarget,
   type LibraryRouteTarget,
@@ -172,6 +174,31 @@ export const libraryMoveDestinationsQueryOptions = (
     staleTime: 30_000,
   });
 
+export const libraryPageRelocationDestinationsQueryOptions = (
+  pageId: string,
+  input: Readonly<{
+    scope: LibraryPageRelocationDestinationScope;
+    cursor?: string;
+    limit?: number;
+  }>,
+) =>
+  queryOptions({
+    queryKey: queryKeys.library.pageRelocationDestinations(pageId, input),
+    queryFn: () =>
+      requireReadValue(
+        {
+          read: {
+            mode: "page_relocation_destinations",
+            pageId,
+            ...input,
+          },
+        },
+        "page_relocation_destinations",
+      ),
+    meta: libraryReadAuthorityMeta,
+    staleTime: 30_000,
+  });
+
 export const libraryPathQueryOptions = (target: LibraryRouteTarget) =>
   queryOptions({
     queryKey: queryKeys.library.path(target),
@@ -274,6 +301,25 @@ export const useApplyLibraryOperation = () => {
     },
   });
   return { metadata, mutation };
+};
+
+/**
+ * Relocation Undo outlives the picker that initiated the move. The capability
+ * carries its Store epoch, so submitting it must not depend on a still-mounted
+ * Library metadata observer.
+ */
+export const useUndoLibraryPageRelocation = () => {
+  const queryClient = useQueryClient();
+  return async (token: LibraryPageRelocationUndoToken) => {
+    const result = await applyLibraryModule(libraryContentAccess, {
+      operationId: createUuidV7(),
+      storeEpoch: token.storeEpoch,
+      operation: { kind: "undo_page_relocation", token },
+    });
+    if (!result.ok) throw new Error(result.error.message);
+    await queryClient.invalidateQueries({ queryKey: libraryModuleQueryKey });
+    return result.value;
+  };
 };
 
 export const useLibraryChildren = (
@@ -392,6 +438,31 @@ export const useLibraryMoveDestinationChildren = (
     queries: pageIds.map((pageId) => ({
       ...libraryMoveDestinationsQueryOptions(target, {
         scope: { kind: "children", parent: { kind: "page", pageId } },
+        limit: 100,
+      }),
+      enabled,
+    })),
+  });
+
+export const useLibraryPageRelocationDestinations = (
+  pageId: string,
+  input: Parameters<typeof libraryPageRelocationDestinationsQueryOptions>[1],
+  enabled = true,
+) =>
+  useQuery({
+    ...libraryPageRelocationDestinationsQueryOptions(pageId, input),
+    enabled,
+  });
+
+export const useLibraryPageRelocationChildren = (
+  pageId: string,
+  parentPageIds: readonly string[],
+  enabled = true,
+) =>
+  useQueries({
+    queries: parentPageIds.map((parentPageId) => ({
+      ...libraryPageRelocationDestinationsQueryOptions(pageId, {
+        scope: { kind: "page_children", parent: { kind: "page", pageId: parentPageId } },
         limit: 100,
       }),
       enabled,

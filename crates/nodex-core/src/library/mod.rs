@@ -783,6 +783,7 @@ impl LibraryModule {
                 canvas_mutation: None,
                 block_transfer: None,
                 block_transfer_undo: None,
+                page_relocation_undo: None,
                 structural_edit: None,
                 page_lifecycle: None,
                 block_property_mutation: None,
@@ -982,9 +983,10 @@ mod tests {
         LibraryNavigationParent, LibraryPageCopyValue, LibraryPageLifecycleMutation,
         LibraryPageLifecycleState, LibraryPageLifecycleTagOption,
         LibraryPageLifecycleViewPlacement, LibraryPagePrepareKind, LibraryPageProjectionFileKind,
-        LibraryPageReferenceMatchSource, LibraryPageSearchMatch, LibraryPageSearchTagMode,
-        LibraryPageWorkflowStatus, LibraryPageWriteDestination, LibraryProjectAccessChange,
-        LibraryProjectPageSearchFilters, LibraryWriteParent,
+        LibraryPageReferenceMatchSource, LibraryPageRelocationDestinationScope,
+        LibraryPageSearchMatch, LibraryPageSearchTagMode, LibraryPageWorkflowStatus,
+        LibraryPageWriteDestination, LibraryProjectAccessChange, LibraryProjectPageSearchFilters,
+        LibraryWriteParent,
     };
     use nodex_core_contracts::workspace::{
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceThreadPatch,
@@ -4219,6 +4221,533 @@ mod tests {
                 current_destination.document_head_seq,
             ),
             source_document_head,
+        );
+        let LibraryReadValue::PageRelocationDestinations {
+            items: suggested_destinations,
+            ..
+        } = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageRelocationDestinations {
+                        page_id: MOVE_DESCENDANT_PAGE.to_owned(),
+                        scope: LibraryPageRelocationDestinationScope::PageSuggested,
+                        cursor: None,
+                        limit: Some(8),
+                    },
+                },
+            )
+            .expect("suggested Page relocation destinations")
+            .value
+        else {
+            panic!("suggested Page relocation destinations");
+        };
+        assert_eq!(
+            suggested_destinations
+                .first()
+                .map(|destination| destination.key.as_str()),
+            Some("page:page:move-source")
+        );
+        assert!(suggested_destinations[0].is_current);
+        assert!(
+            suggested_destinations
+                .iter()
+                .all(|destination| destination.key != format!("page:{MOVE_DESCENDANT_PAGE}"))
+        );
+        let LibraryReadValue::PageRelocationDestinations {
+            items: current_only,
+            next_cursor: Some(current_only_cursor),
+            has_more: true,
+            ..
+        } = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageRelocationDestinations {
+                        page_id: MOVE_DESCENDANT_PAGE.to_owned(),
+                        scope: LibraryPageRelocationDestinationScope::PageSuggested,
+                        cursor: None,
+                        limit: Some(1),
+                    },
+                },
+            )
+            .expect("one-row suggested Page relocation window")
+            .value
+        else {
+            panic!("one-row suggested Page relocation window");
+        };
+        assert_eq!(current_only.len(), 1);
+        assert!(current_only[0].is_current);
+        let LibraryReadValue::PageRelocationDestinations {
+            items: after_current_only,
+            ..
+        } = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageRelocationDestinations {
+                        page_id: MOVE_DESCENDANT_PAGE.to_owned(),
+                        scope: LibraryPageRelocationDestinationScope::PageSuggested,
+                        cursor: Some(current_only_cursor),
+                        limit: Some(1),
+                    },
+                },
+            )
+            .expect("suggested Page relocation continuation")
+            .value
+        else {
+            panic!("suggested Page relocation continuation");
+        };
+        assert_eq!(after_current_only.len(), 1);
+        assert!(!after_current_only[0].is_current);
+        let LibraryReadValue::PageRelocationDestinations {
+            items: database_destinations,
+            total: 1,
+            ..
+        } = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageRelocationDestinations {
+                        page_id: ROW_PAGE.to_owned(),
+                        scope: LibraryPageRelocationDestinationScope::Databases { query: None },
+                        cursor: None,
+                        limit: Some(20),
+                    },
+                },
+            )
+            .expect("Database relocation destinations")
+            .value
+        else {
+            panic!("Database relocation destinations");
+        };
+        assert_eq!(database_destinations.len(), 1);
+        assert!(database_destinations[0].is_current);
+        assert_eq!(database_destinations[0].title, "Cards");
+        assert_eq!(database_destinations[0].path, ["Library reads"]);
+
+        let LibraryReadValue::PageRelocationDestinations {
+            items: descendant_destinations,
+            ..
+        } = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageRelocationDestinations {
+                        page_id: MOVE_SOURCE_PAGE.to_owned(),
+                        scope: LibraryPageRelocationDestinationScope::PageSearch {
+                            query: "Descendant".to_owned(),
+                        },
+                        cursor: None,
+                        limit: Some(20),
+                    },
+                },
+            )
+            .expect("cycle-safe Page relocation destinations")
+            .value
+        else {
+            panic!("cycle-safe Page relocation destinations");
+        };
+        assert!(descendant_destinations.is_empty());
+
+        let LibraryReadValue::PageRelocationDestinations {
+            items: page_destinations,
+            ..
+        } = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageRelocationDestinations {
+                        page_id: ROW_PAGE.to_owned(),
+                        scope: LibraryPageRelocationDestinationScope::PageSearch {
+                            query: "Intermediate".to_owned(),
+                        },
+                        cursor: None,
+                        limit: Some(20),
+                    },
+                },
+            )
+            .expect("Page relocation destinations")
+            .value
+        else {
+            panic!("Page relocation destinations");
+        };
+        let page_destination = page_destinations
+            .iter()
+            .find(|destination| destination.key == format!("page:{MOVE_SOURCE_PAGE}"))
+            .expect("Page relocation target");
+        assert_eq!(page_destination.path, ["Pages"]);
+        let moved = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "relocate:row-to-page".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::MovePage {
+                        page_id: ROW_PAGE.to_owned(),
+                        destination: page_destination.destination.clone(),
+                        expected_etag: page_destination.expected_move_etag.clone(),
+                    },
+                },
+            )
+            .expect("relocate Database Page below a Page");
+        let undo_token = moved
+            .committed
+            .value
+            .block_transfer
+            .as_ref()
+            .and_then(|result| result.undo_token.clone())
+            .expect("identity-preserving relocation Undo token");
+        let mut tampered_undo_token = undo_token.clone();
+        tampered_undo_token.recipe_hash = "tampered-recipe-hash".to_owned();
+        let tampered_undo = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo:row-relocation-tampered".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoPageRelocation {
+                        token: tampered_undo_token,
+                    },
+                },
+            )
+            .expect_err("tampered Page relocation token fails closed");
+        assert_eq!(tampered_undo.code, CoreErrorCode::Unauthorized);
+        let mut stale_epoch_undo_token = undo_token.clone();
+        stale_epoch_undo_token.store_epoch = "epoch:stale".to_owned();
+        let stale_epoch_undo = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo:row-relocation-stale-epoch".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoPageRelocation {
+                        token: stale_epoch_undo_token,
+                    },
+                },
+            )
+            .expect_err("stale Page relocation token fails closed");
+        assert_eq!(stale_epoch_undo.code, CoreErrorCode::StaleStoreEpoch);
+        let consumed_undo_token = undo_token.clone();
+        let undone = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo:row-relocation".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoPageRelocation { token: undo_token },
+                },
+            )
+            .expect("Undo Database Page relocation");
+        let undo_result = undone
+            .committed
+            .value
+            .page_relocation_undo
+            .expect("Page relocation Undo result");
+        assert_eq!(undo_result.page_id, ROW_PAGE);
+        assert!(matches!(
+            undo_result.final_location,
+            LibraryBlockLocation::DataSource {
+                ref data_source_id,
+                ..
+            } if data_source_id == SOURCE
+        ));
+        let restored_status = kernel
+            .writer()
+            .call(|connection| {
+                connection
+                    .query_row(
+                        "SELECT value.value_json FROM data_source_property_values value \
+                         JOIN data_source_page_memberships membership \
+                           ON membership.id = value.membership_id \
+                          AND membership.data_source_id = value.data_source_id \
+                         WHERE membership.page_block_id = ?1 \
+                           AND membership.data_source_id = ?2 \
+                           AND membership.removed_at IS NULL \
+                           AND value.property_id = 'status'",
+                        params![ROW_PAGE, SOURCE],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .map_err(Into::into)
+            })
+            .expect("restored source workflow status");
+        assert_eq!(restored_status, "\"triage\"");
+        let duplicate_undo = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo:row-relocation-again".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoPageRelocation {
+                        token: consumed_undo_token,
+                    },
+                },
+            )
+            .expect_err("Page relocation Undo token is one-shot");
+        assert_eq!(
+            duplicate_undo.code,
+            CoreErrorCode::RevisionConflict,
+            "{duplicate_undo:?}"
+        );
+        let relocate_to_database = |page_id: &str, operation_id: &str| {
+            let LibraryReadValue::PageRelocationDestinations { items, .. } = module
+                .read(
+                    &context(),
+                    ModuleReadRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        read: LibraryRead::PageRelocationDestinations {
+                            page_id: page_id.to_owned(),
+                            scope: LibraryPageRelocationDestinationScope::Databases { query: None },
+                            cursor: None,
+                            limit: Some(20),
+                        },
+                    },
+                )
+                .expect("Database destination for standalone or nested Page")
+                .value
+            else {
+                panic!("Database destination for standalone or nested Page");
+            };
+            let destination = items
+                .into_iter()
+                .find(|destination| !destination.is_current)
+                .expect("non-current Database destination");
+            module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        operation_id: operation_id.to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: LibraryIntent::MovePage {
+                            page_id: page_id.to_owned(),
+                            destination: destination.destination,
+                            expected_etag: destination.expected_move_etag,
+                        },
+                    },
+                )
+                .expect("relocate standalone or nested Page to Database")
+                .committed
+                .value
+                .block_transfer
+                .and_then(|result| result.undo_token)
+                .expect("all Page relocation sources mint Undo")
+        };
+
+        let root_undo_token = relocate_to_database(ROOT_PAGE, "relocate:root-to-database");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo:root-relocation".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoPageRelocation {
+                        token: root_undo_token,
+                    },
+                },
+            )
+            .expect("Undo Library-root Page relocation");
+        let (root_parent, root_order) = kernel
+            .writer()
+            .call(|connection| {
+                let parent = connection.query_row(
+                    "SELECT parent_kind, parent_id FROM pages WHERE block_id = ?1",
+                    [ROOT_PAGE],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )?;
+                let order = connection
+                    .prepare(
+                        "SELECT block_id FROM library_block_placements \
+                         WHERE library_id = 'library-1' ORDER BY rank_key, block_id",
+                    )?
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                Ok((parent, order))
+            })
+            .expect("restored Library-root placement");
+        assert_eq!(root_parent, ("library".to_owned(), "library-1".to_owned()));
+        assert!(
+            root_order
+                .windows(2)
+                .any(|window| window == [ROOT_PAGE, DATABASE]),
+            "restored root order: {root_order:?}"
+        );
+
+        let nested_undo_token =
+            relocate_to_database(MOVE_DESCENDANT_PAGE, "relocate:nested-to-database");
+        let (source_generation, source_head_seq) = kernel
+            .writer()
+            .call(|connection| {
+                connection
+                    .query_row(
+                        "SELECT generation, head_seq FROM documents WHERE id = ?1",
+                        [MOVE_SOURCE_DOCUMENT],
+                        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+                    )
+                    .map_err(Into::into)
+            })
+            .expect("source Document head after nested relocation");
+        OwnedDocumentModule::new("profile-1", "library-1", &kernel)
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                    operation_id: "edit:nested-relocation-source".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: OwnedDocumentIntent::ApplyOperationBatch {
+                        document_id: MOVE_SOURCE_DOCUMENT.to_owned(),
+                        generation: source_generation,
+                        expected_head_seq: source_head_seq,
+                        operations: vec![ContractDocumentBlockOperation::InsertBlock {
+                            block: serde_json::json!({
+                                "id": "018f0000-0000-7000-8000-000000000099",
+                                "type": "paragraph",
+                                "props": {},
+                                "content": [{
+                                    "type": "text",
+                                    "text": "Keep this edit",
+                                    "styles": {}
+                                }],
+                                "children": []
+                            }),
+                            parent_block_id: None,
+                            before_block_id: None,
+                        }],
+                        actor: serde_json::json!({ "kind": "test" }),
+                    },
+                },
+            )
+            .expect("edit source Document while nested Page is relocated");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo:nested-relocation".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoPageRelocation {
+                        token: nested_undo_token,
+                    },
+                },
+            )
+            .expect("Undo nested Page relocation");
+        let (nested_parent, shell_document_id, unrelated_edit_document_id) = kernel
+            .writer()
+            .call(|connection| {
+                let parent = connection.query_row(
+                    "SELECT parent_kind, parent_id FROM pages WHERE block_id = ?1",
+                    [MOVE_DESCENDANT_PAGE],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )?;
+                let document_id = connection.query_row(
+                    "SELECT document_id FROM document_block_index \
+                     WHERE block_id = ?1",
+                    [MOVE_DESCENDANT_PAGE],
+                    |row| row.get::<_, String>(0),
+                )?;
+                let unrelated_edit_document_id = connection.query_row(
+                    "SELECT document_id FROM document_block_index WHERE block_id = ?1",
+                    ["018f0000-0000-7000-8000-000000000099"],
+                    |row| row.get::<_, String>(0),
+                )?;
+                Ok((parent, document_id, unrelated_edit_document_id))
+            })
+            .expect("restored nested Page shell");
+        assert_eq!(
+            nested_parent,
+            ("page".to_owned(), MOVE_SOURCE_PAGE.to_owned())
+        );
+        assert_eq!(shell_document_id, MOVE_SOURCE_DOCUMENT);
+        assert_eq!(unrelated_edit_document_id, MOVE_SOURCE_DOCUMENT);
+
+        let stale_undo_token =
+            relocate_to_database(MOVE_DESCENDANT_PAGE, "relocate:nested-for-stale-undo");
+        let LibraryReadValue::PageRelocationDestinations {
+            items: library_destinations,
+            ..
+        } = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageRelocationDestinations {
+                        page_id: MOVE_DESCENDANT_PAGE.to_owned(),
+                        scope: LibraryPageRelocationDestinationScope::PageChildren {
+                            parent: LibraryNavigationParent::Library,
+                        },
+                        cursor: None,
+                        limit: Some(20),
+                    },
+                },
+            )
+            .expect("Library destination before stale Undo")
+            .value
+        else {
+            panic!("Library destination before stale Undo");
+        };
+        let library_destination = library_destinations
+            .into_iter()
+            .find(|destination| {
+                destination.kind
+                    == nodex_core_contracts::library::LibraryPageRelocationDestinationKind::Library
+            })
+            .expect("Pages top-level destination");
+        module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "relocate:nested-again".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::MovePage {
+                        page_id: MOVE_DESCENDANT_PAGE.to_owned(),
+                        destination: library_destination.destination,
+                        expected_etag: library_destination.expected_move_etag,
+                    },
+                },
+            )
+            .expect("relocate Page again before stale Undo");
+        let stale_undo = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "undo:stale-nested-relocation".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::UndoPageRelocation {
+                        token: stale_undo_token,
+                    },
+                },
+            )
+            .expect_err("a later relocation invalidates the old Undo token");
+        assert_eq!(stale_undo.code, CoreErrorCode::RevisionConflict);
+        let parent_after_stale_undo = kernel
+            .writer()
+            .call(|connection| {
+                connection
+                    .query_row(
+                        "SELECT parent_kind, parent_id FROM pages WHERE block_id = ?1",
+                        [MOVE_DESCENDANT_PAGE],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                    )
+                    .map_err(Into::into)
+            })
+            .expect("Page parent after rejected stale Undo");
+        assert_eq!(
+            parent_after_stale_undo,
+            ("library".to_owned(), "library-1".to_owned())
         );
         kernel
             .writer()

@@ -1,6 +1,10 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
-import { ActivitySpinnerIcon, SearchIcon } from "@/components/shared/icons";
+import {
+  ActivitySpinnerIcon,
+  NfmSideMenuChevronRightIcon,
+  SearchIcon,
+} from "@/components/shared/icons";
 import { StatusIcon } from "@/lib/status-presentation";
 import { cn } from "@/lib/utils";
 import { NodexTooltip } from "./tooltip";
@@ -94,6 +98,94 @@ export function NodexDestinationPickerSection({
       </div>
       <div className="flex flex-col gap-px px-1">{children}</div>
     </div>
+  );
+}
+
+/** Shared option substrate for destination pickers; domain workflows own its content and action. */
+export function NodexDestinationPickerOption({
+  id,
+  focused,
+  disabled,
+  depth = 0,
+  expanded,
+  icon,
+  children,
+  onFocus,
+  onToggle,
+  onSelect,
+}: {
+  readonly id: string;
+  readonly focused: boolean;
+  readonly disabled: boolean;
+  readonly depth?: number;
+  readonly expanded?: boolean;
+  readonly icon: ReactNode;
+  readonly children: ReactNode;
+  readonly onFocus: () => void;
+  readonly onToggle?: () => void;
+  readonly onSelect: () => void;
+}) {
+  const expandable = expanded !== undefined && onToggle !== undefined;
+
+  return (
+    <button
+      id={id}
+      type="button"
+      role="option"
+      aria-selected={focused}
+      aria-disabled={disabled || undefined}
+      aria-expanded={expandable ? expanded : undefined}
+      data-focused={focused ? "true" : undefined}
+      className={cn(
+        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 text-left text-[14px] leading-7 outline-hidden",
+        disabled
+          ? "cursor-default opacity-55"
+          : "cursor-interaction hover:bg-token-list-hover-background",
+        focused && "bg-token-list-hover-background",
+      )}
+      style={{ paddingLeft: 6 + depth * 18 }}
+      onPointerEnter={onFocus}
+      onClick={() => {
+        if (!disabled) onSelect();
+      }}
+    >
+      <span
+        className="relative flex h-[18px] w-[22px] shrink-0 items-center justify-center text-token-description-foreground"
+        onPointerDown={(event: ReactPointerEvent<HTMLSpanElement>) => {
+          if (!expandable || event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onClick={(event) => {
+          if (!expandable) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onToggle();
+        }}
+      >
+        <span
+          className={cn(
+            "flex items-center justify-center transition-opacity",
+            expandable && "group-hover:opacity-0 group-focus-visible:opacity-0",
+            expandable && focused && "opacity-0",
+          )}
+        >
+          {icon}
+        </span>
+        {expandable ? (
+          <NfmSideMenuChevronRightIcon
+            className={cn(
+              "absolute icon-2xs opacity-0 transition-[opacity,transform] duration-150 ease-out",
+              "group-hover:opacity-100 group-focus-visible:opacity-100",
+              focused && "opacity-100",
+              expanded && "rotate-90",
+            )}
+            aria-hidden="true"
+          />
+        ) : null}
+      </span>
+      {children}
+    </button>
   );
 }
 

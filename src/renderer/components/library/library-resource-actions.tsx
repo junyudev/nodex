@@ -37,7 +37,8 @@ import {
   LibraryOpenInProjectModal,
   LibraryResourceAccessModal,
 } from "./library-resource-action-modals";
-import { LibraryMoveDestinationPicker } from "./library-move-destination-picker";
+import { DatabaseMoveDestinationPicker } from "./database-move-destination-picker";
+import { PageMoveDestinationPicker } from "./page-move-destination-picker";
 import type {
   LibraryProjectOption,
   LibraryResourceTarget,
@@ -167,19 +168,30 @@ export function LibraryResourceActions({
           contentClassName="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
           contentMotion="none"
         >
-          <LibraryMoveDestinationPicker
-            target={target}
-            title={title}
-            expectedLocationRevision={expectedLocationRevision}
-            onClose={() => {
-              setMoveSubmenuOpen(false);
-              setMenuOpen(false);
-            }}
-            onMoved={() => {
-              setMoveSubmenuOpen(false);
-              setMenuOpen(false);
-            }}
-          />
+          {target.kind === "page" ? (
+            <PageMoveDestinationPicker
+              pageId={target.pageId}
+              title={title}
+              onClose={() => {
+                setMoveSubmenuOpen(false);
+                setMenuOpen(false);
+              }}
+            />
+          ) : (
+            <DatabaseMoveDestinationPicker
+              target={target}
+              title={title}
+              expectedLocationRevision={expectedLocationRevision}
+              onClose={() => {
+                setMoveSubmenuOpen(false);
+                setMenuOpen(false);
+              }}
+              onMoved={() => {
+                setMoveSubmenuOpen(false);
+                setMenuOpen(false);
+              }}
+            />
+          )}
         </NodexDropdownFlyoutSubmenuItem>
         <NodexDropdownItem
           leftSlot={<ProjectAccessIcon />}

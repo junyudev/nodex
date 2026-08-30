@@ -245,6 +245,17 @@ and by the persistence boundary. Non-Page Blocks are Library-owned or live in th
 nearest Page/owner Document according to their registered behavior. Relational
 parent coordinates and the Document's exact tree/materialized index must agree.
 
+Page relocation means changing that exclusive parent through one typed Library
+mutation. A Database destination is an active Data Source selected through its
+Database's default View; a Page destination is ownership, while a Project name
+beside a Database is only primary-binding context and never an ownership
+coordinate. Every relocation mints a one-shot Core Undo recipe. It restores a
+Library or Page source through authoritative sibling anchors, or a Data Source
+through its prior membership and exact active View ranks. The recipe is fenced
+to the Page's post-move parent and location revision, so a later relocation
+invalidates it without blocking unrelated content edits. View `Reorder` changes
+only rank inside the current View and is not a relocation synonym.
+
 Library top-level order and View manual order are independent fractional
 orderings with `blockId` as stable tie-breaker. SQL rank never determines order
 inside a Yjs Document.

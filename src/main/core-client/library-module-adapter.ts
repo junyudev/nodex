@@ -6,6 +6,7 @@ import {
 import type { DatabaseViewLayout } from "../../shared/database-kernel";
 import type {
   LibraryApplyOperation,
+  LibraryAgentSiblingAnchor,
   LibraryCanvasDestination,
   LibraryModuleApplyRequest,
   LibraryModuleApplyResult,
@@ -15,6 +16,8 @@ import type {
   LibraryNavigationNode,
   LibraryNavigationParent,
   LibraryMoveDestinationScope,
+  LibraryPageRelocationDestinationScope,
+  LibraryPageWriteDestination,
   LibraryPageInsertion,
   LibraryReadValue,
   LibraryResourceTarget,
@@ -162,6 +165,76 @@ const toCoreMoveDestinationScope = (scope: LibraryMoveDestinationScope) => {
   return { kind: scope.kind, parent: toCoreParent(scope.parent) } as const;
 };
 
+const toCorePageRelocationDestinationScope = (scope: LibraryPageRelocationDestinationScope) => {
+  if (scope.kind === "databases") return { kind: scope.kind, query: scope.query ?? null } as const;
+  if (scope.kind === "page_suggested") return scope;
+  if (scope.kind === "page_search") return scope;
+  return { kind: scope.kind, parent: toCoreParent(scope.parent) } as const;
+};
+
+const toCoreSiblingAnchor = (anchor: LibraryAgentSiblingAnchor | undefined) => {
+  if (!anchor) return null;
+  if (!("blockId" in anchor)) return anchor;
+  return { kind: anchor.kind, block_id: anchor.blockId } as const;
+};
+
+const toCorePageWriteDestination = (destination: LibraryPageWriteDestination) => {
+  const at = toCoreSiblingAnchor(destination.at);
+  if (destination.kind === "library") return { kind: destination.kind, at } as const;
+  if (destination.kind === "page") {
+    return { kind: destination.kind, page_id: destination.pageId, at } as const;
+  }
+  return {
+    kind: destination.kind,
+    data_source_id: destination.dataSourceId,
+    view_id: destination.viewId ?? null,
+    group: destination.group
+      ? {
+          kind: destination.group.kind,
+          group_key: destination.group.groupKey ?? null,
+          subgroup_key: destination.group.subgroupKey ?? null,
+        }
+      : null,
+    at,
+  } as const;
+};
+
+const fromCorePageWriteDestination = (
+  destination: Extract<
+    LibraryReadSnapshot["value"],
+    { kind: "page_relocation_destinations" }
+  >["items"][number]["destination"],
+): LibraryPageWriteDestination => {
+  const at = destination.at
+    ? destination.at.kind === "start" || destination.at.kind === "end"
+      ? destination.at
+      : { kind: destination.at.kind, blockId: destination.at.block_id }
+    : undefined;
+  if (destination.kind === "library") return { kind: destination.kind, ...(at ? { at } : {}) };
+  if (destination.kind === "page") {
+    return { kind: destination.kind, pageId: destination.page_id, ...(at ? { at } : {}) };
+  }
+  return {
+    kind: destination.kind,
+    dataSourceId: parseDataSourceId(destination.data_source_id),
+    ...(destination.view_id === null ? {} : { viewId: parseDatabaseViewId(destination.view_id) }),
+    ...(destination.group
+      ? {
+          group: {
+            kind: destination.group.kind,
+            ...(destination.group.group_key === null
+              ? {}
+              : { groupKey: destination.group.group_key }),
+            ...(destination.group.subgroup_key === null
+              ? {}
+              : { subgroupKey: destination.group.subgroup_key }),
+          },
+        }
+      : {}),
+    ...(at ? { at } : {}),
+  };
+};
+
 const toCorePageInsertion = (insertion: LibraryPageInsertion) => {
   if (insertion.kind === "append") {
     return {
@@ -268,6 +341,14 @@ const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
         kind: "move_destinations",
         target: toCoreResourceTarget(read.target),
         scope: toCoreMoveDestinationScope(read.scope),
+        cursor: read.cursor ?? null,
+        limit: read.limit,
+      };
+    case "page_relocation_destinations":
+      return {
+        kind: read.mode,
+        page_id: read.pageId,
+        scope: toCorePageRelocationDestinationScope(read.scope),
         cursor: read.cursor ?? null,
         limit: read.limit,
       };
@@ -532,6 +613,22 @@ const toCoreIntent = (operation: LibraryApplyOperation): LibraryIntent => {
               head_seq: operation.containingDocumentHead.expectedHeadSeq,
             }
           : null,
+      };
+    case "move_page":
+      return {
+        kind: operation.kind,
+        page_id: operation.pageId,
+        destination: toCorePageWriteDestination(operation.destination),
+        expected_etag: operation.expectedEtag,
+      };
+    case "undo_page_relocation":
+      return {
+        kind: operation.kind,
+        token: {
+          transfer_operation_id: operation.token.transferOperationId,
+          recipe_hash: operation.token.recipeHash,
+          store_epoch: operation.token.storeEpoch,
+        },
       };
     case "move_block":
       return {
@@ -1054,6 +1151,42 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
         hasMore: value.has_more,
         total: value.total,
         rootIsCurrent: value.root_is_current,
+      } as const;
+    case "page_relocation_destinations":
+      return {
+        kind: value.kind,
+        pageId: value.page_id,
+        scope:
+          value.scope.kind === "databases"
+            ? { kind: value.scope.kind, ...(value.scope.query ? { query: value.scope.query } : {}) }
+            : value.scope.kind === "page_suggested"
+              ? value.scope
+              : value.scope.kind === "page_search"
+                ? value.scope
+                : {
+                    kind: value.scope.kind,
+                    parent: (() => {
+                      const parent = fromCoreParent(value.scope.parent);
+                      if (parent.kind === "database") {
+                        throw new Error("Core returned a Database Page relocation scope");
+                      }
+                      return parent;
+                    })(),
+                  },
+        items: value.items.map((item) => ({
+          key: item.key,
+          kind: item.kind,
+          title: item.title,
+          path: item.path,
+          hasChildren: item.has_children,
+          isCurrent: item.is_current,
+          updatedAt: item.updated_at,
+          destination: fromCorePageWriteDestination(item.destination),
+          expectedMoveEtag: item.expected_move_etag,
+        })),
+        nextCursor: value.next_cursor ?? null,
+        hasMore: value.has_more,
+        total: value.total,
       } as const;
     case "page_mention_destination":
       return {
@@ -2176,6 +2309,26 @@ export const createCoreLibraryModuleAdapter = (
                   updatedFileIds: committed.outcome.page_files.updated_file_ids,
                   deletedFileIds: committed.outcome.page_files.deleted_file_ids,
                   consumedBlobReceiptIds: committed.outcome.page_files.consumed_blob_receipt_ids,
+                }
+              : null,
+            pageRelocation:
+              request.operation.kind === "move_page" && committed.outcome.block_transfer
+                ? {
+                    pageId: request.operation.pageId,
+                    undoToken: committed.outcome.block_transfer.undo_token
+                      ? {
+                          transferOperationId:
+                            committed.outcome.block_transfer.undo_token.transfer_operation_id,
+                          recipeHash: committed.outcome.block_transfer.undo_token.recipe_hash,
+                          storeEpoch: committed.outcome.block_transfer.undo_token.store_epoch,
+                        }
+                      : null,
+                  }
+                : null,
+            pageRelocationUndo: committed.outcome.page_relocation_undo
+              ? {
+                  pageId: committed.outcome.page_relocation_undo.page_id,
+                  transferOperationId: committed.outcome.page_relocation_undo.transfer_operation_id,
                 }
               : null,
             affectedParentKeys: receipt.affected_parent_keys,

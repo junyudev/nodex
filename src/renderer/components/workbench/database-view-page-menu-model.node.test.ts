@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 
 import {
   buildDatabaseViewPageMenuEntries,
-  databaseViewPageMoveDirection,
+  databaseViewPageReorderDirection,
   filterDatabaseViewPageMenuEntries,
 } from "./database-view-page-menu-model";
 
@@ -10,6 +10,7 @@ const capabilities = {
   hasPageKey: true,
   canMoveUp: false,
   canMoveDown: true,
+  showReorder: true,
   canCopyMarkdown: true,
   canOpenInNewChat: true,
   canSendToChat: true,
@@ -20,16 +21,22 @@ describe("Database View Page menu model", () => {
   test("builds the shared Page hierarchy in product order", () => {
     const actions = buildDatabaseViewPageMenuEntries(capabilities);
 
-    expect(actions.map((action) => action.label)).toEqual(["Open in", "Copy", "Move", "Delete"]);
+    expect(actions.map((action) => action.label)).toEqual([
+      "Open in",
+      "Copy",
+      "Move to",
+      "Reorder",
+      "Delete",
+    ]);
     expect(
       actions
-        .find((action) => action.id === "move")
+        .find((action) => action.id === "reorder")
         ?.children?.map((action) => [action.label, action.disabled]),
     ).toEqual([
-      ["Move to top", true],
-      ["Move up", true],
-      ["Move down", false],
-      ["Move to bottom", false],
+      ["Reorder to top", true],
+      ["Reorder up", true],
+      ["Reorder down", false],
+      ["Reorder to bottom", false],
     ]);
     expect(
       actions.find((action) => action.id === "copy")?.children?.map((action) => action.label),
@@ -37,6 +44,12 @@ describe("Database View Page menu model", () => {
     expect(
       actions.find((action) => action.id === "open-in")?.children?.map((action) => action.label),
     ).toEqual(["Open in new chat", "Send to chat…"]);
+  });
+
+  test("hides rank controls when the startup capability is disabled", () => {
+    const actions = buildDatabaseViewPageMenuEntries({ ...capabilities, showReorder: false });
+
+    expect(actions.map((action) => action.id)).toEqual(["open-in", "copy", "move-to", "delete"]);
   });
 
   test("does not invent an ID when a Page has no current key", () => {
@@ -66,12 +79,12 @@ describe("Database View Page menu model", () => {
   test("matching a parent keeps its complete submenu", () => {
     const actions = filterDatabaseViewPageMenuEntries(
       buildDatabaseViewPageMenuEntries(capabilities),
-      "move",
+      "reorder",
     );
 
-    expect(actions.map((action) => action.id)).toEqual(["move"]);
+    expect(actions.map((action) => action.id)).toEqual(["reorder"]);
     expect(actions[0]?.children).toHaveLength(4);
-    expect(databaseViewPageMoveDirection("move-bottom")).toBe("bottom");
-    expect(databaseViewPageMoveDirection("copy-title")).toBeNull();
+    expect(databaseViewPageReorderDirection("reorder-bottom")).toBe("bottom");
+    expect(databaseViewPageReorderDirection("copy-title")).toBeNull();
   });
 });

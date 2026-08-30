@@ -119,7 +119,7 @@ const measureSiblingSubmenuSwitch = async (page: Page): Promise<number> => {
     const trigger = [
       ...document.querySelectorAll<HTMLElement>("[data-nodex-context-menu-subtrigger='true']"),
     ].find((element) => element.textContent?.trim().startsWith("Move"));
-    if (!trigger) throw new Error("Move submenu trigger is missing");
+    if (!trigger) throw new Error("Move-to submenu trigger is missing");
 
     return await new Promise<number>((resolve, reject) => {
       let startedAt: number | null = null;
@@ -130,11 +130,11 @@ const measureSiblingSubmenuSwitch = async (page: Page): Promise<number> => {
       const finishIfOpen = (): void => {
         const openedAt = startedAt;
         if (openedAt === null) return;
-        const openMoveSubmenu = [
-          ...document.querySelectorAll<HTMLElement>(
-            "[data-slot='context-menu-subcontent'][data-state='open']",
+        const openMoveSubmenu = Boolean(
+          document.querySelector<HTMLInputElement>(
+            '[role="combobox"][aria-label^="Move "][aria-label$=" to"]',
           ),
-        ].some((element) => element.textContent?.includes("Move to top"));
+        );
         if (!openMoveSubmenu) return;
         window.clearTimeout(timer);
         observer.disconnect();

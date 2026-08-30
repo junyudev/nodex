@@ -8,6 +8,7 @@ import type {
 } from "./block-documents/contracts";
 import type { LocalCommitCommandSuccess } from "./local-commit-delivery";
 import type { LibraryPageFileOwnershipMove } from "./library-module";
+import type { BlockTransferUndoToken } from "./block-transfer-undo-token";
 import {
   parseDatabaseViewPreferencesOverride,
   type DatabaseViewPreferencesOverride,
@@ -23,6 +24,8 @@ import {
 
 export const MAX_BLOCK_TRANSFER_ROOTS = 10_000;
 export const MAX_BLOCK_TRANSFER_ID_LENGTH = 512;
+
+export type { BlockTransferUndoToken } from "./block-transfer-undo-token";
 
 export type BlockTransferMode = "move" | "copy";
 export type PagePromotionPolicy = "literal" | "task_shorthand_v1";
@@ -238,12 +241,6 @@ export interface BlockTransferReceipt {
   readonly commitSeq: number;
   readonly committedAt: string;
   readonly undoToken: BlockTransferUndoToken | null;
-}
-
-export interface BlockTransferUndoToken {
-  readonly transferOperationId: string;
-  readonly recipeHash: string;
-  readonly storeEpoch: string;
 }
 
 export interface BlockTransferUndoIntent {

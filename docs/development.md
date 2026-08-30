@@ -61,6 +61,7 @@ vp run dev --agent-config-toml /path/to/config.toml
 vp run dev --remote-debugging-port 9229
 vp run dev --cdp 9229
 vp run dev --enable runtime-metrics
+vp run dev --enable database-page-reorder-menu
 ```
 
 Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
@@ -91,7 +92,10 @@ the environment's existing files.
 
 `--enable` is repeatable and applies a Nodex feature only to the current
 invocation. Unknown slugs fail and list the catalog. Currently
-`runtime-metrics` enables structured development runtime metrics. Agent/app-server
+`runtime-metrics` enables structured development runtime metrics.
+`database-page-reorder-menu` shows the position-only `Reorder` submenu in a
+Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
+ordering, or bulk ordering. Both features default off. Agent/app-server
 features remain owned by `config.toml`. The former Library workspace and
 Calendar presentation gates were retired with those product surfaces, so they
 are intentionally not accepted as launcher aliases.

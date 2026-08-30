@@ -553,6 +553,7 @@ export interface components {
                 readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
                 readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
                 readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
+                readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                 readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
             };
             readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
@@ -587,6 +588,7 @@ export interface components {
                 readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
                 readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
                 readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
+                readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                 readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
             };
             readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
@@ -4920,6 +4922,45 @@ export interface components {
         readonly LibraryPageReferenceMatchSource: "recent" | "page_key" | "title" | "content";
         /** @enum {string} */
         readonly LibraryPageReferencePresentation: "mention" | "reference_block" | "link";
+        readonly LibraryPageRelocationDestinationEntry: {
+            readonly destination: components["schemas"]["LibraryPageWriteDestination"];
+            readonly expected_move_etag: string;
+            readonly has_children: boolean;
+            readonly is_current: boolean;
+            readonly key: string;
+            readonly kind: components["schemas"]["LibraryPageRelocationDestinationKind"];
+            readonly path: readonly string[];
+            readonly title: string;
+            readonly updated_at: string;
+        };
+        /** @enum {string} */
+        readonly LibraryPageRelocationDestinationKind: "library" | "page" | "database";
+        readonly LibraryPageRelocationDestinationScope: {
+            /** @enum {string} */
+            readonly kind: "databases";
+            readonly query?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "page_suggested";
+        } | {
+            /** @enum {string} */
+            readonly kind: "page_children";
+            readonly parent: components["schemas"]["LibraryNavigationParent"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "page_search";
+            readonly query: string;
+        };
+        readonly LibraryPageRelocationUndoResult: {
+            readonly affected_database_ids: readonly string[];
+            readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
+            readonly final_location: components["schemas"]["LibraryBlockLocation"];
+            /** Format: int64 */
+            readonly final_location_revision: number;
+            readonly page_id: string;
+            readonly page_key?: string | null;
+            readonly transfer_operation_id: string;
+        };
         readonly LibraryPageSearchMatch: {
             readonly is_current: boolean;
             readonly page_key: string;
@@ -5911,6 +5952,10 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "undo_block_transfer";
                 readonly token: components["schemas"]["LibraryBlockTransferUndoToken"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "undo_page_relocation";
+                readonly token: components["schemas"]["LibraryBlockTransferUndoToken"];
             };
             readonly operation_id: string;
             readonly store_epoch: components["schemas"]["StoreEpoch"];
@@ -6793,6 +6838,14 @@ export interface components {
                 readonly limit?: number | null;
                 readonly scope: components["schemas"]["LibraryMoveDestinationScope"];
                 readonly target: components["schemas"]["LibraryResourceTarget"];
+            } | {
+                readonly cursor?: string | null;
+                /** @enum {string} */
+                readonly kind: "page_relocation_destinations";
+                /** Format: int32 */
+                readonly limit?: number | null;
+                readonly page_id: string;
+                readonly scope: components["schemas"]["LibraryPageRelocationDestinationScope"];
             } | {
                 /** @enum {string} */
                 readonly kind: "page_mention_destination";
@@ -8245,6 +8298,7 @@ export interface components {
                     readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
                     readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
                     readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
+                    readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                     readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
@@ -8279,6 +8333,7 @@ export interface components {
                     readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
                     readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
                     readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
+                    readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                     readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
@@ -8701,6 +8756,16 @@ export interface components {
                     readonly root_is_current: boolean;
                     readonly scope: components["schemas"]["LibraryMoveDestinationScope"];
                     readonly target: components["schemas"]["LibraryResourceTarget"];
+                    /** Format: int64 */
+                    readonly total: number;
+                } | {
+                    readonly has_more: boolean;
+                    readonly items: readonly components["schemas"]["LibraryPageRelocationDestinationEntry"][];
+                    /** @enum {string} */
+                    readonly kind: "page_relocation_destinations";
+                    readonly next_cursor?: string | null;
+                    readonly page_id: string;
+                    readonly scope: components["schemas"]["LibraryPageRelocationDestinationScope"];
                     /** Format: int64 */
                     readonly total: number;
                 } | {

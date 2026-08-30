@@ -14,7 +14,7 @@ describe("development feature catalog", () => {
       "runtime-metrics",
     ]);
     expect(() => resolveDevelopmentFeatureOverrides(["missing"])).toThrow(
-      /Available features: runtime-metrics/u,
+      /Available features: database-page-reorder-menu, runtime-metrics/u,
     );
   });
 

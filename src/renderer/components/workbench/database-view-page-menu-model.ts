@@ -1,8 +1,9 @@
-export type DatabaseViewPageMoveDirection = "top" | "up" | "down" | "bottom";
+export type DatabaseViewPageReorderDirection = "top" | "up" | "down" | "bottom";
 
 export type DatabaseViewPageMenuActionId =
-  | "move"
-  | `move-${DatabaseViewPageMoveDirection}`
+  | "move-to"
+  | "reorder"
+  | `reorder-${DatabaseViewPageReorderDirection}`
   | "copy"
   | "copy-id"
   | "copy-deeplink"
@@ -25,6 +26,7 @@ export interface DatabaseViewPageMenuCapabilities {
   readonly hasPageKey: boolean;
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
+  readonly showReorder: boolean;
   readonly canCopyMarkdown: boolean;
   readonly canOpenInNewChat: boolean;
   readonly canSendToChat: boolean;
@@ -51,6 +53,7 @@ export function buildDatabaseViewPageMenuEntries({
   hasPageKey,
   canMoveUp,
   canMoveDown,
+  showReorder,
   canCopyMarkdown,
   canOpenInNewChat,
   canSendToChat,
@@ -77,14 +80,28 @@ export function buildDatabaseViewPageMenuEntries({
       ],
     }),
     entry("copy", "Copy", ["clipboard"], { children: copyChildren }),
-    entry("move", "Move", ["position", "reorder"], {
-      children: [
-        entry("move-top", "Move to top", ["first"], { disabled: !canMoveUp }),
-        entry("move-up", "Move up", ["previous"], { disabled: !canMoveUp }),
-        entry("move-down", "Move down", ["next"], { disabled: !canMoveDown }),
-        entry("move-bottom", "Move to bottom", ["last"], { disabled: !canMoveDown }),
-      ],
-    }),
+    entry("move-to", "Move to", [
+      "relocate",
+      "parent",
+      "database",
+      "page",
+      "project",
+      "destination",
+    ]),
+    ...(showReorder
+      ? [
+          entry("reorder", "Reorder", ["position", "rank", "order"], {
+            children: [
+              entry("reorder-top", "Reorder to top", ["first"], { disabled: !canMoveUp }),
+              entry("reorder-up", "Reorder up", ["previous"], { disabled: !canMoveUp }),
+              entry("reorder-down", "Reorder down", ["next"], { disabled: !canMoveDown }),
+              entry("reorder-bottom", "Reorder to bottom", ["last"], {
+                disabled: !canMoveDown,
+              }),
+            ],
+          }),
+        ]
+      : []),
     entry("delete", "Delete", ["remove", "trash"], { disabled: !canDelete }),
   ];
 }
@@ -111,11 +128,11 @@ export function filterDatabaseViewPageMenuEntries(
   });
 }
 
-export function databaseViewPageMoveDirection(
+export function databaseViewPageReorderDirection(
   actionId: DatabaseViewPageMenuActionId,
-): DatabaseViewPageMoveDirection | null {
-  if (!actionId.startsWith("move-") || actionId === "move") return null;
-  const direction = actionId.slice("move-".length);
+): DatabaseViewPageReorderDirection | null {
+  if (!actionId.startsWith("reorder-")) return null;
+  const direction = actionId.slice("reorder-".length);
   if (direction === "top" || direction === "up" || direction === "down" || direction === "bottom")
     return direction;
   return null;

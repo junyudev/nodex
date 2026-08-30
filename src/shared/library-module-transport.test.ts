@@ -123,6 +123,189 @@ describe("Library Module transport", () => {
     ).toThrow("libraryId is not supported");
   });
 
+  test("binds and parses the complete Page relocation transport boundary", () => {
+    const operationId = uuidV7(20);
+    const pageId = uuidV7(21);
+    const dataSourceId = uuidV7(22);
+    const viewId = uuidV7(23);
+    const recipeHash = "b".repeat(64);
+    const undoToken = {
+      transferOperationId: operationId,
+      recipeHash,
+      storeEpoch: "epoch-1",
+    };
+
+    expect(
+      bindLibraryModuleRead({
+        read: {
+          mode: "page_relocation_destinations",
+          pageId,
+          scope: { kind: "page_suggested" },
+          limit: 8,
+        },
+      }),
+    ).toEqual({
+      read: {
+        mode: "page_relocation_destinations",
+        pageId,
+        scope: { kind: "page_suggested" },
+        limit: 8,
+      },
+    });
+    expect(() =>
+      bindLibraryModuleRead({
+        read: {
+          mode: "page_relocation_destinations",
+          pageId,
+          scope: { kind: "page_suggested", query: "forged" },
+        },
+      }),
+    ).toThrow("scope.query is not supported");
+
+    expect(
+      bindLibraryModuleRead({
+        read: {
+          mode: "page_relocation_destinations",
+          pageId,
+          scope: { kind: "page_search", query: "product plan" },
+          limit: 100,
+        },
+      }),
+    ).toEqual({
+      read: {
+        mode: "page_relocation_destinations",
+        pageId,
+        scope: { kind: "page_search", query: "product plan" },
+        limit: 100,
+      },
+    });
+    expect(
+      bindLibraryModuleApply({
+        operationId,
+        storeEpoch: "epoch-1",
+        operation: {
+          kind: "move_page",
+          pageId,
+          destination: {
+            kind: "data_source",
+            dataSourceId,
+            viewId,
+            at: { kind: "end" },
+          },
+          expectedEtag: "etag:move",
+        },
+      }),
+    ).toMatchObject({
+      operation: {
+        kind: "move_page",
+        destination: { kind: "data_source", dataSourceId, viewId, at: { kind: "end" } },
+      },
+    });
+    expect(
+      bindLibraryModuleApply({
+        operationId: uuidV7(24),
+        storeEpoch: "epoch-1",
+        operation: { kind: "undo_page_relocation", token: undoToken },
+      }),
+    ).toMatchObject({ operation: { kind: "undo_page_relocation", token: undoToken } });
+
+    expect(
+      parseLibraryModuleReadResult(
+        readResult({
+          kind: "page_relocation_destinations",
+          pageId,
+          scope: { kind: "databases", query: "beta" },
+          items: [
+            {
+              key: `database:${uuidV7(25)}`,
+              kind: "database",
+              title: "Product",
+              path: ["Relocation Beta"],
+              hasChildren: false,
+              isCurrent: false,
+              updatedAt: "2026-08-30T00:00:00.000Z",
+              destination: {
+                kind: "data_source",
+                dataSourceId,
+                viewId,
+                at: { kind: "end" },
+              },
+              expectedMoveEtag: "etag:move",
+            },
+          ],
+          nextCursor: null,
+          hasMore: false,
+          total: 1,
+        }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      value: {
+        value: {
+          kind: "page_relocation_destinations",
+          items: [
+            {
+              kind: "database",
+              path: ["Relocation Beta"],
+              destination: { kind: "data_source", dataSourceId, viewId },
+            },
+          ],
+        },
+      },
+    });
+    expect(
+      parseLibraryModuleReadResult(
+        readResult({
+          kind: "page_relocation_destinations",
+          pageId,
+          scope: { kind: "page_suggested" },
+          items: [],
+          nextCursor: null,
+          hasMore: false,
+          total: 0,
+        }),
+      ),
+    ).toMatchObject({
+      ok: true,
+      value: { value: { scope: { kind: "page_suggested" } } },
+    });
+
+    expect(
+      parseLibraryModuleApplyResult({
+        ok: true,
+        localCommit: committedLocalCommit("epoch-1", 4),
+        value: {
+          operationId,
+          profileId: "profile-1",
+          storeEpoch: "epoch-1",
+          libraryId: "library-1",
+          operationKind: "move_page",
+          duplicate: false,
+          didMutate: true,
+          createdTarget: null,
+          canvasMutation: null,
+          structuralEdit: null,
+          pageRelocation: { pageId, undoToken },
+          pageRelocationUndo: null,
+          affectedParentKeys: [`data-source:${dataSourceId}`],
+          affectedPageIds: [pageId],
+          affectedDatabaseIds: [],
+          affectedViewIds: [viewId],
+          committedRevisions: {},
+          commitSeq: 4,
+          committedAt: "2026-08-30T00:00:00.000Z",
+        },
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: {
+        operationKind: "move_page",
+        pageRelocation: { pageId, undoToken },
+        pageRelocationUndo: null,
+      },
+    });
+  });
+
   test("binds and parses the narrow Page mention destination head", () => {
     const pageId = uuidV7(8);
     const documentId = `document:${uuidV7(9)}`;

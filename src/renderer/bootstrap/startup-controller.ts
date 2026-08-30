@@ -1,5 +1,9 @@
 import type { AppInitializationStep } from "../../shared/app-startup";
 import type { WindowSessionBootstrap } from "../lib/types";
+import {
+  FAIL_CLOSED_RUNTIME_CAPABILITIES,
+  type AppRuntimeCapabilities,
+} from "../../shared/runtime-capabilities";
 import { getStartupStatus } from "../lib/app-startup";
 
 const OPENING_COPY_DELAY_MS = 1_800;
@@ -122,9 +126,12 @@ export function startStartupController(): StartupController {
     .then(async () => {
       if (disposed) return;
       renderStep({ phase: "done" });
-      const windowSession = (await api.invoke(
-        "window-sessions:bootstrap",
-      )) as WindowSessionBootstrap;
+      const [windowSession, runtimeCapabilities] = await Promise.all([
+        api.invoke("window-sessions:bootstrap") as Promise<WindowSessionBootstrap>,
+        (api.invoke("app:runtime-capabilities:get") as Promise<AppRuntimeCapabilities>).catch(
+          () => FAIL_CLOSED_RUNTIME_CAPABILITIES,
+        ),
+      ]);
       const [application, closeFlush, transport, sentry, telemetry] = await Promise.all([
         import("../application-renderer"),
         import("../lib/app-close-flush"),
@@ -138,7 +145,10 @@ export function startStartupController(): StartupController {
       void telemetry.initializeRendererTelemetry();
       // Install the full close coordinator before retiring the bootstrap ack.
       const releaseCloseFlushHandoff = closeFlush.registerAppCloseFlushHandler(() => undefined);
-      await application.mountApplicationRenderer(windowSession);
+      await application.mountApplicationRenderer({
+        runtimeCapabilities,
+        windowSessionBootstrap: windowSession,
+      });
       releaseCloseFlushHandoff();
       api.reportInitializationReady?.({
         durationMs: performance.now() - startedAt,

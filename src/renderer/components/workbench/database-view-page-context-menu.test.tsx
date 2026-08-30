@@ -8,6 +8,7 @@ import {
 import { render } from "@/test/dom";
 import { DatabaseViewPageContextMenu } from "./database-view-page-context-menu";
 import { dataSourcePagePropertyMenuSourceFromBindings } from "@/components/database/data-source-page-property-menu-source";
+import { DevelopmentFeaturesProvider } from "@/lib/development-features-context";
 
 const mocks = vi.hoisted(() => ({
   loadPageDocumentMaterialization: vi.fn(),
@@ -57,18 +58,25 @@ const page = {
 function renderMenu(
   actionPort: Parameters<typeof DatabaseViewPageContextMenu>[0]["actionPort"] = {},
   pageTarget: Parameters<typeof DatabaseViewPageContextMenu>[0]["page"] = page,
+  showReorder = false,
 ) {
   return render(
-    <DatabaseViewPageContextMenu
-      page={pageTarget}
-      canMoveUp
-      canMoveDown
-      propertySource={dataSourcePagePropertyMenuSourceFromBindings([])}
-      actionPort={actionPort}
-      onMove={() => undefined}
+    <DevelopmentFeaturesProvider
+      capabilities={{
+        enabledDevelopmentFeatures: showReorder ? ["database-page-reorder-menu"] : [],
+      }}
     >
-      <button type="button">Page target</button>
-    </DatabaseViewPageContextMenu>,
+      <DatabaseViewPageContextMenu
+        page={pageTarget}
+        canMoveUp
+        canMoveDown
+        propertySource={dataSourcePagePropertyMenuSourceFromBindings([])}
+        actionPort={actionPort}
+        onReorder={() => undefined}
+      >
+        <button type="button">Page target</button>
+      </DatabaseViewPageContextMenu>
+    </DevelopmentFeaturesProvider>,
   );
 }
 
@@ -247,7 +255,7 @@ describe("DatabaseViewPageContextMenu", () => {
   });
 
   test("keeps keyboard navigation across the submenu boundary", async () => {
-    const screen = renderMenu();
+    const screen = renderMenu({}, page, true);
     await openMenu(screen);
     const search = await screen.findByRole("textbox", {
       name: "Search Page actions and properties",
@@ -268,21 +276,29 @@ describe("DatabaseViewPageContextMenu", () => {
       fireEvent.keyDown(document.activeElement ?? search, { key: "ArrowDown" });
     });
     await waitFor(() =>
-      expect(screen.getByRole("menuitem", { name: "Move" })).toBe(document.activeElement),
+      expect(screen.getByRole("menuitem", { name: "Move to" })).toBe(document.activeElement),
+    );
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement ?? search, { key: "ArrowDown" });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("menuitem", { name: "Reorder" })).toBe(document.activeElement),
     );
     await act(async () => {
       fireEvent.keyDown(document.activeElement ?? search, { key: "ArrowRight" });
       await Promise.resolve();
     });
 
-    const moveToTop = await screen.findByRole("menuitem", { name: "Move to top" });
-    await waitFor(() => expect(moveToTop).toBe(document.activeElement));
+    const reorderToTop = await screen.findByRole("menuitem", { name: "Reorder to top" });
+    await waitFor(() => expect(reorderToTop).toBe(document.activeElement));
     await act(async () => {
       fireEvent.keyDown(document.activeElement ?? search, { key: "ArrowLeft" });
       await Promise.resolve();
     });
-    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "Move to top" })).toBeNull());
-    expect(screen.getByRole("menuitem", { name: "Move" })).toBe(document.activeElement);
+    await waitFor(() =>
+      expect(screen.queryByRole("menuitem", { name: "Reorder to top" })).toBeNull(),
+    );
+    expect(screen.getByRole("menuitem", { name: "Reorder" })).toBe(document.activeElement);
 
     await act(async () => {
       fireEvent.keyDown(document.activeElement ?? search, { key: "Escape" });

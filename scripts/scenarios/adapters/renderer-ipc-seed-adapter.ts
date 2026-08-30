@@ -17,6 +17,7 @@ import type {
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
   ScenarioSeedPort,
+  ScenarioStandalonePageSeed,
 } from "../contracts";
 import type {
   SidebarSectionCreateInput,
@@ -100,6 +101,35 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       `Create ${input.title}`,
     );
     return { documentId: receipt.documentId };
+  }
+
+  async createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void> {
+    const metadata = requireSuccess(
+      await this.#invoke(
+        "library-module:read",
+        { kind: "library" },
+        { read: { mode: "metadata" } },
+      ),
+      "Read Library metadata",
+    );
+    requireSuccess(
+      await this.#invoke(
+        "library-module:apply",
+        { kind: "library" },
+        {
+          operationId: input.operationId,
+          storeEpoch: metadata.storeEpoch,
+          operation: {
+            kind: "create_page",
+            pageId: input.pageId,
+            documentId: input.documentId,
+            title: input.title,
+            parent: { kind: "library" },
+          },
+        },
+      ),
+      `Create standalone ${input.title}`,
+    );
   }
 
   #databasePort(): ScenarioDatabasePort {

@@ -105,6 +105,7 @@ import type {
   LibraryModuleReadRequest,
   LibraryModuleReadResult,
 } from "./library-module";
+import type { AppRuntimeCapabilities } from "./runtime-capabilities";
 import type {
   PageFileBytes,
   PickPageFilesInput,
@@ -653,6 +654,10 @@ export interface RendererDiagnosticsLogInput {
 }
 
 export interface IpcApi {
+  "app:runtime-capabilities:get": {
+    args: [];
+    result: AppRuntimeCapabilities;
+  };
   "local-commit-audience:subscribe": {
     args: [address: import("./recipient-delivery").DeliveryAddress];
     result: void;

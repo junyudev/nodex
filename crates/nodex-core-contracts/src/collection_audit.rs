@@ -137,6 +137,7 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::StandaloneRoots { .. }
         | LibraryRead::Catalog { .. }
         | LibraryRead::MoveDestinations { .. }
+        | LibraryRead::PageRelocationDestinations { .. }
         | LibraryRead::AgentSearch { .. }
         | LibraryRead::Search { .. }
         | LibraryRead::PageFiles { .. }

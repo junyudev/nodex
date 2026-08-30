@@ -1,19 +1,9 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 
-import {
-  NfmSideMenuChevronRightIcon,
-  PageIcon,
-  ActivitySpinnerIcon,
-} from "@/components/shared/icons";
+import { PageIcon, ActivitySpinnerIcon } from "@/components/shared/icons";
 import {
   NodexDestinationPicker,
+  NodexDestinationPickerOption,
   NodexDestinationPickerSection,
   NodexDestinationPickerStatus,
 } from "@/components/ui/destination-picker";
@@ -24,7 +14,6 @@ import {
   useLibraryMoveDestinationChildren,
   useLibraryMoveDestinations,
 } from "@/lib/use-library-navigation";
-import { cn } from "@/lib/utils";
 import type {
   LibraryMoveDestinationEntry,
   LibraryResourceTarget,
@@ -38,7 +27,7 @@ import {
 const ROOT_ROW_ID = "library-root";
 const LOAD_DELAY_MS = 400;
 
-export type LibraryMoveDestinationPickerRow =
+export type DatabaseMoveDestinationPickerRow =
   | {
       readonly kind: "root";
       readonly id: typeof ROOT_ROW_ID;
@@ -55,10 +44,10 @@ export type LibraryMoveDestinationPickerRow =
       readonly context: "recent" | "search" | "tree";
     };
 
-export interface LibraryMoveDestinationPickerSection {
+export interface DatabaseMoveDestinationPickerSection {
   readonly key: "recent" | "search" | "pages";
   readonly label: string;
-  readonly rows: readonly LibraryMoveDestinationPickerRow[];
+  readonly rows: readonly DatabaseMoveDestinationPickerRow[];
 }
 
 function destinationRowDomId(listboxId: string, rowId: string) {
@@ -66,7 +55,7 @@ function destinationRowDomId(listboxId: string, rowId: string) {
 }
 
 function moveFocus(
-  rows: readonly LibraryMoveDestinationPickerRow[],
+  rows: readonly DatabaseMoveDestinationPickerRow[],
   currentId: string | null,
   direction: 1 | -1,
 ) {
@@ -85,11 +74,11 @@ function moveFocus(
   return null;
 }
 
-function rowDisabled(row: LibraryMoveDestinationPickerRow) {
+function rowDisabled(row: DatabaseMoveDestinationPickerRow) {
   return row.kind === "root" ? row.disabled : row.entry.isCurrent;
 }
 
-function rowMetadata(row: LibraryMoveDestinationPickerRow) {
+function rowMetadata(row: DatabaseMoveDestinationPickerRow) {
   if (row.kind === "root") return row.metadata;
   if (row.entry.isCurrent) return "Current";
   if (row.context === "tree") return "";
@@ -106,7 +95,7 @@ function DestinationRow({
   onToggle,
   onAccept,
 }: {
-  readonly row: LibraryMoveDestinationPickerRow;
+  readonly row: DatabaseMoveDestinationPickerRow;
   readonly listboxId: string;
   readonly focused: boolean;
   readonly accepting: boolean;
@@ -120,66 +109,17 @@ function DestinationRow({
   const expandable = row.kind === "page" && row.context === "tree" && row.entry.hasChildren;
 
   return (
-    <button
+    <NodexDestinationPickerOption
       id={destinationRowDomId(listboxId, row.id)}
-      type="button"
-      role="option"
-      aria-selected={focused}
-      aria-disabled={disabled || undefined}
-      aria-expanded={expandable ? row.expanded : undefined}
-      data-focused={focused ? "true" : undefined}
-      className={cn(
-        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 text-left text-[14px] leading-7 outline-hidden",
-        disabled
-          ? "cursor-default opacity-55"
-          : "cursor-interaction hover:bg-token-list-hover-background",
-        focused && "bg-token-list-hover-background",
-      )}
-      style={{ paddingLeft: 6 + (row.kind === "page" ? row.depth * 18 : 0) }}
-      onPointerEnter={onFocus}
-      onClick={() => {
-        if (disabled) return;
-        onAccept();
-      }}
+      focused={focused}
+      disabled={disabled}
+      depth={row.kind === "page" ? row.depth : 0}
+      expanded={expandable ? row.expanded : undefined}
+      icon={<PageIcon className="size-4" aria-hidden="true" />}
+      onFocus={onFocus}
+      onToggle={expandable ? onToggle : undefined}
+      onSelect={onAccept}
     >
-      <span
-        className="relative flex h-[18px] w-[22px] shrink-0 items-center justify-center text-token-description-foreground"
-        onPointerDown={(event: ReactPointerEvent<HTMLSpanElement>) => {
-          if (!expandable || event.button !== 0) return;
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-        onClick={(event) => {
-          if (!expandable) return;
-          event.preventDefault();
-          event.stopPropagation();
-          onToggle();
-        }}
-      >
-        {expandable ? (
-          <>
-            <PageIcon
-              aria-hidden="true"
-              className={cn(
-                "size-4 transition-opacity",
-                "group-hover:opacity-0 group-focus-visible:opacity-0",
-                focused && "opacity-0",
-              )}
-            />
-            <NfmSideMenuChevronRightIcon
-              aria-hidden="true"
-              className={cn(
-                "absolute icon-2xs opacity-0 transition-[opacity,transform] duration-150 ease-out",
-                "group-hover:opacity-100 group-focus-visible:opacity-100",
-                focused && "opacity-100",
-                row.expanded && "rotate-90",
-              )}
-            />
-          </>
-        ) : (
-          <PageIcon className="size-4" aria-hidden="true" />
-        )}
-      </span>
       <span className="min-w-0 flex-1 truncate">
         {row.kind === "root" ? row.label : row.entry.title || "Untitled"}
       </span>
@@ -191,11 +131,11 @@ function DestinationRow({
       {accepting ? (
         <ActivitySpinnerIcon className="size-3.5 shrink-0 text-token-description-foreground" />
       ) : null}
-    </button>
+    </NodexDestinationPickerOption>
   );
 }
 
-export function LibraryMoveDestinationPickerSurface({
+export function DatabaseMoveDestinationPickerSurface({
   ariaLabel,
   query,
   sections,
@@ -211,15 +151,15 @@ export function LibraryMoveDestinationPickerSurface({
 }: {
   readonly ariaLabel: string;
   readonly query: string;
-  readonly sections: readonly LibraryMoveDestinationPickerSection[];
+  readonly sections: readonly DatabaseMoveDestinationPickerSection[];
   readonly loading: boolean;
   readonly stale: boolean;
   readonly error: string | null;
   readonly acceptingRowId: string | null;
   readonly hasMore: boolean;
   readonly onQueryChange: (query: string) => void;
-  readonly onToggle: (row: Extract<LibraryMoveDestinationPickerRow, { kind: "page" }>) => void;
-  readonly onAccept: (row: LibraryMoveDestinationPickerRow) => void;
+  readonly onToggle: (row: Extract<DatabaseMoveDestinationPickerRow, { kind: "page" }>) => void;
+  readonly onAccept: (row: DatabaseMoveDestinationPickerRow) => void;
   readonly onClose: () => void;
 }) {
   const listboxId = useId();
@@ -340,7 +280,7 @@ function flattenTreeRows(
   childItems: ReadonlyMap<string, readonly LibraryMoveDestinationEntry[]>,
   expandedIds: ReadonlySet<string>,
 ) {
-  const rows: LibraryMoveDestinationPickerRow[] = [];
+  const rows: DatabaseMoveDestinationPickerRow[] = [];
   const visited = new Set<string>();
   const append = (items: readonly LibraryMoveDestinationEntry[], depth: number) => {
     for (const entry of items) {
@@ -361,14 +301,14 @@ function flattenTreeRows(
   return rows;
 }
 
-export function LibraryMoveDestinationPicker({
+export function DatabaseMoveDestinationPicker({
   target,
   title,
   expectedLocationRevision,
   onClose,
   onMoved,
 }: {
-  readonly target: Exclude<LibraryResourceTarget, { readonly kind: "canvas" }>;
+  readonly target: Extract<LibraryResourceTarget, { readonly kind: "database" }>;
   readonly title: string;
   readonly expectedLocationRevision: number;
   readonly onClose: () => void;
@@ -407,7 +347,7 @@ export function LibraryMoveDestinationPicker({
   const metadataSearch = useInteractivePageSearch({
     projectIds: configuredPageSearchProjectIds(),
     query: normalizedQuery,
-    excludePageIds: target.kind === "page" ? [target.pageId] : [],
+    excludePageIds: [],
     limit: 100,
     complete: false,
   });
@@ -420,7 +360,7 @@ export function LibraryMoveDestinationPicker({
   );
   const treeRows = flattenTreeRows(root.data?.items ?? [], childItems, expandedIds);
   const rootIsCurrent = root.data?.rootIsCurrent ?? recent.data?.rootIsCurrent ?? false;
-  const rootRow: LibraryMoveDestinationPickerRow = {
+  const rootRow: DatabaseMoveDestinationPickerRow = {
     kind: "root",
     id: ROOT_ROW_ID,
     label: "Pages",
@@ -495,7 +435,7 @@ export function LibraryMoveDestinationPicker({
     Boolean(activeQuery.data?.hasMore) ||
     (!normalizedQuery && childQueries.some((child) => child.data?.hasMore));
 
-  const accept = async (row: LibraryMoveDestinationPickerRow) => {
+  const accept = async (row: DatabaseMoveDestinationPickerRow) => {
     const parent: LibraryWriteParent =
       row.kind === "root"
         ? { kind: "library" }
@@ -523,7 +463,7 @@ export function LibraryMoveDestinationPicker({
   };
 
   return (
-    <LibraryMoveDestinationPickerSurface
+    <DatabaseMoveDestinationPickerSurface
       ariaLabel={`Move ${title} to`}
       query={query}
       sections={sections}

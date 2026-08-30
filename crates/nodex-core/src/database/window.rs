@@ -2020,6 +2020,100 @@ struct PageMoveMembershipAuthority {
     position_revision: Option<i64>,
 }
 
+pub(crate) fn page_relocation_database_targets(
+    connection: &Connection,
+    library_id: &str,
+    query: &str,
+    after_updated_at: Option<&str>,
+    after_database_id: Option<&str>,
+    limit: usize,
+) -> Result<(Vec<super::PageRelocationDatabaseTarget>, bool, i64), StoreError> {
+    let query_limit = i64::try_from(limit.saturating_add(1))
+        .map_err(|_| invalid("Database relocation target limit overflowed"))?;
+    let rows_sql = "SELECT container.block_id, container.name, \
+                      COALESCE((SELECT group_concat(primary_project.name, char(31)) FROM ( \
+                        SELECT project.name FROM projects project \
+                        WHERE project.library_id = container.library_id \
+                          AND project.database_block_id = container.block_id \
+                          AND project.lifecycle = 'active' \
+                        ORDER BY project.name, project.id \
+                      ) primary_project), ''), \
+                      source.id, view.id, container.updated_at \
+                    FROM database_containers container \
+                    JOIN blocks block ON block.id = container.block_id \
+                      AND block.library_id = container.library_id \
+                    JOIN database_views view ON view.id = container.default_view_id \
+                      AND view.database_block_id = container.block_id \
+                      AND view.lifecycle = 'active' \
+                    JOIN data_sources source ON source.id = view.data_source_id \
+                      AND source.home_database_block_id = container.block_id \
+                      AND source.library_id = container.library_id \
+                      AND source.lifecycle = 'active' \
+                    WHERE container.library_id = ?1 AND container.lifecycle = 'active' \
+                      AND block.lifecycle = 'active' \
+                      AND (?2 = '' OR instr(lower(container.name), ?2) > 0 OR EXISTS( \
+                        SELECT 1 FROM projects project \
+                        WHERE project.library_id = container.library_id \
+                          AND project.database_block_id = container.block_id \
+                          AND project.lifecycle = 'active' \
+                          AND instr(lower(project.name), ?2) > 0 \
+                      )) \
+                      AND (?3 IS NULL OR container.updated_at < ?3 \
+                        OR (container.updated_at = ?3 AND container.block_id > ?4)) \
+                    ORDER BY container.updated_at DESC, container.block_id LIMIT ?5";
+    let mut rows = connection
+        .prepare(rows_sql)?
+        .query_map(
+            params![
+                library_id,
+                query,
+                after_updated_at,
+                after_database_id,
+                query_limit
+            ],
+            |row| {
+                Ok(super::PageRelocationDatabaseTarget {
+                    database_id: row.get(0)?,
+                    title: row.get(1)?,
+                    primary_project_names: row
+                        .get::<_, String>(2)?
+                        .split('\u{1f}')
+                        .filter(|name| !name.is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                    data_source_id: row.get(3)?,
+                    view_id: row.get(4)?,
+                    updated_at: row.get(5)?,
+                })
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let has_more = rows.len() > limit;
+    rows.truncate(limit);
+    let total = connection.query_row(
+        "SELECT COUNT(*) FROM database_containers container \
+         JOIN blocks block ON block.id = container.block_id \
+           AND block.library_id = container.library_id \
+         JOIN database_views view ON view.id = container.default_view_id \
+           AND view.database_block_id = container.block_id AND view.lifecycle = 'active' \
+         JOIN data_sources source ON source.id = view.data_source_id \
+           AND source.home_database_block_id = container.block_id \
+           AND source.library_id = container.library_id AND source.lifecycle = 'active' \
+         WHERE container.library_id = ?1 AND container.lifecycle = 'active' \
+           AND block.lifecycle = 'active' \
+           AND (?2 = '' OR instr(lower(container.name), ?2) > 0 OR EXISTS( \
+             SELECT 1 FROM projects project \
+             WHERE project.library_id = container.library_id \
+               AND project.database_block_id = container.block_id \
+               AND project.lifecycle = 'active' \
+               AND instr(lower(project.name), ?2) > 0 \
+           ))",
+        params![library_id, query],
+        |row| row.get::<_, i64>(0),
+    )?;
+    Ok((rows, has_more, total))
+}
+
 pub(crate) fn default_page_move_view_id(
     connection: &Connection,
     library_id: &str,
@@ -2053,6 +2147,50 @@ pub(crate) fn mint_page_move_etag(
     page_id: &str,
     view_id: Option<&str>,
 ) -> Result<String, StoreError> {
+    mint_page_move_etag_with_authority(
+        connection,
+        library_id,
+        project_id,
+        Some(project_id),
+        store_epoch,
+        page_id,
+        view_id,
+    )
+}
+
+/// Mints the same validator as [`mint_page_move_etag`] after a trusted
+/// Library operation has already established the destination authority. The
+/// actor Project remains part of the signed coordinate, but it does not own or
+/// constrain the target Database.
+pub(crate) fn mint_page_move_etag_prevalidated(
+    connection: &Connection,
+    library_id: &str,
+    actor_project_id: &str,
+    store_epoch: &str,
+    page_id: &str,
+    view_id: Option<&str>,
+) -> Result<String, StoreError> {
+    mint_page_move_etag_with_authority(
+        connection,
+        library_id,
+        actor_project_id,
+        None,
+        store_epoch,
+        page_id,
+        view_id,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn mint_page_move_etag_with_authority(
+    connection: &Connection,
+    library_id: &str,
+    actor_project_id: &str,
+    authorizing_project_id: Option<&str>,
+    store_epoch: &str,
+    page_id: &str,
+    view_id: Option<&str>,
+) -> Result<String, StoreError> {
     let page = connection
         .query_row(
             "SELECT block.lifecycle, block.placement_revision, page.parent_kind, page.parent_id, \
@@ -2079,13 +2217,16 @@ pub(crate) fn mint_page_move_etag(
     let view = view_id
         .map(|view_id| {
             let view = resolve_view(connection, library_id, view_id)?;
-            let primary_database_id = project_primary_database(connection, library_id, project_id)?;
-            authorize_required(
-                connection,
-                Some(project_id),
-                primary_database_id.as_deref(),
-                &view.database_id,
-            )?;
+            if let Some(project_id) = authorizing_project_id {
+                let primary_database_id =
+                    project_primary_database(connection, library_id, project_id)?;
+                authorize_required(
+                    connection,
+                    Some(project_id),
+                    primary_database_id.as_deref(),
+                    &view.database_id,
+                )?;
+            }
             Ok::<_, StoreError>(PageMoveViewAuthority {
                 database_id: view.database_id,
                 data_source_id: view.data_source_id,
@@ -2148,7 +2289,7 @@ pub(crate) fn mint_page_move_etag(
     crate::document::mint_etag(
         connection,
         "page_move",
-        project_id,
+        actor_project_id,
         store_epoch,
         &[library_id, page_id, view_id.unwrap_or("-")],
         json!({

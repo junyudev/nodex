@@ -38,7 +38,12 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     } as unknown as WindowRuntime["Service"]);
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
-      live({ showEmojiPanel: () => true }).pipe(
+      live({
+        showEmojiPanel: () => true,
+        runtimeCapabilities: {
+          enabledDevelopmentFeatures: ["database-page-reorder-menu"],
+        },
+      }).pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ApplicationWindowRuntime, applicationWindows),
@@ -51,6 +56,7 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       scope,
     );
     assert.deepEqual([...handlers.keys()].sort(), [
+      "app:runtime-capabilities:get",
       "electron-window:focus:get",
       "window-sessions:bootstrap",
       "window-sessions:save-layout",
@@ -66,6 +72,9 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       mainFrame: frame,
     };
     const event = { sender, senderFrame: frame } as unknown as IpcMainInvokeEvent;
+    assert.deepEqual(yield* handlers.get("app:runtime-capabilities:get")!(event), {
+      enabledDevelopmentFeatures: ["database-page-reorder-menu"],
+    });
     yield* handlers.get("window:new")!(event, { activeProjectSessionId: "session-1" });
     assert.strictEqual(openForRequest.mock.calls.length, 1);
     assert.deepEqual(openForRequest.mock.calls[0], [17, { activeProjectSessionId: "session-1" }]);

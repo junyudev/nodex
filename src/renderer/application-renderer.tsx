@@ -2,13 +2,18 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import type { WindowSessionBootstrap } from "./lib/types";
+import type { AppRuntimeCapabilities } from "../shared/runtime-capabilities";
 import App from "./app";
 import { AppProviders } from "./app-providers";
 import "./globals.css";
 
-export async function mountApplicationRenderer(
-  windowSessionBootstrap: WindowSessionBootstrap,
-): Promise<void> {
+export async function mountApplicationRenderer({
+  runtimeCapabilities,
+  windowSessionBootstrap,
+}: {
+  readonly runtimeCapabilities: AppRuntimeCapabilities;
+  readonly windowSessionBootstrap: WindowSessionBootstrap;
+}): Promise<void> {
   const rootElement = document.getElementById("root");
   if (!rootElement) throw new Error("Nodex renderer root is missing");
 
@@ -19,7 +24,7 @@ export async function mountApplicationRenderer(
   flushSync(() => {
     root.render(
       <StrictMode>
-        <AppProviders>
+        <AppProviders runtimeCapabilities={runtimeCapabilities}>
           <App windowSessionBootstrap={windowSessionBootstrap} />
           {Agentation ? <Agentation /> : null}
         </AppProviders>

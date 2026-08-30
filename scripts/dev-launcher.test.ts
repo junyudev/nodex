@@ -206,7 +206,7 @@ describe("dev launcher", () => {
         environment: {},
         home: HOME,
       }),
-    ).toThrow(/Available features: runtime-metrics/u);
+    ).toThrow(/Available features: database-page-reorder-menu, runtime-metrics/u);
     expect(() => parseDevLauncherArguments(["--remote-debugging-port", "70000"])).toThrow(
       "--remote-debugging-port",
     );

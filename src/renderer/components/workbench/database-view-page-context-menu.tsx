@@ -10,6 +10,7 @@ import {
 
 import {
   ChevronRightIcon,
+  NfmSideMenuMoveToIcon,
   PageMenuCopyIcon,
   PageMenuCopyIdIcon,
   PageMenuCopyLinkIcon,
@@ -46,22 +47,24 @@ import { NfmSendToThreadMenu } from "@/components/board/editor/nfm-send-to-threa
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { loadPageDocumentMaterialization } from "@/lib/page-prompt-context";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
+import { useDevelopmentFeature } from "@/lib/development-features-context";
 import type {
   DatabaseViewPageActionPort,
   DatabaseViewPageTarget,
 } from "./database-view-page-actions";
 import {
   buildDatabaseViewPageMenuEntries,
-  databaseViewPageMoveDirection,
+  databaseViewPageReorderDirection,
   filterDatabaseViewPageMenuEntries,
   type DatabaseViewPageMenuActionId,
   type DatabaseViewPageMenuEntry,
-  type DatabaseViewPageMoveDirection,
+  type DatabaseViewPageReorderDirection,
 } from "./database-view-page-menu-model";
 import {
   isDatabaseViewPageCopyActionId,
   resolveDatabaseViewPageCopyRequest,
 } from "./database-view-page-copy-model";
+import { PageMoveDestinationPicker } from "@/components/library/page-move-destination-picker";
 
 interface ChatPickerState {
   readonly anchorRect: DOMRect;
@@ -87,15 +90,17 @@ function DatabaseViewPageMenuActionIcon({
   readonly actionId: DatabaseViewPageMenuActionId;
 }) {
   switch (actionId) {
-    case "move":
+    case "move-to":
+      return <NfmSideMenuMoveToIcon />;
+    case "reorder":
       return <PageMenuMoveIcon />;
-    case "move-top":
+    case "reorder-top":
       return <PageMenuMoveTopIcon />;
-    case "move-up":
+    case "reorder-up":
       return <PageMenuMoveUpIcon />;
-    case "move-down":
+    case "reorder-down":
       return <PageMenuMoveDownIcon />;
-    case "move-bottom":
+    case "reorder-bottom":
       return <PageMenuMoveBottomIcon />;
     case "copy":
       return <PageMenuCopyIcon />;
@@ -225,7 +230,7 @@ export interface DatabaseViewPageMenuSession {
   readonly groupingPropertyId?: string | null;
   readonly actionPort?: DatabaseViewPageActionPort;
   readonly deleteDisabled?: boolean;
-  readonly onMove: (direction: DatabaseViewPageMoveDirection) => void;
+  readonly onReorder: (direction: DatabaseViewPageReorderDirection) => void;
 }
 
 const EMPTY_PAGE_ACTION_PORT: DatabaseViewPageActionPort = {};
@@ -240,7 +245,7 @@ export function DatabaseViewPageContextMenuOverlay({
   groupingPropertyId = null,
   actionPort = EMPTY_PAGE_ACTION_PORT,
   deleteDisabled = false,
-  onMove,
+  onReorder,
 }: {
   readonly menuOpen: boolean;
   readonly onMenuOpenChange: (open: boolean) => void;
@@ -251,12 +256,14 @@ export function DatabaseViewPageContextMenuOverlay({
   const contentRef = useRef<HTMLDivElement | null>(null);
   const redirectedInitialFocusRef = useRef(false);
   const presentedTitle = usePresentedPageTitle(page.pageId, page.titleSnapshot, page.libraryId);
+  const showReorder = useDevelopmentFeature("database-page-reorder-menu");
   const presentedPage = { ...page, titleSnapshot: presentedTitle };
   const actions = filterDatabaseViewPageMenuEntries(
     buildDatabaseViewPageMenuEntries({
       hasPageKey: Boolean(page.pageKey),
       canMoveUp,
       canMoveDown,
+      showReorder,
       canCopyMarkdown: true,
       canOpenInNewChat: Boolean(page.projectId && actionPort.openInNewChat),
       canSendToChat: Boolean(page.projectId && actionPort.sendToChat),
@@ -298,9 +305,9 @@ export function DatabaseViewPageContextMenuOverlay({
   };
 
   const selectAction = (actionId: DatabaseViewPageMenuActionId): void => {
-    const moveDirection = databaseViewPageMoveDirection(actionId);
-    if (moveDirection) {
-      onMove(moveDirection);
+    const reorderDirection = databaseViewPageReorderDirection(actionId);
+    if (reorderDirection) {
+      onReorder(reorderDirection);
       return;
     }
 
@@ -364,6 +371,30 @@ export function DatabaseViewPageContextMenuOverlay({
 
   const renderAction = (action: DatabaseViewPageMenuEntry, index: number): ReactNode => {
     const separator = action.id === "delete" && index > 0 ? <NodexDropdown.Separator /> : null;
+    if (action.id === "move-to") {
+      return (
+        <NodexContextMenuSubmenu
+          key={action.id}
+          trigger={
+            <NodexContextMenuSubmenuTrigger
+              leftSlot={<DatabaseViewPageMenuActionIcon actionId={action.id} />}
+              rightSlot={<ChevronRightIcon className="icon-xs opacity-75" />}
+            >
+              {action.label}
+            </NodexContextMenuSubmenuTrigger>
+          }
+          alignOffset={-4}
+          contentClassName="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
+          renderContent={() => (
+            <PageMoveDestinationPicker
+              pageId={page.pageId}
+              title={presentedTitle}
+              onClose={() => handleMenuOpenChange(false)}
+            />
+          )}
+        />
+      );
+    }
     if (action.children) {
       return (
         <Fragment key={action.id}>

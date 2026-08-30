@@ -11,6 +11,7 @@ import { LibraryResourceActions } from "./library-resource-actions";
 const navigation = vi.hoisted(() => ({
   mutateAsync: vi.fn(),
   refetchAccess: vi.fn(),
+  undoPageRelocation: vi.fn(),
 }));
 
 const projectAccess = {
@@ -57,12 +58,46 @@ vi.mock("@/lib/use-library-navigation", () => ({
     error: null,
   }),
   useLibraryMoveDestinationChildren: () => [],
+  useUndoLibraryPageRelocation: () => navigation.undoPageRelocation,
+  useLibraryPageRelocationDestinations: (
+    _pageId: string,
+    input: { readonly scope: { readonly kind: string } },
+  ) => ({
+    data: {
+      items:
+        input.scope.kind === "page_children"
+          ? [
+              {
+                key: "library:library-1",
+                kind: "library" as const,
+                title: "Pages",
+                path: [],
+                hasChildren: true,
+                isCurrent: false,
+                updatedAt: "2026-08-30T00:00:00.000Z",
+                destination: { kind: "library" as const, at: { kind: "end" as const } },
+                expectedMoveEtag: "etag:pages",
+              },
+            ]
+          : [],
+      hasMore: false,
+    },
+    isPending: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useLibraryPageRelocationChildren: () => [],
   useLibraryResourceProjectAccess: () => ({
     data: projectAccess,
     isPending: false,
     error: null,
     refetch: navigation.refetchAccess,
   }),
+}));
+
+vi.mock("@/lib/interactive-page-search", () => ({
+  configuredPageSearchProjectIds: () => [],
+  useInteractivePageSearch: () => ({ rows: [], enrichment: "idle", queryRevision: "" }),
 }));
 
 const openActions = async (): Promise<void> => {
@@ -109,7 +144,10 @@ const renderActions = (
   );
 
 describe("Library resource actions", () => {
-  beforeEach(() => navigation.mutateAsync.mockReset());
+  beforeEach(() => {
+    navigation.mutateAsync.mockReset();
+    navigation.undoPageRelocation.mockReset();
+  });
 
   test("uses a plain label for the confirmation-only Archive action", async () => {
     const onPageRowPointerDown = vi.fn();
@@ -146,7 +184,7 @@ describe("Library resource actions", () => {
   });
 
   test("saves all edited Project access in one operation", async () => {
-    navigation.mutateAsync.mockResolvedValue({ didMutate: true });
+    navigation.mutateAsync.mockResolvedValue({ didMutate: true, pageRelocation: null });
     renderActions({ expectedMetadataRevision: undefined });
 
     await openActions();
@@ -191,13 +229,10 @@ describe("Library resource actions", () => {
 
     await waitFor(() =>
       expect(navigation.mutateAsync).toHaveBeenCalledWith({
-        kind: "move_block",
-        target: {
-          kind: "page",
-          pageId: "page-1",
-          expectedLocationRevision: 2,
-        },
-        parent: { kind: "library" },
+        kind: "move_page",
+        pageId: "page-1",
+        destination: { kind: "library", at: { kind: "end" } },
+        expectedEtag: "etag:pages",
       }),
     );
   });

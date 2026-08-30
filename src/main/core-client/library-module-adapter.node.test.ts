@@ -1612,6 +1612,85 @@ describe("Core Library Module Adapter", () => {
     ]);
   });
 
+  test("maps Page relocation destinations without deriving a Project owner", async () => {
+    const client = new FakeCoreClient();
+    client.enqueueRead({
+      contract_version: 14,
+      store_epoch: identity.storeEpoch,
+      commit_head: 9,
+      authorization: null,
+      value: {
+        kind: "page_relocation_destinations",
+        page_id: "page:source",
+        scope: { kind: "databases", query: null },
+        items: [
+          {
+            key: "database:beta",
+            kind: "database",
+            title: "Beta",
+            path: ["Project Beta"],
+            has_children: false,
+            is_current: false,
+            updated_at: "2026-08-30T00:00:00.000Z",
+            destination: {
+              kind: "data_source",
+              data_source_id: "datasource:beta",
+              view_id: "view:beta",
+              group: null,
+              at: { kind: "end" },
+            },
+            expected_move_etag: "etag:beta",
+          },
+        ],
+        next_cursor: null,
+        has_more: false,
+        total: 1,
+      },
+    });
+    const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
+
+    await expect(
+      adapter.read({
+        read: {
+          mode: "page_relocation_destinations",
+          pageId: "page:source",
+          scope: { kind: "databases" },
+          limit: 100,
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: {
+        value: {
+          kind: "page_relocation_destinations",
+          pageId: "page:source",
+          items: [
+            {
+              key: "database:beta",
+              path: ["Project Beta"],
+              destination: {
+                kind: "data_source",
+                dataSourceId: "datasource:beta",
+                viewId: "view:beta",
+                at: { kind: "end" },
+              },
+              expectedMoveEtag: "etag:beta",
+            },
+          ],
+        },
+      },
+    });
+    expect(client.reads).toEqual([
+      {
+        kind: "page_relocation_destinations",
+        page_id: "page:source",
+        scope: { kind: "databases", query: null },
+        cursor: null,
+        limit: 100,
+      },
+    ]);
+  });
+
   test("maps standalone root reads without deriving Project ownership", async () => {
     const client = new FakeCoreClient();
     client.enqueueRead({

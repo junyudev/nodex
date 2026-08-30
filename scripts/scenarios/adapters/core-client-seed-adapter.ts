@@ -26,6 +26,7 @@ import type {
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
   ScenarioSeedPort,
+  ScenarioStandalonePageSeed,
 } from "../contracts";
 import { normalizeScenarioBoardGroups } from "./normalize-board-groups";
 import {
@@ -93,6 +94,21 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       `Create ${input.title}`,
     );
     return { documentId: receipt.documentId };
+  }
+
+  async createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void> {
+    const result = await this.#library(input.projectId).apply({
+      operationId: input.operationId,
+      storeEpoch: this.#runtime.identity.storeEpoch,
+      operation: {
+        kind: "create_page",
+        pageId: input.pageId,
+        documentId: input.documentId,
+        title: input.title,
+        parent: { kind: "library" },
+      },
+    });
+    requireSuccess(result, `Create standalone ${input.title}`);
   }
 
   async ensurePrimaryDataSourcePropertyCount(

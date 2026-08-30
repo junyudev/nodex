@@ -83,6 +83,8 @@ pub(super) struct MutationEffects {
     pub(super) block_transfer: Option<LibraryBlockTransferResult>,
     pub(super) block_transfer_undo:
         Option<nodex_core_contracts::library::LibraryBlockTransferUndoResult>,
+    pub(super) page_relocation_undo:
+        Option<nodex_core_contracts::library::LibraryPageRelocationUndoResult>,
     pub(super) structural_edit: Option<nodex_core_contracts::library::LibraryStructuralEditResult>,
     pub(super) page_lifecycle: Option<LibraryPageLifecycleMutationReceipt>,
     pub(super) block_property_mutation: Option<LibraryBlockPropertyMutationReceipt>,
@@ -681,6 +683,18 @@ pub(super) fn apply(
                     &request_hash,
                     token,
                 ),
+                LibraryIntent::UndoPageRelocation { token } => {
+                    super::block_transfer::undo_page_relocation(
+                        transaction,
+                        &context,
+                        &library_id,
+                        &request.operation_id,
+                        &store_epoch,
+                        &request_hash,
+                        token,
+                        &assets_root,
+                    )
+                }
                 LibraryIntent::ApplyStructuralEdit { command } => super::structural_edit::apply(
                     transaction,
                     &context,
@@ -1049,6 +1063,7 @@ fn move_block(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -1271,6 +1286,7 @@ fn change_resource_lifecycle(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -1360,6 +1376,7 @@ fn grant_project_access(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -1473,6 +1490,7 @@ fn set_project_access(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -2460,6 +2478,7 @@ fn create_database(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -2785,6 +2804,7 @@ fn create_page(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,
@@ -3910,6 +3930,7 @@ fn assemble_mutation_result(
             canvas_mutation: effects.canvas_mutation,
             block_transfer: effects.block_transfer,
             block_transfer_undo: effects.block_transfer_undo,
+            page_relocation_undo: effects.page_relocation_undo,
             structural_edit: effects.structural_edit,
             page_lifecycle: effects.page_lifecycle,
             block_property_mutation: effects.block_property_mutation,

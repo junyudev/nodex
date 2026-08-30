@@ -16,7 +16,7 @@ use crate::document::DocumentHeadRevision;
 use crate::workspace::{ProjectAppearance, ProjectLifecycle};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 42;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 44;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -574,6 +574,17 @@ pub struct LibraryBlockTransferUndoResult {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageRelocationUndoResult {
+    pub transfer_operation_id: String,
+    pub page_id: String,
+    pub final_location: LibraryBlockLocation,
+    pub final_location_revision: i64,
+    pub document_commits: Vec<LibraryBlockTransferDocumentCommit>,
+    pub affected_database_ids: Vec<String>,
+    pub page_key: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryStructuralSelection {
     pub source_document_id: String,
     pub root_block_ids: Vec<String>,
@@ -775,6 +786,12 @@ pub enum LibraryRead {
     MoveDestinations {
         target: LibraryResourceTarget,
         scope: LibraryMoveDestinationScope,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    },
+    PageRelocationDestinations {
+        page_id: String,
+        scope: LibraryPageRelocationDestinationScope,
         cursor: Option<String>,
         limit: Option<u32>,
     },
@@ -1006,6 +1023,36 @@ pub struct LibraryMoveDestinationEntry {
     pub document_generation: i64,
     pub document_head_seq: i64,
     pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryPageRelocationDestinationScope {
+    Databases { query: Option<String> },
+    PageSuggested,
+    PageChildren { parent: LibraryNavigationParent },
+    PageSearch { query: String },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryPageRelocationDestinationKind {
+    Library,
+    Page,
+    Database,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageRelocationDestinationEntry {
+    pub key: String,
+    pub kind: LibraryPageRelocationDestinationKind,
+    pub title: String,
+    pub path: Vec<String>,
+    pub has_children: bool,
+    pub is_current: bool,
+    pub updated_at: String,
+    pub destination: LibraryPageWriteDestination,
+    pub expected_move_etag: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2437,6 +2484,14 @@ pub enum LibraryReadValue {
         total: u64,
         root_is_current: bool,
     },
+    PageRelocationDestinations {
+        page_id: String,
+        scope: LibraryPageRelocationDestinationScope,
+        items: Vec<LibraryPageRelocationDestinationEntry>,
+        next_cursor: Option<String>,
+        has_more: bool,
+        total: u64,
+    },
     PageMentionDestination {
         value: LibraryPageMentionDestinationHead,
     },
@@ -2693,6 +2748,9 @@ pub enum LibraryIntent {
     UndoBlockTransfer {
         token: LibraryBlockTransferUndoToken,
     },
+    UndoPageRelocation {
+        token: LibraryBlockTransferUndoToken,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -2777,6 +2835,7 @@ pub struct LibraryCommitValue {
     pub canvas_mutation: Option<LibraryCanvasMutationResult>,
     pub block_transfer: Option<LibraryBlockTransferResult>,
     pub block_transfer_undo: Option<LibraryBlockTransferUndoResult>,
+    pub page_relocation_undo: Option<LibraryPageRelocationUndoResult>,
     pub structural_edit: Option<LibraryStructuralEditResult>,
     pub page_lifecycle: Option<LibraryPageLifecycleMutationReceipt>,
     pub block_property_mutation: Option<LibraryBlockPropertyMutationReceipt>,

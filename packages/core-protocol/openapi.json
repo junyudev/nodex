@@ -2268,6 +2268,16 @@
                       }
                     ]
                   },
+                  "page_relocation_undo": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
+                      }
+                    ]
+                  },
                   "structural_edit": {
                     "oneOf": [
                       {
@@ -2499,6 +2509,16 @@
                       },
                       {
                         "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
+                      }
+                    ]
+                  },
+                  "page_relocation_undo": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
                       }
                     ]
                   },
@@ -20078,6 +20098,178 @@
           "link"
         ]
       },
+      "LibraryPageRelocationDestinationEntry": {
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "title",
+          "path",
+          "has_children",
+          "is_current",
+          "updated_at",
+          "destination",
+          "expected_move_etag"
+        ],
+        "properties": {
+          "destination": {
+            "$ref": "#/components/schemas/LibraryPageWriteDestination"
+          },
+          "expected_move_etag": {
+            "type": "string"
+          },
+          "has_children": {
+            "type": "boolean"
+          },
+          "is_current": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LibraryPageRelocationDestinationKind"
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "LibraryPageRelocationDestinationKind": {
+        "type": "string",
+        "enum": [
+          "library",
+          "page",
+          "database"
+        ]
+      },
+      "LibraryPageRelocationDestinationScope": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "databases"
+                ]
+              },
+              "query": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_suggested"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "parent",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_children"
+                ]
+              },
+              "parent": {
+                "$ref": "#/components/schemas/LibraryNavigationParent"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "query",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page_search"
+                ]
+              },
+              "query": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "LibraryPageRelocationUndoResult": {
+        "type": "object",
+        "required": [
+          "transfer_operation_id",
+          "page_id",
+          "final_location",
+          "final_location_revision",
+          "document_commits",
+          "affected_database_ids"
+        ],
+        "properties": {
+          "affected_database_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "document_commits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
+            }
+          },
+          "final_location": {
+            "$ref": "#/components/schemas/LibraryBlockLocation"
+          },
+          "final_location_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transfer_operation_id": {
+            "type": "string"
+          }
+        }
+      },
       "LibraryPageSearchMatch": {
         "oneOf": [
           {
@@ -24318,6 +24510,24 @@
                     "$ref": "#/components/schemas/LibraryBlockTransferUndoToken"
                   }
                 }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "token",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "undo_page_relocation"
+                    ]
+                  },
+                  "token": {
+                    "$ref": "#/components/schemas/LibraryBlockTransferUndoToken"
+                  }
+                }
               }
             ]
           },
@@ -28156,6 +28366,42 @@
                   },
                   "target": {
                     "$ref": "#/components/schemas/LibraryResourceTarget"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id",
+                  "scope",
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "page_relocation_destinations"
+                    ]
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/LibraryPageRelocationDestinationScope"
                   }
                 }
               },
@@ -34588,6 +34834,16 @@
                               }
                             ]
                           },
+                          "page_relocation_undo": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
+                              }
+                            ]
+                          },
                           "structural_edit": {
                             "oneOf": [
                               {
@@ -34819,6 +35075,16 @@
                               },
                               {
                                 "$ref": "#/components/schemas/LibraryPageLifecycleMutationReceipt"
+                              }
+                            ]
+                          },
+                          "page_relocation_undo": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/LibraryPageRelocationUndoResult"
                               }
                             ]
                           },
@@ -36793,6 +37059,51 @@
                           },
                           "target": {
                             "$ref": "#/components/schemas/LibraryResourceTarget"
+                          },
+                          "total": {
+                            "type": "integer",
+                            "format": "int64",
+                            "minimum": 0
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "page_id",
+                          "scope",
+                          "items",
+                          "has_more",
+                          "total",
+                          "kind"
+                        ],
+                        "properties": {
+                          "has_more": {
+                            "type": "boolean"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/LibraryPageRelocationDestinationEntry"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "page_relocation_destinations"
+                            ]
+                          },
+                          "next_cursor": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "page_id": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "$ref": "#/components/schemas/LibraryPageRelocationDestinationScope"
                           },
                           "total": {
                             "type": "integer",

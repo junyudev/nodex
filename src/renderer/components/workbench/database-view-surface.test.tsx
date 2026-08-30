@@ -847,7 +847,7 @@ describe("DatabaseViewSurface", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("menuitem", { name: "Move" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Move to" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Copy" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Open in" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
@@ -1380,7 +1380,7 @@ describe("DatabaseViewSurface", () => {
     ).toBe(document.activeElement);
     expect(screen.getByRole("menuitem", { name: "Open in" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Copy" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Move" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Move to" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "Open page" })).toBeNull();
     expect(screen.queryByRole("menuitem", { name: "Add to selection" })).toBeNull();

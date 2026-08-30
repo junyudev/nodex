@@ -25,6 +25,10 @@ import {
   type LibraryModuleReadResult,
   type LibraryMoveDestinationEntry,
   type LibraryMoveDestinationScope,
+  type LibraryPageRelocationDestinationEntry,
+  type LibraryPageRelocationDestinationScope,
+  type LibraryPageRelocationUndoToken,
+  type LibraryPageWriteDestination,
   type LibraryPageReferenceCandidate,
   type LibraryPageFileBodyUsage,
   type LibraryPageFileOwnershipMove,
@@ -491,6 +495,122 @@ const parseMoveDestinationScope = (value: unknown, label: string): LibraryMoveDe
   throw new TypeError(`${label}.kind is unsupported`);
 };
 
+const parsePageRelocationDestinationScope = (
+  value: unknown,
+  label: string,
+): LibraryPageRelocationDestinationScope => {
+  const scope = record(value, label);
+  if (scope.kind === "databases") {
+    exactKeys(scope, label, ["kind"], ["query"]);
+    const query = optionalString(scope.query, `${label}.query`, MAX_LIBRARY_QUERY_LENGTH);
+    return { kind: scope.kind, ...(query === undefined ? {} : { query }) };
+  }
+  if (scope.kind === "page_suggested") {
+    exactKeys(scope, label, ["kind"]);
+    return { kind: scope.kind };
+  }
+  if (scope.kind === "page_search") {
+    exactKeys(scope, label, ["kind", "query"]);
+    return {
+      kind: scope.kind,
+      query: string(scope.query, `${label}.query`, MAX_LIBRARY_QUERY_LENGTH),
+    };
+  }
+  if (scope.kind === "page_children") {
+    exactKeys(scope, label, ["kind", "parent"]);
+    const parent = parseNavigationParent(scope.parent, `${label}.parent`);
+    if (parent.kind === "database") {
+      throw new TypeError(`${label}.parent cannot be a Database`);
+    }
+    return { kind: scope.kind, parent };
+  }
+  throw new TypeError(`${label}.kind is unsupported`);
+};
+
+const parsePageRelocationAnchor = (
+  value: unknown,
+  label: string,
+): NonNullable<LibraryPageWriteDestination["at"]> => {
+  const anchor = record(value, label);
+  if (anchor.kind === "start" || anchor.kind === "end") {
+    exactKeys(anchor, label, ["kind"]);
+    return { kind: anchor.kind };
+  }
+  if (anchor.kind === "before" || anchor.kind === "after") {
+    exactKeys(anchor, label, ["kind", "blockId"]);
+    return {
+      kind: anchor.kind,
+      blockId: string(anchor.blockId, `${label}.blockId`),
+    };
+  }
+  throw new TypeError(`${label}.kind is unsupported`);
+};
+
+const parsePageWriteDestination = (value: unknown, label: string): LibraryPageWriteDestination => {
+  const destination = record(value, label);
+  const at =
+    destination.at === undefined
+      ? undefined
+      : parsePageRelocationAnchor(destination.at, `${label}.at`);
+  if (destination.kind === "library") {
+    exactKeys(destination, label, ["kind"], ["at"]);
+    return { kind: destination.kind, ...(at === undefined ? {} : { at }) };
+  }
+  if (destination.kind === "page") {
+    exactKeys(destination, label, ["kind", "pageId"], ["at"]);
+    return {
+      kind: destination.kind,
+      pageId: string(destination.pageId, `${label}.pageId`),
+      ...(at === undefined ? {} : { at }),
+    };
+  }
+  if (destination.kind === "data_source") {
+    exactKeys(destination, label, ["kind", "dataSourceId"], ["viewId", "group", "at"]);
+    const group = (() => {
+      if (destination.group === undefined) return undefined;
+      const candidate = record(destination.group, `${label}.group`);
+      exactKeys(candidate, `${label}.group`, ["kind"], ["groupKey", "subgroupKey"]);
+      if (candidate.kind !== "path") {
+        throw new TypeError(`${label}.group.kind is unsupported`);
+      }
+      const groupKey = optionalString(candidate.groupKey, `${label}.group.groupKey`, 1_024);
+      const subgroupKey = optionalString(
+        candidate.subgroupKey,
+        `${label}.group.subgroupKey`,
+        1_024,
+      );
+      return {
+        kind: candidate.kind,
+        ...(groupKey === undefined ? {} : { groupKey }),
+        ...(subgroupKey === undefined ? {} : { subgroupKey }),
+      } as const;
+    })();
+    return {
+      kind: destination.kind,
+      dataSourceId: parseDataSourceId(destination.dataSourceId),
+      ...(destination.viewId === undefined
+        ? {}
+        : { viewId: parseDatabaseViewId(destination.viewId) }),
+      ...(group === undefined ? {} : { group }),
+      ...(at === undefined ? {} : { at }),
+    };
+  }
+  throw new TypeError(`${label}.kind is unsupported`);
+};
+
+const parsePageRelocationUndoToken = (
+  value: unknown,
+  label: string,
+): LibraryPageRelocationUndoToken => {
+  const token = record(value, label);
+  exactKeys(token, label, ["transferOperationId", "recipeHash", "storeEpoch"]);
+  return {
+    transferOperationId: string(token.transferOperationId, `${label}.transferOperationId`),
+    recipeHash: sha256Hex(token.recipeHash, `${label}.recipeHash`),
+    storeEpoch: string(token.storeEpoch, `${label}.storeEpoch`),
+  };
+};
+
 const parsePlacementAnchor = (value: unknown, label: string): LibraryPlacementAnchor => {
   const anchor = record(value, label);
   exactKeys(anchor, label, ["blockId", "expectedLocationRevision"]);
@@ -918,6 +1038,42 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
           "libraryModuleApply.operation.expectedMetadataRevision",
         ),
         ...(containingDocumentHead === undefined ? {} : { containingDocumentHead }),
+      },
+    };
+  }
+  if (operation.kind === "move_page") {
+    exactKeys(operation, "libraryModuleApply.operation", [
+      "kind",
+      "pageId",
+      "destination",
+      "expectedEtag",
+    ]);
+    return {
+      operationId,
+      storeEpoch,
+      operation: {
+        kind: operation.kind,
+        pageId: string(operation.pageId, "libraryModuleApply.operation.pageId"),
+        destination: parsePageWriteDestination(
+          operation.destination,
+          "libraryModuleApply.operation.destination",
+        ),
+        expectedEtag: string(
+          operation.expectedEtag,
+          "libraryModuleApply.operation.expectedEtag",
+          4_096,
+        ),
+      },
+    };
+  }
+  if (operation.kind === "undo_page_relocation") {
+    exactKeys(operation, "libraryModuleApply.operation", ["kind", "token"]);
+    return {
+      operationId,
+      storeEpoch,
+      operation: {
+        kind: operation.kind,
+        token: parsePageRelocationUndoToken(operation.token, "libraryModuleApply.operation.token"),
       },
     };
   }
@@ -1614,6 +1770,24 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
       },
     };
   }
+  if (read.mode === "page_relocation_destinations") {
+    exactKeys(read, "libraryModuleRead.read", ["mode", "pageId", "scope"], ["cursor", "limit"]);
+    const cursor = optionalString(
+      read.cursor,
+      "libraryModuleRead.read.cursor",
+      MAX_LIBRARY_CURSOR_LENGTH,
+    );
+    const limit = readLimit(read.limit, "libraryModuleRead.read.limit");
+    return {
+      read: {
+        mode: read.mode,
+        pageId: string(read.pageId, "libraryModuleRead.read.pageId"),
+        scope: parsePageRelocationDestinationScope(read.scope, "libraryModuleRead.read.scope"),
+        ...(cursor === undefined ? {} : { cursor }),
+        ...(limit === undefined ? {} : { limit }),
+      },
+    };
+  }
   if (read.mode === "page_mention_destination") {
     exactKeys(read, "libraryModuleRead.read", ["mode", "pageId"]);
     return {
@@ -1901,6 +2075,48 @@ const parseMoveDestinationEntry = (value: unknown, label: string): LibraryMoveDe
     documentGeneration,
     documentHeadSeq: revision(entry.documentHeadSeq, `${label}.documentHeadSeq`),
     updatedAt: string(entry.updatedAt, `${label}.updatedAt`),
+  };
+};
+
+const parsePageRelocationDestinationEntry = (
+  value: unknown,
+  label: string,
+): LibraryPageRelocationDestinationEntry => {
+  const entry = record(value, label);
+  exactKeys(entry, label, [
+    "key",
+    "kind",
+    "title",
+    "path",
+    "hasChildren",
+    "isCurrent",
+    "updatedAt",
+    "destination",
+    "expectedMoveEtag",
+  ]);
+  if (entry.kind !== "library" && entry.kind !== "page" && entry.kind !== "database") {
+    throw new TypeError(`${label}.kind is unsupported`);
+  }
+  if (!Array.isArray(entry.path)) {
+    throw new TypeError(`${label}.path must be an array`);
+  }
+  const destination = parsePageWriteDestination(entry.destination, `${label}.destination`);
+  const expectedDestinationKind = entry.kind === "database" ? "data_source" : entry.kind;
+  if (destination.kind !== expectedDestinationKind) {
+    throw new TypeError(`${label}.destination does not match its entry kind`);
+  }
+  return {
+    key: string(entry.key, `${label}.key`, 1_024),
+    kind: entry.kind,
+    title: string(entry.title, `${label}.title`, MAX_TITLE_LENGTH, true),
+    path: entry.path.map((part, index) =>
+      string(part, `${label}.path[${index}]`, MAX_TITLE_LENGTH, true),
+    ),
+    hasChildren: boolean(entry.hasChildren, `${label}.hasChildren`),
+    isCurrent: boolean(entry.isCurrent, `${label}.isCurrent`),
+    updatedAt: string(entry.updatedAt, `${label}.updatedAt`),
+    destination,
+    expectedMoveEtag: string(entry.expectedMoveEtag, `${label}.expectedMoveEtag`, 4_096),
   };
 };
 
@@ -2370,6 +2586,41 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
       rootIsCurrent: boolean(readValue.rootIsCurrent, "library move destinations rootIsCurrent"),
     };
   }
+  if (readValue.kind === "page_relocation_destinations") {
+    exactKeys(readValue, "libraryModuleReadResult.value.value", [
+      "kind",
+      "pageId",
+      "scope",
+      "items",
+      "nextCursor",
+      "hasMore",
+      "total",
+    ]);
+    if (!Array.isArray(readValue.items)) {
+      throw new TypeError("library Page relocation destination items must be an array");
+    }
+    return {
+      kind: readValue.kind,
+      pageId: string(readValue.pageId, "library Page relocation pageId"),
+      scope: parsePageRelocationDestinationScope(readValue.scope, "library Page relocation scope"),
+      items: readValue.items.map((entry, index) =>
+        parsePageRelocationDestinationEntry(
+          entry,
+          `library Page relocation destination items[${index}]`,
+        ),
+      ),
+      nextCursor:
+        readValue.nextCursor === null
+          ? null
+          : string(
+              readValue.nextCursor,
+              "library Page relocation nextCursor",
+              MAX_LIBRARY_CURSOR_LENGTH,
+            ),
+      hasMore: boolean(readValue.hasMore, "library Page relocation hasMore"),
+      total: revision(readValue.total, "library Page relocation total"),
+    };
+  }
   if (readValue.kind === "page_mention_destination") {
     exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind", "value"]);
     const value = record(readValue.value, "library Page mention destination");
@@ -2744,7 +2995,7 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
       "commitSeq",
       "committedAt",
     ],
-    ["pageFiles"],
+    ["pageFiles", "pageRelocation", "pageRelocationUndo"],
   );
   const operationKinds = new Set([
     "create_page",
@@ -2754,6 +3005,8 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
     "move_canvas",
     "duplicate_canvas",
     "delete_canvas",
+    "move_page",
+    "undo_page_relocation",
     "move_block",
     "archive_resource",
     "restore_resource",
@@ -2960,6 +3213,37 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
       ),
     };
   })();
+  const pageRelocation = (() => {
+    if (receipt.pageRelocation === undefined) return undefined;
+    if (receipt.pageRelocation === null) return null;
+    const relocation = record(
+      receipt.pageRelocation,
+      "libraryModuleApplyResult.value.pageRelocation",
+    );
+    const label = "libraryModuleApplyResult.value.pageRelocation";
+    exactKeys(relocation, label, ["pageId", "undoToken"]);
+    return {
+      pageId: string(relocation.pageId, `${label}.pageId`),
+      undoToken:
+        relocation.undoToken === null
+          ? null
+          : parsePageRelocationUndoToken(relocation.undoToken, `${label}.undoToken`),
+    };
+  })();
+  const pageRelocationUndo = (() => {
+    if (receipt.pageRelocationUndo === undefined) return undefined;
+    if (receipt.pageRelocationUndo === null) return null;
+    const relocation = record(
+      receipt.pageRelocationUndo,
+      "libraryModuleApplyResult.value.pageRelocationUndo",
+    );
+    const label = "libraryModuleApplyResult.value.pageRelocationUndo";
+    exactKeys(relocation, label, ["pageId", "transferOperationId"]);
+    return {
+      pageId: string(relocation.pageId, `${label}.pageId`),
+      transferOperationId: string(relocation.transferOperationId, `${label}.transferOperationId`),
+    };
+  })();
   return {
     operationId: string(receipt.operationId, "libraryModuleApplyResult.value.operationId"),
     profileId: string(receipt.profileId, "libraryModuleApplyResult.value.profileId"),
@@ -2972,6 +3256,8 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
     canvasMutation,
     structuralEdit,
     ...(pageFiles === undefined ? {} : { pageFiles }),
+    ...(pageRelocation === undefined ? {} : { pageRelocation }),
+    ...(pageRelocationUndo === undefined ? {} : { pageRelocationUndo }),
     affectedParentKeys: parseStringList(
       receipt.affectedParentKeys,
       "libraryModuleApplyResult.value.affectedParentKeys",

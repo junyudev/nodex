@@ -34,6 +34,14 @@ export interface ScenarioPageSeed {
   readonly nfm: string;
 }
 
+export interface ScenarioStandalonePageSeed {
+  readonly pageId: string;
+  readonly documentId: string;
+  readonly operationId: string;
+  readonly projectId: string;
+  readonly title: string;
+}
+
 export interface ScenarioDocumentReplacement {
   readonly mutationId: string;
   readonly operationId: string;
@@ -80,6 +88,7 @@ export interface ScenarioRelatedChatSeedResult {
 export interface ScenarioSeedPort {
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
+  createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void>;
   ensurePrimaryDataSourcePropertyCount(
     projectId: string,
     count: number,

@@ -57,9 +57,14 @@ sized for longer ones and virtualized rows do not change the lane as individual
 numeral glyphs appear.
 A Page with no current enabled Database renders no placeholder.
 Board and List expose one shared Page context menu. Its Page actions are
-`Open in`, `Copy`, `Move`, and a final separated `Delete` action.
-`Move` contains top, up, down, and bottom positions, retaining unavailable edge
-positions as disabled rows. `Copy` contains `Copy ID` whenever a current Page
+`Open in`, `Copy`, `Move to`, and a final separated `Delete` action. `Move to`
+relocates the Page to another Database, another Page, or Pages top level as
+specified by [Page Relocation](page-relocation-behavior.md).
+The development-only `database-page-reorder-menu` capability adds a `Reorder`
+submenu containing top, up, down, and bottom positions; ordinary launches omit
+that submenu, and unavailable edge positions remain disabled when it is
+enabled. This gate affects only the context-menu entry, not drag, keyboard, or
+bulk-selection ordering. `Copy` contains `Copy ID` whenever a current Page
 key exists, plus `Copy deeplink`, `Copy title`, and `Copy content as Markdown`.
 `Copy ID` copies only the user-facing Page key and never falls back to UUID;
 `Copy deeplink` remains the distinct UUID-based action. Markdown copy reads the

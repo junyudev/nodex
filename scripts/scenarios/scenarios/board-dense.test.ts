@@ -42,6 +42,10 @@ class RecordingSeedPort implements ScenarioSeedPort {
     return { documentId: `document:${input.key}` };
   }
 
+  async createStandalonePage(): Promise<void> {
+    throw new Error("Standalone Page seeding is not part of this scenario");
+  }
+
   async ensurePrimaryDataSourcePropertyCount(): Promise<{
     readonly commitSeq: number;
     readonly propertyCount: number;

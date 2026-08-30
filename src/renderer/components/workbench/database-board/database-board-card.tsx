@@ -259,7 +259,7 @@ export const createDatabaseBoardPageMenuSession = (
     groupingPropertyId: props.groupPropertyId,
     actionPort: props.pageActionPort,
     deleteDisabled: props.model.readOnlyReason !== null,
-    onMove: (direction) => props.onMove(props.row.pageId, direction),
+    onReorder: (direction) => props.onMove(props.row.pageId, direction),
   };
 };
 

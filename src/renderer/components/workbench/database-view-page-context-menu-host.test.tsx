@@ -19,7 +19,7 @@ const session = (pageId: string): DatabaseViewPageMenuSession => ({
   canMoveDown: true,
   propertySource: dataSourcePagePropertyMenuSourceFromBindings([]),
   actionPort: {},
-  onMove: () => undefined,
+  onReorder: () => undefined,
 });
 
 describe("DatabaseViewPageContextMenuHost", () => {

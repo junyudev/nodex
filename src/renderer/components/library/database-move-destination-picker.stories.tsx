@@ -8,9 +8,9 @@ import {
   NodexDropdownMenu,
 } from "@/components/ui/dropdown";
 import {
-  LibraryMoveDestinationPickerSurface,
-  type LibraryMoveDestinationPickerSection,
-} from "./library-move-destination-picker";
+  DatabaseMoveDestinationPickerSurface,
+  type DatabaseMoveDestinationPickerSection,
+} from "./database-move-destination-picker";
 
 const pages = [
   {
@@ -57,7 +57,7 @@ function Story() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  const sections = useMemo<readonly LibraryMoveDestinationPickerSection[]>(() => {
+  const sections = useMemo<readonly DatabaseMoveDestinationPickerSection[]>(() => {
     if (query.trim()) {
       const normalized = query.trim().toLowerCase();
       return [
@@ -160,7 +160,7 @@ function Story() {
           contentClassName="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
           contentMotion="none"
         >
-          <LibraryMoveDestinationPickerSurface
+          <DatabaseMoveDestinationPickerSurface
             ariaLabel="Move Quarterly planning to"
             query={query}
             sections={sections}
@@ -186,7 +186,7 @@ function Story() {
 }
 
 const meta = {
-  title: "Library/Move destination picker",
+  title: "Library/Database move destination picker",
   component: Story,
   parameters: { layout: "fullscreen" },
 } satisfies Meta<typeof Story>;

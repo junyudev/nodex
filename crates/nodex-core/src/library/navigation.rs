@@ -2,15 +2,17 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use nodex_core_contracts::agent::{AgentAuthorizationTarget, AgentProjectResourceAction};
 use nodex_core_contracts::library::{
-    LibraryAgentBlockTarget, LibraryCanvasLocation, LibraryCanvasSummary, LibraryCanvasTarget,
-    LibraryCatalogEntry, LibraryCatalogKind, LibraryLifecycle, LibraryMoveDestinationEntry,
-    LibraryMoveDestinationScope, LibraryNavigationNode, LibraryNavigationParent,
-    LibraryPageAccessContext, LibraryPageBacklink, LibraryPageDataSourceContext, LibraryPageDetail,
-    LibraryPageDocumentDescriptor, LibraryPageIntrinsicProperty, LibraryPageKeyTarget,
-    LibraryPageLocation, LibraryPageMembership, LibraryPageMentionDestinationHead,
-    LibraryPageOwnershipPath, LibraryPageOwnershipPathAncestor, LibraryPageReferencePresentation,
-    LibraryPageTarget, LibraryRead, LibraryReadValue, LibraryResourceTarget, LibraryRouteTarget,
-    LibraryViewLocation,
+    LibraryAgentBlockTarget, LibraryAgentSiblingAnchor, LibraryCanvasLocation,
+    LibraryCanvasSummary, LibraryCanvasTarget, LibraryCatalogEntry, LibraryCatalogKind,
+    LibraryLifecycle, LibraryMoveDestinationEntry, LibraryMoveDestinationScope,
+    LibraryNavigationNode, LibraryNavigationParent, LibraryPageAccessContext, LibraryPageBacklink,
+    LibraryPageDataSourceContext, LibraryPageDetail, LibraryPageDocumentDescriptor,
+    LibraryPageIntrinsicProperty, LibraryPageKeyTarget, LibraryPageLocation, LibraryPageMembership,
+    LibraryPageMentionDestinationHead, LibraryPageOwnershipPath, LibraryPageOwnershipPathAncestor,
+    LibraryPageReferencePresentation, LibraryPageRelocationDestinationEntry,
+    LibraryPageRelocationDestinationKind, LibraryPageRelocationDestinationScope, LibraryPageTarget,
+    LibraryPageWriteDestination, LibraryRead, LibraryReadValue, LibraryResourceTarget,
+    LibraryRouteTarget, LibraryViewLocation,
 };
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -166,6 +168,27 @@ pub(super) fn read(
                 connection,
                 library_id,
                 target,
+                scope,
+                requested_cursor,
+                limit,
+            )
+        }
+        LibraryRead::PageRelocationDestinations {
+            page_id,
+            scope,
+            cursor: requested_cursor,
+            limit,
+        } => {
+            if !trusted_root_adapter(requesting_adapter) {
+                return Err(unauthorized(
+                    "Page relocation destinations require a trusted root Adapter",
+                ));
+            }
+            page_relocation_destinations(
+                connection,
+                library_id,
+                store_epoch,
+                &page_id,
                 scope,
                 requested_cursor,
                 limit,
@@ -2695,6 +2718,521 @@ fn canvas_path(
         .unwrap_or_default();
     nodes.push(canvas);
     Ok(nodes)
+}
+
+struct PageRelocationSource {
+    parent_kind: String,
+    parent_id: String,
+    validator_view_id: Option<String>,
+}
+
+fn page_relocation_destinations(
+    connection: &Connection,
+    library_id: &str,
+    store_epoch: &str,
+    page_id: &str,
+    scope: LibraryPageRelocationDestinationScope,
+    requested_cursor: Option<String>,
+    limit: Option<u32>,
+) -> Result<LibraryReadValue, StoreError> {
+    let source = connection
+        .query_row(
+            "SELECT page.parent_kind, page.parent_id \
+             FROM pages page JOIN blocks block ON block.id = page.block_id \
+               AND block.library_id = page.library_id AND block.type = 'page' \
+             JOIN documents document ON document.id = page.document_id \
+               AND document.library_id = page.library_id \
+             JOIN document_materializations materialization \
+               ON materialization.document_id = document.id \
+               AND materialization.generation = document.generation \
+               AND materialization.projected_seq = document.head_seq \
+               AND materialization.schema_version = document.schema_version \
+             WHERE page.block_id = ?1 AND page.library_id = ?2 \
+               AND block.lifecycle = 'active' AND document.readiness = 'ready'",
+            params![page_id, library_id],
+            |row| {
+                Ok(PageRelocationSource {
+                    parent_kind: row.get(0)?,
+                    parent_id: row.get(1)?,
+                    validator_view_id: None,
+                })
+            },
+        )
+        .optional()?
+        .ok_or_else(|| not_found("Page relocation source is unavailable"))?;
+    let source = PageRelocationSource {
+        validator_view_id: crate::database::default_page_move_view_id(
+            connection, library_id, page_id,
+        )?,
+        ..source
+    };
+    let actor_project_id =
+        super::mutation::resolve_library_actor_project_id(connection, library_id)?;
+    match scope {
+        LibraryPageRelocationDestinationScope::Databases { query } => {
+            page_relocation_database_destinations(
+                connection,
+                library_id,
+                store_epoch,
+                page_id,
+                &actor_project_id,
+                &source,
+                query,
+                requested_cursor,
+                limit,
+            )
+        }
+        LibraryPageRelocationDestinationScope::PageSuggested => page_relocation_page_destinations(
+            connection,
+            library_id,
+            store_epoch,
+            page_id,
+            &actor_project_id,
+            &source,
+            PageRelocationPageScope::Suggested,
+            requested_cursor,
+            limit,
+        ),
+        LibraryPageRelocationDestinationScope::PageChildren { parent } => {
+            page_relocation_page_destinations(
+                connection,
+                library_id,
+                store_epoch,
+                page_id,
+                &actor_project_id,
+                &source,
+                PageRelocationPageScope::Children(parent),
+                requested_cursor,
+                limit,
+            )
+        }
+        LibraryPageRelocationDestinationScope::PageSearch { query } => {
+            page_relocation_page_destinations(
+                connection,
+                library_id,
+                store_epoch,
+                page_id,
+                &actor_project_id,
+                &source,
+                PageRelocationPageScope::Search(query),
+                requested_cursor,
+                limit,
+            )
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn page_relocation_database_destinations(
+    connection: &Connection,
+    library_id: &str,
+    store_epoch: &str,
+    page_id: &str,
+    actor_project_id: &str,
+    source: &PageRelocationSource,
+    query: Option<String>,
+    requested_cursor: Option<String>,
+    limit: Option<u32>,
+) -> Result<LibraryReadValue, StoreError> {
+    let query = query.unwrap_or_default().trim().to_lowercase();
+    if query.len() > 256 {
+        return Err(invalid("Page relocation Database query exceeds its bound"));
+    }
+    let scope = LibraryPageRelocationDestinationScope::Databases {
+        query: (!query.is_empty()).then(|| query.clone()),
+    };
+    let subject = vec![
+        "page_relocation_destinations".to_owned(),
+        page_id.to_owned(),
+        "databases".to_owned(),
+        query.clone(),
+    ];
+    let after = cursor_coordinate(
+        connection,
+        requested_cursor.as_deref(),
+        library_id,
+        &subject,
+    )?;
+    let (after_updated_at, after_id) = keyset_text_coordinate(after.as_ref())?;
+    let limit = read_limit(limit)?;
+    let (rows, has_more, total) = crate::database::page_relocation_database_targets(
+        connection,
+        library_id,
+        &query,
+        after_updated_at.as_deref(),
+        after_id.as_deref(),
+        limit,
+    )?;
+    let next_cursor = has_more
+        .then(|| {
+            let last = rows
+                .last()
+                .ok_or_else(|| corrupt("Database relocation continuation has no entry"))?;
+            cursor::mint(
+                connection,
+                library_id,
+                &subject,
+                cursor::KeysetCoordinate {
+                    values: vec![cursor::KeysetValue::Text {
+                        value: last.updated_at.clone(),
+                    }],
+                    stable_id: last.database_id.clone(),
+                },
+            )
+        })
+        .transpose()?;
+    let items = rows
+        .into_iter()
+        .map(|row| {
+            let expected_move_etag = crate::database::mint_page_move_etag_prevalidated(
+                connection,
+                library_id,
+                actor_project_id,
+                store_epoch,
+                page_id,
+                Some(&row.view_id),
+            )?;
+            Ok(LibraryPageRelocationDestinationEntry {
+                key: format!("database:{}", row.database_id),
+                kind: LibraryPageRelocationDestinationKind::Database,
+                title: row.title,
+                path: row.primary_project_names,
+                has_children: false,
+                is_current: source.parent_kind == "data_source"
+                    && source.parent_id == row.data_source_id,
+                updated_at: row.updated_at,
+                destination: LibraryPageWriteDestination::DataSource {
+                    data_source_id: row.data_source_id,
+                    view_id: Some(row.view_id),
+                    group: None,
+                    at: Some(LibraryAgentSiblingAnchor::End),
+                },
+                expected_move_etag,
+            })
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    Ok(LibraryReadValue::PageRelocationDestinations {
+        page_id: page_id.to_owned(),
+        scope,
+        items,
+        next_cursor,
+        has_more,
+        total: count_to_u64(total)?,
+    })
+}
+
+enum PageRelocationPageScope {
+    Suggested,
+    Children(LibraryNavigationParent),
+    Search(String),
+}
+
+#[allow(clippy::too_many_arguments)]
+fn page_relocation_page_destinations(
+    connection: &Connection,
+    library_id: &str,
+    store_epoch: &str,
+    page_id: &str,
+    actor_project_id: &str,
+    source: &PageRelocationSource,
+    requested_scope: PageRelocationPageScope,
+    requested_cursor: Option<String>,
+    limit: Option<u32>,
+) -> Result<LibraryReadValue, StoreError> {
+    let (scope, scope_kind, parent_id, query, scope_subject, include_library_root) =
+        match requested_scope {
+            PageRelocationPageScope::Suggested => (
+                LibraryPageRelocationDestinationScope::PageSuggested,
+                "suggested",
+                if source.parent_kind == "page" {
+                    source.parent_id.clone()
+                } else {
+                    String::new()
+                },
+                String::new(),
+                "suggested".to_owned(),
+                false,
+            ),
+            PageRelocationPageScope::Children(parent) => match &parent {
+                LibraryNavigationParent::Library => (
+                    LibraryPageRelocationDestinationScope::PageChildren {
+                        parent: parent.clone(),
+                    },
+                    "children_library",
+                    library_id.to_owned(),
+                    String::new(),
+                    "children:library".to_owned(),
+                    true,
+                ),
+                LibraryNavigationParent::Page { page_id } => (
+                    LibraryPageRelocationDestinationScope::PageChildren {
+                        parent: parent.clone(),
+                    },
+                    "children_page",
+                    page_id.clone(),
+                    String::new(),
+                    format!("children:page:{page_id}"),
+                    false,
+                ),
+                LibraryNavigationParent::Database { .. } => {
+                    return Err(invalid(
+                        "Database rows are not Page relocation tree parents",
+                    ));
+                }
+            },
+            PageRelocationPageScope::Search(query) => {
+                let query = query.trim().to_lowercase();
+                if query.is_empty() {
+                    return Err(invalid("Page relocation search is empty"));
+                }
+                if query.len() > 256 {
+                    return Err(invalid("Page relocation query exceeds its bound"));
+                }
+                (
+                    LibraryPageRelocationDestinationScope::PageSearch {
+                        query: query.clone(),
+                    },
+                    "search",
+                    String::new(),
+                    query.clone(),
+                    format!("search:{query}"),
+                    false,
+                )
+            }
+        };
+    let subject = vec![
+        "page_relocation_destinations".to_owned(),
+        page_id.to_owned(),
+        scope_subject,
+    ];
+    let after = cursor_coordinate(
+        connection,
+        requested_cursor.as_deref(),
+        library_id,
+        &subject,
+    )?;
+    let (after_updated_at, after_id) = keyset_text_coordinate(after.as_ref())?;
+    let limit = read_limit(limit)?;
+    let destinations_cte = "WITH RECURSIVE excluded(page_id) AS ( \
+        SELECT ?2 UNION \
+        SELECT page.block_id FROM pages page \
+        JOIN excluded parent ON page.parent_kind = 'page' AND page.parent_id = parent.page_id \
+        WHERE page.library_id = ?1 \
+      ), destinations AS ( \
+        SELECT page.block_id, materialization.title, page.updated_at, \
+          EXISTS( \
+            SELECT 1 FROM pages child \
+            JOIN blocks child_block ON child_block.id = child.block_id \
+            JOIN documents child_document ON child_document.id = child.document_id \
+            JOIN document_materializations child_materialization \
+              ON child_materialization.document_id = child_document.id \
+              AND child_materialization.generation = child_document.generation \
+              AND child_materialization.projected_seq = child_document.head_seq \
+              AND child_materialization.schema_version = child_document.schema_version \
+            WHERE child.library_id = ?1 AND child_block.lifecycle = 'active' \
+              AND child_block.library_id = child.library_id \
+              AND child.parent_kind = 'page' AND child.parent_id = page.block_id \
+              AND NOT EXISTS(SELECT 1 FROM excluded WHERE page_id = child.block_id) \
+          ) AS has_children \
+        FROM pages page \
+        JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
+        JOIN documents document ON document.id = page.document_id \
+          AND document.library_id = page.library_id \
+        JOIN document_materializations materialization \
+          ON materialization.document_id = document.id \
+          AND materialization.generation = document.generation \
+          AND materialization.projected_seq = document.head_seq \
+          AND materialization.schema_version = document.schema_version \
+        WHERE page.library_id = ?1 AND block.lifecycle = 'active' \
+          AND document.readiness = 'ready' \
+          AND NOT EXISTS(SELECT 1 FROM excluded WHERE page_id = page.block_id) \
+          AND ((?3 = 'suggested' AND page.block_id != ?4) \
+            OR (?3 = 'children_library' AND page.parent_kind = 'library' AND page.parent_id = ?4) \
+            OR (?3 = 'children_page' AND page.parent_kind = 'page' AND page.parent_id = ?4) \
+            OR (?3 = 'search' AND instr(lower(materialization.title), ?5) > 0)) \
+      ) ";
+    let rows_sql = format!(
+        "{destinations_cte} SELECT block_id, title, updated_at, has_children \
+         FROM destinations WHERE (?6 IS NULL OR updated_at < ?6 \
+           OR (updated_at = ?6 AND block_id > ?7)) \
+         ORDER BY updated_at DESC, block_id LIMIT ?8"
+    );
+    let include_current_page =
+        scope_kind == "suggested" && requested_cursor.is_none() && source.parent_kind == "page";
+    let page_limit = limit.saturating_sub(usize::from(include_current_page));
+    let query_limit = i64::try_from(page_limit.saturating_add(1))
+        .map_err(|_| invalid("Page relocation target limit overflowed"))?;
+    let mut rows = connection
+        .prepare(&rows_sql)?
+        .query_map(
+            params![
+                library_id,
+                page_id,
+                scope_kind,
+                parent_id,
+                query,
+                after_updated_at,
+                after_id,
+                query_limit,
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, bool>(3)?,
+                ))
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let has_more = rows.len() > page_limit;
+    let continuation_coordinate = has_more.then(|| {
+        if page_limit == 0 {
+            let first = rows
+                .first()
+                .ok_or_else(|| corrupt("Page relocation continuation has no entry"))?;
+            // The current parent occupied the complete first window, so the
+            // next cursor starts immediately before the first recent row.
+            return Ok((first.2.clone(), "0".to_owned()));
+        }
+        let last = rows
+            .get(page_limit - 1)
+            .ok_or_else(|| corrupt("Page relocation continuation has no entry"))?;
+        Ok((last.2.clone(), last.0.clone()))
+    });
+    rows.truncate(page_limit);
+    let next_cursor = continuation_coordinate
+        .map(|coordinate: Result<(String, String), StoreError>| {
+            let (updated_at, stable_id) = coordinate?;
+            cursor::mint(
+                connection,
+                library_id,
+                &subject,
+                cursor::KeysetCoordinate {
+                    values: vec![cursor::KeysetValue::Text { value: updated_at }],
+                    stable_id,
+                },
+            )
+        })
+        .transpose()?;
+    let count_sql = format!("{destinations_cte} SELECT COUNT(*) FROM destinations");
+    let page_total = connection.query_row(
+        &count_sql,
+        params![library_id, page_id, scope_kind, parent_id, query],
+        |row| row.get::<_, i64>(0),
+    )?;
+    let expected_move_etag = crate::database::mint_page_move_etag_prevalidated(
+        connection,
+        library_id,
+        actor_project_id,
+        store_epoch,
+        page_id,
+        source.validator_view_id.as_deref(),
+    )?;
+    let mut items = Vec::with_capacity(
+        rows.len() + usize::from(include_library_root) + usize::from(include_current_page),
+    );
+    if include_library_root && requested_cursor.is_none() {
+        let updated_at = connection.query_row(
+            "SELECT updated_at FROM libraries WHERE id = ?1",
+            [library_id],
+            |row| row.get::<_, String>(0),
+        )?;
+        items.push(LibraryPageRelocationDestinationEntry {
+            key: format!("library:{library_id}"),
+            kind: LibraryPageRelocationDestinationKind::Library,
+            title: "Pages".to_owned(),
+            path: Vec::new(),
+            has_children: page_total > 0,
+            is_current: source.parent_kind == "library" && source.parent_id == library_id,
+            updated_at,
+            destination: LibraryPageWriteDestination::Library {
+                at: Some(LibraryAgentSiblingAnchor::End),
+            },
+            expected_move_etag: expected_move_etag.clone(),
+        });
+    }
+    let mut included_current_page = false;
+    if include_current_page {
+        let current = connection
+            .query_row(
+                "SELECT materialization.title, page.updated_at, EXISTS( \
+                   SELECT 1 FROM pages child \
+                   JOIN blocks child_block ON child_block.id = child.block_id \
+                   JOIN documents child_document ON child_document.id = child.document_id \
+                   JOIN document_materializations child_materialization \
+                     ON child_materialization.document_id = child_document.id \
+                     AND child_materialization.generation = child_document.generation \
+                     AND child_materialization.projected_seq = child_document.head_seq \
+                     AND child_materialization.schema_version = child_document.schema_version \
+                   WHERE child.library_id = ?1 AND child_block.lifecycle = 'active' \
+                     AND child.parent_kind = 'page' AND child.parent_id = page.block_id \
+                     AND child.block_id != ?3 \
+                 ) AS has_children \
+                 FROM pages page \
+                 JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
+                 JOIN documents document ON document.id = page.document_id \
+                   AND document.library_id = page.library_id \
+                 JOIN document_materializations materialization \
+                   ON materialization.document_id = document.id \
+                   AND materialization.generation = document.generation \
+                   AND materialization.projected_seq = document.head_seq \
+                   AND materialization.schema_version = document.schema_version \
+                 WHERE page.library_id = ?1 AND page.block_id = ?2 \
+                   AND block.lifecycle = 'active' AND document.readiness = 'ready'",
+                params![library_id, source.parent_id, page_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, bool>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        if let Some((title, updated_at, has_children)) = current {
+            included_current_page = true;
+            items.push(LibraryPageRelocationDestinationEntry {
+                key: format!("page:{}", source.parent_id),
+                kind: LibraryPageRelocationDestinationKind::Page,
+                title,
+                path: move_destination_path(connection, library_id, &source.parent_id)?,
+                has_children,
+                is_current: true,
+                updated_at,
+                destination: LibraryPageWriteDestination::Page {
+                    page_id: source.parent_id.clone(),
+                    at: Some(LibraryAgentSiblingAnchor::End),
+                },
+                expected_move_etag: expected_move_etag.clone(),
+            });
+        }
+    }
+    for (destination_page_id, title, updated_at, has_children) in rows {
+        items.push(LibraryPageRelocationDestinationEntry {
+            key: format!("page:{destination_page_id}"),
+            kind: LibraryPageRelocationDestinationKind::Page,
+            title,
+            path: move_destination_path(connection, library_id, &destination_page_id)?,
+            has_children,
+            is_current: source.parent_kind == "page" && source.parent_id == destination_page_id,
+            updated_at,
+            destination: LibraryPageWriteDestination::Page {
+                page_id: destination_page_id,
+                at: Some(LibraryAgentSiblingAnchor::End),
+            },
+            expected_move_etag: expected_move_etag.clone(),
+        });
+    }
+    let total = page_total + i64::from(include_library_root) + i64::from(included_current_page);
+    Ok(LibraryReadValue::PageRelocationDestinations {
+        page_id: page_id.to_owned(),
+        scope,
+        items,
+        next_cursor,
+        has_more,
+        total: count_to_u64(total)?,
+    })
 }
 
 struct MoveDestinationRow {

@@ -80,8 +80,9 @@ action.
 
 Moving a Page, Database, or Canvas within the Library changes exclusive
 ownership while preserving stable identity and owned Documents. References,
-mentions, relations, Views, and grants never move content. The compact Library
-destination behavior is specified in
+mentions, relations, Views, and grants never move content. Page movement is
+specified by [Page Relocation](page-relocation-behavior.md); the compact
+Database-resource destination behavior is specified in
 [Library Move Destination Picker Behavior](library-move-destination-picker-behavior.md).
 
 ## Workbench presentation

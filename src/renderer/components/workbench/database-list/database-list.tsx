@@ -1820,7 +1820,7 @@ export function DatabaseList({
       propertySource,
       actionPort: pageActionPort,
       deleteDisabled: model.readOnlyReason !== null,
-      onMove: (direction) => movePages([item.pageId], direction),
+      onReorder: (direction) => movePages([item.pageId], direction),
     };
   };
 

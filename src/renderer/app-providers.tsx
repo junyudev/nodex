@@ -17,11 +17,17 @@ import type { AppUpdateStatus } from "./lib/types";
 import { createMaitaiStore, MaitaiProvider, preloadEagerPersistedAtoms } from "./lib/maitai";
 import { KeyboardLayoutProvider } from "./lib/keyboard-layout";
 import { InAppDictationRouter } from "./features/dictation/in-app-dictation-router";
+import { DevelopmentFeaturesProvider } from "./lib/development-features-context";
+import {
+  FAIL_CLOSED_RUNTIME_CAPABILITIES,
+  type AppRuntimeCapabilities,
+} from "../shared/runtime-capabilities";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
 interface AppProvidersProps {
   children: ReactNode;
+  runtimeCapabilities?: AppRuntimeCapabilities;
 }
 
 const AppUpdateStatusContext = createContext<AppUpdateStatus | null>(null);
@@ -85,37 +91,42 @@ export function useAppUpdateStatus(): AppUpdateStatus | null {
   return useContext(AppUpdateStatusContext);
 }
 
-export function AppProviders({ children }: AppProvidersProps) {
+export function AppProviders({
+  children,
+  runtimeCapabilities = FAIL_CLOSED_RUNTIME_CAPABILITIES,
+}: AppProvidersProps) {
   return (
-    <NodexQueryProvider>
-      <RendererStateProvider>
-        <ThemeProvider>
-          <ReducedMotionProvider>
-            <AppUpdateStatusProvider>
-              <KeyboardLayoutProvider>
-                <InAppDictationRouter>
-                  <BrowserSidebarRuntimeSynchronizer />
-                  <BrowserSidebarThemeSynchronizer />
-                  <SansFontSizeProvider>
-                    <CodeFontSizeProvider>
-                      <FileLinkOpenerProvider>
-                        <CodexServiceTierSettingsProvider>
-                          <CodexThreadSettingsProvider>
-                            <NodexHoverCardProvider>
-                              <NodexTooltipProvider>{children}</NodexTooltipProvider>
-                            </NodexHoverCardProvider>
-                          </CodexThreadSettingsProvider>
-                        </CodexServiceTierSettingsProvider>
-                      </FileLinkOpenerProvider>
-                    </CodeFontSizeProvider>
-                  </SansFontSizeProvider>
-                </InAppDictationRouter>
-              </KeyboardLayoutProvider>
-            </AppUpdateStatusProvider>
-          </ReducedMotionProvider>
-        </ThemeProvider>
-      </RendererStateProvider>
-    </NodexQueryProvider>
+    <DevelopmentFeaturesProvider capabilities={runtimeCapabilities}>
+      <NodexQueryProvider>
+        <RendererStateProvider>
+          <ThemeProvider>
+            <ReducedMotionProvider>
+              <AppUpdateStatusProvider>
+                <KeyboardLayoutProvider>
+                  <InAppDictationRouter>
+                    <BrowserSidebarRuntimeSynchronizer />
+                    <BrowserSidebarThemeSynchronizer />
+                    <SansFontSizeProvider>
+                      <CodeFontSizeProvider>
+                        <FileLinkOpenerProvider>
+                          <CodexServiceTierSettingsProvider>
+                            <CodexThreadSettingsProvider>
+                              <NodexHoverCardProvider>
+                                <NodexTooltipProvider>{children}</NodexTooltipProvider>
+                              </NodexHoverCardProvider>
+                            </CodexThreadSettingsProvider>
+                          </CodexServiceTierSettingsProvider>
+                        </FileLinkOpenerProvider>
+                      </CodeFontSizeProvider>
+                    </SansFontSizeProvider>
+                  </InAppDictationRouter>
+                </KeyboardLayoutProvider>
+              </AppUpdateStatusProvider>
+            </ReducedMotionProvider>
+          </ThemeProvider>
+        </RendererStateProvider>
+      </NodexQueryProvider>
+    </DevelopmentFeaturesProvider>
   );
 }
 

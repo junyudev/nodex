@@ -612,6 +612,7 @@ pub(super) fn apply(
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
+                    page_relocation_undo: None,
                     structural_edit: None,
                     page_lifecycle: None,
                     block_property_mutation: None,

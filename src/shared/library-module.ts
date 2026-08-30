@@ -9,6 +9,7 @@ import type { AuthorizedReadStamp } from "./authorized-read-stamp";
 import type { WorkflowStatus } from "./workflow-status";
 import type { PageSearchMatch, PageSearchTextPart } from "./types";
 import type { PortableRichText } from "./block-documents/portable-rich-text";
+import type { BlockTransferUndoToken } from "./block-transfer-undo-token";
 
 export const DEFAULT_LIBRARY_READ_LIMIT = 20 as const;
 export const MAX_LIBRARY_READ_LIMIT = 100 as const;
@@ -221,6 +222,50 @@ export interface LibraryMoveDestinationEntry {
   readonly updatedAt: string;
 }
 
+export type LibraryPageRelocationDestinationScope =
+  | { readonly kind: "databases"; readonly query?: string }
+  | { readonly kind: "page_suggested" }
+  | {
+      readonly kind: "page_children";
+      readonly parent: Extract<LibraryNavigationParent, { readonly kind: "library" | "page" }>;
+    }
+  | { readonly kind: "page_search"; readonly query: string };
+
+export type LibraryPageWriteDestination =
+  | { readonly kind: "library"; readonly at?: LibraryAgentSiblingAnchor }
+  | {
+      readonly kind: "page";
+      readonly pageId: string;
+      readonly at?: LibraryAgentSiblingAnchor;
+    }
+  | {
+      readonly kind: "data_source";
+      readonly dataSourceId: DataSourceId;
+      readonly viewId?: DatabaseViewId;
+      readonly group?: {
+        readonly kind: "path";
+        readonly groupKey?: string;
+        readonly subgroupKey?: string;
+      };
+      readonly at?: LibraryAgentSiblingAnchor;
+    };
+
+export type LibraryAgentSiblingAnchor =
+  | { readonly kind: "start" | "end" }
+  | { readonly kind: "before" | "after"; readonly blockId: string };
+
+export interface LibraryPageRelocationDestinationEntry {
+  readonly key: string;
+  readonly kind: "library" | "page" | "database";
+  readonly title: string;
+  readonly path: readonly string[];
+  readonly hasChildren: boolean;
+  readonly isCurrent: boolean;
+  readonly updatedAt: string;
+  readonly destination: LibraryPageWriteDestination;
+  readonly expectedMoveEtag: string;
+}
+
 export type LibraryRead =
   | { readonly mode: "metadata" }
   | {
@@ -254,6 +299,13 @@ export type LibraryRead =
       readonly mode: "move_destinations";
       readonly target: LibraryResourceTarget;
       readonly scope: LibraryMoveDestinationScope;
+      readonly cursor?: string;
+      readonly limit?: number;
+    }
+  | {
+      readonly mode: "page_relocation_destinations";
+      readonly pageId: string;
+      readonly scope: LibraryPageRelocationDestinationScope;
       readonly cursor?: string;
       readonly limit?: number;
     }
@@ -376,6 +428,15 @@ export type LibraryReadValue =
       readonly hasMore: boolean;
       readonly total: number;
       readonly rootIsCurrent: boolean;
+    }
+  | {
+      readonly kind: "page_relocation_destinations";
+      readonly pageId: string;
+      readonly scope: LibraryPageRelocationDestinationScope;
+      readonly items: readonly LibraryPageRelocationDestinationEntry[];
+      readonly nextCursor: string | null;
+      readonly hasMore: boolean;
+      readonly total: number;
     }
   | {
       readonly kind: "page_mention_destination";
@@ -549,6 +610,20 @@ export interface MoveLibraryBlockOperation {
         readonly expectedLocationRevision: number;
       };
   readonly parent: LibraryWriteParent;
+}
+
+export type LibraryPageRelocationUndoToken = BlockTransferUndoToken;
+
+export interface MoveLibraryPageOperation {
+  readonly kind: "move_page";
+  readonly pageId: string;
+  readonly destination: LibraryPageWriteDestination;
+  readonly expectedEtag: string;
+}
+
+export interface UndoLibraryPageRelocationOperation {
+  readonly kind: "undo_page_relocation";
+  readonly token: LibraryPageRelocationUndoToken;
 }
 
 export interface ArchiveLibraryResourceOperation {
@@ -823,6 +898,8 @@ export type LibraryApplyOperation =
   | MoveLibraryCanvasOperation
   | DuplicateLibraryCanvasOperation
   | DeleteLibraryCanvasOperation
+  | MoveLibraryPageOperation
+  | UndoLibraryPageRelocationOperation
   | MoveLibraryBlockOperation
   | ArchiveLibraryResourceOperation
   | RestoreLibraryResourceOperation
@@ -891,6 +968,14 @@ export interface LibraryModuleApplyReceipt {
   readonly canvasMutation: LibraryCanvasMutationResult | null;
   readonly structuralEdit: LibraryStructuralEditResult | null;
   readonly pageFiles?: LibraryPageFileMutationReceipt | null;
+  readonly pageRelocation?: {
+    readonly pageId: string;
+    readonly undoToken: LibraryPageRelocationUndoToken | null;
+  } | null;
+  readonly pageRelocationUndo?: {
+    readonly pageId: string;
+    readonly transferOperationId: string;
+  } | null;
   readonly affectedParentKeys: readonly string[];
   readonly affectedPageIds: readonly string[];
   readonly affectedDatabaseIds: readonly DatabaseId[];

@@ -49,7 +49,20 @@ pub(crate) use projection_delta::{
 };
 pub(crate) use relation::{copy_relation_edges, remove_membership_task_parent_edges};
 pub(crate) use view_contract::is_exact_primary_board_config;
-pub(crate) use window::{default_page_move_view_id, mint_page_move_etag};
+pub(crate) use window::{
+    default_page_move_view_id, mint_page_move_etag, mint_page_move_etag_prevalidated,
+    page_relocation_database_targets,
+};
+
+#[derive(Clone, Debug)]
+pub(crate) struct PageRelocationDatabaseTarget {
+    pub(crate) database_id: String,
+    pub(crate) title: String,
+    pub(crate) primary_project_names: Vec<String>,
+    pub(crate) data_source_id: String,
+    pub(crate) view_id: String,
+    pub(crate) updated_at: String,
+}
 
 use nodex_core_contracts::database::{
     DatabaseCommitValue, DatabaseIntent, DatabaseRead, DatabaseReadValue, DatabaseReceipt,

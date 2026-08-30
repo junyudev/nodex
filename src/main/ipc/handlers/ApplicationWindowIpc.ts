@@ -2,6 +2,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { app, type IpcMainInvokeEvent } from "electron";
+import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
+import type { AppRuntimeCapabilities } from "../../../shared/runtime-capabilities";
 import {
   WindowSessionBoundsSchema,
   WindowSessionNewWindowRequestSchema,
@@ -20,6 +22,7 @@ export class ApplicationWindowIpcError extends Schema.TaggedError<ApplicationWin
 
 export interface ApplicationWindowIpcOptions {
   readonly showEmojiPanel?: () => boolean;
+  readonly runtimeCapabilities?: AppRuntimeCapabilities;
 }
 
 export const live = (
@@ -31,6 +34,17 @@ export const live = (
       const config = yield* MainConfig;
       const ipc = yield* ElectronIpc;
       const windows = yield* WindowRuntime;
+      const runtimeCapabilities =
+        options.runtimeCapabilities ??
+        (() => {
+          try {
+            return {
+              enabledDevelopmentFeatures: [...parseDevelopmentFeatureEnvironment(process.env)],
+            } satisfies AppRuntimeCapabilities;
+          } catch {
+            return { enabledDevelopmentFeatures: [] } satisfies AppRuntimeCapabilities;
+          }
+        })();
       const authorize = (event: IpcMainInvokeEvent, capability: string) =>
         Effect.try({
           try: () => {
@@ -59,6 +73,9 @@ export const live = (
         authorize(event, "Window focus state").pipe(
           Effect.andThen(Effect.sync(() => windows.get(event.sender.id)?.isFocused() ?? false)),
         ),
+      );
+      yield* ipc.handle("app:runtime-capabilities:get", (event) =>
+        authorize(event, "Runtime capabilities").pipe(Effect.as(runtimeCapabilities)),
       );
       yield* ipc.handle("window:show-emoji-panel", (event) =>
         authorize(event, "Emoji panel").pipe(
