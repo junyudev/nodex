@@ -236,6 +236,10 @@ the action will actually change, using neutral reset and accent save treatments
 without moving token geometry. Compact Reset and Save icon actions stay at the
 bar tail, while their tooltips explain the personal/shared scope and unsaved
 state. Both actions always apply directly to Filter and Sort together.
+Settings-rail presentation overrides and staged conditional-color edits use the
+same compact Reset and Save icon actions. Their multiline tooltips own the
+scope and restore explanation; the rail does not repeat that guidance as
+persistent footer prose.
 
 Quick-filter tokens reorder horizontally and Sort rows reorder vertically with
 the shared continuous pointer gesture: mouse and stylus activate after 6px,

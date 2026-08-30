@@ -24,11 +24,10 @@ import {
   FilterIcon,
   MoreActionsIcon,
   PlusIcon,
-  ResetIcon,
   SortAscendingIcon,
   SortDescendingIcon,
 } from "@/components/shared/icons";
-import { ArrowUpDown, UploadCloud } from "@/components/shared/icons/generic-icons";
+import { ArrowUpDown } from "@/components/shared/icons/generic-icons";
 import { NodexIconButton } from "@/components/ui/button";
 import {
   ContinuousSortableDragOverlay,
@@ -81,6 +80,7 @@ import {
   DatabaseViewFilterValueField,
   DatabaseRulePropertyLabel,
 } from "./database-view-filter-editors";
+import { DatabaseViewChangeAction } from "./database-view-change-action";
 import { DatabaseViewSelect } from "./database-view-select";
 
 interface DatabaseViewRulesBarProps {
@@ -192,7 +192,6 @@ function PersonalRuleAction({
   if (scopes.length === 0) return null;
 
   const label = kind === "reset" ? "Reset my changes" : "Save for everyone";
-  const Icon = kind === "reset" ? ResetIcon : UploadCloud;
   const scopeLabel = scopes.includes("all")
     ? "filter and sort"
     : scopes[0] === "filters"
@@ -204,12 +203,10 @@ function PersonalRuleAction({
       : `Save these ${scopeLabel} changes\nFor everyone`;
 
   return (
-    <NodexIconButton
-      icon={Icon}
-      size="xs"
-      active={kind === "publish"}
-      ariaLabel={label}
-      title={tooltip}
+    <DatabaseViewChangeAction
+      kind={kind}
+      label={label}
+      tooltip={tooltip}
       disabled={busy}
       onMouseEnter={() => onPreviewChange("pointer", kind)}
       onMouseLeave={() => onPreviewChange("pointer", null)}

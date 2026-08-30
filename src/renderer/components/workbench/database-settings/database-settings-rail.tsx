@@ -115,6 +115,7 @@ import {
   DatabaseViewActionMenuOverlay,
   type DatabaseViewActionMenuSession,
 } from "../database-view-action-menu";
+import { DatabaseViewChangeAction } from "../database-view-change-action";
 import {
   databaseSettingsRouteTitle,
   type DatabaseSettingsRoute,
@@ -1078,28 +1079,27 @@ function PersonalViewActions({
 }) {
   if (!changed && !error) return null;
   return (
-    <div className="mt-3 border-t-[0.5px] border-token-border/70 px-3 py-2">
+    <div className="mt-2 border-t-[0.5px] border-token-border/70">
       {error ? (
-        <p role="alert" className="pb-2 text-xs text-token-error-foreground">
+        <p role="alert" className="px-3 pt-2 text-xs text-token-error-foreground">
           {error}
         </p>
       ) : null}
-      <p className="pb-2 text-[11px] leading-4 text-token-description-foreground">
-        Changes here are personal until you save them for everyone.
-      </p>
-      <div className="flex items-center gap-2">
-        <NodexButton size="xs" variant="ghost" disabled={busy || !changed} onClick={onReset}>
-          Reset my changes
-        </NodexButton>
-        <NodexButton
-          size="xs"
-          variant="secondary"
-          className="ml-auto"
+      <div className="flex min-h-8 items-center justify-end gap-0.5 px-2 py-1">
+        <DatabaseViewChangeAction
+          kind="reset"
+          label="Reset my changes"
+          tooltip={"Discard my view changes\nRestore shared settings"}
+          disabled={busy || !changed}
+          onClick={onReset}
+        />
+        <DatabaseViewChangeAction
+          kind="publish"
+          label="Save for everyone"
+          tooltip={"Save my view changes\nFor everyone"}
           disabled={busy || !changed}
           onClick={() => void onPublish()}
-        >
-          Save for everyone
-        </NodexButton>
+        />
       </div>
     </div>
   );
@@ -1636,24 +1636,21 @@ function ViewConditionalColorRoute({
           {error}
         </p>
       ) : null}
-      <div className="sticky bottom-0 mt-auto flex items-center gap-2 border-t-[0.5px] border-token-border/70 bg-token-main-surface-primary px-2 py-2">
-        <NodexButton
-          size="xs"
-          variant="ghost"
+      <div className="sticky bottom-0 mt-auto flex min-h-8 items-center justify-end gap-0.5 border-t-[0.5px] border-token-border/70 bg-token-main-surface-primary px-2 py-1">
+        <DatabaseViewChangeAction
+          kind="reset"
+          label="Reset conditional color changes"
+          tooltip={"Discard these color changes\nRestore saved colors"}
           disabled={!changed || runtime.pendingKey !== null}
           onClick={() => setRules(activeView.config.presentation.conditionalColors)}
-        >
-          Revert
-        </NodexButton>
-        <NodexButton
-          size="xs"
-          variant="secondary"
-          className="ml-auto"
+        />
+        <DatabaseViewChangeAction
+          kind="publish"
+          label="Save conditional color changes"
+          tooltip={"Save these color changes\nFor everyone"}
           disabled={!changed || runtime.pendingKey !== null}
           onClick={() => void save()}
-        >
-          {runtime.pendingKey === `conditional-colors:${activeView.viewId}` ? "Saving…" : "Save"}
-        </NodexButton>
+        />
       </div>
     </div>
   );
