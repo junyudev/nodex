@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
 import { AlertTriangle, Gauge } from "@/components/shared/icons/generic-icons";
-import { AgentIcon, ResetIcon, SettingsGeneralIcon } from "@/components/shared/icons";
+import { NodexLogoMarkIcon, ResetIcon, SettingsGeneralIcon } from "@/components/shared/icons";
 import {
   NodexDropdownButtonTrigger,
   NodexOptionPicker,
@@ -427,7 +427,7 @@ export function AgentConfigInlineContentView({
   const title = chip.invalid
     ? "This agent config has invalid attributes or values."
     : [chip.label, chip.detail].filter(Boolean).join(" · ");
-  const Icon = props.reasoning ? Gauge : props.mode ? AgentIcon : SettingsGeneralIcon;
+  const Icon = props.reasoning ? Gauge : props.mode ? NodexLogoMarkIcon : SettingsGeneralIcon;
 
   const handlePatch = (patch: AgentConfigFieldPatch) => {
     updateInlineContent(buildAgentConfigUpdate(props, patch));
@@ -457,7 +457,10 @@ export function AgentConfigInlineContentView({
                 setOpen((current) => !current);
               }}
             >
-              <Icon className={inlineTintedChipIconClassName} />
+              <Icon
+                className={inlineTintedChipIconClassName}
+                {...(Icon === NodexLogoMarkIcon ? { monochrome: true } : {})}
+              />
               <span className={cn(inlineTintedChipLabelClassName, "blend truncate")}>
                 {chip.label}
               </span>

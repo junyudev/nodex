@@ -1878,30 +1878,42 @@ export function RestorePanelIcon({ className }: IconProps) {
   return <RestoreOpenGlyph className={cn("size-5", className)} />;
 }
 
-export function NodexLogoMarkIcon({ className }: IconProps) {
+export function NodexLogoMarkIcon({
+  className,
+  monochrome = false,
+  ariaHidden,
+  "aria-hidden": ariaHiddenAttr,
+}: IconProps & { monochrome?: boolean }) {
+  const logoFill = monochrome ? "none" : "var(--nodex-logo-fill, currentColor)";
+  const logoDetail = monochrome ? "currentColor" : "var(--nodex-logo-detail, currentColor)";
+
   return (
     <svg
+      width="20"
+      height="20"
       viewBox="0 0 800 800"
-      className={cn("size-5", className)}
+      className={className ?? "icon-base shrink-0"}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      aria-hidden={resolveAriaHidden(ariaHidden, ariaHiddenAttr) ?? true}
+      data-nodex-logo-mark={monochrome ? "monochrome" : "app-icon"}
     >
       <path
         fillRule="evenodd"
         clipRule="evenodd"
         d="M142.9 730.445L56.916 623.328C36.2282 597.558 25 565.865 25 533.248V145.375C25 96.5161 64.0898 55.9743 114.518 52.5313L513.303 25.3046C542.275 23.3266 571.07 31.0273 594.87 47.1176L734.98 141.848C760.063 158.805 775 186.525 775 216.107V657.08C775 704.895 736.565 744.483 687.19 747.523L244.583 774.768C205.183 777.193 167.1 760.593 142.9 730.445Z"
-        fill="var(--nodex-logo-fill, currentColor)"
+        fill={logoFill}
       />
       <path
         d="M305 352L411 438.203L305 535"
-        stroke="var(--nodex-logo-detail, currentColor)"
+        stroke={logoDetail}
         strokeWidth="50"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M458.035 565.638L579.966 558.361"
-        stroke="var(--nodex-logo-detail, currentColor)"
+        stroke={logoDetail}
         strokeWidth="50"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -1910,7 +1922,7 @@ export function NodexLogoMarkIcon({ className }: IconProps) {
         fillRule="evenodd"
         clipRule="evenodd"
         d="M516.873 74.1691L118.087 101.396C94.1999 103.027 75.6836 122.231 75.6836 145.374V533.247C75.6836 554.992 83.1691 576.12 96.9608 593.302L182.945 700.417C196.847 717.735 218.725 727.272 241.359 725.88L683.965 698.635C706.65 697.237 724.31 679.047 724.31 657.08V216.106C724.31 202.514 717.448 189.778 705.923 181.987L565.813 87.2568C551.533 77.6028 534.255 72.9823 516.873 74.1691ZM137.862 151.425C132.315 147.318 134.955 138.763 141.923 138.264L519.555 111.177C531.588 110.314 543.543 113.628 553.273 120.522L629.043 174.203C631.918 176.241 630.57 180.64 627.008 180.834L227.097 202.584C214.994 203.242 203.048 199.686 193.425 192.562L137.862 151.425ZM208.339 270.767C208.339 257.775 218.835 247.044 232.257 246.313L655.075 223.286C668.158 222.574 679.168 232.633 679.168 245.295V627.132C679.168 640.1 668.71 650.82 655.315 651.582L235.172 675.487C220.615 676.317 208.339 665.13 208.339 651.037V270.767Z"
-        fill="var(--nodex-logo-detail, currentColor)"
+        fill={logoDetail}
       />
     </svg>
   );

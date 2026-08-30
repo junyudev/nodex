@@ -150,6 +150,7 @@ describe("NfmRenderer", () => {
 
     expect(textContent(container).includes("GPT-5.5")).toBe(true);
     expect(textContent(container).includes("gpt-5.5 · high")).toBe(false);
+    expect(container.querySelector('[data-nodex-logo-mark="monochrome"]')).not.toBeNull();
   });
 
   test("refreshes relative date mention labels while mounted", async () => {

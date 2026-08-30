@@ -22,6 +22,7 @@ import {
   MultiSelectIcon,
   NfmLinkToolbarOpenIcon,
   NewChatIcon,
+  NodexLogoMarkIcon,
   OpenInIcon,
   PageIcon,
   PanelRightHiddenIcon,
@@ -126,6 +127,22 @@ describe("decorative icon accessibility", () => {
     expect(decorative?.getAttribute("aria-hidden")).toBe("true");
     expect(labelled?.hasAttribute("aria-hidden")).toBe(false);
     expect(explicit?.getAttribute("aria-hidden")).toBe("false");
+  });
+});
+
+describe("Nodex mark identity", () => {
+  test("renders the compact monochrome mark from currentColor", () => {
+    const view = render(<NodexLogoMarkIcon monochrome className="icon-xxs" />);
+    const svg = view.container.querySelector("svg");
+    const paths = svg?.querySelectorAll("path");
+
+    expect(svg?.getAttribute("width")).toBe("20");
+    expect(svg?.getAttribute("height")).toBe("20");
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 800 800");
+    expect(svg?.getAttribute("data-nodex-logo-mark")).toBe("monochrome");
+    expect(paths?.[0]?.getAttribute("fill")).toBe("none");
+    expect(paths?.[1]?.getAttribute("stroke")).toBe("currentColor");
+    expect(paths?.[3]?.getAttribute("fill")).toBe("currentColor");
   });
 });
 

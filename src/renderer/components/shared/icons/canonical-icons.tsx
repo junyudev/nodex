@@ -193,19 +193,6 @@ const LOADING_PATHS = [
   },
 ] as const;
 
-const AGENT_PATHS = [
-  "M12 8V4H8",
-  "M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z",
-  "M2 14h2M20 14h2M15 13v2M9 13v2",
-].map((d) => ({
-  d,
-  fill: "none",
-  stroke: "currentColor",
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  strokeWidth: 2,
-}));
-
 const IMAGE_PATHS = [
   "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z",
   "M11 9a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z",
@@ -376,12 +363,6 @@ export function VisibilityIcon(props: CanonicalIconProps) {
 
 export function VisibilityOffIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={VISIBILITY_OFF_PATHS} />;
-}
-
-export function AgentIcon(props: CanonicalIconProps) {
-  return (
-    <CanonicalGlyph {...props} width={24} height={24} viewBox="0 0 24 24" paths={AGENT_PATHS} />
-  );
 }
 
 export function ImageIcon(props: CanonicalIconProps) {

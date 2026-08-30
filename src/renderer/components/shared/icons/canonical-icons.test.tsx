@@ -2,7 +2,6 @@ import { describe, expect, test } from "vite-plus/test";
 import { render } from "@/test/dom";
 import { TERMINAL_ICON_GEOMETRY } from "../../../../shared/icon-geometry";
 import {
-  AgentIcon,
   ConversationIcon,
   CopyIcon,
   DatabaseLabelIcon,
@@ -104,7 +103,6 @@ describe("canonical shared icons", () => {
   });
 
   test.each([
-    ["agent", AgentIcon, "0 0 24 24", 3, "M12 8V4H8", "stroke"],
     ["filter", FilterIcon, "0 0 20 20", 3, "M12.5 14.0049", "fill"],
     ["list layout", ListLayoutIcon, "0 0 24 24", 6, "M3 5h.01", "stroke"],
     ["image", ImageIcon, "0 0 24 24", 3, "M5 3h14", "stroke"],

@@ -115,6 +115,18 @@ describe("agent config chip helpers", () => {
 });
 
 describe("agent config chip popover", () => {
+  test("uses the compact monochrome Nodex mark for agent identity", () => {
+    const view = render(
+      <AgentConfigInlineContentView
+        inlineContent={{ props: { mode: "plan" } }}
+        updateInlineContent={() => {}}
+        availableModels={MODELS}
+      />,
+    );
+
+    expect(view.container.querySelector('[data-nodex-logo-mark="monochrome"]')).not.toBeNull();
+  });
+
   test("opens the editor popover from the chip", async () => {
     let view!: ReturnType<typeof render>;
     await act(async () => {

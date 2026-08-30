@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link2 } from "@/components/shared/icons/generic-icons";
-import { AgentIcon } from "@/components/shared/icons";
+import { NodexLogoMarkIcon } from "@/components/shared/icons";
 import { Streamdown } from "streamdown";
 import {
   InlineMarkdownCode,
@@ -592,7 +592,7 @@ function InlineItem({
             : "bg-token-charts-blue/10 text-token-charts-blue",
         )}
       >
-        <AgentIcon className="size-3 shrink-0" />
+        <NodexLogoMarkIcon monochrome className="size-3 shrink-0" />
         <span className="truncate">{label}</span>
         {detail ? <span className="truncate opacity-70">{detail}</span> : null}
       </span>

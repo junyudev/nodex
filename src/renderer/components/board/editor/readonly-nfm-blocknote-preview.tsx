@@ -22,7 +22,7 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { BoxSelect, Link2, Rows3 } from "@/components/shared/icons/generic-icons";
-import { AgentIcon, RefreshIcon, SettingsGeneralIcon } from "@/components/shared/icons";
+import { NodexLogoMarkIcon, RefreshIcon, SettingsGeneralIcon } from "@/components/shared/icons";
 
 import { cn } from "@/lib/utils";
 import { nfmSyntaxHighlighter } from "@/lib/syntax-highlighting";
@@ -230,7 +230,7 @@ const createReadonlyAgentConfigInlineContentSpec = () =>
       const Icon = chip.invalid
         ? SettingsGeneralIcon
         : chip.detail
-          ? AgentIcon
+          ? NodexLogoMarkIcon
           : SettingsGeneralIcon;
       return (
         <NodexTooltip tooltipContent={[chip.label, chip.detail].filter(Boolean).join(" - ")}>
@@ -240,7 +240,10 @@ const createReadonlyAgentConfigInlineContentSpec = () =>
               tone: chip.invalid ? "neutral" : "accent",
             })}
           >
-            <Icon className={inlineTintedChipIconClassName} />
+            <Icon
+              className={inlineTintedChipIconClassName}
+              {...(Icon === NodexLogoMarkIcon ? { monochrome: true } : {})}
+            />
             <span className={cn(inlineTintedChipLabelClassName, "truncate")}>{chip.label}</span>
             {chip.detail ? (
               <span className={cn(inlineTintedChipLabelClassName, "ml-1 truncate opacity-70")}>
