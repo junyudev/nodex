@@ -13,6 +13,7 @@ export const ResizableFileBlockWrapper = (
         FileBlockConfig["propSchema"] & {
           showPreview?: { default: true };
           previewWidth?: { default: number };
+          sourceWidth?: { default: number };
           textAlignment?: { default: "left" };
         },
         FileBlockConfig["content"]
@@ -167,7 +168,11 @@ export const ResizableFileBlockWrapper = (
       style={
         props.block.props.url && !showLoader && props.block.props.showPreview
           ? {
-              width: width ? `${width}px` : "fit-content",
+              width: width
+                ? `${width}px`
+                : props.block.props.sourceWidth
+                  ? `min(${props.block.props.sourceWidth}px, 100%)`
+                  : "fit-content",
             }
           : undefined
       }

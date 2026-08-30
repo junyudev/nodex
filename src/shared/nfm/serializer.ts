@@ -113,6 +113,10 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
         const attrs = [`source="${escapeXmlAttr(block.source)}"`];
         if (block.color) attrs.push(`color="${block.color}"`);
         if (block.previewWidth !== undefined) attrs.push(`preview-width="${block.previewWidth}"`);
+        if (block.sourceWidth !== undefined && block.sourceHeight !== undefined) {
+          attrs.push(`source-width="${block.sourceWidth}"`);
+          attrs.push(`source-height="${block.sourceHeight}"`);
+        }
         lines.push(
           prefix + `<image ${attrs.join(" ")}>${serializeInlineContent(block.caption)}</image>`,
         );

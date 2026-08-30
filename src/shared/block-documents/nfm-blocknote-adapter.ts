@@ -229,6 +229,9 @@ function nfmBlockToBN(block: NfmBlock, toggleStates?: Map<string, boolean>): BNP
           url: block.source,
           caption: serializeInlineContent(block.caption),
           ...(block.previewWidth !== undefined ? { previewWidth: block.previewWidth } : {}),
+          ...(block.sourceWidth !== undefined && block.sourceHeight !== undefined
+            ? { sourceWidth: block.sourceWidth, sourceHeight: block.sourceHeight }
+            : {}),
         },
         children,
       };
@@ -613,12 +616,17 @@ function bnBlockToNfm(block: BNBlock): NfmBlock | null {
       if (source === null) return null;
       const caption = normalizeImageCaption(block.props?.caption);
       const previewWidth = normalizePreviewWidth(block.props?.previewWidth);
+      const sourceWidth = normalizePreviewWidth(block.props?.sourceWidth);
+      const sourceHeight = normalizePreviewWidth(block.props?.sourceHeight);
 
       return {
         type: "image",
         source,
         caption,
         ...(previewWidth !== undefined ? { previewWidth } : {}),
+        ...(sourceWidth !== undefined && sourceHeight !== undefined
+          ? { sourceWidth, sourceHeight }
+          : {}),
         color,
         children,
       };

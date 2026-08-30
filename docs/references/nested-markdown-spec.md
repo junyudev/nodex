@@ -238,7 +238,7 @@ Audio:
 File:
 <file source="{{URL}}" color?="Color">Caption</file>
 Image:
-<image source="{{URL}}" color?="Color">Caption</image>
+<image source="{{URL}}" color?="Color" preview-width?="Pixels" source-width?="Pixels" source-height?="Pixels">Caption</image>
 In Nodex, image `source` can also be a local asset URI:
 `nodex://assets/<file-name>`.
 An explicit empty source (`<image source="">Caption</image>`) represents a
@@ -246,6 +246,9 @@ pending/unresolved image Block and round-trips without creating an asset
 reference. Omitting the `source` attribute is still invalid.
 Optional width is supported via `preview-width`:
 `<image source="{{URL}}" preview-width="420">Caption</image>`
+Intrinsic geometry is supported by providing positive `source-width` and
+`source-height` together. Nodex uses this pair to reserve the image's aspect
+ratio before its bytes load; a lone or invalid source dimension is ignored.
 PDF:
 <pdf source="{{URL}}" color?="Color">Caption</pdf>
 Video:

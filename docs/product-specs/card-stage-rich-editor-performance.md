@@ -105,7 +105,7 @@ Explicit replacement parses NFM and compiles stable-ID operations against the cu
 
 ## Lifecycle and Close
 
-Page Stage panel tabs may retain their mounted editor while their panel leaf remains mounted. Tab switching should preserve the ProseMirror instance, selection, local undo stack, plugin state, and native scroll position. An inactive retained surface may remain a content subscriber but must clear Awareness, stay ref-passive for shell-owned close/persist handles, and remain excluded from document-wide editor hover and drag/drop routing even though layout-preserving parking keeps its DOM geometry measurable.
+Page Stage panel tabs retain their editor session while the PageTab remains owned, but only the active panel owns a mounted EditorView DOM. Tab switching detaches the old view and later mounts a fresh view over the retained document/editor session; durable document state, local undo authority, and the explicit selection bookmark survive, while transient NodeViews and floating-plugin state are recreated. The PageTab-owned viewport session restores a semantic Block anchor after the real EditorView root attaches and observes all mounted Blocks for later layout changes. An inactive retained session may remain a content subscriber but must clear Awareness, stay ref-passive for shell-owned close/persist handles, and remain excluded from document-wide editor hover and drag/drop routing.
 
 Within retained cache capacity and one Store/access epoch, a durable title or body edit advances only the changed Page and affected Database View projections. It must not evict already hydrated sibling Page Details or send their Page Stage tabs back through skeleton loading.
 

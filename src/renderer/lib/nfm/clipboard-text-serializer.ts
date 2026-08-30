@@ -140,6 +140,10 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
         if (block.previewWidth !== undefined) {
           attrs.push(`preview-width="${block.previewWidth}"`);
         }
+        if (block.sourceWidth !== undefined && block.sourceHeight !== undefined) {
+          attrs.push(`source-width="${block.sourceWidth}"`);
+          attrs.push(`source-height="${block.sourceHeight}"`);
+        }
         const caption = serializeInlinePlainText(block.caption);
         pushPrefixedMultiline(
           lines,

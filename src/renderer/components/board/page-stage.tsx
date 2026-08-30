@@ -2,6 +2,8 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -41,6 +43,11 @@ import {
   usePageBlockFocusIntent,
 } from "@/lib/page-block-focus-intents";
 import type { NfmEditorBoundaryHandle } from "./editor/nfm-editor";
+import {
+  PageStageViewportSession,
+  type PageStageViewportLease,
+} from "@/lib/page-stage-viewport-session";
+import { contentAccessContextKey } from "../../../shared/content-access-context";
 
 export type { PageStageProps } from "./page-stage/types";
 
@@ -86,6 +93,7 @@ interface PageStageDescriptionEditorProps {
   readonly isActivePanelTab: boolean;
   readonly headingRailPortalElement: HTMLElement | null;
   readonly scrollContainerRef: RefObject<HTMLDivElement | null>;
+  readonly viewportSessionRef: RefObject<PageStageViewportSession | null>;
   readonly editorSession?: EditorSurfaceLease;
   readonly focusIntent: PageBlockFocusIntent | null;
 }
@@ -131,18 +139,86 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   isActivePanelTab,
   headingRailPortalElement,
   scrollContainerRef,
+  viewportSessionRef,
   editorSession,
   focusIntent,
 }: PageStageDescriptionEditorProps) {
   const navigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
+  const rawContentRootRef = useRef<HTMLDivElement | null>(null);
+  const viewportLeaseRef = useRef<PageStageViewportLease | null>(null);
+  const documentScopeKey = contentAccessContextKey(contentAccessContext);
+  const viewportSession = useMemo(
+    () =>
+      editorSession?.getOrCreateRetainedResource(
+        "page-stage-viewport-session-v2",
+        () =>
+          new PageStageViewportSession({
+            documentScopeKey,
+            pageId,
+            editorSessionKey: editorSession.key,
+          }),
+      ) ?? new PageStageViewportSession({ documentScopeKey, pageId }),
+    [documentScopeKey, editorSession, pageId],
+  );
+
+  useLayoutEffect(() => {
+    viewportSessionRef.current = viewportSession;
+    return () => {
+      if (viewportSessionRef.current === viewportSession) {
+        viewportSessionRef.current = null;
+      }
+    };
+  }, [viewportSession, viewportSessionRef]);
+
   useEffect(() => {
     if (!focusIntent) return;
     if (!navigationRef.current?.focusBlock(focusIntent.blockId)) return;
+    viewportSession.adoptCurrentViewport();
     consumePageBlockFocus(focusIntent);
-  }, [focusIntent]);
+  }, [focusIntent, viewportSession]);
+
+  useEffect(
+    () => () => {
+      viewportLeaseRef.current?.release();
+      viewportLeaseRef.current = null;
+      if (!editorSession) viewportSession.dispose();
+    },
+    [editorSession, viewportSession],
+  );
+
+  useLayoutEffect(() => {
+    if (!showRawContent) return;
+    const scrollElement = scrollContainerRef.current;
+    const contentRoot = rawContentRootRef.current;
+    if (!scrollElement || !contentRoot) return;
+    const lease = viewportSession.mount(scrollElement, contentRoot);
+    viewportLeaseRef.current = lease;
+    return () => {
+      lease.release();
+      if (viewportLeaseRef.current === lease) viewportLeaseRef.current = null;
+    };
+  }, [scrollContainerRef, showRawContent, viewportSession]);
+
+  const handleEditorViewMount = useCallback(
+    (editorRoot: HTMLElement) => {
+      const scrollElement = scrollContainerRef.current;
+      if (!scrollElement) return;
+      viewportLeaseRef.current?.release();
+      viewportLeaseRef.current = viewportSession.mount(scrollElement, editorRoot);
+    },
+    [scrollContainerRef, viewportSession],
+  );
+  const handleEditorViewUnmount = useCallback(() => {
+    viewportLeaseRef.current?.release();
+    viewportLeaseRef.current = null;
+  }, []);
 
   if (showRawContent) {
-    return <CollaborativePageStageRawContent document={document} />;
+    return (
+      <div ref={rawContentRootRef}>
+        <CollaborativePageStageRawContent document={document} />
+      </div>
+    );
   }
 
   const linkedCodexThreads = relatedChats?.flatMap((chat) => {
@@ -196,6 +272,8 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
       editorSession={editorSession}
       navigationRef={navigationRef}
+      onEditorViewMount={handleEditorViewMount}
+      onEditorViewUnmount={handleEditorViewUnmount}
     />
   );
 });
@@ -267,6 +345,8 @@ function PageStageDocumentTitle({
 export function PageStage(props: PageStageProps) {
   const { onToggleHistoryPanel } = props;
   const documentRuntimeRef = useRef<BlockDocumentSurfaceRuntime | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const viewportSessionRef = useRef<PageStageViewportSession | null>(null);
   const persistDocument = useCallback(async () => {
     const runtime = documentRuntimeRef.current;
     if (!runtime || runtime.getStatus().reloadRequired) return;
@@ -277,8 +357,10 @@ export function PageStage(props: PageStageProps) {
       throw error;
     }
   }, []);
+  const persistViewport = useCallback(() => viewportSessionRef.current?.persist(), []);
   const controller = usePageStageController(props, {
     persistDocument,
+    persistViewport,
   });
   const focusIntent = usePageBlockFocusIntent(
     props.contentAccessContext.kind === "project" ? props.contentAccessContext.projectId : null,
@@ -344,7 +426,8 @@ export function PageStage(props: PageStageProps) {
           onSendThreadSectionPrompt={props.onSendThreadSectionPrompt}
           isActivePanelTab={props.isActivePanelTab ?? true}
           headingRailPortalElement={headingRailPortalElement}
-          scrollContainerRef={controller.scrollContainerRef}
+          scrollContainerRef={scrollContainerRef}
+          viewportSessionRef={viewportSessionRef}
           editorSession={editorSession}
           focusIntent={focusIntent}
         />
@@ -427,8 +510,7 @@ export function PageStage(props: PageStageProps) {
         data-page-stage-heading-navigation-portal-target="true"
       >
         <div
-          ref={controller.setScrollContainerRef}
-          onScroll={controller.handleScroll}
+          ref={scrollContainerRef}
           className="scrollbar-token h-full min-h-0 overflow-y-auto"
           data-testid={PAGE_STAGE_SCROLL_CONTAINER_TEST_ID}
           style={PAGE_STAGE_SCROLL_CONTAINER_STYLE}

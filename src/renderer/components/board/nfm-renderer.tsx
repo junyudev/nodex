@@ -300,6 +300,8 @@ function BlockComponent({
               alt={alt}
               className="max-w-full rounded-md border border-(--border)"
               style={widthStyle}
+              width={block.sourceWidth}
+              height={block.sourceHeight}
               loading="lazy"
             />
           ) : null}

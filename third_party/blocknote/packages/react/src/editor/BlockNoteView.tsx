@@ -81,7 +81,7 @@ export type BlockNoteViewProps<
   >[0];
 
   /** Runs synchronously after the EditorView has mounted and reconciled. */
-  onEditorViewMount?: () => void;
+  onEditorViewMount?: (editorRoot: HTMLElement) => void;
 
   /** Runs synchronously before the mounted EditorView is detached. */
   onEditorViewUnmount?: () => void;
@@ -355,7 +355,8 @@ export const BlockNoteViewEditor = (props: { children?: ReactNode }) => {
       editor._tiptapEditor.contentComponent = portalManager;
       if (element) {
         editor.mount(element, { portalTarget });
-        onEditorViewMountRef.current?.();
+        const editorRoot = editor.domElement;
+        if (editorRoot) onEditorViewMountRef.current?.(editorRoot);
       } else {
         onEditorViewUnmountRef.current?.();
         editor.unmount();

@@ -9,8 +9,9 @@ import {
 } from "../contracts";
 
 export const NFM_EQUATION_AND_MERMAID_SCENARIO_ID = "nfm-equation-and-mermaid" as const;
-export const NFM_EQUATION_AND_MERMAID_SCENARIO_REVISION = 1 as const;
+export const NFM_EQUATION_AND_MERMAID_SCENARIO_REVISION = 2 as const;
 export const NFM_EQUATION_AND_MERMAID_PAGE_KEY = "equationAndMermaid" as const;
+export const NFM_VIEWPORT_CONTINUITY_PAGE_KEY = "viewportContinuity" as const;
 
 export const NFM_EQUATION_AND_MERMAID_SOURCE = "graph TD\n  Source --> Preview";
 export const NFM_EQUATION_AND_MERMAID_NFM = [
@@ -39,9 +40,33 @@ export const NFM_EQUATION_AND_MERMAID_NFM = [
   "```",
 ].join("\n");
 
+export const NFM_VIEWPORT_CONTINUITY_NFM = [
+  "# Viewport continuity",
+  "",
+  "$$",
+  String.raw`\sum_{n=1}^{\infty}\frac{1}{n^2}=\frac{\pi^2}{6}`,
+  "$$",
+  "",
+  "```mermaid",
+  NFM_EQUATION_AND_MERMAID_SOURCE,
+  "```",
+  "",
+  "Viewport restoration anchor",
+  "",
+  ...Array.from(
+    { length: 12 },
+    (_, index) => `Viewport tail ${index + 1}: deterministic content after the restoration anchor.`,
+  ),
+].join("\n");
+
 export interface NfmEquationAndMermaidScenarioFacts extends ScenarioFacts {
   readonly totalRows: number;
   readonly page: {
+    readonly pageId: string;
+    readonly title: string;
+    readonly documentReadiness: "pending_genesis" | "ready" | "failed";
+  };
+  readonly viewportPage: {
     readonly pageId: string;
     readonly title: string;
     readonly documentReadiness: "pending_genesis" | "ready" | "failed";
@@ -57,14 +82,19 @@ export const requireNfmEquationAndMermaidScenarioFacts = (
   const envelope = parseScenarioFacts(value);
   const candidate = value as Record<string, unknown>;
   const page = candidate.page;
+  const viewportPage = candidate.viewportPage;
   if (
     envelope.scenarioId !== NFM_EQUATION_AND_MERMAID_SCENARIO_ID ||
     envelope.scenarioRevision !== NFM_EQUATION_AND_MERMAID_SCENARIO_REVISION ||
-    candidate.totalRows !== 1 ||
+    candidate.totalRows !== 2 ||
     !isRecord(page) ||
     typeof page.pageId !== "string" ||
     page.title !== "Exercise Equation and Mermaid" ||
-    !["pending_genesis", "ready", "failed"].includes(String(page.documentReadiness))
+    !["pending_genesis", "ready", "failed"].includes(String(page.documentReadiness)) ||
+    !isRecord(viewportPage) ||
+    typeof viewportPage.pageId !== "string" ||
+    viewportPage.title !== "Exercise Viewport Continuity" ||
+    !["pending_genesis", "ready", "failed"].includes(String(viewportPage.documentReadiness))
   ) {
     throw new Error("nfm-equation-and-mermaid facts are invalid");
   }
@@ -91,14 +121,27 @@ const materialize = async (
     title: "Exercise Equation and Mermaid",
     nfm: NFM_EQUATION_AND_MERMAID_NFM,
   };
+  const viewportPage: ScenarioPageSeed = {
+    key: NFM_VIEWPORT_CONTINUITY_PAGE_KEY,
+    pageId: createUuidV7(),
+    operationId: createUuidV7(),
+    projectId: project.id,
+    status: "build",
+    title: "Exercise Viewport Continuity",
+    nfm: NFM_VIEWPORT_CONTINUITY_NFM,
+  };
   await port.createPage(page);
+  await port.createPage(viewportPage);
   return {
     version: 1,
     scenarioId: NFM_EQUATION_AND_MERMAID_SCENARIO_ID,
     scenarioRevision: NFM_EQUATION_AND_MERMAID_SCENARIO_REVISION,
     projectId: project.id,
     databaseViewId: project.defaultDatabaseViewId,
-    pageIdsByKey: { [NFM_EQUATION_AND_MERMAID_PAGE_KEY]: page.pageId },
+    pageIdsByKey: {
+      [NFM_EQUATION_AND_MERMAID_PAGE_KEY]: page.pageId,
+      [NFM_VIEWPORT_CONTINUITY_PAGE_KEY]: viewportPage.pageId,
+    },
     minimumCommitSeq: 0,
     materializedAt: new Date().toISOString(),
   };
@@ -110,9 +153,12 @@ const inspect = async (
 ): Promise<NfmEquationAndMermaidScenarioFacts> => {
   const pageId = manifest.pageIdsByKey[NFM_EQUATION_AND_MERMAID_PAGE_KEY];
   if (!pageId) throw new Error("nfm-equation-and-mermaid manifest has no Page fixture");
-  const [board, page] = await Promise.all([
+  const viewportPageId = manifest.pageIdsByKey[NFM_VIEWPORT_CONTINUITY_PAGE_KEY];
+  if (!viewportPageId) throw new Error("nfm-equation-and-mermaid manifest has no viewport Page");
+  const [board, page, viewportPage] = await Promise.all([
     port.readBoard(manifest.projectId, manifest.databaseViewId, manifest.minimumCommitSeq),
     port.readPage(manifest.projectId, pageId, manifest.minimumCommitSeq),
+    port.readPage(manifest.projectId, viewportPageId, manifest.minimumCommitSeq),
   ]);
   return requireNfmEquationAndMermaidScenarioFacts({
     scenarioId: manifest.scenarioId,
@@ -122,6 +168,11 @@ const inspect = async (
       pageId: page.pageId,
       title: page.title,
       documentReadiness: page.documentReadiness,
+    },
+    viewportPage: {
+      pageId: viewportPage.pageId,
+      title: viewportPage.title,
+      documentReadiness: viewportPage.documentReadiness,
     },
   });
 };

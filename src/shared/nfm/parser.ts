@@ -538,6 +538,19 @@ function parseImage(line: string): NfmImage | null {
   const previewWidthRaw =
     getXmlAttr(attrString, "preview-width") ?? getXmlAttr(attrString, "previewWidth");
   const previewWidth = previewWidthRaw ? Number.parseInt(previewWidthRaw, 10) : undefined;
+  const sourceWidthRaw =
+    getXmlAttr(attrString, "source-width") ?? getXmlAttr(attrString, "sourceWidth");
+  const sourceHeightRaw =
+    getXmlAttr(attrString, "source-height") ?? getXmlAttr(attrString, "sourceHeight");
+  const sourceWidth = sourceWidthRaw ? Number.parseInt(sourceWidthRaw, 10) : undefined;
+  const sourceHeight = sourceHeightRaw ? Number.parseInt(sourceHeightRaw, 10) : undefined;
+  const hasSourceDimensions =
+    sourceWidth !== undefined &&
+    Number.isFinite(sourceWidth) &&
+    sourceWidth > 0 &&
+    sourceHeight !== undefined &&
+    Number.isFinite(sourceHeight) &&
+    sourceHeight > 0;
 
   return {
     type: "image",
@@ -546,6 +559,7 @@ function parseImage(line: string): NfmImage | null {
     ...(previewWidth !== undefined && Number.isFinite(previewWidth) && previewWidth > 0
       ? { previewWidth }
       : {}),
+    ...(hasSourceDimensions ? { sourceWidth, sourceHeight } : {}),
     color,
     children: [],
   };

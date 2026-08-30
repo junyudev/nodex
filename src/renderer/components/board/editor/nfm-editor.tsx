@@ -166,6 +166,7 @@ import {
   uploadImageAsset,
   uploadResourceAsset,
 } from "@/lib/assets";
+import { readImageFileSourceDimensions } from "@/lib/image-source-dimensions";
 import { parsePageFileSource } from "../../../../shared/page-files";
 import type { LibraryPageFileOwnershipMove } from "../../../../shared/library-module";
 import { useSpellcheck } from "@/lib/use-spellcheck";
@@ -275,6 +276,8 @@ interface NfmEditorCommonProps {
     onBoundaryArrow: (direction: VerticalArrowDirection) => boolean;
   };
   navigationRef?: Ref<NfmEditorBoundaryHandle>;
+  onEditorViewMount?: (editorRoot: HTMLElement) => void;
+  onEditorViewUnmount?: () => void;
   /** Optional PageTab-owned model whose lifetime exceeds this React view. */
   editorSession?: EditorSurfaceLease;
 }
@@ -464,6 +467,8 @@ function NfmEditorInstance({
   surfaceMutationBarrier,
   embeddedBoundary,
   navigationRef,
+  onEditorViewMount,
+  onEditorViewUnmount,
   editorSession,
 }: NfmEditorInstanceProps) {
   const executionProjectId = projectIdFromContentAccessContext(contentAccessContext);
@@ -639,10 +644,22 @@ function NfmEditorInstance({
   }, [threadMentionSummaryMap]);
 
   const uploadFile = useCallback(
-    async (file: File) =>
-      pageFileRuntime
-        ? pageFileRuntime.upload({ kind: "browser_file", file })
-        : uploadImageAsset(file),
+    async (file: File) => {
+      const [url, dimensions] = await Promise.all([
+        pageFileRuntime
+          ? pageFileRuntime.upload({ kind: "browser_file", file })
+          : uploadImageAsset(file),
+        readImageFileSourceDimensions(file),
+      ]);
+
+      return {
+        props: {
+          url,
+          name: file.name,
+          ...(dimensions ?? {}),
+        },
+      };
+    },
     [pageFileRuntime],
   );
 
@@ -1430,15 +1447,15 @@ function NfmEditorInstance({
       if (!editor || files.length === 0) return;
       try {
         const blocks = await Promise.all(
-          files.map(async (file) => ({
-            id: createUuidV7(),
-            type: "image" as const,
-            props: {
-              url: await uploadFile(file),
-              name: file.name,
-            },
-            children: [],
-          })),
+          files.map(async (file) => {
+            const uploaded = await uploadFile(file);
+            return {
+              id: createUuidV7(),
+              type: "image" as const,
+              props: uploaded.props,
+              children: [],
+            };
+          }),
         );
         const typedTarget = hasTypedOwnerType([
           ...(target.selectedBlockTypes ?? []),
@@ -3005,10 +3022,12 @@ function NfmEditorInstance({
                   <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
                     <BlockNoteView
                       editor={editor}
-                      onEditorViewMount={() => {
+                      onEditorViewMount={(editorRoot) => {
                         editorSession?.restoreSelection(editor);
+                        onEditorViewMount?.(editorRoot);
                       }}
                       onEditorViewUnmount={() => {
+                        onEditorViewUnmount?.();
                         editorSession?.captureSelection(editor);
                       }}
                       editable

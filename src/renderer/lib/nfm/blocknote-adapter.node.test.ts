@@ -719,15 +719,16 @@ describe("blocknote adapter", () => {
   });
 
   test("serialize and parse image block round-trip", () => {
-    const nfm = '<image source="nodex://assets/a.png">Hello **world**</image>';
+    const nfm =
+      '<image source="nodex://assets/a.png" preview-width="480" source-width="1920" source-height="1080">Hello **world**</image>';
     const blocks = parseNfm(nfm);
     const serialized = serializeNfm(blocks);
     expect(serialized).toBe(nfm);
   });
 
-  test("image NFM → BN maps source, caption, and preview width", () => {
+  test("image NFM → BN maps source, caption, preview width, and source geometry", () => {
     const blocks = parseNfm(
-      '<image source="nodex://assets/a.png" preview-width="420">caption</image>',
+      '<image source="nodex://assets/a.png" preview-width="420" source-width="1600" source-height="900">caption</image>',
     );
     const bnBlocks = nfmToBlockNote(blocks);
 
@@ -736,6 +737,8 @@ describe("blocknote adapter", () => {
     expect(bnBlocks[0].props.url).toBe("nodex://assets/a.png");
     expect(bnBlocks[0].props.caption).toBe("caption");
     expect(bnBlocks[0].props.previewWidth).toBe(420);
+    expect(bnBlocks[0].props.sourceWidth).toBe(1600);
+    expect(bnBlocks[0].props.sourceHeight).toBe(900);
   });
 
   test("image BN → NFM maps url and caption", () => {
@@ -747,6 +750,8 @@ describe("blocknote adapter", () => {
             url: "nodex://assets/a.png",
             caption: "my caption",
             previewWidth: 360,
+            sourceWidth: 1200,
+            sourceHeight: 800,
           },
           content: [],
           children: [],
@@ -761,9 +766,13 @@ describe("blocknote adapter", () => {
       source: string;
       caption: { type: string; text?: string }[];
       previewWidth?: number;
+      sourceWidth?: number;
+      sourceHeight?: number;
     };
     expect(image.source).toBe("nodex://assets/a.png");
     expect(image.previewWidth).toBe(360);
+    expect(image.sourceWidth).toBe(1200);
+    expect(image.sourceHeight).toBe(800);
     expect(image.caption.length).toBe(1);
     expect(image.caption[0].type).toBe("text");
     expect(image.caption[0].text).toBe("my caption");

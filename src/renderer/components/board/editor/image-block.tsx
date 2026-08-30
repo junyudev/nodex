@@ -7,11 +7,15 @@ import {
   useUploadLoading,
   type ReactCustomBlockRenderProps,
 } from "@blocknote/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { NfmImageBlockIcon } from "@/components/shared/icons";
 import { readManagedImageByteLength } from "@/lib/assets";
 import { parseAssetSource } from "../../../../shared/assets";
 import { parsePageFileSource } from "../../../../shared/page-files";
+import {
+  normalizeImageSourceDimensions,
+  type ImageSourceDimensions,
+} from "../../../../shared/image-layout";
 import {
   usePageFilePlacementRuntime,
   usePageFileReadSnapshot,
@@ -21,6 +25,77 @@ import {
 import { resolveAssetSourceToDisplayUrl, type ManagedAssetPathResolver } from "../../../lib/assets";
 
 type ImageBlockRenderProps = ReactCustomBlockRenderProps<typeof createImageBlockConfig>;
+
+function readBlockSourceDimensions(
+  block: ImageBlockRenderProps["block"],
+): ImageSourceDimensions | null {
+  return normalizeImageSourceDimensions(block.props.sourceWidth, block.props.sourceHeight);
+}
+
+function ImageLayoutFrame({
+  block,
+  children,
+}: Pick<ImageBlockRenderProps, "block"> & { readonly children: ReactNode }) {
+  const dimensions = readBlockSourceDimensions(block);
+
+  return (
+    <div
+      className="nfm-image-layout-frame relative w-full max-w-full overflow-hidden rounded"
+      data-nfm-image-layout-stable={dimensions ? "true" : "false"}
+      style={
+        dimensions
+          ? { aspectRatio: `${dimensions.sourceWidth} / ${dimensions.sourceHeight}` }
+          : undefined
+      }
+    >
+      {children}
+    </div>
+  );
+}
+
+function ImageLoadingState({
+  block,
+  failed,
+}: Pick<ImageBlockRenderProps, "block"> & { readonly failed: boolean }) {
+  const hasStableLayout = readBlockSourceDimensions(block) !== null;
+
+  return (
+    <ImageLayoutFrame block={block}>
+      <div
+        className={
+          hasStableLayout
+            ? "bn-file-loading-preview flex h-full min-h-16 items-center justify-center"
+            : "bn-file-loading-preview"
+        }
+      >
+        {failed ? "Image unavailable" : "Loading..."}
+      </div>
+    </ImageLayoutFrame>
+  );
+}
+
+function usePersistDecodedImageDimensions({
+  block,
+  editor,
+}: Omit<ImageBlockRenderProps, "contentRef">) {
+  return useCallback(
+    (image: HTMLImageElement) => {
+      const dimensions = normalizeImageSourceDimensions(image.naturalWidth, image.naturalHeight);
+      if (!dimensions) return;
+
+      const current = readBlockSourceDimensions(block);
+      if (
+        current?.sourceWidth === dimensions.sourceWidth &&
+        current.sourceHeight === dimensions.sourceHeight
+      ) {
+        return;
+      }
+
+      editor.updateBlock(block, { props: dimensions });
+    },
+    [block, editor],
+  );
+}
 
 function resolveImageFileName(source: string, name: string): string {
   const explicitName = name.trim();
@@ -106,53 +181,57 @@ function useImageFileSize(source: string, pageFileByteLength: number | null): nu
   return fileSize;
 }
 
-function ExternalImagePreview({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
+function ExternalImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
+  const { block } = props;
   const resolved = useResolveUrl(block.props.url);
+  const persistDecodedDimensions = usePersistDecodedImageDimensions(props);
 
   if (resolved.loadingState !== "loaded") {
-    return (
-      <div className="bn-file-loading-preview">
-        {resolved.loadingState === "error" ? "Image unavailable" : "Loading..."}
-      </div>
-    );
+    return <ImageLoadingState block={block} failed={resolved.loadingState === "error"} />;
   }
 
   return (
-    <img
-      className="bn-visual-media"
-      src={resolved.downloadUrl}
-      alt={block.props.name || ""}
-      width={block.props.previewWidth}
-      contentEditable={false}
-      draggable={false}
-    />
+    <ImageLayoutFrame block={block}>
+      <img
+        className="bn-visual-media block h-auto"
+        src={resolved.downloadUrl}
+        alt={block.props.name || ""}
+        width={block.props.sourceWidth}
+        height={block.props.sourceHeight}
+        onLoad={(event) => persistDecodedDimensions(event.currentTarget)}
+        contentEditable={false}
+        draggable={false}
+      />
+    </ImageLayoutFrame>
   );
 }
 
 function PageFileImagePreview({
   block,
+  editor,
   runtime,
 }: Omit<ImageBlockRenderProps, "contentRef"> & {
   readonly runtime: PageFilePlacementRuntime;
 }) {
   const snapshot = usePageFileReadSnapshot(runtime, block.props.url, { objectUrl: true });
+  const persistDecodedDimensions = usePersistDecodedImageDimensions({ block, editor });
   if (!snapshot.objectUrl) {
-    return (
-      <div className="bn-file-loading-preview">
-        {snapshot.contentError ? "Image unavailable" : "Loading..."}
-      </div>
-    );
+    return <ImageLoadingState block={block} failed={Boolean(snapshot.contentError)} />;
   }
 
   return (
-    <img
-      className="bn-visual-media"
-      src={snapshot.objectUrl}
-      alt={block.props.name || ""}
-      width={block.props.previewWidth}
-      contentEditable={false}
-      draggable={false}
-    />
+    <ImageLayoutFrame block={block}>
+      <img
+        className="bn-visual-media block h-auto"
+        src={snapshot.objectUrl}
+        alt={block.props.name || ""}
+        width={block.props.sourceWidth}
+        height={block.props.sourceHeight}
+        onLoad={(event) => persistDecodedDimensions(event.currentTarget)}
+        contentEditable={false}
+        draggable={false}
+      />
+    </ImageLayoutFrame>
   );
 }
 
@@ -162,7 +241,7 @@ function ImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
   const isPageFile = parsePageFileSource(block.props.url) !== null;
 
   if (!isPageFile) return <ExternalImagePreview {...props} />;
-  if (!pageFileRuntime) return <div className="bn-file-loading-preview">Image unavailable</div>;
+  if (!pageFileRuntime) return <ImageLoadingState block={block} failed />;
   return <PageFileImagePreview {...props} runtime={pageFileRuntime} />;
 }
 
@@ -258,8 +337,22 @@ function NfmImageExternalHTML({
   if (!source) return <p>Add image</p>;
 
   const name = resolveImageFileName(block.props.url, block.props.name);
+  const dimensions = readBlockSourceDimensions(block);
+  const displayWidth = block.props.previewWidth ?? dimensions?.sourceWidth;
+  const displayHeight =
+    dimensions && displayWidth
+      ? Math.round(displayWidth * (dimensions.sourceHeight / dimensions.sourceWidth))
+      : undefined;
   const content = block.props.showPreview ? (
-    <img src={source} alt={block.props.name || ""} width={block.props.previewWidth} />
+    <img
+      src={source}
+      alt={block.props.name || ""}
+      width={displayWidth}
+      height={displayHeight}
+      data-preview-width={block.props.previewWidth}
+      data-source-width={dimensions?.sourceWidth}
+      data-source-height={dimensions?.sourceHeight}
+    />
   ) : (
     <a href={source}>{name}</a>
   );

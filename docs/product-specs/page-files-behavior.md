@@ -157,6 +157,15 @@ Files manifest, version history, rename, replace, delete, or restore authority.
 A Page Document cannot persist a reference to a deleted, missing, cross-Library,
 or otherwise unauthorized File.
 
+Image placements also persist positive intrinsic width and height as Document
+layout metadata when those dimensions are known. Upload and paste derive the
+geometry before the new placement is committed; imported and legacy images
+self-heal after their first successful decode. Loading, unavailable, failed,
+and loaded presentations share that reserved aspect-ratio frame, while the
+File's bytes and identity remain owned by the File authority. A replacement
+that changes intrinsic geometry refreshes the placement after decode without
+rewriting its stable File URI.
+
 The body keeps ownership disclosure quiet and contextual. A File owned by the
 containing Page shows no redundant source label. For a foreign placement, the
 attachment popover and image File-details surface show `From <Page title>` with

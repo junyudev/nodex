@@ -48,6 +48,15 @@ export const createImageBlockConfig = createBlockConfig(
           default: undefined,
           type: "number" as const,
         },
+        // Intrinsic source geometry reserves the placement before bytes load.
+        sourceWidth: {
+          default: undefined,
+          type: "number" as const,
+        },
+        sourceHeight: {
+          default: undefined,
+          type: "number" as const,
+        },
       },
       content: "none" as const,
     }) as const,
@@ -124,6 +133,15 @@ export const imageRender =
     image.draggable = false;
     if (block.props.previewWidth) {
       image.width = block.props.previewWidth;
+      image.dataset.previewWidth = String(block.props.previewWidth);
+    }
+    if (block.props.sourceWidth && block.props.sourceHeight) {
+      image.dataset.sourceWidth = String(block.props.sourceWidth);
+      image.dataset.sourceHeight = String(block.props.sourceHeight);
+      image.width = block.props.previewWidth || block.props.sourceWidth;
+      image.height = Math.round(
+        image.width * (block.props.sourceHeight / block.props.sourceWidth),
+      );
     }
     imageWrapper.appendChild(image);
 
@@ -159,6 +177,15 @@ export const imageToExternalHTML =
       image.alt = block.props.name || "";
       if (block.props.previewWidth) {
         image.width = block.props.previewWidth;
+        image.dataset.previewWidth = String(block.props.previewWidth);
+      }
+      if (block.props.sourceWidth && block.props.sourceHeight) {
+        image.dataset.sourceWidth = String(block.props.sourceWidth);
+        image.dataset.sourceHeight = String(block.props.sourceHeight);
+        image.width = block.props.previewWidth || block.props.sourceWidth;
+        image.height = Math.round(
+          image.width * (block.props.sourceHeight / block.props.sourceWidth),
+        );
       }
     } else {
       image = document.createElement("a");

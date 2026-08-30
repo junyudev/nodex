@@ -5,21 +5,23 @@ import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e
 import {
   NFM_EQUATION_AND_MERMAID_PAGE_KEY,
   NFM_EQUATION_AND_MERMAID_SCENARIO_ID,
+  NFM_VIEWPORT_CONTINUITY_PAGE_KEY,
 } from "../../scripts/scenarios/scenarios/nfm-equation-and-mermaid";
 import { openBoardPageFromCard } from "./support/open-board-page";
 
-interface EquationAndMermaidScene {
+interface NfmScene {
   readonly editor: Locator;
   readonly mermaidSurface: Locator;
 }
 
-async function openEquationAndMermaidScene(
+async function openNfmScene(
   application: ElectronApplication,
   page: Page,
   manifest: ScenarioManifest,
-): Promise<EquationAndMermaidScene> {
-  const pageId = manifest.pageIdsByKey[NFM_EQUATION_AND_MERMAID_PAGE_KEY];
-  if (!pageId) throw new Error("nfm-equation-and-mermaid has no Page fixture");
+  input: { readonly pageKey: string; readonly tabName: string },
+): Promise<NfmScene> {
+  const pageId = manifest.pageIdsByKey[input.pageKey];
+  if (!pageId) throw new Error(`nfm-equation-and-mermaid has no ${input.pageKey} Page fixture`);
   await application.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1240, height: 900 });
   });
@@ -28,7 +30,7 @@ async function openEquationAndMermaidScene(
     .evaluate((element) => (element as HTMLElement).click());
   await page.getByRole("tab", { name: "Project Home" }).waitFor();
   const card = page.locator(`[data-board-uuid-v7="${pageId}"]`);
-  await openBoardPageFromCard({ card, page, tabName: "Exercise Equation and Mermaid" });
+  await openBoardPageFromCard({ card, page, tabName: input.tabName });
 
   const editor = page
     .locator(`[data-page-stage-page-id="${pageId}"]:visible .nfm-editor:visible`)
@@ -46,11 +48,10 @@ test("Equation and Mermaid survive the public Core-to-Electron document path", a
     { label: "nfm-equation-and-mermaid", scenarioId: NFM_EQUATION_AND_MERMAID_SCENARIO_ID },
     async ({ application, page, manifest }) => {
       if (!manifest) throw new Error("nfm-equation-and-mermaid did not materialize");
-      const { editor, mermaidSurface } = await openEquationAndMermaidScene(
-        application,
-        page,
-        manifest,
-      );
+      const { editor, mermaidSurface } = await openNfmScene(application, page, manifest, {
+        pageKey: NFM_EQUATION_AND_MERMAID_PAGE_KEY,
+        tabName: "Exercise Equation and Mermaid",
+      });
 
       const blockEquations = editor.locator('.bn-block-content[data-content-type="mathBlock"]');
       await expect(blockEquations).toHaveCount(3);
@@ -78,6 +79,8 @@ test("Equation and Mermaid survive the public Core-to-Electron document path", a
           .toContain("Equation and Mermaid");
         await expect(headingBlock).toBeVisible();
 
+        await headingContent.locator(".bn-inline-content").click();
+        await page.keyboard.press("Home");
         await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+X`);
         await expect(headingBlock).toHaveCount(0);
         await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
@@ -139,6 +142,102 @@ test("Equation and Mermaid survive the public Core-to-Electron document path", a
       await expect(page.getByRole("dialog", { name: "Mermaid diagram" })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog", { name: "Mermaid diagram" })).toBeHidden();
+    },
+  );
+});
+
+test("Page Stage preserves its viewport across remount and delayed Block layout", async () => {
+  test.setTimeout(120_000);
+  await withElectronScenario(
+    { label: "page-stage-viewport", scenarioId: NFM_EQUATION_AND_MERMAID_SCENARIO_ID },
+    async ({ application, page, manifest }) => {
+      if (!manifest) throw new Error("nfm-equation-and-mermaid did not materialize");
+      const pageId = manifest.pageIdsByKey[NFM_VIEWPORT_CONTINUITY_PAGE_KEY];
+      if (!pageId) throw new Error("nfm-equation-and-mermaid has no viewport Page fixture");
+      const { editor, mermaidSurface } = await openNfmScene(application, page, manifest, {
+        pageKey: NFM_VIEWPORT_CONTINUITY_PAGE_KEY,
+        tabName: "Exercise Viewport Continuity",
+      });
+      await expect(mermaidSurface.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible({
+        timeout: 15_000,
+      });
+
+      const anchor = editor
+        .locator(".bn-block[data-id]")
+        .filter({ hasText: "Viewport restoration anchor" })
+        .first();
+      await expect(anchor).toBeVisible();
+      const expectedOffset = await anchor.evaluate((element) => {
+        const scrollElement = element.closest<HTMLElement>(
+          '[data-testid="page-stage-scroll-container"]',
+        );
+        if (!scrollElement) throw new Error("Page Stage scroll container is missing");
+        const desiredOffset = 120;
+        const currentOffset =
+          element.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top;
+        scrollElement.dispatchEvent(new WheelEvent("wheel", { bubbles: true, deltaY: 80 }));
+        scrollElement.scrollTop += currentOffset - desiredOffset;
+        scrollElement.dispatchEvent(new Event("scroll"));
+        return element.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top;
+      });
+      expect(Math.abs(expectedOffset - 120)).toBeLessThan(2);
+
+      await page.getByRole("tab", { name: "Project Home", exact: true }).click();
+      await page.getByRole("tab", { name: "Exercise Viewport Continuity", exact: true }).click();
+
+      const restoredSurface = page.locator(`[data-page-stage-page-id="${pageId}"]:visible`);
+      const restoredEditor = restoredSurface.locator(".nfm-editor:visible").first();
+      const restoredAnchor = restoredEditor
+        .locator(".bn-block[data-id]")
+        .filter({ hasText: "Viewport restoration anchor" })
+        .first();
+      await expect(restoredEditor.locator('[data-nfm-mermaid-status="ready"]')).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect
+        .poll(async () => {
+          return await restoredAnchor.evaluate((element, targetOffset) => {
+            const scrollElement = element.closest<HTMLElement>(
+              '[data-testid="page-stage-scroll-container"]',
+            );
+            if (!scrollElement) return Number.POSITIVE_INFINITY;
+            const offset =
+              element.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top;
+            return Math.abs(offset - targetOffset);
+          }, expectedOffset);
+        })
+        .toBeLessThan(4);
+
+      // The real Mermaid surface supplies a deterministic late layout shift after
+      // the old 120 ms restore window, without coupling the viewport contract to
+      // Mermaid's own timing on this machine.
+      await page.waitForTimeout(250);
+      await restoredEditor
+        .locator('[data-nfm-code-block-surface][data-language="mermaid"]')
+        .first()
+        .evaluate((element) => {
+          element.style.paddingBottom = "320px";
+        });
+      await expect
+        .poll(async () => {
+          return await restoredAnchor.evaluate((element, targetOffset) => {
+            const scrollElement = element.closest<HTMLElement>(
+              '[data-testid="page-stage-scroll-container"]',
+            );
+            if (!scrollElement) return Number.POSITIVE_INFINITY;
+            const offset =
+              element.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top;
+            return Math.abs(offset - targetOffset);
+          }, expectedOffset);
+        })
+        .toBeLessThan(4);
+      await expect
+        .poll(async () => {
+          return await restoredSurface
+            .getByTestId("page-stage-scroll-container")
+            .evaluate((element) => element.scrollTop);
+        })
+        .toBeGreaterThan(100);
     },
   );
 });

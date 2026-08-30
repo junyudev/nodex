@@ -256,6 +256,8 @@ export interface NfmImage extends NfmBlockBase {
   source: string;
   caption: NfmInlineContent[];
   previewWidth?: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
 }
 
 export interface NfmDatabaseViewRef extends NfmBlockBase {

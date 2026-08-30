@@ -95,9 +95,11 @@ describe("BlockNote view lifecycle in Chromium", () => {
       draggingState: undefined,
       widgetContainer: undefined,
     };
+    const mountedEditorRoots: HTMLElement[] = [];
     const renderEditor = () => (
       <BlockNoteViewRaw
         editor={editor}
+        onEditorViewMount={(editorRoot) => mountedEditorRoots.push(editorRoot)}
         formattingToolbar={false}
         linkToolbar={false}
         slashMenu={false}
@@ -116,6 +118,7 @@ describe("BlockNote view lifecycle in Chromium", () => {
     try {
       await act(settleEditor);
       expect(editor.prosemirrorView).toBeDefined();
+      expect(mountedEditorRoots.at(-1)).toBe(editor.prosemirrorView?.dom);
 
       await act(async () => {
         tableHandles.store.setState(staleTableState);
@@ -170,6 +173,7 @@ describe("BlockNote view lifecycle in Chromium", () => {
 
       expect(editor.headless).toBe(false);
       expect(editor.prosemirrorView).toBeDefined();
+      expect(mountedEditorRoots.at(-1)).toBe(editor.prosemirrorView?.dom);
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();
