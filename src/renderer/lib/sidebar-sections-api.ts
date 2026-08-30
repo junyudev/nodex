@@ -1,5 +1,9 @@
-import { invoke } from "./api";
-import type { SidebarSectionItem, SidebarSectionSummary } from "../../shared/sidebar-sections";
+import type {
+  SidebarSectionItem,
+  SidebarSectionItemRef,
+  SidebarSectionSummary,
+} from "../../shared/sidebar-sections";
+import { invokeRendererQuery } from "./renderer-command";
 
 const SIDEBAR_SECTION_PAGE_SIZE = 200;
 const MAX_SIDEBAR_SECTION_PAGES = 500;
@@ -28,7 +32,7 @@ async function collectKeysetPages<T>(
 
 export function listAllSidebarSections(): Promise<SidebarSectionSummary[]> {
   return collectKeysetPages((after) =>
-    invoke("sidebar-sections:list", {
+    invokeRendererQuery("sidebar-sections:list", {
       after,
       first: SIDEBAR_SECTION_PAGE_SIZE,
     }),
@@ -37,9 +41,13 @@ export function listAllSidebarSections(): Promise<SidebarSectionSummary[]> {
 
 export function listAllSidebarSectionItems(sectionId: string): Promise<SidebarSectionItem[]> {
   return collectKeysetPages((after) =>
-    invoke("sidebar-sections:items:list", sectionId, {
+    invokeRendererQuery("sidebar-sections:items:list", sectionId, {
       after,
       first: SIDEBAR_SECTION_PAGE_SIZE,
     }),
   );
+}
+
+export function readSidebarSectionItemPlacement(item: SidebarSectionItemRef) {
+  return invokeRendererQuery("sidebar-sections:item:placement", item);
 }

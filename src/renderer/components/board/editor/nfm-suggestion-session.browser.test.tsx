@@ -384,7 +384,14 @@ describe("NFM typed suggestion sessions in Chromium", () => {
       configurable: true,
       value: {
         invoke: async (channel: string) => {
-          if (channel === "projects:list") return { items: [], nextCursor: null };
+          if (channel === "projects:list") {
+            return {
+              storeEpoch: "epoch:test",
+              projectionRevision: 0,
+              items: [],
+              nextCursor: null,
+            };
+          }
           throw new Error(`Unexpected renderer request: ${channel}`);
         },
         on: () => () => undefined,

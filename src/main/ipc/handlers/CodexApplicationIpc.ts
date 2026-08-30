@@ -7,6 +7,8 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { IpcMainInvokeEvent } from "electron";
 import type { McpResourceReadParams } from "@nodex/codex-app-server-protocol/v2/McpResourceReadParams";
 import type { McpServerToolCallParams } from "@nodex/codex-app-server-protocol/v2/McpServerToolCallParams";
+import type { CodexErrorInfo } from "@nodex/codex-app-server-protocol/v2/CodexErrorInfo";
+import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type {
   CodexComposerPluginActivateInput,
   CodexComposerPluginListInput,
@@ -32,6 +34,47 @@ import type {
 import type { IpcEvents } from "../../../shared/ipc-api";
 import type { CodexHooksListInput, CodexHooksStateUpdateInput } from "../../../shared/codex-hooks";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
+import { parseCodexProtocolThreadItem } from "../../../shared/codex-protocol-thread-item";
+
+type ReviewStartCodexErrorInfo = NonNullable<
+  NonNullable<ClientRequestResponsesByMethod["review/start"]["turn"]["error"]>["codexErrorInfo"]
+>;
+
+function normalizeReviewCodexErrorInfo(
+  value: ReviewStartCodexErrorInfo | null | undefined,
+): CodexErrorInfo | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  if ("httpConnectionFailed" in value) {
+    return {
+      httpConnectionFailed: {
+        httpStatusCode: value.httpConnectionFailed.httpStatusCode ?? null,
+      },
+    };
+  }
+  if ("responseStreamConnectionFailed" in value) {
+    return {
+      responseStreamConnectionFailed: {
+        httpStatusCode: value.responseStreamConnectionFailed.httpStatusCode ?? null,
+      },
+    };
+  }
+  if ("responseStreamDisconnected" in value) {
+    return {
+      responseStreamDisconnected: {
+        httpStatusCode: value.responseStreamDisconnected.httpStatusCode ?? null,
+      },
+    };
+  }
+  if ("responseTooManyFailedAttempts" in value) {
+    return {
+      responseTooManyFailedAttempts: {
+        httpStatusCode: value.responseTooManyFailedAttempts.httpStatusCode ?? null,
+      },
+    };
+  }
+  return value;
+}
 import { CodexAccount, type CodexAccountLoginInput } from "../../codex-application/CodexAccount";
 import { AgentProviderRuntime } from "../../codex-application/AgentProviderRuntime";
 import { CodexConnection } from "../../codex-application/CodexConnection";
@@ -213,67 +256,111 @@ export const live: Layer.Layer<
       Effect.forkScoped,
     );
 
-    yield* ipc.handle("codex:account:read", () => account.refresh);
-    yield* ipc.handle(
+    yield* ipc.handleQuery("codex:account:read", () => account.refresh);
+    yield* ipc.handlePlainCommand(
       "codex:account:rate-limit-reset:consume",
       (_event, input: CodexRateLimitResetInput) => account.consumeRateLimitResetCredit(input),
     );
-    yield* ipc.handle("codex:account:login:start", (_event, input: CodexAccountLoginInput) =>
-      account.startLogin(input),
+    yield* ipc.handlePlainCommand(
+      "codex:account:login:start",
+      (_event, input: CodexAccountLoginInput) => account.startLogin(input),
     );
-    yield* ipc.handle("codex:account:login:cancel", (_event, loginId: string) =>
+    yield* ipc.handlePlainCommand("codex:account:login:cancel", (_event, loginId: string) =>
       account.cancelLogin(loginId),
     );
-    yield* ipc.handle("codex:account:logout", () => account.logout);
-    yield* ipc.handle("codex:connection:status", () => connection.read);
-    yield* ipc.handle("codex:personality:get", () => Effect.sync(() => preferences.current()));
-    yield* ipc.handle("codex:personality:set", (_event, personality: CodexPersonality) =>
-      preferences.setPersonality(personality),
+    yield* ipc.handlePlainCommand("codex:account:logout", () => account.logout);
+    yield* ipc.handleQuery("codex:connection:status", () => connection.read);
+    yield* ipc.handleQuery("codex:personality:get", () => Effect.sync(() => preferences.current()));
+    yield* ipc.handlePlainCommand(
+      "codex:personality:set",
+      (_event, personality: CodexPersonality) => preferences.setPersonality(personality),
     );
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "codex:thread:goal:materialize-draft",
       (_event, draft: CodexThreadGoalDraftInput) => attachments.materializeGoal(draft),
     );
-    yield* ipc.handle(
+    yield* ipc.handleControl(
       "codex:thread:goal:materialized-cleanup",
       (_event, attachmentDirectory: string | null) =>
         attachments.cleanupMaterializedGoal(attachmentDirectory),
     );
-    yield* ipc.handle("codex:thread:goal:editable-objective:read", (_event, objective: string) =>
-      attachments.readEditableObjective(objective),
+    yield* ipc.handleQuery(
+      "codex:thread:goal:editable-objective:read",
+      (_event, objective: string) => attachments.readEditableObjective(objective),
     );
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "codex:pasted-text:create",
       (_event, input: CreatePastedTextAttachmentInput) => attachments.createPastedText(input),
     );
-    yield* ipc.handle("codex:pasted-text:read", (_event, input: ReadPastedTextAttachmentInput) =>
-      attachments.readPastedText(input.file),
+    yield* ipc.handleQuery(
+      "codex:pasted-text:read",
+      (_event, input: ReadPastedTextAttachmentInput) => attachments.readPastedText(input.file),
     );
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "codex:pasted-text:remove",
       (_event, input: RemovePastedTextAttachmentInput) => attachments.removePastedText(input.file),
     );
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "codex:thread:memory-mode:set",
       (_event, threadId: string, mode: ThreadMemoryMode) =>
         conversations.setMemoryMode(threadId, mode),
     );
-    yield* ipc.handle("codex:review:start", (_event, params: ReviewStartParams) =>
-      conversations.startReview(params),
+    yield* ipc.handlePlainCommand("codex:review:start", (_event, params: ReviewStartParams) =>
+      conversations.startReview(params).pipe(
+        Effect.flatMap((response) =>
+          Effect.try({
+            try: () => ({
+              ...response,
+              turn: {
+                ...response.turn,
+                itemsView: response.turn.itemsView ?? "full",
+                error: response.turn.error
+                  ? {
+                      ...response.turn.error,
+                      codexErrorInfo: normalizeReviewCodexErrorInfo(
+                        response.turn.error.codexErrorInfo,
+                      ),
+                      additionalDetails: response.turn.error.additionalDetails ?? null,
+                    }
+                  : null,
+                startedAt: response.turn.startedAt ?? null,
+                completedAt: response.turn.completedAt ?? null,
+                durationMs: response.turn.durationMs ?? null,
+                items: response.turn.items.map((item) => {
+                  const normalized =
+                    item.type === "userMessage"
+                      ? { ...item, clientId: item.clientId ?? null }
+                      : item;
+                  const parsed = parseCodexProtocolThreadItem(normalized);
+                  if (!parsed) throw new Error(`Invalid review item '${item.type}'`);
+                  return parsed;
+                }),
+              },
+            }),
+            catch: (cause) =>
+              new CodexApplicationIpcError({ operation: "normalize-review-response", cause }),
+          }),
+        ),
+      ),
     );
-    yield* ipc.handle("codex:feedback:upload", (_event, params: FeedbackUploadParams) =>
+    yield* ipc.handlePlainCommand("codex:feedback:upload", (_event, params: FeedbackUploadParams) =>
       conversations.uploadFeedback(parseFeedbackUpload(params)),
     );
-    yield* ipc.handle("codex:turn:interrupt", (_event, threadId: string, turnId?: string) =>
-      conversations.interrupt(threadId.trim(), turnId),
+    yield* ipc.handlePlainCommand(
+      "codex:turn:interrupt",
+      (_event, threadId: string, turnId?: string) =>
+        conversations.interrupt(threadId.trim(), turnId),
     );
-    yield* ipc.handle("codex:thread:background-terminals:clean", (_event, threadId: string) => {
-      const normalized = threadId.trim();
-      return normalized
-        ? conversations.cleanBackgroundTerminals(normalized)
-        : Effect.succeed(false);
-    });
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
+      "codex:thread:background-terminals:clean",
+      (_event, threadId: string) => {
+        const normalized = threadId.trim();
+        return normalized
+          ? conversations.cleanBackgroundTerminals(normalized)
+          : Effect.succeed(false);
+      },
+    );
+    yield* ipc.handlePlainCommand(
       "codex:thread:background-terminals:clean-silent",
       (_event, threadId: string) => {
         const normalized = threadId.trim();
@@ -282,7 +369,7 @@ export const live: Layer.Layer<
           : Effect.succeed(false);
       },
     );
-    yield* ipc.handle("codex:thread:background-terminals:list", (_event, threadId: string) => {
+    yield* ipc.handleQuery("codex:thread:background-terminals:list", (_event, threadId: string) => {
       const normalized = threadId.trim();
       return normalized
         ? conversations.listBackgroundTerminals(normalized).pipe(
@@ -300,7 +387,7 @@ export const live: Layer.Layer<
           )
         : Effect.succeed<ThreadBackgroundTerminal[]>([]);
     });
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "codex:thread:background-terminals:terminate",
       (_event, input: { readonly threadId: string; readonly processId: string }) => {
         const threadId = input.threadId.trim();
@@ -310,71 +397,75 @@ export const live: Layer.Layer<
           : Effect.succeed(false);
       },
     );
-    yield* ipc.handle("agent-runtime:catalog:get", (_event, options?: { refresh?: boolean }) =>
+    yield* ipc.handleQuery("agent-runtime:catalog:get", (_event, options?: { refresh?: boolean }) =>
       agentProviders.list({ refresh: options?.refresh === true }),
     );
-    yield* ipc.handle("agent-runtime:credential:set", (_event, input: unknown) =>
+    yield* ipc.handlePlainCommand("agent-runtime:credential:set", (_event, input: unknown) =>
       validate("agent-provider-credential-set", () => parseProviderCredential(input)).pipe(
         Effect.flatMap(agentProviders.setCredential),
       ),
     );
-    yield* ipc.handle("agent-runtime:credential:delete", (_event, input: unknown) =>
+    yield* ipc.handlePlainCommand("agent-runtime:credential:delete", (_event, input: unknown) =>
       validate("agent-provider-credential-delete", () => parseProviderCredentialDelete(input)).pipe(
         Effect.flatMap(agentProviders.deleteCredential),
       ),
     );
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "codex:conversation-image-asset:resolve",
       (_event, input: CodexConversationImageAssetResolveInput) => media.resolveImage(input),
     );
 
-    yield* ipc.handle("codex:model:list", () => composer.listModels);
-    yield* ipc.handle("codex:collaboration-mode:list", () => composer.listCollaborationModes);
-    yield* ipc.handle("codex:experimental-features:list", (event) =>
+    yield* ipc.handleQuery("codex:model:list", () => composer.listModels);
+    yield* ipc.handleQuery("codex:collaboration-mode:list", () => composer.listCollaborationModes);
+    yield* ipc.handleQuery("codex:experimental-features:list", (event) =>
       trusted(event, "Experimental feature access").pipe(
         Effect.andThen(composer.listExperimentalFeatures),
       ),
     );
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "codex:composer-plugins:list",
       (_event, input: CodexComposerPluginListInput) =>
         validate("composer-plugins-list", () => parseComposerInventoryCwds(input)).pipe(
           Effect.flatMap(composer.listPlugins),
         ),
     );
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "codex:composer-plugins:activate",
       (_event, input: CodexComposerPluginActivateInput) =>
         validate("composer-plugin-activate", () => parseComposerPluginActivation(input)).pipe(
           Effect.flatMap(composer.activatePlugin),
         ),
     );
-    yield* ipc.handle("codex:composer-skills:list", (_event, input: CodexComposerSkillListInput) =>
-      validate("composer-skills-list", () => parseComposerInventoryCwds(input)).pipe(
-        Effect.flatMap(composer.listSkills),
-      ),
+    yield* ipc.handleQuery(
+      "codex:composer-skills:list",
+      (_event, input: CodexComposerSkillListInput) =>
+        validate("composer-skills-list", () => parseComposerInventoryCwds(input)).pipe(
+          Effect.flatMap(composer.listSkills),
+        ),
     );
-    yield* ipc.handle("codex:hooks:list", (_event, input: CodexHooksListInput) =>
+    yield* ipc.handleQuery("codex:hooks:list", (_event, input: CodexHooksListInput) =>
       composer.listHooks(input),
     );
-    yield* ipc.handle("codex:hooks:state:update", (_event, input: CodexHooksStateUpdateInput) =>
-      composer.updateHooksState(input).pipe(
-        Effect.andThen(
-          windows.all.pipe(
-            Effect.tap((all) =>
-              Effect.sync(() => {
-                safeBroadcastToWindows(all, "codex:hooks:changed" satisfies keyof IpcEvents, [
-                  { hostId: input.hostId },
-                ]);
-              }),
+    yield* ipc.handlePlainCommand(
+      "codex:hooks:state:update",
+      (_event, input: CodexHooksStateUpdateInput) =>
+        composer.updateHooksState(input).pipe(
+          Effect.andThen(
+            windows.all.pipe(
+              Effect.tap((all) =>
+                Effect.sync(() => {
+                  safeBroadcastToWindows(all, "codex:hooks:changed" satisfies keyof IpcEvents, [
+                    { hostId: input.hostId },
+                  ]);
+                }),
+              ),
+              Effect.asVoid,
             ),
-            Effect.asVoid,
           ),
         ),
-      ),
     );
-    yield* ipc.handle("codex:composer-sites:list", () => externalSuggestions.listSites);
-    yield* ipc.handle("codex:composer-chatgpt-conversations:list", (_event, input: unknown) =>
+    yield* ipc.handleQuery("codex:composer-sites:list", () => externalSuggestions.listSites);
+    yield* ipc.handleQuery("codex:composer-chatgpt-conversations:list", (_event, input: unknown) =>
       validate("composer-chatgpt-conversations-list", () => {
         if (
           typeof input !== "object" ||
@@ -389,16 +480,16 @@ export const live: Layer.Layer<
       }).pipe(Effect.flatMap(externalSuggestions.listChatGptConversations)),
     );
 
-    yield* ipc.handle("codex:mcp-resource:read", (event, params: McpResourceReadParams) =>
+    yield* ipc.handleQuery("codex:mcp-resource:read", (event, params: McpResourceReadParams) =>
       trusted(event, "MCP resource access").pipe(Effect.andThen(tools.readResource(params))),
     );
-    yield* ipc.handle("codex:mcp-tool:call", (event, params: McpServerToolCallParams) =>
+    yield* ipc.handlePlainCommand("codex:mcp-tool:call", (event, params: McpServerToolCallParams) =>
       trusted(event, "MCP tool access").pipe(Effect.andThen(tools.callTool(params))),
     );
-    yield* ipc.handle("codex:mcp-apps:list", (event) =>
+    yield* ipc.handleQuery("codex:mcp-apps:list", (event) =>
       trusted(event, "MCP app access").pipe(Effect.andThen(tools.listApps)),
     );
-    yield* ipc.handle("codex:mcp-server-statuses:list", (event) =>
+    yield* ipc.handleQuery("codex:mcp-server-statuses:list", (event) =>
       trusted(event, "MCP server status access").pipe(Effect.andThen(tools.listServerStatuses)),
     );
   }),

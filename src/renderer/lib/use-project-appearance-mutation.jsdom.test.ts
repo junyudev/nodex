@@ -2,65 +2,83 @@ import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/r
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
+import type { LocalCommitApply } from "../../shared/local-commit-delivery";
+import {
+  DEFAULT_PROJECT_APPEARANCE,
+  type ProjectAppearance,
+} from "../../shared/project-appearance";
+import { CoreApiError } from "./api";
+import { projectCatalogStoreFor } from "./project-catalog";
 import { queryKeys } from "./query-keys";
 import type { Project, ProjectWindow } from "./types";
-import {
-  patchProjectAppearanceInWindow,
-  useProjectAppearanceMutation,
-} from "./use-project-appearance-mutation";
+import { useProjectAppearanceMutation } from "./use-project-appearance-mutation";
 
-const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(),
-  toastDanger: vi.fn(),
+const mocks = vi.hoisted(() => ({ invokeCommand: vi.fn(), toastDanger: vi.fn() }));
+
+vi.mock("./renderer-command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./renderer-command")>()),
+  invokeLocalCommitCommand: mocks.invokeCommand,
 }));
 
-vi.mock("./api", () => ({
-  invokeCoreResult: mocks.invoke,
-}));
+vi.mock("@/components/ui/toast", () => ({ toast: { danger: mocks.toastDanger } }));
 
-vi.mock("@/components/ui/toast", () => ({
-  toast: {
-    danger: mocks.toastDanger,
-  },
-}));
+const RED_FOLDER = {
+  color: "red",
+  marker: { kind: "icon", icon: "folder" },
+} as const;
+const RED_HEART = {
+  color: "red",
+  marker: { kind: "icon", icon: "heart" },
+} as const;
+
+function project(
+  appearance: ProjectAppearance = DEFAULT_PROJECT_APPEARANCE,
+  bindingRevision = 1,
+): Project {
+  return {
+    id: "project-1",
+    libraryId: "library-1",
+    databaseId: "database-1",
+    defaultDatabaseViewId: "view-1",
+    lifecycle: "active",
+    bindingRevision,
+    name: "Nodex",
+    description: "",
+    appearance,
+    sources: [],
+    primaryWorkspaceRoot: null,
+    pinned: false,
+    pinnedOrder: null,
+    created: new Date(0),
+    updated: new Date(0),
+  };
+}
 
 function projectWindow(): InfiniteData<ProjectWindow, string | null> {
   return {
     pageParams: [null],
     pages: [
       {
-        items: [
-          {
-            id: "project-1",
-            libraryId: "library-1",
-            databaseId: "database-1",
-            defaultDatabaseViewId: "view-1",
-            lifecycle: "active",
-            bindingRevision: 1,
-            name: "Nodex",
-            description: "",
-            appearance: DEFAULT_PROJECT_APPEARANCE,
-            sources: [],
-            primaryWorkspaceRoot: null,
-            pinned: false,
-            pinnedOrder: null,
-            created: new Date(0),
-            updated: new Date(0),
-          },
-        ],
+        items: [project()],
         nextCursor: null,
         hasMore: false,
+        storeEpoch: "epoch-1",
         projectionRevision: 1,
       },
     ],
   };
 }
 
-function projectFromWindow(): Project {
-  const project = projectWindow().pages[0]?.items[0];
-  if (!project) throw new Error("Expected Project fixture");
-  return project;
+function committed(commitSeq: number): LocalCommitApply {
+  return {
+    status: "committed",
+    commit: {
+      store_epoch: "epoch-1",
+      commit_seq: commitSeq,
+      manifest_hash: "f".repeat(64),
+    },
+    delivery: null,
+  };
 }
 
 function deferred<T>() {
@@ -73,245 +91,149 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
-function setupHook({ seedDetail = false }: { seedDetail?: boolean } = {}) {
+function setupHook() {
   const client = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  const project = projectFromWindow();
+  const initialProject = project();
   client.setQueryData(queryKeys.projects.list(false), projectWindow());
-  if (seedDetail) {
-    client.setQueryData(queryKeys.projects.detail(project.id), project);
-  }
+  const catalog = projectCatalogStoreFor(client);
+  catalog.publishCanonical({
+    storeEpoch: "epoch-1",
+    projectionRevision: 1,
+    projects: [initialProject],
+  });
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(QueryClientProvider, { client }, children);
   const hook = renderHook(
     ({ currentProject }: { currentProject: Project }) =>
       useProjectAppearanceMutation(currentProject),
-    {
-      initialProps: { currentProject: project },
-      wrapper,
-    },
+    { initialProps: { currentProject: initialProject }, wrapper },
   );
-  const readAppearance = (includeArchived = false) => {
-    const current = client.getQueryData<InfiniteData<ProjectWindow, string | null>>(
-      queryKeys.projects.list(includeArchived),
-    );
-    return current?.pages[0]?.items[0]?.appearance;
-  };
-  const readDetailAppearance = () =>
-    client.getQueryData<Project | null>(queryKeys.projects.detail(project.id))?.appearance;
-  return { client, hook, project, readAppearance, readDetailAppearance };
+  const presentedAppearance = () => catalog.project(initialProject)?.appearance;
+  const cachedAppearance = () =>
+    client.getQueryData<InfiniteData<ProjectWindow, string | null>>(queryKeys.projects.list(false))
+      ?.pages[0]?.items[0]?.appearance;
+  return { catalog, hook, initialProject, presentedAppearance, cachedAppearance };
 }
 
-const RED_FOLDER = {
-  color: "red",
-  marker: { kind: "icon", icon: "folder" },
-} as const;
-const RED_HEART = {
-  color: "red",
-  marker: { kind: "icon", icon: "heart" },
-} as const;
-
-describe("patchProjectAppearanceInWindow", () => {
+describe("useProjectAppearanceMutation", () => {
   beforeEach(() => {
-    mocks.invoke.mockReset();
+    mocks.invokeCommand.mockReset();
     mocks.toastDanger.mockReset();
   });
 
-  it("updates only the matching Project in paged catalog data", () => {
-    const current = projectWindow();
-    const appearance = {
-      color: "red",
-      marker: { kind: "icon", icon: "heart" },
-    } as const;
-    const next = patchProjectAppearanceInWindow(current, "project-1", appearance);
+  it("presents through the catalog owner without rewriting canonical query data", async () => {
+    const request = deferred<{ value: Project; acknowledgement: LocalCommitApply }>();
+    mocks.invokeCommand.mockReturnValue(request.promise);
+    const { hook, initialProject, presentedAppearance, cachedAppearance } = setupHook();
 
-    expect(next?.pages[0]?.items[0]?.appearance).toEqual(appearance);
-    expect(current.pages[0]?.items[0]?.appearance).toEqual(DEFAULT_PROJECT_APPEARANCE);
+    act(() => hook.result.current.changeAppearance(RED_HEART));
+
+    expect(presentedAppearance()).toEqual(RED_HEART);
+    expect(cachedAppearance()).toEqual(DEFAULT_PROJECT_APPEARANCE);
+    await waitFor(() => expect(mocks.invokeCommand).toHaveBeenCalledTimes(1));
+    request.resolve({ value: project(RED_HEART, 2), acknowledgement: committed(2) });
+    await act(async () => await request.promise);
+    expect(mocks.invokeCommand.mock.calls[0]?.[1]).toMatchObject({
+      projectId: initialProject.id,
+      updates: { appearance: RED_HEART },
+    });
+    expect(presentedAppearance()).toEqual(RED_HEART);
   });
 
-  it("preserves the cache identity when the Project is absent", () => {
-    const current = projectWindow();
-    expect(patchProjectAppearanceInWindow(current, "missing", DEFAULT_PROJECT_APPEARANCE)).toBe(
-      current,
+  it("serializes rapid changes and preserves the latest presentation", async () => {
+    const first = deferred<{ value: Project; acknowledgement: LocalCommitApply }>();
+    const second = deferred<{ value: Project; acknowledgement: LocalCommitApply }>();
+    mocks.invokeCommand.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { hook, presentedAppearance } = setupHook();
+
+    act(() => {
+      hook.result.current.changeAppearance(RED_FOLDER);
+      hook.result.current.changeAppearance(RED_HEART);
+    });
+    expect(presentedAppearance()).toEqual(RED_HEART);
+    await waitFor(() => expect(mocks.invokeCommand).toHaveBeenCalledTimes(1));
+
+    first.resolve({ value: project(RED_FOLDER, 2), acknowledgement: committed(2) });
+    await act(async () => await first.promise);
+    await waitFor(() => expect(mocks.invokeCommand).toHaveBeenCalledTimes(2));
+    expect(presentedAppearance()).toEqual(RED_HEART);
+
+    second.resolve({ value: project(RED_HEART, 3), acknowledgement: committed(3) });
+    await act(async () => await second.promise);
+    expect(presentedAppearance()).toEqual(RED_HEART);
+  });
+
+  it("rolls back only a definitive latest failure", async () => {
+    mocks.invokeCommand.mockResolvedValueOnce({
+      value: project(RED_FOLDER, 2),
+      acknowledgement: committed(2),
+    });
+    mocks.invokeCommand.mockRejectedValueOnce(
+      new CoreApiError({
+        code: "revision_conflict",
+        message: "The Project changed",
+        retryable: false,
+        recovery: { kind: "none" },
+      }),
     );
+    const { hook, presentedAppearance } = setupHook();
+
+    await act(async () => await hook.result.current.changeAppearanceAsync(RED_FOLDER));
+    await expect(
+      act(async () => await hook.result.current.changeAppearanceAsync(RED_HEART)),
+    ).rejects.toThrow("The Project changed");
+
+    expect(presentedAppearance()).toEqual(RED_FOLDER);
+    expect(mocks.toastDanger).toHaveBeenCalledTimes(1);
   });
 
-  it("updates list and detail caches without treating Project detail as a window", async () => {
-    const { client, hook, project, readAppearance, readDetailAppearance } = setupHook({
-      seedDetail: true,
+  it("retains an unknown outcome and retries the exact operation identity", async () => {
+    mocks.invokeCommand.mockRejectedValueOnce(new Error("response lost"));
+    mocks.invokeCommand.mockResolvedValueOnce({
+      value: project(RED_HEART, 2),
+      acknowledgement: committed(2),
     });
-    client.setQueryData(queryKeys.projects.list(true), projectWindow());
-    mocks.invoke.mockResolvedValue({
-      ...project,
-      appearance: RED_HEART,
-      bindingRevision: 2,
-    });
+    const { catalog, hook, initialProject, presentedAppearance } = setupHook();
 
-    await act(async () => {
-      await hook.result.current.changeAppearanceAsync(RED_HEART);
-    });
+    await expect(
+      act(async () => await hook.result.current.changeAppearanceAsync(RED_HEART)),
+    ).rejects.toThrow("response lost");
+    const firstCommand = mocks.invokeCommand.mock.calls[0]?.[1];
+    expect(presentedAppearance()).toEqual(RED_HEART);
+    expect(catalog.getSnapshot().unknownOutcomeCount).toBe(1);
 
-    expect(readAppearance()).toEqual(RED_HEART);
-    expect(readAppearance(true)).toEqual(RED_HEART);
-    expect(readDetailAppearance()).toEqual(RED_HEART);
-    expect(mocks.toastDanger).not.toHaveBeenCalled();
-  });
-
-  it("serializes rapid changes and settles on the newest appearance", async () => {
-    const first = deferred<Project>();
-    const second = deferred<Project>();
-    mocks.invoke.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    const { hook, project, readAppearance } = setupHook();
-
-    act(() => {
-      hook.result.current.changeAppearance(RED_FOLDER);
-      hook.result.current.changeAppearance(RED_HEART);
-    });
-
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
-    expect(mocks.invoke.mock.calls[0]).toEqual([
-      "projects:update",
-      project.id,
-      { appearance: RED_FOLDER },
-    ]);
-
-    await act(async () => {
-      first.resolve({
-        ...project,
-        appearance: RED_FOLDER,
-        bindingRevision: 2,
-      });
-      await first.promise;
-    });
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    expect(mocks.invoke.mock.calls[1]).toEqual([
-      "projects:update",
-      project.id,
-      { appearance: RED_HEART },
-    ]);
-
-    await act(async () => {
-      second.resolve({
-        ...project,
-        appearance: RED_HEART,
-        bindingRevision: 3,
-      });
-      await second.promise;
-    });
-    await waitFor(() => expect(readAppearance()).toEqual(RED_HEART));
-  });
-
-  it("rolls a double failure back to the last confirmed appearance", async () => {
-    const first = deferred<Project>();
-    const second = deferred<Project>();
-    mocks.invoke.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    const { hook, readAppearance } = setupHook();
-
-    act(() => {
-      hook.result.current.changeAppearance(RED_FOLDER);
-      hook.result.current.changeAppearance(RED_HEART);
-    });
-
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
-    await act(async () => {
-      first.reject(new Error("offline one"));
-      await first.promise.catch(() => undefined);
-    });
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    await act(async () => {
-      second.reject(new Error("offline two"));
-      await second.promise.catch(() => undefined);
-    });
-
-    await waitFor(() => {
-      expect(readAppearance()).toEqual(DEFAULT_PROJECT_APPEARANCE);
-    });
-    expect(mocks.toastDanger).toHaveBeenCalledTimes(2);
-  });
-
-  it("rolls the latest failure back to the prior confirmed write", async () => {
-    const first = deferred<Project>();
-    const second = deferred<Project>();
-    mocks.invoke.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    const { hook, project, readAppearance, readDetailAppearance } = setupHook({ seedDetail: true });
-
-    act(() => {
-      hook.result.current.changeAppearance(RED_FOLDER);
-      hook.result.current.changeAppearance(RED_HEART);
-    });
-
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
-    await act(async () => {
-      first.resolve({
-        ...project,
-        appearance: RED_FOLDER,
-        bindingRevision: 2,
-      });
-      await first.promise;
-    });
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    await act(async () => {
-      second.reject(new Error("second failed"));
-      await second.promise.catch(() => undefined);
-    });
-
-    await waitFor(() => expect(readAppearance()).toEqual(RED_FOLDER));
-    expect(readDetailAppearance()).toEqual(RED_FOLDER);
+    await catalog.retryProjectUpdate(initialProject.id);
+    expect(mocks.invokeCommand.mock.calls[1]?.[1].operationId).toBe(firstCommand.operationId);
+    expect(presentedAppearance()).toEqual(RED_HEART);
   });
 
   it("waits for the whole rapid queue and returns the newest confirmed revision", async () => {
-    const first = deferred<Project>();
-    const second = deferred<Project>();
-    mocks.invoke.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
-    const { hook, project } = setupHook();
+    const first = deferred<{ value: Project; acknowledgement: LocalCommitApply }>();
+    const second = deferred<{ value: Project; acknowledgement: LocalCommitApply }>();
+    mocks.invokeCommand.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const { hook } = setupHook();
 
     act(() => {
       hook.result.current.changeAppearance(RED_FOLDER);
       hook.result.current.changeAppearance(RED_HEART);
     });
-    let settled = false;
-    const waiting = hook.result.current.waitForSettledProject().then((value) => {
-      settled = true;
-      return value;
-    });
+    const waiting = hook.result.current.waitForSettledProject();
+    first.resolve({ value: project(RED_FOLDER, 2), acknowledgement: committed(2) });
+    await act(async () => await first.promise);
+    await waitFor(() => expect(mocks.invokeCommand).toHaveBeenCalledTimes(2));
+    second.resolve({ value: project(RED_HEART, 3), acknowledgement: committed(3) });
 
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
-    await act(async () => {
-      first.resolve({
-        ...project,
-        appearance: RED_FOLDER,
-        bindingRevision: 2,
-      });
-      await first.promise;
+    await expect(waiting).resolves.toMatchObject({
+      bindingRevision: 3,
+      appearance: RED_HEART,
     });
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    expect(settled).toBe(false);
-
-    let settledProject!: Project;
-    await act(async () => {
-      second.resolve({
-        ...project,
-        appearance: RED_HEART,
-        bindingRevision: 3,
-      });
-      await second.promise;
-      settledProject = await waiting;
-    });
-    expect(settledProject.bindingRevision).toBe(3);
-    expect(settledProject.appearance).toEqual(RED_HEART);
   });
 
-  it("returns the latest externally refreshed Project when no write is pending", async () => {
-    const { hook, project } = setupHook();
-    const refreshed = {
-      ...project,
-      name: "Nodex refreshed",
-      bindingRevision: 7,
-    };
+  it("returns the latest refreshed Project when no write is pending", async () => {
+    const { hook, initialProject } = setupHook();
+    const refreshed = { ...initialProject, name: "Nodex refreshed", bindingRevision: 7 };
 
     await act(async () => {
       hook.rerender({ currentProject: refreshed });

@@ -11,7 +11,6 @@ import type {
 } from "../../../../../shared/global-dictation";
 import {
   acquireDictationMicrophoneLease,
-  invoke,
   readBuiltInMicrophoneRouteHint,
   readDictationSettings,
   requestMicrophoneAccess,
@@ -29,6 +28,7 @@ import { browserDictationWaveformPort } from "@/features/dictation/dictation-wav
 import { useDictationSession } from "@/features/dictation/use-dictation-session";
 import { transcribeDictationBlob } from "@/features/dictation/dictation-buffered-client";
 import { useInAppDictationTarget } from "@/features/dictation/in-app-dictation-router";
+import { reportGlobalDictationEvent } from "@/features/dictation/dictation-command-runtime";
 import {
   COMPOSER_DICTATION_WAVEFORM_ADVANCE_INTERVAL_MS,
   drawComposerDictationWaveform,
@@ -90,7 +90,7 @@ const defaultClock: DictationControllerPorts["clock"] = {
 };
 
 const invokeGlobalDictationEvent = async (event: GlobalDictationRendererEvent): Promise<boolean> =>
-  await invoke("global-dictation:event", event);
+  await reportGlobalDictationEvent(event);
 
 export function useComposerDictation(
   input: UseComposerDictationInput,

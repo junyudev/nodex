@@ -171,7 +171,7 @@ export const live: Layer.Layer<
       ),
     );
 
-    yield* ipc.handle("terminal-create", (event, input: TerminalCreateRequest) =>
+    yield* ipc.handlePlainCommand("terminal-create", (event, input: TerminalCreateRequest) =>
       ownerFor(event).pipe(
         Effect.andThen((owner) =>
           recoverLeaseResult(
@@ -182,7 +182,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("terminal-acquire-view", (event, input: TerminalAttachRequest) =>
+    yield* ipc.handleControl("terminal-acquire-view", (event, input: TerminalAttachRequest) =>
       ownerFor(event).pipe(
         Effect.andThen((owner) =>
           recoverLeaseResult(
@@ -193,28 +193,30 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("terminal-take-over-view", (event, input: TerminalTakeOverViewRequest) =>
-      ownerFor(event).pipe(
-        Effect.andThen((owner) =>
-          recoverLeaseResult(
-            event.sender,
-            input.sessionId,
-            sessions.takeOverViewLease(owner, input),
+    yield* ipc.handleControl(
+      "terminal-take-over-view",
+      (event, input: TerminalTakeOverViewRequest) =>
+        ownerFor(event).pipe(
+          Effect.andThen((owner) =>
+            recoverLeaseResult(
+              event.sender,
+              input.sessionId,
+              sessions.takeOverViewLease(owner, input),
+            ),
           ),
         ),
-      ),
     );
-    yield* ipc.handle("terminal-release-view", (event, sessionId: string) =>
+    yield* ipc.handleControl("terminal-release-view", (event, sessionId: string) =>
       ownerFor(event).pipe(Effect.andThen((owner) => sessions.releaseViewLease(owner, sessionId))),
     );
-    yield* ipc.handle("terminal-write", (event, sessionId: string, data: string) =>
+    yield* ipc.handleControl("terminal-write", (event, sessionId: string, data: string) =>
       ownerFor(event).pipe(
         Effect.andThen((owner) =>
           recoverCommand(event.sender, sessionId, sessions.write(owner, sessionId, data)),
         ),
       ),
     );
-    yield* ipc.handle("terminal-run-action", (event, input: TerminalRunActionRequest) =>
+    yield* ipc.handlePlainCommand("terminal-run-action", (event, input: TerminalRunActionRequest) =>
       ownerFor(event).pipe(
         Effect.andThen((owner) =>
           recoverCommand(
@@ -225,20 +227,20 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("terminal-session:snapshot", (_event, sessionId: string) =>
+    yield* ipc.handleQuery("terminal-session:snapshot", (_event, sessionId: string) =>
       sessions.getSessionSnapshot(sessionId),
     );
-    yield* ipc.handle("terminal-resize", (event, sessionId: string, size: TerminalSize) =>
+    yield* ipc.handleControl("terminal-resize", (event, sessionId: string, size: TerminalSize) =>
       ownerFor(event).pipe(
         Effect.andThen((owner) =>
           recoverCommand(event.sender, sessionId, sessions.resize(owner, sessionId, size)),
         ),
       ),
     );
-    yield* ipc.handle("terminal-kill", (event, sessionId: string) =>
+    yield* ipc.handlePlainCommand("terminal-kill", (event, sessionId: string) =>
       ownerFor(event).pipe(Effect.andThen(sessions.killSession(sessionId))),
     );
-    yield* ipc.handle("thread-terminal-snapshot", (_event, threadId: string) =>
+    yield* ipc.handleQuery("thread-terminal-snapshot", (_event, threadId: string) =>
       sessions.getThreadSnapshot(threadId),
     );
   }),

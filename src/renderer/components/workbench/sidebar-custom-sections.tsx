@@ -39,16 +39,15 @@ import {
 } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { serializeSortableTranslation } from "@/lib/sortable-transform";
-import {
-  invoke,
-  invokeCoreResult,
-  subscribeProjectChanges,
-  subscribeProjectSessionChanges,
-} from "@/lib/api";
+import { subscribeProjectChanges, subscribeProjectSessionChanges } from "@/lib/api";
 import { listAllSidebarSectionItems, listAllSidebarSections } from "@/lib/sidebar-sections-api";
 import { cn } from "@/lib/utils";
 import type { ProjectSession } from "@/lib/types";
 import type { ProjectSessionSummary } from "../../../shared/types";
+import {
+  workspaceProjectCommands,
+  workspaceSidebarCommands,
+} from "@/lib/workspace-catalog-commands";
 import {
   sidebarSectionContainerId,
   type SidebarSectionItem,
@@ -301,7 +300,7 @@ function SectionDirectItems({
       if (activeIndex < 0) return;
       const firstHiddenItemId = items[visibleItems.length]?.placementId ?? null;
       const beforeItemId = nextVisibleThreadKeys[activeIndex + 1] ?? firstHiddenItemId;
-      await invokeCoreResult("sidebar-sections:item:move", {
+      await workspaceSidebarCommands.moveItem({
         item: sidebarSectionItemRef(activeItem),
         sectionId: section.sectionId,
         placement: resolveSidebarSectionItemPlacement(items, beforeItemId),
@@ -457,7 +456,7 @@ export function SidebarCustomSections({
   const { itemQueries, refresh, sections, sectionsQuery } = catalog;
   const commitSectionOrder = useCallback(
     async (sectionIds: readonly string[]) => {
-      await invokeCoreResult("sidebar-sections:reorder", [...sectionIds]);
+      await workspaceSidebarCommands.reorder(sectionIds);
       await refresh();
     },
     [refresh],
@@ -527,9 +526,10 @@ export function SidebarCustomSections({
                             <CodexSidebarActionButton
                               label={`New chat in ${section.name ?? "section"}`}
                               onClick={() => {
-                                void invokeCoreResult("sidebar-sections:sessions:create", {
-                                  sectionId: section.sectionId,
-                                })
+                                void workspaceSidebarCommands
+                                  .createSession({
+                                    sectionId: section.sectionId,
+                                  })
                                   .then(async (session) => {
                                     await refresh();
                                     await onThreadsChanged?.();
@@ -546,24 +546,21 @@ export function SidebarCustomSections({
                               onArchiveAll={() => setArchiveSection(section)}
                               archiveDisabled={itemQuery?.isPending ?? true}
                               onDelete={() => {
-                                void invokeCoreResult(
-                                  "sidebar-sections:delete",
-                                  section.sectionId,
-                                  {
+                                void workspaceSidebarCommands
+                                  .delete(section.sectionId, {
                                     expectedRevision: section.revision,
-                                  },
-                                )
+                                  })
                                   .then(async () => {
                                     await refresh();
                                     toast.info("Section deleted", {
                                       action: {
                                         label: "Undo",
                                         onClick: () => {
-                                          void invokeCoreResult(
-                                            "sidebar-sections:restore",
-                                            section.sectionId,
-                                            { expectedRevision: section.revision + 1 },
-                                          ).then(refresh);
+                                          void workspaceSidebarCommands
+                                            .restore(section.sectionId, {
+                                              expectedRevision: section.revision + 1,
+                                            })
+                                            .then(refresh);
                                         },
                                       },
                                     });
@@ -612,7 +609,7 @@ export function SidebarCustomSections({
           initialValue={renameSection.name ?? ""}
           onClose={() => setRenameSection(null)}
           onSave={async (name) => {
-            await invokeCoreResult("sidebar-sections:rename", renameSection.sectionId, {
+            await workspaceSidebarCommands.rename(renameSection.sectionId, {
               name,
               expectedRevision: renameSection.revision,
             });
@@ -644,11 +641,10 @@ export function SidebarCustomSections({
                           session.id === activeSessionId && !directSessionIds.has(session.id),
                       ),
                     ));
-                void invokeCoreResult(
-                  "sidebar-sections:sessions:archive-all",
-                  archiveSection.sectionId,
-                  { createReplacement: activeWillBeArchived },
-                )
+                void workspaceSidebarCommands
+                  .archiveSessions(archiveSection.sectionId, {
+                    createReplacement: activeWillBeArchived,
+                  })
                   .then(async (replacement) => {
                     if (replacement) onSelectSession(replacement);
                     setArchiveSection(null);
@@ -696,7 +692,7 @@ export function SidebarProjectSectionMenu({
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const move = async (sectionId: string) => {
-    await invokeCoreResult("sidebar-sections:item:move", {
+    await workspaceSidebarCommands.moveItem({
       item: { kind: "project", projectId },
       sectionId,
       placement: { kind: "end" },
@@ -715,9 +711,9 @@ export function SidebarProjectSectionMenu({
           onValueChange={(value) => {
             if (value === "default") {
               void Promise.resolve()
-                .then(() => invoke("projects:set-pinned", projectId, { pinned: false }))
+                .then(() => workspaceProjectCommands.setPinned(projectId, { pinned: false }))
                 .then(() =>
-                  invokeCoreResult("sidebar-sections:item:move", {
+                  workspaceSidebarCommands.moveItem({
                     item: { kind: "project", projectId },
                     sectionId: null,
                     placement: { kind: "end" },
@@ -727,7 +723,9 @@ export function SidebarProjectSectionMenu({
               return;
             }
             if (value === "pinned") {
-              void invoke("projects:set-pinned", projectId, { pinned: true }).then(catalog.refresh);
+              void workspaceProjectCommands
+                .setPinned(projectId, { pinned: true })
+                .then(catalog.refresh);
               return;
             }
             void move(value);
@@ -755,7 +753,7 @@ export function SidebarProjectSectionMenu({
           onClose={() => setCreateOpen(false)}
           allowEmpty
           onSave={async (name) => {
-            await invokeCoreResult("sidebar-sections:create", {
+            await workspaceSidebarCommands.create({
               name,
               initialItem: { kind: "project", projectId },
             });

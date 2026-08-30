@@ -1,15 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
-import { invoke } from "./api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { queryKeys } from "./query-keys";
-import { threadNotificationSettingsQueryOptions } from "./query-options";
 import type { ThreadNotificationSettings, UpdateThreadNotificationSettingsInput } from "./types";
-
-const DEFAULT_SETTINGS: ThreadNotificationSettings = {
-  turnMode: "unfocused",
-  permissionsEnabled: true,
-  questionsEnabled: true,
-};
+import {
+  DEFAULT_THREAD_NOTIFICATION_SETTINGS,
+  normalizeThreadNotificationSettings,
+  resetMainReturnedSettingsOwnersForTests,
+  threadNotificationSettingsOwnerFor,
+} from "./main-returned-settings";
 
 export function useThreadNotificationSettings(): {
   settings: ThreadNotificationSettings;
@@ -20,10 +18,17 @@ export function useThreadNotificationSettings(): {
   reloadSettings: () => Promise<void>;
 } {
   const queryClient = useQueryClient();
-  const { data: settings, isPending } = useQuery({
-    ...threadNotificationSettingsQueryOptions(),
-    select: normalizeThreadNotificationSettings,
+  const owner = useMemo(() => threadNotificationSettingsOwnerFor(queryClient), [queryClient]);
+  const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const { isPending } = useQuery({
+    queryKey: queryKeys.settings.threadNotifications(),
+    queryFn: owner.readCanonical,
   });
+
+  useLayoutEffect(() => {
+    if (snapshot.renderToken === null) return;
+    owner.markRendered(snapshot.renderToken);
+  }, [owner, snapshot.renderToken]);
 
   const reloadSettings = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -32,51 +37,19 @@ export function useThreadNotificationSettings(): {
     });
   }, [queryClient]);
 
-  const { mutateAsync: updateSettingsRequest } = useMutation({
-    mutationFn: (input: UpdateThreadNotificationSettingsInput) =>
-      invoke("settings:thread-notifications:update", input) as Promise<ThreadNotificationSettings>,
-    onSuccess: (result) => {
-      queryClient.setQueryData(
-        queryKeys.settings.threadNotifications(),
-        normalizeThreadNotificationSettings(result),
-      );
-    },
-  });
-
   const updateSettings = useCallback(
     async (input: UpdateThreadNotificationSettingsInput) => {
-      const result = await updateSettingsRequest(input);
-      return normalizeThreadNotificationSettings(result);
+      return await owner.update(normalizeThreadNotificationSettings(input));
     },
-    [updateSettingsRequest],
+    [owner],
   );
 
   return {
-    settings: settings ?? DEFAULT_SETTINGS,
+    settings: snapshot.value ?? DEFAULT_THREAD_NOTIFICATION_SETTINGS,
     isLoading: isPending,
     updateSettings,
     reloadSettings,
   };
 }
 
-function normalizeThreadNotificationSettings(value: unknown): ThreadNotificationSettings {
-  return isThreadNotificationSettings(value) ? value : DEFAULT_SETTINGS;
-}
-
-function isThreadNotificationSettings(value: unknown): value is ThreadNotificationSettings {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<ThreadNotificationSettings>;
-  if (
-    candidate.turnMode !== "off" &&
-    candidate.turnMode !== "unfocused" &&
-    candidate.turnMode !== "always"
-  ) {
-    return false;
-  }
-  return (
-    typeof candidate.permissionsEnabled === "boolean" &&
-    typeof candidate.questionsEnabled === "boolean"
-  );
-}
-
-export function __resetThreadNotificationSettingsForTests(): void {}
+export const __resetThreadNotificationSettingsForTests = resetMainReturnedSettingsOwnersForTests;

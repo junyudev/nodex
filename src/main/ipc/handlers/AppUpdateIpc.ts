@@ -33,10 +33,10 @@ export const live: Layer.Layer<never, never, AppUpdateRuntime | ElectronIpc | Ma
           catch: (cause) => new AppUpdateIpcError({ operation: "authorize-renderer", cause }),
         });
 
-      yield* ipc.handle("settings:app-updates:get", (event) =>
+      yield* ipc.handleQuery("settings:app-updates:get", (event) =>
         trusted(event, "App update settings").pipe(Effect.andThen(appUpdates.currentSettings)),
       );
-      yield* ipc.handle("settings:app-updates:update", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("settings:app-updates:update", (event, input: unknown) =>
         trusted(event, "App update settings").pipe(
           Effect.andThen(
             Effect.try({
@@ -48,13 +48,13 @@ export const live: Layer.Layer<never, never, AppUpdateRuntime | ElectronIpc | Ma
           Effect.flatMap(appUpdates.updateSettings),
         ),
       );
-      yield* ipc.handle("app:update:status", (event) =>
+      yield* ipc.handleQuery("app:update:status", (event) =>
         trusted(event, "App update status").pipe(Effect.andThen(appUpdates.currentStatus)),
       );
-      yield* ipc.handle("app:update:check", (event) =>
+      yield* ipc.handlePlainCommand("app:update:check", (event) =>
         trusted(event, "App update checks").pipe(Effect.andThen(appUpdates.check)),
       );
-      yield* ipc.handle("app:update:install", (event) =>
+      yield* ipc.handlePlainCommand("app:update:install", (event) =>
         trusted(event, "App update installation").pipe(Effect.andThen(appUpdates.install)),
       );
     }),

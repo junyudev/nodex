@@ -4,8 +4,8 @@ const invokeCalls: unknown[][] = [];
 let closeListener: ((...args: unknown[]) => void) | null = null;
 
 vi.mock("./app-close-flush-deps", () => ({
-  invoke: async (...args: unknown[]) => {
-    invokeCalls.push(args);
+  notifyAppCloseFlushComplete: async (webContentsId: number) => {
+    invokeCalls.push(["app:flush-before-close:done", webContentsId]);
     return undefined;
   },
   readAppCloseBridge: () => ({

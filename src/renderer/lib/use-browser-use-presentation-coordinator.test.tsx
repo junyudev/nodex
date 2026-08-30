@@ -114,6 +114,7 @@ describe("useBrowserUsePresentationCoordinator", () => {
     Object.defineProperty(window, "api", {
       configurable: true,
       value: {
+        invoke: (...args: unknown[]) => mocks.invoke(...args),
         on: (channel: string, listener: (payload: unknown) => void) => {
           mocks.listeners.set(channel, listener);
           return () => mocks.listeners.delete(channel);

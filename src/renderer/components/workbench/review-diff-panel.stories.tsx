@@ -418,7 +418,13 @@ function buildControlledFixtureFiles(mode: ControlledReviewFixtureMode) {
 }
 
 interface ControlledReviewTransport {
-  deps: Pick<ReviewPanelDeps, "gitWorkerClient" | "initialSummaryQuery" | "invoke">;
+  deps: Pick<
+    ReviewPanelDeps,
+    | "gitWorkerClient"
+    | "initialSummaryQuery"
+    | "readWorkspaceFileMetadata"
+    | "readWorkspaceFileText"
+  >;
   files: readonly GitReviewFileSummary[];
   publishComplete: () => void;
   publishTracked: () => void;
@@ -625,7 +631,7 @@ function createControlledReviewTransport(
       };
     }
     return null;
-  }) as NonNullable<ReviewPanelDeps["invoke"]>;
+  }) as (channel: string, payload?: unknown) => Promise<unknown>;
 
   const gitWorkerClient = {
     request: async (input: { method: string; params: unknown }) => {
@@ -684,7 +690,8 @@ function createControlledReviewTransport(
   return {
     deps: {
       initialSummaryQuery: mode !== "live-publication",
-      invoke,
+      readWorkspaceFileMetadata: (input) => invoke("read-file-metadata", input) as never,
+      readWorkspaceFileText: (input) => invoke("read-file", input) as never,
       gitWorkerClient,
     },
     files: fixtureFiles,

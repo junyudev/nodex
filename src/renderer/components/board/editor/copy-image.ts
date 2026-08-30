@@ -1,5 +1,5 @@
 import type { ClipboardWriteImageResult } from "../../../../shared/ipc-api";
-import { invoke } from "@/lib/api";
+import { writeImageToClipboard, type ClipboardImageWritePort } from "@/lib/clipboard";
 
 function isClipboardWriteImageResult(value: unknown): value is ClipboardWriteImageResult {
   if (!value || typeof value !== "object" || !("ok" in value)) {
@@ -14,12 +14,12 @@ function isClipboardWriteImageResult(value: unknown): value is ClipboardWriteIma
   return failedResult.ok === false && typeof failedResult.message === "string";
 }
 
-export async function copyImageToClipboardWithInvoke(
+export async function copyImageToClipboardWithPort(
   source: string,
-  invokeImpl: typeof invoke,
+  writeImage: ClipboardImageWritePort,
 ): Promise<ClipboardWriteImageResult> {
   try {
-    const result = await invokeImpl("clipboard:write-image", { source });
+    const result = await writeImage(source);
     if (isClipboardWriteImageResult(result)) {
       return result;
     }
@@ -36,5 +36,5 @@ export async function copyImageToClipboardWithInvoke(
 }
 
 export function copyImageToClipboard(source: string): Promise<ClipboardWriteImageResult> {
-  return copyImageToClipboardWithInvoke(source, invoke);
+  return copyImageToClipboardWithPort(source, writeImageToClipboard);
 }

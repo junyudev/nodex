@@ -18,6 +18,7 @@ import {
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { DatabaseModule } from "../../database-application/DatabaseModule";
 import { LibraryModule } from "../../library-application/LibraryModule";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./CoreMutationIpc";
@@ -66,14 +67,14 @@ const transfer = {
 it.effect("owns typed Core mutation ingress and binds exact renderer and Project authority", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),
           () => Effect.sync(() => handlers.delete(channel)),
         ).pipe(Effect.asVoid),
       on: () => Effect.die("unused"),
-    } as ElectronIpc["Service"]);
+    });
     const documentMutations: DocumentMutationRequest[] = [];
     const transfers: BlockTransferIntent[] = [];
     const historyReads: unknown[] = [];

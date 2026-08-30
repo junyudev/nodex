@@ -53,9 +53,14 @@ import type { RendererClientWebContents } from "../../codex/renderer-client-runt
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { requireTrustedAppRendererSender as requireTrustedAppRendererSenderWithOrigin } from "../../platform/electron/TrustedRendererSender";
 import { captureMainException } from "../../observability/sentry-main";
-import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import type { IpcApi } from "../../../shared/ipc-api";
+import type {
+  IpcControlChannel,
+  IpcQueryChannel,
+  PlainResultCommandChannel,
+} from "../../../shared/ipc-endpoint-policy";
 import type {
   CodexBackgroundSubagentThreadsHydrateInput,
   CodexSubagentPanelHydrateInput,
@@ -149,14 +154,18 @@ export const live = Layer.effectDiscard(
         },
         catch: (cause) => new CodexIpcError({ operation: "authorize-renderer", cause }),
       });
-    const registerEffectHandle = <Channel extends keyof IpcApi>(
-      channel: Channel,
-      listener: TypedEffectIpcHandler<Channel>,
-    ): void => {
-      registrations.push(
-        ipc.handle(channel, (event, ...args: IpcApi[Channel]["args"]) =>
+    const mappedIpc = mapElectronIpcHandlers(
+      ipc,
+      (channel, listener) =>
+        (event, ...args) =>
           authorize(event).pipe(
+            // oxlint-disable-next-line effecttsgo/any-unknown-in-error-context -- the IPC decorator immediately translates each handler's erased failure into the adapter error.
             Effect.andThen(Effect.suspend(() => listener(event, ...args))),
+            Effect.mapError((cause) =>
+              cause instanceof CodexIpcError
+                ? cause
+                : new CodexIpcError({ operation: channel, cause }),
+            ),
             Effect.tapError((error) =>
               Effect.sync(() =>
                 captureMainException(error.cause, {
@@ -170,20 +179,37 @@ export const live = Layer.effectDiscard(
               ),
             ),
           ),
-        ),
-      );
-    };
-    const registerHandle = <Channel extends keyof IpcApi>(
+    );
+    const registerEffectQuery = <Channel extends IpcQueryChannel>(
       channel: Channel,
-      listener: TypedIpcHandler<Channel>,
-    ): void => {
-      registerEffectHandle(channel, (event, ...args) =>
+      listener: TypedEffectIpcHandler<Channel>,
+    ): void => void registrations.push(mappedIpc.handleQuery(channel, listener));
+    const registerEffectControl = <Channel extends IpcControlChannel>(
+      channel: Channel,
+      listener: TypedEffectIpcHandler<Channel>,
+    ): void => void registrations.push(mappedIpc.handleControl(channel, listener));
+    const registerEffectPlainCommand = <Channel extends PlainResultCommandChannel>(
+      channel: Channel,
+      listener: TypedEffectIpcHandler<Channel>,
+    ): void => void registrations.push(mappedIpc.handlePlainCommand(channel, listener));
+    const toEffectHandler =
+      <Channel extends keyof IpcApi>(
+        channel: Channel,
+        listener: TypedIpcHandler<Channel>,
+      ): TypedEffectIpcHandler<Channel> =>
+      (event, ...args) =>
         Effect.tryPromise({
           try: (signal) => Promise.resolve(listener(event, ...args, signal)),
           catch: (cause) => new CodexIpcError({ operation: channel, cause }),
-        }),
-      );
-    };
+        });
+    const registerQuery = <Channel extends IpcQueryChannel>(
+      channel: Channel,
+      listener: TypedIpcHandler<Channel>,
+    ): void => registerEffectQuery(channel, toEffectHandler(channel, listener));
+    const registerPlainCommand = <Channel extends PlainResultCommandChannel>(
+      channel: Channel,
+      listener: TypedIpcHandler<Channel>,
+    ): void => registerEffectPlainCommand(channel, toEffectHandler(channel, listener));
     const requireTrustedAppRendererSender = (
       event: IpcMainInvokeEvent,
       capabilityName: string,
@@ -217,7 +243,7 @@ export const live = Layer.effectDiscard(
       );
 
     // Codex
-    registerEffectHandle("codex:threads:list", (_, projectId, input) =>
+    registerEffectQuery("codex:threads:list", (_, projectId, input) =>
       threadCatalog
         .listProject(projectId, input)
         .pipe(
@@ -225,7 +251,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:sidebar:snapshot", (_, input) => {
+    registerEffectQuery("codex:sidebar:snapshot", (_, input) => {
       const startedAt = getDevRuntimeMetricStart();
       return sidebarSync
         .sync({
@@ -255,7 +281,7 @@ export const live = Layer.effectDiscard(
         );
     });
 
-    registerEffectHandle("codex:sidebar:sync", (_, input) => {
+    registerEffectControl("codex:sidebar:sync", (_, input) => {
       const startedAt = getDevRuntimeMetricStart();
       return sidebarSync.sync(input).pipe(
         Effect.tap((result) =>
@@ -287,7 +313,7 @@ export const live = Layer.effectDiscard(
       );
     });
 
-    registerEffectHandle("codex:sidebar:thread:move", (_, input) =>
+    registerEffectPlainCommand("codex:sidebar:thread:move", (_, input) =>
       threadCatalog
         .move(input)
         .pipe(
@@ -297,7 +323,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:threads:pinned:list", () =>
+    registerEffectQuery("codex:threads:pinned:list", () =>
       threadCatalog.listPinned.pipe(
         Effect.map((threadIds) => [...threadIds]),
         Effect.mapError(
@@ -306,7 +332,7 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerEffectHandle("codex:threads:pinned:set", (_, threadId: string, input) =>
+    registerEffectPlainCommand("codex:threads:pinned:set", (_, threadId: string, input) =>
       threadCatalog
         .setPinned(threadId, input.pinned)
         .pipe(
@@ -316,7 +342,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:threads:pinned:reorder", (_, orderedThreadIds) =>
+    registerEffectPlainCommand("codex:threads:pinned:reorder", (_, orderedThreadIds) =>
       Effect.try({
         try: () => requireNonBlankStringArray(orderedThreadIds, "Pinned thread order"),
         catch: (cause) => new CodexIpcError({ operation: "codex:threads:pinned:reorder", cause }),
@@ -330,7 +356,7 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerEffectHandle("codex:thread:ensure-session", (_, threadId: string) =>
+    registerEffectPlainCommand("codex:thread:ensure-session", (_, threadId: string) =>
       threadCatalog
         .ensureSession(threadId)
         .pipe(
@@ -340,7 +366,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:threads:palette:list", (_, input) =>
+    registerEffectQuery("codex:threads:palette:list", (_, input) =>
       threadCatalog.listPalette(input).pipe(
         Effect.map((threads) => [...threads]),
         Effect.mapError(
@@ -349,7 +375,7 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerEffectHandle("codex:threads:palette:search", (_, input) =>
+    registerEffectQuery("codex:threads:palette:search", (_, input) =>
       threadCatalog.searchPalette(input).pipe(
         Effect.map((results) => [...results]),
         Effect.mapError(
@@ -358,7 +384,7 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerEffectHandle("codex:thread:summary:get", (_, threadId: string) =>
+    registerEffectQuery("codex:thread:summary:get", (_, threadId: string) =>
       threadCatalog
         .resolve(threadId)
         .pipe(
@@ -374,7 +400,7 @@ export const live = Layer.effectDiscard(
       }
       throw new Error("Invalid agent import source");
     };
-    registerEffectHandle("agent-import:scan", (_, input: AgentImportScanInput) =>
+    registerEffectQuery("agent-import:scan", (_, input: AgentImportScanInput) =>
       Effect.try({
         try: () => parseAgentImportSourceKind(input?.sourceKind),
         catch: (cause) => new CodexIpcError({ operation: "agent-import:scan", cause }),
@@ -387,7 +413,7 @@ export const live = Layer.effectDiscard(
         ),
       ),
     );
-    registerEffectHandle("agent-import:scan-picked-home", (event, input: AgentImportScanInput) =>
+    registerEffectQuery("agent-import:scan-picked-home", (event, input: AgentImportScanInput) =>
       Effect.try({
         try: () => {
           const sourceKind = parseAgentImportSourceKind(input?.sourceKind);
@@ -422,7 +448,7 @@ export const live = Layer.effectDiscard(
         ),
       ),
     );
-    registerEffectHandle("agent-import:apply", (_, input: AgentImportApplyInput) =>
+    registerEffectPlainCommand("agent-import:apply", (_, input: AgentImportApplyInput) =>
       Effect.try({
         try: () => {
           if (
@@ -447,7 +473,7 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerHandle("codex:projectless-thread-cwd", (_, rawInput) => {
+    registerQuery("codex:projectless-thread-cwd", (_, rawInput) => {
       const input = parseCodexProjectlessThreadCwdInput(rawInput);
       return createCodexProjectlessWorkspace({
         prompt: input.prompt,
@@ -456,7 +482,7 @@ export const live = Layer.effectDiscard(
       });
     });
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:start-for-session",
       (event, input: CodexThreadStartForSessionInput) =>
         interruptWhenRendererIsDestroyed(
@@ -476,15 +502,17 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:side-chat:start", (_, input: CodexSideChatStartInput) =>
-      sideChatCommands
-        .start(input)
-        .pipe(
-          Effect.mapError((cause) => new CodexIpcError({ operation: "side-chat:start", cause })),
-        ),
+    registerEffectPlainCommand(
+      "codex:thread:side-chat:start",
+      (_, input: CodexSideChatStartInput) =>
+        sideChatCommands
+          .start(input)
+          .pipe(
+            Effect.mapError((cause) => new CodexIpcError({ operation: "side-chat:start", cause })),
+          ),
     );
 
-    registerEffectHandle("codex:thread:side-chat:discard", (_, threadId: string) =>
+    registerEffectPlainCommand("codex:thread:side-chat:discard", (_, threadId: string) =>
       sideChatCommands
         .discard(threadId)
         .pipe(
@@ -492,20 +520,20 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("worktrees:list", (_, hostId: string) =>
+    registerEffectQuery("worktrees:list", (_, hostId: string) =>
       managedWorktreeCatalog.list(hostId).pipe(
         Effect.map((records) => [...records]),
         Effect.mapError((cause) => new CodexIpcError({ operation: "worktrees:list", cause })),
       ),
     );
-    registerEffectHandle("worktrees:settings:get", () =>
+    registerEffectQuery("worktrees:settings:get", () =>
       managedWorktreeCatalog.settings.pipe(
         Effect.mapError(
           (cause) => new CodexIpcError({ operation: "worktrees:settings:get", cause }),
         ),
       ),
     );
-    registerEffectHandle("worktrees:settings:update", (_, input) =>
+    registerEffectPlainCommand("worktrees:settings:update", (_, input) =>
       managedWorktreeCatalog
         .updateSettings(input)
         .pipe(
@@ -514,7 +542,7 @@ export const live = Layer.effectDiscard(
           ),
         ),
     );
-    registerEffectHandle("worktrees:thread:availability", (_, threadId: string) =>
+    registerEffectQuery("worktrees:thread:availability", (_, threadId: string) =>
       managedWorktreeCatalog
         .inspectThread(threadId)
         .pipe(
@@ -523,7 +551,7 @@ export const live = Layer.effectDiscard(
           ),
         ),
     );
-    registerEffectHandle("worktrees:thread:restore", (_, threadId: string) =>
+    registerEffectPlainCommand("worktrees:thread:restore", (_, threadId: string) =>
       managedWorktreeCatalog
         .restoreThread(threadId)
         .pipe(
@@ -533,7 +561,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("worktrees:delete", (_, hostId: string, worktreePath: string) =>
+    registerEffectPlainCommand("worktrees:delete", (_, hostId: string, worktreePath: string) =>
       managedWorktreeCatalog
         .delete(hostId, worktreePath)
         .pipe(
@@ -541,7 +569,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:snapshot:request", (_, threadId: string) =>
+    registerEffectControl("codex:thread:snapshot:request", (_, threadId: string) =>
       conversationResume
         .snapshot(threadId)
         .pipe(
@@ -551,7 +579,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:resume:request", (event, threadId: string) =>
+    registerEffectControl("codex:thread:resume:request", (event, threadId: string) =>
       Effect.try({
         try: () => {
           const ownerClientId = resolveRendererClientId(event);
@@ -571,7 +599,7 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:thread:fresh-owner:adopt",
       (event, threadId: string, launchId: string) =>
         Effect.try({
@@ -590,7 +618,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread-owner:app-server-request", (event, input) =>
+    registerEffectControl("codex:thread-owner:app-server-request", (event, input) =>
       Effect.try({
         try: () => resolveRendererClientId(event),
         catch: (cause) =>
@@ -608,7 +636,7 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:thread:background-subagents:hydrate",
       (_, input: CodexBackgroundSubagentThreadsHydrateInput) =>
         subagentCatalog.hydrateBackground(input).pipe(
@@ -623,7 +651,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:thread:subagents-panel:hydrate",
       (_, input: CodexSubagentPanelHydrateInput) =>
         subagentCatalog.hydratePanel(input).pipe(
@@ -638,11 +666,11 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:subagent-thread:opened", (_, threadId: string) =>
+    registerEffectControl("codex:subagent-thread:opened", (_, threadId: string) =>
       subagentCatalog.open(threadId),
     );
 
-    registerEffectHandle("codex:thread:resume-buffer:release", (_, threadId: string) =>
+    registerEffectControl("codex:thread:resume-buffer:release", (_, threadId: string) =>
       conversationResume
         .releaseBuffer(threadId)
         .pipe(
@@ -653,7 +681,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:turns:load-older", (_, threadId) =>
+    registerEffectControl("codex:thread:turns:load-older", (_, threadId) =>
       conversationHistory
         .loadPage(threadId)
         .pipe(
@@ -662,7 +690,7 @@ export const live = Layer.effectDiscard(
           ),
         ),
     );
-    registerEffectHandle("codex:thread:turns:load-complete", (_, threadId) =>
+    registerEffectControl("codex:thread:turns:load-complete", (_, threadId) =>
       conversationHistory
         .loadComplete(threadId, false)
         .pipe(
@@ -672,7 +700,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:name:set", (_, threadId: string, name: string) =>
+    registerEffectPlainCommand("codex:thread:name:set", (_, threadId: string, name: string) =>
       threadTitles
         .set({ threadId, name, normalization: "manual" })
         .pipe(
@@ -682,17 +710,19 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:name:set-generated", (_, threadId: string, name: string) =>
-      threadTitles
-        .set({ threadId, name, normalization: "trim" })
-        .pipe(
-          Effect.mapError(
-            (cause) => new CodexIpcError({ operation: "codex:thread:name:set-generated", cause }),
+    registerEffectPlainCommand(
+      "codex:thread:name:set-generated",
+      (_, threadId: string, name: string) =>
+        threadTitles
+          .set({ threadId, name, normalization: "trim" })
+          .pipe(
+            Effect.mapError(
+              (cause) => new CodexIpcError({ operation: "codex:thread:name:set-generated", cause }),
+            ),
           ),
-        ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:title:generate",
       (_, input: { hostId: string; prompt: string; cwd: string | null }) => {
         void input.hostId;
@@ -708,7 +738,7 @@ export const live = Layer.effectDiscard(
       },
     );
 
-    registerEffectHandle("codex:thread:archive", (_, threadId: string) =>
+    registerEffectPlainCommand("codex:thread:archive", (_, threadId: string) =>
       conversationCommands
         .archive(threadId)
         .pipe(
@@ -718,7 +748,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:unarchive", (_, threadId: string) =>
+    registerEffectPlainCommand("codex:thread:unarchive", (_, threadId: string) =>
       conversationCommands
         .unarchive(threadId)
         .pipe(
@@ -728,7 +758,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:collaboration-mode:set",
       (_, threadId: string, collaborationMode: CodexCollaborationModeKind) =>
         threadSettings.update({ threadId, patch: { collaborationMode } }).pipe(
@@ -752,7 +782,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:settings:update",
       (_, threadId: string, patch: CodexConversationThreadSettingsPatch) =>
         threadSettings
@@ -764,7 +794,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:plan-implementation:remove",
       (_, threadId: string, turnId: string) =>
         serverRequestResponses.planImplementation(threadId, turnId).pipe(
@@ -778,7 +808,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:turn:start",
       (_, threadId: string, prompt: string, opts?: CodexTurnStartOptions) =>
         turnCommands
@@ -788,7 +818,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:follow-up:enqueue",
       (_, threadId: string, prompt: string, opts?: CodexTurnStartOptions) =>
         queuedFollowUps
@@ -808,7 +838,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:follow-up:remove",
       (_, threadId: string, followUpId: string) =>
         queuedFollowUps.remove(threadId, followUpId).pipe(
@@ -819,7 +849,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:follow-up:reorder",
       (_, threadId: string, orderedFollowUpIds: string[]) =>
         queuedFollowUps
@@ -831,7 +861,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:follow-up:send-now",
       (_, threadId: string, followUpId: string) =>
         queuedFollowUps
@@ -843,7 +873,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle("codex:thread:compact:start", (_, threadId: string) =>
+    registerEffectPlainCommand("codex:thread:compact:start", (_, threadId: string) =>
       manualCompaction
         .start(threadId)
         .pipe(
@@ -853,7 +883,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:goal:get", (_, threadId: string) =>
+    registerEffectQuery("codex:thread:goal:get", (_, threadId: string) =>
       threadGoals
         .get(threadId)
         .pipe(
@@ -863,17 +893,19 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:goal:set", (_, params: CodexThreadGoalSetActionInput) =>
-      threadGoals
-        .set(params)
-        .pipe(
-          Effect.mapError(
-            (cause) => new CodexIpcError({ operation: "codex:thread:goal:set", cause }),
+    registerEffectPlainCommand(
+      "codex:thread:goal:set",
+      (_, params: CodexThreadGoalSetActionInput) =>
+        threadGoals
+          .set(params)
+          .pipe(
+            Effect.mapError(
+              (cause) => new CodexIpcError({ operation: "codex:thread:goal:set", cause }),
+            ),
           ),
-        ),
     );
 
-    registerEffectHandle("codex:thread:goal:clear", (_, threadId: string) =>
+    registerEffectPlainCommand("codex:thread:goal:clear", (_, threadId: string) =>
       threadGoals
         .clear(threadId)
         .pipe(
@@ -883,7 +915,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:turn:steer", (_, input: CodexSteerTurnInput) =>
+    registerEffectPlainCommand("codex:turn:steer", (_, input: CodexSteerTurnInput) =>
       turnCommands
         .steer(input)
         .pipe(
@@ -891,7 +923,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle("codex:thread:follow-up:resume", (_, threadId: string) =>
+    registerEffectPlainCommand("codex:thread:follow-up:resume", (_, threadId: string) =>
       queuedFollowUps
         .resumeInterrupted(threadId)
         .pipe(
@@ -901,7 +933,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:follow-up:replace",
       (
         _,
@@ -930,7 +962,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:follow-up:resolve-after-fresh-start",
       (_, threadId: string, expectedLedgerRevision: number, resolution: "resume" | "clear") =>
         queuedFollowUps.resolveAfterFreshStart(threadId, expectedLedgerRevision, resolution).pipe(
@@ -944,7 +976,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectQuery(
       "codex:thread:background-processes:list",
       (
         _,
@@ -964,7 +996,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectHandle(
+    registerEffectPlainCommand(
       "codex:thread:background-processes:run-action",
       (event, input: CodexBackgroundProcessRunActionInput) =>
         Effect.try({
@@ -992,7 +1024,7 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerHandle("mcp-app:open-external", async (event, value) => {
+    registerPlainCommand("mcp-app:open-external", async (event, value) => {
       requireTrustedAppRendererSender(event, "MCP external navigation");
       if (value.length > 8_192) throw new Error("MCP external URL is too long");
       const url = new URL(value);
@@ -1002,7 +1034,7 @@ export const live = Layer.effectDiscard(
       await shell.openExternal(url.toString());
     });
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:approval:respond",
       (
         _,
@@ -1030,7 +1062,7 @@ export const live = Layer.effectDiscard(
         }),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:user-input:respond",
       (_, conversationId: string, requestId: CodexProtocolRequestId, answers) =>
         serverRequestResponses
@@ -1042,7 +1074,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:mcp-elicitation:respond",
       (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
         serverRequestResponses
@@ -1054,7 +1086,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:permission-request:respond",
       (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
         serverRequestResponses
@@ -1067,7 +1099,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:option-picker:respond",
       (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
         serverRequestResponses
@@ -1079,7 +1111,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:setup-context-picker:respond",
       (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
         serverRequestResponses
@@ -1092,7 +1124,7 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle(
+    registerEffectControl(
       "codex:setup-codex-step:respond",
       (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
         serverRequestResponses
@@ -1104,14 +1136,16 @@ export const live = Layer.effectDiscard(
           ),
     );
 
-    registerEffectHandle("codex:conversation-unread:set", (_, conversationId, hasUnreadTurn) =>
-      threadReadState
-        .set({ threadId: conversationId, hasUnreadTurn })
-        .pipe(
-          Effect.mapError(
-            (cause) => new CodexIpcError({ operation: "codex:conversation-unread:set", cause }),
+    registerEffectPlainCommand(
+      "codex:conversation-unread:set",
+      (_, conversationId, hasUnreadTurn) =>
+        threadReadState
+          .set({ threadId: conversationId, hasUnreadTurn })
+          .pipe(
+            Effect.mapError(
+              (cause) => new CodexIpcError({ operation: "codex:conversation-unread:set", cause }),
+            ),
           ),
-        ),
     );
 
     yield* Effect.all(registrations, { discard: true });

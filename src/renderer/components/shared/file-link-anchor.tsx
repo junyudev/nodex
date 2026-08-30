@@ -8,7 +8,6 @@ import {
 } from "react";
 import { type FileLinkTarget } from "../../../shared/file-link-openers";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { invoke } from "@/lib/api";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import {
   getFileReferenceOpenWithMenuItems,
@@ -18,6 +17,7 @@ import {
 import { showNativeContextMenu } from "@/lib/native-context-menu";
 import { resolveNfmLinkAction, resolveNfmLinkTooltipLabel } from "@/lib/nfm-link-actions";
 import { cn } from "@/lib/utils";
+import { readWorkspaceFileText } from "@/lib/workspace-file-operations";
 
 export interface FileLinkWorkspaceContextValue {
   cwd?: string | null;
@@ -131,7 +131,7 @@ export async function openFileReferenceContextMenu({
   }
   if (selected === "file-reference:copy-contents") {
     try {
-      const result = await invoke("read-file", {
+      const result = await readWorkspaceFileText({
         hostId: "local",
         path: target.path,
         maxBytes: 2 * 1024 * 1024,

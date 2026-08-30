@@ -40,6 +40,7 @@ import {
 } from "./core-runtime/CoreAuthority";
 import { CoreModules, live as coreModulesLive } from "./core-runtime/CoreModules";
 import { classifyCoreOperationFailure } from "./core-runtime/CoreRuntimeError";
+import { createOperationId } from "./core-runtime/operation-identity";
 import {
   AutomationRoutingIndex,
   live as automationRoutingIndexLive,
@@ -1554,14 +1555,23 @@ describe("Electron native data authority", () => {
         runtime,
         ({ turnAuthority, workspace }) =>
           Effect.gen(function* () {
-            const project = yield* workspace.createProject({
-              name: "Electron Workspace Module",
-              sources: [nodexHome],
+            const { value: project } = yield* workspace.createProject({
+              operationId: createOperationId("integration.project.create"),
+              payload: {
+                projectId: randomUUID(),
+                input: { name: "Electron Workspace Module", sources: [nodexHome] },
+              },
             });
-            const session = yield* workspace.createProjectSession({
-              projectId: project.id,
-              noThreadFallbackTitle: "Electron Session",
-              initialPageIds: [],
+            const { value: session } = yield* workspace.createProjectSession({
+              operationId: createOperationId("integration.session.create"),
+              payload: {
+                sessionId: randomUUID(),
+                input: {
+                  projectId: project.id,
+                  noThreadFallbackTitle: "Electron Session",
+                  initialPageIds: [],
+                },
+              },
             });
             const threadTimestamp = Date.now();
             yield* workspace.upsertProjectSessionThreadLink({

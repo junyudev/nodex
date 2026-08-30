@@ -10,6 +10,7 @@ import {
   DEFAULT_BROWSER_USE_POLICY,
   BrowserUsePolicyModesUpdateSchema,
   BrowserUseOriginRuleUpdateSchema,
+  MAX_BROWSER_USE_POLICY_ORIGINS,
   normalizeBrowserUsePolicyOrigin,
   type BrowserUseOriginRuleUpdate,
   type BrowserUsePolicyModesUpdate,
@@ -18,7 +19,6 @@ import {
 } from "../../shared/browser-use-policy";
 
 const MAX_POLICY_FILE_BYTES = 256 * 1024;
-const MAX_ORIGIN_RULES = 1_000;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -46,7 +46,7 @@ const readStringArray = (value: unknown): string[] => {
     } catch {
       // Invalid rules disappear on the next successful user mutation.
     }
-    if (result.length >= MAX_ORIGIN_RULES) break;
+    if (result.length >= MAX_BROWSER_USE_POLICY_ORIGINS) break;
   }
   return result;
 };
@@ -303,7 +303,7 @@ export const makeBrowserUsePolicyRuntime = (
                   const oppositeKind = update.kind === "allowed" ? "denied" : "allowed";
                   table[update.kind] = selected.includes(origin)
                     ? selected
-                    : [...selected, origin].slice(0, MAX_ORIGIN_RULES);
+                    : [...selected, origin].slice(0, MAX_BROWSER_USE_POLICY_ORIGINS);
                   table[oppositeKind] = readStringArray(table[oppositeKind]).filter(
                     (entry) => entry !== origin,
                   );

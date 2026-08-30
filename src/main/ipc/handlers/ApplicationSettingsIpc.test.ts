@@ -11,6 +11,7 @@ import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { StoreAdministrationSchedulerRuntime } from "../../host-runtime/StoreAdministrationSchedulerRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import {
@@ -32,14 +33,14 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       environment: {},
       settingsPath: path.join(settingsRoot, "config.toml"),
     });
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),
           () => Effect.sync(() => handlers.delete(channel)),
         ).pipe(Effect.asVoid),
       on: () => Effect.void,
-    } as ElectronIpc["Service"]);
+    });
     const menus = ApplicationMenuRuntime.of({ refresh: () => undefined });
     let keymapAdmissionsInFlight = 0;
     let peakKeymapAdmissions = 0;

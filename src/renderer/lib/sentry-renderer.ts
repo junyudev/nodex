@@ -1,5 +1,5 @@
 import type { DiagnosticsSettings } from "./types";
-import { invoke } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import { scrubSentryBreadcrumb, scrubSentryEvent } from "../../shared/diagnostics/sentry-scrub";
 import { isDiagnosticsSettings } from "../../shared/diagnostics/diagnostics-settings";
 

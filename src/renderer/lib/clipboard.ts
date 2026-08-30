@@ -1,3 +1,19 @@
+import type { ClipboardWriteImageResult } from "../../shared/ipc-api";
+import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
+
+const writeClipboardImageCommand = defineRendererCommand({
+  key: "clipboard.image.write",
+  channel: "clipboard:write-image",
+  authority: "external",
+  owner: "Clipboard",
+  protocol: { kind: "returned_value" },
+});
+
+export type ClipboardImageWritePort = (source: string) => Promise<ClipboardWriteImageResult>;
+
+export const writeImageToClipboard: ClipboardImageWritePort = async (source) =>
+  await invokePlainCommand(writeClipboardImageCommand, { source });
+
 export async function writeTextToClipboard(text: string): Promise<boolean> {
   if (typeof navigator !== "undefined" && typeof navigator.clipboard?.writeText === "function") {
     try {

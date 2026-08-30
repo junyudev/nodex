@@ -26,6 +26,7 @@ import {
   removePlanImplementationRequestCalls,
   removeQueuedFollowUpCalls,
   renderWorkbench,
+  rendererCommandPayload,
   reorderQueuedFollowUpsCalls,
   requestThreadStreamSnapshotCalls,
   sendQueuedFollowUpNowCalls,
@@ -573,7 +574,9 @@ describe("workbench session shell / automations-conversation", () => {
     });
     expect(
       invokeCalls.some(
-        (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === "alpha",
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "alpha",
       ),
     ).toBe(true);
     expect(startThreadForSessionCalls.length).toBe(0);
@@ -715,8 +718,17 @@ describe("workbench session shell / automations-conversation", () => {
           collaborationMode?: string;
         }
       | undefined;
+    const createSessionPayload = rendererCommandPayload(
+      invokeCalls.find(
+        (call) =>
+          call[0] === "project-sessions:create" ||
+          call[0] === "project-sessions:ensure-default-draft",
+      ),
+    );
+    const createSessionId =
+      createSessionPayload?.sessionId ?? createSessionPayload?.candidateSessionId;
     expect(startInput?.projectId).toBe("alpha");
-    expect(startInput?.sessionId).toBe("session:alpha:created");
+    expect(startInput?.sessionId).toBe(createSessionId);
     expect(startInput?.runInTarget).toBe("localProject");
     expect(startInput?.collaborationMode).toBe("default");
     expect(startInput?.prompt?.includes('mode: "suggested_create"')).toBe(true);
@@ -1582,20 +1594,29 @@ describe("workbench session shell / automations-conversation", () => {
 
     expect(
       invokeCalls.some(
-        (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === "beta",
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "beta",
       ),
     ).toBe(true);
     expect(startThreadForSessionCalls.length).toBe(1);
+    const betaSessionId = rendererCommandPayload(
+      invokeCalls.find(
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "beta",
+      ),
+    )?.candidateSessionId;
     expect(JSON.stringify(startThreadForSessionCalls[0])).toBe(
       JSON.stringify({
         projectId: "beta",
-        sessionId: "session:beta:created",
+        sessionId: betaSessionId,
         prompt: "Start from session",
         runInTarget: "localProject",
         runInEnvironmentPath: null,
         collaborationMode: "default",
         browserUsePresentationOrigin: {
-          browserConversationId: "session:beta:created",
+          browserConversationId: betaSessionId,
           browserViewScopeId: "window-session:test",
         },
       }),

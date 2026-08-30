@@ -96,7 +96,7 @@ export const live: Layer.Layer<
         discard: true,
       }),
     );
-    yield* ipc.handle("local-commit-audience:subscribe", (event, address: DeliveryAddress) =>
+    yield* ipc.handleControl("local-commit-audience:subscribe", (event, address: DeliveryAddress) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
@@ -114,11 +114,17 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("local-commit-audience:unsubscribe", (event, address: DeliveryAddress) =>
-      authorize(event).pipe(Effect.andThen(unsubscribe(event.sender.id, address))),
+    yield* ipc.handleControl(
+      "local-commit-audience:unsubscribe",
+      (event, address: DeliveryAddress) =>
+        authorize(event).pipe(Effect.andThen(unsubscribe(event.sender.id, address))),
     );
-    yield* ipc.handle("recipient-delivery:admit", (event, result: RecipientAdmissionResult) =>
-      authorize(event).pipe(Effect.andThen(delivery.admitRecipientResult(event.sender.id, result))),
+    yield* ipc.handleControl(
+      "recipient-delivery:admit",
+      (event, result: RecipientAdmissionResult) =>
+        authorize(event).pipe(
+          Effect.andThen(delivery.admitRecipientResult(event.sender.id, result)),
+        ),
     );
   }),
 );

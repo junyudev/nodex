@@ -1,5 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
-import { invoke, readDatabaseViewWindow } from "./api";
+import { readDatabaseViewWindow } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import { queryKeys } from "./query-keys";
 import { preferNewestProjectSessionSummaryWindow } from "./project-session-summary-window";
 import type {
@@ -23,8 +24,6 @@ import type {
   ProjectWindow,
   ProjectSession,
   ProjectSessionSummaryWindow,
-  ThreadNotificationSettings,
-  WindowRestoreSettings,
   WorktreeEnvironmentConfigRecord,
   WorktreeEnvironmentOption,
   WorktreeEnvironmentSettingsSnapshot,
@@ -51,6 +50,7 @@ import {
   resourceAuthorityQueryMeta,
 } from "./resource-authority-query-cache";
 import { normalizePageChatPageIds, readPageChatActivitySummaryBatches } from "./page-chat-queries";
+import { readPageChatActivitySummaries, readPageChatWindow } from "./page-chat-runtime";
 
 const MCP_CATALOG_STALE_TIME_MS = 5 * 60_000;
 
@@ -104,8 +104,7 @@ export function pageChatActivitySummariesQueryOptions(
     queryFn: (): Promise<PageChatActivitySummaryResult> =>
       readPageChatActivitySummaryBatches(
         { pageAccessProjectId, pageIds: normalizedPageIds },
-        (input) =>
-          invoke("page-chats:activity-summaries", input) as Promise<PageChatActivitySummaryResult>,
+        readPageChatActivitySummaries,
       ),
     enabled: pageAccessProjectId.trim().length > 0 && normalizedPageIds.length > 0,
     staleTime: 30_000,
@@ -121,13 +120,13 @@ export function pageChatWindowQueryOptions(input: Omit<PageChatWindowInput, "aft
     queryKey: queryKeys.pageChats.detail(pageAccessProjectId, pageId, includeArchived, first),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }): Promise<PageChatWindow> =>
-      invoke("page-chats:list", {
+      readPageChatWindow({
         pageAccessProjectId,
         pageId,
         includeArchived,
         after: pageParam,
         first,
-      }) as Promise<PageChatWindow>,
+      }),
     getNextPageParam: (window) => window.nextCursor ?? undefined,
     staleTime: 30_000,
   });
@@ -167,21 +166,6 @@ export function projectSessionDetailQueryOptions(sessionId: string) {
     queryKey: queryKeys.projectSessions.detail(sessionId),
     queryFn: () => invoke("project-sessions:get", sessionId) as Promise<ProjectSession | null>,
     staleTime: 30_000,
-  });
-}
-
-export function windowRestoreSettingsQueryOptions() {
-  return queryOptions({
-    queryKey: queryKeys.settings.windowRestore(),
-    queryFn: () => invoke("settings:window-restore:get") as Promise<WindowRestoreSettings>,
-  });
-}
-
-export function threadNotificationSettingsQueryOptions() {
-  return queryOptions({
-    queryKey: queryKeys.settings.threadNotifications(),
-    queryFn: () =>
-      invoke("settings:thread-notifications:get") as Promise<ThreadNotificationSettings>,
   });
 }
 

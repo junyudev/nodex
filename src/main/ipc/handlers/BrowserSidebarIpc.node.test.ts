@@ -19,6 +19,7 @@ import { makeBrowserPageEmulationRuntimeUnsafe } from "../../browser/browser-pag
 import { makeBrowserEarlyPageRestoreRuntime } from "../../browser/BrowserEarlyPageRestoreRuntime";
 import { makeBrowserWebContentsListenerRuntime } from "../../browser/BrowserWebContentsListenerRuntime";
 import { BrowserPresentationRuntime } from "../../host-runtime/BrowserPresentationRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
 import { browserElectronPlatform } from "../../platform/electron/BrowserElectronPlatform";
@@ -37,7 +38,7 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const handlers = new Map<string, Handler>();
-      const ipc = ElectronIpc.of({
+      const ipc = makeTestElectronIpc({
         handle: (channel, handler) =>
           Effect.acquireRelease(
             Effect.sync(() => handlers.set(channel, handler as Handler)),

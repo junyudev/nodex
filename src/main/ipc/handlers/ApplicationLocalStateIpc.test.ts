@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./ApplicationLocalStateIpc";
@@ -11,7 +12,7 @@ import { live } from "./ApplicationLocalStateIpc";
 it.effect("owns diagnostics and persisted atom ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -20,7 +21,7 @@ it.effect("owns diagnostics and persisted atom ingress with the Main Scope", () 
           () => Effect.sync(() => channels.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
       live.pipe(

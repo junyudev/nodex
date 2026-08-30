@@ -27,7 +27,7 @@ import { NodexSettingsPageSurface, NodexSettingsSection } from "@/components/ui/
 import { toast } from "@/components/ui/toast";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import type { Project } from "../../lib/types";
-import { invoke } from "../../lib/api";
+import { openFileLink } from "../../lib/file-system-operations";
 import {
   doesCodexHookNeedReview,
   groupCodexHooksListEntries,
@@ -374,11 +374,9 @@ function HookRow({
                 aria-label="Open config file"
                 className="absolute top-1/2 right-6 inline-flex size-5 -translate-y-1/2 cursor-interaction items-center justify-center rounded-md text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
                 onClick={() => {
-                  void invoke(
-                    "shell:open-file-link",
-                    { path: hook.sourcePath },
-                    "fileManager",
-                  ).catch(() => toast.danger("Could not open config file"));
+                  void openFileLink({ path: hook.sourcePath }, "fileManager").catch(() =>
+                    toast.danger("Could not open config file"),
+                  );
                 }}
               >
                 <FileIcon className="icon-xxs" aria-hidden="true" />

@@ -11,7 +11,6 @@ import type {
 import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
 import {
-  invoke,
   subscribeCodexAutomationRunsUpdates,
   subscribeCodexHostMessages,
   subscribeCodexPendingWorktreesChanged,
@@ -19,6 +18,13 @@ import {
   subscribeProjectSessionChanges,
   subscribeWindowFocusChanges,
 } from "./api";
+import {
+  readCodexSidebarSnapshot,
+  reorderCodexSidebarPinnedThreads,
+  setCodexSidebarThreadPinned,
+  synchronizeCodexSidebar,
+} from "./codex-sidebar-runtime";
+import { listPendingWorktrees } from "./pending-worktree-runtime";
 import { queryKeys } from "./query-keys";
 import {
   buildSidebarThreadSyncModel,
@@ -85,7 +91,7 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
 
   const query = useQuery({
     queryKey: queryKeys.codexSidebar.snapshot(),
-    queryFn: () => invoke("codex:sidebar:snapshot", { refresh: false }),
+    queryFn: readCodexSidebarSnapshot,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
@@ -128,7 +134,7 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
       policy: CodexSidebarRefreshPolicy,
       reason: CodexSidebarRefreshReason,
     ): Promise<CodexSidebarSyncResult> => {
-      return await invoke("codex:sidebar:sync", { policy, reason });
+      return await synchronizeCodexSidebar(policy, reason);
     },
     [],
   );
@@ -199,7 +205,7 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
 
   useEffect(() => {
     let disposed = false;
-    void invoke("codex:pending-worktrees:list")
+    void listPendingWorktrees()
       .then((entries) => {
         if (!disposed) setPendingWorktrees(Array.isArray(entries) ? entries : []);
       })
@@ -282,7 +288,7 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
 
   const setPinned = useCallback(
     async (threadId: string, pinned: boolean) => {
-      const refreshed = await invoke("codex:threads:pinned:set", threadId, { pinned });
+      const refreshed = await setCodexSidebarThreadPinned(threadId, pinned);
       applySnapshot(refreshed);
       return refreshed;
     },
@@ -291,7 +297,7 @@ export function useSidebarThreadSyncModel(input: { projects: readonly Project[] 
 
   const reorderPinned = useCallback(
     async (orderedThreadIds: readonly string[]) => {
-      const refreshed = await invoke("codex:threads:pinned:reorder", [...orderedThreadIds]);
+      const refreshed = await reorderCodexSidebarPinnedThreads(orderedThreadIds);
       applySnapshot(refreshed);
       return refreshed;
     },

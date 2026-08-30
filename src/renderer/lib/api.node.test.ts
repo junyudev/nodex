@@ -8,13 +8,13 @@ function restoreWindow(originalWindowDescriptor: PropertyDescriptor | undefined)
 }
 
 describe("renderer api transport", () => {
-  test("uses the Electron bridge even when window.api appears after import", async () => {
+  test("uses the Electron bridge for typed commands even when window.api appears after import", async () => {
     const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
     delete (globalThis as { window?: unknown }).window;
 
     try {
       vi.resetModules();
-      const { invoke } = await import("./api");
+      const { prepareOwnedBlockDocument } = await import("./api");
       const invokeCalls: unknown[][] = [];
 
       Object.defineProperty(globalThis, "window", {
@@ -30,10 +30,12 @@ describe("renderer api transport", () => {
         },
       });
 
-      const result = await invoke("window:new");
+      const result = await prepareOwnedBlockDocument("project-1", "page-1");
 
       expect(result).toBe("ok");
-      expect(JSON.stringify(invokeCalls)).toBe(JSON.stringify([["window:new"]]));
+      expect(JSON.stringify(invokeCalls)).toBe(
+        JSON.stringify([["block-document:owned:prepare", "project-1", "page-1"]]),
+      );
     } finally {
       restoreWindow(originalWindowDescriptor);
     }

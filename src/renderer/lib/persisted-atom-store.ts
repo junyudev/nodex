@@ -1,5 +1,9 @@
-import { invoke } from "./api";
 import { resolveRendererTransport } from "./renderer-transport";
+import {
+  defineRendererCommand,
+  invokeRendererQuery,
+  invokeRevisionedCommand,
+} from "./renderer-command";
 import type {
   PersistedAtomEvent,
   PersistedAtomMutation,
@@ -8,6 +12,14 @@ import type {
 
 type PersistedAtomListener = (value: unknown) => void;
 type PersistedAtomEventListener = (event: PersistedAtomEvent) => void;
+
+const updatePersistedAtomCommand = defineRendererCommand({
+  key: "persisted_atom.update",
+  channel: "persisted-atom:update",
+  authority: "main",
+  owner: "PersistedAtomStore",
+  protocol: { kind: "revision_fenced_local" },
+});
 
 export interface PersistedAtomTransport {
   readSnapshot(): Promise<PersistedAtomSnapshot>;
@@ -76,7 +88,7 @@ async function readOrderedSnapshot(): Promise<PersistedAtomSnapshot> {
   ensureElectronSubscription();
   if (snapshot !== null) return snapshot;
   if (!syncPromise) {
-    syncPromise = invoke("persisted-atom:sync-request")
+    syncPromise = invokeRendererQuery("persisted-atom:sync-request")
       .then(applySnapshot)
       .finally(() => {
         syncPromise = null;
@@ -104,7 +116,7 @@ async function mutateOrdered(mutation: PersistedAtomMutation): Promise<Persisted
   }
 
   ensureElectronSubscription();
-  const event = await invoke("persisted-atom:update", normalizedMutation);
+  const event = await invokeRevisionedCommand(updatePersistedAtomCommand, normalizedMutation);
   applyEvent(event);
   return event;
 }

@@ -2,7 +2,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
-import type { IpcApi } from "../../../shared/ipc-api";
 import { parseAssetSource } from "../../../shared/assets";
 import { MainConfig } from "../../app/MainConfig";
 import { readClipboardPastePayload } from "../../clipboard-paste-inspector";
@@ -23,11 +22,6 @@ export class ManagedMediaIpcError extends Schema.TaggedError<ManagedMediaIpcErro
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
 
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
-
 export const live: Layer.Layer<
   never,
   never,
@@ -40,8 +34,7 @@ export const live: Layer.Layer<
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handleControl, handlePlainCommand, handleQuery } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -58,7 +51,7 @@ export const live: Layer.Layer<
         catch: (cause) => new ManagedMediaIpcError({ operation, cause }),
       });
 
-    yield* handle("asset:resolve-path", (event, source) =>
+    yield* handleQuery("asset:resolve-path", (event, source) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.sync(() => {
@@ -73,27 +66,27 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("asset:image:save", (event, input) =>
+    yield* handlePlainCommand("asset:image:save", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(run("save-image", () => assets.saveUploadedImage(input))),
       ),
     );
-    yield* handle("asset:canvas-image:materialize", (event, input) =>
+    yield* handlePlainCommand("asset:canvas-image:materialize", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(run("materialize-canvas-image", () => assets.materializeCanvasImage(input))),
       ),
     );
-    yield* handle("asset:image:read", (event, source) =>
+    yield* handleQuery("asset:image:read", (event, source) =>
       authorize(event).pipe(
         Effect.andThen(run("read-image", () => assets.readManagedAssetImage(source))),
       ),
     );
-    yield* handle("asset:resource:save", (event, input) =>
+    yield* handlePlainCommand("asset:resource:save", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(run("save-resource", () => assets.saveUploadedResource(input))),
       ),
     );
-    yield* handle("asset:resource:materialize", (event, path) =>
+    yield* handlePlainCommand("asset:resource:materialize", (event, path) =>
       authorize(event).pipe(
         Effect.andThen(
           run("materialize-resource", () => {
@@ -103,12 +96,12 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("asset:preview:read", (event, input) =>
+    yield* handleQuery("asset:preview:read", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(run("read-preview", () => assets.readManagedAssetPreview(input))),
       ),
     );
-    yield* handle("clipboard:write-image", (event, input) =>
+    yield* handlePlainCommand("clipboard:write-image", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(
           typeof input?.source === "string"
@@ -121,7 +114,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("clipboard:write-claimed-presentation", (event, input) =>
+    yield* handleControl("clipboard:write-claimed-presentation", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(
           run("write-claimed-clipboard-presentation", () =>
@@ -130,12 +123,12 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("clipboard:read-paste", (event) =>
+    yield* handleQuery("clipboard:read-paste", (event) =>
       authorize(event).pipe(
         Effect.andThen(run("read-clipboard-paste", () => readClipboardPastePayload(clipboard))),
       ),
     );
-    yield* handle("composer:pick-files", (event, input) =>
+    yield* handlePlainCommand("composer:pick-files", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(
           run("pick-composer-files", async () => {

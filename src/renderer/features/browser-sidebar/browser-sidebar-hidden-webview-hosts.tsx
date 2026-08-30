@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   BrowserSidebarBrowserUseCaptureSurfaceEvent,
   BrowserSidebarBrowserUseViewportEvent,
-  BrowserSidebarCommandResult,
   BrowserSidebarDestroyWebviewRequest,
   BrowserSidebarTabSnapshot,
   BrowserSidebarThemeVariant,
@@ -15,7 +14,11 @@ import {
 } from "../../../shared/browser-sidebar";
 import { isBlankBrowserUrl, normalizeBrowserNavigationUrl } from "../../../shared/browser-url";
 import type { WorkbenchTabProjection } from "@/lib/types";
-import { invoke } from "@/lib/api";
+import {
+  invokeBrowserSidebarCommand,
+  notifyBrowserWebviewDestroyed,
+  notifyBrowserWebviewHostCreated,
+} from "./browser-sidebar-commands";
 import { useTheme } from "@/lib/use-theme";
 import { browserSidebarRendererWebviewManager } from "./browser-sidebar-webview-manager";
 import { useBrowserSidebarRendererState } from "./browser-sidebar-renderer-state-store";
@@ -87,7 +90,7 @@ export function BrowserSidebarHiddenWebviewHosts({
         const request = payload as BrowserSidebarDestroyWebviewRequest | undefined;
         if (!request) return;
         browserSidebarRendererWebviewManager.destroyWebviewAtHostRequest(request, (event) => {
-          void invoke("browser-sidebar-webview-destroyed", event);
+          void notifyBrowserWebviewDestroyed(event);
         });
       },
     );
@@ -219,13 +222,13 @@ function HiddenBrowserWebviewHost({
     if (!window.api) return;
     let cancelled = false;
     void (async () => {
-      const rendererResult = await (invoke("browser-sidebar-command", {
+      const rendererResult = await invokeBrowserSidebarCommand({
         type: "register-renderer-session",
         browserViewScopeId: descriptor.browserViewScopeId,
         rendererInstanceId: browserSidebarRendererWebviewManager.getRendererInstanceId(),
-      }) as Promise<BrowserSidebarCommandResult>);
+      });
       if (!rendererResult.ok || cancelled) return;
-      const result = await (invoke("browser-sidebar-command", {
+      const result = await invokeBrowserSidebarCommand({
         type: "register-tab",
         browserConversationId: descriptor.browserConversationId,
         browserViewScopeId: descriptor.browserViewScopeId,
@@ -237,7 +240,7 @@ function HiddenBrowserWebviewHost({
         faviconUrl: descriptor.faviconUrl,
         deviceToolbarVisible: descriptor.deviceToolbarVisible,
         deviceToolbarState: descriptor.deviceToolbarState,
-      }) as Promise<BrowserSidebarCommandResult>);
+      });
       if (result.ok && !cancelled) setRegistered(true);
     })();
     return () => {
@@ -295,10 +298,10 @@ function HiddenBrowserWebviewHost({
         isVisible: false,
         shouldPaint: descriptor.hostKind === "retained",
         onHostCreated: (event: BrowserSidebarWebviewHostCreated) => {
-          void invoke("browser-sidebar-webview-host-created", event);
+          void notifyBrowserWebviewHostCreated(event);
         },
       });
-      void (invoke("browser-sidebar-command", {
+      void invokeBrowserSidebarCommand({
         type: "sync-host",
         browserConversationId: descriptor.browserConversationId,
         browserViewScopeId: descriptor.browserViewScopeId,
@@ -310,24 +313,22 @@ function HiddenBrowserWebviewHost({
         presented: false,
         themeVariant: themeVariantRef.current,
         visible: false,
-      }) as Promise<BrowserSidebarCommandResult>);
+      });
     };
     syncHostPresentationRef.current = syncHostPresentation;
-    void (
-      invoke("browser-sidebar-command", {
-        type: "register-host",
-        browserConversationId: descriptor.browserConversationId,
-        browserViewScopeId: descriptor.browserViewScopeId,
-        browserTabId: descriptor.browserTabId,
-        browserStorageId: descriptor.browserStorageId,
-        rendererInstanceId,
-        hostGeneration,
-        mountGeneration,
-        hostKind: descriptor.hostKind,
-        pagePersistence: descriptor.hostKind === "retained" ? "browser-use" : "durable",
-        themeVariant: themeVariantRef.current,
-      }) as Promise<BrowserSidebarCommandResult>
-    ).then((result) => {
+    void invokeBrowserSidebarCommand({
+      type: "register-host",
+      browserConversationId: descriptor.browserConversationId,
+      browserViewScopeId: descriptor.browserViewScopeId,
+      browserTabId: descriptor.browserTabId,
+      browserStorageId: descriptor.browserStorageId,
+      rendererInstanceId,
+      hostGeneration,
+      mountGeneration,
+      hostKind: descriptor.hostKind,
+      pagePersistence: descriptor.hostKind === "retained" ? "browser-use" : "durable",
+      themeVariant: themeVariantRef.current,
+    }).then((result) => {
       if (!result.ok || disposed) return;
       started = true;
       syncHostPresentation();
@@ -339,7 +340,7 @@ function HiddenBrowserWebviewHost({
         syncHostPresentationRef.current = null;
       }
       if (!started) return;
-      void (invoke("browser-sidebar-command", {
+      void invokeBrowserSidebarCommand({
         type: "sync-host",
         browserConversationId: descriptor.browserConversationId,
         browserViewScopeId: descriptor.browserViewScopeId,
@@ -351,7 +352,7 @@ function HiddenBrowserWebviewHost({
         presented: false,
         themeVariant: themeVariantRef.current,
         visible: false,
-      }) as Promise<BrowserSidebarCommandResult>);
+      });
       browserSidebarRendererWebviewManager.detachWebview(
         {
           browserConversationId: descriptor.browserConversationId,

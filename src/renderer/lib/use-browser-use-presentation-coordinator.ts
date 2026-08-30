@@ -13,7 +13,7 @@ import {
   consumeBrowserUsePresentationRequest,
   useBrowserSidebarRendererState,
 } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
-import { invoke } from "./api";
+import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import {
   buildBrowserUseWorkbenchTabCreateInput,
   findWorkbenchBrowserTabByRuntimeId,
@@ -28,6 +28,14 @@ import type { WorkbenchPanelController } from "./use-workbench-panel-controller"
 import type { WorkbenchSessionCatalog } from "./use-workbench-session-catalog";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
 import type { PanelId, WorkbenchTabCreateInput, WorkbenchTabProjection } from "./types";
+
+const resolveBrowserUsePresentationCommand = defineRendererCommand({
+  key: "browser_use.resolve_presentation",
+  channel: "browser-sidebar-command",
+  authority: "main",
+  owner: "BrowserUsePresentationCoordinator",
+  protocol: { kind: "returned_value" },
+});
 interface BrowserUsePresentationCoordinatorInput {
   readonly activeSession: WorkbenchSessionRenderProjection | null;
   readonly catalog: Pick<
@@ -76,7 +84,7 @@ export function useBrowserUsePresentationCoordinator({
       consumeBrowserUsePresentationRequest(request.requestId);
       pendingRequestsRef.current.delete(request.requestId);
       resolvingRequestsRef.current.delete(request.requestId);
-      await invoke("browser-sidebar-command", {
+      await invokePlainCommand(resolveBrowserUsePresentationCommand, {
         type: "browser-use-resolve-presentation",
         result: {
           browserConversationId: request.browserConversationId,

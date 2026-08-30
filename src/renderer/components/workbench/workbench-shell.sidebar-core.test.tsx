@@ -27,6 +27,7 @@ import {
   mockInvokeImpl,
   renderWorkbench,
   requestThreadStreamSnapshotCalls,
+  rendererCommandPayload,
   selectSidebarSession,
   setInvokeCalls,
   setMockInvokeImpl,
@@ -709,7 +710,8 @@ describe("workbench session shell / sidebar-core", () => {
     expect(
       invokeCalls.some(
         (call) =>
-          call[0] === "project-sessions:archive" && call[1] === "session:alpha:archive-target",
+          call[0] === "project-sessions:archive" &&
+          rendererCommandPayload(call)?.sessionId === "session:alpha:archive-target",
       ),
     ).toBe(true);
   });
@@ -1068,8 +1070,11 @@ describe("workbench session shell / sidebar-core", () => {
     await settleAsyncRender();
 
     const renameCall = invokeCalls.find((call) => call[0] === "project-sessions:rename");
-    expect(renameCall?.[1]).toBe("session:alpha:rename-target");
-    expect((renameCall?.[2] as { title?: string } | undefined)?.title).toBe("  hello   world  ");
+    const renamePayload = rendererCommandPayload(renameCall);
+    expect(renamePayload?.sessionId).toBe("session:alpha:rename-target");
+    expect((renamePayload?.input as { title?: string } | undefined)?.title).toBe(
+      "  hello   world  ",
+    );
     expect(
       getThreadRow(screen.container, "hello world").getAttribute(
         "data-app-action-sidebar-thread-title",

@@ -2,7 +2,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
-import type { IpcApi } from "../../../shared/ipc-api";
 import type {
   CodexAutomationRunsUpdatedEvent,
   PageOccurrenceActionInput,
@@ -16,7 +15,7 @@ import { ConversationCommands } from "../../codex-application/ConversationComman
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ScheduledAutomationRuntime } from "../../host-runtime/ScheduledAutomationRuntime";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
-import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
@@ -24,11 +23,6 @@ export class AutomationIpcError extends Schema.TaggedError<AutomationIpcError>()
   "AutomationIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 const requireOccurrence = (input: PageOccurrenceActionInput): void => {
   if (
@@ -111,8 +105,6 @@ export const live: Layer.Layer<
     const scheduledAutomations = yield* ScheduledAutomationRuntime;
     const windows = yield* WindowRuntime;
     const rendererClients = yield* RendererClientRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -126,18 +118,14 @@ export const live: Layer.Layer<
       });
     const run = <A, E>(operation: string, task: Effect.Effect<A, E>) =>
       task.pipe(Effect.mapError((cause) => new AutomationIpcError({ operation, cause })));
-    const invoke = <Channel extends keyof IpcApi, E>(
-      channel: Channel,
-      task: (
-        event: IpcMainInvokeEvent,
-        ...args: IpcApi[Channel]["args"]
-      ) => Effect.Effect<IpcApi[Channel]["result"], E>,
-    ) =>
-      handle(channel, (event, ...args) =>
-        authorize(event).pipe(Effect.andThen(run(channel, task(event, ...args)))),
-      );
+    const { handleControl, handlePlainCommand, handleQuery } = mapElectronIpcHandlers(
+      ipc,
+      (channel, handler) =>
+        (event, ...args) =>
+          authorize(event).pipe(Effect.andThen(run(channel, handler(event, ...args)))),
+    );
 
-    yield* invoke("calendar:occurrences", (_, projectId, start, end, query, after) =>
+    yield* handleQuery("calendar:occurrences", (_, projectId, start, end, query, after) =>
       automation.occurrences
         .list({ projectId, windowStart: start, windowEnd: end, searchQuery: query, after })
         .pipe(
@@ -147,15 +135,15 @@ export const live: Layer.Layer<
           })),
         ),
     );
-    yield* invoke("page:occurrence:complete", (_, projectId, input) => {
+    yield* handlePlainCommand("page:occurrence:complete", (_, projectId, input) => {
       requireCompleteOccurrence(input);
       return automation.occurrences.complete(projectId, input);
     });
-    yield* invoke("page:occurrence:skip", (_, projectId, input) => {
+    yield* handlePlainCommand("page:occurrence:skip", (_, projectId, input) => {
       requireOccurrence(input);
       return automation.occurrences.skip(projectId, input);
     });
-    yield* invoke("page:occurrence:update", (_, projectId, input) => {
+    yield* handlePlainCommand("page:occurrence:update", (_, projectId, input) => {
       requireUpdateOccurrence(input);
       return automation.occurrences.update(projectId, input);
     });
@@ -186,17 +174,17 @@ export const live: Layer.Layer<
         ),
       );
 
-    yield* invoke("codex:scheduled-automations:list", () =>
+    yield* handleQuery("codex:scheduled-automations:list", () =>
       automation.definitions.list().pipe(Effect.map((items) => ({ items: [...items] }))),
     );
-    yield* invoke("codex:scheduled-automations:create", (_, input) =>
+    yield* handlePlainCommand("codex:scheduled-automations:create", (_, input) =>
       execution.prepareDefinition(input).pipe(
         Effect.flatMap(automation.definitions.create),
         Effect.tap((item) => broadcastDefinitionChanged(item.id, item.targetThreadId, "upsert")),
         Effect.map((item) => ({ item })),
       ),
     );
-    yield* invoke("codex:scheduled-automations:update", (_, input) =>
+    yield* handlePlainCommand("codex:scheduled-automations:update", (_, input) =>
       automation.definitions.get(input.id).pipe(
         Effect.flatMap((current) => execution.prepareDefinition(input, current)),
         Effect.flatMap(automation.definitions.update),
@@ -214,7 +202,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* invoke("codex:scheduled-automations:delete", (_, input) =>
+    yield* handlePlainCommand("codex:scheduled-automations:delete", (_, input) =>
       automation.definitions.delete(input.id).pipe(
         Effect.tap((result) =>
           result.success
@@ -244,25 +232,27 @@ export const live: Layer.Layer<
         })),
       ),
     );
-    yield* invoke("codex:scheduled-automations:run-now", (event, input) =>
+    yield* handlePlainCommand("codex:scheduled-automations:run-now", (event, input) =>
       execution
         .runNow(input, rendererClients.ensureClient(event.sender).clientId)
         .pipe(Effect.as({ success: true })),
     );
-    yield* invoke("codex:scheduled-automations:heartbeat-enabled-changed", (_, input) =>
+    yield* handleControl("codex:scheduled-automations:heartbeat-enabled-changed", (_, input) =>
       scheduledAutomations
         .setHeartbeatAutomationsEnabled(input.enabled)
         .pipe(Effect.as({ success: true })),
     );
-    yield* invoke("codex:scheduled-automations:heartbeat-thread-state-changed", (event, input) =>
-      scheduledAutomations
-        .setHeartbeatThreadRendererState({
-          ...input,
-          rendererClientId: rendererClients.ensureClient(event.sender).clientId,
-        })
-        .pipe(Effect.as({ success: true })),
+    yield* handleControl(
+      "codex:scheduled-automations:heartbeat-thread-state-changed",
+      (event, input) =>
+        scheduledAutomations
+          .setHeartbeatThreadRendererState({
+            ...input,
+            rendererClientId: rendererClients.ensureClient(event.sender).clientId,
+          })
+          .pipe(Effect.as({ success: true })),
     );
-    yield* invoke("codex:automation-runs:archive", (_, input) =>
+    yield* handlePlainCommand("codex:automation-runs:archive", (_, input) =>
       Effect.all({
         run: automation.runs.get(input.threadId),
         messages:
@@ -289,7 +279,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* invoke("codex:automation-runs:delete", (_, input) =>
+    yield* handlePlainCommand("codex:automation-runs:delete", (_, input) =>
       automation.runs.get(input.threadId).pipe(
         Effect.flatMap((item) =>
           automation.runs.delete(input.threadId).pipe(
@@ -307,7 +297,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* invoke("codex:automation-runs:unarchive", (_, input) =>
+    yield* handlePlainCommand("codex:automation-runs:unarchive", (_, input) =>
       automation.runs.get(input.threadId).pipe(
         Effect.flatMap((item) =>
           conversationCommands.unarchive(input.threadId).pipe(
@@ -326,10 +316,10 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* invoke("codex:automation-runs:inbox-items", (_, limit) =>
+    yield* handleQuery("codex:automation-runs:inbox-items", (_, limit) =>
       automation.inbox.read(limit ?? 200),
     );
-    yield* invoke("codex:automation-runs:set-read-state", (_, input) =>
+    yield* handlePlainCommand("codex:automation-runs:set-read-state", (_, input) =>
       automation.inbox.setReadState(input).pipe(
         Effect.tap((item) =>
           item
@@ -342,7 +332,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* invoke("codex:automation-runs:mark-all-read", () =>
+    yield* handlePlainCommand("codex:automation-runs:mark-all-read", () =>
       automation.inbox.markAllRead.pipe(
         Effect.tap((changedCount) =>
           changedCount > 0

@@ -10,6 +10,7 @@ import { vi } from "vite-plus/test";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { MainShutdown, type MainShutdownReason } from "../../app/MainShutdown";
 import { StoreAdministration } from "../../core-runtime/StoreAdministration";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./StoreAdministrationIpc";
@@ -21,7 +22,7 @@ type Handler = (event: IpcMainInvokeEvent, ...args: readonly unknown[]) => Effec
 it.effect("owns Store administration ingress and commits restore shutdown atomically", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string, handler: Handler) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -30,7 +31,7 @@ it.effect("owns Store administration ingress and commits restore shutdown atomic
           () => Effect.sync(() => handlers.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const shutdownReasons: MainShutdownReason[] = [];
     const shutdownRequested = yield* Deferred.make<void>();
     const finishShutdownRequest = yield* Deferred.make<void>();

@@ -1,6 +1,6 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { render, settleAsyncRender } from "@/test/dom";
 import { installWindowApi } from "@/test/browser-globals";
 import { TestQueryProvider } from "@/test/query";
@@ -24,6 +24,22 @@ function makeProject(id: string, name = id): Project {
     pinnedOrder: null,
     created: new Date("2026-01-01T00:00:00.000Z"),
     updated: new Date("2026-01-01T00:00:00.000Z"),
+  };
+}
+
+function committed<Value>(value: Value) {
+  return {
+    ok: true as const,
+    value,
+    localCommit: {
+      status: "committed" as const,
+      commit: {
+        store_epoch: "epoch:test",
+        commit_seq: 2,
+        manifest_hash: "f".repeat(64),
+      },
+      delivery: null,
+    },
   };
 }
 
@@ -71,16 +87,40 @@ function ProjectsHarness() {
   );
 }
 
+function ProjectRenameHarness() {
+  const projects = useProjects();
+  const renderToken = projects.projectCatalogRenderToken;
+  const markRendered = projects.markProjectCatalogRendered;
+  useLayoutEffect(() => {
+    if (renderToken === null) return;
+    markRendered(renderToken);
+  }, [markRendered, renderToken]);
+
+  return (
+    <div>
+      <span data-testid="project-name">{projects.projects[0]?.name ?? ""}</span>
+      <button
+        type="button"
+        onClick={() => void projects.updateProject("alpha", { name: "Renamed" })}
+      >
+        Rename project
+      </button>
+    </div>
+  );
+}
+
 describe("useProjects", () => {
   let projects: Project[];
   let listCalls = 0;
   let paginateProjects = false;
+  let projectionRevision = 1;
   let projectChangeListener: ((event: unknown) => void) | null = null;
 
   beforeEach(() => {
     projects = [makeProject("alpha"), makeProject("beta")];
     listCalls = 0;
     paginateProjects = false;
+    projectionRevision = 1;
     projectChangeListener = null;
 
     installWindowApi({
@@ -94,6 +134,7 @@ describe("useProjects", () => {
               items: secondWindow ? projects.slice(2) : projects.slice(0, 2),
               nextCursor: secondWindow ? null : "projects:next",
               hasMore: !secondWindow,
+              storeEpoch: "epoch:test",
               projectionRevision: 1,
             };
           }
@@ -101,28 +142,35 @@ describe("useProjects", () => {
             items: projects,
             nextCursor: null,
             hasMore: false,
-            projectionRevision: listCalls,
+            storeEpoch: "epoch:test",
+            projectionRevision,
           };
         }
 
         if (channel === "projects:reorder") {
-          const input = args[0] as { orderedProjectIds: string[] };
+          const request = args[0] as {
+            payload: { orderedProjectIds: string[] };
+          };
+          const input = request.payload;
           projects = input.orderedProjectIds
             .map((projectId) => projects.find((project) => project.id === projectId))
             .filter((project): project is Project => Boolean(project));
-          return projects;
+          return committed(projects);
         }
 
         if (channel === "projects:set-lifecycle") {
-          const projectId = args[0] as string;
+          const request = args[0] as {
+            payload: { projectId: string };
+          };
+          const projectId = request.payload.projectId;
           const project = projects.find((candidate) => candidate.id === projectId);
-          if (!project) return { kind: "not-found" };
+          if (!project) return { ok: false, outcome: { kind: "not-found" } };
           projects = projects.filter((candidate) => candidate.id !== projectId);
-          return {
+          return committed({
             kind: "updated",
             changed: true,
             project: { ...project, lifecycle: "archived" },
-          };
+          });
         }
 
         throw new Error(`Unexpected channel: ${channel}`);
@@ -160,6 +208,80 @@ describe("useProjects", () => {
       expect(view.getByTestId("project-count").textContent).toBe("3:3");
     });
     expect(listCalls).toBe(2);
+  });
+
+  test("keeps a rename visible across delayed acknowledgement and stale canonical reads", async () => {
+    let resolveUpdate!: (value: unknown) => void;
+    const update = new Promise<unknown>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    let submittedInput: Record<string, unknown> | null = null;
+    installWindowApi({
+      invoke: async (channel: string, ...args: unknown[]) => {
+        if (channel === "projects:list") {
+          listCalls += 1;
+          return {
+            items: projects,
+            nextCursor: null,
+            hasMore: false,
+            storeEpoch: "epoch:test",
+            projectionRevision,
+          };
+        }
+        if (channel === "projects:update") {
+          submittedInput = args[0] as Record<string, unknown>;
+          return await update;
+        }
+        throw new Error(`Unexpected channel: ${channel}`);
+      },
+      on: (channel: string, listener: (event: unknown) => void) => {
+        if (channel === "projects-changed") projectChangeListener = listener;
+        return () => undefined;
+      },
+    });
+    const view = render(
+      <TestQueryProvider>
+        <ProjectRenameHarness />
+      </TestQueryProvider>,
+    );
+    await waitFor(() => expect(view.getByTestId("project-name").textContent).toBe("alpha"));
+
+    fireEvent.click(view.getByRole("button", { name: "Rename project" }));
+    expect(view.getByTestId("project-name").textContent).toBe("Renamed");
+    await waitFor(() => expect(submittedInput).not.toBeNull());
+    expect(submittedInput).toMatchObject({
+      projectId: "alpha",
+      updates: { name: "Renamed" },
+    });
+
+    await act(async () => {
+      resolveUpdate({
+        ok: true,
+        value: { ...projects[0], name: "Renamed", bindingRevision: 2 },
+        localCommit: {
+          status: "committed",
+          commit: {
+            store_epoch: "epoch:test",
+            commit_seq: 2,
+            manifest_hash: "f".repeat(64),
+          },
+          delivery: null,
+        },
+      });
+      await update;
+    });
+    await waitFor(() => expect(listCalls).toBeGreaterThanOrEqual(2));
+    expect(view.getByTestId("project-name").textContent).toBe("Renamed");
+
+    projects = projects.map((project) =>
+      project.id === "alpha" ? { ...project, name: "Renamed", bindingRevision: 2 } : project,
+    );
+    projectionRevision = 2;
+    await act(async () => {
+      projectChangeListener?.({});
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.getByTestId("project-name").textContent).toBe("Renamed"));
   });
 
   test("loads a continuation only after an explicit request", async () => {
@@ -234,6 +356,7 @@ describe("useProjects", () => {
           items: projects,
           nextCursor: null,
           hasMore: false,
+          storeEpoch: "epoch:test",
           projectionRevision: attempts,
         };
       },

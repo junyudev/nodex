@@ -11,7 +11,11 @@ import type {
   AgentImportScan,
   AgentImportSourceKind,
 } from "../../../shared/agent-import";
-import { invoke } from "./workbench-settings-overlay-deps";
+import {
+  applyAgentImport,
+  scanAgentImport,
+  scanPickedAgentImportHome,
+} from "./workbench-settings-overlay-deps";
 import { NodexButton } from "../ui/button";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
@@ -55,10 +59,9 @@ export interface AgentImportSettingsRuntime {
 }
 
 const DEFAULT_RUNTIME: AgentImportSettingsRuntime = {
-  apply: async (scanId, itemIds) => await invoke("agent-import:apply", { itemIds, scanId }),
-  scan: async (sourceKind) => await invoke("agent-import:scan", { sourceKind }),
-  scanPickedHome: async (sourceKind) =>
-    await invoke("agent-import:scan-picked-home", { sourceKind }),
+  apply: applyAgentImport,
+  scan: scanAgentImport,
+  scanPickedHome: scanPickedAgentImportHome,
   subscribeProgress: (listener) => {
     if (!window.api) return () => undefined;
     return window.api.on("agent-import:progress", (payload) => {

@@ -7,9 +7,11 @@ import type {
   ProjectOrderInput,
   ProjectPinnedInput,
   ProjectPinnedOrderInput,
+  ProjectUpdateCommandInput,
   ProjectUpdateInput,
 } from "../types";
 import { PROJECT_MARKER_COLORS, PROJECT_MARKER_ICONS } from "../project-appearance";
+import { isBoundedOperationId } from "../operation-identity";
 
 export const ProjectAppearanceSchema = z.object({
   color: z.enum(PROJECT_MARKER_COLORS),
@@ -102,6 +104,20 @@ export const ProjectUpdateInputSchema = z
     sources: z.array(z.string()).optional(),
   })
   .strict() satisfies z.ZodType<ProjectUpdateInput>;
+
+export const ProjectUpdateCommandInputSchema = z
+  .object({
+    operationId: z.string().refine(isBoundedOperationId, "Invalid bounded operation identity"),
+    projectId: z
+      .string()
+      .min(1)
+      .max(512)
+      .refine((value) => value === value.trim(), "Project identity must be canonical"),
+    updates: ProjectUpdateInputSchema.extend({
+      expectedBindingRevision: z.number().int().positive().safe(),
+    }),
+  })
+  .strict() satisfies z.ZodType<ProjectUpdateCommandInput>;
 
 export const ProjectCreateInputSchema = z
   .object({

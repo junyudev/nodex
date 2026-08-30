@@ -5,9 +5,18 @@ import type {
   CodexHooksListInput,
   CodexHooksListResponse,
 } from "../../shared/codex-hooks";
-import { invoke, subscribeCodexHooksChanged } from "./api";
+import { subscribeCodexHooksChanged } from "./api";
 import { queryKeys } from "./query-keys";
 import { codexHooksListQueryOptions } from "./query-options";
+import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
+
+const updateCodexHookStateCommand = defineRendererCommand({
+  key: "codex_hooks.update_state",
+  channel: "codex:hooks:state:update",
+  authority: "main",
+  owner: "CodexHooks",
+  protocol: { kind: "returned_value" },
+});
 
 interface HooksQuerySnapshot {
   queryKey: QueryKey;
@@ -65,7 +74,7 @@ export function useCodexHookStateMutation(hostId: string) {
 
   return useMutation({
     mutationFn: (patch: CodexHookStatePatch) =>
-      invoke("codex:hooks:state:update", {
+      invokePlainCommand(updateCodexHookStateCommand, {
         hostId,
         patches: [patch],
       }),

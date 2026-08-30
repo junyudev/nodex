@@ -7,6 +7,7 @@ import type { Project, ProjectArchiveBlocker, ProjectSessionSummary } from "../.
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { live as projectRuntimeLifecycleLive } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
+import type { ProjectWorkspaceApplyResult } from "../core-client/types";
 import { ProjectArchiveBlockers } from "./ProjectArchiveBlockers";
 import { ProjectLifecycleCommands, live } from "./ProjectLifecycleCommands";
 import { ProjectWorkspace, type ProjectWorkspaceService } from "./ProjectWorkspace";
@@ -58,13 +59,43 @@ const session = (): ProjectSessionSummary => ({
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
 
+const committed = (commitSeq: number, operationId: string): ProjectWorkspaceApplyResult =>
+  ({
+    status: "committed",
+    outcome: {
+      affected_project_ids: ["project-1"],
+      affected_session_ids: [],
+      affected_thread_ids: [],
+    },
+    receipt: {
+      operation_id: operationId,
+      duplicate: false,
+      affected_project_ids: ["project-1"],
+      affected_session_ids: [],
+    },
+    commit: {
+      store_epoch: "epoch:test",
+      commit_seq: commitSeq,
+      manifest_hash: "f".repeat(64),
+    },
+  }) as ProjectWorkspaceApplyResult;
+
+const lifecycleCommand = (lifecycle: "active" | "archived") => ({
+  operationId: `operation:${lifecycle}`,
+  payload: { projectId: "project-1", lifecycle },
+});
+
 const testRuntime = (blockers: readonly (readonly ProjectArchiveBlocker[])[]) => {
   let project = makeProject();
   let blockerRead = 0;
-  const setProjectLifecycle = vi.fn((_projectId: string, lifecycle: Project["lifecycle"]) =>
+  const setProjectLifecycle = vi.fn((command: ReturnType<typeof lifecycleCommand>) =>
     Effect.sync(() => {
+      const lifecycle = command.payload.lifecycle;
       project = { ...project, lifecycle, bindingRevision: project.bindingRevision + 1 };
-      return project;
+      return {
+        value: project,
+        apply: committed(project.bindingRevision, command.operationId),
+      };
     }),
   );
   const closeBrowserConversation = vi.fn(() => Effect.void);
@@ -127,8 +158,10 @@ it.effect("blocks archive before durable mutation or runtime cleanup", () => {
   const runtime = testRuntime([[blocker]]);
   return Effect.gen(function* () {
     const commands = yield* ProjectLifecycleCommands;
-    const result = yield* commands.setLifecycle("project-1", "archived");
-    assert.strictEqual(result.kind, "blocked");
+    const result = yield* commands.setLifecycle(lifecycleCommand("archived"));
+    assert.strictEqual(result.kind, "rejected");
+    if (result.kind !== "rejected") return;
+    assert.strictEqual(result.result.outcome.kind, "blocked");
     assert.strictEqual(runtime.setProjectLifecycle.mock.calls.length, 0);
     assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 0);
     assert.strictEqual(runtime.closeBrowserProject.mock.calls.length, 0);
@@ -145,8 +178,10 @@ it.effect("rechecks blockers under the Project gate immediately before commit", 
   const runtime = testRuntime([[], [blocker]]);
   return Effect.gen(function* () {
     const commands = yield* ProjectLifecycleCommands;
-    const result = yield* commands.setLifecycle("project-1", "archived");
-    assert.strictEqual(result.kind, "blocked");
+    const result = yield* commands.setLifecycle(lifecycleCommand("archived"));
+    assert.strictEqual(result.kind, "rejected");
+    if (result.kind !== "rejected") return;
+    assert.strictEqual(result.result.outcome.kind, "blocked");
     assert.strictEqual(runtime.blockerReads(), 2);
     assert.strictEqual(runtime.setProjectLifecycle.mock.calls.length, 0);
     // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectLifecycleCommands application layer.
@@ -157,21 +192,24 @@ it.effect("archives, cleans Project-owned runtimes, and restores through one com
   const runtime = testRuntime([[], []]);
   return Effect.gen(function* () {
     const commands = yield* ProjectLifecycleCommands;
-    const archived = yield* commands.setLifecycle("project-1", "archived");
-    assert.deepStrictEqual(archived, {
+    const archived = yield* commands.setLifecycle(lifecycleCommand("archived"));
+    assert.strictEqual(archived.kind, "committed");
+    if (archived.kind !== "committed") return;
+    assert.deepStrictEqual(archived.result.value, {
       kind: "updated",
       project: { ...makeProject(), lifecycle: "archived", bindingRevision: 2 },
       changed: true,
     });
+    assert.strictEqual(archived.result.apply.receipt.operation_id, "operation:archived");
     assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 1);
     assert.strictEqual(runtime.closeBrowserProject.mock.calls.length, 1);
     assert.strictEqual(runtime.discardExitedSessionsForOwners.mock.calls.length, 1);
 
-    const restored = yield* commands.setLifecycle("project-1", "active");
-    assert.strictEqual(restored.kind, "updated");
-    if (restored.kind !== "updated") return;
-    assert.strictEqual(restored.changed, true);
-    assert.strictEqual(restored.project.lifecycle, "active");
+    const restored = yield* commands.setLifecycle(lifecycleCommand("active"));
+    assert.strictEqual(restored.kind, "committed");
+    if (restored.kind !== "committed") return;
+    assert.strictEqual(restored.result.value.changed, true);
+    assert.strictEqual(restored.result.value.project.lifecycle, "active");
     assert.strictEqual(runtime.setProjectLifecycle.mock.calls.length, 2);
     // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectLifecycleCommands application layer.
   }).pipe(Effect.provide(runtime.layer));

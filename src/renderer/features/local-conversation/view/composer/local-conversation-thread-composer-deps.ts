@@ -1,4 +1,10 @@
-export { getGitWorkerClient, invoke } from "@/lib/api";
+export { getGitWorkerClient } from "@/lib/api";
+export { invokeBrowserSidebarCommand } from "@/features/browser-sidebar/browser-sidebar-commands";
+export {
+  captureComposerAppshot,
+  pickComposerFiles,
+  readComposerPermissionState,
+} from "../../composer-context-operations";
 export { NodexTooltip } from "@/components/ui/tooltip";
 export {
   NodexDropdownButtonTrigger,

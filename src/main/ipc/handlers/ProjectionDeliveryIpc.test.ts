@@ -7,6 +7,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import type { DeliveryAddress } from "../../../shared/recipient-delivery";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ProjectionDeliveryRuntime } from "../../core-runtime/ProjectionDeliveryRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./ProjectionDeliveryIpc";
@@ -19,7 +20,7 @@ type Handler = (
 it.effect("owns all projection delivery handlers with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string, handler: Handler) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -28,7 +29,7 @@ it.effect("owns all projection delivery handlers with the Main Scope", () =>
           () => Effect.sync(() => handlers.delete(channel)),
         ),
       on: () => Effect.void,
-    } as unknown as ElectronIpc["Service"]);
+    });
     let subscriptionReleases = 0;
     let senderReleases = 0;
     const delivery = {

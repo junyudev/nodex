@@ -42,15 +42,19 @@ layer; git history already preserves it.
 
 ## Renderer boundary
 
-The renderer is sandboxed presentation. Durable product operations go through
-[`src/renderer/lib/api.ts`](../src/renderer/lib/api.ts), then the typed preload
-and Main Adapters. Renderer modules do not open Core sockets, access SQLite,
-use arbitrary filesystem paths, or call Electron channels directly.
+The renderer is sandboxed presentation. Durable product operations enter an
+owning renderer Module through a semantic Interface, then cross a named typed
+query, control, or command Adapter and the typed preload/Main boundary. Shared
+operations may expose a narrow facade from
+[`src/renderer/lib/api.ts`](../src/renderer/lib/api.ts), but the renderer has no
+general channel-invocation facade. Renderer modules do not open Core sockets,
+access SQLite, use arbitrary filesystem paths, or call Electron channels
+directly.
 
 Keep the dependency direction simple:
 
 ```text
-feature/component -> renderer facade or feature Module -> typed preload/Main Adapter
+component -> owning feature Module -> typed renderer Adapter -> preload/Main Adapter
 pure renderer helper -> transport-neutral shared contract
 ```
 
@@ -120,9 +124,18 @@ action and product semantics.
 
 ## Data, projections, and mutations
 
-- Query and mutation functions call the renderer API facade. Centralize query
-  keys, query options, and IPC subscriptions in `src/renderer/lib/` so features
-  do not invent transport or invalidation paths in components.
+- Queries use named typed query Adapters; subscription bookkeeping uses typed
+  control Adapters; writes enter the Module that owns presentation, ordering,
+  retry, and settlement. React presentation modules (`.tsx`, regardless of
+  directory) do not import renderer transport capabilities or the preload
+  bridge; they call semantic owner Interfaces exposed by non-visual Adapter
+  modules. Centralize query keys, query options, and IPC subscriptions in
+  `src/renderer/lib/` so features do not invent transport or invalidation paths
+  in components.
+- Every transport-crossing write has a semantic command definition naming its
+  authority, owning Module, and visibility protocol. The endpoint contract
+  constrains acknowledgement evidence; it does not replace the owner's local
+  presentation or materialization rules.
 - Treat Main/Core reads as bounded projections. Preserve pagination and group
   scope; do not hydrate complete Documents or unbounded collections to render a
   list, picker, sidebar, Board, or search result.
@@ -130,7 +143,7 @@ action and product semantics.
   effect through the shared projection path immediately; the later event stream
   is recovery and fanout, not a second completion condition. Exact sequencing
   and repair rules live in [Reliability](RELIABILITY.md).
-- An acknowledged optimistic transform may remain composed over canonical base
+- An acknowledged optimistic transform remains composed over canonical base
   until the affected projection actually materializes it. Promise fulfillment
   or an unrelated cursor floor alone is not proof that a bounded view contains
   the result. Installing canonical data in an external-store cache is also not

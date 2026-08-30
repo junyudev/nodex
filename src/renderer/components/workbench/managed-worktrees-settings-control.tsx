@@ -15,7 +15,10 @@ import {
 import { NodexSettingsRow, NodexSettingsSection } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { invoke } from "@/lib/api";
+import {
+  managedWorktreeSettingsService,
+  type ManagedWorktreesSettingsService,
+} from "@/lib/managed-worktree-runtime";
 import type {
   ManagedWorktreeRecord,
   ManagedWorktreeSettings,
@@ -23,26 +26,12 @@ import type {
   UpdateManagedWorktreeSettingsInput,
 } from "@/lib/types";
 
-export interface ManagedWorktreesSettingsService {
-  getSettings(): Promise<ManagedWorktreeSettings>;
-  getExecutionHosts(): Promise<CodexExecutionHostSettings>;
-  updateSettings(input: UpdateManagedWorktreeSettingsInput): Promise<ManagedWorktreeSettings>;
-  list(hostId: string): Promise<ManagedWorktreeRecord[]>;
-  delete(hostId: string, worktreePath: string): Promise<boolean>;
-}
+export type { ManagedWorktreesSettingsService } from "@/lib/managed-worktree-runtime";
 
 const DEFAULT_SETTINGS: ManagedWorktreeSettings = {
   worktreeRoot: null,
   autoDeleteEnabled: true,
   autoDeleteLimit: 15,
-};
-
-const DEFAULT_SERVICE: ManagedWorktreesSettingsService = {
-  getSettings: async () => await invoke("worktrees:settings:get"),
-  getExecutionHosts: async () => await invoke("worktrees:execution-hosts:get"),
-  updateSettings: async (input) => await invoke("worktrees:settings:update", input),
-  list: async (hostId) => await invoke("worktrees:list", hostId),
-  delete: async (hostId, worktreePath) => await invoke("worktrees:delete", hostId, worktreePath),
 };
 
 export interface ManagedWorktreesSettingControlProps {
@@ -191,7 +180,7 @@ function WorktreeInventoryRow({
 
 export function ManagedWorktreesSettingControl({
   open,
-  service = DEFAULT_SERVICE,
+  service = managedWorktreeSettingsService,
   onOpenThread,
 }: ManagedWorktreesSettingControlProps) {
   const [settings, setSettings] = useState<ManagedWorktreeSettings | null>(null);

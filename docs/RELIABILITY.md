@@ -39,6 +39,28 @@ can replay its immutable receipt. When an authorized apply delivery exists,
 Main admits it to the initiating renderer before resolving the feature command.
 The later event stream is fanout and recovery, not a second success condition.
 
+Two contracts connect that transport fact to visible completion without
+collapsing their owners:
+
+- The exhaustive IPC endpoint contract classifies every channel as query,
+  command, or control. A command declares `core_local_commit`, `main_revision`,
+  or `plain_result` acknowledgement. LocalCommit and revision commands cannot
+  compile unless their result carries the declared evidence; a plain result
+  makes no persistence claim.
+- The renderer semantic command contract names the owning Module and selects
+  receipt-fenced projection, local Document replica, local Canvas outbox,
+  revision-fenced local state, returned value, or pending operation. That owner
+  alone defines immediate presentation, conflict, retry, materialization,
+  rendered handoff, and failure.
+
+For receipt-fenced projections, acknowledgement, exact bounded-projection
+materialization, and a matching React render handoff are all required before
+local presentation settles. Acknowledgement and materialization may arrive in
+either order. An older operation's response or observation cannot settle a
+newer conflicting intent. Operations without proof of a predictable post-state
+remain pending or expose their typed terminal result; transport success is not
+presented as invented domain success.
+
 Response loss is handled by retrying the same idempotent intent. The original
 receipt is returned without applying the mutation again. Reusing an operation
 identity for different intent is a typed collision.
@@ -64,6 +86,13 @@ Optimistic presentation may continue after acknowledgement until a bounded
 projection materializes the committed result. The optimistic owner must remain
 semantic and identity-keyed; it cannot infer canonical success from elapsed
 time, a broad cursor, or the disappearance of a component.
+
+Development builds may retain a fixed-capacity causal trace containing only
+semantic keys, hashed operation identities, owner/protocol/scope labels, reason
+codes, and render tokens. It is diagnostic evidence, not settlement authority;
+payloads and unbounded histories are never recorded. Transport never invents a
+random identity for diagnostics: the command envelope carries the owner-issued
+identity, or the owner supplies the matching trace context explicitly.
 
 Read [LocalCommit and Projection Delivery](reliability/local-commit-and-projections.md)
 for Manifest, wake/replay, audience, projection-freshness, visibility, and
@@ -164,8 +193,19 @@ authority together. Detailed identity and allocation decisions are recorded in
 ## Backup, restore, and maintenance
 
 A whole-Store backup covers the database and managed assets behind one Core
-maintenance boundary. Starting a backup creates a durable background job;
-online database capture, complete validation, hashing, and asset copying run
+maintenance boundary. The initiating renderer allocates a bounded operation
+identity before submission and retains the exact normalized command while its
+transport outcome is unknown. Main reports `submitted` once it owns the
+background operation; durable Core admission may follow asynchronously and is
+never inferred from a deadline. If another snapshot already occupies the lane,
+Core durably coalesces the requested identity to that job and Main returns the
+typed `already_running` outcome. Exact retries, including after Main restart,
+therefore reconnect to the original job or replay that coalescence instead of
+creating another snapshot. The renderer Backup runtime owns the visible
+`submitting -> submitted/progress -> completed | failed | cancelled` lifecycle;
+submission is never presented as terminal backup success.
+
+Online database capture, complete validation, hashing, and asset copying run
 outside the serialized Store writer, while short authority checks and final
 receipt publication remain transactional. Managed asset files are immutable and become visible only
 through same-filesystem atomic publication from a sibling staging directory

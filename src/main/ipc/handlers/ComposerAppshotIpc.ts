@@ -2,10 +2,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
-import type { IpcApi } from "../../../shared/ipc-api";
 import { MainConfig } from "../../app/MainConfig";
 import { ComposerAppshotRuntime } from "../../host-runtime/ComposerAppshotRuntime";
-import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
@@ -16,11 +15,6 @@ export class ComposerAppshotIpcError extends Schema.TaggedError<ComposerAppshotI
     cause: Schema.Defect(),
   },
 ) {}
-
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 export const live: Layer.Layer<
   never,
@@ -42,13 +36,15 @@ export const live: Layer.Layer<
         },
         catch: (cause) => new ComposerAppshotIpcError({ operation: "authorize-renderer", cause }),
       });
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, (event, ...args: IpcApi[Channel]["args"]) =>
-        authorize(event).pipe(Effect.andThen(handler(event, ...args))),
-      );
+    const { handlePlainCommand, handleQuery } = mapElectronIpcHandlers(
+      ipc,
+      (_channel, handler) =>
+        (event, ...args) =>
+          authorize(event).pipe(Effect.andThen(handler(event, ...args))),
+    );
 
-    yield* handle("codex:composer-appshot:target", () => appshots.readTarget);
-    yield* handle("codex:composer-appshot:capture", (_event, input) => {
+    yield* handleQuery("codex:composer-appshot:target", () => appshots.readTarget);
+    yield* handlePlainCommand("codex:composer-appshot:capture", (_event, input) => {
       if (
         typeof input !== "object" ||
         input === null ||

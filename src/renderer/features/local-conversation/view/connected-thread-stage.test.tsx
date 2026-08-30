@@ -75,7 +75,7 @@ function ThreadStageScope({ children }: { children: ReactNode }) {
 }
 
 vi.mock("../local-conversation-deps", () => ({
-  invoke: async (channel: string, ...args: unknown[]) => {
+  runConversationOperation: async (channel: string, ...args: unknown[]) => {
     const firstArg = args[0];
     invokeCalls.push({
       channel,

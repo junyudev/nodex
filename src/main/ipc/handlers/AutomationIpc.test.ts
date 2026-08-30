@@ -10,6 +10,7 @@ import { ConversationCommands } from "../../codex-application/ConversationComman
 import type { RendererClientRuntimeService } from "../../codex/renderer-client-runtime-contracts";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ScheduledAutomationRuntime } from "../../host-runtime/ScheduledAutomationRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./AutomationIpc";
@@ -17,7 +18,7 @@ import { live } from "./AutomationIpc";
 it.effect("owns calendar and scheduled automation ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -26,7 +27,7 @@ it.effect("owns calendar and scheduled automation ingress with the Main Scope", 
           () => Effect.sync(() => channels.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
       live.pipe(

@@ -586,9 +586,10 @@ export function DbViewSessionTab({
         const receipt = await runtime.publishDatabaseViewDefinition({
           kind: "rules",
           patch: { rules: nextRules },
-          commit: async (canonicalModel) => {
+          commit: async (canonicalModel, operationId) => {
             const committed = await commitDatabaseViewOperations({
               model: canonicalModel,
+              operationId,
               operations: [
                 {
                   kind: "put_view",
@@ -668,9 +669,10 @@ export function DbViewSessionTab({
           layout: effectivePresentation.layout,
           presentation: effectivePresentation.presentation,
         },
-        commit: async (canonicalModel) => {
+        commit: async (canonicalModel, operationId) => {
           const committed = await commitDatabaseViewOperations({
             model: canonicalModel,
+            operationId,
             operations: [
               {
                 kind: "put_view",
@@ -728,13 +730,14 @@ export function DbViewSessionTab({
       await runtime.publishDatabaseViewDefinition({
         kind: "conditional-colors",
         patch: { conditionalColors },
-        commit: async (canonicalModel) => {
+        commit: async (canonicalModel, operationId) => {
           const presentation = {
             ...canonicalModel.query.view.config.presentation,
             conditionalColors,
           };
           const committed = await commitDatabaseViewOperations({
             model: canonicalModel,
+            operationId,
             operations: [
               {
                 kind: "put_view",

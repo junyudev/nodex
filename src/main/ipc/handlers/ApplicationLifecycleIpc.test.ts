@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ApplicationHostRuntime } from "../../host-runtime/ApplicationHostRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./ApplicationLifecycleIpc";
@@ -19,10 +20,10 @@ it.effect("owns all application lifecycle handlers with the Main Scope", () =>
         }),
         () => Effect.sync(() => channels.delete(channel)),
       );
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) => register(channel),
       on: (channel: string) => register(channel),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const windows = {
       acknowledgeClose: () => undefined,
       has: () => true,

@@ -3,9 +3,30 @@ import {
   requireMcpAppScopedTool,
   type McpAppScopeSnapshot,
 } from "../../../shared/mcp-app/mcp-app-scope";
-import { invoke } from "../api";
+import { JsonValueSchema } from "../../../shared/nodex-agent-tools/base-schemas";
+import {
+  defineRendererCommand,
+  invokePlainCommand,
+  invokeRendererQuery,
+} from "../renderer-command";
 import { parseMcpAppFollowUpMessage, type McpAppFollowUpMessage } from "./mcp-app-follow-up";
 import type { McpAppHostApiHandlers } from "./mcp-app-port-rpc";
+
+const callMcpToolCommand = defineRendererCommand({
+  key: "mcp_app.call_tool",
+  channel: "codex:mcp-tool:call",
+  authority: "external",
+  owner: "McpAppHostDispatcher",
+  protocol: { kind: "returned_value" },
+});
+
+const openMcpExternalUrlCommand = defineRendererCommand({
+  key: "mcp_app.open_external",
+  channel: "mcp-app:open-external",
+  authority: "external",
+  owner: "McpAppHostDispatcher",
+  protocol: { kind: "pending_operation" },
+});
 
 export class McpAppRpcError extends Error {
   readonly code: number;
@@ -91,11 +112,12 @@ export class McpAppHostDispatcher {
     const toolCall = parseToolCall(value);
     const scope = await this.#getScope();
     const tool = requireMcpAppScopedTool(scope, toolCall.name, toolCall.arguments);
-    return invoke("codex:mcp-tool:call", {
+    const args = toolCall.arguments ? JsonValueSchema.parse(toolCall.arguments) : undefined;
+    return invokePlainCommand(callMcpToolCommand, {
       threadId: scope.threadId,
       server: scope.server,
       tool: tool.name,
-      ...(toolCall.arguments ? { arguments: toolCall.arguments } : {}),
+      ...(args ? { arguments: args } : {}),
     });
   }
 
@@ -131,7 +153,7 @@ export class McpAppHostDispatcher {
         }
         const scope = await this.#getScope();
         requireMcpAppScopedResource(scope, resourceParams.uri);
-        return invoke("codex:mcp-resource:read", {
+        return invokeRendererQuery("codex:mcp-resource:read", {
           threadId: scope.threadId,
           server: scope.server,
           uri: resourceParams.uri,
@@ -150,7 +172,7 @@ export class McpAppHostDispatcher {
     if (!record || typeof record.href !== "string") {
       throw new McpAppRpcError("Invalid external navigation request", -32_602);
     }
-    await invoke("mcp-app:open-external", record.href);
+    await invokePlainCommand(openMcpExternalUrlCommand, record.href);
   }
 
   #getScope(): McpAppScopeSnapshot | Promise<McpAppScopeSnapshot> {

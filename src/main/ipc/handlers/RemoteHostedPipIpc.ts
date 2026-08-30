@@ -54,7 +54,7 @@ export const live: Layer.Layer<never, never, ElectronIpc | MainConfig | RemoteHo
       const ipc = yield* ElectronIpc;
       const config = yield* MainConfig;
       const remoteHostedPip = yield* RemoteHostedPipRuntime;
-      yield* ipc.handle("codex-desktop:message-from-view", (event, rawMessage: unknown) =>
+      yield* ipc.handleControl("codex-desktop:message-from-view", (event, rawMessage: unknown) =>
         Effect.try({
           try: () =>
             requireTrustedAppRendererSender(event, "Remote Hosted PiP", config.rendererUrl),

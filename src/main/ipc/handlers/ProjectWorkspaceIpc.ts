@@ -2,16 +2,23 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
-import type { CoreResult } from "../../../shared/core-result";
 import type { IpcApi } from "../../../shared/ipc-api";
+import type {
+  IpcQueryChannel,
+  PlainResultCommandChannel,
+} from "../../../shared/ipc-endpoint-policy";
+import { isBoundedOperationId } from "../../../shared/operation-identity";
 import { WorkbenchSceneSnapshotSchema } from "../../../shared/schemas/workbench-scene";
-import { ProjectLifecycleInputSchema } from "../../../shared/schemas/projects";
+import type { OperationIdentifiedCommand } from "../../../shared/workspace-catalog-commands";
+import {
+  ProjectLifecycleInputSchema,
+  ProjectUpdateCommandInputSchema,
+} from "../../../shared/schemas/projects";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexProjectSessionFork } from "../../codex-application/CodexProjectSessionFork";
 import { CodexSidebarSectionSync } from "../../codex-application/CodexSidebarSectionSync";
-import { CodexThreadTitlePersistence } from "../../codex-application/CodexThreadTitlePersistence";
-import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { CoreModuleResponseError } from "../../core-client/core-client";
+import { rendererLocalCommitApply } from "../../core-client/types";
 import type { CoreRuntimeError } from "../../core-runtime/CoreRuntimeError";
 import { createProjectWithDefaultSource } from "../../default-project-source";
 import {
@@ -22,16 +29,21 @@ import {
 } from "../../dev-runtime-metrics";
 import { resolveNodexProjectsDirectory } from "../../nodex-projects-directory";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
-import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
-import { BrowserApplication } from "../../browser-application/BrowserApplication";
-import { deleteProjectSessionWithBrowserCleanupUsing } from "../../project-session-browser-ownership";
-import { ProjectLifecycleCommands } from "../../project-application/ProjectLifecycleCommands";
+import {
+  ProjectLifecycleCommands,
+  ProjectLifecycleCommandsError,
+} from "../../project-application/ProjectLifecycleCommands";
+import {
+  ProjectSessionCommands,
+  ProjectSessionCommandsError,
+} from "../../project-application/ProjectSessionCommands";
 import {
   ProjectWorkspace,
   ProjectWorkspaceError,
+  type ProjectWorkspaceCommandResult,
 } from "../../project-application/ProjectWorkspace";
-import { renameProjectSessionChat } from "../../project-session-rename-service";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
 export class ProjectWorkspaceIpcError extends Schema.TaggedError<ProjectWorkspaceIpcError>()(
@@ -44,43 +56,32 @@ type Handler<Channel extends keyof IpcApi> = (
   ...args: IpcApi[Channel]["args"]
 ) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
-type CoreValue<Channel extends keyof IpcApi> =
-  IpcApi[Channel]["result"] extends CoreResult<infer Value> ? Value : never;
-
 export const live: Layer.Layer<
   never,
   never,
-  | BrowserApplication
   | CodexProjectSessionFork
   | CodexSidebarSectionSync
-  | CodexThreadTitlePersistence
-  | ConversationCommands
   | ElectronDesktop
   | ElectronIpc
   | MainConfig
   | ProjectLifecycleCommands
+  | ProjectSessionCommands
   | ProjectWorkspace
   | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    const conversationCommands = yield* ConversationCommands;
     const projectSessionFork = yield* CodexProjectSessionFork;
     const sectionSync = yield* CodexSidebarSectionSync;
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const projectLifecycle = yield* ProjectLifecycleCommands;
+    const projectSessions = yield* ProjectSessionCommands;
     const projects = yield* ProjectWorkspace;
-    const threadTitles = yield* CodexThreadTitlePersistence;
     const windows = yield* WindowRuntime;
-    const browser = yield* BrowserApplication;
-    const projectSessionBrowserRuntime = {
-      closeBrowserConversation: browser.closeConversation,
-    };
     const syncSectionsAfter = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       effect.pipe(Effect.tap(() => sectionSync.request("local-mutation")));
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handleLocalCommitCommand, handlePlainCommand } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -96,27 +97,33 @@ export const live: Layer.Layer<
         try: () => Promise.resolve(task()),
         catch: (cause) => new ProjectWorkspaceIpcError({ operation, cause }),
       });
-    const invokeEffect = <Channel extends keyof IpcApi>(
-      channel: Channel,
-      task: (
-        event: IpcMainInvokeEvent,
-        ...args: IpcApi[Channel]["args"]
-      ) => Effect.Effect<IpcApi[Channel]["result"], unknown>,
-    ) =>
-      handle(channel, (event, ...args) =>
-        authorize(event).pipe(
-          Effect.andThen(
-            task(event, ...args).pipe(
-              Effect.mapError(
-                (cause) => new ProjectWorkspaceIpcError({ operation: channel, cause }),
+    const invokeIpc = mapElectronIpcHandlers(
+      ipc,
+      (channel, task) =>
+        (event, ...args) =>
+          authorize(event).pipe(
+            Effect.andThen(
+              task(event, ...args).pipe(
+                Effect.mapError(
+                  (cause) => new ProjectWorkspaceIpcError({ operation: channel, cause }),
+                ),
               ),
             ),
           ),
-        ),
-      );
+    );
+    const invokeEffectQuery = <Channel extends IpcQueryChannel>(
+      channel: Channel,
+      task: Handler<Channel>,
+    ) => invokeIpc.handleQuery(channel, task);
+    const invokeEffectPlainCommand = <Channel extends PlainResultCommandChannel>(
+      channel: Channel,
+      task: Handler<Channel>,
+    ) => invokeIpc.handlePlainCommand(channel, task);
     const unwrapCoreError = (cause: unknown): CoreModuleResponseError | null => {
       if (cause instanceof CoreModuleResponseError) return cause;
       if (cause instanceof ProjectWorkspaceError) return unwrapCoreError(cause.cause);
+      if (cause instanceof ProjectLifecycleCommandsError) return unwrapCoreError(cause.cause);
+      if (cause instanceof ProjectSessionCommandsError) return unwrapCoreError(cause.cause);
       if (
         typeof cause === "object" &&
         cause !== null &&
@@ -127,31 +134,37 @@ export const live: Layer.Layer<
       }
       return null;
     };
-    const core = <Channel extends keyof IpcApi>(
-      channel: Channel,
-      read: (
-        event: IpcMainInvokeEvent,
-        ...args: IpcApi[Channel]["args"]
-      ) => Effect.Effect<CoreValue<Channel>, unknown>,
+    const catalogCommand = <Value>(
+      operation: string,
+      command: OperationIdentifiedCommand<unknown>,
+      task: Effect.Effect<ProjectWorkspaceCommandResult<Value>, unknown>,
     ) =>
-      handle(channel, (event, ...args) =>
-        authorize(event).pipe(
-          Effect.andThen(
-            read(event, ...args).pipe(
-              Effect.map((value) => ({ ok: true, value }) as IpcApi[Channel]["result"]),
-              Effect.catch((cause) => {
-                const coreError = unwrapCoreError(cause);
-                if (!coreError) {
-                  return Effect.fail(new ProjectWorkspaceIpcError({ operation: channel, cause }));
-                }
-                return Effect.succeed({
-                  ok: false,
-                  error: coreError.coreError,
-                } as IpcApi[Channel]["result"]);
-              }),
-            ),
-          ),
-        ),
+      Effect.try({
+        try: () => {
+          if (!isBoundedOperationId(command.operationId)) {
+            throw new TypeError("Workspace catalog operation identity is invalid");
+          }
+          return command;
+        },
+        catch: (cause) => new ProjectWorkspaceIpcError({ operation: `${operation}.parse`, cause }),
+      }).pipe(
+        Effect.andThen(task),
+        Effect.map(({ value, apply }) => ({
+          ok: true as const,
+          value,
+          localCommit: rendererLocalCommitApply(apply),
+        })),
+        Effect.catch((cause) => {
+          const coreError = unwrapCoreError(cause);
+          if (!coreError) {
+            return Effect.fail(
+              cause instanceof ProjectWorkspaceIpcError
+                ? cause
+                : new ProjectWorkspaceIpcError({ operation, cause }),
+            );
+          }
+          return Effect.succeed({ ok: false as const, error: coreError.coreError });
+        }),
       );
     const pickDirectories = (event: IpcMainInvokeEvent, dialogOptions: OpenDialogOptions) =>
       run("pick-directories", async () => {
@@ -169,38 +182,103 @@ export const live: Layer.Layer<
           : await desktop.dialog.showOpenDialog(dialogOptions);
         return result.canceled ? null : (result.filePaths[0] ?? null);
       });
-    yield* invokeEffect("projects:list", (_, input) => projects.listProjectWindow(input));
-    yield* invokeEffect("projects:get", (_, projectId) => projects.getProject(projectId));
-    yield* invokeEffect("projects:activity-summaries", (_, projectIds) =>
+    yield* invokeEffectQuery("projects:list", (_, input) => projects.listProjectWindow(input));
+    yield* invokeEffectQuery("projects:get", (_, projectId) => projects.getProject(projectId));
+    yield* invokeEffectQuery("projects:activity-summaries", (_, projectIds) =>
       projects.readProjectActivitySummaries(projectIds),
     );
-    yield* invokeEffect("page-chats:activity-summaries", (_, input) =>
+    yield* invokeEffectQuery("page-chats:activity-summaries", (_, input) =>
       projects.readPageChatActivitySummaries(input),
     );
-    yield* invokeEffect("page-chats:list", (_, input) => projects.listPageChatWindow(input));
-    yield* invokeEffect("page-chats:link", (_, sessionId, input) =>
+    yield* invokeEffectQuery("page-chats:list", (_, input) => projects.listPageChatWindow(input));
+    yield* invokeEffectPlainCommand("page-chats:link", (_, sessionId, input) =>
       projects.linkPageToProjectSession(sessionId, input),
     );
-    yield* invokeEffect("page-chats:unlink", (_, sessionId, input) =>
+    yield* invokeEffectPlainCommand("page-chats:unlink", (_, sessionId, input) =>
       projects.unlinkPageFromProjectSession(sessionId, input),
     );
-    yield* core("projects:create", (_, input) =>
-      createProjectWithDefaultSource(input, {
-        projectsDirectory: resolveNodexProjectsDirectory(config.documentsPath),
-        createProject: projects.createProject,
-      }),
+    yield* handleLocalCommitCommand("projects:create", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "projects:create",
+            command,
+            createProjectWithDefaultSource(command.payload.input, {
+              projectsDirectory: resolveNodexProjectsDirectory(config.documentsPath),
+              createProject: (input) =>
+                projects.createProject({
+                  ...command,
+                  payload: { ...command.payload, input },
+                }),
+            }),
+          ),
+        ),
+      ),
     );
-    yield* core("projects:update", (_, projectId, updates) =>
-      projects.updateProject(projectId, updates),
+    yield* handleLocalCommitCommand("projects:update", (event, input) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          Effect.try({
+            try: () => ProjectUpdateCommandInputSchema.parse(input),
+            catch: (cause) =>
+              new ProjectWorkspaceIpcError({ operation: "projects:update.parse", cause }),
+          }),
+        ),
+        Effect.flatMap((parsed) => projects.updateProject(parsed)),
+        Effect.map(
+          ({ value, apply }) =>
+            ({
+              ok: true,
+              value,
+              localCommit: rendererLocalCommitApply(apply),
+            }) satisfies IpcApi["projects:update"]["result"],
+        ),
+        Effect.catch((cause) => {
+          const coreError = unwrapCoreError(cause);
+          if (!coreError) {
+            return Effect.fail(
+              cause instanceof ProjectWorkspaceIpcError
+                ? cause
+                : new ProjectWorkspaceIpcError({ operation: "projects:update", cause }),
+            );
+          }
+          return Effect.succeed({
+            ok: false,
+            error: coreError.coreError,
+          } satisfies IpcApi["projects:update"]["result"]);
+        }),
+      ),
     );
-    yield* invokeEffect("projects:reorder", (_, input) => projects.reorderProjects(input));
-    yield* invokeEffect("projects:set-pinned", (_, projectId, input) =>
-      syncSectionsAfter(projects.setProjectPinned(projectId, input)),
+    yield* handleLocalCommitCommand("projects:reorder", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand("projects:reorder", command, projects.reorderProjects(command)),
+        ),
+      ),
     );
-    yield* invokeEffect("projects:set-pinned-order", (_, input) =>
-      projects.setPinnedProjectOrder(input),
+    yield* handleLocalCommitCommand("projects:set-pinned", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "projects:set-pinned",
+            command,
+            syncSectionsAfter(projects.setProjectPinned(command)),
+          ),
+        ),
+      ),
     );
-    yield* handle("projects:pick-source-roots", (event) =>
+    yield* handleLocalCommitCommand("projects:set-pinned-order", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "projects:set-pinned-order",
+            command,
+            projects.setPinnedProjectOrder(command),
+          ),
+        ),
+      ),
+    );
+    yield* handlePlainCommand("projects:pick-source-roots", (event) =>
       authorize(event).pipe(
         Effect.andThen(
           pickDirectories(event, {
@@ -210,7 +288,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("workspace:pick-directory", (event, input) =>
+    yield* handlePlainCommand("workspace:pick-directory", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(
           pickDirectory(event, {
@@ -223,53 +301,153 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("projects:set-lifecycle", (event, projectId, input) =>
+    yield* handleLocalCommitCommand("projects:set-lifecycle", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.try({
-            try: () => ProjectLifecycleInputSchema.parse(input),
+            try: () => {
+              if (!isBoundedOperationId(command.operationId)) {
+                throw new TypeError("Workspace catalog operation identity is invalid");
+              }
+              ProjectLifecycleInputSchema.parse(command.payload);
+              return command;
+            },
             catch: (cause) =>
               new ProjectWorkspaceIpcError({ operation: "projects:set-lifecycle", cause }),
           }),
         ),
-        Effect.flatMap((parsed) => projectLifecycle.setLifecycle(projectId, parsed.lifecycle)),
+        Effect.flatMap(projectLifecycle.setLifecycle),
+        Effect.map((execution): IpcApi["projects:set-lifecycle"]["result"] =>
+          execution.kind === "rejected"
+            ? execution.result
+            : {
+                ok: true,
+                value: execution.result.value,
+                localCommit: rendererLocalCommitApply(execution.result.apply),
+              },
+        ),
+        Effect.catch((cause) => {
+          const coreError = unwrapCoreError(cause);
+          if (!coreError) {
+            return Effect.fail(
+              cause instanceof ProjectWorkspaceIpcError
+                ? cause
+                : new ProjectWorkspaceIpcError({ operation: "projects:set-lifecycle", cause }),
+            );
+          }
+          return Effect.succeed({ ok: false as const, error: coreError.coreError });
+        }),
       ),
     );
-    yield* invokeEffect("sidebar-sections:list", (_, input) => projects.listSidebarSections(input));
-    yield* invokeEffect("sidebar-sections:items:list", (_, sectionId, input) =>
+    yield* invokeEffectQuery("sidebar-sections:list", (_, input) =>
+      projects.listSidebarSections(input),
+    );
+    yield* invokeEffectQuery("sidebar-sections:items:list", (_, sectionId, input) =>
       projects.listSidebarSectionItems(sectionId, input),
     );
-    yield* invokeEffect("sidebar-sections:item:placement", (_, item) =>
+    yield* invokeEffectQuery("sidebar-sections:item:placement", (_, item) =>
       projects.readSidebarSectionPlacement(item),
     );
-    yield* core("sidebar-sections:create", (_, input) =>
-      syncSectionsAfter(projects.createSidebarSection(input)),
+    yield* handleLocalCommitCommand("sidebar-sections:create", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:create",
+            command,
+            syncSectionsAfter(projects.createSidebarSection(command)),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:rename", (_, sectionId, input) =>
-      syncSectionsAfter(projects.renameSidebarSection(sectionId, input)),
+    yield* handleLocalCommitCommand("sidebar-sections:rename", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:rename",
+            command,
+            syncSectionsAfter(projects.renameSidebarSection(command)),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:delete", (_, sectionId, input) =>
-      syncSectionsAfter(projects.deleteSidebarSection(sectionId, input.expectedRevision)),
+    yield* handleLocalCommitCommand("sidebar-sections:delete", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:delete",
+            command,
+            syncSectionsAfter(projects.deleteSidebarSection(command)),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:restore", (_, sectionId, input) =>
-      syncSectionsAfter(projects.restoreSidebarSection(sectionId, input.expectedRevision)),
+    yield* handleLocalCommitCommand("sidebar-sections:restore", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:restore",
+            command,
+            syncSectionsAfter(projects.restoreSidebarSection(command)),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:item:move", (_, input) =>
-      syncSectionsAfter(projects.moveSidebarSectionItem(input)),
+    yield* handleLocalCommitCommand("sidebar-sections:item:move", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:item:move",
+            command,
+            syncSectionsAfter(projects.moveSidebarSectionItem(command)),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:reorder", (_, sectionIds) =>
-      projects.reorderSidebarSections(sectionIds),
+    yield* handleLocalCommitCommand("sidebar-sections:reorder", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:reorder",
+            command,
+            projects.reorderSidebarSections(command),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:sessions:reorder", (_, sectionId, sessionIds) =>
-      syncSectionsAfter(projects.reorderSidebarSectionSessions(sectionId, sessionIds)),
+    yield* handleLocalCommitCommand("sidebar-sections:sessions:reorder", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:sessions:reorder",
+            command,
+            syncSectionsAfter(projects.reorderSidebarSectionSessions(command)),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:sessions:archive-all", (_, sectionId, input) =>
-      syncSectionsAfter(projects.archiveSidebarSectionSessions(sectionId, input)),
+    yield* handleLocalCommitCommand("sidebar-sections:sessions:archive-all", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:sessions:archive-all",
+            command,
+            syncSectionsAfter(projects.archiveSidebarSectionSessions(command)),
+          ),
+        ),
+      ),
     );
-    yield* core("sidebar-sections:sessions:create", (_, input) =>
-      syncSectionsAfter(projects.createSessionInSidebarSection(input)),
+    yield* handleLocalCommitCommand("sidebar-sections:sessions:create", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "sidebar-sections:sessions:create",
+            command,
+            syncSectionsAfter(projects.createSessionInSidebarSection(command)),
+          ),
+        ),
+      ),
     );
-    yield* invokeEffect("workspace:tasks:list", (_, projectId, input) =>
+    yield* invokeEffectQuery("workspace:tasks:list", (_, projectId, input) =>
       Effect.gen(function* () {
         const startedAt = getDevRuntimeMetricStart();
         const window = yield* projects.listProjectSessionSummaryWindow(projectId, input);
@@ -287,7 +465,7 @@ export const live: Layer.Layer<
         return window;
       }),
     );
-    yield* invokeEffect("project-sessions:get", (_, sessionId) =>
+    yield* invokeEffectQuery("project-sessions:get", (_, sessionId) =>
       Effect.gen(function* () {
         const startedAt = getDevRuntimeMetricStart();
         const session = yield* projects.getProjectSession(sessionId);
@@ -302,95 +480,149 @@ export const live: Layer.Layer<
         return session;
       }),
     );
-    yield* invokeEffect("project-sessions:create", (_, input) =>
-      projects.createProjectSession(input),
-    );
-    yield* invokeEffect("project-sessions:ensure-default-draft", (_, projectId) =>
-      projects.ensureDefaultDraftProjectSession(projectId),
-    );
-    yield* invokeEffect("project-sessions:update", (_, sessionId, input) =>
-      projects.updateProjectSession(sessionId, input),
-    );
-    yield* invokeEffect("project-sessions:rename", (_, sessionId, input) =>
-      renameProjectSessionChat(sessionId, input, {
-        getProjectSession: projects.getProjectSession,
-        renameProjectSession: projects.renameProjectSession,
-        setThreadName: (threadId, title) =>
-          threadTitles.set({ threadId, name: title, normalization: "manual" }),
-      }),
-    );
-    yield* invokeEffect("project-sessions:delete", (_, sessionId) =>
-      deleteProjectSessionWithBrowserCleanupUsing({
-        sessionId,
-        browserRuntime: projectSessionBrowserRuntime,
-        deleteProjectSession: projects.deleteProjectSession,
-      }),
-    );
-    yield* invokeEffect("project-sessions:reorder", (_, projectId, orderedSessionIds) =>
-      projects.reorderProjectSessions(projectId, orderedSessionIds),
-    );
-    yield* invokeEffect("project-sessions:set-pinned", (_, sessionId, input) =>
-      syncSectionsAfter(projects.setProjectSessionPinned(sessionId, input)),
-    );
-    yield* invokeEffect("project-sessions:set-pinned-order", (_, projectId, input) =>
-      projects.setPinnedProjectSessionOrder(projectId, input),
-    );
-    yield* invokeEffect("project-sessions:archive", (_, sessionId) =>
-      Effect.gen(function* () {
-        const existing = yield* projects.getProjectSession(sessionId);
-        if (!existing) return null;
-        if (!existing.thread) return yield* projects.archiveProjectSession(sessionId);
-        yield* conversationCommands.archive(existing.thread.threadId);
-        return yield* projects.getProjectSession(sessionId);
-      }),
-    );
-    yield* invokeEffect("project-sessions:unarchive", (_, sessionId) =>
-      Effect.gen(function* () {
-        const existing = yield* projects.getProjectSession(sessionId);
-        if (!existing) return null;
-        if (!existing.thread) return yield* projects.unarchiveProjectSession(sessionId);
-        yield* conversationCommands.unarchive(existing.thread.threadId);
-        return yield* projects.getProjectSession(sessionId);
-      }),
-    );
-    yield* invokeEffect("project-sessions:mark-unread", (_, sessionId, input) =>
-      projects.markProjectSessionUnread(sessionId, input),
-    );
-    yield* handle("project-sessions:fork", (event, sessionId, input, sourceSceneContext) =>
+    yield* handleLocalCommitCommand("project-sessions:create", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(
-          Effect.try({
-            try: () => {
-              if (
-                sourceSceneContext &&
-                windows.resolveSessionId(event.sender.id) !== sourceSceneContext.browserViewScopeId
-              ) {
-                throw new Error("Browser view scope does not belong to the requesting window");
-              }
-              return sourceSceneContext
-                ? {
-                    browserViewScopeId: sourceSceneContext.browserViewScopeId,
-                    scene: WorkbenchSceneSnapshotSchema.parse(sourceSceneContext.scene),
-                  }
-                : undefined;
-            },
-            catch: (cause) =>
-              new ProjectWorkspaceIpcError({ operation: "project-sessions:fork", cause }),
-          }),
-        ),
-        Effect.flatMap((parsedSceneContext) =>
-          projectSessionFork.fork({
-            sessionId,
-            input,
-            ...(parsedSceneContext ? { sourceSceneContext: parsedSceneContext } : {}),
-          }),
+          catalogCommand(
+            "project-sessions:create",
+            command,
+            projects.createProjectSession(command),
+          ),
         ),
       ),
     );
-    yield* invokeEffect("project-session-threads:attach", (_, input) =>
+    yield* handleLocalCommitCommand("project-sessions:ensure-default-draft", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:ensure-default-draft",
+            command,
+            projects.ensureDefaultDraftProjectSession(command),
+          ),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:update", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:update",
+            command,
+            projects.updateProjectSession(command),
+          ),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:rename", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand("project-sessions:rename", command, projectSessions.rename(command)),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:delete", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand("project-sessions:delete", command, projectSessions.delete(command)),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:reorder", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:reorder",
+            command,
+            projects.reorderProjectSessions(command),
+          ),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:set-pinned", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:set-pinned",
+            command,
+            projectSessions.setPinned(command),
+          ),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:set-pinned-order", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:set-pinned-order",
+            command,
+            projects.setPinnedProjectSessionOrder(command),
+          ),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:archive", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand("project-sessions:archive", command, projectSessions.archive(command)),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:unarchive", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand("project-sessions:unarchive", command, projectSessions.unarchive(command)),
+        ),
+      ),
+    );
+    yield* handleLocalCommitCommand("project-sessions:mark-unread", (event, command) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          catalogCommand(
+            "project-sessions:mark-unread",
+            command,
+            projects.markProjectSessionUnread(command),
+          ),
+        ),
+      ),
+    );
+    yield* handlePlainCommand(
+      "project-sessions:fork",
+      (event, sessionId, input, sourceSceneContext) =>
+        authorize(event).pipe(
+          Effect.andThen(
+            Effect.try({
+              try: () => {
+                if (
+                  sourceSceneContext &&
+                  windows.resolveSessionId(event.sender.id) !==
+                    sourceSceneContext.browserViewScopeId
+                ) {
+                  throw new Error("Browser view scope does not belong to the requesting window");
+                }
+                return sourceSceneContext
+                  ? {
+                      browserViewScopeId: sourceSceneContext.browserViewScopeId,
+                      scene: WorkbenchSceneSnapshotSchema.parse(sourceSceneContext.scene),
+                    }
+                  : undefined;
+              },
+              catch: (cause) =>
+                new ProjectWorkspaceIpcError({ operation: "project-sessions:fork", cause }),
+            }),
+          ),
+          Effect.flatMap((parsedSceneContext) =>
+            projectSessionFork.fork({
+              sessionId,
+              input,
+              ...(parsedSceneContext ? { sourceSceneContext: parsedSceneContext } : {}),
+            }),
+          ),
+        ),
+    );
+    yield* invokeEffectPlainCommand("project-session-threads:attach", (_, input) =>
       projects.upsertProjectSessionThreadLink(input),
     );
-    yield* invokeEffect("project-session-threads:detach", (_, sessionId) =>
+    yield* invokeEffectPlainCommand("project-session-threads:detach", (_, sessionId) =>
       projects.detachProjectSessionThread(sessionId),
     );
   }),

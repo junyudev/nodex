@@ -5,7 +5,8 @@ import { Link2 } from "@/components/shared/icons/generic-icons";
 
 import { NodexPopover, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { invoke } from "@/lib/api";
+import { resolveManagedAssetPath } from "@/lib/assets";
+import { openFileLink } from "@/lib/file-system-operations";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { useFileLinkOpener } from "@/lib/use-file-link-opener";
 import { attachmentInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
@@ -77,13 +78,12 @@ function AttachmentPopover({
   const resolvePrimaryPath = useCallback(async (): Promise<string | null> => {
     if (props.mode === "link") return props.source || null;
     if (isOwnedFile) return null;
-    const resolved = await invoke("asset:resolve-path", props.source);
-    return typeof resolved === "string" && resolved.trim().length > 0 ? resolved : null;
+    return await resolveManagedAssetPath(props.source);
   }, [isOwnedFile, props.mode, props.source]);
 
   const openPath = useCallback(
     async (path: string, nextOpener = opener) => {
-      await invoke("shell:open-file-link", { path }, nextOpener);
+      await openFileLink({ path }, nextOpener);
     },
     [opener],
   );
@@ -313,8 +313,7 @@ function AttachmentInlineContent({ inlineContent }: { inlineContent: { props: At
   const resolvePrimaryPath = useCallback(async (): Promise<string | null> => {
     if (inlineContent.props.mode === "link") return inlineContent.props.source || null;
     if (isOwnedFile) return null;
-    const resolved = await invoke("asset:resolve-path", inlineContent.props.source);
-    return typeof resolved === "string" && resolved.trim().length > 0 ? resolved : null;
+    return await resolveManagedAssetPath(inlineContent.props.source);
   }, [inlineContent.props.mode, inlineContent.props.source, isOwnedFile]);
 
   const handlePrimaryOpen = useCallback(async () => {

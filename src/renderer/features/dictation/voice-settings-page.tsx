@@ -20,7 +20,7 @@ import {
   PlusIcon,
 } from "@/components/shared/icons";
 import { queryKeys } from "@/lib/query-keys";
-import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
+import { updateCommandKeybinding, useCommandKeymapState } from "@/lib/use-command-keymap-state";
 import {
   deleteDictationRecording,
   downloadDictationRecording,
@@ -38,7 +38,6 @@ import {
   requestGlobalDictationInputMonitoring,
   setDictationRecordingTranscript,
   updateDictationSettings,
-  invoke,
 } from "@/lib/api";
 import type { DictationSettings, MicrophoneAccessStatus } from "../../../shared/dictation";
 import {
@@ -50,6 +49,7 @@ import {
 } from "../../../shared/command-keybindings";
 import { transcribeDictationBlob } from "./dictation-buffered-client";
 import { cleanupDictationTranscript } from "./dictation-cleanup-client";
+import { captureGlobalDictationFnHotkey } from "./dictation-settings-runtime";
 
 const SETTINGS_QUERY_KEY = ["settings", "dictation"] as const;
 const HISTORY_QUERY_KEY = ["dictation", "history"] as const;
@@ -63,11 +63,6 @@ const DICTIONARY_PLACEHOLDERS = [
   "useCartState",
 ] as const;
 const MAX_DICTIONARY_ENTRIES = 100;
-
-const captureGlobalDictationFnHotkey = async (): Promise<string | null> => {
-  const hotkey = await invoke("global-dictation-capture-fn-hotkey");
-  return hotkey === "Fn" ? hotkey : null;
-};
 
 const formatRecordingTimestamp = (createdAtMs: number): string =>
   new Intl.DateTimeFormat(undefined, {
@@ -172,7 +167,7 @@ export function VoiceSettingsPage(_props: { readonly onPathChange: (path: string
   });
   const updateShortcut = useMutation({
     mutationFn: (input: { readonly commandId: string; readonly update: CommandKeybindingUpdate }) =>
-      invoke("set-codex-command-keybinding", input.commandId, input.update),
+      updateCommandKeybinding(input.commandId, input.update),
     onSuccess: async (result) => {
       queryClient.setQueryData(queryKeys.settings.commandKeymap(), result.state);
       if (result.type === "applied") {

@@ -22,7 +22,19 @@ import {
   NodexSettingsDropdownTrigger,
 } from "@/components/ui/dropdown";
 import { Input } from "../ui/input";
-import { invoke } from "./workbench-settings-overlay-deps";
+import {
+  backupRuntimePort,
+  deleteBackup,
+  readBackupSettings,
+  readDiagnosticsSettings,
+  readHistorySettings,
+  readTelemetrySettings,
+  restoreBackup,
+  updateBackupSettings,
+  updateDiagnosticsSettings,
+  updateHistorySettings,
+  updateTelemetrySettings,
+} from "./workbench-settings-overlay-deps";
 import { handleFormSubmit, resolveFormErrorMessage, resolveZodErrorMessage } from "../../lib/forms";
 import { FILE_LINK_OPENER_ICON_URLS } from "../../lib/file-link-opener-icons";
 import { useFileLinkOpener } from "../../lib/use-file-link-opener";
@@ -64,7 +76,6 @@ import { isTelemetrySettings } from "../../../shared/diagnostics/telemetry-setti
 import { formatCodexThreadDetailLevelLabel } from "../../lib/codex-thread-settings";
 import type {
   BackupRecord,
-  BackupJobStatus,
   BackupSettings,
   DiagnosticsSettings,
   HistorySettings,
@@ -479,7 +490,7 @@ export function DiagnosticsSettingControl({ open }: { open: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await invoke("settings:diagnostics:get");
+      const result = await readDiagnosticsSettings();
       if (!isDiagnosticsSettings(result)) {
         throw new Error("Could not load diagnostics settings.");
       }
@@ -505,8 +516,7 @@ export function DiagnosticsSettingControl({ open }: { open: boolean }) {
       setError(null);
 
       try {
-        const result = await invoke(
-          "settings:diagnostics:update",
+        const result = await updateDiagnosticsSettings(
           toDiagnosticsUpdateInput(settings, { enabled }),
         );
         if (!isDiagnosticsSettings(result)) {
@@ -532,8 +542,7 @@ export function DiagnosticsSettingControl({ open }: { open: boolean }) {
       setError(null);
 
       try {
-        const result = await invoke(
-          "settings:diagnostics:update",
+        const result = await updateDiagnosticsSettings(
           toDiagnosticsUpdateInput(settings, { replayEnabled }),
         );
         if (!isDiagnosticsSettings(result)) {
@@ -633,7 +642,7 @@ export function TelemetrySettingControl({ open }: { open: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await invoke("settings:telemetry:get");
+      const result = await readTelemetrySettings();
       if (!isTelemetrySettings(result)) {
         throw new Error("Could not load telemetry settings.");
       }
@@ -659,10 +668,7 @@ export function TelemetrySettingControl({ open }: { open: boolean }) {
       setError(null);
 
       try {
-        const result = await invoke(
-          "settings:telemetry:update",
-          toTelemetryUpdateInput(settings, { enabled }),
-        );
+        const result = await updateTelemetrySettings(toTelemetryUpdateInput(settings, { enabled }));
         if (!isTelemetrySettings(result)) {
           throw new Error("Could not save telemetry settings.");
         }
@@ -686,8 +692,7 @@ export function TelemetrySettingControl({ open }: { open: boolean }) {
       setError(null);
 
       try {
-        const result = await invoke(
-          "settings:telemetry:update",
+        const result = await updateTelemetrySettings(
           toTelemetryUpdateInput(settings, { autoCaptureEnabled }),
         );
         if (!isTelemetrySettings(result)) {
@@ -1227,19 +1232,19 @@ function formatBackupTimestamp(value: string): string {
 export function BackupSettingsControl({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<BackupSettings | null>(null);
   const [historySettings, setHistorySettings] = useState<HistorySettings | null>(null);
-  const backupRuntime = useStoreBackupRuntime({ invoke, open });
+  const backupRuntime = useStoreBackupRuntime({ open, port: backupRuntimePort });
   const {
     backups,
     cancelJob: cancelBackupJob,
     cancelPending,
     capacity: backupCapacity,
     clearNotice: clearBackupNotice,
-    installJob: setBackupJob,
     job: backupJob,
     notice: backupNotice,
     presentation: backupJobPresentation,
     refresh: refreshBackupRuntime,
     reloadInventory: loadBackups,
+    startManual: startManualBackup,
     storageOptimization,
   } = backupRuntime;
   const [createSafetyBackup, setCreateSafetyBackup] = useState(true);
@@ -1269,7 +1274,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setStatus(null);
 
       try {
-        const updated = (await invoke("settings:backup:update", {
+        const updated = await updateBackupSettings({
           autoEnabled: settings.envOverrides.autoEnabled
             ? settings.autoEnabled
             : parsed.autoEnabled,
@@ -1282,7 +1287,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
           retentionGiB: settings.envOverrides.retentionGiB
             ? settings.retentionGiB
             : parsed.retentionGiB,
-        })) as BackupSettings;
+        });
         setSettings(updated);
         scheduleForm.reset({
           autoEnabled: updated.autoEnabled,
@@ -1317,11 +1322,11 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setStatus(null);
 
       try {
-        const updated = (await invoke("settings:history:update", {
+        const updated = await updateHistorySettings({
           retentionCount: historySettings.envOverrides.retentionCount
             ? historySettings.retentionCount
             : parsed.retentionCount,
-        })) as HistorySettings;
+        });
         setHistorySettings(updated);
         historyForm.reset({
           retentionCount: String(updated.retentionCount),
@@ -1347,13 +1352,13 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setStatus(null);
 
       try {
-        const job = (await invoke(
-          "backup:create",
-          parsed.label ? { label: parsed.label } : {},
-        )) as BackupJobStatus;
-        setBackupJob(job);
+        const result = await startManualBackup(parsed.label || undefined);
         formApi.reset();
-        setStatus("Snapshot started in the background.");
+        setStatus(
+          result.kind === "submitted"
+            ? "Snapshot started in the background."
+            : "A snapshot was already running. Showing its progress.",
+        );
       } catch (err) {
         setError(resolveFormErrorMessage(err) ?? "Could not create backup.");
       } finally {
@@ -1366,7 +1371,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
   const snapshotValues = useStore(snapshotForm.store, (state) => state.values);
 
   const loadBackupSettings = useCallback(async () => {
-    const data = (await invoke("settings:backup:get")) as BackupSettings;
+    const data = await readBackupSettings();
     setSettings(data);
     scheduleForm.reset({
       autoEnabled: data.autoEnabled,
@@ -1377,7 +1382,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
   }, [scheduleForm]);
 
   const loadHistorySettings = useCallback(async () => {
-    const data = (await invoke("settings:history:get")) as HistorySettings;
+    const data = await readHistorySettings();
     setHistorySettings(data);
     historyForm.reset({
       retentionCount: String(data.retentionCount),
@@ -1430,7 +1435,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setStatus(null);
 
       try {
-        await invoke("backup:restore", {
+        await restoreBackup({
           backupId,
           confirm: true,
           createSafetyBackup,
@@ -1463,7 +1468,7 @@ export function BackupSettingsControl({ open }: { open: boolean }) {
       setStatus(null);
 
       try {
-        await invoke("backup:delete", backupId);
+        await deleteBackup(backupId);
         await loadBackups();
         setConfirmDeleteId(null);
         setStatus("Snapshot deleted.");

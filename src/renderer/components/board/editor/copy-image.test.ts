@@ -1,26 +1,24 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { copyImageToClipboardWithInvoke } from "./copy-image";
+import { copyImageToClipboardWithPort } from "./copy-image";
 
 describe("copy image helper", () => {
-  test("invokes the native clipboard image channel with the raw source", async () => {
+  test("passes the raw source through the clipboard image port", async () => {
     const invokeCalls: unknown[][] = [];
-    const result = await copyImageToClipboardWithInvoke(
+    const result = await copyImageToClipboardWithPort(
       "nodex://assets/diagram.png",
-      async (...args: unknown[]) => {
-        invokeCalls.push(args);
+      async (source) => {
+        invokeCalls.push([source]);
         return { ok: true };
       },
     );
 
     expect(result.ok).toBe(true);
-    expect(JSON.stringify(invokeCalls)).toBe(
-      JSON.stringify([["clipboard:write-image", { source: "nodex://assets/diagram.png" }]]),
-    );
+    expect(JSON.stringify(invokeCalls)).toBe(JSON.stringify([["nodex://assets/diagram.png"]]));
   });
 
   test("returns the structured failure result from the native clipboard path", async () => {
-    const result = await copyImageToClipboardWithInvoke(
+    const result = await copyImageToClipboardWithPort(
       "https://example.com/image.png",
       async () => ({ ok: false, message: "Could not load the image file." }),
     );
@@ -30,7 +28,7 @@ describe("copy image helper", () => {
   });
 
   test("normalizes unexpected invoke failures to a user-facing copy error", async () => {
-    const result = await copyImageToClipboardWithInvoke("nodex://assets/diagram.png", async () => {
+    const result = await copyImageToClipboardWithPort("nodex://assets/diagram.png", async () => {
       throw new Error("boom");
     });
 

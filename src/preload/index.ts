@@ -47,8 +47,6 @@ import {
 } from "../shared/git-worker-protocol";
 import type { McpAppSandboxHostMessageChannel } from "../shared/mcp-app/mcp-app-sandbox-contract";
 import type { DictationStreamingPortHandshake } from "../shared/dictation-streaming";
-import type { ContentAccessContext } from "../shared/content-access-context";
-import type { PrepareDroppedPageFilesResult } from "../shared/page-files";
 
 // Sandboxed Electron preloads must stay single-file bundles. Keep this tiny wire
 // guard local and type-checked so sharing it cannot create an emitted preload chunk.
@@ -258,24 +256,6 @@ contextBridge.exposeInMainWorld("api", {
       return webUtils.getPathForFile(file);
     } catch {
       return "";
-    }
-  },
-  prepareDroppedPageFiles: (
-    accessContext: ContentAccessContext,
-    operationId: string,
-    files: readonly File[],
-  ) => {
-    try {
-      const localPaths = Array.from(files, (file) => webUtils.getPathForFile(file));
-      if (localPaths.length === 0 || localPaths.some((localPath) => !localPath)) {
-        return Promise.reject(new Error("Dropped files are unavailable to the desktop host"));
-      }
-      return ipcRenderer.invoke("page-files:prepare-local-drop", accessContext, {
-        operationId,
-        localPaths,
-      }) as Promise<PrepareDroppedPageFilesResult>;
-    } catch {
-      return Promise.reject(new Error("Dropped files are unavailable to the desktop host"));
     }
   },
   sendGitWorkerMessage: (message: GitWorkerMessageFromView) =>

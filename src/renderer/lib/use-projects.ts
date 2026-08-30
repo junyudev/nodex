@@ -4,7 +4,14 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type {
   Project,
   ProjectCreateInput,
@@ -15,10 +22,11 @@ import type {
   ProjectUpdateInput,
   ProjectWindow,
 } from "./types";
-import { invoke, invokeCoreResult, subscribeProjectChanges } from "./api";
+import { subscribeProjectChanges } from "./api";
+import { projectCatalogStoreFor } from "./project-catalog";
 import { projectsListQueryOptions } from "./query-options";
 import { queryKeys } from "./query-keys";
-import { runSerializedProjectCatalogUpdate } from "./project-update-queue";
+import { workspaceProjectCommands } from "./workspace-catalog-commands";
 
 const PROJECTS_LIST_QUERY_KEY = queryKeys.projects.list(false);
 const EMPTY_PROJECTS: Project[] = [];
@@ -27,10 +35,10 @@ const EMPTY_PROJECTS: Project[] = [];
 // cached data (or the select reference) changes, so the derived array keeps a
 // stable identity across renders. Effects and stores downstream depend on that
 // stability; an inline flatMap here previously fed a render loop.
-const selectProjects = (data: InfiniteData<ProjectWindow, string | null>): Project[] =>
+const selectProjects = (data: InfiniteData<ProjectWindow>): Project[] =>
   data.pages.flatMap((window) => window.items);
 
-const selectArchivedProjects = (data: InfiniteData<ProjectWindow, string | null>): Project[] =>
+const selectArchivedProjects = (data: InfiniteData<ProjectWindow>): Project[] =>
   selectProjects(data).filter((project) => project.lifecycle === "archived");
 
 function getErrorMessage(err: unknown): string {
@@ -39,12 +47,36 @@ function getErrorMessage(err: unknown): string {
 
 export function useProjects() {
   const queryClient = useQueryClient();
+  const projectCatalog = useMemo(() => projectCatalogStoreFor(queryClient), [queryClient]);
+  const projectCatalogSnapshot = useSyncExternalStore(
+    projectCatalog.subscribe,
+    projectCatalog.getSnapshot,
+    projectCatalog.getSnapshot,
+  );
   const [actionError, setActionError] = useState<string | null>(null);
   const projectsQuery = useInfiniteQuery({
     ...projectsListQueryOptions(),
-    select: selectProjects,
   });
-  const projects = projectsQuery.data ?? EMPTY_PROJECTS;
+  const canonicalProjects = useMemo(
+    () => (projectsQuery.data ? selectProjects(projectsQuery.data) : EMPTY_PROJECTS),
+    [projectsQuery.data],
+  );
+  const canonicalCatalog = useMemo(() => {
+    const data = projectsQuery.data;
+    const first = data?.pages[0];
+    if (!first) return null;
+    const pages = data.pages.filter((page) => page.storeEpoch === first.storeEpoch);
+    return {
+      storeEpoch: first.storeEpoch,
+      projectionRevision: Math.min(...pages.map((page) => page.projectionRevision)),
+      projects: pages.flatMap((page) => page.items),
+    };
+  }, [projectsQuery.data]);
+  useLayoutEffect(() => {
+    if (!canonicalCatalog) return;
+    projectCatalog.publishCanonical(canonicalCatalog);
+  }, [canonicalCatalog, projectCatalog]);
+  const projects = projectCatalog.projects(canonicalProjects) as Project[];
 
   const refreshProjects = useCallback(async () => {
     setActionError(null);
@@ -72,7 +104,7 @@ export function useProjects() {
   }, [queryClient]);
 
   const { mutateAsync: createProjectRequest } = useMutation({
-    mutationFn: (input: ProjectCreateInput) => invokeCoreResult("projects:create", input),
+    mutationFn: workspaceProjectCommands.create,
     onMutate: () => {
       setActionError(null);
     },
@@ -86,9 +118,9 @@ export function useProjects() {
 
   const { mutateAsync: archiveProjectRequest } = useMutation({
     mutationFn: (projectId: string) =>
-      invoke("projects:set-lifecycle", projectId, {
+      workspaceProjectCommands.setLifecycle(projectId, {
         lifecycle: "archived",
-      }) as Promise<ProjectLifecycleMutationResult>,
+      }),
     onMutate: () => {
       setActionError(null);
     },
@@ -101,24 +133,24 @@ export function useProjects() {
     },
   });
 
-  const { mutateAsync: updateProjectRequest } = useMutation({
-    mutationFn: ({ projectId, updates }: { projectId: string; updates: ProjectUpdateInput }) =>
-      runSerializedProjectCatalogUpdate(projectId, () =>
-        invokeCoreResult("projects:update", projectId, updates),
-      ),
-    onMutate: () => {
+  const updateProjectRequest = useCallback(
+    async ({ projectId, updates }: { projectId: string; updates: ProjectUpdateInput }) => {
       setActionError(null);
+      const outcome = await projectCatalog.updateProject(projectId, updates);
+      if (outcome.kind === "acknowledged") {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() });
+        return outcome.project;
+      }
+      if (outcome.kind === "definitive_failure" || outcome.kind === "unknown_outcome") {
+        throw new Error(outcome.failure.message);
+      }
+      throw new Error("The Project update was superseded by a newer authority");
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: PROJECTS_LIST_QUERY_KEY,
-        exact: true,
-      });
-    },
-  });
+    [projectCatalog, queryClient],
+  );
 
   const { mutateAsync: reorderProjectsRequest } = useMutation({
-    mutationFn: (input: ProjectOrderInput) => invoke("projects:reorder", input) as Promise<void>,
+    mutationFn: workspaceProjectCommands.reorder,
     onMutate: () => {
       setActionError(null);
     },
@@ -138,7 +170,7 @@ export function useProjects() {
 
   const { mutateAsync: setProjectPinnedRequest } = useMutation({
     mutationFn: ({ projectId, input }: { projectId: string; input: ProjectPinnedInput }) =>
-      invoke("projects:set-pinned", projectId, input) as Promise<Project | null>,
+      workspaceProjectCommands.setPinned(projectId, input),
     onMutate: () => {
       setActionError(null);
     },
@@ -157,8 +189,7 @@ export function useProjects() {
   });
 
   const { mutateAsync: setPinnedProjectOrderRequest } = useMutation({
-    mutationFn: (input: ProjectPinnedOrderInput) =>
-      invoke("projects:set-pinned-order", input) as Promise<void>,
+    mutationFn: workspaceProjectCommands.setPinnedOrder,
     onMutate: () => {
       setActionError(null);
     },
@@ -275,6 +306,9 @@ export function useProjects() {
     reorderProjects,
     setProjectPinned,
     setPinnedProjectOrder,
+    projectCatalogRenderToken: projectCatalogSnapshot.renderToken,
+    markProjectCatalogRendered: projectCatalog.markRendered,
+    retryProjectUpdate: projectCatalog.retryProjectUpdate,
   };
 }
 
@@ -296,9 +330,9 @@ export function useRemovedProjects(open: boolean) {
 
   const { mutateAsync: restoreProject, isPending: restoring } = useMutation({
     mutationFn: (projectId: string) =>
-      invoke("projects:set-lifecycle", projectId, {
+      workspaceProjectCommands.setLifecycle(projectId, {
         lifecycle: "active",
-      }) as Promise<ProjectLifecycleMutationResult>,
+      }),
     onSuccess: async (result) => {
       if (result.kind !== "updated") return;
       await queryClient.invalidateQueries({ queryKey: queryKeys.projects.all() });

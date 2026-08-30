@@ -1,4 +1,3 @@
-import { invoke } from "@/lib/api";
 import type { PageInput, PageUpdateMutationResult } from "@/lib/types";
 import type { PageStageHandlers } from "@/lib/page-stage-handlers";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -7,6 +6,7 @@ import { getBoardProjectStore } from "@/lib/board-store";
 import { deleteBoardPage, moveBoardPage } from "@/lib/board-page-mutation-command";
 import { isPageMetadataPatch } from "@/lib/page-detail-metadata-runtime";
 import { commitPageMetadataPatchForBoard } from "@/lib/page-metadata-board-runtime";
+import { completePageOccurrence, skipPageOccurrence } from "@/lib/page-occurrence-runtime";
 import {
   PAGE_DOCUMENT_MUTATION_REQUIRED_MESSAGE,
   findPageDocumentPatchFields,
@@ -64,7 +64,7 @@ export function makeRemotePageStageHandlers(
       if (!moved) throw new Error("Failed to move Page");
     },
     onCompleteOccurrence: async (pageId: string, occurrenceStart: Date) => {
-      await invoke("page:occurrence:complete", projectId, {
+      await completePageOccurrence(projectId, {
         operationId: createUuidV7(),
         createdPageId: createUuidV7(),
         pageId: pageId,
@@ -73,7 +73,7 @@ export function makeRemotePageStageHandlers(
       });
     },
     onSkipOccurrence: async (pageId: string, occurrenceStart: Date) => {
-      await invoke("page:occurrence:skip", projectId, {
+      await skipPageOccurrence(projectId, {
         operationId: createUuidV7(),
         pageId: pageId,
         occurrenceStart,

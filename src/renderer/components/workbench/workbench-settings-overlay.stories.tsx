@@ -386,6 +386,13 @@ function ensureStorybookElectronBridge({
           };
         }
         case "backup:create": {
+          const operationId =
+            typeof args[0] === "object" &&
+            args[0] &&
+            "operationId" in (args[0] as Record<string, unknown>) &&
+            typeof (args[0] as { operationId?: unknown }).operationId === "string"
+              ? (args[0] as { operationId: string }).operationId
+              : "storybook-backup-operation";
           const created = onCreateBackup(
             typeof args[0] === "object" &&
               args[0] &&
@@ -396,26 +403,30 @@ function ensureStorybookElectronBridge({
               : null,
           );
           return {
-            jobId: `storybook-job-${created.id}`,
-            state: "completed",
-            phase: "ready",
-            completedUnits: 7,
-            totalUnits: 7,
-            startedAt: Date.now(),
-            updatedAt: Date.now(),
-            backup: created,
-            error: null,
-            progress: {
-              databaseCopiedPages: 0,
-              databaseTotalPages: 0,
-              databaseBusyRetries: 0,
-              assetBytesCopied: 0,
-              databaseCopyMs: 0,
-              assetCopyMs: 0,
-              validationMs: 0,
-              digestMs: 0,
-              publishMs: 0,
-              writerHeldMs: 0,
+            kind: "submitted",
+            operationId,
+            job: {
+              jobId: operationId,
+              state: "completed",
+              phase: "ready",
+              completedUnits: 7,
+              totalUnits: 7,
+              startedAt: Date.now(),
+              updatedAt: Date.now(),
+              backup: created,
+              error: null,
+              progress: {
+                databaseCopiedPages: 0,
+                databaseTotalPages: 0,
+                databaseBusyRetries: 0,
+                assetBytesCopied: 0,
+                databaseCopyMs: 0,
+                assetCopyMs: 0,
+                validationMs: 0,
+                digestMs: 0,
+                publishMs: 0,
+                writerHeldMs: 0,
+              },
             },
           };
         }

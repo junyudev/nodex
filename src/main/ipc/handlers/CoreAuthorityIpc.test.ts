@@ -6,6 +6,7 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CoreAuthority, type CoreAuthorityState } from "../../core-runtime/CoreAuthority";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live, toRendererStatus } from "./CoreAuthorityIpc";
@@ -33,7 +34,7 @@ it.effect("owns all Core authority IPC handlers with the Main Scope", () =>
       generation: "generation-1",
     });
     const channels = new Set<string>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, _handler) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -45,7 +46,7 @@ it.effect("owns all Core authority IPC handlers with the Main Scope", () =>
         _channel: string,
         _handler: (event: never, ...args: Args) => Effect.Effect<void>,
       ) => Effect.void,
-    } as ElectronIpc["Service"]);
+    });
     const authority = CoreAuthority.of({
       identity: { profileId: "profile", libraryId: "library", storeEpoch: "epoch" },
       initialLaunch: {} as CoreAuthority["Service"]["initialLaunch"],

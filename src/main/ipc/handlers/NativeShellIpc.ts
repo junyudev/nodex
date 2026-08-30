@@ -10,7 +10,6 @@ import {
 } from "electron";
 import { homedir } from "node:os";
 import { isAbsolute, sep } from "node:path";
-import type { IpcApi } from "../../../shared/ipc-api";
 import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
 import {
   buildSessionContextMenuIconSvg,
@@ -28,11 +27,6 @@ export class NativeShellIpcError extends Schema.TaggedError<NativeShellIpcError>
   "NativeShellIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 const menuTemplate = (
   items: readonly NativeContextMenuItem[],
@@ -182,8 +176,7 @@ export const live: Layer.Layer<
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handlePlainCommand, handleQuery } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -200,7 +193,7 @@ export const live: Layer.Layer<
         catch: (cause) => new NativeShellIpcError({ operation, cause }),
       });
 
-    yield* handle("native-context-menu:show", (event, items, options) =>
+    yield* handlePlainCommand("native-context-menu:show", (event, items, options) =>
       authorize(event).pipe(
         Effect.andThen(() => {
           const owner = windows.get(event.sender.id);
@@ -237,24 +230,24 @@ export const live: Layer.Layer<
         }),
       ),
     );
-    yield* handle("shell:open-file-link", (event, target, openerId) =>
+    yield* handlePlainCommand("shell:open-file-link", (event, target, openerId) =>
       authorize(event).pipe(
         Effect.andThen(run("open-file-link", () => openFileLinkTarget(target, openerId))),
       ),
     );
-    yield* handle("shell:file-link-openers:list-available", (event) =>
+    yield* handleQuery("shell:file-link-openers:list-available", (event) =>
       authorize(event).pipe(
         Effect.andThen(
           run("list-available-file-link-openers", async () => listAvailableFileLinkOpeners()),
         ),
       ),
     );
-    yield* handle("open-file", (event, target, openerId) =>
+    yield* handlePlainCommand("open-file", (event, target, openerId) =>
       authorize(event).pipe(
         Effect.andThen(run("open-file", () => openFileLinkTarget(target, openerId))),
       ),
     );
-    yield* handle("shell:open-external-url", (event, value) =>
+    yield* handlePlainCommand("shell:open-external-url", (event, value) =>
       authorize(event).pipe(
         Effect.andThen(
           run("open-external-url", async () => {
@@ -264,7 +257,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("shell:open-path-default", (event, inputPath) =>
+    yield* handlePlainCommand("shell:open-path-default", (event, inputPath) =>
       authorize(event).pipe(
         Effect.andThen(
           run("open-path", async () => {
@@ -275,7 +268,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("shell:path-context:get", (event) =>
+    yield* handleQuery("shell:path-context:get", (event) =>
       authorize(event).pipe(
         Effect.as({
           homeDirectory: homedir(),

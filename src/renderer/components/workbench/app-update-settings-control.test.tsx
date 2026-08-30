@@ -7,9 +7,8 @@ const mockState = vi.hoisted(() => ({
   subscribeCallback: null as ((status: import("../../lib/types").AppUpdateStatus) => void) | null,
 }));
 
-vi.mock("./app-update-settings-control-deps", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./app-update-settings-control-deps")>()),
-  invoke: async (...args: unknown[]) => {
+vi.mock("./app-update-settings-control-deps", async (importOriginal) => {
+  const invoke = async (...args: unknown[]) => {
     mockState.invokeCalls.push(args);
     const channel = args[0];
 
@@ -63,16 +62,24 @@ vi.mock("./app-update-settings-control-deps", async (importOriginal) => ({
       default:
         return null;
     }
-  },
-  subscribeAppUpdateStatus: (
-    callback: (status: import("../../lib/types").AppUpdateStatus) => void,
-  ) => {
-    mockState.subscribeCallback = callback;
-    return () => {
-      mockState.subscribeCallback = null;
-    };
-  },
-}));
+  };
+  return {
+    ...(await importOriginal<typeof import("./app-update-settings-control-deps")>()),
+    readAppUpdateSettings: () => invoke("settings:app-updates:get"),
+    readAppUpdateStatus: () => invoke("app:update:status"),
+    updateAppUpdateSettings: (input: unknown) => invoke("settings:app-updates:update", input),
+    checkForAppUpdate: () => invoke("app:update:check"),
+    installAppUpdate: () => invoke("app:update:install"),
+    subscribeAppUpdateStatus: (
+      callback: (status: import("../../lib/types").AppUpdateStatus) => void,
+    ) => {
+      mockState.subscribeCallback = callback;
+      return () => {
+        mockState.subscribeCallback = null;
+      };
+    },
+  };
+});
 
 describe("AppUpdateSettingsControl", () => {
   test("loads settings, reacts to update events, and triggers actions", async () => {

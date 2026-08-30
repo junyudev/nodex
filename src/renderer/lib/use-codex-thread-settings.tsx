@@ -4,8 +4,8 @@ import {
   resolveCodexThreadDetailLevel,
   writeCodexThreadSettings,
 } from "./codex-thread-settings";
-import { invoke } from "./api";
 import type { CodexThreadDetailLevel, CodexThreadSettings } from "./types";
+import { updateCodexDeveloperSettings } from "./codex-thread-settings-runtime";
 
 interface CodexThreadSettingsContextValue {
   settings: CodexThreadSettings;
@@ -30,9 +30,9 @@ function useCodexThreadSettingsInternal(): CodexThreadSettingsContextValue {
   );
 
   useEffect(() => {
-    void invoke("settings:codex-developer:update", {
-      detailLevel: resolveCodexThreadDetailLevel(settings.detailLevel),
-    }).catch(() => undefined);
+    void updateCodexDeveloperSettings(resolveCodexThreadDetailLevel(settings.detailLevel)).catch(
+      () => undefined,
+    );
   }, [settings.detailLevel]);
 
   const setSettings = useCallback((value: CodexThreadSettings) => {

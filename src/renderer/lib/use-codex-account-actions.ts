@@ -1,30 +1,62 @@
 import { useCallback, useMemo } from "react";
-import { invoke } from "./api";
 import type { CodexRateLimitResetInput } from "./types";
+import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
+
+const consumeRateLimitResetCommand = defineRendererCommand({
+  key: "codex.account.consume_rate_limit_reset",
+  channel: "codex:account:rate-limit-reset:consume",
+  authority: "external",
+  owner: "CodexAccountActions",
+  protocol: { kind: "returned_value" },
+});
+
+const startLoginCommand = defineRendererCommand({
+  key: "codex.account.start_login",
+  channel: "codex:account:login:start",
+  authority: "external",
+  owner: "CodexAccountActions",
+  protocol: { kind: "pending_operation" },
+});
+
+const cancelLoginCommand = defineRendererCommand({
+  key: "codex.account.cancel_login",
+  channel: "codex:account:login:cancel",
+  authority: "external",
+  owner: "CodexAccountActions",
+  protocol: { kind: "pending_operation" },
+});
+
+const logoutCommand = defineRendererCommand({
+  key: "codex.account.logout",
+  channel: "codex:account:logout",
+  authority: "external",
+  owner: "CodexAccountActions",
+  protocol: { kind: "returned_value" },
+});
 
 export function useCodexAccountActions() {
   const refreshAccount = useCallback(async () => {
-    return invoke("codex:account:read");
+    return invokeRendererQuery("codex:account:read");
   }, []);
 
   const consumeRateLimitReset = useCallback(async (input: CodexRateLimitResetInput) => {
-    return invoke("codex:account:rate-limit-reset:consume", input);
+    return invokePlainCommand(consumeRateLimitResetCommand, input);
   }, []);
 
   const startChatGptLogin = useCallback(async () => {
-    return invoke("codex:account:login:start", { type: "chatgpt" });
+    return invokePlainCommand(startLoginCommand, { type: "chatgpt" });
   }, []);
 
   const startApiKeyLogin = useCallback(async (apiKey: string) => {
-    return invoke("codex:account:login:start", { type: "apiKey", apiKey });
+    return invokePlainCommand(startLoginCommand, { type: "apiKey", apiKey });
   }, []);
 
   const cancelLogin = useCallback(async (loginId: string) => {
-    return invoke("codex:account:login:cancel", loginId);
+    return invokePlainCommand(cancelLoginCommand, loginId);
   }, []);
 
   const logout = useCallback(async () => {
-    return invoke("codex:account:logout");
+    return invokePlainCommand(logoutCommand);
   }, []);
 
   return useMemo(

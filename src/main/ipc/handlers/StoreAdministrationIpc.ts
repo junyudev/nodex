@@ -2,23 +2,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
-import type { IpcApi } from "../../../shared/ipc-api";
 import { MainConfig } from "../../app/MainConfig";
 import { MainShutdown } from "../../app/MainShutdown";
 import { StoreAdministration } from "../../core-runtime/StoreAdministration";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import { isBoundedOperationId } from "../../../shared/operation-identity";
 
 export class StoreAdministrationIpcError extends Schema.TaggedError<StoreAdministrationIpcError>()(
   "StoreAdministrationIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 export const live: Layer.Layer<
   never,
@@ -31,8 +26,7 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const shutdown = yield* MainShutdown;
     const windows = yield* WindowRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handlePlainCommand, handleQuery } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -47,48 +41,64 @@ export const live: Layer.Layer<
     const run = <A, E>(operation: string, task: Effect.Effect<A, E>) =>
       task.pipe(Effect.mapError((cause) => new StoreAdministrationIpcError({ operation, cause })));
 
-    yield* handle("backup:list", (event) =>
+    yield* handleQuery("backup:list", (event) =>
       authorize(event).pipe(
         Effect.andThen(run("list-backups", administration.listBackups)),
         Effect.map((backups) => [...backups]),
       ),
     );
-    yield* handle("backup:capacity:get", (event) =>
+    yield* handleQuery("backup:capacity:get", (event) =>
       authorize(event).pipe(
         Effect.andThen(run("get-backup-capacity", administration.backupCapacity)),
       ),
     );
-    yield* handle("backup:storage-optimization:get", (event) =>
+    yield* handleQuery("backup:storage-optimization:get", (event) =>
       authorize(event).pipe(
         Effect.andThen(
           run("get-snapshot-storage-optimization", administration.snapshotStorageOptimization),
         ),
       ),
     );
-    yield* handle("backup:create", (event, input) =>
+    yield* handlePlainCommand("backup:create", (event, command) =>
       authorize(event).pipe(
         Effect.andThen(
+          Effect.try({
+            try: () => {
+              if (!isBoundedOperationId(command.operationId)) {
+                throw new TypeError("Backup operation identity is invalid");
+              }
+              return command;
+            },
+            catch: (cause) =>
+              new StoreAdministrationIpcError({ operation: "create-backup", cause }),
+          }),
+        ),
+        Effect.andThen((accepted) =>
           run(
             "create-backup",
-            administration.startBackup({ trigger: "manual", label: input?.label }),
+            administration.startBackup({
+              operationId: accepted.operationId,
+              trigger: "manual",
+              label: accepted.label,
+            }),
           ),
         ),
       ),
     );
-    yield* handle("backup:job:get", (event, jobId) =>
+    yield* handleQuery("backup:job:get", (event, jobId) =>
       authorize(event).pipe(Effect.andThen(run("get-backup-job", administration.backupJob(jobId)))),
     );
-    yield* handle("backup:cancel", (event, jobId) =>
+    yield* handlePlainCommand("backup:cancel", (event, jobId) =>
       authorize(event).pipe(
         Effect.andThen(run("cancel-backup", administration.cancelBackup(jobId))),
       ),
     );
-    yield* handle("backup:delete", (event, backupId) =>
+    yield* handlePlainCommand("backup:delete", (event, backupId) =>
       authorize(event).pipe(
         Effect.andThen(run("delete-backup", administration.deleteBackup(backupId))),
       ),
     );
-    yield* handle("backup:restore", (event, input) =>
+    yield* handlePlainCommand("backup:restore", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(run("restore-backup", administration.restoreBackup(input))),
         Effect.flatMap((result) =>

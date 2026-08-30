@@ -1,10 +1,7 @@
 import type { AppInitializationStep } from "../../shared/app-startup";
-import type { WindowSessionBootstrap } from "../lib/types";
-import {
-  FAIL_CLOSED_RUNTIME_CAPABILITIES,
-  type AppRuntimeCapabilities,
-} from "../../shared/runtime-capabilities";
+import { FAIL_CLOSED_RUNTIME_CAPABILITIES } from "../../shared/runtime-capabilities";
 import { getStartupStatus } from "../lib/app-startup";
+import { startupOperations } from "./startup-operations";
 
 const OPENING_COPY_DELAY_MS = 1_800;
 const PHASE_ORDER: Record<AppInitializationStep["phase"], number> = {
@@ -103,7 +100,7 @@ export function startStartupController(): StartupController {
   const unsubscribeInitialization = api.onInitializationStep?.(renderStep) ?? (() => undefined);
   const unsubscribeCloseFlush = api.on("app:flush-before-close", (...args: unknown[]) => {
     const webContentsId = typeof args[0] === "number" ? args[0] : -1;
-    void api.invoke("app:flush-before-close:done", webContentsId);
+    void startupOperations.acknowledgeCloseFlush(api, webContentsId);
   });
   const onRestart = (): void => {
     void api.restartApplication?.();
@@ -127,10 +124,10 @@ export function startStartupController(): StartupController {
       if (disposed) return;
       renderStep({ phase: "done" });
       const [windowSession, runtimeCapabilities] = await Promise.all([
-        api.invoke("window-sessions:bootstrap") as Promise<WindowSessionBootstrap>,
-        (api.invoke("app:runtime-capabilities:get") as Promise<AppRuntimeCapabilities>).catch(
-          () => FAIL_CLOSED_RUNTIME_CAPABILITIES,
-        ),
+        startupOperations.readWindowSession(api),
+        startupOperations
+          .readRuntimeCapabilities(api)
+          .catch(() => FAIL_CLOSED_RUNTIME_CAPABILITIES),
       ]);
       const [application, closeFlush, transport, sentry, telemetry] = await Promise.all([
         import("../application-renderer"),

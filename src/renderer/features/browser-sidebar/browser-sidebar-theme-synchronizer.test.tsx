@@ -26,7 +26,7 @@ beforeEach(() => {
   window.__NODEX_STORYBOOK__ = false;
   Object.defineProperty(window, "api", {
     configurable: true,
-    value: {},
+    value: { invoke: (...args: unknown[]) => invoke(...args) },
   });
 });
 

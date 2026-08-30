@@ -1,4 +1,4 @@
-import { invoke } from "../../../lib/api";
+import { resolveManagedAssetPath } from "../../../lib/assets";
 import { blockNoteToNfm, serializeClipboardText } from "../../../lib/nfm";
 import { decodeXmlCharacterReferences } from "../../../../shared/xml-character-references";
 import { TextSelection } from "@tiptap/pm/state";
@@ -220,8 +220,7 @@ export async function resolveManagedAssetReference(source: string): Promise<stri
   }
 
   try {
-    const resolved = await invoke("asset:resolve-path", source);
-    return typeof resolved === "string" && resolved.trim() ? resolved : null;
+    return await resolveManagedAssetPath(source);
   } catch {
     return null;
   }

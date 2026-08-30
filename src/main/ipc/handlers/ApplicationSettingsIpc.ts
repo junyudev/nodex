@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
+import type { IpcApi } from "../../../shared/ipc-api";
 import {
   COMMAND_KEYBINDINGS_CHANGED_CHANNEL,
   CommandKeybindingValidationError,
@@ -42,6 +43,17 @@ export class ApplicationSettingsIpcError extends Schema.TaggedError<ApplicationS
   "ApplicationSettingsIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
+
+type SettingsReadChannel =
+  | "codex-command-keymap-state"
+  | "settings:backup:get"
+  | "settings:codex-developer:get"
+  | "settings:diagnostics:get"
+  | "settings:git:get"
+  | "settings:history:get"
+  | "settings:telemetry:get"
+  | "settings:thread-notifications:get"
+  | "settings:window-restore:get";
 
 const BackupUpdate = z
   .object({
@@ -159,12 +171,12 @@ export const live: Layer.Layer<
       applicationSettings
         .update(command)
         .pipe(Effect.map(select), Effect.mapError(settingsError(operation)));
-    const handleRead = <A>(
-      channel: string,
+    const handleRead = <Channel extends SettingsReadChannel>(
+      channel: Channel,
       capability: string,
-      select: (snapshot: ApplicationSettingsSnapshot) => A,
+      select: (snapshot: ApplicationSettingsSnapshot) => IpcApi[Channel]["result"],
     ) =>
-      ipc.handle(channel, (event) =>
+      ipc.handleQuery(channel, (event, ..._args: IpcApi[Channel]["args"]) =>
         authorize(event, capability).pipe(Effect.andThen(read(`read-${channel}`, select))),
       );
     const broadcastKeymap = (state: CommandKeymapState): void => {
@@ -254,7 +266,7 @@ export const live: Layer.Layer<
       );
 
     yield* handleRead("settings:backup:get", "Backup settings", (value) => value.backup);
-    yield* ipc.handle("settings:backup:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:backup:update", (event, input: unknown) =>
       authorize(event, "Backup settings").pipe(
         Effect.andThen(parse("parse-backup-settings", () => BackupUpdate.parse(input))),
         Effect.flatMap((parsed) =>
@@ -268,7 +280,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleRead("settings:history:get", "History settings", (value) => value.history);
-    yield* ipc.handle("settings:history:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:history:update", (event, input: unknown) =>
       authorize(event, "History settings").pipe(
         Effect.andThen(parse("parse-history-settings", () => HistoryUpdate.parse(input))),
         Effect.flatMap((parsed) =>
@@ -285,7 +297,7 @@ export const live: Layer.Layer<
       "Diagnostics settings",
       (value) => value.diagnostics,
     );
-    yield* ipc.handle("settings:diagnostics:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:diagnostics:update", (event, input: unknown) =>
       authorize(event, "Diagnostics settings").pipe(
         Effect.andThen(parse("parse-diagnostics-settings", () => DiagnosticsUpdate.parse(input))),
         Effect.flatMap((parsed) =>
@@ -298,7 +310,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleRead("settings:telemetry:get", "Telemetry settings", (value) => value.telemetry);
-    yield* ipc.handle("settings:telemetry:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:telemetry:update", (event, input: unknown) =>
       authorize(event, "Telemetry settings").pipe(
         Effect.andThen(parse("parse-telemetry-settings", () => TelemetryUpdate.parse(input))),
         Effect.flatMap((parsed) =>
@@ -315,7 +327,7 @@ export const live: Layer.Layer<
       "Thread notification settings",
       (value) => value.notifications,
     );
-    yield* ipc.handle("settings:thread-notifications:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:thread-notifications:update", (event, input: unknown) =>
       authorize(event, "Thread notification settings").pipe(
         Effect.andThen(
           parse("parse-thread-notification-settings", () => ThreadNotificationUpdate.parse(input)),
@@ -334,7 +346,7 @@ export const live: Layer.Layer<
       "Developer instruction settings",
       (value) => value.developer,
     );
-    yield* ipc.handle("settings:codex-developer:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:codex-developer:update", (event, input: unknown) =>
       authorize(event, "Developer instruction settings").pipe(
         Effect.andThen(
           parse("parse-developer-instruction-settings", () =>
@@ -351,7 +363,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleRead("settings:git:get", "Git settings", (value) => value.git);
-    yield* ipc.handle("settings:git:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:git:update", (event, input: unknown) =>
       authorize(event, "Git settings").pipe(
         Effect.andThen(parse("parse-git-settings", () => GitUpdate.parse(input))),
         Effect.flatMap((parsed) =>
@@ -368,7 +380,7 @@ export const live: Layer.Layer<
       "Window restore settings",
       (value) => value.windowRestore,
     );
-    yield* ipc.handle("settings:window-restore:update", (event, input: unknown) =>
+    yield* ipc.handlePlainCommand("settings:window-restore:update", (event, input: unknown) =>
       authorize(event, "Window restore settings").pipe(
         Effect.andThen(
           parse("parse-window-restore-settings", () => WindowRestoreUpdate.parse(input)),
@@ -382,7 +394,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("settings:third-party-notices:get", (event) =>
+    yield* ipc.handleQuery("settings:third-party-notices:get", (event) =>
       authorize(event, "Third-party notices").pipe(
         Effect.andThen(
           Effect.tryPromise({
@@ -403,22 +415,24 @@ export const live: Layer.Layer<
       "Command keybindings",
       (value) => value.commandKeymap,
     );
-    yield* ipc.handle("set-codex-command-keybinding", (event, commandId: unknown, input: unknown) =>
-      authorize(event, "Command keybindings").pipe(
-        Effect.andThen(
-          parse("parse-command-keybinding", () => {
-            if (typeof commandId !== "string") throw new Error("commandId must be a string");
-            return {
-              type: "update-command-keybinding" as const,
-              commandId,
-              input: CommandKeybindingMutation.parse(input),
-            };
-          }),
+    yield* ipc.handlePlainCommand(
+      "set-codex-command-keybinding",
+      (event, commandId: unknown, input: unknown) =>
+        authorize(event, "Command keybindings").pipe(
+          Effect.andThen(
+            parse("parse-command-keybinding", () => {
+              if (typeof commandId !== "string") throw new Error("commandId must be a string");
+              return {
+                type: "update-command-keybinding" as const,
+                commandId,
+                input: CommandKeybindingMutation.parse(input),
+              };
+            }),
+          ),
+          Effect.flatMap(mutateKeymap),
         ),
-        Effect.flatMap(mutateKeymap),
-      ),
     );
-    yield* ipc.handle("reset-codex-command-keybindings", (event) =>
+    yield* ipc.handlePlainCommand("reset-codex-command-keybindings", (event) =>
       authorize(event, "Command keybindings").pipe(
         Effect.andThen(mutateKeymap({ type: "reset-command-keybindings" })),
       ),

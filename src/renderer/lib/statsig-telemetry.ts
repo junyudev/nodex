@@ -1,5 +1,5 @@
 import { isTelemetrySettings } from "../../shared/diagnostics/telemetry-settings";
-import { invoke } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import { registerAppCloseFlushHandler } from "./app-close-flush";
 import type { TelemetrySettings } from "./types";
 

@@ -11,6 +11,7 @@ import {
 } from "../codex-application/ManagedWorktreeCatalog";
 import { live as projectArchiveBlockersLive } from "../project-application/ProjectArchiveBlockers";
 import { live as projectLifecycleCommandsLive } from "../project-application/ProjectLifecycleCommands";
+import { live as projectSessionCommandsLive } from "../project-application/ProjectSessionCommands";
 import { live as initialProjectBootstrapLive } from "../initial-project/InitialProjectBootstrapRuntime";
 import { resolveInitialProjectProjectsDirectory } from "../initial-project/initial-project-filesystem";
 import { resolveInitialProjectJournalPath } from "../initial-project/initial-project-journal-store";
@@ -42,6 +43,7 @@ const projectArchiveBlockers = projectArchiveBlockersLive.pipe(
 const projectLifecycle = projectLifecycleCommandsLive.pipe(
   Layer.provideMerge(projectArchiveBlockers),
 );
+const projectSessions = projectSessionCommandsLive.pipe(Layer.provideMerge(projectLifecycle));
 const managedWorktreeCatalog = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -50,7 +52,7 @@ const managedWorktreeCatalog = Layer.unwrap(
       makeManagedWorktreeCatalog({ defaultManagedRoot: `${config.nodexHome}/worktrees` }),
     );
   }),
-).pipe(Layer.provideMerge(projectLifecycle));
+).pipe(Layer.provideMerge(projectSessions));
 const initialProjectBootstrap = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;

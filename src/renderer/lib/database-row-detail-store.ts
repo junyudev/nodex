@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { invoke } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import type { DatabasePage } from "./types";
 
 interface DatabaseRowDetailSnapshot {

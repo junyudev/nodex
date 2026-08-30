@@ -15,6 +15,7 @@ import { makeBrowserWebContentsListenerRuntime } from "../../browser/BrowserWebC
 import { BrowserProfileRuntime } from "../../host-runtime/BrowserProfileRuntime";
 import { MainConfig } from "../../app/MainConfig";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
 import { browserElectronPlatform } from "../../platform/electron/BrowserElectronPlatform";
@@ -31,7 +32,7 @@ it.effect("registers and releases Browser Profile ingress with the Main Scope", 
   Effect.gen(function* () {
     const handlers = new Map<string, InvokeHandler>();
     const listeners = new Map<string, EventHandler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as InvokeHandler)),

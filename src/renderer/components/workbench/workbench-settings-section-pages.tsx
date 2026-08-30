@@ -16,7 +16,14 @@ import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { isCodexGitSettings } from "../../../shared/codex-git-settings";
 import type { CodexGitSettings, CodexPermissionState } from "../../lib/types";
-import { invoke } from "./workbench-settings-overlay-deps";
+import {
+  readCodexPermissionState,
+  readGitSettings,
+  revealFileInManager,
+  updateCodexPermissionConfigValue,
+  updateCodexPermissionMode,
+  updateGitSettings,
+} from "./workbench-settings-overlay-deps";
 import {
   BackupSettingsControl,
   CodeFontSizeSettingControl,
@@ -63,10 +70,7 @@ function usePermissionSettings(activeProjectId: string | null, open: boolean) {
   const [error, setError] = useState<string | null>(null);
 
   const loadPermissionState = useCallback(async () => {
-    const nextState = (await invoke(
-      "codex:permission:state:get",
-      activeProjectId,
-    )) as CodexPermissionState;
+    const nextState = await readCodexPermissionState(activeProjectId);
     setPermissionState(nextState);
   }, [activeProjectId]);
 
@@ -83,12 +87,7 @@ function usePermissionSettings(activeProjectId: string | null, open: boolean) {
       setBusyKey(keyPath);
       setError(null);
       try {
-        const nextState = (await invoke(
-          "codex:permission:config-value:set",
-          activeProjectId,
-          keyPath,
-          value,
-        )) as CodexPermissionState;
+        const nextState = await updateCodexPermissionConfigValue(activeProjectId, keyPath, value);
         setPermissionState(nextState);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not save config setting.");
@@ -104,11 +103,7 @@ function usePermissionSettings(activeProjectId: string | null, open: boolean) {
       setBusyKey("permission-mode");
       setError(null);
       try {
-        const nextState = (await invoke(
-          "codex:permission:mode:set",
-          activeProjectId,
-          mode,
-        )) as CodexPermissionState;
+        const nextState = await updateCodexPermissionMode(activeProjectId, mode);
         setPermissionState(nextState);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not save permission mode.");
@@ -350,7 +345,7 @@ export function AgentSettingsPage({ activeProjectId, open }: SettingsSectionPage
       return;
     }
 
-    await invoke("shell:open-file-link", { path: configPath }, "fileManager");
+    await revealFileInManager(configPath);
   }, [permissionState?.configTarget.filePath]);
 
   const approvalPolicyValue = formatApprovalPolicyLabel(permissionState?.approvalPolicy ?? null);
@@ -536,7 +531,7 @@ export function GitSettingsPage({
   useEffect(() => {
     if (!open) return;
     let disposed = false;
-    void invoke("settings:git:get")
+    void readGitSettings()
       .then((next) => {
         if (disposed) return;
         if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
@@ -561,7 +556,7 @@ export function GitSettingsPage({
       if (branchSaving) return;
       setBranchSaving(true);
       try {
-        const next = await invoke("settings:git:update", { branchPrefix });
+        const next = await updateGitSettings({ branchPrefix });
         if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
         setSettings(next);
         onWorktreeAutoBranchPrefixChange(next.branchPrefix);
@@ -584,7 +579,7 @@ export function GitSettingsPage({
       errorMessage: string,
     ) => {
       try {
-        const next = await invoke("settings:git:update", patch);
+        const next = await updateGitSettings(patch);
         if (!isCodexGitSettings(next)) throw new Error("Git settings are unavailable");
         setSettings(next);
         toast.success(successMessage);

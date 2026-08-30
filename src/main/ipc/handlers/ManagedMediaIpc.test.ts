@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { ProfileAssets } from "../../local-store/ProfileAssets";
@@ -15,7 +16,7 @@ import { live } from "./ManagedMediaIpc";
 it.effect("owns managed asset, clipboard, and composer ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -24,7 +25,7 @@ it.effect("owns managed asset, clipboard, and composer ingress with the Main Sco
           () => Effect.sync(() => channels.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
       live.pipe(

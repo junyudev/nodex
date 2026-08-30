@@ -18,7 +18,12 @@ import {
   createExactRemoteSubscriptionLifecycle,
   type ExactRemoteSubscriptionLifecycle,
 } from "./exact-remote-subscription-lifecycle";
+import {
+  libraryDocumentUpdateCommand,
+  projectDocumentUpdateCommand,
+} from "./document-local-replica-commands";
 import { rendererLocalCommitIngress } from "./local-commit-ingress";
+import { invokeLocalCommitCommandResultThrough } from "./renderer-command";
 
 interface SubscriptionEntry {
   readonly subscribers: Set<{
@@ -463,13 +468,25 @@ const createScopedElectronDocumentSyncAdapter = (
       if (blocked) {
         return blocked;
       }
-      const result = normalizeApplyResult(
-        await invokeCommand<DocumentSyncApplyAck>(channel("apply"), scope(request)),
-      );
-      if (result.ok && result.value.status === "committed" && result.value.delivery) {
-        await rendererLocalCommitIngress.admitPacket(result.value.delivery);
+      try {
+        const commandResult =
+          accessScope.kind === "library"
+            ? await invokeLocalCommitCommandResultThrough(
+                libraryDocumentUpdateCommand,
+                bridge,
+                request,
+              )
+            : await invokeLocalCommitCommandResultThrough(projectDocumentUpdateCommand, bridge, {
+                ...request,
+                projectId: accessScope.projectId,
+              });
+        return normalizeApplyResult(normalizeCommandResult<DocumentSyncApplyAck>(commandResult));
+      } catch (error) {
+        return {
+          ok: false,
+          error: transportError(error),
+        };
       }
-      return result;
     },
     publishAwareness: async (request: DocumentAwarenessPublishRequest) => {
       const blocked = await requireRemoteSubscription<DocumentAwarenessPublishAck>(request);

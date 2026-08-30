@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useRef, type MutableRefObject } from "react";
-import { invoke } from "./api";
+import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import { toast } from "@/components/ui/toast";
 import {
   materializeWorkbenchImageEditorSurfaceConfig,
@@ -41,6 +41,14 @@ import type {
   WorkbenchTabCreateInput,
   WorkbenchTabProjection,
 } from "./types";
+
+const closeBrowserRuntimeTabCommand = defineRendererCommand({
+  key: "browser.close_runtime_tab",
+  channel: "browser-sidebar-command",
+  authority: "main",
+  owner: "WorkbenchPanelLifecycle",
+  protocol: { kind: "returned_value" },
+});
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 
@@ -362,7 +370,7 @@ export function useWorkbenchPanelLifecycle({
   const closeActiveSessionBrowserRuntime = useCallback(
     async (browserTabId: string) => {
       if (!activeSession) return;
-      await invoke("browser-sidebar-command", {
+      await invokePlainCommand(closeBrowserRuntimeTabCommand, {
         type: "close-tab",
         browserConversationId: activeSession.id,
         browserViewScopeId: windowSessionId,

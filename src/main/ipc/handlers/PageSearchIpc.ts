@@ -63,7 +63,7 @@ export const live = (
           catch: (cause) => new PageSearchIpcError({ operation: "validate-request", cause }),
         });
 
-      yield* ipc.handle(
+      yield* ipc.handleQuery(
         "pages:search",
         (
           event,
@@ -118,7 +118,7 @@ export const live = (
           }),
       );
 
-      yield* ipc.handle(
+      yield* ipc.handleControl(
         "pages:search:cancel",
         (event, requestId: IpcApi["pages:search:cancel"]["args"][0]) =>
           authorize(event).pipe(
@@ -132,7 +132,7 @@ export const live = (
           ),
       );
 
-      yield* ipc.handle(
+      yield* ipc.handleQuery(
         "pages:search-metadata",
         (
           event,
@@ -154,7 +154,7 @@ export const live = (
             ),
           ),
       );
-      yield* ipc.handle(
+      yield* ipc.handleQuery(
         "pages:search-facets",
         (event, projectIds: IpcApi["pages:search-facets"]["args"][0]) =>
           authorize(event).pipe(

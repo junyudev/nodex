@@ -147,7 +147,8 @@ import {
   ThreadMentionRuntimeProvider,
   type ThreadMentionRuntimeValue,
 } from "./thread-mention-chip";
-import { invoke, prepareOwnedBlockDocument, transferBlocks } from "@/lib/api";
+import { prepareOwnedBlockDocument, transferBlocks } from "@/lib/api";
+import { readCodexThreadSummary } from "@/lib/codex-thread-summary";
 import { serializeNfm, blockNoteToNfm, applyToggleStatesFromDom } from "@/lib/nfm";
 import type { CodexThreadSummary } from "@/lib/types";
 
@@ -805,7 +806,7 @@ function NfmEditorInstance({
         return next;
       });
 
-      const resolvePromise = invoke("codex:thread:summary:get", normalizedThreadId)
+      const resolvePromise = readCodexThreadSummary(normalizedThreadId)
         .then((thread) => {
           const summary = thread as CodexThreadSummary | null;
           if (!summary) return null;

@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import type { AppUpdateSettings, AppUpdateStatus } from "../../lib/types";
-import { invoke, subscribeAppUpdateStatus } from "./app-update-settings-control-deps";
+import {
+  checkForAppUpdate,
+  installAppUpdate,
+  readAppUpdateSettings,
+  readAppUpdateStatus,
+  subscribeAppUpdateStatus,
+  updateAppUpdateSettings,
+} from "./app-update-settings-control-deps";
 import { useAppUpdateStatus } from "../../app-providers";
 import { ConfigValueDropdown } from "./config-value-dropdown";
 
@@ -195,8 +202,8 @@ export function AppUpdateSettingsControl({ open }: { open: boolean }) {
 
     try {
       const [settingsResult, statusResult] = await Promise.all([
-        invoke("settings:app-updates:get"),
-        invoke("app:update:status"),
+        readAppUpdateSettings(),
+        readAppUpdateStatus(),
       ]);
 
       if (!isAppUpdateSettings(settingsResult)) {
@@ -239,7 +246,7 @@ export function AppUpdateSettingsControl({ open }: { open: boolean }) {
       setError(null);
 
       try {
-        const result = await invoke("settings:app-updates:update", {
+        const result = await updateAppUpdateSettings({
           automaticChecksEnabled,
         });
 
@@ -265,7 +272,7 @@ export function AppUpdateSettingsControl({ open }: { open: boolean }) {
       setBusy(true);
       setError(null);
       try {
-        const result = await invoke("settings:app-updates:update", { channel });
+        const result = await updateAppUpdateSettings({ channel });
         if (!isAppUpdateSettings(result)) throw new Error("Could not save update channel.");
         setSettings(result);
       } catch (err) {
@@ -283,7 +290,7 @@ export function AppUpdateSettingsControl({ open }: { open: boolean }) {
     setError(null);
 
     try {
-      const result = await invoke("app:update:check");
+      const result = await checkForAppUpdate();
       if (!isAppUpdateStatus(result)) {
         throw new Error("Could not check for app updates.");
       }
@@ -300,7 +307,7 @@ export function AppUpdateSettingsControl({ open }: { open: boolean }) {
     setError(null);
 
     try {
-      const result = await invoke("app:update:install");
+      const result = await installAppUpdate();
       if (result !== true) {
         throw new Error("Could not restart to install the update.");
       }

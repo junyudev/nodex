@@ -1,8 +1,21 @@
 import { useCallback, useEffect, type MouseEvent as ReactMouseEvent } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ensureFreshDatabaseViewBoard } from "@/lib/board-store";
-import { invoke, invokeCoreResult } from "@/lib/api";
-import { listAllSidebarSections } from "@/lib/sidebar-sections-api";
+import { listAvailableFileLinkOpeners, openFileLink } from "@/lib/file-system-operations";
+import { listWorktreeEnvironmentConfigsForWorkspace } from "@/lib/managed-worktree-runtime";
+import {
+  cancelPendingWorktree,
+  renamePendingWorktree,
+  setPendingWorktreePinned,
+} from "@/lib/pending-worktree-runtime";
+import {
+  listAllSidebarSections,
+  readSidebarSectionItemPlacement,
+} from "@/lib/sidebar-sections-api";
+import {
+  archiveWorkbenchThread,
+  moveWorkbenchSidebarThread,
+} from "@/lib/workbench-shell-operations";
 import { buildSessionDeepLink } from "@/lib/page-deeplink";
 import { documentSessionRegistry } from "@/lib/document-session-registry";
 import { queryKeys } from "@/lib/query-keys";
@@ -57,6 +70,7 @@ import { copyConversationMarkdown } from "@/features/local-conversation/copy-con
 import { readFileLinkOpener } from "@/lib/file-link-opener-settings";
 import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
 import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
+import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SidebarState = Pick<
@@ -175,7 +189,7 @@ export function useWorkbenchSidebarController({
         moveInput: CodexSidebarThreadMoveInput,
       ): Promise<CodexSidebarThreadMoveSuccess | null> => {
         try {
-          const result = await invoke("codex:sidebar:thread:move", moveInput);
+          const result = await moveWorkbenchSidebarThread(moveInput);
           if (result.status === "confirmation-required") {
             openModal(appHandle, SidebarThreadMoveConfirmationDialog, {
               confirmation: result,
@@ -304,11 +318,7 @@ export function useWorkbenchSidebarController({
         workspaceRoot,
         selectionsByWorkspace: readLocalEnvironmentSelections(),
         loadCandidates: async (resolvedWorkspaceRoot) =>
-          await invoke(
-            "worktrees:environments:configs:list-for-workspace",
-            "local",
-            resolvedWorkspaceRoot,
-          ),
+          await listWorktreeEnvironmentConfigsForWorkspace("local", resolvedWorkspaceRoot),
       });
     },
     [],
@@ -411,12 +421,7 @@ export function useWorkbenchSidebarController({
       try {
         if (item.kind === "pending-worktree") {
           if (!item.pendingWorktreeId) return;
-          await invoke(
-            "codex:pending-worktree:set-pinned",
-            item.hostId,
-            item.pendingWorktreeId,
-            nextPinned,
-          );
+          await setPendingWorktreePinned(item.hostId, item.pendingWorktreeId, nextPinned);
           return;
         }
         await setSidebarThreadPinned(item.threadId, nextPinned);
@@ -515,12 +520,7 @@ export function useWorkbenchSidebarController({
         requireNonEmpty: true,
         onSave: (label) => {
           if (!item.pendingWorktreeId) return;
-          void invoke(
-            "codex:pending-worktree:rename",
-            item.hostId,
-            item.pendingWorktreeId,
-            label,
-          ).catch(() => {
+          void renamePendingWorktree(item.hostId, item.pendingWorktreeId, label).catch(() => {
             toast.danger("Failed to rename task");
           });
         },
@@ -601,7 +601,7 @@ export function useWorkbenchSidebarController({
       try {
         if (item.kind === "pending-worktree") {
           if (!item.pendingWorktreeId) return;
-          await invoke("codex:pending-worktree:cancel", item.hostId, item.pendingWorktreeId);
+          await cancelPendingWorktree(item.hostId, item.pendingWorktreeId);
           if (item.threadId === pendingWorktreeClientThreadId) {
             closePendingWorktreeRoute();
           }
@@ -620,7 +620,7 @@ export function useWorkbenchSidebarController({
           return;
         }
 
-        await invoke("codex:thread:archive", item.threadId);
+        await archiveWorkbenchThread(item.threadId);
         await refreshSidebarThreadSnapshot();
       } catch {
         toast.danger(
@@ -657,7 +657,7 @@ export function useWorkbenchSidebarController({
           return await archiveSession(session, { showToast: false });
         }
 
-        await invoke("codex:thread:archive", item.threadId);
+        await archiveWorkbenchThread(item.threadId);
         return true;
       } catch {
         return false;
@@ -726,7 +726,7 @@ export function useWorkbenchSidebarController({
     async (session: ProjectSessionDomain, actionId: string) => {
       const moveTargetSectionId = readSessionMoveToSectionActionId(actionId);
       if (moveTargetSectionId) {
-        await invokeCoreResult("sidebar-sections:item:move", {
+        await workspaceSidebarCommands.moveItem({
           item: { kind: "session", sessionId: session.id },
           sectionId: moveTargetSectionId,
           placement: { kind: "end" },
@@ -740,7 +740,7 @@ export function useWorkbenchSidebarController({
           description: "Create a section and move this chat into it.",
           allowEmpty: true,
           onSave: async (name) => {
-            await invokeCoreResult("sidebar-sections:create", {
+            await workspaceSidebarCommands.create({
               name,
               initialItem: { kind: "session", sessionId: session.id },
             });
@@ -750,7 +750,7 @@ export function useWorkbenchSidebarController({
         return;
       }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromSection) {
-        await invokeCoreResult("sidebar-sections:item:move", {
+        await workspaceSidebarCommands.moveItem({
           item: { kind: "session", sessionId: session.id },
           sectionId: null,
           placement: { kind: "end" },
@@ -817,7 +817,7 @@ export function useWorkbenchSidebarController({
         if (!FILE_LINK_OPENER_OPTIONS.some((option) => option.id === openerId)) return;
         const cwd = session.thread?.cwd?.trim();
         if (!cwd) return;
-        const opened = await invoke("shell:open-file-link", { path: cwd }, openerId);
+        const opened = await openFileLink({ path: cwd }, openerId);
         if (!opened) toast.danger("Failed to open working directory");
         return;
       }
@@ -849,11 +849,11 @@ export function useWorkbenchSidebarController({
       event.stopPropagation();
       const [sections, directSectionId, availableOpeners] = await Promise.all([
         listAllSidebarSections().catch(() => []),
-        invoke("sidebar-sections:item:placement", {
+        readSidebarSectionItemPlacement({
           kind: "session",
           sessionId: session.id,
         }).catch(() => null),
-        invoke("shell:file-link-openers:list-available").catch(() => []),
+        listAvailableFileLinkOpeners().catch(() => []),
       ]);
       const customSections = sections.filter(
         (section) => section.kind === "custom" && section.lifecycle === "active",

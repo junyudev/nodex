@@ -7,12 +7,12 @@ import {
   NodexSettingsSection as SettingsSection,
 } from "@/components/ui/settings";
 import { queryKeys } from "@/lib/query-keys";
-import { invoke } from "./workbench-settings-overlay-deps";
+import { readThirdPartyNotices } from "./workbench-settings-overlay-deps";
 
 export function OpenSourceLicensesSettingsPage({ onBack }: { onBack: () => void }) {
   const noticesQuery = useQuery({
     queryKey: queryKeys.settings.thirdPartyNotices(),
-    queryFn: () => invoke("settings:third-party-notices:get"),
+    queryFn: readThirdPartyNotices,
     staleTime: 60_000,
   });
   const noticesText = noticesQuery.data?.text;

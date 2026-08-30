@@ -110,7 +110,8 @@ import {
 import { resolveComposerGlobalDictationAdmission } from "./composer-global-dictation-admission";
 import {
   ContextWindowIndicator,
-  invoke,
+  captureComposerAppshot,
+  invokeBrowserSidebarCommand,
   NodexDropdownItem,
   NodexDropdownMenu,
   NodexDropdownMessage,
@@ -122,6 +123,8 @@ import {
   NodexDropdownTitle,
   NodexTooltip,
   PermissionModeDropdown,
+  pickComposerFiles,
+  readComposerPermissionState,
 } from "./local-conversation-thread-composer-deps";
 import {
   shouldShowThreadComposerStatusStrip,
@@ -3235,10 +3238,10 @@ function HydratedThreadComposer({
     const generation = attachmentGenerationRef.current;
 
     try {
-      const pickedFiles = (await invoke("composer:pick-files", {
+      const pickedFiles = await pickComposerFiles({
         imagesOnly,
         title: imagesOnly ? "Select photos" : "Select files",
-      })) as ComposerPickedFile[];
+      });
       if (attachmentGenerationRef.current !== generation || pickedFiles.length === 0) {
         return;
       }
@@ -3287,7 +3290,7 @@ function HydratedThreadComposer({
       attachmentGenerationRef.current += 1;
       const generation = attachmentGenerationRef.current;
       try {
-        const context = await invoke("codex:composer-appshot:capture", {
+        const context = await captureComposerAppshot({
           targetId: target.id,
         });
         if (attachmentGenerationRef.current !== generation) return;
@@ -3339,7 +3342,7 @@ function HydratedThreadComposer({
       event.stopPropagation();
       event.dataTransfer.dropEffect = "copy";
       try {
-        const result = await invoke("browser-sidebar-command", {
+        const result = await invokeBrowserSidebarCommand({
           type: "attach-dragged-image",
           browserConversationId: browserImageDrag.browserConversationId,
           browserViewScopeId: browserImageDrag.browserViewScopeId,
@@ -3573,10 +3576,10 @@ function HydratedThreadComposer({
   useEffect(() => {
     let cancelled = false;
 
-    void invoke("codex:permission:state:get", model.projectId)
+    void readComposerPermissionState(model.projectId)
       .then((result) => {
         if (cancelled) return;
-        setPermissionState(result as CodexPermissionState);
+        setPermissionState(result);
       })
       .catch(() => {
         if (cancelled) return;

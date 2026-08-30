@@ -67,13 +67,13 @@ export const live: Layer.Layer<
         catch: (cause) => new CoreAuthorityIpcError({ operation: "authorize-renderer", cause }),
       });
 
-    yield* ipc.handle(GET_CORE_AUTHORITY_STATUS_CHANNEL, (event) =>
+    yield* ipc.handleQuery(GET_CORE_AUTHORITY_STATUS_CHANNEL, (event) =>
       authorize(event, "Core status").pipe(Effect.as(current)),
     );
-    yield* ipc.handle(RETRY_CORE_AUTHORITY_CHANNEL, (event) =>
+    yield* ipc.handlePlainCommand(RETRY_CORE_AUTHORITY_CHANNEL, (event) =>
       authorize(event, "Core recovery").pipe(Effect.andThen(authority.retry)),
     );
-    yield* ipc.handle(RELAUNCH_FOR_CORE_AUTHORITY_CHANNEL, (event) =>
+    yield* ipc.handlePlainCommand(RELAUNCH_FOR_CORE_AUTHORITY_CHANNEL, (event) =>
       authorize(event, "Core relaunch").pipe(Effect.andThen(authority.requestRelaunch)),
     );
     yield* SubscriptionRef.changes(authority.state).pipe(

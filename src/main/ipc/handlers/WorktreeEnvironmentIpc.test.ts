@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { WorktreeEnvironmentRuntime } from "../../host-runtime/WorktreeEnvironmentRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./WorktreeEnvironmentIpc";
@@ -12,14 +13,14 @@ import { live } from "./WorktreeEnvironmentIpc";
 it.effect("owns every worktree environment ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) =>
         Effect.acquireRelease(
           Effect.sync(() => channels.add(channel)),
           () => Effect.sync(() => channels.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const environments = WorktreeEnvironmentRuntime.of({
       listProjectOptions: () => Effect.succeed([]),
       listProjectConfigs: () => Effect.succeed([]),

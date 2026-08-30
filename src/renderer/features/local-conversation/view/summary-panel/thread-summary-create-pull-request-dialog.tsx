@@ -15,7 +15,7 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { getGitWorkerClient, invoke } from "@/lib/api";
+import { threadSummaryGitOperations } from "../../thread-summary-git-operations";
 import type {
   GhCliAvailability,
   GhPrMutationResult,
@@ -159,14 +159,14 @@ export function ThreadSummaryCreatePullRequestDialog({
     setReadState((current) => ({ ...current, loading: true }));
     setInlineError(null);
 
-    void getGitWorkerClient()
-      .request({ method: "action-status", params: { cwd } })
+    void threadSummaryGitOperations
+      .readStatus(cwd)
       .then(async (result) => {
         if (cancelled) return;
         const status = result as GitActionStatusResult;
         let pullRequest: GhPrStatusResult | null = null;
         if (status.isGitRepository && status.currentBranch) {
-          pullRequest = (await invoke("gh-pr-status", { cwd })) as GhPrStatusResult;
+          pullRequest = await threadSummaryGitOperations.readPullRequestStatus(cwd);
         }
         if (!cancelled) setReadState({ loading: false, status, pullRequest });
       })
@@ -216,7 +216,7 @@ export function ThreadSummaryCreatePullRequestDialog({
   const cancelActiveOperation = useCallback(() => {
     if (!activeOperationId) return;
     const operationId = activeOperationId;
-    void invoke("git:action:cancel", { operationId }).finally(() => {
+    void threadSummaryGitOperations.cancel(operationId).finally(() => {
       setActiveOperationId((current) => (current === operationId ? null : current));
       onWorkflowChange?.(null);
       onOpenChange(false);
@@ -260,13 +260,13 @@ export function ThreadSummaryCreatePullRequestDialog({
             phase: "generating-commit-message",
             operationId,
           });
-          const generatedCommit = (await invoke("git:action:commit-message:generate", {
+          const generatedCommit = await threadSummaryGitOperations.generateCommitMessage({
             cwd,
             hostId,
             draftMessage: "",
             includeUnstaged: true,
             operationId,
-          })) as GitCommitMessageGenerateResult;
+          });
           const commitMessageError = getCommitMessageResultError(generatedCommit);
           if (commitMessageError) {
             finishWithError(commitMessageError);
@@ -278,24 +278,21 @@ export function ThreadSummaryCreatePullRequestDialog({
             phase: "committing",
             operationId,
           });
-          const commitResult = (await invoke("git:action:commit", {
+          const commitResult = await threadSummaryGitOperations.commit({
             cwd,
             hostId,
             message: generatedCommit.message ?? "",
             includeUnstaged: false,
             nextStep: "commit",
             operationId,
-          })) as GitActionMutationResult;
+          });
           const commitError = getGitActionResultError(commitResult);
           if (commitError) {
             finishWithError(commitError);
             return;
           }
 
-          latestStatus = await getGitWorkerClient().request({
-            method: "action-status",
-            params: { cwd },
-          });
+          latestStatus = await threadSummaryGitOperations.readStatus(cwd);
         }
 
         if (shouldPushBeforePullRequest(latestStatus)) {
@@ -304,20 +301,17 @@ export function ThreadSummaryCreatePullRequestDialog({
             phase: "pushing",
             operationId,
           });
-          const pushResult = (await invoke("git:action:push", {
+          const pushResult = await threadSummaryGitOperations.push({
             cwd,
             operationId,
-          })) as GitActionMutationResult;
+          });
           const pushError = getGitActionResultError(pushResult);
           if (pushError) {
             finishWithError(pushError);
             return;
           }
 
-          latestStatus = await getGitWorkerClient().request({
-            method: "action-status",
-            params: { cwd },
-          });
+          latestStatus = await threadSummaryGitOperations.readStatus(cwd);
         }
 
         if (!nextTitle || !nextBody) {
@@ -326,7 +320,7 @@ export function ThreadSummaryCreatePullRequestDialog({
             phase: "generating-pr-message",
             operationId,
           });
-          const generatedPullRequest = (await invoke("git:action:pull-request-message:generate", {
+          const generatedPullRequest = await threadSummaryGitOperations.generatePullRequestMessage({
             cwd,
             hostId,
             title: nextTitle,
@@ -334,7 +328,7 @@ export function ThreadSummaryCreatePullRequestDialog({
             headBranch: latestStatus.currentBranch,
             baseBranch: latestStatus.defaultBranch,
             operationId,
-          })) as GitPullRequestMessageGenerateResult;
+          });
           const pullRequestMessageError = getPullRequestMessageResultError(generatedPullRequest);
           if (pullRequestMessageError) {
             finishWithError(pullRequestMessageError);
@@ -352,14 +346,14 @@ export function ThreadSummaryCreatePullRequestDialog({
           phase: "creating-pr",
           operationId,
         });
-        const result = (await invoke("gh-pr-create", {
+        const result = await threadSummaryGitOperations.createPullRequest({
           cwd,
           title: nextTitle,
           body: nextBody,
           base: latestStatus.defaultBranch,
           head: latestStatus.currentBranch,
           draft,
-        })) as GhPrMutationResult;
+        });
         const createError = getPullRequestMutationError(result);
         if (createError) {
           finishWithError(createError);

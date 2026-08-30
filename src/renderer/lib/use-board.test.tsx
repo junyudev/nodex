@@ -6,6 +6,7 @@ import type { DatabasePage } from "./types";
 const testState = vi.hoisted(() => ({
   snapshot: {
     databaseView: null,
+    materializationRenderToken: null,
   } as unknown,
   mutationOutcome: {
     ok: false,
@@ -13,11 +14,16 @@ const testState = vi.hoisted(() => ({
   } as unknown,
   setError: vi.fn(),
   setPresentationOverride: vi.fn(),
+  markRendered: vi.fn(),
   applyRemoteCard: vi.fn(),
   applyRemoteCardSummary: vi.fn(),
   resolveConflict: vi.fn(),
   refreshBoard: vi.fn(),
-  invoke: vi.fn(),
+  readBoardPage: vi.fn(),
+  readCalendarOccurrenceWindow: vi.fn(),
+  completePageOccurrence: vi.fn(),
+  skipPageOccurrence: vi.fn(),
+  updatePageOccurrence: vi.fn(),
   runOptimisticMutation: vi.fn(),
   commitPageLifecycleIntent: vi.fn(),
   commitDatabasePageDrag: vi.fn(),
@@ -32,6 +38,7 @@ vi.mock("./board-store", () => ({
     loadMore: vi.fn(),
     loadMoreGroup: vi.fn(),
     setPresentationOverride: testState.setPresentationOverride,
+    markRendered: testState.markRendered,
     setError: testState.setError,
     runOptimisticMutation: testState.runOptimisticMutation,
     applyRemoteCard: testState.applyRemoteCard,
@@ -41,9 +48,12 @@ vi.mock("./board-store", () => ({
   }),
 }));
 
-vi.mock("./api", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./api")>()),
-  invoke: testState.invoke,
+vi.mock("./page-occurrence-runtime", () => ({
+  readBoardPage: testState.readBoardPage,
+  readCalendarOccurrenceWindow: testState.readCalendarOccurrenceWindow,
+  completePageOccurrence: testState.completePageOccurrence,
+  skipPageOccurrence: testState.skipPageOccurrence,
+  updatePageOccurrence: testState.updatePageOccurrence,
 }));
 
 vi.mock("./page-lifecycle-runtime", () => ({
@@ -76,18 +86,23 @@ const page: DatabasePage = {
 
 describe("useBoard createPage result", () => {
   beforeEach(() => {
-    testState.snapshot = { databaseView: null };
+    testState.snapshot = { databaseView: null, materializationRenderToken: null };
     testState.mutationOutcome = {
       ok: false,
       error: new Error("Core is unavailable"),
     };
     testState.setError.mockClear();
     testState.setPresentationOverride.mockClear();
+    testState.markRendered.mockClear();
     testState.applyRemoteCard.mockClear();
     testState.applyRemoteCardSummary.mockClear();
     testState.resolveConflict.mockClear();
     testState.refreshBoard.mockReset().mockResolvedValue(undefined);
-    testState.invoke.mockReset();
+    testState.readBoardPage.mockReset();
+    testState.readCalendarOccurrenceWindow.mockReset();
+    testState.completePageOccurrence.mockReset();
+    testState.skipPageOccurrence.mockReset();
+    testState.updatePageOccurrence.mockReset();
     testState.commitPageLifecycleIntent.mockReset();
     testState.commitDatabasePageDrag.mockReset();
     testState.commitPageMetadataPatchForBoardWithReceipt.mockReset();
@@ -115,6 +130,28 @@ describe("useBoard createPage result", () => {
 
     expect(createResult).toEqual({ status: "created", page });
     expect(testState.applyRemoteCard).not.toHaveBeenCalled();
+  });
+
+  test("settles canonical materialization only after the subscribed snapshot commits", () => {
+    testState.snapshot = {
+      databaseView: null,
+      materializationRenderToken: 17,
+    };
+
+    renderHook(() => useBoard({ projectId: "project-test" }));
+
+    expect(testState.markRendered).toHaveBeenCalledWith(17);
+  });
+
+  test("does not settle a retained snapshot for a disabled consumer", () => {
+    testState.snapshot = {
+      databaseView: null,
+      materializationRenderToken: 17,
+    };
+
+    renderHook(() => useBoard({ projectId: "project-test", enabled: false }));
+
+    expect(testState.markRendered).not.toHaveBeenCalled();
   });
 
   test("does not overwrite a retained View presentation before preference hydration", () => {
@@ -184,7 +221,7 @@ describe("useBoard createPage result", () => {
   });
 
   test("keeps a plain Page detail read out of View-scoped Board authority", async () => {
-    testState.invoke.mockResolvedValue(page);
+    testState.readBoardPage.mockResolvedValue(page);
     const { result } = renderHook(() => useBoard({ projectId: "project-test" }));
 
     let loaded: DatabasePage | null | undefined;
@@ -224,7 +261,7 @@ describe("useBoard createPage result", () => {
   });
 
   test("routes a resolved occurrence rejection through optimistic rollback", async () => {
-    testState.invoke.mockResolvedValue({
+    testState.completePageOccurrence.mockResolvedValue({
       success: false,
       error: "Page is not scheduled",
     });
@@ -252,8 +289,7 @@ describe("useBoard createPage result", () => {
 
     expect(completed).toBe(false);
     expect(remoteDisposition).toBe("rejected");
-    expect(testState.invoke).toHaveBeenCalledWith(
-      "page:occurrence:complete",
+    expect(testState.completePageOccurrence).toHaveBeenCalledWith(
       "project-test",
       expect.objectContaining({ pageId: "page-1" }),
       undefined,
@@ -265,7 +301,9 @@ describe("useBoard createPage result", () => {
       success: true,
       commitCursor: { storeEpoch: "epoch-occurrence", commitSeq: 19 },
     };
-    testState.invoke.mockResolvedValue(committed);
+    testState.completePageOccurrence.mockResolvedValue(committed);
+    testState.skipPageOccurrence.mockResolvedValue(committed);
+    testState.updatePageOccurrence.mockResolvedValue(committed);
     const cursors: unknown[] = [];
     testState.runOptimisticMutation.mockImplementation(async (options) => {
       const acknowledged = await options.runRemote();
@@ -304,11 +342,9 @@ describe("useBoard createPage result", () => {
       committed.commitCursor,
       committed.commitCursor,
     ]);
-    expect(testState.invoke.mock.calls.map(([method]) => method)).toEqual([
-      "page:occurrence:complete",
-      "page:occurrence:skip",
-      "page:occurrence:update",
-    ]);
+    expect(testState.completePageOccurrence).toHaveBeenCalledOnce();
+    expect(testState.skipPageOccurrence).toHaveBeenCalledOnce();
+    expect(testState.updatePageOccurrence).toHaveBeenCalledOnce();
   });
 
   test("keeps the Page lifecycle receipt as the delete acknowledgement", async () => {

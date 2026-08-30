@@ -22,12 +22,20 @@ and result are receipt-backed; retention starts only while the same Core
 authority remains active. Restore still performs its own strict
 installed-candidate validation.
 
-Creating a backup starts a durable background job and returns its identity
-without waiting for the snapshot to become ready. The coordinator records each
-phase under the Profile control directory, resumes or adopts interrupted jobs on
-startup, and exposes database-page, asset-byte, validation, digest, publish, and
-writer-held progress. Cancellation is accepted before publication begins; once
-publication is the only remaining safe transition, the job finishes atomically.
+Creating a backup returns `submitted` as soon as Main owns the background
+operation and identity; this is not a claim that Core has already written its
+job journal. The renderer retains that exact normalized command across unknown
+transport outcomes and reconnects with the same identity. When another backup
+already occupies the lane, Core writes a no-op receipt that durably coalesces
+the new operation identity to the active job and returns `already_running`;
+replay preserves that relationship across response loss and Main restart.
+There is no elapsed-time admission failure.
+
+The coordinator records each execution phase under the Profile control
+directory, resumes or adopts interrupted jobs on startup, and exposes
+database-page, asset-byte, validation, digest, publish, and writer-held
+progress. Cancellation is accepted before publication begins; once publication
+is the only remaining safe transition, the job finishes atomically.
 
 Database capture uses SQLite's online-backup API on a dedicated connection in
 bounded steps with transient-busy retry. A managed-asset snapshot lease holds

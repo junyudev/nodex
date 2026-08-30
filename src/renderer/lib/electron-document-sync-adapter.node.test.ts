@@ -111,6 +111,11 @@ describe("createElectronDocumentSyncAdapter", () => {
         commit: delivery.manifest.identity,
         delivery,
       },
+      localCommit: {
+        status: "committed",
+        commit: delivery.manifest.identity,
+        delivery,
+      },
     };
     const adapter = createElectronDocumentSyncAdapter(
       bridge as unknown as ElectronRendererBridge,

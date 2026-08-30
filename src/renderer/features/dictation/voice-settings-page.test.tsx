@@ -48,6 +48,7 @@ const commandKeymapState = {
 
 vi.mock("@/lib/use-command-keymap-state", () => ({
   useCommandKeymapState: () => ({ data: commandKeymapState }),
+  updateCommandKeybinding: (...args: unknown[]) => mocks.setKeybinding(...args),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -91,10 +92,6 @@ vi.mock("@/lib/api", () => ({
   requestGlobalDictationInputMonitoring: mocks.requestInputMonitoring,
   setDictationRecordingTranscript: vi.fn(),
   updateDictationSettings: mocks.updateSettings,
-  invoke: (channel: string, ...args: unknown[]) =>
-    channel === "set-codex-command-keybinding"
-      ? mocks.setKeybinding(...args)
-      : Promise.resolve(null),
 }));
 
 const renderPage = () => {

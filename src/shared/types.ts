@@ -636,6 +636,13 @@ export interface ProjectUpdateInput {
   sources?: string[];
 }
 
+/** One retryable Project metadata intent, identified before its first transport attempt. */
+export interface ProjectUpdateCommandInput {
+  operationId: string;
+  projectId: string;
+  updates: ProjectUpdateInput & { expectedBindingRevision: number };
+}
+
 export interface ProjectLifecycleInput {
   lifecycle: Extract<ProjectLifecycle, "active" | "archived">;
 }
@@ -653,6 +660,7 @@ export interface ProjectWindow {
   items: Project[];
   nextCursor: string | null;
   hasMore: boolean;
+  storeEpoch: string;
   projectionRevision: number;
 }
 
@@ -1545,6 +1553,24 @@ export interface CreateBackupInput {
   trigger?: BackupTrigger;
   label?: string;
 }
+
+/** Renderer-owned identity for admitting or reconnecting to one manual Backup job. */
+export interface CreateBackupCommandInput {
+  operationId: string;
+  label?: string;
+}
+
+export type BackupStartResult =
+  | {
+      readonly kind: "submitted";
+      readonly operationId: string;
+      readonly job: BackupJobStatus;
+    }
+  | {
+      readonly kind: "already_running";
+      readonly operationId: string;
+      readonly activeJobId: string;
+    };
 
 export type BackupJobState = "queued" | "running" | "cancelled" | "completed" | "failed";
 

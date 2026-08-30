@@ -120,6 +120,16 @@ import {
 
 export let invokeCalls: unknown[][] = [];
 
+export const rendererCommandPayload = (
+  call: readonly unknown[] | undefined,
+): Record<string, unknown> | null => {
+  const command = call?.[1];
+  if (!command || typeof command !== "object" || !("payload" in command)) return null;
+  const payload = command.payload;
+  if (!payload || typeof payload !== "object") return null;
+  return payload as Record<string, unknown>;
+};
+
 const databaseViewConfigFixture = ({
   sorts = [],
   showEmptyGroups = true,
@@ -143,6 +153,50 @@ const databaseViewConfigFixture = ({
 
 export let mockInvokeImpl: ((channel: string, ...args: unknown[]) => Promise<unknown>) | null =
   null;
+
+interface TestWorkspaceCommandEnvelope {
+  readonly operationId: string;
+  readonly payload: Record<string, unknown>;
+}
+
+const readWorkspaceCommandEnvelope = (
+  channel: string,
+  args: readonly unknown[],
+): TestWorkspaceCommandEnvelope => {
+  const command = args[0];
+  if (
+    args.length !== 1 ||
+    typeof command !== "object" ||
+    command === null ||
+    !("operationId" in command) ||
+    typeof command.operationId !== "string" ||
+    command.operationId.length === 0 ||
+    !("payload" in command) ||
+    typeof command.payload !== "object" ||
+    command.payload === null ||
+    Array.isArray(command.payload)
+  ) {
+    throw new TypeError(`${channel} requires one exact Workspace command envelope`);
+  }
+  return command as TestWorkspaceCommandEnvelope;
+};
+
+const isWorkspaceCommandInvocation = (channel: string, args: readonly unknown[]): boolean => {
+  if (
+    !channel.startsWith("projects:") &&
+    !channel.startsWith("project-sessions:") &&
+    !channel.startsWith("sidebar-sections:")
+  ) {
+    return false;
+  }
+  const input = args[0];
+  return args.length === 1 && typeof input === "object" && input !== null && "operationId" in input;
+};
+
+const invokeRendererHarness = async (channel: string, ...args: unknown[]): Promise<unknown> => {
+  invokeCalls.push([channel, ...args]);
+  return (await mockInvokeImpl?.(channel, ...args)) ?? null;
+};
 export let startThreadForSessionCalls: unknown[] = [];
 export let startTurnCalls: unknown[][] = [];
 export let pageChatItems: PageChatItem[] = [];
@@ -529,6 +583,49 @@ vi.mock("@/lib/api", () => {
       return () => gitWorkerListeners.delete(listener);
     },
   };
+  const applyDatabase = async (projectId: string, request: unknown) => {
+    invokeCalls.push(["database-module:apply", projectId, request]);
+    const configured = await mockInvokeImpl?.("database-module:apply", projectId, request);
+    if (configured !== undefined && configured !== null) return configured;
+    const personalPresentationOperations =
+      (
+        request as {
+          operations?: ReadonlyArray<{
+            kind?: string;
+            viewId?: string;
+            expectedRevision?: number;
+          }>;
+        }
+      ).operations ?? [];
+    if (
+      personalPresentationOperations.length > 0 &&
+      personalPresentationOperations.every(
+        (operation) => operation.kind === "put_view_personal_preferences",
+      )
+    ) {
+      return {
+        ok: true,
+        value: {
+          committedRevisions: Object.fromEntries(
+            personalPresentationOperations.map((operation) => [
+              `view_presentation:profile:test:${String(operation.viewId ?? "")}`,
+              (operation.expectedRevision ?? 0) + 1,
+            ]),
+          ),
+          commitSeq: 2,
+        },
+        localCommit: { status: "applied" },
+      };
+    }
+    return {
+      ok: false,
+      error: {
+        code: "unknown",
+        message: "Not configured in this test.",
+        retryable: false,
+      },
+    };
+  };
   return {
     getGitWorkerClient: () => gitWorkerClient,
     invoke: async (channel: string, ...args: unknown[]) => {
@@ -632,49 +729,8 @@ vi.mock("@/lib/api", () => {
       invokeCalls.push(["pages:detail:get", projectId, pageId]);
       return mockInvokeImpl?.("pages:detail:get", projectId, pageId) ?? null;
     },
-    applyDatabaseModule: async (projectId: string, request: unknown) => {
-      invokeCalls.push(["database-module:apply", projectId, request]);
-      const configured = await mockInvokeImpl?.("database-module:apply", projectId, request);
-      if (configured !== undefined && configured !== null) return configured;
-      const personalPresentationOperations =
-        (
-          request as {
-            operations?: ReadonlyArray<{
-              kind?: string;
-              viewId?: string;
-              expectedRevision?: number;
-            }>;
-          }
-        ).operations ?? [];
-      if (
-        personalPresentationOperations.length > 0 &&
-        personalPresentationOperations.every(
-          (operation) => operation.kind === "put_view_personal_preferences",
-        )
-      ) {
-        return {
-          ok: true,
-          value: {
-            committedRevisions: Object.fromEntries(
-              personalPresentationOperations.map((operation) => [
-                `view_presentation:profile:test:${String(operation.viewId ?? "")}`,
-                (operation.expectedRevision ?? 0) + 1,
-              ]),
-            ),
-            commitSeq: 2,
-          },
-          localCommit: { status: "applied" },
-        };
-      }
-      return {
-        ok: false,
-        error: {
-          code: "unknown",
-          message: "Not configured in this test.",
-          retryable: false,
-        },
-      };
-    },
+    applyDatabaseModule: applyDatabase,
+    applyDatabaseSettingsModule: applyDatabase,
     applyLibraryDatabaseModule: async (request: unknown) => {
       invokeCalls.push(["library-database-module:apply", request]);
       return (
@@ -2402,9 +2458,51 @@ export function renderWorkbench({
     projectlessSessions.length > 0
       ? { ...sessionsByProject, [projectlessSessionStateKey]: projectlessSessions }
       : sessionsByProject;
+  let workspaceCommitSeq = 1;
+  const workspaceReceipts = new Map<
+    string,
+    { readonly fingerprint: string; readonly result: unknown }
+  >();
+  const completeWorkspaceCommand = <Value,>(
+    command: { readonly operationId: string },
+    input: unknown,
+    mutate: () => { readonly changed: boolean; readonly value: Value },
+  ): unknown => {
+    const fingerprint = JSON.stringify(input);
+    const replay = workspaceReceipts.get(command.operationId);
+    if (replay) {
+      if (replay.fingerprint !== fingerprint) {
+        throw new Error(`Workspace operation identity collision: ${command.operationId}`);
+      }
+      return replay.result;
+    }
+
+    const mutation = mutate();
+    if (mutation.changed) workspaceCommitSeq += 1;
+    const result = {
+      ok: true as const,
+      value: mutation.value,
+      localCommit: mutation.changed
+        ? {
+            status: "committed" as const,
+            commit: {
+              store_epoch: "epoch:test",
+              commit_seq: workspaceCommitSeq,
+              manifest_hash: "f".repeat(64),
+            },
+            delivery: null,
+          }
+        : {
+            status: "no_op" as const,
+            observed: { store_epoch: "epoch:test", commit_head: workspaceCommitSeq },
+          },
+    };
+    workspaceReceipts.set(command.operationId, { fingerprint, result });
+    return result;
+  };
   const defaultDraftSessionIds = new Map(Object.entries(defaultDraftSessionIdsByScope));
-  const createdSessionCountsByScope = new Map<string, number>();
   const createMockSession = (input: {
+    sessionId: string;
     projectId: string | null;
     noThreadFallbackTitle?: string;
   }): ProjectSession => {
@@ -2413,12 +2511,8 @@ export function renderWorkbench({
     const shiftedSessions = existingSessions.map((session) =>
       session.order >= 0 ? { ...session, order: session.order + 1 } : session,
     );
-    const createdSessionSequence = (createdSessionCountsByScope.get(sessionStateKey) ?? 0) + 1;
-    createdSessionCountsByScope.set(sessionStateKey, createdSessionSequence);
-    const createdIdBase = `session:${input.projectId ?? "projectless"}:created`;
     const session = makeSession({
-      id:
-        createdSessionSequence === 1 ? createdIdBase : `${createdIdBase}:${createdSessionSequence}`,
+      id: input.sessionId,
       projectId: input.projectId,
       noThreadFallbackTitle: input.noThreadFallbackTitle ?? "New chat",
       displayTitle: input.noThreadFallbackTitle ?? "New chat",
@@ -2520,6 +2614,161 @@ export function renderWorkbench({
     if (channel === "projects:get") {
       const projectId = String(args[0] ?? "");
       return projectState.find((project) => project.id === projectId) ?? null;
+    }
+    if (channel === "projects:create") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const projectId = String(command.payload.projectId);
+      const input = (command.payload.input ?? {}) as {
+        readonly name?: string;
+        readonly description?: string;
+        readonly appearance?: Project["appearance"];
+        readonly sources?: readonly string[];
+      };
+      return completeWorkspaceCommand(command, command, () => {
+        if (projectState.some((project) => project.id === projectId)) {
+          throw new Error(`Project already exists: ${projectId}`);
+        }
+        const created = {
+          ...makeProject(projectId, input.name ?? ""),
+          description: input.description ?? "",
+          appearance: input.appearance ?? makeProject().appearance,
+          sources: (input.sources ?? []).map((root, order) => ({ root, order })),
+          primaryWorkspaceRoot: input.sources?.[0] ?? null,
+        };
+        projectState = [...projectState, created];
+        return { changed: true, value: created };
+      });
+    }
+    if (channel === "projects:update") {
+      const command = args[0] as
+        | {
+            readonly operationId?: unknown;
+            readonly projectId?: unknown;
+            readonly updates?: Record<string, unknown>;
+          }
+        | undefined;
+      if (
+        args.length !== 1 ||
+        !command ||
+        typeof command.operationId !== "string" ||
+        typeof command.projectId !== "string" ||
+        !command.updates
+      ) {
+        throw new TypeError("projects:update requires its exact Project update command");
+      }
+      const updateCommand = command as {
+        readonly operationId: string;
+        readonly projectId: string;
+        readonly updates: Record<string, unknown>;
+      };
+      return completeWorkspaceCommand(updateCommand, updateCommand, () => {
+        const index = projectState.findIndex((project) => project.id === updateCommand.projectId);
+        const project = projectState[index];
+        if (!project) throw new Error(`Project not found: ${updateCommand.projectId}`);
+        const updates = updateCommand.updates;
+        const nextSources = Array.isArray(updates.sources)
+          ? updates.sources.map((root, order) => ({ root: String(root), order }))
+          : project.sources;
+        const updated: Project = {
+          ...project,
+          ...(typeof updates.name === "string" ? { name: updates.name } : {}),
+          ...(typeof updates.description === "string" ? { description: updates.description } : {}),
+          ...(updates.appearance
+            ? { appearance: updates.appearance as Project["appearance"] }
+            : {}),
+          sources: nextSources,
+          primaryWorkspaceRoot: Array.isArray(updates.sources)
+            ? (nextSources[0]?.root ?? null)
+            : project.primaryWorkspaceRoot,
+        };
+        const changed = JSON.stringify(updated) !== JSON.stringify(project);
+        if (changed) {
+          const committed = { ...updated, bindingRevision: project.bindingRevision + 1 };
+          projectState = projectState.with(index, committed);
+          return { changed: true, value: committed };
+        }
+        return { changed: false, value: project };
+      });
+    }
+    if (channel === "projects:reorder") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const orderedIds = Array.isArray(command.payload.orderedProjectIds)
+        ? command.payload.orderedProjectIds.map(String)
+        : [];
+      return completeWorkspaceCommand(command, command, () => {
+        const byId = new Map(projectState.map((project) => [project.id, project]));
+        const selected = orderedIds.flatMap((projectId) => {
+          const project = byId.get(projectId);
+          if (!project) return [];
+          byId.delete(projectId);
+          return [project];
+        });
+        const next = [...selected, ...projectState.filter((project) => byId.has(project.id))];
+        const changed = next.some((project, index) => project.id !== projectState[index]?.id);
+        if (changed) projectState = next;
+        return { changed, value: undefined };
+      });
+    }
+    if (channel === "projects:set-pinned") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const projectId = String(command.payload.projectId);
+      const pinned = command.payload.pinned === true;
+      return completeWorkspaceCommand(command, command, () => {
+        const index = projectState.findIndex((project) => project.id === projectId);
+        const project = projectState[index];
+        if (!project) throw new Error(`Project not found: ${projectId}`);
+        const changed = project.pinned !== pinned;
+        const updated = changed
+          ? {
+              ...project,
+              pinned,
+              pinnedOrder: pinned
+                ? (project.pinnedOrder ??
+                  Math.max(-1, ...projectState.map((candidate) => candidate.pinnedOrder ?? -1)) + 1)
+                : null,
+            }
+          : project;
+        if (changed) projectState = projectState.with(index, updated);
+        return { changed, value: updated };
+      });
+    }
+    if (channel === "projects:set-pinned-order") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const orderedIds = Array.isArray(command.payload.orderedProjectIds)
+        ? command.payload.orderedProjectIds.map(String)
+        : [];
+      return completeWorkspaceCommand(command, command, () => {
+        const orderById = new Map(orderedIds.map((projectId, index) => [projectId, index]));
+        const next = projectState.map((project) => {
+          const pinnedOrder = orderById.get(project.id);
+          return pinnedOrder === undefined ? project : { ...project, pinned: true, pinnedOrder };
+        });
+        const changed = next.some(
+          (project, index) =>
+            project.pinned !== projectState[index]?.pinned ||
+            project.pinnedOrder !== projectState[index]?.pinnedOrder,
+        );
+        if (changed) projectState = next;
+        return { changed, value: undefined };
+      });
+    }
+    if (channel === "projects:set-lifecycle") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const projectId = String(command.payload.projectId);
+      const lifecycle: Project["lifecycle"] =
+        command.payload.lifecycle === "archived" ? "archived" : "active";
+      return completeWorkspaceCommand(command, command, () => {
+        const index = projectState.findIndex((project) => project.id === projectId);
+        const project = projectState[index];
+        if (!project) throw new Error(`Project not found: ${projectId}`);
+        const changed = project.lifecycle !== lifecycle;
+        const updated = changed ? { ...project, lifecycle } : project;
+        if (changed) projectState = projectState.with(index, updated);
+        return {
+          changed,
+          value: { kind: "updated" as const, project: updated, changed },
+        };
+      });
     }
     if (channel === "browser-sidebar-command") {
       return { ok: true };
@@ -2666,7 +2915,7 @@ export function renderWorkbench({
         items,
         nextCursor: hasMore ? `test-window:${nextOffset}` : null,
         hasMore,
-        projectionRevision: 1,
+        projectionRevision: workspaceCommitSeq,
       };
     }
     if (channel === "project-sessions:get") {
@@ -2700,23 +2949,33 @@ export function renderWorkbench({
       return undefined;
     }
     if (channel === "project-sessions:reorder") {
-      const projectId = args[0] === null ? projectlessSessionStateKey : String(args[0]);
-      const orderedSessionIds = (args[1] as readonly string[]) ?? [];
-      const current = sessionState[projectId] ?? [];
-      const currentById = new Map(current.map((session) => [session.id, session] as const));
-      const seen = new Set<string>();
-      const ordered = orderedSessionIds.flatMap((sessionId) => {
-        const session = currentById.get(sessionId);
-        if (!session || seen.has(sessionId)) return [];
-        seen.add(sessionId);
-        return [session];
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const projectId =
+        command.payload.projectId === null
+          ? projectlessSessionStateKey
+          : String(command.payload.projectId);
+      const orderedSessionIds = Array.isArray(command.payload.orderedSessionIds)
+        ? command.payload.orderedSessionIds.map(String)
+        : [];
+      return completeWorkspaceCommand(command, command, () => {
+        const current = sessionState[projectId] ?? [];
+        const currentById = new Map(current.map((session) => [session.id, session] as const));
+        const seen = new Set<string>();
+        const ordered = orderedSessionIds.flatMap((sessionId) => {
+          const session = currentById.get(sessionId);
+          if (!session || seen.has(sessionId)) return [];
+          seen.add(sessionId);
+          return [session];
+        });
+        ordered.push(...current.filter((session) => !seen.has(session.id)));
+        const next = ordered.map((session, order) => ({ ...session, order }));
+        const changed = next.some(
+          (session, index) =>
+            session.id !== current[index]?.id || session.order !== current[index]?.order,
+        );
+        if (changed) sessionState = { ...sessionState, [projectId]: next };
+        return { changed, value: undefined };
       });
-      ordered.push(...current.filter((session) => !seen.has(session.id)));
-      sessionState = {
-        ...sessionState,
-        [projectId]: ordered.map((session, order) => ({ ...session, order })),
-      };
-      return undefined;
     }
     if (channel === "codex:sidebar:snapshot") {
       return buildSidebarSnapshot();
@@ -3170,94 +3429,197 @@ export function renderWorkbench({
       );
     }
     if (channel === "project-sessions:update") {
-      const sessionId = String(args[0]);
-      const input = (args[1] ?? {}) as Partial<ProjectSession>;
-      const session = Object.values(sessionState)
-        .flat()
-        .find((item) => item.id === sessionId);
-      if (!session) return null;
-      const updated = { ...session, ...input };
-      sessionState = replaceSession(sessionState, updated);
-      return updated;
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      const input = (command.payload.input ?? {}) as { noThreadFallbackTitle?: string };
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        const nextTitle = input.noThreadFallbackTitle;
+        const changed = nextTitle !== undefined && nextTitle !== session.noThreadFallbackTitle;
+        const updated = changed
+          ? { ...session, noThreadFallbackTitle: nextTitle, displayTitle: nextTitle }
+          : session;
+        if (changed) sessionState = replaceSession(sessionState, updated);
+        return { changed, value: updated };
+      });
     }
     if (channel === "project-sessions:rename") {
-      const sessionId = String(args[0]);
-      const input = (args[1] ?? {}) as { title?: string };
-      const session = Object.values(sessionState)
-        .flat()
-        .find((item) => item.id === sessionId);
-      if (!session) return null;
-      const nextTitle = normalizeCodexManualThreadTitle(input.title ?? "");
-      if (!nextTitle) return session;
-      const updated = session.thread
-        ? {
-            ...session,
-            displayTitle: nextTitle,
-            thread: {
-              ...session.thread,
-              threadName: nextTitle,
-            },
-          }
-        : {
-            ...session,
-            noThreadFallbackTitle: nextTitle,
-            displayTitle: nextTitle,
-          };
-      sessionState = replaceSession(sessionState, updated);
-      return updated;
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      const input = (command.payload.input ?? {}) as { title?: string };
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        const nextTitle = normalizeCodexManualThreadTitle(input.title ?? "");
+        if (!nextTitle) throw new TypeError("Project Session title is invalid");
+        const changed = nextTitle !== session.displayTitle;
+        const updated = !changed
+          ? session
+          : session.thread
+            ? {
+                ...session,
+                displayTitle: nextTitle,
+                thread: { ...session.thread, threadName: nextTitle },
+              }
+            : {
+                ...session,
+                noThreadFallbackTitle: nextTitle,
+                displayTitle: nextTitle,
+              };
+        if (changed) sessionState = replaceSession(sessionState, updated);
+        return { changed, value: updated };
+      });
     }
     if (channel === "project-sessions:set-pinned") {
-      const sessionId = String(args[0]);
-      const input = (args[1] ?? {}) as { pinned?: boolean };
-      const session = Object.values(sessionState)
-        .flat()
-        .find((item) => item.id === sessionId);
-      if (!session) return null;
-      if (session.projectId === null) return null;
-      const projectId = session.projectId;
-      const projectSessions = sessionState[projectId] ?? [];
-      const nextPinned = input.pinned === true;
-      const nextPinnedOrder = nextPinned
-        ? (session.pinnedOrder ??
-          Math.max(-1, ...projectSessions.map((item) => item.pinnedOrder ?? -1)) + 1)
-        : null;
-      const updated = {
-        ...session,
-        pinned: nextPinned,
-        pinnedOrder: nextPinnedOrder,
-      };
-      sessionState = {
-        ...sessionState,
-        [projectId]: sortProjectSessionsForTest(
-          projectSessions.map((item) => (item.id === updated.id ? updated : item)),
-        ),
-      };
-      return updated;
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      const nextPinned = command.payload.pinned === true;
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session || session.projectId === null) {
+          throw new Error(`Project Session not found in a Project: ${sessionId}`);
+        }
+        const projectId = session.projectId;
+        const projectSessions = sessionState[projectId] ?? [];
+        const changed = session.pinned !== nextPinned;
+        const nextPinnedOrder = nextPinned
+          ? (session.pinnedOrder ??
+            Math.max(-1, ...projectSessions.map((item) => item.pinnedOrder ?? -1)) + 1)
+          : null;
+        const updated = changed
+          ? { ...session, pinned: nextPinned, pinnedOrder: nextPinnedOrder }
+          : session;
+        if (changed) {
+          sessionState = {
+            ...sessionState,
+            [projectId]: sortProjectSessionsForTest(
+              projectSessions.map((item) => (item.id === updated.id ? updated : item)),
+            ),
+          };
+        }
+        return { changed, value: updated };
+      });
     }
     if (channel === "project-sessions:archive") {
-      const sessionId = String(args[0]);
-      const session = Object.values(sessionState)
-        .flat()
-        .find((item) => item.id === sessionId);
-      if (!session) return null;
-      const updated = {
-        ...session,
-        archived: true,
-        archivedAt: "2026-06-07T00:00:00.000Z",
-        pinned: false,
-        pinnedOrder: null,
-        unread: false,
-        thread: session.thread ? { ...session.thread, archived: true } : session.thread,
-      };
-      sessionState = replaceSession(sessionState, updated);
-      const scope = session.projectId ?? projectlessSessionStateKey;
-      if (defaultDraftSessionIds.get(scope) === sessionId) {
-        defaultDraftSessionIds.delete(scope);
-      }
-      sidebarItemState = sidebarItemState.filter(
-        (item) => item.sessionId !== sessionId && item.threadId !== session.thread?.threadId,
-      );
-      return updated;
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        const changed = !session.archived;
+        const updated = changed
+          ? {
+              ...session,
+              archived: true,
+              archivedAt: "2026-06-07T00:00:00.000Z",
+              pinned: false,
+              pinnedOrder: null,
+              unread: false,
+              thread: session.thread ? { ...session.thread, archived: true } : session.thread,
+            }
+          : session;
+        if (changed) {
+          sessionState = replaceSession(sessionState, updated);
+          const scope = session.projectId ?? projectlessSessionStateKey;
+          if (defaultDraftSessionIds.get(scope) === sessionId) defaultDraftSessionIds.delete(scope);
+          sidebarItemState = sidebarItemState.filter(
+            (item) => item.sessionId !== sessionId && item.threadId !== session.thread?.threadId,
+          );
+        }
+        return { changed, value: updated };
+      });
+    }
+    if (channel === "project-sessions:unarchive") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        const changed = session.archived;
+        const updated = changed
+          ? {
+              ...session,
+              archived: false,
+              archivedAt: null,
+              thread: session.thread ? { ...session.thread, archived: false } : session.thread,
+            }
+          : session;
+        if (changed) sessionState = replaceSession(sessionState, updated);
+        return { changed, value: updated };
+      });
+    }
+    if (channel === "project-sessions:delete") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        sessionState = Object.fromEntries(
+          Object.entries(sessionState).map(([projectId, sessions]) => [
+            projectId,
+            sessions.filter((candidate) => candidate.id !== sessionId),
+          ]),
+        );
+        sidebarItemState = sidebarItemState.filter(
+          (item) => item.sessionId !== sessionId && item.threadId !== session.thread?.threadId,
+        );
+        return { changed: true, value: true };
+      });
+    }
+    if (channel === "project-sessions:mark-unread") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const sessionId = String(command.payload.sessionId);
+      const unread = command.payload.unread === true;
+      return completeWorkspaceCommand(command, command, () => {
+        const session = Object.values(sessionState)
+          .flat()
+          .find((item) => item.id === sessionId);
+        if (!session) throw new Error(`Project Session not found: ${sessionId}`);
+        const changed = session.unread !== unread;
+        const updated = changed ? { ...session, unread } : session;
+        if (changed) sessionState = replaceSession(sessionState, updated);
+        return { changed, value: updated };
+      });
+    }
+    if (channel === "project-sessions:set-pinned-order") {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const projectId = String(command.payload.projectId);
+      const orderedSessionIds = Array.isArray(command.payload.orderedSessionIds)
+        ? command.payload.orderedSessionIds.map(String)
+        : [];
+      return completeWorkspaceCommand(command, command, () => {
+        const sessions = sessionState[projectId] ?? [];
+        const pinnedOrder = new Map(
+          orderedSessionIds.map((sessionId, index) => [sessionId, index]),
+        );
+        const next = sessions.map((session) => {
+          const order = pinnedOrder.get(session.id);
+          if (order === undefined) return session;
+          return { ...session, pinned: true, pinnedOrder: order };
+        });
+        const changed = next.some(
+          (session, index) =>
+            session.pinned !== sessions[index]?.pinned ||
+            session.pinnedOrder !== sessions[index]?.pinnedOrder,
+        );
+        if (changed) {
+          sessionState = { ...sessionState, [projectId]: sortProjectSessionsForTest(next) };
+        }
+        return { changed, value: undefined };
+      });
     }
     if (channel === "codex:thread:archive") {
       const threadId = String(args[0]);
@@ -3370,30 +3732,49 @@ export function renderWorkbench({
       return updated;
     }
     if (channel === "project-sessions:create") {
-      const input = (args[0] ?? {}) as {
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const input = (command.payload.input ?? {}) as {
         projectId: string | null;
         noThreadFallbackTitle?: string;
         initialPageIds?: string[];
       };
-      return createMockSession(input);
+      const sessionId = String(command.payload.sessionId);
+      return completeWorkspaceCommand(command, command, () => {
+        const existing = Object.values(sessionState)
+          .flat()
+          .find((session) => session.id === sessionId);
+        if (existing) throw new Error(`Project Session already exists: ${sessionId}`);
+        return {
+          changed: true,
+          value: createMockSession({
+            sessionId,
+            projectId: input.projectId,
+            noThreadFallbackTitle: input.noThreadFallbackTitle,
+          }),
+        };
+      });
     }
     if (channel === "project-sessions:ensure-default-draft") {
-      const projectId = (args[0] ?? null) as string | null;
+      const command = readWorkspaceCommandEnvelope(channel, args);
+      const projectId = (command.payload.projectId ?? null) as string | null;
       const scope = projectId ?? projectlessSessionStateKey;
-      const existingId = defaultDraftSessionIds.get(scope);
-      const existing = existingId
-        ? (sessionState[scope] ?? []).find(
-            (session) => session.id === existingId && !session.archived && !session.thread,
-          )
-        : null;
-      if (existing) return existing;
-      defaultDraftSessionIds.delete(scope);
-      const session = createMockSession({
-        projectId,
-        noThreadFallbackTitle: "New chat",
+      return completeWorkspaceCommand(command, command, () => {
+        const existingId = defaultDraftSessionIds.get(scope);
+        const existing = existingId
+          ? (sessionState[scope] ?? []).find(
+              (session) => session.id === existingId && !session.archived && !session.thread,
+            )
+          : null;
+        if (existing) return { changed: false, value: existing };
+        defaultDraftSessionIds.delete(scope);
+        const session = createMockSession({
+          sessionId: String(command.payload.candidateSessionId),
+          projectId,
+          noThreadFallbackTitle: "New chat",
+        });
+        defaultDraftSessionIds.set(scope, session.id);
+        return { changed: true, value: session };
       });
-      defaultDraftSessionIds.set(scope, session.id);
-      return session;
     }
     if (channel === "window-session-view:tab-create") {
       const input = (args[0] ?? {}) as WorkbenchTabCreateInput;
@@ -3664,6 +4045,10 @@ export function renderWorkbench({
     if (channel === "shell:open-file-link") {
       return true;
     }
+    if (isWorkspaceCommandInvocation(channel, args)) {
+      readWorkspaceCommandEnvelope(channel, args);
+      throw new Error(`Unhandled Workspace command in Workbench harness: ${channel}`);
+    }
     return null;
   };
 
@@ -3861,10 +4246,7 @@ export function renderWorkbench({
 
 export function installRendererApiMock(listeners?: TerminalEventListenerMap): void {
   window.api = {
-    invoke: async (channel: string, ...args: unknown[]) => {
-      invokeCalls.push([channel, ...args]);
-      return mockInvokeImpl?.(channel, ...args) ?? null;
-    },
+    invoke: invokeRendererHarness,
     on: (event: string, callback: (...args: unknown[]) => void) => {
       if (!listeners) return () => undefined;
       listeners[event] = (payload: unknown) => callback(payload);

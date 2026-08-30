@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import {
   filterCommandPaletteItems,
   prioritizeActiveProjectItems,

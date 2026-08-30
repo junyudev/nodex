@@ -28,7 +28,6 @@ import {
   ConversationIcon,
   PlusIcon,
 } from "@/components/shared/icons";
-import { invoke } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -50,6 +49,7 @@ import type {
 } from "@/lib/types";
 import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "../shared/composer-footer-controls";
 import type { NewChatProjectSelectorModel } from "../../thread-stage-types";
+import { composerContextOperations } from "../../composer-context-operations";
 import {
   buildComposerContextSuggestionSections,
   rankComposerContextSuggestionCandidates,
@@ -223,7 +223,8 @@ function useComposerAppshotTarget(enabled: boolean): {
     }
 
     setState((previous) => ({ ...previous, loading: true }));
-    void invoke("codex:composer-appshot:target")
+    void composerContextOperations
+      .readAppshotTarget()
       .then((result) => {
         if (!current) return;
         setState({
@@ -589,11 +590,12 @@ function useComposerWorkspaceFileSearch(input: {
 
     let cancelled = false;
     setBatch({ query, matches: [], loading: true });
-    void invoke("workspace-file-search", {
-      workspaceRoot,
-      query,
-      maxResults: 24,
-    })
+    void composerContextOperations
+      .searchWorkspaceFiles({
+        workspaceRoot,
+        query,
+        maxResults: 24,
+      })
       .then((result) => {
         if (cancelled) return;
         setBatch({ query, matches: result.matches, loading: false });
@@ -666,9 +668,8 @@ function useComposerChatGptConversationSearch(input: {
       loading: true,
     });
     const timeout = window.setTimeout(() => {
-      void invoke("codex:composer-chatgpt-conversations:list", {
-        query: normalizedQuery,
-      })
+      void composerContextOperations
+        .searchChatGptConversations(normalizedQuery)
         .then((result) => {
           if (cancelled) return;
           const conversations = result.available ? result.conversations : [];
@@ -829,10 +830,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
     async (plugin: CodexComposerPlugin): Promise<boolean> => {
       if (plugin.installed && plugin.enabled) return true;
       try {
-        await invoke("codex:composer-plugins:activate", {
-          id: plugin.id,
-          cwds: [...pluginCwds],
-        });
+        await composerContextOperations.activatePlugin(plugin.id, pluginCwds);
         await onCapabilitiesChanged?.();
         return true;
       } catch (error) {

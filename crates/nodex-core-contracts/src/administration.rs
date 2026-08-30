@@ -4,7 +4,7 @@ use utoipa::ToSchema;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const STORE_ADMINISTRATION_CONTRACT_VERSION: u32 = 7;
+pub const STORE_ADMINISTRATION_CONTRACT_VERSION: u32 = 8;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -37,6 +37,7 @@ pub enum StoreAdministrationReadValue {
     },
     BackupJobs {
         jobs: Vec<BackupJobRecord>,
+        coalesced_starts: Vec<BackupStartCoalescence>,
     },
     OperationalJournalStatus {
         status: OperationalJournalStatus,
@@ -142,6 +143,12 @@ pub struct BackupJobRecord {
     pub progress: BackupJobProgress,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct BackupStartCoalescence {
+    pub operation_id: String,
+    pub active_job_id: String,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BackupJobState {
@@ -218,6 +225,12 @@ pub enum StoreAdministrationIntent {
         include_assets: bool,
         trigger: BackupTrigger,
     },
+    CoalesceBackup {
+        active_job_id: String,
+        label: Option<String>,
+        include_assets: bool,
+        trigger: BackupTrigger,
+    },
     CancelBackup {
         job_id: String,
     },
@@ -256,6 +269,8 @@ pub struct StoreAdministrationCommitValue {
     pub backup_id: Option<String>,
     pub safety_backup_id: Option<String>,
     pub cancelled_backup_job_id: Option<String>,
+    #[serde(default)]
+    pub coalesced_backup_job_id: Option<String>,
     pub completed_tasks: Vec<MaintenanceTask>,
 }
 

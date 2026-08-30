@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ComposerAppshotRuntime } from "../../host-runtime/ComposerAppshotRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./ComposerAppshotIpc";
@@ -18,7 +19,7 @@ type Handler = (
 it.effect("owns Composer Appshot renderer ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),

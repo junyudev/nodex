@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WorkbenchRuntime } from "./workbench-runtime";
 import { useProjects } from "@/lib/use-projects";
 import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
@@ -8,7 +8,7 @@ import {
   useWorkbenchShortcuts,
 } from "@/lib/use-workbench-shortcuts";
 import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
-import { invoke } from "@/lib/api";
+import { openWorkbenchWindow } from "@/lib/workbench-shell-operations";
 import {
   reminderOpenToPageDeepLink,
   useWorkbenchCommandIngress,
@@ -109,7 +109,13 @@ export function WorkbenchShell({
     reorderProjects,
     setProjectPinned,
     setPinnedProjectOrder,
+    projectCatalogRenderToken,
+    markProjectCatalogRendered,
   } = useProjects();
+  useLayoutEffect(() => {
+    if (projectCatalogRenderToken === null) return;
+    markProjectCatalogRendered(projectCatalogRenderToken);
+  }, [markProjectCatalogRendered, projectCatalogRenderToken]);
   const {
     sidebar,
     recentPageSessions,
@@ -328,7 +334,7 @@ export function WorkbenchShell({
 
   const handleRequestNewWindow = useCallback(async () => {
     await flushBeforeWindowClone();
-    await invoke("window:new", {});
+    await openWorkbenchWindow({});
   }, [flushBeforeWindowClone]);
 
   const workbenchCommands = useWorkbenchCommandIngress({
@@ -348,7 +354,7 @@ export function WorkbenchShell({
   const handleOpenProjectSessionInNewWindow = useCallback(
     async (session: { id: string; projectId: string | null }) => {
       await flushBeforeWindowClone();
-      await invoke("window:new", {
+      await openWorkbenchWindow({
         activeProjectSessionId: session.id,
         activeProjectId: session.projectId,
       });

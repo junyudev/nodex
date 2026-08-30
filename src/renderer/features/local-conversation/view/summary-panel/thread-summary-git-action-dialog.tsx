@@ -12,7 +12,7 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { getGitWorkerClient, invoke } from "@/lib/api";
+import { threadSummaryGitOperations } from "../../thread-summary-git-operations";
 import type {
   GitActionMutationResult,
   GitActionStatusResult,
@@ -163,8 +163,8 @@ export function ThreadSummaryGitActionDialog({
     let cancelled = false;
     setLoading(true);
     setInlineError(null);
-    void getGitWorkerClient()
-      .request({ method: "action-status", params: { cwd } })
+    void threadSummaryGitOperations
+      .readStatus(cwd)
       .then((result) => {
         if (cancelled) return;
         setStatus(result as GitActionStatusResult);
@@ -232,13 +232,13 @@ export function ThreadSummaryGitActionDialog({
         let commitMessage = trimmedMessage;
         let commitIncludeUnstaged = includeUnstaged;
         if (!commitMessage) {
-          const generatedResult = (await invoke("git:action:commit-message:generate", {
+          const generatedResult = await threadSummaryGitOperations.generateCommitMessage({
             cwd,
             hostId,
             draftMessage: trimmedMessage,
             includeUnstaged,
             operationId,
-          })) as GitCommitMessageGenerateResult;
+          });
           const generationError = getGenerationResultError(generatedResult);
           if (generationError) {
             setInlineError(generationError);
@@ -256,14 +256,14 @@ export function ThreadSummaryGitActionDialog({
           });
         }
 
-        const result = (await invoke("git:action:commit", {
+        const result = await threadSummaryGitOperations.commit({
           cwd,
           hostId,
           message: commitMessage,
           includeUnstaged: commitIncludeUnstaged,
           nextStep: "commit",
           operationId,
-        })) as GitActionMutationResult;
+        });
 
         const commitError = getResultError(result);
         if (commitError) {
@@ -277,10 +277,10 @@ export function ThreadSummaryGitActionDialog({
             phase: "pushing",
             operationId,
           });
-          const pushResult = (await invoke("git:action:push", {
+          const pushResult = await threadSummaryGitOperations.push({
             cwd,
             operationId,
-          })) as GitActionMutationResult;
+          });
           handleMutationResult(pushResult);
           return;
         }
@@ -321,10 +321,10 @@ export function ThreadSummaryGitActionDialog({
     });
     onOpenChange(false);
     try {
-      const result = (await invoke("git:action:push", {
+      const result = await threadSummaryGitOperations.push({
         cwd,
         operationId,
-      })) as GitActionMutationResult;
+      });
       handleMutationResult(result);
     } catch (error) {
       const nextError = error instanceof Error ? error.message : "Could not push changes.";

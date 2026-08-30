@@ -24,65 +24,22 @@ import {
 } from "@/features/local-conversation/view/shared/thread-message-actions";
 import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { THREAD_VISUAL_TOKENS } from "@/features/local-conversation/view/blocks/local-conversation-visual-tokens";
-import { invoke, subscribeCodexPendingWorktreesChanged } from "@/lib/api";
+import {
+  pendingWorktreeRouteTransport,
+  type PendingWorktreeRouteTransport,
+} from "@/lib/pending-worktree-runtime";
 import { cn } from "@/lib/utils";
 import type {
   CodexPendingWorktreeEntry,
   CodexPendingWorktreeThreadResolution,
-  CodexPendingWorktreesChangedEvent,
 } from "../../../shared/codex-pending-worktree";
 import type { CodexAgentMode } from "../../../shared/types";
 import { PendingWorktreeProgress } from "./pending-worktree-progress";
 import { resolvePendingWorktreeRouteActions } from "./pending-worktree-route-model";
 
+export type { PendingWorktreeRouteTransport } from "@/lib/pending-worktree-runtime";
+
 type PendingWorktreeRouteAction = "auto-fix" | "cancel" | "continue" | "retry" | "work-locally";
-
-export interface PendingWorktreeRouteTransport {
-  list: () => Promise<readonly CodexPendingWorktreeEntry[]>;
-  resolveThread: (clientThreadId: string) => Promise<CodexPendingWorktreeThreadResolution | null>;
-  autoFix: (
-    hostId: string,
-    pendingWorktreeId: string,
-    agentMode: CodexAgentMode,
-  ) => Promise<import("../../../shared/codex-pending-worktree").CodexPendingWorktreeCreateResult>;
-  retry: (hostId: string, pendingWorktreeId: string) => Promise<void>;
-  workLocally: (
-    hostId: string,
-    pendingWorktreeId: string,
-  ) => Promise<{ readonly threadId: string }>;
-  continue: (hostId: string, pendingWorktreeId: string) => Promise<void>;
-  cancel: (hostId: string, pendingWorktreeId: string) => Promise<void>;
-  discardForkSidePanelTransfer: (pendingWorktreeId: string) => Promise<void>;
-  rename: (hostId: string, pendingWorktreeId: string, label: string) => Promise<void>;
-  setPinned: (hostId: string, pendingWorktreeId: string, isPinned: boolean) => Promise<void>;
-  clearAttention: (hostId: string, pendingWorktreeId: string) => Promise<void>;
-  subscribe: (listener: (entries: CodexPendingWorktreesChangedEvent) => void) => () => void;
-}
-
-const ELECTRON_PENDING_WORKTREE_TRANSPORT: PendingWorktreeRouteTransport = {
-  list: () => invoke("codex:pending-worktrees:list"),
-  resolveThread: (clientThreadId) =>
-    invoke("codex:pending-worktree:resolve-thread", clientThreadId),
-  autoFix: (hostId, pendingWorktreeId, agentMode) =>
-    invoke("codex:pending-worktree:auto-fix", hostId, pendingWorktreeId, agentMode),
-  retry: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:retry", hostId, pendingWorktreeId),
-  workLocally: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:work-locally", hostId, pendingWorktreeId),
-  continue: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:continue", hostId, pendingWorktreeId),
-  cancel: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:cancel", hostId, pendingWorktreeId),
-  discardForkSidePanelTransfer: (pendingWorktreeId) =>
-    invoke("codex:pending-worktree:discard-fork-side-panel-transfer", pendingWorktreeId),
-  rename: (hostId, pendingWorktreeId, label) =>
-    invoke("codex:pending-worktree:rename", hostId, pendingWorktreeId, label),
-  setPinned: (hostId, pendingWorktreeId, isPinned) =>
-    invoke("codex:pending-worktree:set-pinned", hostId, pendingWorktreeId, isPinned),
-  clearAttention: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:clear-attention", hostId, pendingWorktreeId),
-  subscribe: subscribeCodexPendingWorktreesChanged,
-};
 
 interface PendingWorktreeRouteSnapshot {
   status: "loading" | "ready" | "missing" | "error";
@@ -323,7 +280,7 @@ export interface PendingWorktreeRouteProps {
 export function PendingWorktreeRoute({
   clientThreadId,
   agentMode = "auto",
-  transport = ELECTRON_PENDING_WORKTREE_TRANSPORT,
+  transport = pendingWorktreeRouteTransport,
   onClose,
   onOpenThread,
   onOpenPendingWorktree,

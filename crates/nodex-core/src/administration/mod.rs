@@ -12,10 +12,11 @@ use std::sync::{Arc, Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
 use nodex_core_contracts::administration::{
-    BackupJobPhase, BackupJobState, BackupRecord, MaintenanceDueWorkPlan, MaintenanceTask,
-    SchemaOwner, StoreAdministrationCommitValue, StoreAdministrationEvent,
-    StoreAdministrationEventKind, StoreAdministrationIntent, StoreAdministrationRead,
-    StoreAdministrationReadValue, StoreAdministrationReceipt, StoreIntegrity, StoreReadiness,
+    BackupJobPhase, BackupJobState, BackupRecord, BackupStartCoalescence, BackupTrigger,
+    MaintenanceDueWorkPlan, MaintenanceTask, SchemaOwner, StoreAdministrationCommitValue,
+    StoreAdministrationEvent, StoreAdministrationEventKind, StoreAdministrationIntent,
+    StoreAdministrationRead, StoreAdministrationReadValue, StoreAdministrationReceipt,
+    StoreIntegrity, StoreReadiness,
 };
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
@@ -55,6 +56,7 @@ const MODULE_NAME: &str = "store_administration";
 const MAX_OPERATION_ID_BYTES: usize = 512;
 const MAX_LABEL_CHARS: usize = 512;
 const MAX_BACKUPS: usize = 200;
+const MAX_BACKUP_START_COALESCENCES: usize = 32;
 const DEFAULT_BLOCK_RETENTION_COUNT: usize = 10_000;
 const BLOCK_RETENTION_SLICE_CANDIDATES: usize = 8;
 const BLOCK_RETENTION_SLICE_TARGET: Duration = Duration::from_millis(100);
@@ -404,6 +406,7 @@ impl StoreAdministrationModule {
                     StoreAdministrationRead::BackupJobs => {
                         StoreAdministrationReadValue::BackupJobs {
                             jobs: backup::list_backup_jobs(&profile_home)?,
+                            coalesced_starts: read_backup_start_coalescences(&transaction)?,
                         }
                     }
                     StoreAdministrationRead::OperationalJournalStatus => {
@@ -472,11 +475,20 @@ impl StoreAdministrationModule {
         ) {
             return self.apply_cancel_backup(context, request);
         }
+        if matches!(
+            &request.intent,
+            StoreAdministrationIntent::CoalesceBackup { .. }
+        ) {
+            return self.apply_coalesce_backup(context, request);
+        }
         let intent = request.intent.clone();
         let (phase, normalized_label, maintenance_tasks) = match &intent {
             StoreAdministrationIntent::CreateBackup { label, .. } => {
                 ("online_backup", normalize_label(label)?, None)
             }
+            StoreAdministrationIntent::CoalesceBackup { .. } => unreachable!(
+                "backup coalescence is handled before exclusive administration ownership"
+            ),
             StoreAdministrationIntent::CancelBackup { .. } => unreachable!(
                 "backup cancellation is handled before exclusive administration ownership"
             ),
@@ -501,6 +513,9 @@ impl StoreAdministrationModule {
             StoreAdministrationIntent::CreateBackup { .. } => {
                 self.apply_create_backup(context, request, normalized_label)
             }
+            StoreAdministrationIntent::CoalesceBackup { .. } => unreachable!(
+                "backup coalescence is handled before exclusive administration ownership"
+            ),
             StoreAdministrationIntent::CancelBackup { .. } => unreachable!(
                 "backup cancellation is handled before exclusive administration ownership"
             ),
@@ -613,12 +628,115 @@ impl StoreAdministrationModule {
                         backup_id: None,
                         safety_backup_id: None,
                         cancelled_backup_job_id: Some(job_id.clone()),
+                        coalesced_backup_job_id: None,
                         completed_tasks: Vec::new(),
                     },
                     Vec::new(),
                     StoreAdministrationEvent {
                         kind: StoreAdministrationEventKind::StoreAdministrationChanged,
                         operation: "cancel_backup".to_owned(),
+                        backup_ids: Vec::new(),
+                        readiness_changed: false,
+                    },
+                    false,
+                )
+            })
+            .map_err(core_error)
+    }
+
+    fn apply_coalesce_backup(
+        &self,
+        context: &BoundModuleContext,
+        request: ModuleApplyRequest<StoreAdministrationIntent>,
+    ) -> Result<StoreAdministrationApplyOutcome, CoreError> {
+        let Some(writer) = &self.writer else {
+            return Err(unavailable(
+                "Store Administration Module has no durable writer",
+            ));
+        };
+        let Some(profile_home) = &self.profile_home else {
+            return Err(unavailable(
+                "Store Administration Module has no managed Profile home",
+            ));
+        };
+        let StoreAdministrationIntent::CoalesceBackup {
+            active_job_id,
+            label,
+            include_assets,
+            trigger,
+        } = request.intent
+        else {
+            unreachable!("apply dispatches only Backup coalescence here")
+        };
+        validate_operation_id(&active_job_id)?;
+        let normalized_label = normalize_label(&label)?;
+        // The target is Core's admission decision, not part of the caller's
+        // command. Sharing CreateBackup's hash lets an exact retry replay this
+        // durable B -> A relation even after Main forgets which path admitted B.
+        let request_hash = backup_request_hash(
+            &self.profile_id,
+            &self.library_id,
+            request.contract_version,
+            &request.store_epoch,
+            &normalized_label,
+            include_assets,
+            trigger,
+        )?;
+        let profile_id = self.profile_id.clone();
+        let library_id = self.library_id.clone();
+        let finish_context = context.clone();
+        let profile_home = profile_home.clone();
+        let runtime = Arc::clone(&self.runtime);
+        let operation_id = request.operation_id;
+        let requested_store_epoch = request.store_epoch.0;
+        writer
+            .call(move |connection| {
+                assert_identity(connection, &profile_id, &library_id)?;
+                let store_epoch = read_store_epoch(connection)?;
+                if requested_store_epoch != store_epoch {
+                    return Err(stale_store_epoch());
+                }
+                if let Some(outcome) = replay_outcome(connection, &operation_id, &request_hash)? {
+                    return Ok(outcome);
+                }
+                let target_is_active = runtime
+                    .lock()
+                    .map_err(|_| internal("Store Administration runtime state lock failed"))?
+                    .active
+                    .as_ref()
+                    .is_some_and(|active| active.operation_id == active_job_id);
+                let target_exists = target_is_active
+                    || backup::list_backup_jobs(&profile_home)?
+                        .into_iter()
+                        .any(|job| job.job_id == active_job_id);
+                if !target_exists {
+                    return Err(StoreError::new(
+                        StoreErrorCode::NotFound,
+                        "The active Backup job is no longer observable",
+                        true,
+                    ));
+                }
+                let committed_at = sqlite_now(connection)?;
+                finish_administration_mutation(
+                    connection,
+                    &library_id,
+                    &finish_context,
+                    &operation_id,
+                    &request_hash,
+                    &store_epoch,
+                    "coalesce_backup",
+                    &committed_at,
+                    StoreAdministrationCommitValue {
+                        backup_id: None,
+                        safety_backup_id: None,
+                        cancelled_backup_job_id: None,
+                        coalesced_backup_job_id: Some(active_job_id.clone()),
+                        completed_tasks: Vec::new(),
+                    },
+                    Vec::new(),
+                    StoreAdministrationEvent {
+                        kind: StoreAdministrationEventKind::StoreAdministrationChanged,
+                        operation: "coalesce_backup".to_owned(),
                         backup_ids: Vec::new(),
                         readiness_changed: false,
                     },
@@ -652,7 +770,7 @@ impl StoreAdministrationModule {
         else {
             unreachable!("apply validates the Store Administration intent")
         };
-        let fingerprint = serde_json::to_vec(&(
+        let request_hash = backup_request_hash(
             &self.profile_id,
             &self.library_id,
             request.contract_version,
@@ -660,9 +778,7 @@ impl StoreAdministrationModule {
             &normalized_label,
             include_assets,
             trigger,
-        ))
-        .map_err(|_| unavailable("Store Administration request cannot be fingerprinted"))?;
-        let request_hash = sha256(&fingerprint);
+        )?;
         let profile_id = self.profile_id.clone();
         let library_id = self.library_id.clone();
         let context = context.clone();
@@ -691,6 +807,9 @@ impl StoreAdministrationModule {
             })
             .map_err(core_error)?;
         if let Some(outcome) = preflight {
+            if outcome.committed.value.coalesced_backup_job_id.is_some() {
+                return Ok(outcome);
+            }
             let backup_id = outcome
                 .committed
                 .value
@@ -1742,6 +1861,46 @@ fn replay_durable_outcome(
     }
 }
 
+fn read_backup_start_coalescences(
+    connection: &Connection,
+) -> Result<Vec<BackupStartCoalescence>, StoreError> {
+    let outcomes = connection
+        .prepare(
+            "SELECT result_json FROM core_module_receipts \
+             WHERE module_name = ?1 AND operation_kind = 'coalesce_backup' \
+             ORDER BY committed_at DESC, operation_id DESC LIMIT ?2",
+        )?
+        .query_map(
+            params![MODULE_NAME, MAX_BACKUP_START_COALESCENCES as i64],
+            |row| row.get::<_, String>(0),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    outcomes
+        .into_iter()
+        .map(|raw| {
+            let durable = serde_json::from_str::<DurableAdministrationOutcome>(&raw)
+                .map_err(|_| corrupt("Durable Backup coalescence receipt JSON is invalid"))?;
+            let operation_id = durable.committed.receipt.mutation.operation_id;
+            let active_job_id = durable
+                .committed
+                .value
+                .coalesced_backup_job_id
+                .ok_or_else(|| corrupt("Durable Backup coalescence target is missing"))?;
+            if operation_id.is_empty()
+                || operation_id.len() > MAX_OPERATION_ID_BYTES
+                || active_job_id.is_empty()
+                || active_job_id.len() > MAX_OPERATION_ID_BYTES
+            {
+                return Err(corrupt("Durable Backup coalescence identity is invalid"));
+            }
+            Ok(BackupStartCoalescence {
+                operation_id,
+                active_job_id,
+            })
+        })
+        .collect()
+}
+
 fn logically_deleted_backup_ids(connection: &Connection) -> Result<BTreeSet<String>, StoreError> {
     let result_json = connection
         .prepare(
@@ -1900,6 +2059,7 @@ fn finish_backup_creation(
             backup_id: Some(backup.backup_id.clone()),
             safety_backup_id: None,
             cancelled_backup_job_id: None,
+            coalesced_backup_job_id: None,
             completed_tasks: Vec::new(),
         },
         Vec::new(),
@@ -1939,6 +2099,7 @@ fn finish_cleanup_operation(
             backup_id: backup_id.map(str::to_owned),
             safety_backup_id: None,
             cancelled_backup_job_id: None,
+            coalesced_backup_job_id: None,
             completed_tasks: Vec::new(),
         },
         deleted_backup_ids.to_vec(),
@@ -2133,6 +2294,7 @@ fn finish_maintenance(
                     backup_id: None,
                     safety_backup_id: None,
                     cancelled_backup_job_id: None,
+                    coalesced_backup_job_id: None,
                     completed_tasks: completed_tasks.to_vec(),
                 },
                 receipt: StoreAdministrationReceipt {
@@ -2164,6 +2326,7 @@ fn finish_maintenance(
             backup_id: None,
             safety_backup_id: None,
             cancelled_backup_job_id: None,
+            coalesced_backup_job_id: None,
             completed_tasks: completed_tasks.to_vec(),
         },
         Vec::new(),
@@ -2206,6 +2369,7 @@ fn finish_restore(
             backup_id: Some(backup_id.to_owned()),
             safety_backup_id: safety_backup_id.map(str::to_owned),
             cancelled_backup_job_id: None,
+            coalesced_backup_job_id: None,
             completed_tasks: Vec::new(),
         },
         Vec::new(),
@@ -2321,6 +2485,28 @@ fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {
             row.get::<_, String>(0)
         })
         .map_err(Into::into)
+}
+
+fn backup_request_hash(
+    profile_id: &str,
+    library_id: &str,
+    contract_version: u32,
+    store_epoch: &StoreEpoch,
+    normalized_label: &Option<String>,
+    include_assets: bool,
+    trigger: BackupTrigger,
+) -> Result<String, CoreError> {
+    serde_json::to_vec(&(
+        profile_id,
+        library_id,
+        contract_version,
+        store_epoch,
+        normalized_label,
+        include_assets,
+        trigger,
+    ))
+    .map(|fingerprint| sha256(&fingerprint))
+    .map_err(|_| unavailable("Store Administration request cannot be fingerprinted"))
 }
 
 fn stale_store_epoch() -> StoreError {

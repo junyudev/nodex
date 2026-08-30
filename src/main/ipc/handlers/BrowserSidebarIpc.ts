@@ -123,45 +123,49 @@ export const live: Layer.Layer<
         ),
       );
 
-    yield* ipc.handle("browser-sidebar-command", (event, rawCommand: BrowserSidebarCommand) =>
-      trusted(event, "Browser control").pipe(
-        Effect.andThen(
-          parse("parse-browser-command", () => parseBrowserSidebarCommand(rawCommand)),
-        ),
-        Effect.tap((command) => {
-          const scopeId = commandViewScope(command);
-          return scopeId ? requireViewScope(event.sender.id, scopeId) : Effect.void;
-        }),
-        Effect.flatMap((command) =>
-          resolveViewScope(event.sender.id).pipe(
-            Effect.flatMap(
-              (
-                browserViewScopeId,
-              ): Effect.Effect<BrowserSidebarCommandResult, BrowserSidebarIpcError> =>
-                isBrowserLocalServerCommand(command)
-                  ? localServers
-                      .applyCommand(command)
-                      .pipe(Effect.as({ ok: true as const } satisfies BrowserSidebarCommandResult))
-                  : presentation
-                      .applyCommand(command, {
-                        browserViewScopeId,
-                        ownerWebContentsId: event.sender.id,
-                      })
-                      .pipe(
-                        Effect.mapError(
-                          (cause) =>
-                            new BrowserSidebarIpcError({
-                              operation: "apply-browser-command",
-                              cause,
-                            }),
+    yield* ipc.handlePlainCommand(
+      "browser-sidebar-command",
+      (event, rawCommand: BrowserSidebarCommand) =>
+        trusted(event, "Browser control").pipe(
+          Effect.andThen(
+            parse("parse-browser-command", () => parseBrowserSidebarCommand(rawCommand)),
+          ),
+          Effect.tap((command) => {
+            const scopeId = commandViewScope(command);
+            return scopeId ? requireViewScope(event.sender.id, scopeId) : Effect.void;
+          }),
+          Effect.flatMap((command) =>
+            resolveViewScope(event.sender.id).pipe(
+              Effect.flatMap(
+                (
+                  browserViewScopeId,
+                ): Effect.Effect<BrowserSidebarCommandResult, BrowserSidebarIpcError> =>
+                  isBrowserLocalServerCommand(command)
+                    ? localServers
+                        .applyCommand(command)
+                        .pipe(
+                          Effect.as({ ok: true as const } satisfies BrowserSidebarCommandResult),
+                        )
+                    : presentation
+                        .applyCommand(command, {
+                          browserViewScopeId,
+                          ownerWebContentsId: event.sender.id,
+                        })
+                        .pipe(
+                          Effect.mapError(
+                            (cause) =>
+                              new BrowserSidebarIpcError({
+                                operation: "apply-browser-command",
+                                cause,
+                              }),
+                          ),
                         ),
-                      ),
+              ),
             ),
           ),
         ),
-      ),
     );
-    yield* ipc.handle("browser-sidebar-runtime-snapshot", (event) =>
+    yield* ipc.handleQuery("browser-sidebar-runtime-snapshot", (event) =>
       trusted(event, "Browser runtime state").pipe(
         Effect.andThen(resolveViewScope(event.sender.id)),
         Effect.flatMap((browserViewScopeId) =>
@@ -176,23 +180,25 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-browsing-data-clear", (event, rawKind: BrowserBrowsingDataKind) =>
-      trusted(event, "Browser data clearing").pipe(
-        Effect.andThen(
-          parse("parse-browsing-data-kind", () => BrowserBrowsingDataKindSchema.parse(rawKind)),
-        ),
-        Effect.flatMap((kind) =>
-          presentation
-            .clearBrowsingData(kind)
-            .pipe(
-              Effect.mapError(
-                (cause) => new BrowserSidebarIpcError({ operation: "clear-browser-data", cause }),
+    yield* ipc.handlePlainCommand(
+      "browser-browsing-data-clear",
+      (event, rawKind: BrowserBrowsingDataKind) =>
+        trusted(event, "Browser data clearing").pipe(
+          Effect.andThen(
+            parse("parse-browsing-data-kind", () => BrowserBrowsingDataKindSchema.parse(rawKind)),
+          ),
+          Effect.flatMap((kind) =>
+            presentation
+              .clearBrowsingData(kind)
+              .pipe(
+                Effect.mapError(
+                  (cause) => new BrowserSidebarIpcError({ operation: "clear-browser-data", cause }),
+                ),
               ),
-            ),
+          ),
         ),
-      ),
     );
-    yield* ipc.handle(
+    yield* ipc.handleControl(
       "browser-sidebar-webview-host-created",
       (event, rawEvent: BrowserSidebarWebviewHostCreated) =>
         trusted(event, "Browser webview registration").pipe(
@@ -214,7 +220,7 @@ export const live: Layer.Layer<
           ),
         ),
     );
-    yield* ipc.handle(
+    yield* ipc.handleControl(
       "browser-sidebar-webview-destroyed",
       (event, rawEvent: BrowserSidebarWebviewDestroyed) =>
         trusted(event, "Browser webview teardown").pipe(
@@ -236,7 +242,7 @@ export const live: Layer.Layer<
           ),
         ),
     );
-    yield* ipc.handle("browser-history-list", (event, rawInput: unknown) =>
+    yield* ipc.handleQuery("browser-history-list", (event, rawInput: unknown) =>
       trusted(event, "Browser history").pipe(
         Effect.andThen(
           parse("parse-browser-history-query", () =>
@@ -246,7 +252,7 @@ export const live: Layer.Layer<
         Effect.flatMap((input) => history.list(input)),
       ),
     );
-    yield* ipc.handle("browser-history-delete", (event, historyId: unknown) =>
+    yield* ipc.handlePlainCommand("browser-history-delete", (event, historyId: unknown) =>
       trusted(event, "Browser history removal").pipe(
         Effect.andThen(
           parse("parse-browser-history-removal", () =>
@@ -266,7 +272,7 @@ export const live: Layer.Layer<
         Effect.as({ ok: true as const }),
       ),
     );
-    yield* ipc.handle("browser-annotation-capture-evidence", (event, rawInput: unknown) =>
+    yield* ipc.handleQuery("browser-annotation-capture-evidence", (event, rawInput: unknown) =>
       trusted(event, "Browser annotation evidence").pipe(
         Effect.andThen(
           parse("parse-browser-annotation-evidence", () =>
@@ -316,7 +322,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-local-server-thumbnail", (event, rawInput: unknown) =>
+    yield* ipc.handleQuery("browser-local-server-thumbnail", (event, rawInput: unknown) =>
       trusted(event, "Local server preview").pipe(
         Effect.andThen(
           parse("parse-local-server-thumbnail", () =>

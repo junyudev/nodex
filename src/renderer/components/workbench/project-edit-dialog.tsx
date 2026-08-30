@@ -27,7 +27,8 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { CoreApiError, invoke } from "@/lib/api";
+import { CoreApiError } from "@/lib/core-api-error";
+import { pickProjectSourceRoots } from "@/lib/workbench-shell-operations";
 import {
   dedupeSourceRoots,
   makeSourceRootPrimary,
@@ -173,7 +174,7 @@ export function ProjectSourcesEditor({
   };
 
   const addFolder = async () => {
-    const picked = (await invoke("projects:pick-source-roots")) as string[];
+    const picked = await pickProjectSourceRoots();
     appendSources(picked);
   };
 

@@ -383,6 +383,11 @@ unsafe “already locked” bypass API. `ProjectArchiveBlockers` derives the arc
 canonical Conversation Entity view, durable Project Session projection, background-process runtime,
 and Terminal runtime. `ProjectLifecycleCommands` owns the double blocker read, durable lifecycle
 commit, and best-effort runtime cleanup under that gate; Project IPC only authorizes and delegates.
+`ProjectSessionCommands` likewise owns Session title persistence, Conversation archive state,
+post-commit Browser cleanup, and Sidebar Section reconciliation around the single
+operation-identified `ProjectWorkspace` command path. IPC does not pre-read entities or coordinate
+those effects, so exact Core receipt replay reaches the same application boundary after an unknown
+transport outcome.
 
 Core application invalidation enters one process-scoped database notification runtime. That
 runtime is the typed publication capability: it performs synchronous renderer projection itself
@@ -462,7 +467,9 @@ Main propagates renderer cancellation across IPC and the Core transport using th
 
 [`src/preload`](src/preload) is a narrow context-isolated bridge. It exposes the typed IPC surface required by the application and contains no general Node or filesystem capability.
 
-[`src/renderer`](src/renderer) is a sandboxed React application. All durable product operations go through [`src/renderer/lib/api.ts`](src/renderer/lib/api.ts). The renderer never accesses SQLite, Core sockets, arbitrary filesystem paths, or Node APIs directly.
+[`src/renderer`](src/renderer) is a sandboxed React application. Durable writes enter the renderer Module that owns their visible lifecycle and then cross a named typed command Adapter; queries and runtime bookkeeping use their distinct typed query and control Adapters. Shared operations may expose narrow methods from [`src/renderer/lib/api.ts`](src/renderer/lib/api.ts), but no general channel-invocation facade is available to features. The renderer never accesses SQLite, Core sockets, arbitrary filesystem paths, or Node APIs directly.
+
+The shared IPC contract exhaustively classifies every endpoint as query, command, or control, and every command declares whether its result proves a Core LocalCommit, a Main revision, or only a plain typed result. The renderer semantic command contract is a separate source of truth for authority, visible owner, and presentation protocol. Transport evidence cannot own React presentation, and renderer presentation cannot weaken transport acknowledgement.
 
 Renderer state follows explicit ownership:
 
@@ -505,7 +512,7 @@ sequenceDiagram
 
 Core writes the semantic mutation, immutable receipt, physical evidence, Document references, visibility changes, and per-scope Projection effects in one transaction represented by one LocalCommit identity. Command authorization and delivery authorization are separate Core decisions. Main routes Core-authored audiences; it cannot broaden them.
 
-The initiating renderer admits its authorized apply-response delivery before the feature Promise resolves. Other renderers converge through the scoped live broker and durable replay. Main's Projection delivery capability directly composes Core authority/session access, application projection, Document sessions, LocalCommit delivery, and renderer audience ownership; the composition root does not reconstruct causal delivery as a callback bag or borrow a legacy data-authority client. LocalCommit owns Manifest/resource deduplication, exact-key causal Queue actors, shared completion signals, bounded pending work, retry, and checkpoint gating as children of the Main Scope; an interrupted tail waiter never becomes the physical delivery owner. The Projection live Module separately owns the multiplexed physical lease, replacement attempts, callback ingress, backoff, and release. Its audience Module atomically owns renderer subscriptions, Core-issued recipient leases, ACK correlation, reset recovery, and the desired-scope projection; audience membership does not own a physical Core connection. Apply delivery and later stream delivery are complementary copies of the same committed fact, not competing authorities.
+The initiating renderer admits its authorized apply-response delivery before the feature Promise resolves. Its semantic owner may keep an identity-keyed local presentation after acknowledgement until the exact bounded projection materializes the intent and the subscribed React owner commits that canonical result. Acknowledgement and materialization may arrive in either order; neither a broad commit floor nor installation in an external store is a rendered handoff. Other renderers converge through the scoped live broker and durable replay. Main's Projection delivery capability directly composes Core authority/session access, application projection, Document sessions, LocalCommit delivery, and renderer audience ownership; the composition root does not reconstruct causal delivery as a callback bag or borrow a legacy data-authority client. LocalCommit owns Manifest/resource deduplication, exact-key causal Queue actors, shared completion signals, bounded pending work, retry, and checkpoint gating as children of the Main Scope; an interrupted tail waiter never becomes the physical delivery owner. The Projection live Module separately owns the multiplexed physical lease, replacement attempts, callback ingress, backoff, and release. Its audience Module atomically owns renderer subscriptions, Core-issued recipient leases, ACK correlation, reset recovery, and the desired-scope projection; audience membership does not own a physical Core connection. Apply delivery and later stream delivery are complementary copies of the same committed fact, not competing authorities.
 
 Database-scoped Page-key namespace reads and prefix mutations belong to the Database Module. Project creation may provide the primary Database's initial prefix inside its aggregate transaction; after creation, Project surfaces only adapt the primary Database coordinate and do not copy namespace revision into Project state. A prefix rename authors bounded Database/View canonical-read floors plus `PageDetailDatabase` delivery in one LocalCommit, so mounted Views and Page Detail converge without advancing Project binding revision or enumerating Page patches.
 
@@ -815,7 +822,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 
 1. One detached Rust Core is the exclusive durable SQLite and Document authority for a Profile.
 2. Electron Main binds identity and coordinates runtimes but never opens `nodex.db`, reconstructs Yrs/Canvas transaction authority, or supplies a semantic fallback.
-3. Renderer code reaches durable state only through typed preload/Main Adapters; it has no direct Node, filesystem, SQLite, or Core-socket access.
+3. Renderer code reaches durable state only through an owning semantic Module and typed preload/Main Adapters; it has no general command-channel escape hatch or direct Node, filesystem, SQLite, or Core-socket access.
 4. One Profile owns one Library. Project lifecycle changes execution authority and access, never Library content ownership.
 5. `blocks.id` is the persistent content identity. Page ID is Block ID; Document, Database, Data Source, and View identities are independent coordinates.
 6. Every active Page has one exclusive acyclic structural parent. References, Views, the `task_parent` Relation projection, other Relations, mentions, and backlinks are non-owning and non-authorizing.
@@ -824,7 +831,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 9. Authorization is evaluated by Core from explicit trusted access context. Renderer presentation and Codex operation approval are not resource authorization.
 10. Runtime validation occurs at transport, persistence, and external-data boundaries. Normalized in-memory domain state remains typed without repeated permissive parsing.
 11. Every user-growing collection is count- and byte-bounded and uses stable keyset pagination. List and Board reads never hydrate full Page Documents.
-12. A durable mutation has one semantic intent, exact-retry receipt, atomic LocalCommit evidence, and Core-authored projection impact. Response and replay deliveries represent the same committed fact.
+12. A durable mutation has one semantic intent, exact-retry receipt, atomic LocalCommit evidence, and Core-authored projection impact. Response and replay deliveries represent the same committed fact; local presentation settles only from the proof required by its owning visibility protocol.
 13. Projection authority is scope-specific. A LocalCommit sequence is durable replay progress and cannot substitute for a projection revision.
 14. Structural mutations that consume collaborative shape fence every affected Document at an exact durable head before commit.
 15. Exact Document live sync is a resource boundary with canonical repair, not a second global ledger reader.

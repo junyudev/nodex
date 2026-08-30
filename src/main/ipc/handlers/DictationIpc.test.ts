@@ -11,6 +11,7 @@ import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { CodexMedia, CodexMediaError } from "../../codex-application/CodexMedia";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { DictationIpcError, live } from "./DictationIpc";
@@ -24,14 +25,14 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
     const interrupted = yield* Deferred.make<void>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),
           () => Effect.sync(() => handlers.delete(channel)),
         ).pipe(Effect.asVoid),
       on: () => Effect.void,
-    } as ElectronIpc["Service"]);
+    });
     const media = CodexMedia.of({
       dictationState: Effect.die("unused"),
       transcribe: () =>

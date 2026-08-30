@@ -4,7 +4,6 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { CodexPendingWorktreeCreateInput } from "../../../shared/codex-pending-worktree";
 import { requireCodexWorktreeEnvironmentConfigPath } from "../../../shared/codex-worktree-environment-path";
-import type { IpcApi } from "../../../shared/ipc-api";
 import type { CodexAgentMode } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexClientThreadIdentity } from "../../codex-application/CodexClientThreadIdentity";
@@ -12,7 +11,7 @@ import { CodexForkSidePanelTransfer } from "../../codex-application/CodexForkSid
 import { CodexPendingWorktreeRuntime } from "../../codex-application/CodexPendingWorktreeRuntime";
 import { executionWorkspacePathKey } from "../../codex/codex-execution-workspace-roots";
 import { allocateCodexPendingWorktreeRequest } from "../../codex/codex-pending-worktree-request";
-import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { ProjectWorkspace } from "../../project-application/ProjectWorkspace";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -21,28 +20,6 @@ export class CodexPendingWorktreeIpcError extends Schema.TaggedError<CodexPendin
   "CodexPendingWorktreeIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type PendingChannel =
-  | "codex:pending-worktrees:list"
-  | "codex:pending-worktree:create"
-  | "codex:pending-worktree:auto-fix"
-  | "codex:pending-worktree:retry"
-  | "codex:pending-worktree:work-locally"
-  | "codex:pending-worktree:continue"
-  | "codex:pending-worktree:cancel"
-  | "codex:pending-worktree:dismiss"
-  | "codex:pending-worktree:rename"
-  | "codex:pending-worktree:set-pinned"
-  | "codex:pending-worktree:set-pinned-before-thread"
-  | "codex:pending-worktree:clear-attention"
-  | "codex:pending-worktree:resolve-thread"
-  | "codex:pending-worktree:discard-fork-side-panel-transfer"
-  | "codex:fork-side-panel-transfer:consume";
-
-type Handler<Channel extends PendingChannel> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 const requireIdentifier = (value: string, label: string): string => {
   if (typeof value !== "string" || value.length === 0) throw new Error(`${label} is required`);
@@ -149,23 +126,17 @@ export const live: Layer.Layer<
       });
     const validate = <A>(operation: string, evaluate: () => A) =>
       Effect.try({ try: evaluate, catch: (cause) => fail(operation, cause) });
-    const handle = <Channel extends PendingChannel>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, (event, ...args) =>
-        authorize(event).pipe(
-          Effect.andThen(
-            (
-              Reflect.apply(handler, undefined, [event, ...args]) as Effect.Effect<
-                IpcApi[Channel]["result"],
-                unknown
-              >
-            ).pipe(
-              Effect.mapError((cause) =>
-                cause instanceof CodexPendingWorktreeIpcError ? cause : fail(channel, cause),
-              ),
+    const { handleControl, handlePlainCommand, handleQuery } = mapElectronIpcHandlers(
+      ipc,
+      (channel, handler) =>
+        (event, ...args) =>
+          authorize(event).pipe(
+            Effect.andThen(handler(event, ...args)),
+            Effect.mapError((cause) =>
+              cause instanceof CodexPendingWorktreeIpcError ? cause : fail(channel, cause),
             ),
           ),
-        ),
-      );
+    );
     const requireOwned = (hostId: string, pendingWorktreeId: string) =>
       validate("resolve-pending-worktree", () => {
         requireIdentifier(hostId, "Host id");
@@ -177,61 +148,69 @@ export const live: Layer.Layer<
         return entry;
       });
 
-    yield* handle("codex:pending-worktrees:list", () => Effect.succeed([...pending.list()]));
-    yield* handle("codex:pending-worktree:create", (_, input) =>
+    yield* handleQuery("codex:pending-worktrees:list", () => Effect.succeed([...pending.list()]));
+    yield* handlePlainCommand("codex:pending-worktree:create", (_, input) =>
       validate("create", () => allocateCodexPendingWorktreeRequest(requireCreateInput(input))).pipe(
         Effect.tap((allocated) => pending.create(allocated.request)),
         Effect.map((allocated) => allocated.result),
       ),
     );
-    yield* handle("codex:pending-worktree:auto-fix", (_, hostId, pendingWorktreeId, agentMode) =>
-      validate("auto-fix", () => ({
-        hostId: requireIdentifier(hostId, "Host id"),
-        pendingWorktreeId: requireIdentifier(pendingWorktreeId, "Pending worktree id"),
-        agentMode: requireAgentMode(agentMode),
-      })).pipe(
-        Effect.flatMap((input) =>
-          pending.createSetupRepair(input.hostId, input.pendingWorktreeId, input.agentMode),
+    yield* handlePlainCommand(
+      "codex:pending-worktree:auto-fix",
+      (_, hostId, pendingWorktreeId, agentMode) =>
+        validate("auto-fix", () => ({
+          hostId: requireIdentifier(hostId, "Host id"),
+          pendingWorktreeId: requireIdentifier(pendingWorktreeId, "Pending worktree id"),
+          agentMode: requireAgentMode(agentMode),
+        })).pipe(
+          Effect.flatMap((input) =>
+            pending.createSetupRepair(input.hostId, input.pendingWorktreeId, input.agentMode),
+          ),
         ),
-      ),
     );
-    yield* handle("codex:pending-worktree:retry", (_, hostId, pendingWorktreeId) =>
+    yield* handlePlainCommand("codex:pending-worktree:retry", (_, hostId, pendingWorktreeId) =>
       requireOwned(hostId, pendingWorktreeId).pipe(
         Effect.andThen(pending.retry(pendingWorktreeId)),
       ),
     );
-    yield* handle("codex:pending-worktree:work-locally", (_, hostId, pendingWorktreeId) =>
-      requireOwned(hostId, pendingWorktreeId).pipe(
-        Effect.andThen(pending.workLocally(pendingWorktreeId)),
-      ),
+    yield* handlePlainCommand(
+      "codex:pending-worktree:work-locally",
+      (_, hostId, pendingWorktreeId) =>
+        requireOwned(hostId, pendingWorktreeId).pipe(
+          Effect.andThen(pending.workLocally(pendingWorktreeId)),
+        ),
     );
-    yield* handle("codex:pending-worktree:continue", (_, hostId, pendingWorktreeId) =>
+    yield* handlePlainCommand("codex:pending-worktree:continue", (_, hostId, pendingWorktreeId) =>
       requireOwned(hostId, pendingWorktreeId).pipe(
         Effect.andThen(pending.continueWithoutSetup(pendingWorktreeId)),
       ),
     );
-    yield* handle("codex:pending-worktree:cancel", (_, hostId, pendingWorktreeId) =>
+    yield* handlePlainCommand("codex:pending-worktree:cancel", (_, hostId, pendingWorktreeId) =>
       requireOwned(hostId, pendingWorktreeId).pipe(
         Effect.andThen(pending.cancel(pendingWorktreeId)),
       ),
     );
-    yield* handle("codex:pending-worktree:dismiss", (_, hostId, pendingWorktreeId) =>
+    yield* handlePlainCommand("codex:pending-worktree:dismiss", (_, hostId, pendingWorktreeId) =>
       requireOwned(hostId, pendingWorktreeId).pipe(
         Effect.andThen(pending.dismiss(pendingWorktreeId)),
       ),
     );
-    yield* handle("codex:pending-worktree:rename", (_, hostId, pendingWorktreeId, label) =>
-      requireOwned(hostId, pendingWorktreeId).pipe(
-        Effect.andThen(validate("rename", () => requireLabel(label))),
-        Effect.flatMap((validated) => pending.rename(pendingWorktreeId, validated)),
-      ),
+    yield* handlePlainCommand(
+      "codex:pending-worktree:rename",
+      (_, hostId, pendingWorktreeId, label) =>
+        requireOwned(hostId, pendingWorktreeId).pipe(
+          Effect.andThen(validate("rename", () => requireLabel(label))),
+          Effect.flatMap((validated) => pending.rename(pendingWorktreeId, validated)),
+        ),
     );
-    yield* handle("codex:pending-worktree:set-pinned", (_, hostId, pendingWorktreeId, isPinned) =>
-      requireOwned(hostId, pendingWorktreeId).pipe(
-        Effect.andThen(pending.setPinned(pendingWorktreeId, isPinned)),
-      ),
+    yield* handlePlainCommand(
+      "codex:pending-worktree:set-pinned",
+      (_, hostId, pendingWorktreeId, isPinned) =>
+        requireOwned(hostId, pendingWorktreeId).pipe(
+          Effect.andThen(pending.setPinned(pendingWorktreeId, isPinned)),
+        ),
     );
-    yield* handle(
+    yield* handlePlainCommand(
       "codex:pending-worktree:set-pinned-before-thread",
       (_, hostId, pendingWorktreeId, beforeThreadId) =>
         requireOwned(hostId, pendingWorktreeId).pipe(
@@ -247,12 +226,14 @@ export const live: Layer.Layer<
           ),
         ),
     );
-    yield* handle("codex:pending-worktree:clear-attention", (_, hostId, pendingWorktreeId) =>
-      requireOwned(hostId, pendingWorktreeId).pipe(
-        Effect.andThen(pending.clearAttention(pendingWorktreeId)),
-      ),
+    yield* handlePlainCommand(
+      "codex:pending-worktree:clear-attention",
+      (_, hostId, pendingWorktreeId) =>
+        requireOwned(hostId, pendingWorktreeId).pipe(
+          Effect.andThen(pending.clearAttention(pendingWorktreeId)),
+        ),
     );
-    yield* handle("codex:pending-worktree:resolve-thread", (_, clientThreadId) =>
+    yield* handlePlainCommand("codex:pending-worktree:resolve-thread", (_, clientThreadId) =>
       validate("resolve-thread", () => requireIdentifier(clientThreadId, "Client thread id")).pipe(
         Effect.flatMap((validated) =>
           clientIdentity
@@ -267,14 +248,14 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle(
+    yield* handleControl(
       "codex:pending-worktree:discard-fork-side-panel-transfer",
       (_, pendingWorktreeId) =>
         validate("discard-fork-side-panel-transfer", () =>
           requireIdentifier(pendingWorktreeId, "Pending worktree id"),
         ).pipe(Effect.flatMap(forkTransfers.discardPending)),
     );
-    yield* handle("codex:fork-side-panel-transfer:consume", (event, input) =>
+    yield* handleControl("codex:fork-side-panel-transfer:consume", (event, input) =>
       Effect.gen(function* () {
         if (windows.resolveSessionId(event.sender.id) !== input.targetBrowserViewScopeId) {
           return yield* fail(

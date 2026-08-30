@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { MainConfig } from "../../app/MainConfig";
 import { ComputerUseSettingsRuntime } from "../../host-runtime/ComputerUseSettingsRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { live } from "./ComputerUseSettingsIpc";
 
@@ -17,7 +18,7 @@ type Handler = (
 it.effect("registers and releases Computer Use settings channels with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),

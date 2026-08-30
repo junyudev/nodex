@@ -82,7 +82,7 @@ const generatedThreadTitleResult: unknown = { title: null };
 const generatedThreadTitleError: Error | null = null;
 
 vi.mock("./local-conversation-deps", () => ({
-  invoke: async (channel: string, ...args: unknown[]) => {
+  runConversationOperation: async (channel: string, ...args: unknown[]) => {
     invokeCalls.push(channel);
     invokeRecords.push({ channel, args });
     const threadId = typeof args[0] === "string" ? args[0] : undefined;

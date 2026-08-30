@@ -58,6 +58,13 @@ import {
 } from "./database-row-detail-store";
 import { mapWithConcurrency } from "./map-with-concurrency";
 import { databaseViewPrimaryManualOrderDirection } from "../../shared/database-view-presentation";
+import {
+  beginRendererOwnerTrace,
+  recordRendererOwnerTrace,
+  rendererCausalTrace,
+  type RendererCausalTrace,
+  type RendererCausalTraceContext,
+} from "./renderer-causal-trace";
 
 const DEFAULT_BOARD_FRESHNESS_MS = 30_000;
 const GROUP_WINDOW_FIRST = 50;
@@ -111,6 +118,8 @@ export interface BoardStoreSnapshot {
   error: string | null;
   pendingMutationCount: number;
   lastMutationError: string | null;
+  /** Stable while the exact canonical materialization candidate is unchanged. */
+  materializationRenderToken: number | null;
   groupPagination: ReadonlyMap<GroupWindowScopeKey, ColumnPaginationState>;
   totalRows: number | null;
 }
@@ -155,6 +164,7 @@ export interface BoardStoreDependencies {
   subscribeBoardChanges: SubscribeBoardChangesFn;
   getProjectionInvalidationRegistry: () => ProjectionInvalidationRegistry | null;
   now: NowFn;
+  causalTrace: RendererCausalTrace;
 }
 
 export interface EnsureFreshBoardOptions {
@@ -173,6 +183,8 @@ export type DatabaseViewTransform = (model: DatabaseViewRenderModel) => Database
 
 export interface RunOptimisticMutationOptions<T> {
   kind: string;
+  /** Durable command identity when the outer workflow already owns one. */
+  operationIdentity?: string;
   conflictKeys: string[];
   apply: BoardTransform;
   applyDatabaseView?: DatabaseViewTransform;
@@ -194,6 +206,8 @@ export interface RunOptimisticMutationOptions<T> {
 
 export interface RunOptimisticDatabaseViewMutationOptions<T> {
   kind: string;
+  /** Durable command identity when the outer workflow already owns one. */
+  operationIdentity?: string;
   conflictKeys: string[];
   apply: DatabaseViewTransform;
   runRemote: (canonicalModel: DatabaseViewRenderModel) => Promise<T>;
@@ -225,6 +239,14 @@ interface OptimisticEntry {
   isDatabaseViewCommitMaterialized: ((canonicalModel: DatabaseViewRenderModel) => boolean) | null;
   minimumMaterializationGeneration: number | null;
   superseded: boolean;
+  readonly trace: RendererCausalTraceContext | null;
+}
+
+interface MaterializationRenderCandidate {
+  readonly operationIds: readonly number[];
+  readonly board: BoardSummary | null;
+  readonly databaseView: DatabaseViewRenderModel | null;
+  readonly token: number;
 }
 
 const defaultDependencies: BoardStoreDependencies = {
@@ -233,6 +255,7 @@ const defaultDependencies: BoardStoreDependencies = {
   subscribeBoardChanges,
   getProjectionInvalidationRegistry: getRendererProjectionInvalidationRegistry,
   now: () => Date.now(),
+  causalTrace: rendererCausalTrace,
 };
 
 function buildPageIndex(board: BoardSummary | null): ReadonlyMap<string, IndexedPage> {
@@ -443,6 +466,7 @@ class BoardProjectStore {
     error: null,
     pendingMutationCount: 0,
     lastMutationError: null,
+    materializationRenderToken: null,
     groupPagination: new Map(),
     totalRows: null,
   };
@@ -458,6 +482,10 @@ class BoardProjectStore {
   private groupsSnapshot: DatabaseViewGroupsSnapshot | null = null;
 
   private optimisticEntries: OptimisticEntry[] = [];
+
+  private materializationRenderCandidate: MaterializationRenderCandidate | null = null;
+
+  private nextMaterializationRenderToken = 0;
 
   private readonly remoteLanes = new Map<string, Promise<boolean>>();
 
@@ -550,6 +578,32 @@ class BoardProjectStore {
 
   getSnapshot = (): BoardStoreSnapshot => this.snapshot;
 
+  /** Settles only the acknowledged entries represented by the current React commit. */
+  markRendered = (renderToken: number): void => {
+    const candidate = this.materializationRenderCandidate;
+    if (!candidate || candidate.token !== renderToken) return;
+
+    const materializedOperationIds = new Set(candidate.operationIds);
+    this.materializationRenderCandidate = null;
+    for (const entry of this.optimisticEntries) {
+      if (!materializedOperationIds.has(entry.opId)) continue;
+      recordRendererOwnerTrace(
+        entry.trace,
+        { kind: "rendered", reason: "render_handoff", renderToken },
+        this.dependencies.causalTrace,
+      );
+      recordRendererOwnerTrace(
+        entry.trace,
+        { kind: "settled", reason: "proof_complete" },
+        this.dependencies.causalTrace,
+      );
+    }
+    this.optimisticEntries = this.optimisticEntries.filter(
+      (entry) => !materializedOperationIds.has(entry.opId),
+    );
+    this.recomputeSnapshot();
+  };
+
   subscribe = (listener: StoreListener): (() => void) => {
     this.onAccess();
     this.listeners.add(listener);
@@ -594,8 +648,9 @@ class BoardProjectStore {
     this.groupWindows.clear();
     this.groupsSnapshot = null;
     this.inFlightFetch = null;
-    for (const entry of this.optimisticEntries) entry.superseded = true;
+    this.revokeEntries("store_reset");
     this.optimisticEntries = [];
+    this.materializationRenderCandidate = null;
     this.disposeCausalProjectionRuntime();
     this.requiredMinimumCommitSeq = 0;
     this.requiredMinimumStoreEpoch = null;
@@ -616,6 +671,7 @@ class BoardProjectStore {
       error: null,
       pendingMutationCount: 0,
       lastMutationError: null,
+      materializationRenderToken: null,
       groupPagination: new Map(),
       totalRows: null,
     });
@@ -624,8 +680,9 @@ class BoardProjectStore {
   private fenceStoreEpochReplacement(): void {
     this.authorityGeneration += 1;
     this.remoteLanes.clear();
-    for (const entry of this.optimisticEntries) entry.superseded = true;
+    this.revokeEntries("store_reset");
     this.optimisticEntries = [];
+    this.materializationRenderCandidate = null;
     this.disposeCausalProjectionRuntime();
     this.requiredMinimumCommitSeq = 0;
     this.requiredMinimumStoreEpoch = null;
@@ -1455,13 +1512,30 @@ class BoardProjectStore {
     });
     this.optimisticEntries.push(entry);
     this.recomputeSnapshot();
+    recordRendererOwnerTrace(
+      entry.trace,
+      { kind: "local_intent", reason: "local_intent" },
+      this.dependencies.causalTrace,
+    );
 
     try {
       const execute = async (): Promise<{
         readonly result: T;
         readonly readyForNextPlacement: boolean;
       }> => {
+        recordRendererOwnerTrace(
+          entry.trace,
+          { kind: "submitted", reason: "transport_submit" },
+          this.dependencies.causalTrace,
+        );
         const result = await options.runRemote();
+        if (!entry.superseded) {
+          recordRendererOwnerTrace(
+            entry.trace,
+            { kind: "acknowledged", reason: "committed" },
+            this.dependencies.causalTrace,
+          );
+        }
         entry.phase = "acknowledged";
         entry.commitCursor = options.getCommitCursor?.(result) ?? null;
         entry.minimumMaterializationGeneration = entry.commitCursor
@@ -1488,6 +1562,13 @@ class BoardProjectStore {
       };
     } catch (error) {
       const normalized = toError(error);
+      if (!entry.superseded) {
+        recordRendererOwnerTrace(
+          entry.trace,
+          { kind: "failed", reason: "domain_failure" },
+          this.dependencies.causalTrace,
+        );
+      }
       this.removeEntry(entry.opId);
 
       const shouldSurfaceError = !entry.superseded || options.suppressErrorWhenSuperseded === false;
@@ -1624,7 +1705,7 @@ class BoardProjectStore {
       Pick<BoardStoreSnapshot, "loading" | "loadingMore" | "error" | "lastMutationError">
     > = {},
   ): void {
-    this.pruneConvergedEntries();
+    const materializedOperationIds = this.pruneConvergedEntries();
     const composedBoard = this.baseBoard ? this.composeBoard(this.baseBoard) : null;
     const composedDatabaseView = this.baseDatabaseView
       ? this.composeDatabaseView(this.baseDatabaseView)
@@ -1632,6 +1713,11 @@ class BoardProjectStore {
     const board = boardSummariesEqual(this.snapshot.board, composedBoard)
       ? this.snapshot.board
       : composedBoard;
+    this.refreshMaterializationRenderCandidate(
+      materializedOperationIds,
+      board,
+      composedDatabaseView,
+    );
     const hasLoading = Object.prototype.hasOwnProperty.call(overrides, "loading");
     const hasError = Object.prototype.hasOwnProperty.call(overrides, "error");
     const hasLoadingMore = Object.prototype.hasOwnProperty.call(overrides, "loadingMore");
@@ -1648,6 +1734,7 @@ class BoardProjectStore {
       databaseView: composedDatabaseView,
       pageIndex: board === this.snapshot.board ? this.snapshot.pageIndex : buildPageIndex(board),
       pendingMutationCount: this.activePendingCount(),
+      materializationRenderToken: this.materializationRenderCandidate?.token ?? null,
       hasMore: anyHasMore,
       groupPagination,
       totalRows: this.groupsSnapshot?.totalRows ?? null,
@@ -1661,14 +1748,54 @@ class BoardProjectStore {
     this.setSnapshot(next);
   }
 
-  private pruneConvergedEntries(): void {
-    if (!this.baseBoard && !this.baseDatabaseView) return;
-    if (this.optimisticEntries.length === 0) return;
+  private refreshMaterializationRenderCandidate(
+    operationIds: readonly number[],
+    board: BoardSummary | null,
+    databaseView: DatabaseViewRenderModel | null,
+  ): void {
+    if (operationIds.length === 0) {
+      this.materializationRenderCandidate = null;
+      return;
+    }
+
+    const previous = this.materializationRenderCandidate;
+    const sameOperations =
+      previous?.operationIds.length === operationIds.length &&
+      operationIds.every((operationId, index) => previous.operationIds[index] === operationId);
+    if (sameOperations && previous.board === board && previous.databaseView === databaseView)
+      return;
+
+    this.nextMaterializationRenderToken += 1;
+    this.materializationRenderCandidate = {
+      operationIds: [...operationIds],
+      board,
+      databaseView,
+      token: this.nextMaterializationRenderToken,
+    };
+    for (const operationId of operationIds) {
+      const entry = this.optimisticEntries.find((candidate) => candidate.opId === operationId);
+      if (!entry) continue;
+      recordRendererOwnerTrace(
+        entry.trace,
+        {
+          kind: "materialized",
+          reason: "canonical_observation",
+          renderToken: this.nextMaterializationRenderToken,
+        },
+        this.dependencies.causalTrace,
+      );
+    }
+  }
+
+  private pruneConvergedEntries(): readonly number[] {
+    if (!this.baseBoard && !this.baseDatabaseView) return [];
+    if (this.optimisticEntries.length === 0) return [];
 
     let working = this.baseBoard;
     let workingDatabaseView = this.baseDatabaseView;
     let changed = false;
     const nextEntries: OptimisticEntry[] = [];
+    const materializedOperationIds: number[] = [];
 
     for (const entry of this.optimisticEntries) {
       if (entry.superseded) {
@@ -1732,7 +1859,10 @@ class BoardProjectStore {
           : afterDatabaseView === workingDatabaseView;
         const materialized = boardMaterialized && databaseViewMaterialized;
         if (materialized) {
-          changed = true;
+          nextEntries.push(entry);
+          materializedOperationIds.push(entry.opId);
+          working = after;
+          workingDatabaseView = afterDatabaseView;
           continue;
         }
         nextEntries.push(entry);
@@ -1750,15 +1880,19 @@ class BoardProjectStore {
         continue;
       }
 
-      changed = true;
+      nextEntries.push(entry);
+      materializedOperationIds.push(entry.opId);
+      working = after;
+      workingDatabaseView = afterDatabaseView;
     }
 
-    if (!changed) return;
-    this.optimisticEntries = nextEntries;
+    if (changed) this.optimisticEntries = nextEntries;
+    return materializedOperationIds;
   }
 
   private createEntry({
     kind,
+    operationIdentity,
     conflictKeys,
     apply,
     applyDatabaseView,
@@ -1767,6 +1901,7 @@ class BoardProjectStore {
     isDatabaseViewCommitMaterialized,
   }: {
     kind: string;
+    operationIdentity?: string;
     conflictKeys: string[];
     apply: BoardTransform;
     applyDatabaseView?: DatabaseViewTransform;
@@ -1774,8 +1909,9 @@ class BoardProjectStore {
     isCommitMaterialized?: (canonicalBoard: BoardSummary) => boolean;
     isDatabaseViewCommitMaterialized?: (canonicalModel: DatabaseViewRenderModel) => boolean;
   }): OptimisticEntry {
+    const opId = this.nextOpId++;
     return {
-      opId: this.nextOpId++,
+      opId,
       kind,
       conflictKeys,
       apply,
@@ -1786,6 +1922,21 @@ class BoardProjectStore {
       isDatabaseViewCommitMaterialized: isDatabaseViewCommitMaterialized ?? null,
       minimumMaterializationGeneration: null,
       superseded: false,
+      trace:
+        phase === "pending"
+          ? beginRendererOwnerTrace(
+              {
+                semanticKey: `board.${kind}`,
+                operationIdentity:
+                  operationIdentity ??
+                  `board:${this.projectId}:${this.databaseViewId ?? "primary"}:${opId}`,
+                owner: "board-store",
+                protocol: "receipt_fenced_projection",
+                scopeKind: "database",
+              },
+              this.dependencies.causalTrace,
+            )
+          : null,
     };
   }
 
@@ -1796,6 +1947,11 @@ class BoardProjectStore {
       if (entry.superseded) continue;
       if (!overlap(entry.conflictKeys, conflictKeys)) continue;
       entry.superseded = true;
+      recordRendererOwnerTrace(
+        entry.trace,
+        { kind: "superseded", reason: "newer_intent" },
+        this.dependencies.causalTrace,
+      );
       changed = true;
     }
     if (!changed) return;
@@ -1810,11 +1966,30 @@ class BoardProjectStore {
     this.optimisticEntries = this.optimisticEntries.filter((entry) => entry.opId !== opId);
   }
 
+  private revokeEntries(reason: "authority_revoked" | "store_reset"): void {
+    for (const entry of this.optimisticEntries) {
+      if (entry.superseded) continue;
+      entry.superseded = true;
+      recordRendererOwnerTrace(
+        entry.trace,
+        { kind: "revoked", reason },
+        this.dependencies.causalTrace,
+      );
+    }
+  }
+
   private removeEntriesForPage(pageId: string): boolean {
     const conflictPrefix = `card:${pageId}:`;
     const nextEntries = this.optimisticEntries.filter((entry) => {
       const removesEntry = entry.conflictKeys.some((key) => key.startsWith(conflictPrefix));
-      if (removesEntry) entry.superseded = true;
+      if (removesEntry) {
+        entry.superseded = true;
+        recordRendererOwnerTrace(
+          entry.trace,
+          { kind: "revoked", reason: "authority_revoked" },
+          this.dependencies.causalTrace,
+        );
+      }
       return !removesEntry;
     });
     if (nextEntries.length === this.optimisticEntries.length) return false;
@@ -1834,6 +2009,7 @@ class BoardProjectStore {
       previous.error === next.error &&
       previous.pendingMutationCount === next.pendingMutationCount &&
       previous.lastMutationError === next.lastMutationError &&
+      previous.materializationRenderToken === next.materializationRenderToken &&
       previous.totalRows === next.totalRows &&
       groupPaginationEquals(previous.groupPagination, next.groupPagination)
     ) {
@@ -1910,8 +2086,9 @@ class BoardProjectStore {
     this.baseDatabaseView = null;
     this.groupWindows.clear();
     this.groupsSnapshot = null;
-    for (const entry of this.optimisticEntries) entry.superseded = true;
+    this.revokeEntries("authority_revoked");
     this.optimisticEntries = [];
+    this.materializationRenderCandidate = null;
     // Keep the causal runtime paired with its still-live registration. The
     // canonical repair below advances its dynamically read coordinate.
     this.recomputeSnapshot({
@@ -1954,8 +2131,9 @@ class BoardProjectStore {
     this.baseDatabaseView = null;
     this.groupWindows.clear();
     this.groupsSnapshot = null;
-    for (const entry of this.optimisticEntries) entry.superseded = true;
+    this.revokeEntries(cause.kind === "reset" ? "store_reset" : "authority_revoked");
     this.optimisticEntries = [];
+    this.materializationRenderCandidate = null;
     // The registry has already fenced the paired causal runtime. Disposing it
     // here would orphan the still-live registration and drop every later
     // projection effect.

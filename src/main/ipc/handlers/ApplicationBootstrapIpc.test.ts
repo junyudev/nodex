@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { layer as mainShutdownLayer } from "../../app/MainShutdown";
 import { ApplicationInitializationRuntime } from "../../host-runtime/ApplicationInitializationRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ApplicationWindowShellRuntime } from "../../window-runtime/ApplicationWindowShellRuntime";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -21,10 +22,10 @@ it.effect("owns only the trusted bootstrap handlers before Core is ready", () =>
         }),
         () => Effect.sync(() => channels.delete(channel)),
       );
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) => register(channel),
       on: (channel: string) => register(channel),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const initialization = ApplicationInitializationRuntime.of({
       awaitDone: Effect.void,
       current: Effect.succeed({ phase: "done" }),

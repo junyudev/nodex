@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useRef, type MutableRefObject } from "react";
-import { invoke } from "./api";
+import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
 import { toast } from "@/components/ui/toast";
 import { projectWorkspaceRootOrNull } from "./workbench-workspace-context";
 import {
@@ -54,6 +54,14 @@ import type {
   WorkbenchPanelTabShortcutTarget,
 } from "./workbench-panel-tab-shortcut";
 import { primaryCanvasBlockId } from "../../shared/block-documents";
+
+const reloadBrowserTabCommand = defineRendererCommand({
+  key: "browser.reload_tab",
+  channel: "browser-sidebar-command",
+  authority: "main",
+  owner: "WorkbenchPanelCommandRouter",
+  protocol: { kind: "returned_value" },
+});
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type PanelLifecycle = Pick<
@@ -229,7 +237,7 @@ export function useWorkbenchPanelCommandRouter({
   const reloadBrowserTab = useCallback(
     (tab: WorkbenchTabProjection) => {
       if (!activeSession || tab.kind !== "browser") return;
-      void invoke("browser-sidebar-command", {
+      void invokePlainCommand(reloadBrowserTabCommand, {
         type: "reload",
         browserConversationId: activeSession.id,
         browserViewScopeId: windowSessionId,

@@ -181,37 +181,37 @@ export const live = (
           Effect.mapError((cause) => mapError(operation, cause)),
         );
 
-      yield* ipc.handle("workspace-directory-entries", (event, input: unknown) =>
+      yield* ipc.handleQuery("workspace-directory-entries", (event, input: unknown) =>
         run("list-directory", event, () =>
           listWorkspaceDirectoryEntries(WorkspaceDirectoryEntriesInputSchema.parse(input)),
         ),
       );
-      yield* ipc.handle("workspace-file-search", (event, input: unknown) =>
+      yield* ipc.handleQuery("workspace-file-search", (event, input: unknown) =>
         run("search-files", event, () =>
           searchWorkspaceFiles(WorkspaceFileSearchInputSchema.parse(input)),
         ),
       );
-      yield* ipc.handle("read-file", (event, input: unknown) =>
+      yield* ipc.handleQuery("read-file", (event, input: unknown) =>
         run("read-file", event, () =>
           readWorkspaceFile(WorkspaceFileTextReadInputSchema.parse(input)),
         ),
       );
-      yield* ipc.handle("read-file-metadata", (event, input: unknown) =>
+      yield* ipc.handleQuery("read-file-metadata", (event, input: unknown) =>
         run("read-file-metadata", event, () =>
           readWorkspaceFileMetadata(WorkspaceFileMetadataInputSchema.parse(input)),
         ),
       );
-      yield* ipc.handle("read-file-binary", (event, input: unknown) =>
+      yield* ipc.handleQuery("read-file-binary", (event, input: unknown) =>
         run("read-file-binary", event, () =>
           readWorkspaceFileBinary(WorkspaceFileRequestSchema.parse(input)),
         ),
       );
-      yield* ipc.handle("write-file", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("write-file", (event, input: unknown) =>
         run("write-file", event, () =>
           writeWorkspaceFile(WorkspaceFileWriteInputSchema.parse(input)),
         ),
       );
-      yield* ipc.handle("workspace-file-watch:start", (event, input: unknown) =>
+      yield* ipc.handleControl("workspace-file-watch:start", (event, input: unknown) =>
         runEffect(
           "start-file-watch",
           event,
@@ -287,7 +287,7 @@ export const live = (
           }),
         ),
       );
-      yield* ipc.handle("workspace-file-watch:stop", (event, input: unknown) =>
+      yield* ipc.handleControl("workspace-file-watch:stop", (event, input: unknown) =>
         runEffect(
           "stop-file-watch",
           event,

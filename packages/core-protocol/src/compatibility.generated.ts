@@ -29,7 +29,7 @@ export const CORE_CLIENT_REQUIREMENTS = {
     },
     {
       "module": "store_administration",
-      "contract_version": 7
+      "contract_version": 8
     }
   ],
   "accepted_store_formats": [

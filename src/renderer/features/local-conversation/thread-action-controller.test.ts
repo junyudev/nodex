@@ -17,6 +17,13 @@ vi.mock("@/lib/api", () => ({
   invoke: invokeMock,
 }));
 
+vi.mock("@/lib/renderer-command", () => ({
+  defineRendererCommand: <Definition>(definition: Definition) => definition,
+  invokePlainCommand: (definition: { readonly channel: string }, ...args: readonly unknown[]) =>
+    invokeMock(definition.channel, ...args),
+  invokeRendererQuery: (...args: readonly unknown[]) => invokeMock(...args),
+}));
+
 function buildInput(overrides?: Partial<ThreadActionControllerInput>): ThreadActionControllerInput {
   const settingsUpdates: unknown[] = [];
   const draftModes: string[] = [];

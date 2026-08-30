@@ -5,7 +5,7 @@ import {
   type FileLinkTarget,
 } from "../../shared/file-link-openers";
 import type { PanelId } from "./types";
-import { invoke } from "./api";
+import { openFileLink, type FileLinkOpenPort } from "./file-system-operations";
 import { useFileLinkOpener } from "./use-file-link-opener";
 
 export type FileReferenceTarget = FileLinkTarget;
@@ -57,10 +57,10 @@ function getTargetTitle(target: FileReferenceTarget, title?: string): string {
 export async function openFileReferenceExternally(
   target: FileReferenceTarget,
   opener: FileLinkOpenerId,
-  invokeImpl: typeof invoke = invoke,
+  openExternal: FileLinkOpenPort = openFileLink,
 ): Promise<boolean> {
   try {
-    const opened = (await invokeImpl("shell:open-file-link", target, opener)) as boolean;
+    const opened = await openExternal(target, opener);
     if (opened) return true;
   } catch {
     // Try the deterministic file-manager fallback below.
@@ -69,7 +69,7 @@ export async function openFileReferenceExternally(
   if (opener === "fileManager") return false;
 
   try {
-    return (await invokeImpl("shell:open-file-link", target, "fileManager")) as boolean;
+    return await openExternal(target, "fileManager");
   } catch {
     return false;
   }

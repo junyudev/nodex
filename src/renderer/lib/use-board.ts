@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import {
   BOARD_PLACEMENT_REMOTE_LANE,
   boardContainsPageIds,
@@ -29,7 +29,13 @@ import type {
   MovePageInput,
   MovePagesInput,
 } from "./types";
-import { invoke } from "./api";
+import {
+  completePageOccurrence,
+  readBoardPage,
+  readCalendarOccurrenceWindow,
+  skipPageOccurrence,
+  updatePageOccurrence,
+} from "./page-occurrence-runtime";
 import {
   getBoardProjectStore,
   type DatabaseViewTransform,
@@ -82,6 +88,7 @@ export interface DatabaseViewDefinitionPublicationIntent {
   readonly patch: PublishedDatabaseViewDefinitionPatch;
   readonly commit: (
     canonicalModel: DatabaseViewRenderModel,
+    operationId: string,
   ) => Promise<DatabaseViewMutationReceipt>;
 }
 
@@ -216,6 +223,11 @@ export function useBoard(options: UseBoardOptions) {
   );
   const snapshot = useSyncExternalStore(subscribe, store.getSnapshot);
 
+  useLayoutEffect(() => {
+    if (!enabled || snapshot.materializationRenderToken === null) return;
+    store.markRendered(snapshot.materializationRenderToken);
+  }, [enabled, snapshot.materializationRenderToken, store]);
+
   const fetchBoard = useCallback(
     async (minimum: number | LocalProjectionCursor = 0) => {
       await store.fetchBoard(minimum);
@@ -250,12 +262,14 @@ export function useBoard(options: UseBoardOptions) {
 
       const apply: DatabaseViewTransform = (model) =>
         withPublishedDatabaseViewDefinition(model, input.patch);
+      const operationId = createUuidV7();
       const outcome = await store.runOptimisticDatabaseViewMutation({
         kind: `database:view:${input.kind}:publish`,
+        operationIdentity: operationId,
         conflictKeys: [`database-view:definition:${input.kind}`],
         remoteLane: DATABASE_VIEW_DEFINITION_PUBLICATION_LANE,
         apply,
-        runRemote: input.commit,
+        runRemote: async (canonicalModel) => await input.commit(canonicalModel, operationId),
         getCommitCursor: (receipt) => ({
           storeEpoch: receipt.storeEpoch,
           commitSeq: receipt.commitSeq,
@@ -313,6 +327,7 @@ export function useBoard(options: UseBoardOptions) {
       const metadataMutationId = createUuidV7();
       const outcome = await store.runOptimisticMutation<PageMetadataBoardMutationEnvelope>({
         kind: "block:properties",
+        operationIdentity: metadataMutationId,
         conflictKeys,
         apply: buildPatchPageTransform(columnId, pageId, updates, { bumpRevision: true }),
         runRemote: async () =>
@@ -383,17 +398,11 @@ export function useBoard(options: UseBoardOptions) {
   const getPage = useCallback(
     async (
       pageId: string,
-      columnId?: string,
+      columnId?: WorkflowStatus,
       cursor?: LocalProjectionCursor,
     ): Promise<DatabasePage | null> => {
       try {
-        const card = (await invoke(
-          "database-row:get",
-          projectId,
-          pageId,
-          columnId,
-          cursor,
-        )) as DatabasePage | null;
+        const card = await readBoardPage(projectId, pageId, columnId, cursor);
         if (!card) return null;
         setDatabaseRowDetail(projectId, card);
         return card;
@@ -471,9 +480,11 @@ export function useBoard(options: UseBoardOptions) {
       const fallbackRows = visibleModel.query.rows.filter((row) =>
         input.pageIds.includes(row.page.pageId),
       );
+      const operationId = createUuidV7();
 
       const outcome = await store.runOptimisticDatabaseViewMutation<DatabaseViewMutationReceipt>({
         kind: "database:position-many",
+        operationIdentity: operationId,
         conflictKeys: input.pageIds.map((pageId) => `card:${pageId}:position`),
         remoteLane: BOARD_PLACEMENT_REMOTE_LANE,
         apply: (canonicalModel) => {
@@ -500,6 +511,7 @@ export function useBoard(options: UseBoardOptions) {
           const receipt = await commitDatabaseViewOperations({
             model: canonicalModel,
             operations,
+            operationId,
           });
           if (!receipt) {
             throw new Error("The Board drop no longer changes this View");
@@ -525,17 +537,13 @@ export function useBoard(options: UseBoardOptions) {
         const occurrences: PageOccurrence[] = [];
         let after: string | null = null;
         do {
-          const result = (await invoke(
-            "calendar:occurrences",
+          const result = await readCalendarOccurrenceWindow(
             projectId,
             windowStart,
             windowEnd,
             searchQuery,
             after,
-          )) as {
-            occurrences: PageOccurrence[];
-            nextCursor: string | null;
-          };
+          );
           occurrences.push(...result.occurrences);
           if (result.nextCursor === after && after !== null) {
             throw new Error("Calendar occurrence continuation did not advance");
@@ -575,16 +583,12 @@ export function useBoard(options: UseBoardOptions) {
       };
       const outcome = await store.runOptimisticMutation<SuccessfulPageOccurrenceMutation>({
         kind: "page:occurrence:complete",
+        operationIdentity: command.operationId,
         conflictKeys: [conflictKeyForCard(command.pageId)],
         apply: buildCompleteOrSkipOccurrenceTransform(command.pageId),
         runRemote: async () =>
           requireSuccessfulOccurrenceMutation(
-            (await invoke(
-              "page:occurrence:complete",
-              projectId,
-              command,
-              sessionId,
-            )) as PageOccurrenceMutationResult,
+            await completePageOccurrence(projectId, command, sessionId),
             "Failed to complete occurrence",
           ),
         getCommitCursor: (result) => result.commitCursor,
@@ -608,16 +612,12 @@ export function useBoard(options: UseBoardOptions) {
       };
       const outcome = await store.runOptimisticMutation<SuccessfulPageOccurrenceMutation>({
         kind: "page:occurrence:skip",
+        operationIdentity: command.operationId,
         conflictKeys: [conflictKeyForCard(command.pageId)],
         apply: buildCompleteOrSkipOccurrenceTransform(command.pageId),
         runRemote: async () =>
           requireSuccessfulOccurrenceMutation(
-            (await invoke(
-              "page:occurrence:skip",
-              projectId,
-              command,
-              sessionId,
-            )) as PageOccurrenceMutationResult,
+            await skipPageOccurrence(projectId, command, sessionId),
             "Failed to skip occurrence",
           ),
         getCommitCursor: (result) => result.commitCursor,
@@ -643,16 +643,12 @@ export function useBoard(options: UseBoardOptions) {
       const optimisticPatch = normalizeOccurrenceUpdatesToPagePatch(command);
       const outcome = await store.runOptimisticMutation<SuccessfulPageOccurrenceMutation>({
         kind: "page:occurrence:update",
+        operationIdentity: command.operationId,
         conflictKeys: conflictKeysForPatch(command.pageId, optimisticPatch),
         apply: buildPatchPageTransform(undefined, command.pageId, optimisticPatch),
         runRemote: async () =>
           requireSuccessfulOccurrenceMutation(
-            (await invoke(
-              "page:occurrence:update",
-              projectId,
-              command,
-              sessionId,
-            )) as PageOccurrenceMutationResult,
+            await updatePageOccurrence(projectId, command, sessionId),
             "Failed to update occurrence",
           ),
         getCommitCursor: (result) => result.commitCursor,

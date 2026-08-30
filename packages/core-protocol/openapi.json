@@ -4044,6 +4044,21 @@
           "failed"
         ]
       },
+      "BackupStartCoalescence": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "active_job_id"
+        ],
+        "properties": {
+          "active_job_id": {
+            "type": "string"
+          },
+          "operation_id": {
+            "type": "string"
+          }
+        }
+      },
       "BackupTrigger": {
         "type": "string",
         "enum": [
@@ -26211,6 +26226,38 @@
               {
                 "type": "object",
                 "required": [
+                  "active_job_id",
+                  "include_assets",
+                  "trigger",
+                  "kind"
+                ],
+                "properties": {
+                  "active_job_id": {
+                    "type": "string"
+                  },
+                  "include_assets": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "coalesce_backup"
+                    ]
+                  },
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "trigger": {
+                    "$ref": "#/components/schemas/BackupTrigger"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "job_id",
                   "kind"
                 ],
@@ -35824,6 +35871,12 @@
                               "null"
                             ]
                           },
+                          "coalesced_backup_job_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
                           "completed_tasks": {
                             "type": "array",
                             "items": {
@@ -35895,6 +35948,12 @@
                             ]
                           },
                           "cancelled_backup_job_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "coalesced_backup_job_id": {
                             "type": [
                               "string",
                               "null"
@@ -38632,9 +38691,16 @@
                         "type": "object",
                         "required": [
                           "jobs",
+                          "coalesced_starts",
                           "kind"
                         ],
                         "properties": {
+                          "coalesced_starts": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/BackupStartCoalescence"
+                            }
+                          },
                           "jobs": {
                             "type": "array",
                             "items": {

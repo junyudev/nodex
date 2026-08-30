@@ -1,5 +1,12 @@
 import { DeleteIcon, DownloadIcon, RefreshIcon, SearchIcon } from "@/components/shared/icons";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { Puzzle } from "@/components/shared/icons/generic-icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
@@ -13,7 +20,6 @@ import {
   NodexSettingsRow,
   NodexSettingsSection,
 } from "@/components/ui/settings";
-import { invoke } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type {
   BrowserDownloadAction,
@@ -30,7 +36,6 @@ import type {
   BrowserProfileCapabilities,
 } from "../../../shared/browser-profile";
 import {
-  DEFAULT_BROWSER_USE_POLICY,
   type BrowserUseApprovalMode,
   type BrowserUseOriginRuleUpdate,
   type BrowserUsePolicyResource,
@@ -42,6 +47,24 @@ import type {
   BrowserSettingsDestination,
   BrowserSettingsDetail,
 } from "@/components/workbench/workbench-settings-routes";
+import {
+  clearBrowserData,
+  clearBrowserDownloadHistory,
+  createBrowserUsePolicyOwner,
+  loadBrowserExtension,
+  readAllBrowserCredentials,
+  readBrowserContactInfo,
+  readBrowserDownloads,
+  readBrowserExtensions,
+  readBrowserHistory,
+  readBrowserProfileCapabilities,
+  removeBrowserContactInfo,
+  removeBrowserCredential,
+  removeBrowserExtension,
+  removeBrowserHistoryEntry,
+  runBrowserDownloadAction,
+  saveBrowserContactInfo,
+} from "./browser-profile-runtime";
 
 export type { BrowserSettingsDestination } from "@/components/workbench/workbench-settings-routes";
 
@@ -125,18 +148,24 @@ function BrowserSettingsOverview({
 }) {
   const [capabilities, setCapabilities] = useState<BrowserProfileCapabilities>(EMPTY_CAPABILITIES);
   const [importOpen, setImportOpen] = useState(false);
-  const [usePolicy, setUsePolicy] = useState<BrowserUsePolicySnapshot>(DEFAULT_BROWSER_USE_POLICY);
+  const [usePolicyOwner] = useState(createBrowserUsePolicyOwner);
+  const usePolicySnapshot = useSyncExternalStore(
+    usePolicyOwner.subscribe,
+    usePolicyOwner.getSnapshot,
+    usePolicyOwner.getSnapshot,
+  );
   const [status, setStatus] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
-    void Promise.all([
-      invoke("browser-profile-capabilities"),
-      invoke("browser-use-policy-get"),
-    ]).then(([nextCapabilities, nextPolicy]) => {
-      setCapabilities(nextCapabilities);
-      setUsePolicy(nextPolicy);
-    });
-  }, [open]);
+    void Promise.all([readBrowserProfileCapabilities(), usePolicyOwner.readCanonical()]).then(
+      ([nextCapabilities]) => setCapabilities(nextCapabilities),
+    );
+  }, [open, usePolicyOwner]);
+
+  useLayoutEffect(() => {
+    if (usePolicySnapshot.renderToken === null) return;
+    usePolicyOwner.markRendered(usePolicySnapshot.renderToken);
+  }, [usePolicyOwner, usePolicySnapshot.renderToken]);
 
   useEffect(() => {
     if (!open || !anchor) return;
@@ -144,7 +173,7 @@ function BrowserSettingsOverview({
   }, [anchor, open]);
 
   const clearData = async (kind: "cache" | "cookies" | "downloads" | "history" | "site-data") => {
-    const result = await invoke("browser-browsing-data-clear", kind);
+    const result = await clearBrowserData(kind);
     setStatus(result.ok ? "Built-in Browser Profile data cleared." : result.message);
   };
 
@@ -280,9 +309,10 @@ function BrowserSettingsOverview({
         </NodexSettingsRow>
       </BrowserOverviewSection>
       <BrowserUsePolicySettings
-        policy={usePolicy}
+        policy={usePolicySnapshot.value}
         siteInfo={capabilities.siteInfo}
-        onChange={setUsePolicy}
+        onUpdateModes={usePolicyOwner.updateModes}
+        onUpdateOriginRule={usePolicyOwner.updateOriginRule}
         onStatus={setStatus}
       />
       {status ? <SettingsStatus>{status}</SettingsStatus> : null}
@@ -378,7 +408,7 @@ function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode;
   const [status, setStatus] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    setSnapshot(await invoke("browser-downloads-list"));
+    setSnapshot(await readBrowserDownloads());
   }, []);
 
   useEffect(() => {
@@ -386,13 +416,16 @@ function BrowserDownloadsSettingsPage({ backSlot, open }: { backSlot: ReactNode;
   }, [open, refresh]);
 
   const runAction = async (downloadId: string, action: BrowserDownloadAction) => {
-    const result = await invoke("browser-download-action", { downloadId, action });
+    const result = await runBrowserDownloadAction({
+      downloadId,
+      action,
+    });
     setStatus(result.ok ? null : result.message);
     if (result.ok) await refresh();
   };
 
   const clearHistory = async () => {
-    const result = await invoke("browser-download-history-clear");
+    const result = await clearBrowserDownloadHistory();
     setStatus(result.ok ? "Download history cleared." : result.message);
     if (result.ok) await refresh();
   };
@@ -501,12 +534,25 @@ function formatDownloadStatus(download: BrowserDownloadRecord): string {
 function BrowserUsePolicySettings({
   policy,
   siteInfo,
-  onChange,
+  onUpdateModes,
+  onUpdateOriginRule,
   onStatus,
 }: {
   policy: BrowserUsePolicySnapshot;
   siteInfo: BrowserCapabilityStatus;
-  onChange: (policy: BrowserUsePolicySnapshot) => void;
+  onUpdateModes: (
+    input: Partial<
+      Pick<
+        BrowserUsePolicySnapshot,
+        | "approvalMode"
+        | "historyApprovalMode"
+        | "downloadApprovalMode"
+        | "uploadApprovalMode"
+        | "fullCdpAccessEnabled"
+      >
+    >,
+  ) => Promise<BrowserUsePolicySnapshot>;
+  onUpdateOriginRule: (input: BrowserUseOriginRuleUpdate) => Promise<BrowserUsePolicySnapshot>;
   onStatus: (status: string) => void;
 }) {
   const [origin, setOrigin] = useState("");
@@ -526,7 +572,7 @@ function BrowserUsePolicySettings({
     >,
   ) => {
     try {
-      onChange(await invoke("browser-use-policy-update-modes", input));
+      await onUpdateModes(input);
       onStatus("Browser Use policy updated.");
     } catch (error) {
       onStatus(readErrorMessage(error, "Unable to update Browser Use policy."));
@@ -534,7 +580,7 @@ function BrowserUsePolicySettings({
   };
   const updateRule = async (input: BrowserUseOriginRuleUpdate) => {
     try {
-      onChange(await invoke("browser-use-policy-update-origin-rule", input));
+      await onUpdateOriginRule(input);
       if (input.action === "add") setOrigin("");
       onStatus("Browser Use origin policy updated.");
     } catch (error) {
@@ -782,8 +828,8 @@ export function BrowserPasswordsSettingsPage({
   const [status, setStatus] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     const [capabilities, nextCredentials] = await Promise.all([
-      invoke("browser-profile-capabilities"),
-      invoke("browser-credentials-list-all"),
+      readBrowserProfileCapabilities(),
+      readAllBrowserCredentials(),
     ]);
     setCapability(capabilities.credentialVault);
     setCredentials(nextCredentials);
@@ -794,7 +840,7 @@ export function BrowserPasswordsSettingsPage({
   }, [open, refresh]);
 
   const remove = async (credentialId: string) => {
-    const result = await invoke("browser-credential-remove", credentialId);
+    const result = await removeBrowserCredential(credentialId);
     setStatus(result.ok ? "Password removed." : (result.message ?? "Unable to remove password."));
     if (result.ok) await refresh();
   };
@@ -867,8 +913,8 @@ export function BrowserContactInfoSettingsPage({
   const [status, setStatus] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     const [capabilities, nextContacts] = await Promise.all([
-      invoke("browser-profile-capabilities"),
-      invoke("browser-contact-info-list"),
+      readBrowserProfileCapabilities(),
+      readBrowserContactInfo(),
     ]);
     setCapability(capabilities.contactInfo);
     setContacts(nextContacts);
@@ -880,7 +926,7 @@ export function BrowserContactInfoSettingsPage({
   const save = async () => {
     if (!draft) return;
     try {
-      await invoke("browser-contact-info-upsert", draft);
+      await saveBrowserContactInfo(draft);
       setDraft(null);
       setStatus("Contact info saved.");
       await refresh();
@@ -889,7 +935,7 @@ export function BrowserContactInfoSettingsPage({
     }
   };
   const remove = async (contactInfoId: string) => {
-    const result = await invoke("browser-contact-info-remove", contactInfoId);
+    const result = await removeBrowserContactInfo(contactInfoId);
     setStatus(
       result.ok ? "Contact info removed." : (result.message ?? "Unable to remove contact info."),
     );
@@ -976,7 +1022,7 @@ export function BrowserHistorySettingsPage({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const refresh = useCallback(async (nextQuery: string) => {
-    const snapshot = await invoke("browser-history-list", {
+    const snapshot = await readBrowserHistory({
       ...(nextQuery.trim() ? { query: nextQuery.trim() } : {}),
       limit: 500,
     });
@@ -989,14 +1035,14 @@ export function BrowserHistorySettingsPage({
   }, [open, query, refresh]);
 
   const remove = async (historyId: string) => {
-    const result = await invoke("browser-history-delete", historyId);
+    const result = await removeBrowserHistoryEntry(historyId);
     setStatus(
       result.ok ? "History entry removed." : (result.message ?? "Unable to remove history entry."),
     );
     if (result.ok) await refresh(query);
   };
   const clear = async () => {
-    const result = await invoke("browser-browsing-data-clear", "history");
+    const result = await clearBrowserData("history");
     setStatus(
       result.ok ? "Browser history cleared." : (result.message ?? "Unable to clear history."),
     );
@@ -1064,7 +1110,7 @@ export function BrowserExtensionsSettingsPage({
   });
   const [status, setStatus] = useState<string | null>(null);
   const refresh = useCallback(async () => {
-    setSnapshot(await invoke("browser-extensions-list"));
+    setSnapshot(await readBrowserExtensions());
   }, []);
   useEffect(() => {
     if (open) void refresh();
@@ -1072,7 +1118,7 @@ export function BrowserExtensionsSettingsPage({
 
   const load = async () => {
     try {
-      const extension = await invoke("browser-extension-load");
+      const extension = await loadBrowserExtension();
       if (!extension) return;
       setStatus(`${extension.name} loaded.`);
       await refresh();
@@ -1081,7 +1127,7 @@ export function BrowserExtensionsSettingsPage({
     }
   };
   const remove = async (extensionId: string) => {
-    const result = await invoke("browser-extension-remove", extensionId);
+    const result = await removeBrowserExtension(extensionId);
     setStatus(result.ok ? "Extension removed." : (result.message ?? "Unable to remove extension."));
     if (result.ok) await refresh();
   };

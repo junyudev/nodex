@@ -9,7 +9,7 @@ import {
   resolveMcpAppSandboxOriginScope,
 } from "../../../shared/mcp-app/mcp-app-scope";
 import type { ProtocolListMcpServerStatusResponse } from "../../../shared/types";
-import { invoke } from "../api";
+import { invokeRendererQuery as invoke } from "../renderer-command";
 import { McpAppHostDispatcher } from "./mcp-app-host-dispatcher";
 import type { McpAppFollowUpHandler } from "./mcp-app-follow-up-context";
 import { connectMcpAppSandbox, type ConnectedMcpAppSandbox } from "./mcp-app-port-rpc";

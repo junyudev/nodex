@@ -58,6 +58,10 @@ beforeEach(async () => {
   Object.defineProperty(window, "api", {
     configurable: true,
     value: {
+      invoke: async (channel: string, ...args: unknown[]) => {
+        invokeCalls.push([channel, ...args]);
+        return { ok: true };
+      },
       on: () => () => undefined,
     },
   });

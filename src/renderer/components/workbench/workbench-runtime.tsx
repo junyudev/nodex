@@ -32,6 +32,7 @@ import { HistoryPanel } from "./workbench-history-panel";
 import { terminalSessionStore, useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
 import { BrowserSidebarHiddenWebviewHosts } from "@/features/browser-sidebar/browser-sidebar-hidden-webview-hosts";
 import { BrowserSidebarPanel } from "@/features/browser-sidebar/browser-sidebar-panel";
+import { invokeBrowserSidebarCommand } from "@/features/browser-sidebar/browser-sidebar-commands";
 import { useBrowserSidebarRendererState } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
 import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
 import { workspaceTextDocumentRegistry } from "@/features/workspace-files/workspace-text-document-controller";
@@ -75,12 +76,13 @@ import {
 } from "@/features/local-conversation";
 import { APP_SHELL_GLOBAL_HEADER_LAYER_CLASS } from "@/lib/app-shell-layers";
 import { registerUserAttachmentImagePreviewOpener } from "@/features/user-attachment-image-editor";
+import { readDatabaseViewWindow, subscribeCodexPendingWorktreeWarnings } from "@/lib/api";
 import {
-  invoke,
-  readDatabaseViewWindow,
-  subscribeCodexPendingWorktreesChanged,
-  subscribeCodexPendingWorktreeWarnings,
-} from "@/lib/api";
+  consumeForkSidePanelTransfer,
+  createPendingWorktree,
+  listPendingWorktrees,
+  pendingWorktreeRouteTransport,
+} from "@/lib/pending-worktree-runtime";
 import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automations";
 import { useBoard } from "@/lib/use-board";
 import { createPageTitleProjectionStore } from "@/lib/page-title-projection-store";
@@ -151,6 +153,7 @@ import {
   projectWorkbenchScenePreviews,
 } from "@/lib/workbench-scene-preview";
 import { projectDetailQueryOptions, projectSessionDetailQueryOptions } from "@/lib/query-options";
+import { projectCatalogStoreFor } from "@/lib/project-catalog";
 import { useWorkbenchPanelController } from "@/lib/use-workbench-panel-controller";
 import { useWorkbenchPanelLifecycle } from "@/lib/use-workbench-panel-lifecycle";
 import {
@@ -324,16 +327,12 @@ function resolvePendingProjectSessionId(
 }
 
 const ELECTRON_STABLE_WORKTREE_STATUS_TRANSPORT: StableWorktreeStatusDialogTransport = {
-  list: () => invoke("codex:pending-worktrees:list"),
-  subscribe: subscribeCodexPendingWorktreesChanged,
-  clearAttention: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:clear-attention", hostId, pendingWorktreeId),
-  cancel: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:cancel", hostId, pendingWorktreeId),
-  autoFix: (hostId, pendingWorktreeId, agentMode) =>
-    invoke("codex:pending-worktree:auto-fix", hostId, pendingWorktreeId, agentMode),
-  retry: (hostId, pendingWorktreeId) =>
-    invoke("codex:pending-worktree:retry", hostId, pendingWorktreeId),
+  list: pendingWorktreeRouteTransport.list,
+  subscribe: pendingWorktreeRouteTransport.subscribe,
+  clearAttention: pendingWorktreeRouteTransport.clearAttention,
+  cancel: pendingWorktreeRouteTransport.cancel,
+  autoFix: pendingWorktreeRouteTransport.autoFix,
+  retry: pendingWorktreeRouteTransport.retry,
 };
 export interface WorkbenchRuntimeProps {
   windowSessionId: string;
@@ -572,6 +571,7 @@ export function WorkbenchRuntime({
     ...projectDetailQueryOptions(selectedProjectSceneId ?? ""),
     enabled: selectedProjectSceneId !== null,
   });
+  const projectCatalog = useMemo(() => projectCatalogStoreFor(queryClient), [queryClient]);
   useEffect(() => {
     if (
       !selectedProjectSceneId ||
@@ -903,11 +903,11 @@ export function WorkbenchRuntime({
       setPendingWorktrees([...entries]);
       setPendingStableWorktrees(listStableWorktrees(entries));
     };
-    const unsubscribe = subscribeCodexPendingWorktreesChanged((entries) => {
+    const unsubscribe = pendingWorktreeRouteTransport.subscribe((entries) => {
       receivedSubscription = true;
       applyEntries(entries);
     });
-    void invoke("codex:pending-worktrees:list")
+    void listPendingWorktrees()
       .then((entries) => {
         if (receivedSubscription) return;
         applyEntries(entries);
@@ -969,7 +969,7 @@ export function WorkbenchRuntime({
 
   const activeProject = selectedProjectSceneId
     ? selectedProjectQuery.isSuccess
-      ? selectedProjectQuery.data
+      ? projectCatalog.project(selectedProjectQuery.data)
       : (projects.find((project) => project.id === selectedProjectSceneId) ?? null)
     : sessionCatalog.activeProject;
   const projectAgentDockCollection = selectedProjectSceneId
@@ -1290,7 +1290,7 @@ export function WorkbenchRuntime({
     const targetKey = `${forkTransferTargetConversationId}\0${forkTransferTargetSessionId}`;
     if (consumedForkTransferTargetsRef.current.has(targetKey)) return;
     consumedForkTransferTargetsRef.current.add(targetKey);
-    void invoke("codex:fork-side-panel-transfer:consume", {
+    void consumeForkSidePanelTransfer({
       routeKind: "local-thread",
       targetConversationId: forkTransferTargetConversationId,
       targetProjectSessionId: forkTransferTargetSessionId,
@@ -1743,8 +1743,7 @@ export function WorkbenchRuntime({
       if (!sourceWorkspaceRoot) {
         throw new Error("This project has no source workspace root.");
       }
-      const result = await invoke(
-        "codex:pending-worktree:create",
+      const result = await createPendingWorktree(
         buildStableWorktreeCreateInput({
           sourceWorkspaceRoot,
           sourceWorkspaceRoots: project.sources.map((source) => source.root),
@@ -3749,7 +3748,7 @@ export function WorkbenchRuntime({
       }
       if (surface.kind === "browser") {
         try {
-          await invoke("browser-sidebar-command", {
+          await invokeBrowserSidebarCommand({
             type: "close-tab",
             browserConversationId: projectSceneKey,
             browserViewScopeId: windowSessionId,

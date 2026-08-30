@@ -15,8 +15,38 @@ import type {
   TerminalViewLeaseRevokedEvent,
 } from "../../shared/types";
 import { appendTextTail } from "../../shared/bounded-text";
+import {
+  defineRendererCommand,
+  invokePlainCommand,
+  invokeRendererControl,
+  invokeRendererQuery,
+} from "./renderer-command";
 
 export const TERMINAL_RENDERER_BUFFER_LIMIT = 16_000;
+
+const createTerminalCommand = defineRendererCommand({
+  key: "terminal.create",
+  channel: "terminal-create",
+  authority: "main",
+  owner: "TerminalSessionStore",
+  protocol: { kind: "returned_value" },
+});
+
+const runTerminalActionCommand = defineRendererCommand({
+  key: "terminal.run_action",
+  channel: "terminal-run-action",
+  authority: "main",
+  owner: "TerminalSessionStore",
+  protocol: { kind: "pending_operation" },
+});
+
+const killTerminalCommand = defineRendererCommand({
+  key: "terminal.kill",
+  channel: "terminal-kill",
+  authority: "main",
+  owner: "TerminalSessionStore",
+  protocol: { kind: "pending_operation" },
+});
 
 export type TerminalStoreEvent =
   | { type: "data"; sessionId: string; data: string }
@@ -206,7 +236,7 @@ export class TerminalSessionStore {
     });
 
     if (!hasApi()) return null;
-    const result = (await window.api!.invoke("terminal-create", input)) as TerminalViewLeaseResult;
+    const result = await invokePlainCommand(createTerminalCommand, input);
     this.applyLeaseResult(input.sessionId, result);
     return result;
   }
@@ -221,10 +251,7 @@ export class TerminalSessionStore {
     });
 
     if (!hasApi()) return null;
-    const result = (await window.api!.invoke(
-      "terminal-acquire-view",
-      input,
-    )) as TerminalViewLeaseResult;
+    const result = await invokeRendererControl("terminal-acquire-view", input);
     this.applyLeaseResult(input.sessionId, result);
     return result;
   }
@@ -232,10 +259,7 @@ export class TerminalSessionStore {
   async takeOver(input: TerminalTakeOverViewRequest): Promise<TerminalViewLeaseResult | null> {
     this.ensureEventSubscriptions();
     if (!hasApi()) return null;
-    const result = (await window.api!.invoke(
-      "terminal-take-over-view",
-      input,
-    )) as TerminalViewLeaseResult;
+    const result = await invokeRendererControl("terminal-take-over-view", input);
     this.applyLeaseResult(input.sessionId, result);
     return result;
   }
@@ -251,18 +275,18 @@ export class TerminalSessionStore {
     });
 
     if (!hasApi()) return;
-    await window.api!.invoke("terminal-run-action", input);
+    await invokePlainCommand(runTerminalActionCommand, input);
   }
 
   async fetchSnapshot(sessionId: string): Promise<TerminalSessionSnapshot | null> {
     this.ensureEventSubscriptions();
     if (!hasApi()) return null;
 
-    const snapshot = await window.api!.invoke("terminal-session:snapshot", sessionId);
+    const snapshot = await invokeRendererQuery("terminal-session:snapshot", sessionId);
     if (!snapshot) return null;
 
-    this.mergeSnapshot(sessionId, snapshot as TerminalSessionSnapshot);
-    return snapshot as TerminalSessionSnapshot;
+    this.mergeSnapshot(sessionId, snapshot);
+    return snapshot;
   }
 
   write(sessionId: string, data: string): void {
@@ -273,7 +297,7 @@ export class TerminalSessionStore {
     }
 
     if (!hasApi()) return;
-    void window.api!.invoke("terminal-write", sessionId, data);
+    void invokeRendererControl("terminal-write", sessionId, data);
   }
 
   resize(sessionId: string, size: TerminalSize): void {
@@ -285,14 +309,14 @@ export class TerminalSessionStore {
 
     record.lastResize = { cols, rows };
     if (!hasApi()) return;
-    void window.api!.invoke("terminal-resize", sessionId, { cols, rows });
+    void invokeRendererControl("terminal-resize", sessionId, { cols, rows });
   }
 
   release(sessionId: string): void {
     if (this.closingSessionIds.has(sessionId)) return;
     this.closingSessionIds.add(sessionId);
     if (hasApi()) {
-      void window.api!.invoke("terminal-release-view", sessionId);
+      void invokeRendererControl("terminal-release-view", sessionId);
     }
     this.records.delete(sessionId);
     this.emitVersionChanged();
@@ -300,7 +324,7 @@ export class TerminalSessionStore {
 
   kill(sessionId: string): void {
     if (!hasApi()) return;
-    void window.api!.invoke("terminal-kill", sessionId);
+    void invokePlainCommand(killTerminalCommand, sessionId);
   }
 
   resolveTitle(sessionId: string, fallbackTitle: string | null | undefined, index: number): string {
@@ -476,7 +500,7 @@ export class TerminalSessionStore {
 
     const pendingWrites = record.pendingWrites.splice(0);
     for (const data of pendingWrites) {
-      void window.api!.invoke("terminal-write", sessionId, data);
+      void invokeRendererControl("terminal-write", sessionId, data);
     }
   }
 

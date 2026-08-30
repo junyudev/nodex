@@ -17,7 +17,6 @@ import {
   type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
 } from "../../shared/workbench-scene";
-import { invoke } from "./api";
 import {
   getCachedProjectSessionDetail,
   prefetchProjectSessionDetail,
@@ -39,6 +38,12 @@ import {
   type WorkbenchSessionRenderProjection,
 } from "./workbench-session-presentation";
 import type { WorkbenchSessionCatalogEntry } from "./workbench-window-state";
+import { workspaceSessionCommands } from "./workspace-catalog-commands";
+import {
+  ensureWorkbenchThreadSession,
+  forkWorkbenchSession,
+  listWorkbenchSessions,
+} from "./workbench-session-runtime";
 
 const PROJECTLESS_SCOPE_KEY = "__projectless__";
 
@@ -355,9 +360,7 @@ export function useWorkbenchSessionCatalog({
 
   const refresh = useCallback(
     async (projectId: string | null): Promise<readonly WorkbenchSessionPresentation[]> => {
-      const result = (await invoke("workspace:tasks:list", projectId, {
-        first: 50,
-      })) as ProjectSessionSummaryWindow;
+      const result = await listWorkbenchSessions(projectId, { first: 50 });
       const installed = queryClient.setQueryData<ProjectSessionSummaryWindow>(
         queryKeys.projectSessions.summaries(projectId),
         (current) => preferNewestProjectSessionSummaryWindow(current, result),
@@ -377,11 +380,7 @@ export function useWorkbenchSessionCatalog({
         previousItemCount: previous?.items.length ?? 0,
         projectionRevision,
         read: async (after, first) =>
-          (await invoke(
-            "workspace:tasks:list",
-            projectId,
-            after === null ? { first } : { after, first },
-          )) as ProjectSessionSummaryWindow,
+          await listWorkbenchSessions(projectId, after === null ? { first } : { after, first }),
       });
       const installed = queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (current) =>
         preferNewestProjectSessionSummaryWindow(current, canonical),
@@ -411,10 +410,10 @@ export function useWorkbenchSessionCatalog({
 
       loadInFlightRef.current.add(key);
       try {
-        const next = (await invoke("workspace:tasks:list", projectId, {
+        const next = await listWorkbenchSessions(projectId, {
           after: current.nextCursor,
           first: 50,
-        })) as ProjectSessionSummaryWindow;
+        });
         queryClient.setQueryData<ProjectSessionSummaryWindow>(queryKey, (latest) => {
           if (!latest || latest.nextCursor !== current.nextCursor) {
             return latest;
@@ -450,9 +449,7 @@ export function useWorkbenchSessionCatalog({
   );
   const markUnread = useCallback(
     async (session: ProjectSession, unread: boolean): Promise<ProjectSession | null> => {
-      const updated = (await invoke("project-sessions:mark-unread", session.id, {
-        unread,
-      })) as ProjectSession | null;
+      const updated = await workspaceSessionCommands.markUnread(session.id, { unread });
       seedProjectSessionDetail(queryClient, updated);
       return updated;
     },
@@ -484,9 +481,7 @@ export function useWorkbenchSessionCatalog({
       );
 
       try {
-        const updated = (await invoke("project-sessions:set-pinned", session.id, {
-          pinned,
-        })) as ProjectSession | null;
+        const updated = await workspaceSessionCommands.setPinned(session.id, { pinned });
         seedProjectSessionDetail(queryClient, updated);
         await refresh(projectId);
         return updated;
@@ -508,10 +503,7 @@ export function useWorkbenchSessionCatalog({
   );
   const rename = useCallback(
     async (session: ProjectSession, title: string): Promise<ProjectSession> => {
-      const updated = (await invoke("project-sessions:rename", session.id, {
-        title,
-      })) as ProjectSession | null;
-      if (!updated) throw new Error("Session was not found");
+      const updated = await workspaceSessionCommands.rename(session.id, { title });
       seedProjectSessionDetail(queryClient, updated);
       await refresh(updated.projectId);
       return updated;
@@ -520,7 +512,7 @@ export function useWorkbenchSessionCatalog({
   );
   const archive = useCallback(
     async (session: ProjectSession): Promise<readonly WorkbenchSessionPresentation[]> => {
-      await invoke("project-sessions:archive", session.id);
+      await workspaceSessionCommands.archive(session.id);
       queryClient.removeQueries({
         queryKey: queryKeys.projectSessions.detail(session.id),
         exact: true,
@@ -531,10 +523,7 @@ export function useWorkbenchSessionCatalog({
   );
   const ensureThreadSession = useCallback(
     async (threadId: string): Promise<ProjectSession | null> => {
-      const ensured = (await invoke(
-        "codex:thread:ensure-session",
-        threadId,
-      )) as ProjectSession | null;
+      const ensured = await ensureWorkbenchThreadSession(threadId);
       if (!ensured) return null;
       seedProjectSessionDetail(queryClient, ensured);
       await refresh(ensured.projectId);
@@ -544,10 +533,7 @@ export function useWorkbenchSessionCatalog({
   );
   const ensureDefaultDraft = useCallback(
     async (projectId: string | null): Promise<WorkbenchSessionPresentation> => {
-      const domain = (await invoke(
-        "project-sessions:ensure-default-draft",
-        projectId,
-      )) as ProjectSession;
+      const domain = await workspaceSessionCommands.ensureDefaultDraft(projectId);
       seedProjectSessionDetail(queryClient, domain);
       await refresh(projectId);
       return {
@@ -563,11 +549,11 @@ export function useWorkbenchSessionCatalog({
       noThreadFallbackTitle = "New chat",
       initialPageIds: readonly string[] = [],
     ): Promise<WorkbenchSessionPresentation> => {
-      const domain = (await invoke("project-sessions:create", {
+      const domain = await workspaceSessionCommands.create({
         projectId,
         noThreadFallbackTitle,
         initialPageIds: [...initialPageIds],
-      })) as ProjectSession;
+      });
       seedProjectSessionDetail(queryClient, domain);
       await refresh(projectId);
       return {
@@ -584,8 +570,7 @@ export function useWorkbenchSessionCatalog({
         readonly browserViewScopeId: string;
       },
     ): Promise<ProjectSessionForkResult> => {
-      const result = (await invoke(
-        "project-sessions:fork",
+      const result = await forkWorkbenchSession(
         session.id,
         {
           target: input.target,
@@ -604,7 +589,7 @@ export function useWorkbenchSessionCatalog({
           browserViewScopeId: input.browserViewScopeId,
           scene: resolveScene(session),
         },
-      )) as ProjectSessionForkResult;
+      );
       if ("pendingWorktreeId" in result) return result;
       seedProjectSessionDetail(queryClient, result.session);
       await refresh(result.session.projectId);
@@ -618,7 +603,7 @@ export function useWorkbenchSessionCatalog({
   );
   const reorder = useCallback(
     async (projectId: string | null, orderedSessionIds: readonly string[]): Promise<void> => {
-      await invoke("project-sessions:reorder", projectId, [...orderedSessionIds]);
+      await workspaceSessionCommands.reorder(projectId, orderedSessionIds);
       await refresh(projectId);
     },
     [refresh],

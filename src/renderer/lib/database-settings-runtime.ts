@@ -18,7 +18,9 @@ import {
   parseDataSourceId,
   type DatabaseViewId,
 } from "../../shared/database-identities";
-import { applyDatabaseModule, readDatabaseModule } from "./api";
+import { applyDatabaseSettingsModule, readDatabaseModule } from "./api";
+import { databaseSettingsApplyCommand } from "./core-projection-commands";
+import { beginRendererOwnerTrace, recordRendererOwnerTrace } from "./renderer-causal-trace";
 
 export interface DatabaseSettingsAuthority {
   readonly snapshot: DatabaseModuleReadSnapshotV2;
@@ -55,7 +57,7 @@ export class DatabaseSettingsMutationError extends Error {
 
 const defaultDependencies: DatabaseSettingsRuntimeDependencies = {
   read: readDatabaseModule,
-  apply: applyDatabaseModule,
+  apply: applyDatabaseSettingsModule,
 };
 
 const readSnapshot = async (
@@ -193,6 +195,14 @@ export const commitDatabaseSettingsOperations = async (input: {
   });
   const operations = input.buildOperations(authority);
   if (operations.length === 0) return authority;
+  const trace = beginRendererOwnerTrace({
+    semanticKey: databaseSettingsApplyCommand.key,
+    operationIdentity: input.operationId,
+    owner: databaseSettingsApplyCommand.owner,
+    protocol: databaseSettingsApplyCommand.protocol.kind,
+    scopeKind: "database",
+  });
+  recordRendererOwnerTrace(trace, { kind: "local_intent", reason: "local_intent" });
   const result = await applyExactRequest(
     input.projectId,
     {
@@ -212,5 +222,7 @@ export const commitDatabaseSettingsOperations = async (input: {
     minimumCommitSeq: result.value.commitSeq,
     dependencies,
   });
+  recordRendererOwnerTrace(trace, { kind: "result", reason: "terminal_result" });
+  recordRendererOwnerTrace(trace, { kind: "settled", reason: "proof_complete" });
   return refreshed;
 };

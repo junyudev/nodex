@@ -7,6 +7,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import { GIT_WORKER_MESSAGE_FROM_VIEW_CHANNEL } from "../../../shared/git-worker-protocol";
 import { MainConfig } from "../../app/MainConfig";
 import { GitWorkerRuntime } from "../../host-runtime/GitWorkerRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { live } from "./GitWorkerIpc";
 
@@ -18,7 +19,7 @@ type Handler = (
 it.effect("registers and releases the Git worker renderer ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),

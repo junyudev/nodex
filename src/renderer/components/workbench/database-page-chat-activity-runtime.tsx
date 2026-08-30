@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 
-import { invoke } from "@/lib/api";
 import { pageChatActivitySummariesQueryOptions } from "@/lib/query-options";
 import { queryKeys } from "@/lib/query-keys";
+import { unlinkPageChat } from "@/lib/page-chat-runtime";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type { PageChatActivitySummary } from "@/lib/types";
 
@@ -42,7 +42,7 @@ function DatabasePageChatActivityProvider({
   const removeRelation = useCallback(
     async (pageId: string, sessionId: string): Promise<void> => {
       if (!pageAccessProjectId) throw new Error("A Project is required to manage linked chats");
-      await invoke("page-chats:unlink", sessionId, { pageAccessProjectId, pageId });
+      await unlinkPageChat(sessionId, { pageAccessProjectId, pageId });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pageChats.all() });
     },
     [pageAccessProjectId, queryClient],

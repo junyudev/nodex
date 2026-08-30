@@ -133,7 +133,7 @@ export const live: Layer.Layer<
       }
     };
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "block-properties:mutate",
       (event, projectId: string, rawRequest: IpcApi["block-properties:mutate"]["args"][1]) => {
         const identity = trustedIdentity(event);
@@ -158,7 +158,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "library-block-properties:mutate",
       (event, rawRequest: IpcApi["library-block-properties:mutate"]["args"][0]) => {
         const identity = trustedIdentity(event);
@@ -187,7 +187,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "database-module:read",
       (event, projectId: string, rawRequest: IpcApi["database-module:read"]["args"][1]) => {
         if (!trustedIdentity(event)) {
@@ -225,7 +225,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "database-module:apply",
       (event, projectId: string, rawRequest: IpcApi["database-module:apply"]["args"][1]) => {
         const identity = trustedIdentity(event);
@@ -265,7 +265,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "library-module:read",
       (event, rawAccess: unknown, rawRequest: IpcApi["library-module:read"]["args"][1]) => {
         if (!trustedTarget(event)) {
@@ -306,7 +306,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "library-module:apply",
       (event, rawAccess: unknown, rawRequest: IpcApi["library-module:apply"]["args"][1]) => {
         if (!trustedTarget(event)) {
@@ -347,7 +347,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "library-database-module:read",
       (event, rawRequest: IpcApi["library-database-module:read"]["args"][0]) => {
         if (!trustedTarget(event)) {
@@ -385,7 +385,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "library-database-module:apply",
       (event, rawRequest: IpcApi["library-database-module:apply"]["args"][0]) => {
         if (!trustedTarget(event)) {
@@ -424,7 +424,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "pages:detail:get",
       (event, projectId: string, pageId: string, minimumCommitSeq?: number) => {
         if (!trustedTarget(event)) {
@@ -452,7 +452,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "library-pages:detail:get",
       (event, pageId: string, minimumCommitSeq?: number) => {
         if (!trustedTarget(event)) {
@@ -480,32 +480,35 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle("pages:lifecycle:preflight", (event, projectId: string, pageId: string) => {
-      if (!trustedTarget(event)) {
-        return Effect.succeed({
-          ok: false as const,
-          error: {
-            code: "authorization_denied" as const,
-            message: "Page lifecycle preflight requires a trusted application window",
-            retryable: false,
-          },
-        });
-      }
-      return library.readPageLifecyclePreflight(projectId, pageId).pipe(
-        Effect.catch((error) =>
-          Effect.succeed({
+    yield* ipc.handleQuery(
+      "pages:lifecycle:preflight",
+      (event, projectId: string, pageId: string) => {
+        if (!trustedTarget(event)) {
+          return Effect.succeed({
             ok: false as const,
             error: {
-              code: "unknown" as const,
-              message: messageOf(error, "Page lifecycle preflight is unavailable"),
-              retryable: true,
+              code: "authorization_denied" as const,
+              message: "Page lifecycle preflight requires a trusted application window",
+              retryable: false,
             },
-          }),
-        ),
-      );
-    });
+          });
+        }
+        return library.readPageLifecyclePreflight(projectId, pageId).pipe(
+          Effect.catch((error) =>
+            Effect.succeed({
+              ok: false as const,
+              error: {
+                code: "unknown" as const,
+                message: messageOf(error, "Page lifecycle preflight is unavailable"),
+                retryable: true,
+              },
+            }),
+          ),
+        );
+      },
+    );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "pages:lifecycle:apply",
       (event, projectId: string, rawRequest: IpcApi["pages:lifecycle:apply"]["args"][1]) => {
         const identity = trustedIdentity(event);
@@ -531,7 +534,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "block-documents:mutate",
       (
         event,
@@ -555,7 +558,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "block-documents:command",
       (event, projectId: string, rawRequest: IpcApi["block-documents:command"]["args"][1]) => {
         const identity = trustedIdentity(event);
@@ -580,7 +583,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "blocks:transfer",
       (event, projectId: string, rawIntent: IpcApi["blocks:transfer"]["args"][1]) => {
         const identity = trustedIdentity(event);
@@ -599,7 +602,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "blocks:transfer:undo",
       (event, projectId: string, rawIntent: IpcApi["blocks:transfer:undo"]["args"][1]) => {
         if (!trustedTarget(event)) {
@@ -617,7 +620,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "block-documents:history:checkpoint",
       (
         event,
@@ -650,7 +653,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "block-documents:history:list",
       (event, rawRequest: IpcApi["block-documents:history:list"]["args"][0]) => {
         if (!trustedTarget(event)) {
@@ -674,7 +677,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "block-documents:history:get",
       (event, rawRequest: IpcApi["block-documents:history:get"]["args"][0]) => {
         if (!trustedTarget(event)) {
@@ -696,7 +699,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleLocalCommitCommand(
       "block-documents:history:restore",
       (
         event,
@@ -730,7 +733,7 @@ export const live: Layer.Layer<
       },
     );
 
-    yield* ipc.handle(
+    yield* ipc.handleQuery(
       "pages:history:list",
       (event, rawRequest: IpcApi["pages:history:list"]["args"][0]) => {
         if (!trustedTarget(event)) {

@@ -31,21 +31,6 @@ export interface RendererTransport {
     projectId: string,
     ownerBlockId: string,
   ) => Promise<import("../../shared/block-documents/contracts").ProjectAccessedDocumentDescriptor>;
-  prepareOwnedBlockDocument: (
-    projectId: string,
-    ownerBlockId: string,
-  ) => Promise<
-    import("../../shared/block-documents/document-sync").DocumentSyncCommandResult<
-      import("../../shared/block-documents/contracts").ProjectAccessedDocumentDescriptor
-    >
-  >;
-  prepareLibraryOwnedBlockDocument: (
-    ownerBlockId: string,
-  ) => Promise<
-    import("../../shared/block-documents/document-sync").DocumentSyncCommandResult<
-      import("../../shared/block-documents/contracts").LibraryAccessedDocumentDescriptor
-    >
-  >;
   mutateDocument: (
     projectId: string,
     documentId: string,
@@ -65,15 +50,6 @@ export interface RendererTransport {
     projectId: string,
     intent: import("../../shared/block-transfer-transport").PublicBlockTransferUndoIntent,
   ) => Promise<import("../../shared/block-transfer").BlockTransferUndoCommandResult>;
-  createDocumentVersionCheckpoint: (
-    projectId: string,
-    documentId: string,
-    request: import("../../shared/block-documents/document-history").CreateDocumentVersionCheckpoint,
-  ) => Promise<
-    import("../../shared/block-documents/document-history-transport").DocumentHistoryCommandResult<
-      import("../../shared/block-documents/document-history").CreatedDocumentVersionSummary
-    >
-  >;
   listDocumentVersions: (
     request: import("../../shared/block-documents/document-history").ListDocumentVersions,
   ) => Promise<
@@ -102,7 +78,6 @@ export interface RendererTransport {
   createCanvasSceneSyncAdapter?: (
     identity: ContentAccessIdentity,
   ) => import("./canvas-scene-provider").CanvasSceneSyncAdapter;
-  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
   subscribeBoardChanges: (
     projectId: string,
     callback: (event: BoardChangeEvent) => void,
@@ -199,8 +174,4 @@ function readElectronBridge(): ElectronRendererBridge {
 
 export function resolveRendererTransport(): RendererTransport {
   return createElectronRendererTransport(readElectronBridge());
-}
-
-export function resolveInvokeTransport(): RendererTransport {
-  return resolveRendererTransport();
 }

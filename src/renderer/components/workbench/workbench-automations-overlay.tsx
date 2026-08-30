@@ -71,7 +71,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { invoke } from "@/lib/api";
+import {
+  archiveCodexAutomationRun,
+  createCodexScheduledAutomation,
+  deleteCodexScheduledAutomation,
+  runCodexScheduledAutomationNow,
+  setCodexAutomationRunReadState,
+  unarchiveCodexAutomationRun,
+  updateCodexScheduledAutomation,
+} from "@/lib/codex-automation-runtime";
 import {
   formatCodexModelLabel,
   formatCodexReasoningEffortLabel,
@@ -97,12 +105,9 @@ import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automati
 import { useLocalEnvironmentOptions } from "@/lib/use-local-environment-queries";
 import type {
   CodexScheduledAutomation,
-  CodexAutomationRunMutationResponse,
   CodexModelOption,
   CodexScheduledAutomationReasoningEffort,
   CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationDeleteResponse,
-  CodexScheduledAutomationMutationResponse,
   CodexScheduledAutomationUpdateInput,
   Project,
   WorktreeEnvironmentOption,
@@ -3172,15 +3177,11 @@ export function WorkbenchAutomationSidePanelTab({
     }
     try {
       const response = shouldUpdate
-        ? await invoke(
-            "codex:scheduled-automations:update",
-            updatePayload as CodexScheduledAutomationUpdateInput,
-          )
-        : await invoke(
-            "codex:scheduled-automations:create",
+        ? await updateCodexScheduledAutomation(updatePayload as CodexScheduledAutomationUpdateInput)
+        : await createCodexScheduledAutomation(
             createPayload as CodexScheduledAutomationCreateInput,
           );
-      await upsertSavedAutomation((response as CodexScheduledAutomationMutationResponse).item);
+      await upsertSavedAutomation(response.item);
     } catch (error) {
       if (previousAutomations) {
         queryClient.setQueryData(scheduledQueryKey, previousAutomations);
@@ -3569,10 +3570,9 @@ export function WorkbenchAutomationsRouteShell({
       applyOptimisticAutomationUpdate(current, updateInput),
     );
     try {
-      const response = (await invoke(
-        "codex:scheduled-automations:update",
+      const response = await updateCodexScheduledAutomation(
         updateInput satisfies CodexScheduledAutomationUpdateInput,
-      )) as CodexScheduledAutomationMutationResponse;
+      );
       const saved = response.item;
       queryClient.setQueryData<CodexScheduledAutomation[]>(scheduledQueryKey, (current) =>
         upsertAutomationInList(current, saved),
@@ -3606,10 +3606,9 @@ export function WorkbenchAutomationsRouteShell({
     setMutationError(null);
     setMutatingAutomationId(draftId ?? "new-automation");
     try {
-      const response = (await invoke(
-        "codex:scheduled-automations:create",
+      const response = await createCodexScheduledAutomation(
         createInput satisfies CodexScheduledAutomationCreateInput,
-      )) as CodexScheduledAutomationMutationResponse;
+      );
       const saved = response.item;
       queryClient.setQueryData<CodexScheduledAutomation[]>(
         queryKeys.codexScheduledAutomations.list(),
@@ -3837,9 +3836,9 @@ export function WorkbenchAutomationsRouteShell({
     setMutationError(null);
     setMutatingAutomationId(automation.id);
     try {
-      const response = (await invoke("codex:scheduled-automations:delete", {
+      const response = await deleteCodexScheduledAutomation({
         id: automation.id,
-      })) as CodexScheduledAutomationDeleteResponse;
+      });
       if (!response.success) {
         setMutationError("Could not delete scheduled task.");
         await queryClient.invalidateQueries({
@@ -3886,10 +3885,7 @@ export function WorkbenchAutomationsRouteShell({
       applyOptimisticAutomationUpdate(current, updateInput),
     );
     try {
-      const response = (await invoke(
-        "codex:scheduled-automations:update",
-        updateInput,
-      )) as CodexScheduledAutomationMutationResponse;
+      const response = await updateCodexScheduledAutomation(updateInput);
       queryClient.setQueryData<CodexScheduledAutomation[]>(scheduledQueryKey, (current) =>
         upsertAutomationInList(current, response.item),
       );
@@ -3916,7 +3912,7 @@ export function WorkbenchAutomationsRouteShell({
     setMutationError(null);
     setRunNowPendingAutomationId(automation.id);
     try {
-      await invoke("codex:scheduled-automations:run-now", {
+      await runCodexScheduledAutomationNow({
         id: automation.id,
       });
       await Promise.all([
@@ -3956,10 +3952,10 @@ export function WorkbenchAutomationsRouteShell({
     try {
       let failedCount = 0;
       for (const row of rows) {
-        const response = (await invoke("codex:automation-runs:archive", {
+        const response = await archiveCodexAutomationRun({
           threadId: row.threadId,
           archivedReason: "manual",
-        })) as CodexAutomationRunMutationResponse;
+        });
         if (!response.success) failedCount += 1;
       }
       await invalidateAutomationRunsInbox();
@@ -3989,9 +3985,9 @@ export function WorkbenchAutomationsRouteShell({
     setMutationError(null);
     setRunActionPending(true);
     try {
-      const response = (await invoke("codex:automation-runs:unarchive", {
+      const response = await unarchiveCodexAutomationRun({
         threadId: row.threadId,
-      })) as CodexAutomationRunMutationResponse;
+      });
       await invalidateAutomationRunsInbox();
       if (!response.success) {
         setMutationError("Failed to unarchive chat.");
@@ -4016,7 +4012,7 @@ export function WorkbenchAutomationsRouteShell({
     setRunActionPending(true);
     try {
       for (const row of rows) {
-        await invoke("codex:automation-runs:set-read-state", {
+        await setCodexAutomationRunReadState({
           threadId: row.threadId,
           readAt,
         });

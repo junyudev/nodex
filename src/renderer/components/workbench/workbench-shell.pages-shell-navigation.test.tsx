@@ -26,6 +26,7 @@ import {
   pointerActivate,
   pointerDownAndSettle,
   renderWorkbench,
+  rendererCommandPayload,
   startThreadForSessionCalls,
   startTurnCalls,
   setInvokeCalls,
@@ -124,7 +125,10 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(invokeCalls.find((call) => call[0] === "project-sessions:create")?.[1]).toEqual({
+    const createPayload = rendererCommandPayload(
+      invokeCalls.find((call) => call[0] === "project-sessions:create"),
+    );
+    expect(createPayload?.input).toEqual({
       projectId: "alpha",
       noThreadFallbackTitle: "Card One",
       initialPageIds: ["card-1"],
@@ -139,7 +143,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
         };
       }
     ).__lastConnectedThreadStageProps?.newThreadTarget;
-    expect(ordinaryTarget?.sessionId).toBe("session:alpha:created");
+    expect(ordinaryTarget?.sessionId).toBe(createPayload?.sessionId);
 
     await act(async () => {
       fireEvent.click(screen.getByLabelText("Start new chat in Alpha"));
@@ -149,7 +153,9 @@ describe("workbench session shell / pages-shell-navigation", () => {
 
     expect(
       invokeCalls.some(
-        (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === "alpha",
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "alpha",
       ),
     ).toBe(true);
     const defaultDraftTarget = (
@@ -159,7 +165,10 @@ describe("workbench session shell / pages-shell-navigation", () => {
         };
       }
     ).__lastConnectedThreadStageProps?.newThreadTarget;
-    expect(defaultDraftTarget?.sessionId).toBe("session:alpha:created:2");
+    const defaultDraftPayload = rendererCommandPayload(
+      invokeCalls.find((call) => call[0] === "project-sessions:ensure-default-draft"),
+    );
+    expect(defaultDraftTarget?.sessionId).toBe(defaultDraftPayload?.candidateSessionId);
     expect(defaultDraftTarget?.sessionId).not.toBe(ordinaryTarget?.sessionId);
   });
 

@@ -4,8 +4,8 @@ import type {
   GlobalDictationDeclineReason,
   GlobalDictationRendererEvent,
 } from "../../../shared/global-dictation";
-import { invoke } from "@/lib/api";
 import { subscribeGlobalDictationCommands } from "@/lib/global-dictation-commands";
+import { reportGlobalDictationEvent } from "./dictation-command-runtime";
 
 export interface InAppDictationTarget {
   readonly id: string;
@@ -34,7 +34,7 @@ interface ActiveRoute {
 const InAppDictationTargetContext = createContext<InAppDictationTargetRegistry | null>(null);
 
 const report = async (event: GlobalDictationRendererEvent): Promise<boolean> =>
-  await invoke("global-dictation:event", event);
+  await reportGlobalDictationEvent(event);
 
 const selectTarget = (
   targets: ReadonlyMap<string, InAppDictationTarget>,

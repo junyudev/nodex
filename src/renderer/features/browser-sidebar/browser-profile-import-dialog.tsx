@@ -16,12 +16,16 @@ import {
   NodexDropdownSelectedIcon,
   NodexSettingsDropdownTrigger,
 } from "@/components/ui/dropdown";
-import { invoke } from "@/lib/api";
 import type {
   BrowserProfileCapabilities,
   BrowserProfileImportResult,
   ImportableBrowserProfile,
 } from "../../../shared/browser-profile";
+import {
+  importBrowserProfile,
+  readBrowserProfileCapabilities,
+  readImportableBrowserProfiles,
+} from "./browser-profile-runtime";
 
 const EMPTY_CAPABILITIES: BrowserProfileCapabilities = {
   contactInfo: {
@@ -83,10 +87,7 @@ export function BrowserProfileImportDialog({
     setError(null);
     setResult(null);
     setLoading(true);
-    void Promise.all([
-      invoke("browser-profile-capabilities"),
-      invoke("browser-profile-import-profiles"),
-    ])
+    void Promise.all([readBrowserProfileCapabilities(), readImportableBrowserProfiles()])
       .then(([nextCapabilities, nextProfiles]) => {
         if (cancelled) return;
         setCapabilities(nextCapabilities);
@@ -123,7 +124,7 @@ export function BrowserProfileImportDialog({
     setError(null);
     setResult(null);
     try {
-      const imported = await invoke("browser-profile-import", {
+      const imported = await importBrowserProfile({
         source: selectedProfile.source,
         profilePath: selectedProfile.profilePath,
         importCookies,

@@ -3,20 +3,20 @@ import { mkdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import type { Project, ProjectCreateInput } from "../shared/types";
+import type { ProjectCreateInput } from "../shared/types";
 import { getLogger } from "./logging/logger";
 
 const DEFAULT_PROJECT_NAME = "New project";
 const WINDOWS_RESERVED_FILE_NAME = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i;
 const logger = getLogger({ subsystem: "default-project-source" });
 
-type CreateProject<Error, Requirements> = (
+type CreateProject<Value, Error, Requirements> = (
   input: ProjectCreateInput,
-) => Effect.Effect<Project, Error, Requirements>;
+) => Effect.Effect<Value, Error, Requirements>;
 
-interface CreateProjectWithDefaultSourceOptions<Error, Requirements> {
+interface CreateProjectWithDefaultSourceOptions<Value, Error, Requirements> {
   projectsDirectory: string;
-  createProject: CreateProject<Error, Requirements>;
+  createProject: CreateProject<Value, Error, Requirements>;
   createDirectory?: (path: string) => Effect.Effect<void, Error, Requirements>;
   pathExists?: (path: string) => Effect.Effect<boolean, Error, Requirements>;
   initializeRepository?: (path: string) => Effect.Effect<void, Error, Requirements>;
@@ -96,10 +96,10 @@ export const findAvailableDefaultProjectSource = <Error, Requirements>(
     }
   });
 
-export const createProjectWithDefaultSource = <Error, Requirements>(
+export const createProjectWithDefaultSource = <Value, Error, Requirements>(
   input: ProjectCreateInput,
-  options: CreateProjectWithDefaultSourceOptions<Error, Requirements>,
-): Effect.Effect<Project, DefaultProjectSourceError, Requirements> =>
+  options: CreateProjectWithDefaultSourceOptions<Value, Error, Requirements>,
+): Effect.Effect<Value, DefaultProjectSourceError, Requirements> =>
   Effect.gen(function* () {
     if ((input.sources?.length ?? 0) > 0) {
       return yield* attempt("create-project", options.createProject(input));

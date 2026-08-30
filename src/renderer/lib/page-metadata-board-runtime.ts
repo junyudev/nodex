@@ -1,6 +1,6 @@
 import { toDatabasePageSummary } from "../../shared/page-summary";
 import type { DatabasePage, PageInput, PageUpdateField, PageUpdateResult } from "./types";
-import { invoke } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import {
   commitPageDetailMetadataPatchWithReceipt,
   isPageMetadataPatch,

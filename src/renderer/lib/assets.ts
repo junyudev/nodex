@@ -8,7 +8,7 @@ import {
 } from "../../shared/managed-assets";
 import { parseAssetSource } from "../../shared/assets";
 import { buildAppFilesystemUrl, isAbsoluteAppFilesystemPath } from "../../shared/app-protocol";
-import { invoke } from "./api";
+import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 
 export interface UploadedResourceAssetResponse {
   source: string;
@@ -20,6 +20,38 @@ export interface UploadedResourceAssetResponse {
 export type ManagedAssetPathResolver = (source: string) => string | null;
 
 const managedAssetDisplayUrlCache = new Map<string, string>();
+
+const saveImageAssetCommand = defineRendererCommand({
+  key: "asset.image.save",
+  channel: "asset:image:save",
+  authority: "main",
+  owner: "ManagedAssets",
+  protocol: { kind: "returned_value" },
+});
+
+const materializeCanvasImageCommand = defineRendererCommand({
+  key: "asset.canvas_image.materialize",
+  channel: "asset:canvas-image:materialize",
+  authority: "main",
+  owner: "ManagedAssets",
+  protocol: { kind: "returned_value" },
+});
+
+const saveResourceAssetCommand = defineRendererCommand({
+  key: "asset.resource.save",
+  channel: "asset:resource:save",
+  authority: "main",
+  owner: "ManagedAssets",
+  protocol: { kind: "returned_value" },
+});
+
+const materializeResourceAssetCommand = defineRendererCommand({
+  key: "asset.resource.materialize",
+  channel: "asset:resource:materialize",
+  authority: "main",
+  owner: "ManagedAssets",
+  protocol: { kind: "returned_value" },
+});
 
 function resolveManagedAssetPathFromPreload(source: string): string | null {
   if (typeof window === "undefined") return null;
@@ -59,8 +91,8 @@ export async function uploadImageAsset(file: File): Promise<string> {
   if (file.size > MAX_MANAGED_IMAGE_BYTES) {
     throw new Error("Image exceeds 10MB upload limit");
   }
-  const result = await invoke(
-    "asset:image:save",
+  const result = await invokePlainCommand(
+    saveImageAssetCommand,
     fileToUploadInput(file, new Uint8Array(await file.arrayBuffer())),
   );
   return result.source;
@@ -72,8 +104,8 @@ export async function materializeCanvasImageAsset(
   if (file.size > MAX_MANAGED_IMAGE_BYTES) {
     throw new Error("Image exceeds 10MB upload limit");
   }
-  return await invoke(
-    "asset:canvas-image:materialize",
+  return await invokePlainCommand(
+    materializeCanvasImageCommand,
     fileToUploadInput(file, new Uint8Array(await file.arrayBuffer())),
   );
 }
@@ -94,8 +126,8 @@ export async function uploadResourceAsset(file: File): Promise<UploadedResourceA
     throw new Error("Resource exceeds 64MB upload limit");
   }
   return toUploadedResourceAssetResponse(
-    await invoke(
-      "asset:resource:save",
+    await invokePlainCommand(
+      saveResourceAssetCommand,
       fileToUploadInput(file, new Uint8Array(await file.arrayBuffer())),
     ),
   );
@@ -104,13 +136,20 @@ export async function uploadResourceAsset(file: File): Promise<UploadedResourceA
 export async function materializeLocalResourceAsset(
   localPath: string,
 ): Promise<UploadedResourceAssetResponse> {
-  return toUploadedResourceAssetResponse(await invoke("asset:resource:materialize", localPath));
+  return toUploadedResourceAssetResponse(
+    await invokePlainCommand(materializeResourceAssetCommand, localPath),
+  );
 }
 
 export async function readManagedAssetPreview(
   input: ManagedAssetPreviewInput,
 ): Promise<ManagedAssetPreview> {
-  return await invoke("asset:preview:read", input);
+  return await invokeRendererQuery("asset:preview:read", input);
+}
+
+export async function resolveManagedAssetPath(source: string): Promise<string | null> {
+  const resolved = await invokeRendererQuery("asset:resolve-path", source);
+  return resolved?.trim() || null;
 }
 
 function readBlobAsDataUrl(blob: Blob): Promise<string> {
@@ -129,13 +168,13 @@ function readBlobAsDataUrl(blob: Blob): Promise<string> {
 }
 
 export async function readManagedImageDataUrl(source: string): Promise<string> {
-  const result = await invoke("asset:image:read", source);
+  const result = await invokeRendererQuery("asset:image:read", source);
   return await readBlobAsDataUrl(
     new Blob([new Uint8Array(result.bytes)], { type: result.mimeType }),
   );
 }
 
 export async function readManagedImageByteLength(source: string): Promise<number> {
-  const result = await invoke("asset:image:read", source);
+  const result = await invokeRendererQuery("asset:image:read", source);
   return result.bytes.byteLength;
 }

@@ -8,6 +8,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import type { PageSearchCommandResult } from "../../../shared/types";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { LibraryModule } from "../../library-application/LibraryModule";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./PageSearchIpc";
@@ -17,7 +18,7 @@ type Handler = (event: IpcMainInvokeEvent, ...args: readonly unknown[]) => Effec
 it.effect("cancels an owned search and releases every handler with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string, handler: Handler) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -26,7 +27,7 @@ it.effect("cancels an owned search and releases every handler with the Main Scop
           () => Effect.sync(() => handlers.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     let observeStarted: (() => void) | undefined;
     const started = new Promise<void>((resolve) => {
       observeStarted = resolve;

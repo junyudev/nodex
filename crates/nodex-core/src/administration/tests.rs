@@ -200,6 +200,31 @@ impl Fixture {
             .expect("create backup")
     }
 
+    fn coalesce_backup(
+        &self,
+        operation_id: &str,
+        active_job_id: &str,
+        label: Option<&str>,
+        include_assets: bool,
+    ) -> super::StoreAdministrationApplyOutcome {
+        self.module
+            .apply(
+                &self.context(),
+                ModuleApplyRequest {
+                    contract_version: STORE_ADMINISTRATION_CONTRACT_VERSION,
+                    operation_id: operation_id.to_owned(),
+                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+                    intent: StoreAdministrationIntent::CoalesceBackup {
+                        active_job_id: active_job_id.to_owned(),
+                        label: label.map(str::to_owned),
+                        include_assets,
+                        trigger: BackupTrigger::Manual,
+                    },
+                },
+            )
+            .expect("coalesce backup")
+    }
+
     fn restore_backup(
         &self,
         operation_id: &str,
@@ -354,7 +379,7 @@ fn cancels_an_admitted_backup_before_publication_and_rejects_ready_artifacts() {
         cancelled.committed.value.cancelled_backup_job_id.as_deref(),
         Some(job_id)
     );
-    let StoreAdministrationReadValue::BackupJobs { jobs } =
+    let StoreAdministrationReadValue::BackupJobs { jobs, .. } =
         fixture.read(StoreAdministrationRead::BackupJobs)
     else {
         panic!("Backup jobs")
@@ -368,6 +393,41 @@ fn cancels_an_admitted_backup_before_publication_and_rejects_ready_artifacts() {
         .cancel_backup("administration:cancel-backup:ready", ready_job)
         .expect_err("ready Backup cannot be cancelled");
     assert_eq!(error.code, CoreErrorCode::Conflict);
+}
+
+#[test]
+fn durably_replays_a_coalesced_backup_start_without_creating_another_snapshot() {
+    let fixture = Fixture::new();
+    let active_job_id = "administration:create-backup:active";
+    fixture.create_backup(active_job_id, Some("Active"), false);
+
+    let operation_id = "administration:create-backup:coalesced";
+    let coalesced = fixture.coalesce_backup(operation_id, active_job_id, Some("Requested"), false);
+    assert_eq!(
+        coalesced.committed.value.coalesced_backup_job_id.as_deref(),
+        Some(active_job_id)
+    );
+    assert!(!coalesced.committed.receipt.mutation.duplicate);
+
+    let replayed = fixture.create_backup(operation_id, Some("Requested"), false);
+    assert_eq!(
+        replayed.committed.value.coalesced_backup_job_id.as_deref(),
+        Some(active_job_id)
+    );
+    assert!(replayed.committed.receipt.mutation.duplicate);
+    assert!(replayed.committed.value.backup_id.is_none());
+
+    let StoreAdministrationReadValue::BackupJobs {
+        jobs,
+        coalesced_starts,
+    } = fixture.read(StoreAdministrationRead::BackupJobs)
+    else {
+        panic!("Backup jobs")
+    };
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(coalesced_starts.len(), 1);
+    assert_eq!(coalesced_starts[0].operation_id, operation_id);
+    assert_eq!(coalesced_starts[0].active_job_id, active_job_id);
 }
 
 #[test]
@@ -581,7 +641,7 @@ fn reports_rust_readiness_and_publishes_a_valid_exact_retry_backup() {
     assert_eq!(capacity.total_ready_bytes, backups.items[0].total_bytes);
     assert_eq!(capacity.manual_ready_bytes, backups.items[0].total_bytes);
     assert_eq!(capacity.automatic_ready_bytes, 0);
-    let StoreAdministrationReadValue::BackupJobs { jobs } =
+    let StoreAdministrationReadValue::BackupJobs { jobs, .. } =
         fixture.read(StoreAdministrationRead::BackupJobs)
     else {
         panic!("backup jobs")

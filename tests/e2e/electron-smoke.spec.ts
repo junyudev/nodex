@@ -25,6 +25,7 @@ import {
   type PageLifecyclePreflightSnapshotV2,
 } from "../../src/shared/page-lifecycle-v2-runtime";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import {
   attachNodexStructuralClipboardWriteClaim,
   encodeNodexStructuralClipboardDescriptor,
@@ -131,8 +132,11 @@ async function createConvergenceProject(
 ): Promise<ConvergenceProject> {
   const project = requireIpcValue<Record<string, unknown>>(
     await invokeIpc(page, "projects:create", {
-      name,
-      sources: [workspace],
+      operationId: createBoundedOperationId("e2e.project.create"),
+      payload: {
+        projectId: createUuidV7(),
+        input: { name, sources: [workspace] },
+      },
     }),
     "Project creation",
   );
@@ -3120,7 +3124,10 @@ test.describe("parallel functional Electron smoke", () => {
             placement: {
               kind: "direct",
               viewId: database.viewId,
-              presentationOverride: { layout: "board" },
+              preferencesOverride: {
+                rulesOverride: {},
+                presentationOverride: {},
+              },
               groupKey: "triage",
             },
           },

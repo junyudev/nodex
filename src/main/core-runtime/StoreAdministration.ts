@@ -9,6 +9,7 @@ import type {
   BackupCapacity,
   BackupJobStatus,
   BackupRecord,
+  BackupStartResult,
   CreateBackupInput,
   RestoreBackupInput,
   RestoreBackupResult,
@@ -42,6 +43,11 @@ type CoreBackupJob = Extract<
   { readonly kind: "backup_jobs" }
 >["jobs"][number];
 
+type CoreBackupStartCoalescence = Extract<
+  StoreAdministrationReadSnapshot["value"],
+  { readonly kind: "backup_jobs" }
+>["coalesced_starts"][number];
+
 type CoreOperationalJournalStatus = Extract<
   StoreAdministrationReadSnapshot["value"],
   { readonly kind: "operational_journal_status" }
@@ -70,6 +76,10 @@ export interface StoreMaintenanceInput {
   readonly tasks: readonly StoreMaintenanceTask[];
   readonly blockRetentionCount?: number;
   readonly workToken?: string;
+}
+
+export interface BackupStartInput extends CreateBackupInput {
+  readonly operationId: string;
 }
 
 export interface StoreMaintenancePlan {
@@ -101,8 +111,8 @@ export class StoreAdministration extends Context.Service<
       input?: CreateBackupInput,
     ) => Effect.Effect<BackupRecord, StoreAdministrationError>;
     readonly startBackup: (
-      input?: CreateBackupInput,
-    ) => Effect.Effect<BackupJobStatus, StoreAdministrationError>;
+      input: BackupStartInput,
+    ) => Effect.Effect<BackupStartResult, StoreAdministrationError>;
     readonly backupJob: (
       jobId?: string,
     ) => Effect.Effect<BackupJobStatus | null, StoreAdministrationError>;
@@ -195,6 +205,7 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
   Effect.gen(function* () {
     const core = yield* CoreModules;
     const backupJobs = yield* Ref.make<ReadonlyMap<string, BackupJobStatus>>(new Map());
+    const backupCoalescences = yield* Ref.make<ReadonlyMap<string, string>>(new Map());
     const latestBackupJobId = yield* Ref.make<string | null>(null);
     const backupFibers = yield* FiberMap.make<string, void, never>();
     const error = (operation: string, cause: unknown): StoreAdministrationError =>
@@ -270,9 +281,13 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
           trigger: input.trigger ?? "manual",
         },
       });
+      const coalescedBackupJobId = committed.outcome.coalesced_backup_job_id;
+      if (coalescedBackupJobId) {
+        return { kind: "coalesced" as const, activeJobId: coalescedBackupJobId };
+      }
       const backupId = yield* requireBackupId("create-backup", committed);
       const created = (yield* listBackups).find((backup) => backup.id === backupId);
-      if (created) return created;
+      if (created) return { kind: "completed" as const, backup: created };
       return yield* error(
         "create-backup",
         new Error("Core Backup commit is missing from the durable inventory"),
@@ -282,10 +297,15 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
     const createBackup = Effect.fn("StoreAdministration.createBackup")(function* (
       input: CreateBackupInput = {},
     ) {
-      return yield* executeBackup(operationId("create-backup"), input);
+      const result = yield* executeBackup(operationId("create-backup"), input);
+      if (result.kind === "completed") return result.backup;
+      return yield* error(
+        "create-backup",
+        new Error("A direct Backup request cannot be coalesced into another job"),
+      );
     });
 
-    const readCoreBackupJobs = Effect.gen(function* () {
+    const readCoreBackupState = Effect.gen(function* () {
       const snapshot = yield* core.administration
         .read({ kind: "backup_jobs" })
         .pipe(Effect.mapError((cause) => error("read-backup-jobs", cause)));
@@ -295,7 +315,10 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
           new Error("Core returned a non-BackupJobs Store Administration read"),
         );
       }
-      return snapshot.value.jobs;
+      return {
+        jobs: snapshot.value.jobs,
+        coalescedStarts: snapshot.value.coalesced_starts,
+      };
     });
 
     const mapCoreBackupJob = (
@@ -352,14 +375,29 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
         return trimBackupJobs(next);
       });
 
+    const rememberBackupCoalescence = Effect.fn("StoreAdministration.rememberBackupCoalescence")(
+      function* (operationIdentifier: string, activeJobId: string) {
+        yield* Ref.update(backupCoalescences, (current) => {
+          const next = new Map(current);
+          next.set(operationIdentifier, activeJobId);
+          return next;
+        });
+        yield* Ref.update(backupJobs, (current) => {
+          const next = new Map(current);
+          next.delete(operationIdentifier);
+          return next;
+        });
+      },
+    );
+
     const launchBackup = Effect.fn("StoreAdministration.launchBackup")(function* (
       jobId: string,
       operationIdentifier: string,
       input: CreateBackupInput,
     ) {
       const observeCorePhase = Effect.forever(
-        readCoreBackupJobs.pipe(
-          Effect.tap((jobs) => {
+        readCoreBackupState.pipe(
+          Effect.tap(({ jobs }) => {
             const durable = jobs.find((job) => job.operation_id === operationIdentifier);
             if (!durable) return Effect.void;
             return updateBackupJob(jobId, (job) => ({
@@ -382,24 +420,39 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
             updatedAt: startedAt,
           }));
           yield* observeCorePhase.pipe(Effect.forkScoped);
-          const backup = yield* executeBackup(operationIdentifier, input);
+          const result = yield* executeBackup(operationIdentifier, input);
+          if (result.kind === "coalesced") {
+            yield* rememberBackupCoalescence(operationIdentifier, result.activeJobId);
+            return;
+          }
           const completedAt = yield* Clock.currentTimeMillis;
           yield* updateBackupJob(jobId, (job) => ({
             ...job,
             state: "completed",
             phase: "ready",
             updatedAt: completedAt,
-            backup,
+            backup: result.backup,
             error: null,
           }));
         }),
       ).pipe(
         Effect.catch((failure) =>
           Effect.gen(function* () {
-            const durableJobs = yield* readCoreBackupJobs.pipe(Effect.orElseSucceed(() => []));
-            const durable = durableJobs.find((job) => job.operation_id === operationIdentifier);
+            const durableState = yield* readCoreBackupState.pipe(
+              Effect.orElseSucceed(() => ({ jobs: [], coalescedStarts: [] })),
+            );
+            const durable = durableState.jobs.find(
+              (job) => job.operation_id === operationIdentifier,
+            );
             if (durable) {
               yield* updateBackupJob(jobId, () => mapCoreBackupJob(durable));
+              return;
+            }
+            const coalesced = durableState.coalescedStarts.find(
+              (start) => start.operation_id === operationIdentifier,
+            );
+            if (coalesced) {
+              yield* rememberBackupCoalescence(operationIdentifier, coalesced.active_job_id);
               return;
             }
             const failedAt = yield* Clock.currentTimeMillis;
@@ -419,29 +472,72 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
       yield* FiberMap.run(backupFibers, jobId, runJob, { startImmediately: true });
     });
 
-    const awaitDurableBackupAdmission = Effect.fn(
-      "StoreAdministration.awaitDurableBackupAdmission",
-    )(function* (operationIdentifier: string, deadline: number) {
-      while (true) {
-        const jobs = yield* readCoreBackupJobs;
-        const durable = jobs.find((job) => job.operation_id === operationIdentifier);
-        if (durable) return durable;
-        if ((yield* Clock.currentTimeMillis) >= deadline) {
-          return yield* error(
-            "start-backup",
-            new Error("Core did not durably admit the snapshot job within 250 ms"),
-          );
-        }
-        yield* Effect.sleep(10);
+    const coalesceBackup = Effect.fn("StoreAdministration.coalesceBackup")(function* (
+      input: BackupStartInput,
+      activeJobId: string,
+    ): Effect.fn.Return<BackupStartResult, StoreAdministrationError> {
+      const committed = yield* apply("coalesce-backup", {
+        operationId: input.operationId,
+        intent: {
+          kind: "coalesce_backup",
+          active_job_id: activeJobId,
+          label: input.label?.trim() || null,
+          include_assets: true,
+          trigger: input.trigger ?? "manual",
+        },
+      });
+      const coalescedJobId = committed.outcome.coalesced_backup_job_id;
+      if (coalescedJobId) {
+        yield* rememberBackupCoalescence(input.operationId, coalescedJobId);
+        return {
+          kind: "already_running",
+          operationId: input.operationId,
+          activeJobId: coalescedJobId,
+        };
       }
+      const backupId = yield* requireBackupId("coalesce-backup", committed);
+      const backup = (yield* listBackups).find((candidate) => candidate.id === backupId);
+      if (!backup) {
+        return yield* error(
+          "coalesce-backup",
+          new Error("Core Backup replay is missing from the durable inventory"),
+        );
+      }
+      const now = yield* Clock.currentTimeMillis;
+      const completed: BackupJobStatus = {
+        jobId: input.operationId,
+        state: "completed",
+        phase: "ready",
+        completedUnits: 7,
+        totalUnits: 7,
+        startedAt: now,
+        updatedAt: now,
+        backup,
+        error: null,
+        progress: emptyBackupProgress(),
+      };
+      yield* Ref.update(backupJobs, (current) => {
+        const next = new Map(current);
+        next.set(input.operationId, completed);
+        return trimBackupJobs(next);
+      });
+      return { kind: "submitted", operationId: input.operationId, job: completed };
     });
 
     const startBackup = Effect.fn("StoreAdministration.startBackup")(function* (
-      input: CreateBackupInput = {},
+      input: BackupStartInput,
     ) {
       const now = yield* Clock.currentTimeMillis;
-      const operationIdentifier = operationId("create-backup-job");
+      const operationIdentifier = input.operationId;
       const jobId = operationIdentifier;
+      const coalescedJobId = (yield* Ref.get(backupCoalescences)).get(operationIdentifier);
+      if (coalescedJobId) {
+        return {
+          kind: "already_running" as const,
+          operationId: operationIdentifier,
+          activeJobId: coalescedJobId,
+        };
+      }
       const queued: BackupJobStatus = {
         jobId,
         state: "queued",
@@ -459,36 +555,41 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
         (
           current,
         ): readonly [
-          { readonly job: BackupJobStatus; readonly created: boolean },
+          (
+            | { readonly kind: "existing"; readonly job: BackupJobStatus }
+            | { readonly kind: "active"; readonly job: BackupJobStatus }
+            | { readonly kind: "created"; readonly job: BackupJobStatus }
+          ),
           ReadonlyMap<string, BackupJobStatus>,
         ] => {
+          const existing = current.get(jobId);
+          if (existing) return [{ kind: "existing", job: existing } as const, current] as const;
           const active = [...current.values()].find(
             (job) => job.state === "queued" || job.state === "running",
           );
-          if (active) return [{ job: active, created: false } as const, current] as const;
+          if (active) return [{ kind: "active", job: active } as const, current] as const;
           const next = new Map(current);
           next.set(jobId, queued);
-          return [{ job: queued, created: true } as const, trimBackupJobs(next)] as const;
+          return [{ kind: "created", job: queued } as const, trimBackupJobs(next)] as const;
         },
       );
-      if (!admitted.created) return admitted.job;
+      if (admitted.kind === "existing") {
+        return { kind: "submitted" as const, operationId: operationIdentifier, job: admitted.job };
+      }
+      if (admitted.kind === "active") {
+        return yield* coalesceBackup(input, admitted.job.jobId);
+      }
       yield* Ref.set(latestBackupJobId, jobId);
 
       yield* launchBackup(jobId, operationIdentifier, input);
-      const durable = yield* awaitDurableBackupAdmission(operationIdentifier, now + 250);
-      const admittedJob = mapCoreBackupJob(durable);
-      yield* Ref.update(backupJobs, (current) => {
-        const next = new Map(current);
-        next.set(jobId, admittedJob);
-        return trimBackupJobs(next);
-      });
-      return admittedJob;
+      return { kind: "submitted" as const, operationId: operationIdentifier, job: admitted.job };
     });
 
     const backupJob = Effect.fn("StoreAdministration.backupJob")(function* (jobId?: string) {
       const selectedId = jobId ?? (yield* Ref.get(latestBackupJobId));
       if (!selectedId) return null;
-      return (yield* Ref.get(backupJobs)).get(selectedId) ?? null;
+      const coalescedJobId = (yield* Ref.get(backupCoalescences)).get(selectedId);
+      return (yield* Ref.get(backupJobs)).get(coalescedJobId ?? selectedId) ?? null;
     });
 
     const cancelBackup = Effect.fn("StoreAdministration.cancelBackup")(function* (jobId: string) {
@@ -496,8 +597,8 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
         operationId: operationId(`cancel-backup:${jobId}`),
         intent: { kind: "cancel_backup", job_id: jobId },
       });
-      const durableJobs = yield* readCoreBackupJobs;
-      const durable = durableJobs.find((job) => job.job_id === jobId);
+      const durableState = yield* readCoreBackupState;
+      const durable = durableState.jobs.find((job) => job.job_id === jobId);
       if (!durable) {
         return yield* error(
           "cancel-backup",
@@ -611,16 +712,24 @@ export const live: Layer.Layer<StoreAdministration, never, CoreModules> = Layer.
       };
     });
 
-    const recoveredJobs = yield* readCoreBackupJobs.pipe(
-      Effect.catchCause(() => Effect.succeed([])),
+    const recoveredState = yield* readCoreBackupState.pipe(
+      Effect.catchCause(() => Effect.succeed({ jobs: [], coalescedStarts: [] })),
     );
+    const recoveredJobs = recoveredState.jobs;
+    const recoverCoalescences = (
+      starts: readonly CoreBackupStartCoalescence[],
+    ): ReadonlyMap<string, string> =>
+      new Map(starts.map((start) => [start.operation_id, start.active_job_id] as const));
+    yield* Ref.set(backupCoalescences, recoverCoalescences(recoveredState.coalescedStarts));
     for (const job of recoveredJobs) {
       if (job.state !== "cancelling") continue;
       yield* cancelBackup(job.job_id).pipe(Effect.catchCause(() => Effect.void));
     }
-    const settledRecoveredJobs = recoveredJobs.some((job) => job.state === "cancelling")
-      ? yield* readCoreBackupJobs.pipe(Effect.catchCause(() => Effect.succeed(recoveredJobs)))
-      : recoveredJobs;
+    const settledRecoveredState = recoveredJobs.some((job) => job.state === "cancelling")
+      ? yield* readCoreBackupState.pipe(Effect.catchCause(() => Effect.succeed(recoveredState)))
+      : recoveredState;
+    const settledRecoveredJobs = settledRecoveredState.jobs;
+    yield* Ref.set(backupCoalescences, recoverCoalescences(settledRecoveredState.coalescedStarts));
     if (settledRecoveredJobs.length > 0) {
       const readyBackups = settledRecoveredJobs.some((job) => job.state === "ready")
         ? yield* listBackups.pipe(Effect.catchCause(() => Effect.succeed([])))

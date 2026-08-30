@@ -233,34 +233,40 @@ export const live = (
         (release) => Effect.sync(release),
       );
 
-      yield* ipc.handle("codex:dictation:state:read", (event) =>
+      yield* ipc.handleQuery("codex:dictation:state:read", (event) =>
         authorized(event, "Dictation capability state", media.dictationState),
       );
-      yield* ipc.handle("codex:dictation:microphone-access:read", (event) =>
+      yield* ipc.handleQuery("codex:dictation:microphone-access:read", (event) =>
         authorized(event, "Microphone permission state", dictation.readMicrophoneAccess),
       );
-      yield* ipc.handle("codex:dictation:microphone-access:request", (event) =>
+      yield* ipc.handlePlainCommand("codex:dictation:microphone-access:request", (event) =>
         authorized(event, "Microphone permission request", dictation.requestMicrophoneAccess),
       );
-      yield* ipc.handle("codex:dictation:microphone-lease:acquire", (event, input: unknown) =>
-        trusted(event, "Dictation microphone lease").pipe(
-          Effect.andThen(validate("parse-microphone-lease", () => MicrophoneLease.parse(input))),
-          Effect.flatMap((lease) =>
-            dictation.acquireMicrophone({
-              webContentsId: event.sender.id,
-              sessionId: lease.sessionId,
-              surface: lease.surface as DictationSurface,
-            }),
+      yield* ipc.handleControl(
+        "codex:dictation:microphone-lease:acquire",
+        (event, input: unknown) =>
+          trusted(event, "Dictation microphone lease").pipe(
+            Effect.andThen(validate("parse-microphone-lease", () => MicrophoneLease.parse(input))),
+            Effect.flatMap((lease) =>
+              dictation.acquireMicrophone({
+                webContentsId: event.sender.id,
+                sessionId: lease.sessionId,
+                surface: lease.surface as DictationSurface,
+              }),
+            ),
           ),
-        ),
       );
-      yield* ipc.handle("codex:dictation:microphone-lease:release", (event, input: unknown) =>
-        trusted(event, "Dictation microphone lease release").pipe(
-          Effect.andThen(validate("parse-microphone-lease-release", () => SessionId.parse(input))),
-          Effect.flatMap((sessionId) => dictation.releaseMicrophone(event.sender.id, sessionId)),
-        ),
+      yield* ipc.handleControl(
+        "codex:dictation:microphone-lease:release",
+        (event, input: unknown) =>
+          trusted(event, "Dictation microphone lease release").pipe(
+            Effect.andThen(
+              validate("parse-microphone-lease-release", () => SessionId.parse(input)),
+            ),
+            Effect.flatMap((sessionId) => dictation.releaseMicrophone(event.sender.id, sessionId)),
+          ),
       );
-      yield* ipc.handle("codex:dictation:microphone-access:open-settings", (event) =>
+      yield* ipc.handlePlainCommand("codex:dictation:microphone-access:open-settings", (event) =>
         authorized(
           event,
           "Microphone privacy settings",
@@ -274,23 +280,31 @@ export const live = (
           }),
         ),
       );
-      yield* ipc.handle("codex:dictation:microphone-route-hint:read", (event) =>
+      yield* ipc.handleQuery("codex:dictation:microphone-route-hint:read", (event) =>
         authorized(event, "Dictation microphone route", dictation.readMicrophoneRouteHint),
       );
-      yield* ipc.handle("codex:dictation:global-permissions:read", (event) =>
+      yield* ipc.handleQuery("codex:dictation:global-permissions:read", (event) =>
         authorized(event, "Global dictation permissions", dictation.readGlobalPermissions),
       );
-      yield* ipc.handle("codex:dictation:global-permissions:request-input-monitoring", (event) =>
-        authorized(
-          event,
-          "Global dictation Input Monitoring request",
-          dictation.requestInputMonitoring,
-        ),
+      yield* ipc.handlePlainCommand(
+        "codex:dictation:global-permissions:request-input-monitoring",
+        (event) =>
+          authorized(
+            event,
+            "Global dictation Input Monitoring request",
+            dictation.requestInputMonitoring,
+          ),
       );
-      yield* ipc.handle("codex:dictation:global-permissions:request-accessibility", (event) =>
-        authorized(event, "Global dictation Accessibility request", dictation.requestAccessibility),
+      yield* ipc.handlePlainCommand(
+        "codex:dictation:global-permissions:request-accessibility",
+        (event) =>
+          authorized(
+            event,
+            "Global dictation Accessibility request",
+            dictation.requestAccessibility,
+          ),
       );
-      yield* ipc.handle(
+      yield* ipc.handlePlainCommand(
         "codex:dictation:global-permissions:open-input-monitoring-settings",
         (event) =>
           authorized(
@@ -306,24 +320,26 @@ export const live = (
             }),
           ),
       );
-      yield* ipc.handle("codex:dictation:global-permissions:open-accessibility-settings", (event) =>
-        authorized(
-          event,
-          "Accessibility settings",
-          Effect.tryPromise({
-            try: () =>
-              desktop.shell.openExternal(
-                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-              ),
-            catch: (cause) =>
-              new DictationIpcError({ operation: "open-accessibility-settings", cause }),
-          }),
-        ),
+      yield* ipc.handlePlainCommand(
+        "codex:dictation:global-permissions:open-accessibility-settings",
+        (event) =>
+          authorized(
+            event,
+            "Accessibility settings",
+            Effect.tryPromise({
+              try: () =>
+                desktop.shell.openExternal(
+                  "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                ),
+              catch: (cause) =>
+                new DictationIpcError({ operation: "open-accessibility-settings", cause }),
+            }),
+          ),
       );
-      yield* ipc.handle("codex:dictation:settings:read", (event) =>
+      yield* ipc.handleQuery("codex:dictation:settings:read", (event) =>
         authorized(event, "Dictation settings", dictation.readSettings),
       );
-      yield* ipc.handle("codex:dictation:settings:update", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("codex:dictation:settings:update", (event, input: unknown) =>
         trusted(event, "Dictation settings update").pipe(
           Effect.andThen(
             validate("parse-dictation-settings", () => parseDictationSettingsPatch(input)),
@@ -331,22 +347,28 @@ export const live = (
           Effect.flatMap(dictation.updateSettings),
         ),
       );
-      yield* ipc.handle("codex:dictation:settings:consume-global-shortcut-nudge", (event) =>
-        authorized(event, "Global dictation shortcut nudge", dictation.consumeGlobalShortcutNudge),
+      yield* ipc.handlePlainCommand(
+        "codex:dictation:settings:consume-global-shortcut-nudge",
+        (event) =>
+          authorized(
+            event,
+            "Global dictation shortcut nudge",
+            dictation.consumeGlobalShortcutNudge,
+          ),
       );
-      yield* ipc.handle("codex:dictation:history:create", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("codex:dictation:history:create", (event, input: unknown) =>
         trusted(event, "Dictation recording history").pipe(
           Effect.andThen(validate("parse-recording-create", () => RecordingCreate.parse(input))),
           Effect.flatMap(dictation.createRecording),
         ),
       );
-      yield* ipc.handle("codex:dictation:history:append", (event, input: unknown) =>
+      yield* ipc.handleControl("codex:dictation:history:append", (event, input: unknown) =>
         trusted(event, "Dictation recording history").pipe(
           Effect.andThen(validate("parse-recording-append", () => RecordingAppend.parse(input))),
           Effect.flatMap(dictation.appendRecording),
         ),
       );
-      yield* ipc.handle("codex:dictation:history:finalize", (event, input: unknown) =>
+      yield* ipc.handleControl("codex:dictation:history:finalize", (event, input: unknown) =>
         trusted(event, "Dictation recording history").pipe(
           Effect.andThen(
             validate("parse-recording-finalize", () => RecordingFinalize.parse(input)),
@@ -354,18 +376,20 @@ export const live = (
           Effect.flatMap(dictation.finalizeRecording),
         ),
       );
-      yield* ipc.handle("codex:dictation:history:set-transcript", (event, input: unknown) =>
-        trusted(event, "Dictation recording history").pipe(
-          Effect.andThen(
-            validate("parse-recording-transcript", () => RecordingTranscript.parse(input)),
+      yield* ipc.handlePlainCommand(
+        "codex:dictation:history:set-transcript",
+        (event, input: unknown) =>
+          trusted(event, "Dictation recording history").pipe(
+            Effect.andThen(
+              validate("parse-recording-transcript", () => RecordingTranscript.parse(input)),
+            ),
+            Effect.flatMap(dictation.setRecordingTranscript),
           ),
-          Effect.flatMap(dictation.setRecordingTranscript),
-        ),
       );
-      yield* ipc.handle("codex:dictation:history:list", (event) =>
+      yield* ipc.handleQuery("codex:dictation:history:list", (event) =>
         authorized(event, "Dictation recording history", dictation.listRecordings),
       );
-      yield* ipc.handle("codex:dictation:history:read-audio", (event, input: unknown) =>
+      yield* ipc.handleQuery("codex:dictation:history:read-audio", (event, input: unknown) =>
         trusted(event, "Dictation recording history").pipe(
           Effect.andThen(
             validate("parse-recording-id", () => DictationRecordingIdSchema.parse(input)),
@@ -373,7 +397,7 @@ export const live = (
           Effect.flatMap(dictation.readRecordingAudio),
         ),
       );
-      yield* ipc.handle("codex:dictation:history:download", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("codex:dictation:history:download", (event, input: unknown) =>
         trusted(event, "Dictation recording download").pipe(
           Effect.andThen(
             validate("parse-recording-id", () => DictationRecordingIdSchema.parse(input)),
@@ -415,7 +439,7 @@ export const live = (
           }),
         ),
       );
-      yield* ipc.handle("codex:dictation:history:delete", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("codex:dictation:history:delete", (event, input: unknown) =>
         trusted(event, "Dictation recording deletion").pipe(
           Effect.andThen(
             validate("parse-recording-id", () => DictationRecordingIdSchema.parse(input)),
@@ -423,10 +447,10 @@ export const live = (
           Effect.flatMap(dictation.deleteRecording),
         ),
       );
-      yield* ipc.handle("global-dictation-capture-fn-hotkey", (event) =>
+      yield* ipc.handleQuery("global-dictation-capture-fn-hotkey", (event) =>
         authorized(event, "Global dictation shortcut", dictation.captureFnHotkey),
       );
-      yield* ipc.handle("global-dictation:event", (event, input: unknown) =>
+      yield* ipc.handleControl("global-dictation:event", (event, input: unknown) =>
         trusted(event, "Global dictation").pipe(
           Effect.andThen(
             validate("parse-global-dictation-event", () => GlobalRendererEvent.parse(input)),
@@ -436,7 +460,7 @@ export const live = (
           ),
         ),
       );
-      yield* ipc.handle("global-dictation:context-menu", (event) =>
+      yield* ipc.handlePlainCommand("global-dictation:context-menu", (event) =>
         trusted(event, "Global dictation context menu").pipe(
           Effect.andThen(
             validate("authorize-global-dictation-context-menu", () => {
@@ -479,7 +503,7 @@ export const live = (
           ),
         ),
       );
-      yield* ipc.handle("global-dictation:keyboard-layout:update", (event, input: unknown) =>
+      yield* ipc.handleControl("global-dictation:keyboard-layout:update", (event, input: unknown) =>
         trusted(event, "Global dictation keyboard layout").pipe(
           Effect.andThen(
             validate("parse-global-dictation-keyboard-layout", () => {
@@ -490,7 +514,7 @@ export const live = (
           Effect.flatMap(dictation.updateKeyboardLayout),
         ),
       );
-      yield* ipc.handle("codex:dictation:transcribe", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("codex:dictation:transcribe", (event, input: unknown) =>
         trusted(event, "Dictation transcription").pipe(
           Effect.andThen(
             validate("parse-dictation-transcription", () =>
@@ -509,7 +533,7 @@ export const live = (
           ),
         ),
       );
-      yield* ipc.handle("codex:dictation:cleanup", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("codex:dictation:cleanup", (event, input: unknown) =>
         trusted(event, "Dictation transcript cleanup").pipe(
           Effect.andThen(validate("parse-dictation-cleanup", () => TranscriptCleanup.parse(input))),
           Effect.flatMap((request) =>
@@ -524,7 +548,7 @@ export const live = (
           ),
         ),
       );
-      yield* ipc.handle("codex:dictation:transcribe:cancel", (event, input: unknown) =>
+      yield* ipc.handleControl("codex:dictation:transcribe:cancel", (event, input: unknown) =>
         trusted(event, "Dictation transcription cancellation").pipe(
           Effect.andThen(validate("parse-transcription-id", () => SessionId.parse(input))),
           Effect.flatMap((requestId) => {

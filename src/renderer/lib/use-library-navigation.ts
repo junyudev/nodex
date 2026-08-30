@@ -30,6 +30,8 @@ import {
   admitResourceAuthorityQuery,
   resourceAuthorityQueryMeta,
 } from "./resource-authority-query-cache";
+import { libraryCommandFor } from "./core-projection-commands";
+import { beginRendererOwnerTrace, recordRendererOwnerTrace } from "./renderer-causal-trace";
 
 export const libraryModuleQueryKey = queryKeys.library.all();
 
@@ -288,16 +290,27 @@ export const useApplyLibraryOperation = () => {
   const mutation = useMutation({
     mutationFn: async (operation: LibraryApplyOperation) => {
       if (!metadata.data) throw new Error("Library identity is not ready");
-      const result = await applyLibraryModule(libraryContentAccess, {
-        operationId: createUuidV7(),
+      const operationId = createUuidV7();
+      const request = {
+        operationId,
         storeEpoch: metadata.data.storeEpoch,
         operation,
+      } as const;
+      const definition = libraryCommandFor(request);
+      const trace = beginRendererOwnerTrace({
+        semanticKey: definition.key,
+        operationIdentity: operationId,
+        owner: definition.owner,
+        protocol: definition.protocol.kind,
+        scopeKind: "library",
       });
+      recordRendererOwnerTrace(trace, { kind: "local_intent", reason: "local_intent" });
+      const result = await applyLibraryModule(libraryContentAccess, request);
       if (!result.ok) throw new Error(result.error.message);
-      return result.value;
-    },
-    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: libraryModuleQueryKey });
+      recordRendererOwnerTrace(trace, { kind: "result", reason: "terminal_result" });
+      recordRendererOwnerTrace(trace, { kind: "settled", reason: "proof_complete" });
+      return result.value;
     },
   });
   return { metadata, mutation };
@@ -311,13 +324,26 @@ export const useApplyLibraryOperation = () => {
 export const useUndoLibraryPageRelocation = () => {
   const queryClient = useQueryClient();
   return async (token: LibraryPageRelocationUndoToken) => {
-    const result = await applyLibraryModule(libraryContentAccess, {
-      operationId: createUuidV7(),
+    const operationId = createUuidV7();
+    const request = {
+      operationId,
       storeEpoch: token.storeEpoch,
       operation: { kind: "undo_page_relocation", token },
+    } as const;
+    const definition = libraryCommandFor(request);
+    const trace = beginRendererOwnerTrace({
+      semanticKey: definition.key,
+      operationIdentity: operationId,
+      owner: definition.owner,
+      protocol: definition.protocol.kind,
+      scopeKind: "library",
     });
+    recordRendererOwnerTrace(trace, { kind: "local_intent", reason: "local_intent" });
+    const result = await applyLibraryModule(libraryContentAccess, request);
     if (!result.ok) throw new Error(result.error.message);
     await queryClient.invalidateQueries({ queryKey: libraryModuleQueryKey });
+    recordRendererOwnerTrace(trace, { kind: "result", reason: "terminal_result" });
+    recordRendererOwnerTrace(trace, { kind: "settled", reason: "proof_complete" });
     return result.value;
   };
 };

@@ -11,6 +11,7 @@ import {
   invokeCalls,
   openPanelMenu,
   renderWorkbench,
+  rendererCommandPayload,
   startThreadForSessionCalls,
 } from "./workbench-testkit/workbench-shell-harness";
 import type { ProjectAgentDockPendingWorktreeEntry } from "@/lib/project-agent-dock-model";
@@ -147,12 +148,20 @@ describe("workbench session shell / Project Agent Dock", () => {
       ).toHaveLength(1);
       expect(startThreadForSessionCalls).toHaveLength(1);
     });
+    const defaultDraftId = rendererCommandPayload(
+      invokeCalls.find(
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "alpha",
+      ),
+    )?.candidateSessionId;
+    expect(defaultDraftId).toEqual(expect.any(String));
     expect(startThreadForSessionCalls[0]).toMatchObject({
       projectId: "alpha",
-      sessionId: "session:alpha:created",
+      sessionId: defaultDraftId,
       prompt: "Start from Project Agent Dock",
       browserUsePresentationOrigin: {
-        browserConversationId: "session:alpha:created",
+        browserConversationId: defaultDraftId,
         browserViewScopeId: "window-session:test",
       },
     });
@@ -160,9 +169,9 @@ describe("workbench session shell / Project Agent Dock", () => {
       "browser-sidebar-command",
       {
         type: "capture-browser-use-route",
-        browserConversationId: "session:alpha:created",
+        browserConversationId: defaultDraftId,
         browserViewScopeId: "window-session:test",
-        codexSessionId: "session:alpha:created",
+        codexSessionId: defaultDraftId,
         projectId: "alpha",
       },
     ]);

@@ -464,7 +464,9 @@ function createReviewGitWorkerTestClientWithLiveEvents(
 const reviewDiffPanelTestDeps = {
   initialSummaryQuery: true,
   parsePatchFiles: parsePatchFilesForTest,
-  invoke: reviewDiffPanelTestInvoke,
+  readWorkspaceFileMetadata: (input: unknown) =>
+    reviewDiffPanelTestInvoke("read-file-metadata", input) as never,
+  readWorkspaceFileText: (input: unknown) => reviewDiffPanelTestInvoke("read-file", input) as never,
   gitWorkerClient: createReviewGitWorkerTestClient(),
   useTheme: () => ({
     theme: "light" as const,

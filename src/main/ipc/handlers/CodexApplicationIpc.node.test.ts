@@ -19,6 +19,7 @@ import { ComposerExternalSuggestions } from "../../codex-application/ComposerExt
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { CodexPreferences } from "../../codex-application/CodexPreferences";
 import { CodexAttachments } from "../../codex-application/CodexAttachments";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
 import { live } from "./CodexApplicationIpc";
@@ -31,7 +32,7 @@ type Handler = (
 it.effect("registers application channels directly against their owning modules", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.sync(() => {
           handlers.set(channel, handler as Handler);

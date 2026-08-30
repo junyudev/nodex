@@ -5,6 +5,7 @@ import {
 } from "../../../src/main/core-client";
 import * as Effect from "effect/Effect";
 import { compilePageLifecycleRequestV2 } from "../../../src/shared/page-lifecycle-v2-runtime";
+import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import type {
   PageChatActivitySummaryResult,
   PageChatWindow,
@@ -65,8 +66,11 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   async createProject(input: ProjectCreateInput): Promise<Project> {
     this.#bootstrap ??= this.#ensureInitialProject(input.sources?.[0]);
     await this.#bootstrap;
-    const project = await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
-      workspace.createProject(input),
+    const { value: project } = await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.createProject({
+        operationId: createBoundedOperationId("scenario.project.create"),
+        payload: { projectId: createUuidV7(), input },
+      }),
     );
     this.#libraryIdsByProject.set(project.id, project.libraryId);
     return project;
@@ -203,10 +207,16 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     return await runScenarioProjectWorkspace(
       this.#runtime,
       Effect.fn("CoreClientSeedAdapter.createRelatedChat")(function* (workspace) {
-        const session = yield* workspace.createProjectSession({
-          projectId: input.projectId,
-          noThreadFallbackTitle: input.noThreadFallbackTitle,
-          initialPageIds: [...input.initialPageIds],
+        const { value: session } = yield* workspace.createProjectSession({
+          operationId: createBoundedOperationId("scenario.session.create"),
+          payload: {
+            sessionId: createUuidV7(),
+            input: {
+              projectId: input.projectId,
+              noThreadFallbackTitle: input.noThreadFallbackTitle,
+              initialPageIds: [...input.initialPageIds],
+            },
+          },
         });
         if (!input.thread) return { sessionId: session.id, threadId: null };
         const observedAt = Date.now();
@@ -239,7 +249,10 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           recencyAt: observedAt,
         });
         if (input.thread.unread) {
-          yield* workspace.markProjectSessionUnread(session.id, { unread: true });
+          yield* workspace.markProjectSessionUnread({
+            operationId: createBoundedOperationId("scenario.session.mark-unread"),
+            payload: { sessionId: session.id, unread: true },
+          });
         }
         return { sessionId: session.id, threadId: input.thread.threadId };
       }),
@@ -270,20 +283,31 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   async createSidebarSection(input: SidebarSectionCreateInput) {
-    return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
-      workspace.createSidebarSection(input),
+    const { value } = await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.createSidebarSection({
+        operationId: createBoundedOperationId("scenario.sidebar-section.create"),
+        payload: { sectionId: createUuidV7(), input },
+      }),
     );
+    return value;
   }
 
   async createSessionInSidebarSection(input: SidebarSectionSessionCreateInput) {
-    return await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
-      workspace.createSessionInSidebarSection(input),
+    const { value } = await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
+      workspace.createSessionInSidebarSection({
+        operationId: createBoundedOperationId("scenario.sidebar-section.create-session"),
+        payload: { sessionId: createUuidV7(), input },
+      }),
     );
+    return value;
   }
 
   async moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void> {
     await runScenarioProjectWorkspace(this.#runtime, (workspace) =>
-      workspace.moveSidebarSectionItem(input),
+      workspace.moveSidebarSectionItem({
+        operationId: createBoundedOperationId("scenario.sidebar-section.move-item"),
+        payload: input,
+      }),
     );
   }
 

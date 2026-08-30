@@ -2,6 +2,7 @@ import type { PropsWithChildren } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { installWindowApi } from "@/test/browser-globals";
 import type {
   Project,
   ProjectSession,
@@ -135,7 +136,59 @@ function createHarness(
 
 beforeEach(() => {
   invokeMock.mockReset();
+  installWindowApi({
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (!isWorkspaceSessionCommand(channel)) {
+        return await invokeMock(channel, ...args);
+      }
+      const request = args[0] as { payload: Record<string, unknown> };
+      const value = await invokeMock(
+        channel,
+        ...legacyWorkspaceSessionArgs(channel, request.payload),
+      );
+      return {
+        ok: true,
+        value,
+        localCommit: {
+          status: "committed",
+          commit: {
+            store_epoch: "epoch:test",
+            commit_seq: 2,
+            manifest_hash: "f".repeat(64),
+          },
+          delivery: null,
+        },
+      };
+    },
+  });
 });
+
+const WORKSPACE_SESSION_COMMANDS = new Set([
+  "project-sessions:create",
+  "project-sessions:ensure-default-draft",
+  "project-sessions:mark-unread",
+  "project-sessions:reorder",
+  "project-sessions:set-pinned",
+]);
+
+function isWorkspaceSessionCommand(channel: string): boolean {
+  return WORKSPACE_SESSION_COMMANDS.has(channel);
+}
+
+function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unknown>): unknown[] {
+  if (channel === "project-sessions:create") return [payload.input];
+  if (channel === "project-sessions:ensure-default-draft") return [payload.projectId];
+  if (channel === "project-sessions:reorder") {
+    return [payload.projectId, payload.orderedSessionIds];
+  }
+  if (channel === "project-sessions:mark-unread") {
+    return [payload.sessionId, { unread: payload.unread }];
+  }
+  if (channel === "project-sessions:set-pinned") {
+    return [payload.sessionId, { pinned: payload.pinned }];
+  }
+  throw new Error(`Unexpected Workspace Session command: ${channel}`);
+}
 
 describe("useWorkbenchSessionCatalog", () => {
   test("keeps loading distinct from an empty catalog", async () => {

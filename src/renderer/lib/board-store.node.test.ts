@@ -47,6 +47,7 @@ import {
   groupScopeKeyForColumn,
   withPublishedDatabaseViewDefinition,
 } from "./database-view-render-model";
+import { createRendererCausalTrace } from "./renderer-causal-trace";
 
 function createDatabaseViewSnapshot(
   viewId: string,
@@ -2446,6 +2447,9 @@ describe("board store", () => {
       "bottom",
     )(cloneBoard(canonicalBoard));
     await store.refreshBoardAtLeast(2);
+    const renderToken = store.getSnapshot().materializationRenderToken;
+    expect(renderToken).not.toBeNull();
+    store.markRendered(renderToken ?? 0);
     store.applyRemoteCardSummary({ ...canonicalCard, archived: true });
 
     expect(store.getSnapshot().pageIndex.has(pageId)).toBe(false);
@@ -2577,6 +2581,9 @@ describe("board store", () => {
 
     canonicalBoard = buildMovePageTransform(moveInput)(cloneBoard(initialBoard));
     await store.refreshBoardAtLeast(2);
+    const renderToken = store.getSnapshot().materializationRenderToken;
+    expect(renderToken).not.toBeNull();
+    store.markRendered(renderToken ?? 0);
     const canonicalCard = canonicalBoard.columns[1]?.cards[0];
     if (!canonicalCard) throw new Error("Canonical moved Page fixture is missing");
     store.applyRemoteCardSummary({ ...canonicalCard, archived: true });
@@ -2791,6 +2798,12 @@ describe("board store", () => {
 
     expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
     expect(new Set(observedColumns)).toEqual(new Set(["ship"]));
+    const renderToken = store.getSnapshot().materializationRenderToken;
+    expect(renderToken).not.toBeNull();
+    store.markRendered((renderToken ?? 0) + 1);
+    expect(store.getSnapshot().materializationRenderToken).toBe(renderToken);
+    store.markRendered(renderToken ?? 0);
+    expect(store.getSnapshot().materializationRenderToken).toBeNull();
 
     const movedCard = canonicalBoard.columns[1]?.cards[0];
     if (!movedCard) throw new Error("Canonical moved Page fixture is missing");
@@ -2966,7 +2979,9 @@ describe("board store", () => {
     const canonicalCard = canonicalBoard.columns[1]?.cards[0];
     if (!canonicalCard) throw new Error("Canonical moved Page fixture is missing");
     const remote = createDeferred<{ ok: true }>();
+    const causalTrace = createRendererCausalTrace({ enabled: true, capacity: 16, now: () => 1 });
     const registry = createTestRegistry({
+      causalTrace,
       readViewWindow: async () => createBoardSnapshot(cloneBoard(initialBoard)),
       subscribeBoardChanges: () => () => {},
     });
@@ -2975,6 +2990,7 @@ describe("board store", () => {
 
     const mutation = store.runOptimisticMutation({
       kind: "database:position",
+      operationIdentity: "board-move-operation",
       conflictKeys: conflictKeysForMove(moveInput),
       apply: buildMovePageTransform(moveInput),
       runRemote: async () => remote.promise,
@@ -2990,12 +3006,122 @@ describe("board store", () => {
 
     expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
     expect(store.getSnapshot().pendingMutationCount).toBe(0);
+    const renderToken = store.getSnapshot().materializationRenderToken;
+    expect(renderToken).not.toBeNull();
+    store.markRendered(renderToken ?? 0);
+    expect(store.getSnapshot().materializationRenderToken).toBeNull();
     store.applyRemoteCardSummary({
       ...canonicalCard,
       status: "triage",
       order: 0,
     });
     expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("triage");
+    expect(causalTrace.snapshot().events.map(({ kind }) => kind)).toEqual([
+      "local_intent",
+      "submitted",
+      "acknowledged",
+      "materialized",
+      "rendered",
+      "settled",
+    ]);
+    expect(causalTrace.reduce()).toMatchObject({ legal: true });
+  });
+
+  test("fences rendered settlement across superseding A/B intents", async () => {
+    const initialBoard = createBoard();
+    const initialCard = initialBoard.columns[0]?.cards[0];
+    if (!initialCard) throw new Error("Initial Page fixture is missing");
+    const canonicalA = {
+      ...initialCard,
+      title: "A",
+      richTitle: plainTextToPortableRichText("A"),
+      revision: (initialCard.revision ?? 0) + 1,
+    };
+    const canonicalB = {
+      ...canonicalA,
+      title: "B",
+      richTitle: plainTextToPortableRichText("B"),
+      revision: canonicalA.revision + 1,
+    };
+    const remoteA = createDeferred<{ ok: true }>();
+    const remoteB = createDeferred<{ ok: true }>();
+    const registry = createTestRegistry({
+      readViewWindow: async () => createBoardSnapshot(cloneBoard(initialBoard)),
+      subscribeBoardChanges: () => () => {},
+    });
+    const store = registry.getStore("default");
+    await store.fetchBoard();
+
+    const mutationA = store.runOptimisticMutation({
+      kind: "page:update",
+      conflictKeys: conflictKeysForPatch("card-1", { title: "A" }),
+      apply: buildPatchPageTransform("triage", "card-1", { title: "A" }),
+      runRemote: async () => await remoteA.promise,
+      refreshOnSuccess: false,
+    });
+    store.applyRemoteCardSummary(canonicalA);
+    remoteA.resolve({ ok: true });
+    await mutationA;
+    const tokenA = store.getSnapshot().materializationRenderToken;
+    expect(tokenA).not.toBeNull();
+
+    const mutationB = store.runOptimisticMutation({
+      kind: "page:update",
+      conflictKeys: conflictKeysForPatch("card-1", { title: "B" }),
+      apply: buildPatchPageTransform("triage", "card-1", { title: "B" }),
+      runRemote: async () => await remoteB.promise,
+      refreshOnSuccess: false,
+    });
+    expect(store.getSnapshot().pageIndex.get("card-1")?.title).toBe("B");
+    expect(store.getSnapshot().materializationRenderToken).toBeNull();
+    store.markRendered(tokenA ?? 0);
+    expect(store.getSnapshot().pageIndex.get("card-1")?.title).toBe("B");
+
+    store.applyRemoteCardSummary(canonicalB);
+    remoteB.resolve({ ok: true });
+    await mutationB;
+    const tokenB = store.getSnapshot().materializationRenderToken;
+    expect(tokenB).not.toBeNull();
+    expect(tokenB).not.toBe(tokenA);
+    store.markRendered(tokenA ?? 0);
+    expect(store.getSnapshot().materializationRenderToken).toBe(tokenB);
+    store.markRendered(tokenB ?? 0);
+    expect(store.getSnapshot().materializationRenderToken).toBeNull();
+  });
+
+  test("requires a render for an acknowledged no-op and fences it on Store replacement", async () => {
+    let storeEpoch = "epoch-1";
+    let canonicalBoard = createBoard("Epoch one");
+    const registry = createTestRegistry({
+      readViewWindow: async () => ({
+        ...createBoardSnapshot(cloneBoard(canonicalBoard)),
+        storeEpoch,
+      }),
+      readViewGroups: async () => createGroupsSnapshot({ storeEpoch }),
+      subscribeBoardChanges: () => () => {},
+    });
+    const store = registry.getStore("default");
+    await store.fetchBoard();
+
+    await store.runOptimisticMutation({
+      kind: "database:no-op",
+      conflictKeys: ["database:no-op"],
+      apply: (board) => board,
+      runRemote: async () => ({ ok: true }) as const,
+      refreshOnSuccess: false,
+    });
+    const oldRenderToken = store.getSnapshot().materializationRenderToken;
+    expect(oldRenderToken).not.toBeNull();
+
+    storeEpoch = "epoch-2";
+    canonicalBoard = createBoard("Epoch two");
+    await store.refreshBoard();
+
+    expect(store.getSnapshot().materializationRenderToken).toBeNull();
+    expect(store.getSnapshot().pageIndex.get("card-1")?.title).toBe("Epoch two");
+    store.markRendered(oldRenderToken ?? 0);
+    expect(store.getSnapshot().materializationRenderToken).toBeNull();
+    expect(store.getSnapshot().pageIndex.get("card-1")?.title).toBe("Epoch two");
   });
 
   test("failed delete rolls back automatically", async () => {

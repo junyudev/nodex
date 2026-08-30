@@ -1,4 +1,4 @@
-import { invoke } from "@/lib/api";
+import { cancelDictationRequest, transcribeDictationRequest } from "./dictation-command-runtime";
 
 const DEFAULT_DICTATION_CONTENT_TYPE = "audio/webm";
 const BASE64_CHUNK_SIZE = 32_768;
@@ -93,11 +93,11 @@ export async function transcribeDictationBlob(
 
   const requestId = crypto.randomUUID();
   const cancel = (): void => {
-    void invoke("codex:dictation:transcribe:cancel", requestId).catch(() => undefined);
+    void cancelDictationRequest(requestId).catch(() => undefined);
   };
   options?.signal?.addEventListener("abort", cancel, { once: true });
   try {
-    const result = await invoke("codex:dictation:transcribe", { ...input, requestId });
+    const result = await transcribeDictationRequest({ ...input, requestId });
     if (options?.signal?.aborted) {
       throw options.signal.reason ?? new DOMException("Dictation was aborted", "AbortError");
     }

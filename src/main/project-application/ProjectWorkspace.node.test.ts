@@ -13,7 +13,7 @@ import type {
 } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { make } from "./ProjectWorkspace";
+import { make, ProjectWorkspaceError } from "./ProjectWorkspace";
 
 type CoreProject = Extract<
   ProjectWorkspaceReadSnapshot["value"],
@@ -187,6 +187,114 @@ it.effect("maps Core products and treats not-found as an optional domain result"
   }),
 );
 
+it.effect("maps the Project window with its Store epoch and projection revision", () =>
+  Effect.gen(function* () {
+    const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+      if (input.kind !== "project_window") return Effect.die(new Error("Unexpected Core read"));
+      return Effect.succeed({
+        store_epoch: "epoch:catalog",
+        commit_head: 23,
+        value: {
+          kind: "project_window",
+          projects: {
+            items: [project("project:one")],
+            next_cursor: null,
+            authority: { projection_revision: 23 },
+          },
+        },
+      } as unknown as ProjectWorkspaceReadSnapshot);
+    };
+    const { scope, workspace } = yield* open(core(reads));
+
+    const window = yield* workspace.listProjectWindow();
+
+    assert.strictEqual(window.storeEpoch, "epoch:catalog");
+    assert.strictEqual(window.projectionRevision, 23);
+    assert.strictEqual(window.items[0]?.id, "project:one");
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("preserves the caller operation identity and returns the exact Core apply evidence", () =>
+  Effect.gen(function* () {
+    const applied = committed(19);
+    const inputs: ProjectWorkspaceApplyInput[] = [];
+    let readCount = 0;
+    const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+      if (input.kind !== "project") return Effect.die(new Error("Unexpected Core read"));
+      readCount += 1;
+      return Effect.succeed({
+        value: {
+          kind: "project",
+          project: project(input.project_id, {
+            name: readCount === 1 ? "Before" : "After",
+            binding_revision: readCount === 1 ? 4 : 5,
+          }),
+        },
+      } as ProjectWorkspaceReadSnapshot);
+    };
+    const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
+      Effect.sync(() => {
+        inputs.push(input);
+        return applied;
+      });
+    const { scope, workspace } = yield* open(core(reads, apply));
+
+    const result = yield* workspace.updateProject({
+      operationId: "operation:caller",
+      projectId: "project:one",
+      updates: { name: "After", expectedBindingRevision: 4 },
+    });
+
+    assert.strictEqual(inputs[0]?.operationId, "operation:caller");
+    assert.deepEqual(inputs[0]?.intent, {
+      kind: "update_project",
+      project_id: "project:one",
+      expected_binding_revision: 4,
+      name: "After",
+    });
+    assert.strictEqual(result.apply, applied);
+    assert.strictEqual(result.value.name, "After");
+    assert.strictEqual(result.value.bindingRevision, 5);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("fails a missing Project through the typed Core error path without applying", () =>
+  Effect.gen(function* () {
+    let applyCalls = 0;
+    const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+      if (input.kind !== "project") return Effect.die(new Error("Unexpected Core read"));
+      return Effect.fail(notFound(input.project_id));
+    };
+    const apply: CoreModuleClients["workspace"]["apply"] = () => {
+      applyCalls += 1;
+      return Effect.succeed(committed());
+    };
+    const { scope, workspace } = yield* open(core(reads, apply));
+
+    const failure = yield* workspace
+      .updateProject({
+        operationId: "operation:missing",
+        projectId: "project:missing",
+        updates: { name: "Missing", expectedBindingRevision: 1 },
+      })
+      .pipe(Effect.flip);
+
+    assert.instanceOf(failure, ProjectWorkspaceError);
+    const runtimeCause = failure.cause;
+    assert.instanceOf(runtimeCause, CoreRuntimeError);
+    const responseCause = runtimeCause instanceof CoreRuntimeError ? runtimeCause.cause : null;
+    assert.instanceOf(responseCause, CoreModuleResponseError);
+    assert.strictEqual(
+      responseCause instanceof CoreModuleResponseError ? responseCause.coreError.code : null,
+      "not_found",
+    );
+    assert.strictEqual(applyCalls, 0);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 it.effect("moves a Thread as one typed Core intent and returns its commit cursor", () =>
   Effect.gen(function* () {
     const applies: ProjectWorkspaceApplyInput[] = [];
@@ -294,6 +402,7 @@ it.effect("hydrates a Session and its linked Thread into one product aggregate",
 it.effect("serializes updates per Project while allowing independent Projects to proceed", () =>
   Effect.gen(function* () {
     const starts: string[] = [];
+    const operationIds: string[] = [];
     const firstAStarted = yield* Deferred.make<void>();
     const bStarted = yield* Deferred.make<void>();
     const release = yield* Deferred.make<void>();
@@ -310,6 +419,7 @@ it.effect("serializes updates per Project while allowing independent Projects to
       const projectId = input.intent.project_id;
       return Effect.sync(() => {
         starts.push(projectId);
+        operationIds.push(input.operationId);
       }).pipe(
         Effect.andThen(
           projectId === "project:a"
@@ -323,14 +433,26 @@ it.effect("serializes updates per Project while allowing independent Projects to
     const { scope, workspace } = yield* open(core(reads, apply));
 
     const firstA = yield* workspace
-      .updateProject("project:a", { name: "A1" })
+      .updateProject({
+        operationId: "operation:a1",
+        projectId: "project:a",
+        updates: { name: "A1", expectedBindingRevision: 1 },
+      })
       .pipe(Effect.forkChild);
     yield* Deferred.await(firstAStarted);
     const secondA = yield* workspace
-      .updateProject("project:a", { name: "A2" })
+      .updateProject({
+        operationId: "operation:a2",
+        projectId: "project:a",
+        updates: { name: "A2", expectedBindingRevision: 2 },
+      })
       .pipe(Effect.forkChild);
     const firstB = yield* workspace
-      .updateProject("project:b", { name: "B1" })
+      .updateProject({
+        operationId: "operation:b1",
+        projectId: "project:b",
+        updates: { name: "B1", expectedBindingRevision: 1 },
+      })
       .pipe(Effect.forkChild);
     yield* Deferred.await(bStarted);
     assert.deepEqual(starts, ["project:a", "project:b"]);
@@ -340,6 +462,7 @@ it.effect("serializes updates per Project while allowing independent Projects to
     yield* Fiber.join(secondA);
     yield* Fiber.join(firstB);
     assert.deepEqual(starts, ["project:a", "project:b", "project:a"]);
+    assert.deepEqual(operationIds, ["operation:a1", "operation:b1", "operation:a2"]);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -361,7 +484,11 @@ it.effect("interrupts an in-flight serialized update when its owner Scope closes
       );
     const { scope, workspace } = yield* open(core(reads, apply));
     const update = yield* workspace
-      .updateProject("project:a", { name: "A1" })
+      .updateProject({
+        operationId: "operation:a1",
+        projectId: "project:a",
+        updates: { name: "A1", expectedBindingRevision: 1 },
+      })
       .pipe(Effect.forkChild);
     yield* Deferred.await(entered);
 
@@ -508,10 +635,16 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
     };
     const { scope, workspace } = yield* open(core(reads, apply));
 
-    const created = yield* workspace.createProjectSession({
-      projectId: "project:one",
-      noThreadFallbackTitle: "Page chat",
-      initialPageIds: ["page:one"],
+    const { value: created } = yield* workspace.createProjectSession({
+      operationId: "operation:session-create",
+      payload: {
+        sessionId: "session:created",
+        input: {
+          projectId: "project:one",
+          noThreadFallbackTitle: "Page chat",
+          initialPageIds: ["page:one"],
+        },
+      },
     });
     yield* workspace.linkPageToProjectSession(created.id, {
       pageAccessProjectId: "project:one",
@@ -553,6 +686,47 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
         },
       ],
     );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("replays a Session delete through Core operation identity without a stale pre-read", () =>
+  Effect.gen(function* () {
+    let reads = 0;
+    const applies: ProjectWorkspaceApplyInput[] = [];
+    const { scope, workspace } = yield* open(
+      core(
+        () => {
+          reads += 1;
+          return Effect.die(new Error("Session delete must not read before the idempotent apply"));
+        },
+        (input) =>
+          Effect.sync(() => {
+            applies.push(input);
+            return committed();
+          }),
+      ),
+    );
+    const command = {
+      operationId: "operation:session-delete",
+      payload: { sessionId: "session:one" },
+    } as const;
+    const readsBeforeDelete = reads;
+
+    const first = yield* workspace.deleteProjectSession(command);
+    const replay = yield* workspace.deleteProjectSession(command);
+
+    assert.strictEqual(first.value, true);
+    assert.strictEqual(replay.value, true);
+    assert.strictEqual(reads, readsBeforeDelete);
+    assert.deepEqual(
+      applies.map(({ operationId }) => operationId),
+      [command.operationId, command.operationId],
+    );
+    assert.deepEqual(applies[0]?.intent, {
+      kind: "delete_session",
+      session_id: command.payload.sessionId,
+    });
     yield* Scope.close(scope, Exit.void);
   }),
 );

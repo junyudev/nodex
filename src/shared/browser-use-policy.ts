@@ -3,6 +3,7 @@ import { z } from "zod";
 export const BrowserUseApprovalModeSchema = z.enum(["alwaysAsk", "neverAsk"]);
 export const BrowserUsePolicyResourceSchema = z.enum(["origin", "download", "upload", "fullCdp"]);
 export const BrowserUseOriginRuleKindSchema = z.enum(["allowed", "denied"]);
+export const MAX_BROWSER_USE_POLICY_ORIGINS = 1_000;
 
 const BrowserUseOriginSchema = z
   .string()
@@ -29,14 +30,14 @@ export const BrowserUsePolicySnapshotSchema = z.strictObject({
   historyApprovalMode: BrowserUseApprovalModeSchema,
   downloadApprovalMode: BrowserUseApprovalModeSchema,
   uploadApprovalMode: BrowserUseApprovalModeSchema,
-  allowedOrigins: z.array(BrowserUseOriginSchema).max(1_000),
-  deniedOrigins: z.array(BrowserUseOriginSchema).max(1_000),
-  allowedDownloadOrigins: z.array(BrowserUseOriginSchema).max(1_000),
-  deniedDownloadOrigins: z.array(BrowserUseOriginSchema).max(1_000),
-  allowedUploadOrigins: z.array(BrowserUseOriginSchema).max(1_000),
-  deniedUploadOrigins: z.array(BrowserUseOriginSchema).max(1_000),
-  allowedFullCdpOrigins: z.array(BrowserUseOriginSchema).max(1_000),
-  deniedFullCdpOrigins: z.array(BrowserUseOriginSchema).max(1_000),
+  allowedOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
+  deniedOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
+  allowedDownloadOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
+  deniedDownloadOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
+  allowedUploadOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
+  deniedUploadOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
+  allowedFullCdpOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
+  deniedFullCdpOrigins: z.array(BrowserUseOriginSchema).max(MAX_BROWSER_USE_POLICY_ORIGINS),
 });
 
 export const BrowserUsePolicyModesUpdateSchema = z

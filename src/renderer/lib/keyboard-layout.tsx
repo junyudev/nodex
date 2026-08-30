@@ -5,7 +5,7 @@ import {
   SUPPORTED_KEYBOARD_CODES,
   type KeyboardLayoutSnapshot,
 } from "../../shared/command-keybindings";
-import { invoke } from "./api";
+import { publishKeyboardLayout } from "./keyboard-layout-runtime";
 
 interface BrowserKeyboardLayoutMap {
   get(code: string): string | undefined;
@@ -58,7 +58,7 @@ export function KeyboardLayoutProvider({ children }: { readonly children: ReactN
         if (cancelled || generation !== generationRef.current) return;
         setSnapshot(next);
         if (window.api) {
-          await invoke("global-dictation:keyboard-layout:update", next).catch(() => undefined);
+          await publishKeyboardLayout(next).catch(() => undefined);
         }
       } catch {
         // The static physical-code projection remains a complete deterministic fallback.

@@ -105,7 +105,6 @@ import {
 } from "./browser-sidebar-ui-model";
 import type { WorkbenchTabProjection, WorkbenchTabUpdateInput } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
-import { invoke } from "@/lib/api";
 import { useRegisterContentSearchBrowserTarget } from "@/features/content-search/content-search-context";
 import {
   RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE,
@@ -158,6 +157,27 @@ import {
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { BrowserProfileImportDialog } from "./browser-profile-import-dialog";
 import type { BrowserSettingsDestination } from "./browser-settings-pages";
+import {
+  invokeBrowserSidebarCommand,
+  notifyBrowserWebviewHostCreated,
+  readBrowserLocalServerPreferences,
+  readBrowserLocalServerThumbnail,
+  updateBrowserLocalServerPreferences,
+} from "./browser-sidebar-commands";
+import {
+  actOnBrowserCredentialCandidate,
+  captureBrowserAnnotationEvidence,
+  clearBrowserData,
+  clearBrowserDownloadHistory,
+  fillBrowserContactInfo,
+  fillBrowserCredential,
+  generateAndFillBrowserCredential,
+  readBrowserContactInfo,
+  readBrowserCredentials,
+  readBrowserDownloads,
+  readBrowserSiteInfo,
+  runBrowserDownloadAction,
+} from "./browser-profile-runtime";
 
 type BrowserTab = WorkbenchTabProjection & { preview?: true };
 
@@ -307,13 +327,13 @@ export function BrowserSidebarPanel({
 
   const command = useCallback(
     async (input: BrowserSidebarCommand): Promise<BrowserSidebarCommandResult> => {
-      return invoke("browser-sidebar-command", input) as Promise<BrowserSidebarCommandResult>;
+      return invokeBrowserSidebarCommand(input);
     },
     [],
   );
   const updateLocalServerPreferences = useCallback(
     async (update: BrowserLocalServerPreferencesUpdate) => {
-      const preferences = await invoke("browser-local-server-preferences-update", update);
+      const preferences = await updateBrowserLocalServerPreferences(update);
       setLocalServerPreferences(preferences);
     },
     [],
@@ -363,7 +383,7 @@ export function BrowserSidebarPanel({
       return;
     }
     let cancelled = false;
-    void invoke("browser-site-info", browserIdentity)
+    void readBrowserSiteInfo(browserIdentity)
       .then((nextSiteInfo) => {
         if (!cancelled) setSiteInfo(nextSiteInfo);
       })
@@ -406,7 +426,7 @@ export function BrowserSidebarPanel({
   const actOnCredentialCandidate = useCallback(
     async (action: "dismiss" | "save") => {
       if (!credentialCandidate) return;
-      const result = await invoke("browser-credential-candidate-action", {
+      const result = await actOnBrowserCredentialCandidate({
         candidateId: credentialCandidate.candidateId,
         action,
       });
@@ -436,7 +456,7 @@ export function BrowserSidebarPanel({
 
   useEffect(() => {
     if (!browserRuntimeAvailable) return undefined;
-    void invoke("browser-local-server-preferences-get")
+    void readBrowserLocalServerPreferences()
       .then((preferences) => {
         if (preferences) setLocalServerPreferences(preferences);
       })
@@ -448,7 +468,7 @@ export function BrowserSidebarPanel({
 
   useEffect(() => {
     if (!browserRuntimeAvailable) return undefined;
-    void invoke("browser-downloads-list").then((snapshot) => {
+    void readBrowserDownloads().then((snapshot) => {
       if (snapshot && Array.isArray(snapshot.downloads)) {
         setDownloadsSnapshot(snapshot);
       }
@@ -760,7 +780,7 @@ export function BrowserSidebarPanel({
         isVisible: visible,
         shouldPaint: visible,
         onHostCreated: (event: BrowserSidebarWebviewHostCreated) => {
-          void invoke("browser-sidebar-webview-host-created", event);
+          void notifyBrowserWebviewHostCreated(event);
         },
       });
       const nextHostStateKey = `${visible}:${presented}:${themeVariantRef.current}`;
@@ -1013,10 +1033,7 @@ export function BrowserSidebarPanel({
 
   const clearBrowsingData = async (kind: BrowserBrowsingDataKind) => {
     setClearDataStatus(null);
-    const result = (await invoke("browser-browsing-data-clear", kind)) as {
-      ok: boolean;
-      message?: string;
-    };
+    const result = await clearBrowserData(kind);
     if (result.ok) {
       const labels: Record<BrowserBrowsingDataKind, string> = {
         cookies: "Cookies cleared",
@@ -1321,14 +1338,14 @@ export function BrowserSidebarPanel({
             snapshot={downloadsSnapshot}
             onClose={() => setDownloadsOpen(false)}
             onAction={async (downloadId, action) => {
-              const result = await invoke("browser-download-action", {
+              const result = await runBrowserDownloadAction({
                 downloadId,
                 action,
               });
               if (!result.ok) setClearDataStatus(result.message);
             }}
             onClearHistory={async () => {
-              const result = await invoke("browser-download-history-clear");
+              const result = await clearBrowserDownloadHistory();
               if (!result.ok) setClearDataStatus(result.message);
             }}
           />
@@ -1369,7 +1386,7 @@ export function BrowserSidebarPanel({
                   message: "Local server preview has no project",
                 };
               }
-              return await invoke("browser-local-server-thumbnail", {
+              return await readBrowserLocalServerThumbnail({
                 ...browserIdentity,
                 projectId: tab.projectId,
                 url,
@@ -1466,7 +1483,7 @@ export function BrowserSidebarPanel({
                       setClearDataStatus("Choose a design property and value");
                       return;
                     }
-                    void invoke("browser-annotation-capture-evidence", {
+                    void captureBrowserAnnotationEvidence({
                       ...browserIdentity,
                       anchors: annotationAnchors,
                     })
@@ -1662,8 +1679,8 @@ function BrowserCredentialMenu({
   const refresh = useCallback(async () => {
     try {
       const [nextCredentials, nextContacts] = await Promise.all([
-        invoke("browser-credentials-list", identity),
-        invoke("browser-contact-info-list"),
+        readBrowserCredentials(identity),
+        readBrowserContactInfo(),
       ]);
       setCredentials(nextCredentials);
       setContacts(nextContacts);
@@ -1714,7 +1731,7 @@ function BrowserCredentialMenu({
             key={credential.id}
             leftSlot={<KeyRound className="icon-xs" />}
             onSelect={() => {
-              void invoke("browser-credential-fill", {
+              void fillBrowserCredential({
                 ...identity,
                 credentialId: credential.id,
               }).then((result) => {
@@ -1734,10 +1751,7 @@ function BrowserCredentialMenu({
       <NodexDropdownItem
         leftSlot={<KeyRound className="icon-xs" />}
         onSelect={() => {
-          void invoke<"browser-credential-generate-fill">(
-            "browser-credential-generate-fill",
-            identity,
-          ).then((result) => {
+          void generateAndFillBrowserCredential(identity).then((result) => {
             if (!result.ok) setMessage(result.message ?? "Unable to generate password");
           });
         }}
@@ -1750,7 +1764,7 @@ function BrowserCredentialMenu({
           key={contact.id}
           leftSlot={<ContactRound className="icon-xs" />}
           onSelect={() => {
-            void invoke("browser-contact-info-fill", {
+            void fillBrowserContactInfo({
               ...identity,
               contactInfoId: contact.id,
             }).then((result) => {

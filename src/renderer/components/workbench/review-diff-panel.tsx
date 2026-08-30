@@ -227,7 +227,8 @@ import {
 import {
   parsePatchFiles as defaultParsePatchFiles,
   FileDiff as defaultFileDiff,
-  invoke as defaultInvoke,
+  readWorkspaceFileMetadata as defaultReadWorkspaceFileMetadata,
+  readWorkspaceFileText as defaultReadWorkspaceFileText,
   useTheme as defaultUseTheme,
   Virtualizer as ReviewDiffVirtualizer,
 } from "./review-diff-panel-deps";
@@ -258,7 +259,8 @@ interface ReviewDiffPanelProps {
 
 interface ReviewDiffPanelDeps {
   parsePatchFiles: typeof defaultParsePatchFiles;
-  invoke: typeof defaultInvoke;
+  readWorkspaceFileMetadata: typeof defaultReadWorkspaceFileMetadata;
+  readWorkspaceFileText: typeof defaultReadWorkspaceFileText;
   useTheme: typeof defaultUseTheme;
   FileDiff: typeof defaultFileDiff;
   gitWorkerClient?: GitWorkerQueryClient;
@@ -360,7 +362,8 @@ const REVIEW_FILE_TREE_HOST_STYLE = {
 
 const DEFAULT_REVIEW_DIFF_PANEL_DEPS: ReviewDiffPanelDeps = {
   parsePatchFiles: defaultParsePatchFiles,
-  invoke: defaultInvoke,
+  readWorkspaceFileMetadata: defaultReadWorkspaceFileMetadata,
+  readWorkspaceFileText: defaultReadWorkspaceFileText,
   useTheme: defaultUseTheme,
   FileDiff: defaultFileDiff,
 };
@@ -2862,7 +2865,7 @@ export function ReviewDiffPanel({
     }),
     [deps],
   );
-  const { invoke, parsePatchFiles } = resolvedDeps;
+  const { parsePatchFiles, readWorkspaceFileMetadata, readWorkspaceFileText } = resolvedDeps;
   const gitWorkerClient = resolvedDeps.gitWorkerClient ?? getGitWorkerClient();
   const reviewConversation = conversationProjection;
   const reviewContentRootRef = useRef<HTMLDivElement | null>(null);
@@ -3296,8 +3299,8 @@ export function ReviewDiffPanel({
               contentSampleByteLimit: 8_192,
             },
             {
-              readMetadata: (input) => invoke("read-file-metadata", input),
-              readText: (input) => invoke("read-file", input),
+              readMetadata: readWorkspaceFileMetadata,
+              readText: readWorkspaceFileText,
             },
           );
           if (contents === null) {
@@ -3366,7 +3369,8 @@ export function ReviewDiffPanel({
       gitSnapshot?.cwd,
       gitSnapshot?.snapshotGeneration,
       gitWorkerClient,
-      invoke,
+      readWorkspaceFileMetadata,
+      readWorkspaceFileText,
       reviewCwd,
       source,
     ],

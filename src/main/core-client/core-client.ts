@@ -464,7 +464,9 @@ export class CoreClient implements CoreClientPort {
         intent: input.intent,
       },
       this.#moduleHeaders(),
-      { class: "maintenance" },
+      // Coalescence is a short receipt write that must remain admissible while
+      // the long-running snapshot owns the maintenance execution lane.
+      { class: input.intent.kind === "coalesce_backup" ? "background" : "maintenance" },
     );
     if (response.status === "ok") return response.payload;
     throw new CoreModuleResponseError(response.payload);

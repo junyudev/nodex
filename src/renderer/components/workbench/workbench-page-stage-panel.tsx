@@ -49,7 +49,7 @@ import type { WorkbenchProjectionPageStageTabConfig } from "../../../shared/type
 import { PageStage } from "./workbench-page-stage";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import { queryKeys } from "@/lib/query-keys";
-import { invoke } from "@/lib/api";
+import { unlinkPageChat } from "@/lib/page-chat-runtime";
 
 export interface OpenPageTabOptions {
   placement?: WorkbenchSurfaceRelativePlacement;
@@ -201,7 +201,7 @@ export function PageStageSessionTab({
   const relatedChats = relatedChatsQuery.data?.pages.flatMap((window) => window.items) ?? [];
   const removeRelatedChat = useCallback(
     async (relatedSessionId: string): Promise<void> => {
-      await invoke("page-chats:unlink", relatedSessionId, {
+      await unlinkPageChat(relatedSessionId, {
         pageAccessProjectId: tab.config.projectId,
         pageId: tab.config.pageId,
       });

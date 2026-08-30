@@ -6,16 +6,30 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type {
   Project,
-  ProjectLifecycleInput,
-  ProjectLifecycleMutationResult,
   ProjectSessionSummary,
   ProjectSessionSummaryWindow,
 } from "../../shared/types";
+import type {
+  ProjectLifecycleCommandInput,
+  ProjectLifecycleCommandRejected,
+  ProjectLifecycleCommittedValue,
+} from "../../shared/workspace-catalog-commands";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { ProjectArchiveBlockers } from "./ProjectArchiveBlockers";
-import { ProjectWorkspace, type ProjectWorkspaceError } from "./ProjectWorkspace";
+import {
+  ProjectWorkspace,
+  type ProjectWorkspaceCommandResult,
+  type ProjectWorkspaceError,
+} from "./ProjectWorkspace";
+
+export type ProjectLifecycleCommandExecution =
+  | {
+      readonly kind: "committed";
+      readonly result: ProjectWorkspaceCommandResult<ProjectLifecycleCommittedValue>;
+    }
+  | { readonly kind: "rejected"; readonly result: ProjectLifecycleCommandRejected };
 
 export class ProjectLifecycleCommandsError extends Schema.TaggedError<ProjectLifecycleCommandsError>()(
   "ProjectLifecycleCommandsError",
@@ -29,9 +43,8 @@ export class ProjectLifecycleCommands extends Context.Service<
   ProjectLifecycleCommands,
   {
     readonly setLifecycle: (
-      projectId: string,
-      lifecycle: ProjectLifecycleInput["lifecycle"],
-    ) => Effect.Effect<ProjectLifecycleMutationResult, ProjectLifecycleCommandsError>;
+      command: ProjectLifecycleCommandInput,
+    ) => Effect.Effect<ProjectLifecycleCommandExecution, ProjectLifecycleCommandsError>;
   }
 >()("nodex/main/project-application/ProjectLifecycleCommands") {}
 
@@ -141,78 +154,86 @@ export const live: Layer.Layer<
     });
 
     const archive = Effect.fn("ProjectLifecycleCommands.archive")(function* (
+      command: ProjectLifecycleCommandInput,
       ownedProject: Project,
     ) {
       const preflightOwnership = yield* readOwnership(ownedProject);
-      if (ownedProject.lifecycle === "archived") {
-        yield* cleanupOwnership(preflightOwnership);
-        return {
-          kind: "updated",
-          project: ownedProject,
-          changed: false,
-        } satisfies ProjectLifecycleMutationResult;
-      }
-      const preflightBlockers = yield* readBlockers(preflightOwnership);
-      if (preflightBlockers.length > 0) {
-        return {
-          kind: "blocked",
-          project: ownedProject,
-          blockers: [...preflightBlockers],
-        } satisfies ProjectLifecycleMutationResult;
+      if (ownedProject.lifecycle !== "archived") {
+        const preflightBlockers = yield* readBlockers(preflightOwnership);
+        if (preflightBlockers.length > 0) {
+          return {
+            kind: "rejected",
+            result: {
+              ok: false,
+              outcome: {
+                kind: "blocked",
+                project: ownedProject,
+                blockers: [...preflightBlockers],
+              },
+            },
+          } satisfies ProjectLifecycleCommandExecution;
+        }
       }
 
       const commitOwnership = yield* readOwnership(ownedProject);
-      const commitBlockers = yield* readBlockers(commitOwnership);
-      if (commitBlockers.length > 0) {
-        return {
-          kind: "blocked",
-          project: ownedProject,
-          blockers: [...commitBlockers],
-        } satisfies ProjectLifecycleMutationResult;
+      if (ownedProject.lifecycle !== "archived") {
+        const commitBlockers = yield* readBlockers(commitOwnership);
+        if (commitBlockers.length > 0) {
+          return {
+            kind: "rejected",
+            result: {
+              ok: false,
+              outcome: {
+                kind: "blocked",
+                project: ownedProject,
+                blockers: [...commitBlockers],
+              },
+            },
+          } satisfies ProjectLifecycleCommandExecution;
+        }
       }
-      const updated = yield* project(
-        "commit",
-        workspace.setProjectLifecycle(ownedProject.id, "archived"),
-      );
-      if (!updated) return { kind: "not-found" } satisfies ProjectLifecycleMutationResult;
+      const committed = yield* project("commit", workspace.setProjectLifecycle(command));
       yield* cleanupOwnership(commitOwnership);
       return {
-        kind: "updated",
-        project: updated,
-        changed: true,
-      } satisfies ProjectLifecycleMutationResult;
+        kind: "committed",
+        result: {
+          ...committed,
+          value: {
+            kind: "updated",
+            project: committed.value,
+            changed: ownedProject.lifecycle !== "archived",
+          },
+        },
+      } satisfies ProjectLifecycleCommandExecution;
     });
 
     const setLifecycle = Effect.fn("ProjectLifecycleCommands.setLifecycle")(function* (
-      projectId: string,
-      lifecycle: ProjectLifecycleInput["lifecycle"],
+      command: ProjectLifecycleCommandInput,
     ) {
+      const { lifecycle, projectId } = command.payload;
       return yield* lifecycleRuntime.runExclusive(
         projectId,
         Effect.gen(function* () {
           const ownedProject = yield* project("read-project", workspace.getProject(projectId));
           if (!ownedProject) {
-            return { kind: "not-found" } satisfies ProjectLifecycleMutationResult;
-          }
-          if (lifecycle === "archived") return yield* archive(ownedProject);
-          if (ownedProject.lifecycle === "active") {
             return {
-              kind: "updated",
-              project: ownedProject,
-              changed: false,
-            } satisfies ProjectLifecycleMutationResult;
+              kind: "rejected",
+              result: { ok: false, outcome: { kind: "not-found" } },
+            } satisfies ProjectLifecycleCommandExecution;
           }
-          const updated = yield* project(
-            "commit",
-            workspace.setProjectLifecycle(ownedProject.id, "active"),
-          );
-          return updated
-            ? ({
+          if (lifecycle === "archived") return yield* archive(command, ownedProject);
+          const committed = yield* project("commit", workspace.setProjectLifecycle(command));
+          return {
+            kind: "committed",
+            result: {
+              ...committed,
+              value: {
                 kind: "updated",
-                project: updated,
-                changed: true,
-              } satisfies ProjectLifecycleMutationResult)
-            : ({ kind: "not-found" } satisfies ProjectLifecycleMutationResult);
+                project: committed.value,
+                changed: ownedProject.lifecycle !== "active",
+              },
+            },
+          } satisfies ProjectLifecycleCommandExecution;
         }),
       );
     });

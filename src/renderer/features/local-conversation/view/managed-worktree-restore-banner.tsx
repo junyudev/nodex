@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { invoke } from "@/lib/api";
+import {
+  readManagedWorktreeAvailability,
+  restoreManagedWorktree,
+} from "@/lib/managed-worktree-runtime";
 import type { ManagedWorktreeAvailability } from "@/lib/types";
 
 export const managedWorktreeAvailabilityQueryKey = (threadId: string) =>
@@ -11,7 +14,7 @@ export const managedWorktreeAvailabilityQueryKey = (threadId: string) =>
 export function useManagedWorktreeAvailability(threadId: string | null, enabled: boolean) {
   return useQuery({
     queryKey: managedWorktreeAvailabilityQueryKey(threadId ?? ""),
-    queryFn: async () => await invoke("worktrees:thread:availability", threadId ?? ""),
+    queryFn: async () => await readManagedWorktreeAvailability(threadId ?? ""),
     enabled: enabled && Boolean(threadId),
     staleTime: 0,
     retry: false,
@@ -105,7 +108,7 @@ export function ManagedWorktreeRestoreBannerContainer({ threadId }: { readonly t
       onRestore={() => {
         if (restoring) return;
         setRestoring(true);
-        void invoke("worktrees:thread:restore", threadId)
+        void restoreManagedWorktree(threadId)
           .then((result) => {
             queryClient.setQueryData(
               managedWorktreeAvailabilityQueryKey(threadId),

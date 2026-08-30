@@ -41,17 +41,40 @@ describe("RemovedProjectsDialog", () => {
             items: projects,
             nextCursor: null,
             hasMore: false,
+            storeEpoch: "epoch:test",
             projectionRevision: 1,
           };
         }
         if (channel === "projects:set-lifecycle") {
-          const project = projects.find((candidate) => candidate.id === args[0]);
-          if (!project) return { kind: "not-found" };
+          const command = args[0] as {
+            payload?: { projectId?: string };
+          };
+          const project = projects.find((candidate) => candidate.id === command.payload?.projectId);
+          const value = project
+            ? {
+                kind: "updated" as const,
+                changed: true,
+                project: { ...project, lifecycle: "active" as const },
+              }
+            : { kind: "not-found" as const };
+          if (!project) {
+            return {
+              ok: true,
+              value,
+              localCommit: {
+                status: "no_op",
+                observed: { store_epoch: "epoch:test", commit_head: 1 },
+              },
+            };
+          }
           projects = [];
           return {
-            kind: "updated",
-            changed: true,
-            project: { ...project, lifecycle: "active" },
+            ok: true,
+            value,
+            localCommit: {
+              status: "no_op",
+              observed: { store_epoch: "epoch:test", commit_head: 1 },
+            },
           };
         }
         throw new Error(`Unexpected channel: ${channel}`);

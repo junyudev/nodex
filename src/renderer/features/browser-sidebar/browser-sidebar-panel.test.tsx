@@ -52,6 +52,11 @@ beforeEach(() => {
   Object.defineProperty(window, "api", {
     configurable: true,
     value: {
+      invoke: async (channel: string, ...args: unknown[]) => {
+        invokeCalls.push([channel, ...args]);
+        if (channel === "browser-downloads-list") return { downloads: [] };
+        return { ok: true };
+      },
       on: (channel: string, listener: (payload: unknown) => void) => {
         const listeners = apiListeners.get(channel) ?? new Set();
         listeners.add(listener);

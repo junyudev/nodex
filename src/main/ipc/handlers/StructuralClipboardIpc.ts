@@ -3,7 +3,6 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 
-import type { IpcApi } from "../../../shared/ipc-api";
 import { MainConfig } from "../../app/MainConfig";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { StructuralClipboardRuntime } from "../../host-runtime/StructuralClipboardRuntime";
@@ -15,17 +14,6 @@ export class StructuralClipboardIpcError extends Schema.TaggedError<StructuralCl
   "StructuralClipboardIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type StructuralChannel =
-  | "clipboard:structural-begin"
-  | "clipboard:structural-publish"
-  | "clipboard:structural-settle"
-  | "clipboard:structural-await";
-
-type Handler<Channel extends StructuralChannel> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 /** Trusted IPC adapter for the Main-owned structural clipboard lifecycle. */
 export const live: Layer.Layer<
@@ -39,10 +27,7 @@ export const live: Layer.Layer<
     const rendererClients = yield* RendererClientRuntime;
     const structuralClipboard = yield* StructuralClipboardRuntime;
     const windows = yield* WindowRuntime;
-    const handle = <Channel extends StructuralChannel>(
-      channel: Channel,
-      handler: Handler<Channel>,
-    ) => ipc.handle(channel, handler);
+    const { handleControl } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -72,22 +57,22 @@ export const live: Layer.Layer<
         }),
       );
 
-    yield* handle("clipboard:structural-begin", (event, input) =>
+    yield* handleControl("clipboard:structural-begin", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => structuralClipboard.begin(input, clientId)),
       ),
     );
-    yield* handle("clipboard:structural-publish", (event, input) =>
+    yield* handleControl("clipboard:structural-publish", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => structuralClipboard.publish(input, clientId)),
       ),
     );
-    yield* handle("clipboard:structural-settle", (event, input) =>
+    yield* handleControl("clipboard:structural-settle", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => structuralClipboard.settle(input, clientId)),
       ),
     );
-    yield* handle("clipboard:structural-await", (event, input) =>
+    yield* handleControl("clipboard:structural-await", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap(() =>
           interruptWhenRendererIsDestroyed(event, structuralClipboard.awaitResolution(input)),

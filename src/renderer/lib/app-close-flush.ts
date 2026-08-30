@@ -1,4 +1,4 @@
-import { invoke, readAppCloseBridge } from "./app-close-flush-deps";
+import { notifyAppCloseFlushComplete, readAppCloseBridge } from "./app-close-flush-deps";
 
 export type AppCloseFlushHandler = () => Promise<void> | void;
 
@@ -19,7 +19,7 @@ function ensureCoordinatorRegistered(): void {
   bridge.on("app:flush-before-close", (...args: unknown[]) => {
     const webContentsId = typeof args[0] === "number" ? args[0] : -1;
     void flushHandlers().finally(() => {
-      void invoke("app:flush-before-close:done", webContentsId);
+      void notifyAppCloseFlushComplete(webContentsId);
     });
   });
 }

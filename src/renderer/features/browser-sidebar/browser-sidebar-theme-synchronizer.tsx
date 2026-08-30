@@ -1,13 +1,13 @@
 import { useEffect } from "react";
-import { invoke } from "@/lib/api";
 import { useTheme } from "@/lib/use-theme";
+import { invokeBrowserSidebarCommand } from "./browser-sidebar-commands";
 
 export function BrowserSidebarThemeSynchronizer() {
   const { resolved } = useTheme();
 
   useEffect(() => {
     if (!window.api || window.__NODEX_STORYBOOK__) return;
-    void invoke("browser-sidebar-command", {
+    void invokeBrowserSidebarCommand({
       type: "sync-theme",
       themeVariant: resolved,
     });

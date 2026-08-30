@@ -5,6 +5,7 @@ import type {
   CodexRendererClientRequestMessage,
   DesktopNotificationActionInvocation,
 } from "./types";
+import type { RendererTransport } from "./renderer-transport";
 import {
   COMMAND_KEYBINDINGS_CHANGED_CHANNEL,
   type CommandKeymapState,
@@ -31,11 +32,7 @@ import {
   createElectronLibraryDocumentSyncAdapter,
 } from "./electron-document-sync-adapter";
 import { createElectronCanvasSceneSyncAdapter } from "./electron-canvas-scene-sync-adapter";
-import type {
-  LibraryAccessedDocumentDescriptor,
-  ProjectAccessedDocumentDescriptor,
-} from "../../shared/block-documents/contracts";
-import type { DocumentSyncCommandResult } from "../../shared/block-documents/document-sync";
+import type { ProjectAccessedDocumentDescriptor } from "../../shared/block-documents/contracts";
 import type {
   DocumentMutationRequest,
   DocumentOperationCommandResult,
@@ -51,8 +48,6 @@ import type {
   PublicBlockTransferUndoIntent,
 } from "../../shared/block-transfer-transport";
 import type {
-  CreateDocumentVersionCheckpoint,
-  CreatedDocumentVersionSummary,
   DocumentVersionDetail,
   DocumentVersionSummary,
   GetDocumentVersion,
@@ -167,7 +162,7 @@ export const initializeElectronRendererLocalCommitIngress = (
   });
 };
 
-export function createElectronRendererTransport(bridge: ElectronRendererBridge) {
+export function createElectronRendererTransport(bridge: ElectronRendererBridge): RendererTransport {
   return {
     sendGitWorkerMessage(
       message: import("../../shared/git-worker-protocol").GitWorkerMessageFromView,
@@ -206,16 +201,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge) 
         projectId,
         ownerBlockId,
       ) as Promise<ProjectAccessedDocumentDescriptor>;
-    },
-    prepareOwnedBlockDocument(projectId: string, ownerBlockId: string) {
-      return bridge.invoke("block-document:owned:prepare", projectId, ownerBlockId) as Promise<
-        DocumentSyncCommandResult<ProjectAccessedDocumentDescriptor>
-      >;
-    },
-    prepareLibraryOwnedBlockDocument(ownerBlockId: string) {
-      return bridge.invoke("library-block-document:owned:prepare", ownerBlockId) as Promise<
-        DocumentSyncCommandResult<LibraryAccessedDocumentDescriptor>
-      >;
     },
     createDocumentSyncAdapter(projectId: string) {
       return createElectronDocumentSyncAdapter(bridge, projectId);
@@ -258,18 +243,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge) 
         intent,
       ) as Promise<BlockTransferUndoCommandResult>;
     },
-    createDocumentVersionCheckpoint(
-      projectId: string,
-      documentId: string,
-      request: CreateDocumentVersionCheckpoint,
-    ) {
-      return bridge.invoke(
-        "block-documents:history:checkpoint",
-        projectId,
-        documentId,
-        request,
-      ) as Promise<DocumentHistoryCommandResult<CreatedDocumentVersionSummary>>;
-    },
     listDocumentVersions(request: ListDocumentVersions) {
       return bridge.invoke("block-documents:history:list", request) as Promise<
         DocumentHistoryCommandResult<readonly DocumentVersionSummary[]>
@@ -291,9 +264,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge) 
         documentId,
         request,
       ) as Promise<DocumentOperationCommandResult>;
-    },
-    invoke(channel: string, ...args: unknown[]) {
-      return bridge.invoke(channel, ...args);
     },
     subscribeBoardChanges(projectId: string, callback: (event: BoardChangeEvent) => void) {
       return bridge.on("board-changed", (...args: unknown[]) => {

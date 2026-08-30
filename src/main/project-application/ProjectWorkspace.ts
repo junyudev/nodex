@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -29,35 +27,46 @@ import type {
   PageChatLinkInput,
   PageChatWindow,
   PageChatWindowInput,
-  ProjectCreateInput,
-  ProjectOrderInput,
-  ProjectPinnedInput,
-  ProjectPinnedOrderInput,
   ProjectSession,
-  ProjectSessionCreateInput,
-  ProjectSessionPinnedInput,
-  ProjectSessionPinnedOrderInput,
-  ProjectSessionRenameInput,
   ProjectSessionSummaryWindow,
   ProjectSessionSummaryWindowInput,
   ProjectSessionThreadLink,
   ProjectSessionThreadLinkInput,
-  ProjectSessionUnreadInput,
-  ProjectSessionUpdateInput,
-  ProjectUpdateInput,
+  ProjectUpdateCommandInput,
   ProjectWindow,
   ProjectWindowInput,
 } from "../../shared/types";
 import type {
-  SidebarSectionArchiveInput,
-  SidebarSectionCreateInput,
+  ProjectCreateCommandInput,
+  ProjectLifecycleCommandInput,
+  ProjectPinnedCommandInput,
+  ProjectPinnedOrderCommandInput,
+  ProjectReorderCommandInput,
+  ProjectSessionArchiveCommandInput,
+  ProjectSessionCreateCommandInput,
+  ProjectSessionDeleteCommandInput,
+  ProjectSessionEnsureDefaultDraftCommandInput,
+  ProjectSessionPinnedCommandInput,
+  ProjectSessionPinnedOrderCommandInput,
+  ProjectSessionRenameCommandInput,
+  ProjectSessionReorderCommandInput,
+  ProjectSessionUnreadCommandInput,
+  ProjectSessionUpdateCommandInput,
+  SidebarSectionCreateCommandInput,
+  SidebarSectionDeleteCommandInput,
+  SidebarSectionMoveItemCommandInput,
+  SidebarSectionRenameCommandInput,
+  SidebarSectionReorderCommandInput,
+  SidebarSectionRestoreCommandInput,
+  SidebarSectionSessionCreateCommandInput,
+  SidebarSectionSessionsArchiveCommandInput,
+  SidebarSectionSessionsReorderCommandInput,
+} from "../../shared/workspace-catalog-commands";
+import type {
   SidebarSectionItemPlacement,
   SidebarSectionItemRef,
   SidebarSectionItemWindow,
   SidebarSectionItemWindowInput,
-  SidebarSectionMoveItemInput,
-  SidebarSectionRenameInput,
-  SidebarSectionSessionCreateInput,
   SidebarSectionSummary,
   SidebarSectionWindow,
   SidebarSectionWindowInput,
@@ -130,6 +139,13 @@ export class ProjectWorkspaceError extends Schema.TaggedError<ProjectWorkspaceEr
 
 type ProjectWorkspaceEffect<A> = Effect.Effect<A, ProjectWorkspaceError>;
 
+export interface ProjectWorkspaceCommandResult<Value> {
+  readonly value: Value;
+  readonly apply: ProjectWorkspaceApplyResult;
+}
+
+export type ProjectWorkspaceUpdateResult = ProjectWorkspaceCommandResult<Project>;
+
 export interface ProjectWorkspaceService {
   readonly readProjectBootstrap: ProjectWorkspaceEffect<DesktopProjectBootstrap>;
   /** Available (non-archived) Projects form one fixed 200-item domain collection. */
@@ -167,21 +183,24 @@ export interface ProjectWorkspaceService {
   readonly createInitialProject: (
     input: DesktopInitialProjectCreateInput,
   ) => ProjectWorkspaceEffect<DesktopInitialProjectCreateResult>;
-  readonly createProject: (input: ProjectCreateInput) => ProjectWorkspaceEffect<Project>;
+  readonly createProject: (
+    command: ProjectCreateCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<Project>>;
   readonly updateProject: (
-    projectId: string,
-    input: ProjectUpdateInput,
-  ) => ProjectWorkspaceEffect<Project | null>;
-  readonly reorderProjects: (input: ProjectOrderInput) => ProjectWorkspaceEffect<void>;
+    input: ProjectUpdateCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceUpdateResult>;
+  readonly reorderProjects: (
+    command: ProjectReorderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly setProjectPinned: (
-    projectId: string,
-    input: ProjectPinnedInput,
-  ) => ProjectWorkspaceEffect<Project | null>;
-  readonly setPinnedProjectOrder: (input: ProjectPinnedOrderInput) => ProjectWorkspaceEffect<void>;
+    command: ProjectPinnedCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<Project>>;
+  readonly setPinnedProjectOrder: (
+    command: ProjectPinnedOrderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly setProjectLifecycle: (
-    projectId: string,
-    lifecycle: Project["lifecycle"],
-  ) => ProjectWorkspaceEffect<Project | null>;
+    command: ProjectLifecycleCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<Project>>;
   readonly listSidebarSections: (
     input?: SidebarSectionWindowInput,
   ) => ProjectWorkspaceEffect<SidebarSectionWindow>;
@@ -193,37 +212,32 @@ export interface ProjectWorkspaceService {
     item: SidebarSectionItemRef,
   ) => ProjectWorkspaceEffect<string | null>;
   readonly createSidebarSection: (
-    input: SidebarSectionCreateInput,
-  ) => ProjectWorkspaceEffect<SidebarSectionSummary>;
+    command: SidebarSectionCreateCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<SidebarSectionSummary>>;
   readonly renameSidebarSection: (
-    sectionId: string,
-    input: SidebarSectionRenameInput,
-  ) => ProjectWorkspaceEffect<SidebarSectionSummary>;
+    command: SidebarSectionRenameCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<SidebarSectionSummary>>;
   readonly deleteSidebarSection: (
-    sectionId: string,
-    expectedRevision: number,
-  ) => ProjectWorkspaceEffect<void>;
+    command: SidebarSectionDeleteCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly restoreSidebarSection: (
-    sectionId: string,
-    expectedRevision: number,
-  ) => ProjectWorkspaceEffect<SidebarSectionSummary>;
+    command: SidebarSectionRestoreCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<SidebarSectionSummary>>;
   readonly moveSidebarSectionItem: (
-    input: SidebarSectionMoveItemInput,
-  ) => ProjectWorkspaceEffect<void>;
+    command: SidebarSectionMoveItemCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly reorderSidebarSections: (
-    orderedSectionIds: readonly string[],
-  ) => ProjectWorkspaceEffect<void>;
+    command: SidebarSectionReorderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly reorderSidebarSectionSessions: (
-    sectionId: string,
-    orderedSessionIds: readonly string[],
-  ) => ProjectWorkspaceEffect<void>;
+    command: SidebarSectionSessionsReorderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly archiveSidebarSectionSessions: (
-    sectionId: string,
-    input?: SidebarSectionArchiveInput,
-  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+    command: SidebarSectionSessionsArchiveCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession | null>>;
   readonly createSessionInSidebarSection: (
-    input: SidebarSectionSessionCreateInput,
-  ) => ProjectWorkspaceEffect<ProjectSession>;
+    command: SidebarSectionSessionCreateCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly listProjectSessionSummaryWindow: (
     projectId: string | null,
     input?: ProjectSessionSummaryWindowInput,
@@ -234,42 +248,38 @@ export interface ProjectWorkspaceService {
   ) => ProjectWorkspaceEffect<ProjectSessionSummaryWindow>;
   readonly getProjectSession: (sessionId: string) => ProjectWorkspaceEffect<ProjectSession | null>;
   readonly updateProjectSession: (
-    sessionId: string,
-    input: ProjectSessionUpdateInput,
-  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+    command: ProjectSessionUpdateCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly renameProjectSession: (
-    sessionId: string,
-    input: ProjectSessionRenameInput,
-  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+    command: ProjectSessionRenameCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly ensureDefaultDraftProjectSession: (
-    projectId: string | null,
-  ) => ProjectWorkspaceEffect<ProjectSession>;
+    command: ProjectSessionEnsureDefaultDraftCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly createProjectSession: (
-    input: ProjectSessionCreateInput,
-  ) => ProjectWorkspaceEffect<ProjectSession>;
-  readonly deleteProjectSession: (sessionId: string) => ProjectWorkspaceEffect<boolean>;
+    command: ProjectSessionCreateCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
+  readonly deleteProjectSession: (
+    command: ProjectSessionDeleteCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<boolean>>;
   readonly reorderProjectSessions: (
-    projectId: string | null,
-    orderedSessionIds: readonly string[],
-  ) => ProjectWorkspaceEffect<void>;
+    command: ProjectSessionReorderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly setProjectSessionPinned: (
-    sessionId: string,
-    input: ProjectSessionPinnedInput,
-  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+    command: ProjectSessionPinnedCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly setPinnedProjectSessionOrder: (
-    projectId: string,
-    input: ProjectSessionPinnedOrderInput,
-  ) => ProjectWorkspaceEffect<void>;
+    command: ProjectSessionPinnedOrderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly archiveProjectSession: (
-    sessionId: string,
-  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+    command: ProjectSessionArchiveCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly unarchiveProjectSession: (
-    sessionId: string,
-  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+    command: ProjectSessionArchiveCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly markProjectSessionUnread: (
-    sessionId: string,
-    input: ProjectSessionUnreadInput,
-  ) => ProjectWorkspaceEffect<ProjectSession | null>;
+    command: ProjectSessionUnreadCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<ProjectSession>>;
   readonly upsertProjectSessionThreadLink: (
     input: ProjectSessionThreadLinkInput,
   ) => ProjectWorkspaceEffect<ProjectSessionThreadLink>;
@@ -509,20 +519,25 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       return projectWorkspaceSessionThreadFromCore(thread, summary.id, summary.project_id ?? null);
     });
 
-    const readSession = Effect.fn("ProjectWorkspace.readSession")(function* (sessionId: string) {
+    const requireSession = Effect.fn("ProjectWorkspace.requireSession")(function* (
+      sessionId: string,
+    ) {
       const snapshot = yield* read("session.read", {
         kind: "session",
         session_id: sessionId,
-      }).pipe(
-        Effect.catch((error) => (isNotFound(error) ? Effect.succeed(null) : Effect.fail(error))),
-      );
-      if (snapshot === null) return null;
+      });
       const summary = yield* evaluate(
         "session.read",
         () => expectVariant(snapshot, "session").session,
       );
       const thread = yield* readSessionThread(summary);
       return projectWorkspaceSessionFromCore(summary, thread);
+    });
+
+    const readSession = Effect.fn("ProjectWorkspace.readSession")(function* (sessionId: string) {
+      return yield* requireSession(sessionId).pipe(
+        Effect.catch((error) => (isNotFound(error) ? Effect.succeed(null) : Effect.fail(error))),
+      );
     });
 
     const listProjectSessionSummaryWindow = Effect.fn(
@@ -646,10 +661,10 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     });
 
     const createSidebarSection = Effect.fn("ProjectWorkspace.createSidebarSection")(function* (
-      input: SidebarSectionCreateInput,
+      command: SidebarSectionCreateCommandInput,
     ) {
-      const sectionId = randomUUID();
-      yield* apply("sidebar-section.create", {
+      const { input, sectionId } = command.payload;
+      const applied = yield* applyWithId("sidebar-section.create", command.operationId, {
         kind: "create_sidebar_section",
         section_id: sectionId,
         name: input.name,
@@ -658,7 +673,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           : null,
       });
       const section = yield* readSidebarSection(sectionId);
-      if (section) return section;
+      if (section) return { value: section, apply: applied };
       return yield* projectWorkspaceError(
         "sidebar-section.create",
         new Error(`Created Sidebar Section not found: ${sectionId}`),
@@ -666,17 +681,17 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     });
 
     const renameSidebarSection = Effect.fn("ProjectWorkspace.renameSidebarSection")(function* (
-      sectionId: string,
-      input: SidebarSectionRenameInput,
+      command: SidebarSectionRenameCommandInput,
     ) {
-      yield* apply("sidebar-section.rename", {
+      const { input, sectionId } = command.payload;
+      const applied = yield* applyWithId("sidebar-section.rename", command.operationId, {
         kind: "rename_sidebar_section",
         section_id: sectionId,
         name: input.name,
         expected_revision: input.expectedRevision,
       });
       const section = yield* readSidebarSection(sectionId);
-      if (section) return section;
+      if (section) return { value: section, apply: applied };
       return yield* projectWorkspaceError(
         "sidebar-section.rename",
         new Error(`Renamed Sidebar Section not found: ${sectionId}`),
@@ -684,27 +699,28 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     });
 
     const deleteSidebarSection = Effect.fn("ProjectWorkspace.deleteSidebarSection")(function* (
-      sectionId: string,
-      expectedRevision: number,
+      command: SidebarSectionDeleteCommandInput,
     ) {
-      yield* apply("sidebar-section.delete", {
+      const { expectedRevision, sectionId } = command.payload;
+      const applied = yield* applyWithId("sidebar-section.delete", command.operationId, {
         kind: "delete_sidebar_section",
         section_id: sectionId,
         expected_revision: expectedRevision,
       });
+      return { value: undefined, apply: applied };
     });
 
     const restoreSidebarSection = Effect.fn("ProjectWorkspace.restoreSidebarSection")(function* (
-      sectionId: string,
-      expectedRevision: number,
+      command: SidebarSectionRestoreCommandInput,
     ) {
-      yield* apply("sidebar-section.restore", {
+      const { expectedRevision, sectionId } = command.payload;
+      const applied = yield* applyWithId("sidebar-section.restore", command.operationId, {
         kind: "restore_sidebar_section",
         section_id: sectionId,
         expected_revision: expectedRevision,
       });
       const section = yield* readSidebarSection(sectionId);
-      if (section) return section;
+      if (section) return { value: section, apply: applied };
       return yield* projectWorkspaceError(
         "sidebar-section.restore",
         new Error(`Restored Sidebar Section not found: ${sectionId}`),
@@ -712,47 +728,52 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
     });
 
     const moveSidebarSectionItem = Effect.fn("ProjectWorkspace.moveSidebarSectionItem")(function* (
-      input: SidebarSectionMoveItemInput,
+      command: SidebarSectionMoveItemCommandInput,
     ) {
-      yield* apply("sidebar-section.item.move", {
+      const input = command.payload;
+      const applied = yield* applyWithId("sidebar-section.item.move", command.operationId, {
         kind: "move_sidebar_section_item",
         item: projectWorkspaceSidebarSectionItemRefToCore(input.item),
         section_id: input.sectionId,
         placement: sidebarSectionItemPlacementToCore(input.placement),
       });
+      return { value: undefined, apply: applied };
     });
 
     const reorderSidebarSections = Effect.fn("ProjectWorkspace.reorderSidebarSections")(function* (
-      orderedSectionIds: readonly string[],
+      command: SidebarSectionReorderCommandInput,
     ) {
-      yield* apply("sidebar-section.reorder", {
+      const applied = yield* applyWithId("sidebar-section.reorder", command.operationId, {
         kind: "reorder_sidebar_sections",
-        section_ids: [...orderedSectionIds],
+        section_ids: [...command.payload.sectionIds],
       });
+      return { value: undefined, apply: applied };
     });
 
     const reorderSidebarSectionSessions = Effect.fn(
       "ProjectWorkspace.reorderSidebarSectionSessions",
-    )(function* (sectionId: string, orderedSessionIds: readonly string[]) {
-      yield* apply("sidebar-section.sessions.reorder", {
+    )(function* (command: SidebarSectionSessionsReorderCommandInput) {
+      const { orderedSessionIds, sectionId } = command.payload;
+      const applied = yield* applyWithId("sidebar-section.sessions.reorder", command.operationId, {
         kind: "reorder_sidebar_section_sessions",
         section_id: sectionId,
         session_ids: [...orderedSessionIds],
       });
+      return { value: undefined, apply: applied };
     });
 
     const archiveSidebarSectionSessions = Effect.fn(
       "ProjectWorkspace.archiveSidebarSectionSessions",
-    )(function* (sectionId: string, input: SidebarSectionArchiveInput = {}) {
-      const replacementSessionId = input.createReplacement ? randomUUID() : null;
-      yield* apply("sidebar-section.sessions.archive", {
+    )(function* (command: SidebarSectionSessionsArchiveCommandInput) {
+      const { replacementSessionId, sectionId } = command.payload;
+      const applied = yield* applyWithId("sidebar-section.sessions.archive", command.operationId, {
         kind: "archive_sidebar_section_sessions",
         section_id: sectionId,
         replacement_session_id: replacementSessionId,
       });
-      if (!replacementSessionId) return null;
-      const replacement = yield* readSession(replacementSessionId);
-      if (replacement) return replacement;
+      if (!replacementSessionId) return { value: null, apply: applied };
+      const replacement = yield* requireSession(replacementSessionId);
+      if (replacement) return { value: replacement, apply: applied };
       return yield* projectWorkspaceError(
         "sidebar-section.sessions.archive",
         new Error(`Replacement Sidebar Section Session not found: ${replacementSessionId}`),
@@ -761,17 +782,17 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
 
     const createSessionInSidebarSection = Effect.fn(
       "ProjectWorkspace.createSessionInSidebarSection",
-    )(function* (input: SidebarSectionSessionCreateInput) {
-      const sessionId = randomUUID();
-      yield* apply("sidebar-section.session.create", {
+    )(function* (command: SidebarSectionSessionCreateCommandInput) {
+      const { input, sessionId } = command.payload;
+      const applied = yield* applyWithId("sidebar-section.session.create", command.operationId, {
         kind: "create_session_in_sidebar_section",
         session_id: sessionId,
         section_id: input.sectionId,
         title: input.title?.trim() || "New chat",
         initial_page_ids: [...(input.initialPageIds ?? [])],
       });
-      const session = yield* readSession(sessionId);
-      if (session) return session;
+      const session = yield* requireSession(sessionId);
+      if (session) return { value: session, apply: applied };
       return yield* projectWorkspaceError(
         "sidebar-section.session.create",
         new Error(`Created Sidebar Section Session not found: ${sessionId}`),
@@ -792,6 +813,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           items: projects.items.map(projectWorkspaceProjectFromCore),
           nextCursor: projects.next_cursor ?? null,
           hasMore: projects.next_cursor !== null && projects.next_cursor !== undefined,
+          storeEpoch: snapshot.store_epoch,
           projectionRevision: projects.authority.projection_revision,
         } satisfies ProjectWindow;
       });
@@ -1011,18 +1033,237 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       threads: readonly DesktopProjectWorkspaceThread[] = [],
     ): DesktopProjectWorkspaceSidebar => ({ threads });
 
-    const getProject = Effect.fn("ProjectWorkspace.getProject")(function* (projectId: string) {
+    const requireProject = Effect.fn("ProjectWorkspace.requireProject")(function* (
+      projectId: string,
+    ) {
       const snapshot = yield* read("project.read", {
         kind: "project",
         project_id: projectId,
-      }).pipe(
-        Effect.catch((error) => (isNotFound(error) ? Effect.succeed(null) : Effect.fail(error))),
-      );
-      if (snapshot === null) return null;
+      });
       return yield* evaluate("project.read", () =>
         projectWorkspaceProjectFromCore(expectVariant(snapshot, "project").project),
       );
     });
+
+    const getProject = Effect.fn("ProjectWorkspace.getProject")(function* (projectId: string) {
+      return yield* requireProject(projectId).pipe(
+        Effect.catch((error) => (isNotFound(error) ? Effect.succeed(null) : Effect.fail(error))),
+      );
+    });
+
+    const createProject = Effect.fn("ProjectWorkspace.createProject")(function* (
+      command: ProjectCreateCommandInput,
+    ) {
+      const { input, projectId } = command.payload;
+      const applied = yield* applyWithId("project.create", command.operationId, {
+        kind: "create_project",
+        project_id: projectId,
+        name: input.name ?? "",
+        description: input.description ?? "",
+        appearance: input.appearance ?? null,
+        source_roots: input.sources ?? [],
+        ...(input.pageKeyPrefix === undefined ? {} : { page_key_prefix: input.pageKeyPrefix }),
+      });
+      const project = yield* requireProject(projectId);
+      return { value: project, apply: applied };
+    });
+
+    const reorderProjects = Effect.fn("ProjectWorkspace.reorderProjects")(function* (
+      command: ProjectReorderCommandInput,
+    ) {
+      const applied = yield* applyWithId("project.reorder", command.operationId, {
+        kind: "reorder_projects",
+        project_ids: command.payload.orderedProjectIds,
+      });
+      return { value: undefined, apply: applied };
+    });
+
+    const setProjectPinned = Effect.fn("ProjectWorkspace.setProjectPinned")(function* (
+      command: ProjectPinnedCommandInput,
+    ) {
+      const { pinned, projectId } = command.payload;
+      yield* requireProject(projectId);
+      const applied = yield* applyWithId("project.pinned.set", command.operationId, {
+        kind: "set_project_pinned",
+        project_id: projectId,
+        pinned,
+      });
+      const project = yield* requireProject(projectId);
+      return { value: project, apply: applied };
+    });
+
+    const setPinnedProjectOrder = Effect.fn("ProjectWorkspace.setPinnedProjectOrder")(function* (
+      command: ProjectPinnedOrderCommandInput,
+    ) {
+      const applied = yield* applyWithId("project.pinned.reorder", command.operationId, {
+        kind: "reorder_pinned_projects",
+        project_ids: command.payload.orderedProjectIds,
+      });
+      return { value: undefined, apply: applied };
+    });
+
+    const setProjectLifecycle = Effect.fn("ProjectWorkspace.setProjectLifecycle")(function* (
+      command: ProjectLifecycleCommandInput,
+    ) {
+      const { lifecycle, projectId } = command.payload;
+      yield* requireProject(projectId);
+      const applied = yield* applyWithId("project.lifecycle.set", command.operationId, {
+        kind: "set_project_lifecycle",
+        project_id: projectId,
+        lifecycle,
+      });
+      const project = yield* requireProject(projectId);
+      return { value: project, apply: applied };
+    });
+
+    const updateProjectSession = Effect.fn("ProjectWorkspace.updateProjectSession")(function* (
+      command: ProjectSessionUpdateCommandInput,
+    ) {
+      const { input, sessionId } = command.payload;
+      const parsed = yield* evaluate("session.update", () =>
+        ProjectSessionUpdateInputSchema.parse(input),
+      );
+      yield* requireSession(sessionId);
+      if (parsed.noThreadFallbackTitle === undefined) {
+        return yield* projectWorkspaceError(
+          "session.update",
+          new Error("Project Session update requires one changed field"),
+        );
+      }
+      const applied = yield* applyWithId("session.update", command.operationId, {
+        kind: "mutate_session",
+        session_id: sessionId,
+        intent: { kind: "set_fallback_title", title: parsed.noThreadFallbackTitle },
+      });
+      return { value: yield* requireSession(sessionId), apply: applied };
+    });
+
+    const renameProjectSession = Effect.fn("ProjectWorkspace.renameProjectSession")(function* (
+      command: ProjectSessionRenameCommandInput,
+    ) {
+      const { input, sessionId } = command.payload;
+      const parsed = yield* evaluate("session.rename", () =>
+        ProjectSessionRenameInputSchema.parse(input),
+      );
+      yield* requireSession(sessionId);
+      const applied = yield* applyWithId("session.rename", command.operationId, {
+        kind: "mutate_session",
+        session_id: sessionId,
+        intent: { kind: "rename", title: parsed.title },
+      });
+      return { value: yield* requireSession(sessionId), apply: applied };
+    });
+
+    const ensureDefaultDraftProjectSession = Effect.fn(
+      "ProjectWorkspace.ensureDefaultDraftProjectSession",
+    )(function* (command: ProjectSessionEnsureDefaultDraftCommandInput) {
+      const applied = yield* applyWithId("session.default.ensure", command.operationId, {
+        kind: "ensure_default_draft_session",
+        session_id: command.payload.candidateSessionId,
+        project_id: command.payload.projectId,
+        title: "New chat",
+      });
+      const [sessionId, ...unexpectedSessionIds] = applied.outcome.affected_session_ids;
+      if (!sessionId || unexpectedSessionIds.length > 0) {
+        return yield* projectWorkspaceError(
+          "session.default.ensure",
+          new Error("Core default-draft ensure did not return exactly one Project Session"),
+        );
+      }
+      return { value: yield* requireSession(sessionId), apply: applied };
+    });
+
+    const createProjectSession = Effect.fn("ProjectWorkspace.createProjectSession")(function* (
+      command: ProjectSessionCreateCommandInput,
+    ) {
+      const { input, sessionId } = command.payload;
+      const parsed = yield* evaluate("session.create", () =>
+        ProjectSessionCreateInputSchema.parse(input),
+      );
+      const applied = yield* applyWithId("session.create", command.operationId, {
+        kind: "create_session",
+        session_id: sessionId,
+        project_id: parsed.projectId,
+        title: parsed.noThreadFallbackTitle,
+        initial_page_ids: parsed.initialPageIds,
+      });
+      return { value: yield* requireSession(sessionId), apply: applied };
+    });
+
+    const deleteProjectSession = Effect.fn("ProjectWorkspace.deleteProjectSession")(function* (
+      command: ProjectSessionDeleteCommandInput,
+    ) {
+      const applied = yield* applyWithId("session.delete", command.operationId, {
+        kind: "delete_session",
+        session_id: command.payload.sessionId,
+      });
+      return { value: true, apply: applied };
+    });
+
+    const reorderProjectSessions = Effect.fn("ProjectWorkspace.reorderProjectSessions")(function* (
+      command: ProjectSessionReorderCommandInput,
+    ) {
+      const applied = yield* applyWithId("session.reorder", command.operationId, {
+        kind: "reorder_sessions",
+        project_id: command.payload.projectId,
+        session_ids: [...command.payload.orderedSessionIds],
+      });
+      return { value: undefined, apply: applied };
+    });
+
+    const setProjectSessionPinned = Effect.fn("ProjectWorkspace.setProjectSessionPinned")(
+      function* (command: ProjectSessionPinnedCommandInput) {
+        const { pinned, sessionId } = command.payload;
+        yield* requireSession(sessionId);
+        const applied = yield* applyWithId("session.pinned.set", command.operationId, {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "set_pinned", pinned },
+        });
+        return { value: yield* requireSession(sessionId), apply: applied };
+      },
+    );
+
+    const setPinnedProjectSessionOrder = Effect.fn("ProjectWorkspace.setPinnedProjectSessionOrder")(
+      function* (command: ProjectSessionPinnedOrderCommandInput) {
+        const applied = yield* applyWithId("session.pinned.reorder", command.operationId, {
+          kind: "reorder_pinned_sessions",
+          project_id: command.payload.projectId,
+          session_ids: command.payload.orderedSessionIds,
+        });
+        return { value: undefined, apply: applied };
+      },
+    );
+
+    const setProjectSessionArchived = Effect.fn("ProjectWorkspace.setProjectSessionArchived")(
+      function* (command: ProjectSessionArchiveCommandInput, archived: boolean) {
+        const { sessionId } = command.payload;
+        yield* requireSession(sessionId);
+        const applied = yield* applyWithId(
+          archived ? "session.archive" : "session.unarchive",
+          command.operationId,
+          {
+            kind: "mutate_session",
+            session_id: sessionId,
+            intent: { kind: "set_archived", archived },
+          },
+        );
+        return { value: yield* requireSession(sessionId), apply: applied };
+      },
+    );
+
+    const markProjectSessionUnread = Effect.fn("ProjectWorkspace.markProjectSessionUnread")(
+      function* (command: ProjectSessionUnreadCommandInput) {
+        const { sessionId, unread } = command.payload;
+        yield* requireSession(sessionId);
+        const applied = yield* applyWithId("session.unread.set", command.operationId, {
+          kind: "mutate_session",
+          session_id: sessionId,
+          intent: { kind: "set_unread", unread },
+        });
+        return { value: yield* requireSession(sessionId), apply: applied };
+      },
+    );
 
     const service = ProjectWorkspace.of({
       readProjectBootstrap,
@@ -1098,152 +1339,43 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           new Error(`Created initial Project not found: ${input.projectId}`),
         );
       }),
-      createProject: Effect.fn("ProjectWorkspace.createProject")(function* (input) {
-        const projectId = randomUUID();
-        yield* apply("project.create", {
-          kind: "create_project",
-          project_id: projectId,
-          name: input.name ?? "",
-          description: input.description ?? "",
-          appearance: input.appearance ?? null,
-          source_roots: input.sources ?? [],
-          ...(input.pageKeyPrefix === undefined ? {} : { page_key_prefix: input.pageKeyPrefix }),
-        });
-        const project = yield* getProject(projectId);
-        if (project) return project;
-        return yield* projectWorkspaceError(
-          "project.create",
-          new Error(`Created Project not found: ${projectId}`),
+      createProject,
+      updateProject: Effect.fn("ProjectWorkspace.updateProject")(function* (input) {
+        return yield* runSerializedProjectUpdate(
+          input.projectId,
+          Effect.gen(function* () {
+            yield* requireProject(input.projectId);
+            const applied = yield* applyWithId("project.update", input.operationId, {
+              kind: "update_project",
+              project_id: input.projectId,
+              expected_binding_revision: input.updates.expectedBindingRevision,
+              ...(input.updates.name !== undefined ? { name: input.updates.name } : {}),
+              ...(input.updates.description !== undefined
+                ? { description: input.updates.description }
+                : {}),
+              ...(input.updates.appearance !== undefined
+                ? { appearance: input.updates.appearance }
+                : {}),
+              ...(input.updates.sources !== undefined
+                ? { source_roots: input.updates.sources }
+                : {}),
+            });
+            const project = yield* requireProject(input.projectId);
+            return { value: project, apply: applied } satisfies ProjectWorkspaceUpdateResult;
+          }),
         );
       }),
-      updateProject: (projectId, input) =>
-        runSerializedProjectUpdate(
-          projectId,
-          Effect.gen(function* () {
-            const current = yield* getProject(projectId);
-            if (!current) return null;
-            yield* apply("project.update", {
-              kind: "update_project",
-              project_id: projectId,
-              expected_binding_revision: input.expectedBindingRevision ?? current.bindingRevision,
-              ...(input.name !== undefined ? { name: input.name } : {}),
-              ...(input.description !== undefined ? { description: input.description } : {}),
-              ...(input.appearance !== undefined ? { appearance: input.appearance } : {}),
-              ...(input.sources !== undefined ? { source_roots: input.sources } : {}),
-            });
-            return yield* getProject(projectId);
-          }),
-        ),
-      reorderProjects: Effect.fn("ProjectWorkspace.reorderProjects")(function* (input) {
-        yield* apply("project.reorder", {
-          kind: "reorder_projects",
-          project_ids: input.orderedProjectIds,
-        });
-      }),
-      setProjectPinned: Effect.fn("ProjectWorkspace.setProjectPinned")(
-        function* (projectId, input) {
-          if (!(yield* getProject(projectId))) return null;
-          yield* apply("project.pinned.set", {
-            kind: "set_project_pinned",
-            project_id: projectId,
-            pinned: input.pinned,
-          });
-          return yield* getProject(projectId);
-        },
-      ),
-      setPinnedProjectOrder: Effect.fn("ProjectWorkspace.setPinnedProjectOrder")(function* (input) {
-        yield* apply("project.pinned.reorder", {
-          kind: "reorder_pinned_projects",
-          project_ids: input.orderedProjectIds,
-        });
-      }),
-      setProjectLifecycle: Effect.fn("ProjectWorkspace.setProjectLifecycle")(
-        function* (projectId, lifecycle) {
-          const current = yield* getProject(projectId);
-          if (!current) return null;
-          if (current.lifecycle === lifecycle) return current;
-          yield* apply("project.lifecycle.set", {
-            kind: "set_project_lifecycle",
-            project_id: projectId,
-            lifecycle,
-          });
-          return yield* getProject(projectId);
-        },
-      ),
+      reorderProjects,
+      setProjectPinned,
+      setPinnedProjectOrder,
+      setProjectLifecycle,
       listProjectSessionSummaryWindow,
       readSidebarOverview,
       getProjectSession: readSession,
-      updateProjectSession: Effect.fn("ProjectWorkspace.updateProjectSession")(
-        function* (sessionId, input) {
-          const parsed = yield* evaluate("session.update", () =>
-            ProjectSessionUpdateInputSchema.parse(input),
-          );
-          const current = yield* readSession(sessionId);
-          if (!current || parsed.noThreadFallbackTitle === undefined) return current;
-          yield* apply("session.update", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: { kind: "set_fallback_title", title: parsed.noThreadFallbackTitle },
-          });
-          return yield* readSession(sessionId);
-        },
-      ),
-      renameProjectSession: Effect.fn("ProjectWorkspace.renameProjectSession")(
-        function* (sessionId, input) {
-          const parsed = yield* evaluate("session.rename", () =>
-            ProjectSessionRenameInputSchema.parse(input),
-          );
-          if (!(yield* readSession(sessionId))) return null;
-          yield* apply("session.rename", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: { kind: "rename", title: parsed.title },
-          });
-          return yield* readSession(sessionId);
-        },
-      ),
-      ensureDefaultDraftProjectSession: Effect.fn(
-        "ProjectWorkspace.ensureDefaultDraftProjectSession",
-      )(function* (projectId) {
-        const applied = yield* apply("session.default.ensure", {
-          kind: "ensure_default_draft_session",
-          session_id: randomUUID(),
-          project_id: projectId,
-          title: "New chat",
-        });
-        const [sessionId, ...unexpectedSessionIds] = applied.outcome.affected_session_ids;
-        if (!sessionId || unexpectedSessionIds.length > 0) {
-          return yield* projectWorkspaceError(
-            "session.default.ensure",
-            new Error("Core default-draft ensure did not return exactly one Project Session"),
-          );
-        }
-        const session = yield* readSession(sessionId);
-        if (session) return session;
-        return yield* projectWorkspaceError(
-          "session.default.ensure",
-          new Error(`Ensured Project Session not found: ${sessionId}`),
-        );
-      }),
-      createProjectSession: Effect.fn("ProjectWorkspace.createProjectSession")(function* (input) {
-        const parsed = yield* evaluate("session.create", () =>
-          ProjectSessionCreateInputSchema.parse(input),
-        );
-        const sessionId = randomUUID();
-        yield* apply("session.create", {
-          kind: "create_session",
-          session_id: sessionId,
-          project_id: parsed.projectId,
-          title: parsed.noThreadFallbackTitle,
-          initial_page_ids: parsed.initialPageIds,
-        });
-        const session = yield* readSession(sessionId);
-        if (session) return session;
-        return yield* projectWorkspaceError(
-          "session.create",
-          new Error(`Created Project Session not found: ${sessionId}`),
-        );
-      }),
+      updateProjectSession,
+      renameProjectSession,
+      ensureDefaultDraftProjectSession,
+      createProjectSession,
       linkPageToProjectSession: Effect.fn("ProjectWorkspace.linkPageToProjectSession")(
         function* (sessionId, input) {
           const parsed = yield* evaluate("page-chat.link", () => {
@@ -1278,75 +1410,13 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           });
         },
       ),
-      deleteProjectSession: Effect.fn("ProjectWorkspace.deleteProjectSession")(
-        function* (sessionId) {
-          if (!(yield* readSession(sessionId))) return false;
-          yield* apply("session.delete", { kind: "delete_session", session_id: sessionId });
-          return true;
-        },
-      ),
-      reorderProjectSessions: Effect.fn("ProjectWorkspace.reorderProjectSessions")(
-        function* (projectId, orderedSessionIds) {
-          yield* apply("session.reorder", {
-            kind: "reorder_sessions",
-            project_id: projectId,
-            session_ids: [...orderedSessionIds],
-          });
-        },
-      ),
-      setProjectSessionPinned: Effect.fn("ProjectWorkspace.setProjectSessionPinned")(
-        function* (sessionId, input) {
-          if (!(yield* readSession(sessionId))) return null;
-          yield* apply("session.pinned.set", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: { kind: "set_pinned", pinned: input.pinned },
-          });
-          return yield* readSession(sessionId);
-        },
-      ),
-      setPinnedProjectSessionOrder: Effect.fn("ProjectWorkspace.setPinnedProjectSessionOrder")(
-        function* (projectId, input) {
-          yield* apply("session.pinned.reorder", {
-            kind: "reorder_pinned_sessions",
-            project_id: projectId,
-            session_ids: input.orderedSessionIds,
-          });
-        },
-      ),
-      archiveProjectSession: Effect.fn("ProjectWorkspace.archiveProjectSession")(
-        function* (sessionId) {
-          if (!(yield* readSession(sessionId))) return null;
-          yield* apply("session.archive", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: { kind: "set_archived", archived: true },
-          });
-          return yield* readSession(sessionId);
-        },
-      ),
-      unarchiveProjectSession: Effect.fn("ProjectWorkspace.unarchiveProjectSession")(
-        function* (sessionId) {
-          if (!(yield* readSession(sessionId))) return null;
-          yield* apply("session.unarchive", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: { kind: "set_archived", archived: false },
-          });
-          return yield* readSession(sessionId);
-        },
-      ),
-      markProjectSessionUnread: Effect.fn("ProjectWorkspace.markProjectSessionUnread")(
-        function* (sessionId, input) {
-          if (!(yield* readSession(sessionId))) return null;
-          yield* apply("session.unread.set", {
-            kind: "mutate_session",
-            session_id: sessionId,
-            intent: { kind: "set_unread", unread: input.unread },
-          });
-          return yield* readSession(sessionId);
-        },
-      ),
+      deleteProjectSession,
+      reorderProjectSessions,
+      setProjectSessionPinned,
+      setPinnedProjectSessionOrder,
+      archiveProjectSession: (command) => setProjectSessionArchived(command, true),
+      unarchiveProjectSession: (command) => setProjectSessionArchived(command, false),
+      markProjectSessionUnread,
       upsertProjectSessionThreadLink: Effect.fn("ProjectWorkspace.upsertProjectSessionThreadLink")(
         function* (input) {
           const parsed = yield* evaluate("session.thread.link", () =>

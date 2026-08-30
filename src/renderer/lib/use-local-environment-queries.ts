@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "./api";
+import { saveWorktreeEnvironmentConfig } from "./managed-worktree-runtime";
 import {
   localEnvironmentConfigsQueryOptions,
   localEnvironmentOptionsQueryOptions,
   localEnvironmentSnapshotQueryOptions,
 } from "./query-options";
 import { queryKeys } from "./query-keys";
-import type { UpdateWorktreeEnvironmentConfigInput, WorktreeEnvironmentSaveResult } from "./types";
+import type { UpdateWorktreeEnvironmentConfigInput } from "./types";
 
 interface QueryEnabledOptions {
   enabled?: boolean;
@@ -45,7 +45,7 @@ export function useSaveLocalEnvironmentConfigMutation() {
 
   return useMutation({
     mutationFn: (input: UpdateWorktreeEnvironmentConfigInput) =>
-      invoke("worktrees:environments:config:save", input) as Promise<WorktreeEnvironmentSaveResult>,
+      saveWorktreeEnvironmentConfig(input),
     onSuccess: async (result, input) => {
       if (result.type === "conflict") return;
 

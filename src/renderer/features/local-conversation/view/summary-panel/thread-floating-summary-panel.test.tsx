@@ -30,6 +30,7 @@ let invokeCalls: unknown[][] = [];
 let gitWorkerCalls: Array<{ method: string; params: unknown }> = [];
 let mockInvokeImpl: ((channel: string, ...args: unknown[]) => Promise<unknown>) | null = null;
 let summaryPanelPendingDefaultsEnabled = false;
+const originalApiDescriptor = Object.getOwnPropertyDescriptor(window, "api");
 const pendingByDefaultInvokeChannels = new Set([
   "codex:mcp-resource:read",
   "codex:mcp-server-statuses:list",
@@ -39,24 +40,26 @@ const pendingByDefaultInvokeChannels = new Set([
   "gh-pr-status",
 ]);
 
+async function invokeForTest(channel: string, ...args: unknown[]): Promise<unknown> {
+  invokeCalls.push([channel, ...args]);
+  if (mockInvokeImpl) {
+    const result = await mockInvokeImpl(channel, ...args);
+    if (
+      result !== null ||
+      !summaryPanelPendingDefaultsEnabled ||
+      !pendingByDefaultInvokeChannels.has(channel)
+    ) {
+      return result;
+    }
+  }
+  if (summaryPanelPendingDefaultsEnabled && pendingByDefaultInvokeChannels.has(channel)) {
+    return await new Promise(() => undefined);
+  }
+  return null;
+}
+
 vi.mock("../../../../lib/api", () => ({
-  invoke: async (channel: string, ...args: unknown[]) => {
-    invokeCalls.push([channel, ...args]);
-    if (mockInvokeImpl) {
-      const result = await mockInvokeImpl(channel, ...args);
-      if (
-        result !== null ||
-        !summaryPanelPendingDefaultsEnabled ||
-        !pendingByDefaultInvokeChannels.has(channel)
-      ) {
-        return result;
-      }
-    }
-    if (summaryPanelPendingDefaultsEnabled && pendingByDefaultInvokeChannels.has(channel)) {
-      return await new Promise(() => undefined);
-    }
-    return null;
-  },
+  invoke: invokeForTest,
   subscribeBoardChanges: () => () => undefined,
   subscribeProjectSessionChanges: () => () => undefined,
   subscribeProjectChanges: () => () => undefined,
@@ -351,6 +354,10 @@ describe("ThreadFloatingSummaryPanel", () => {
     invokeCalls = [];
     gitWorkerCalls = [];
     mockInvokeImpl = null;
+    Object.defineProperty(window, "api", {
+      configurable: true,
+      value: { invoke: invokeForTest },
+    });
   });
 
   afterEach(async () => {
@@ -365,6 +372,11 @@ describe("ThreadFloatingSummaryPanel", () => {
     invokeCalls = [];
     gitWorkerCalls = [];
     mockInvokeImpl = null;
+    if (originalApiDescriptor) {
+      Object.defineProperty(window, "api", originalApiDescriptor);
+      return;
+    }
+    delete window.api;
   });
 
   test("renders the pinned summary without authenticated quota content", async () => {

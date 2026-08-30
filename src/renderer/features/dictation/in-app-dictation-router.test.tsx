@@ -9,7 +9,9 @@ import {
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
-vi.mock("@/lib/api", () => ({ invoke: mocks.invoke }));
+vi.mock("./dictation-command-runtime", () => ({
+  reportGlobalDictationEvent: (event: unknown) => mocks.invoke("global-dictation:event", event),
+}));
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000001";
 const REQUEST_ID = "00000000-0000-4000-8000-000000000002";

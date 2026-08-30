@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import type { BrowserWindow, IpcMainInvokeEvent } from "electron";
 import { vi } from "vite-plus/test";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ApplicationWindowRuntime } from "../../window-runtime/ApplicationWindowRuntime";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -19,7 +20,7 @@ type Handler = (
 it.effect("owns trusted window ingress and validates new-window requests", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),

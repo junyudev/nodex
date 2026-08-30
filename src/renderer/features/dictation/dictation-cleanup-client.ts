@@ -1,4 +1,4 @@
-import { invoke } from "@/lib/api";
+import { cancelDictationRequest, cleanupDictationRequest } from "./dictation-command-runtime";
 
 interface DictationCleanupRequest {
   readonly transcript: string;
@@ -29,10 +29,8 @@ export async function cleanupDictationTranscript(
   const requestId = crypto.randomUUID();
   const cleanup =
     options?.cleanup ??
-    (async (input: DictationCleanupRequest) => await invoke("codex:dictation:cleanup", input));
-  const cancel =
-    options?.cancel ??
-    (async (id: string) => await invoke("codex:dictation:transcribe:cancel", id));
+    (async (input: DictationCleanupRequest) => await cleanupDictationRequest(input));
+  const cancel = options?.cancel ?? (async (id: string) => await cancelDictationRequest(id));
   const abort = (): void => {
     void cancel(requestId).catch(() => undefined);
   };

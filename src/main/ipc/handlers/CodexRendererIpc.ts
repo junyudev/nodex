@@ -2,7 +2,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
-import type { IpcApi } from "../../../shared/ipc-api";
 import {
   parseCodexUserInputAutoResolutionActivityInput,
   parseCodexUserInputAutoResolutionTarget,
@@ -22,11 +21,6 @@ export class CodexRendererIpcError extends Schema.TaggedError<CodexRendererIpcEr
   "CodexRendererIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 export const live: Layer.Layer<
   never,
@@ -49,8 +43,7 @@ export const live: Layer.Layer<
     const userInputAutoResolution = yield* CodexUserInputAutoResolution;
     const windows = yield* WindowRuntime;
     const rendererClients = yield* RendererClientRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handleControl, handlePlainCommand, handleQuery } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -62,15 +55,15 @@ export const live: Layer.Layer<
         },
         catch: (cause) => new CodexRendererIpcError({ operation: "authorize-renderer", cause }),
       });
-    yield* handle("codex:renderer-client:id", (event) => authorize(event));
-    yield* handle("codex:renderer-client:response", (event, response) =>
+    yield* handleQuery("codex:renderer-client:id", (event) => authorize(event));
+    yield* handleControl("codex:renderer-client:response", (event, response) =>
       authorize(event).pipe(
         Effect.flatMap(() =>
           rendererClients.handleResponse(event.sender as RendererClientWebContents, response),
         ),
       ),
     );
-    yield* handle("codex:thread:view-active:set", (event, input: unknown) =>
+    yield* handleControl("codex:thread:view-active:set", (event, input: unknown) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => {
           if (typeof input !== "object" || input === null) return Effect.succeed(false);
@@ -86,7 +79,7 @@ export const live: Layer.Layer<
         }),
       ),
     );
-    yield* handle("codex:thread:stream-following:set", (event, input: unknown) =>
+    yield* handleControl("codex:thread:stream-following:set", (event, input: unknown) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => {
           if (typeof input !== "object" || input === null) return Effect.succeed(false);
@@ -103,7 +96,7 @@ export const live: Layer.Layer<
         }),
       ),
     );
-    yield* handle("codex:thread:presentation:set", (event, input: unknown) =>
+    yield* handlePlainCommand("codex:thread:presentation:set", (event, input: unknown) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => {
           if (typeof input !== "object" || input === null) return Effect.succeed(false);
@@ -124,38 +117,38 @@ export const live: Layer.Layer<
         }),
       ),
     );
-    yield* handle("codex:thread-owner:stream-state:publish", (event, input) =>
+    yield* handleControl("codex:thread-owner:stream-state:publish", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) =>
           Effect.sync(() => coordinator.publishOwnerStateChange(clientId, input)),
         ),
       ),
     );
-    yield* handle("codex:thread-follower:snapshot-applied", (event, input) =>
+    yield* handleControl("codex:thread-follower:snapshot-applied", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) =>
           coordinator.acknowledgeFollowerSnapshotApplied(clientId, input),
         ),
       ),
     );
-    yield* handle("codex:thread:stream-resync:request", (event, input) =>
+    yield* handleControl("codex:thread:stream-resync:request", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => coordinator.requestStreamResync(clientId, input)),
       ),
     );
-    yield* handle("codex:thread-owner:notification:ack", (event, input) =>
+    yield* handleControl("codex:thread-owner:notification:ack", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => coordinator.acknowledgeOwnerNotification(clientId, input)),
       ),
     );
-    yield* handle("codex:thread-owner:pending-requests:replay", (event, threadId) =>
+    yield* handleControl("codex:thread-owner:pending-requests:replay", (event, threadId) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) =>
           Effect.sync(() => coordinator.replayPendingOwnerRequests(threadId, clientId)),
         ),
       ),
     );
-    yield* handle("codex:thread-follower:action", (event, input) =>
+    yield* handlePlainCommand("codex:thread-follower:action", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) =>
           coordinator
@@ -168,15 +161,17 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* handle("codex:dynamic-tool-call:respond", (event, conversationId, requestId, context) =>
-      authorize(event).pipe(
-        Effect.flatMap(() => codexAppTools.respond(requestId, conversationId, context)),
-      ),
+    yield* handleControl(
+      "codex:dynamic-tool-call:respond",
+      (event, conversationId, requestId, context) =>
+        authorize(event).pipe(
+          Effect.flatMap(() => codexAppTools.respond(requestId, conversationId, context)),
+        ),
     );
-    yield* handle("codex:user-input:auto-resolution:snapshot", (event) =>
+    yield* handleQuery("codex:user-input:auto-resolution:snapshot", (event) =>
       authorize(event).pipe(Effect.andThen(userInputAutoResolution.snapshot)),
     );
-    yield* handle("codex:user-input:auto-resolution:activity", (event, input) =>
+    yield* handleControl("codex:user-input:auto-resolution:activity", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => {
           const conversationId = parseCodexUserInputAutoResolutionActivityInput(input);
@@ -188,7 +183,7 @@ export const live: Layer.Layer<
         }),
       ),
     );
-    yield* handle("codex:user-input:auto-resolution:snooze", (event, input) =>
+    yield* handlePlainCommand("codex:user-input:auto-resolution:snooze", (event, input) =>
       authorize(event).pipe(
         Effect.flatMap((clientId) => {
           const target = parseCodexUserInputAutoResolutionTarget(input);

@@ -37,19 +37,18 @@ describe("file reference router", () => {
   });
 
   test("falls back to Finder when the selected external opener cannot open", async () => {
-    const invokeImpl = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const openExternal = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
 
     await expect(
       openFileReferenceExternally(
         { path: "/workspace/project/src/index.ts", line: 19 },
         "vscode",
-        invokeImpl as never,
+        openExternal,
       ),
     ).resolves.toBe(true);
 
-    expect(invokeImpl).toHaveBeenNthCalledWith(
+    expect(openExternal).toHaveBeenNthCalledWith(
       2,
-      "shell:open-file-link",
       { path: "/workspace/project/src/index.ts", line: 19 },
       "fileManager",
     );

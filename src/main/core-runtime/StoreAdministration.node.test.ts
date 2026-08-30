@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import { assert, it } from "@effect/vitest";
 import { createCoreLocalCommitFixture } from "../core-client/testing/local-commit-fixture";
@@ -11,6 +12,7 @@ import type {
   StoreAdministrationReadSnapshot,
 } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "./CoreModules";
+import { coreRuntimeError } from "./CoreRuntimeError";
 import { live, mapCoreStoreAdministrationEvent, StoreAdministration } from "./StoreAdministration";
 
 const backup = {
@@ -111,7 +113,7 @@ it.effect("owns Backup CRUD and maintenance semantics on the typed Core Module",
   Effect.gen(function* () {
     const harness = makeHarness();
     harness.applyResults.push(committed({ backup_id: backup.backup_id }));
-    harness.readResults.push(readSnapshot({ kind: "backup_jobs", jobs: [] }));
+    harness.readResults.push(readSnapshot({ kind: "backup_jobs", jobs: [], coalesced_starts: [] }));
     harness.readResults.push(
       readSnapshot({
         kind: "backups",
@@ -214,14 +216,21 @@ it.effect("requires explicit confirmation and returns the safety Backup identity
   }),
 );
 
-it.effect("returns after durable admission while the Core backup continues", () =>
+it.effect("returns submitted before durable admission and durably coalesces later starts", () =>
   Effect.gen(function* () {
     const applyStarted = yield* Deferred.make<void>();
     const finishApply = yield* Deferred.make<void>();
     let activeOperationId: string | null = null;
+    let createApplyCount = 0;
+    let coalesceApplyCount = 0;
     const administrationClient: CoreModuleClients["administration"] = {
       apply: (input) =>
         Effect.gen(function* () {
+          if (input.intent.kind === "coalesce_backup") {
+            coalesceApplyCount += 1;
+            return committed({ coalesced_backup_job_id: input.intent.active_job_id });
+          }
+          createApplyCount += 1;
           activeOperationId = input.operationId;
           yield* Deferred.succeed(applyStarted, undefined);
           yield* Deferred.await(finishApply);
@@ -232,6 +241,7 @@ it.effect("returns after durable admission while the Core backup continues", () 
           return Effect.succeed(
             readSnapshot({
               kind: "backup_jobs",
+              coalesced_starts: [],
               jobs: activeOperationId
                 ? [
                     {
@@ -289,23 +299,152 @@ it.effect("returns after durable admission while the Core backup continues", () 
     const context = yield* Layer.build(layer);
     const administration = Context.get(context, StoreAdministration);
 
-    const admitted = yield* administration.startBackup({ label: "Background" });
-    assert.strictEqual(admitted.state, "running");
-    assert.strictEqual(admitted.phase, "database_snapshot");
+    const submitted = yield* administration.startBackup({
+      operationId: "electron:administration:create-backup-job:test",
+      label: "Background",
+    });
+    assert.strictEqual(submitted.kind, "submitted");
+    if (submitted.kind !== "submitted") return assert.fail("expected submitted Backup job");
+    assert.strictEqual(submitted.job.state, "queued");
+    assert.strictEqual(submitted.job.phase, "queued");
     yield* Deferred.await(applyStarted);
-    const running = yield* administration.backupJob(admitted.jobId);
+
+    const retried = yield* administration.startBackup({
+      operationId: submitted.operationId,
+      label: "Background",
+    });
+    assert.strictEqual(retried.kind, "submitted");
+    assert.strictEqual(retried.operationId, submitted.operationId);
+    assert.strictEqual(createApplyCount, 1);
+
+    const coalescedOperationId = "electron:administration:create-backup-job:coalesced";
+    const coalesced = yield* administration.startBackup({
+      operationId: coalescedOperationId,
+      label: "Coalesced",
+    });
+    assert.deepStrictEqual(coalesced, {
+      kind: "already_running",
+      operationId: coalescedOperationId,
+      activeJobId: submitted.operationId,
+    });
+    assert.strictEqual(coalesceApplyCount, 1);
+
+    const running = yield* administration.backupJob(submitted.operationId);
     assert.isNotNull(running);
     assert.include(["queued", "running"], running?.state);
 
     yield* Deferred.succeed(finishApply, undefined);
     for (let attempt = 0; attempt < 10; attempt += 1) {
       yield* Effect.yieldNow;
-      const completed = yield* administration.backupJob(admitted.jobId);
+      const completed = yield* administration.backupJob(submitted.operationId);
       if (completed?.state !== "completed") continue;
       assert.strictEqual(completed.backup?.id, "core-backup");
+      const coalescedRetry = yield* administration.startBackup({
+        operationId: coalescedOperationId,
+        label: "Coalesced",
+      });
+      assert.deepStrictEqual(coalescedRetry, coalesced);
+      assert.strictEqual(coalesceApplyCount, 1);
+      assert.strictEqual(createApplyCount, 1);
       return;
     }
     assert.fail("snapshot job did not publish its completion");
+  }),
+);
+
+it.effect("replays a lost coalescence response instead of starting the requested snapshot", () =>
+  Effect.gen(function* () {
+    const activeOperationId = "electron:administration:create-backup-job:active";
+    const coalescedOperationId = "electron:administration:create-backup-job:lost-response";
+    const activeApplyStarted = yield* Deferred.make<void>();
+    const finishActiveApply = yield* Deferred.make<void>();
+    let durableAliasTarget: string | null = null;
+    let createdSnapshots = 0;
+    const administrationClient: CoreModuleClients["administration"] = {
+      apply: (input) =>
+        Effect.gen(function* () {
+          if (input.intent.kind === "coalesce_backup") {
+            durableAliasTarget = input.intent.active_job_id;
+            return yield* coreRuntimeError({
+              operation: "administration.apply",
+              reason: "transport-loss",
+              retryable: true,
+            });
+          }
+          if (input.operationId === coalescedOperationId && durableAliasTarget) {
+            return committed({ coalesced_backup_job_id: durableAliasTarget });
+          }
+          createdSnapshots += 1;
+          yield* Deferred.succeed(activeApplyStarted, undefined);
+          yield* Deferred.await(finishActiveApply);
+          return committed({ backup_id: backup.backup_id });
+        }),
+      read: (read) => {
+        if (read.kind === "backup_jobs") {
+          return Effect.succeed(
+            readSnapshot({
+              kind: "backup_jobs",
+              coalesced_starts: [],
+              jobs: [],
+            }),
+          );
+        }
+        return Effect.succeed(
+          readSnapshot({
+            kind: "backups",
+            backups: {
+              items: [backup],
+              next_cursor: null,
+              authority: { projection_revision: 4 },
+            },
+            capacity,
+          }),
+        );
+      },
+    };
+    const context = yield* Layer.build(
+      live.pipe(
+        Layer.provide(
+          Layer.succeed(
+            CoreModules,
+            CoreModules.of({
+              administration: administrationClient,
+            } as unknown as CoreModuleClients),
+          ),
+        ),
+      ),
+    );
+    const administration = Context.get(context, StoreAdministration);
+
+    yield* administration.startBackup({ operationId: activeOperationId });
+    yield* Deferred.await(activeApplyStarted);
+    const lostResponse = yield* Effect.exit(
+      administration.startBackup({ operationId: coalescedOperationId }),
+    );
+    assert.isTrue(Exit.isFailure(lostResponse));
+    assert.strictEqual(durableAliasTarget, activeOperationId);
+
+    yield* Deferred.succeed(finishActiveApply, undefined);
+    let activeCompleted = false;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      yield* Effect.yieldNow;
+      if ((yield* administration.backupJob(activeOperationId))?.state !== "completed") continue;
+      activeCompleted = true;
+      break;
+    }
+    assert.isTrue(activeCompleted);
+
+    const retried = yield* administration.startBackup({ operationId: coalescedOperationId });
+    assert.strictEqual(retried.kind, "submitted");
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      yield* Effect.yieldNow;
+      const replayed = yield* administration.backupJob(coalescedOperationId);
+      if (replayed?.jobId !== activeOperationId) continue;
+      assert.strictEqual(replayed.state, "completed");
+      assert.strictEqual(createdSnapshots, 1);
+      return;
+    }
+    assert.fail("lost coalescence response did not replay its durable target");
   }),
 );
 
@@ -314,6 +453,8 @@ it.effect("resumes a durable Core snapshot job when Main starts again", () =>
     const applyStarted = yield* Deferred.make<void>();
     const finishApply = yield* Deferred.make<void>();
     const operationId = "electron:administration:create-backup-job:recovered";
+    const coalescedOperationId = "electron:administration:create-backup-job:coalesced-retry";
+    let applyCount = 0;
     const durableJob = {
       job_id: operationId,
       operation_id: operationId,
@@ -333,13 +474,25 @@ it.effect("resumes a durable Core snapshot job when Main starts again", () =>
     const administrationClient: CoreModuleClients["administration"] = {
       apply: () =>
         Effect.gen(function* () {
+          applyCount += 1;
           yield* Deferred.succeed(applyStarted, undefined);
           yield* Deferred.await(finishApply);
           return committed({ backup_id: backup.backup_id });
         }),
       read: (read) => {
         if (read.kind === "backup_jobs") {
-          return Effect.succeed(readSnapshot({ kind: "backup_jobs", jobs: [durableJob] }));
+          return Effect.succeed(
+            readSnapshot({
+              kind: "backup_jobs",
+              jobs: [durableJob],
+              coalesced_starts: [
+                {
+                  operation_id: coalescedOperationId,
+                  active_job_id: operationId,
+                },
+              ],
+            }),
+          );
         }
         return Effect.succeed(
           readSnapshot({
@@ -366,6 +519,15 @@ it.effect("resumes a durable Core snapshot job when Main starts again", () =>
     const administration = Context.get(context, StoreAdministration);
 
     yield* Deferred.await(applyStarted);
+    assert.deepStrictEqual(
+      yield* administration.startBackup({ operationId: coalescedOperationId }),
+      {
+        kind: "already_running",
+        operationId: coalescedOperationId,
+        activeJobId: operationId,
+      },
+    );
+    assert.strictEqual(applyCount, 1);
     const recovered = yield* administration.backupJob(operationId);
     assert.strictEqual(recovered?.phase, "validation");
     yield* Deferred.succeed(finishApply, undefined);

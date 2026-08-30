@@ -5,7 +5,8 @@ import type {
   PageSearchMetadataSnapshot,
   PageSearchResult,
 } from "../../shared/types";
-import { invoke, searchPages, subscribeLibraryChanges } from "./api";
+import { searchPages, subscribeLibraryChanges } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 
 type WasmIndex = {
   free?(): void;

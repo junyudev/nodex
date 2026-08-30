@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexPermissions } from "../../codex-application/CodexPermissions";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./CodexPermissionsIpc";
@@ -12,7 +13,7 @@ import { live } from "./CodexPermissionsIpc";
 it.effect("registers the permission ingress against its owning module", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -21,7 +22,7 @@ it.effect("registers the permission ingress against its owning module", () =>
           () => Effect.sync(() => channels.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const permissions = CodexPermissions.of({
       snapshot: () => Effect.die("unused"),
       resolve: () => Effect.die("unused"),

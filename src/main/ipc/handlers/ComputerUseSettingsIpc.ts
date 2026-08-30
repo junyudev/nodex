@@ -41,32 +41,36 @@ export const live: Layer.Layer<
         requireTrustedAppRendererSender(event, capabilityName, config.rendererUrl),
       );
 
-    yield* ipc.handle("computer-use-settings-get", (event) =>
+    yield* ipc.handleQuery("computer-use-settings-get", (event) =>
       trusted(event, "Computer Use settings").pipe(Effect.andThen(settings.getSnapshot)),
     );
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "computer-use-settings-remove-app-approval",
       (event, bundleIdentifier: string) =>
         trusted(event, "Computer Use app approval update").pipe(
           Effect.andThen(settings.removeAppApproval(bundleIdentifier)),
         ),
     );
-    yield* ipc.handle("computer-use-settings-remove-message-approval", (event, chatGuid: string) =>
-      trusted(event, "Computer Use message approval update").pipe(
-        Effect.andThen(settings.removeMessageApproval(chatGuid)),
-      ),
-    );
-    yield* ipc.handle("computer-use-settings-set-always-hide-pip", (event, value: unknown) =>
-      trusted(event, "Computer Use picture-in-picture setting").pipe(
-        Effect.andThen(
-          validate("always-hide-picture-in-picture", () =>
-            parseBoolean(value, "Computer Use picture-in-picture setting"),
-          ),
+    yield* ipc.handlePlainCommand(
+      "computer-use-settings-remove-message-approval",
+      (event, chatGuid: string) =>
+        trusted(event, "Computer Use message approval update").pipe(
+          Effect.andThen(settings.removeMessageApproval(chatGuid)),
         ),
-        Effect.flatMap(settings.setAlwaysHidePictureInPicture),
-      ),
     );
-    yield* ipc.handle("computer-use-settings-set-locked-use", (event, value: unknown) =>
+    yield* ipc.handlePlainCommand(
+      "computer-use-settings-set-always-hide-pip",
+      (event, value: unknown) =>
+        trusted(event, "Computer Use picture-in-picture setting").pipe(
+          Effect.andThen(
+            validate("always-hide-picture-in-picture", () =>
+              parseBoolean(value, "Computer Use picture-in-picture setting"),
+            ),
+          ),
+          Effect.flatMap(settings.setAlwaysHidePictureInPicture),
+        ),
+    );
+    yield* ipc.handlePlainCommand("computer-use-settings-set-locked-use", (event, value: unknown) =>
       trusted(event, "Computer Use Locked Use setting").pipe(
         Effect.andThen(
           validate("locked-use", () => parseBoolean(value, "Computer Use Locked Use setting")),
@@ -74,7 +78,7 @@ export const live: Layer.Layer<
         Effect.flatMap(settings.setLockedUseEnabled),
       ),
     );
-    yield* ipc.handle(
+    yield* ipc.handlePlainCommand(
       "computer-use-settings-set-sound-mode",
       (event, soundMode: ComputerUseSoundMode) =>
         trusted(event, "Computer Use sound setting").pipe(

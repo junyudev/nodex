@@ -2,6 +2,7 @@ import type { Page } from "playwright";
 
 import type { CoreResult } from "../../../src/shared/core-result";
 import type { IpcApi } from "../../../src/shared/ipc-api";
+import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import { compilePageLifecycleRequestV2 } from "../../../src/shared/page-lifecycle-v2-runtime";
 import type {
   PageChatActivitySummaryResult,
@@ -24,6 +25,7 @@ import type {
   SidebarSectionMoveItemInput,
   SidebarSectionSessionCreateInput,
 } from "../../../src/shared/sidebar-sections";
+import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import { normalizeScenarioBoardGroups } from "./normalize-board-groups";
 import {
   ensurePrimaryDataSourcePropertyCount,
@@ -77,7 +79,13 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   }
 
   async createProject(input: ProjectCreateInput): Promise<Project> {
-    return unwrapCoreResult(await this.#invoke("projects:create", input), "Project creation");
+    return unwrapCoreResult(
+      await this.#invoke("projects:create", {
+        operationId: createBoundedOperationId("scenario.project.create"),
+        payload: { projectId: createUuidV7(), input },
+      }),
+      "Project creation",
+    );
   }
 
   async createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }> {
@@ -219,11 +227,20 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   }
 
   async createRelatedChat(input: ScenarioRelatedChatSeed): Promise<ScenarioRelatedChatSeedResult> {
-    const session = await this.#invoke("project-sessions:create", {
-      projectId: input.projectId,
-      noThreadFallbackTitle: input.noThreadFallbackTitle,
-      initialPageIds: [...input.initialPageIds],
-    });
+    const session = unwrapCoreResult(
+      await this.#invoke("project-sessions:create", {
+        operationId: createBoundedOperationId("scenario.session.create"),
+        payload: {
+          sessionId: createUuidV7(),
+          input: {
+            projectId: input.projectId,
+            noThreadFallbackTitle: input.noThreadFallbackTitle,
+            initialPageIds: [...input.initialPageIds],
+          },
+        },
+      }),
+      "Session creation",
+    );
     if (!input.thread) return { sessionId: session.id, threadId: null };
     const observedAt = Date.now();
     await this.#invoke("project-session-threads:attach", {
@@ -241,7 +258,13 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       recencyAt: observedAt,
     });
     if (input.thread.unread) {
-      await this.#invoke("project-sessions:mark-unread", session.id, { unread: true });
+      unwrapCoreResult(
+        await this.#invoke("project-sessions:mark-unread", {
+          operationId: createBoundedOperationId("scenario.session.mark-unread"),
+          payload: { sessionId: session.id, unread: true },
+        }),
+        "Mark Session unread",
+      );
     }
     return { sessionId: session.id, threadId: input.thread.threadId };
   }
@@ -267,21 +290,30 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
 
   async createSidebarSection(input: SidebarSectionCreateInput) {
     return unwrapCoreResult(
-      await this.#invoke("sidebar-sections:create", input),
+      await this.#invoke("sidebar-sections:create", {
+        operationId: createBoundedOperationId("scenario.sidebar-section.create"),
+        payload: { sectionId: createUuidV7(), input },
+      }),
       "Sidebar Section creation",
     );
   }
 
   async createSessionInSidebarSection(input: SidebarSectionSessionCreateInput) {
     return unwrapCoreResult(
-      await this.#invoke("sidebar-sections:sessions:create", input),
+      await this.#invoke("sidebar-sections:sessions:create", {
+        operationId: createBoundedOperationId("scenario.sidebar-section.create-session"),
+        payload: { sessionId: createUuidV7(), input },
+      }),
       "Sidebar Section Session creation",
     );
   }
 
   async moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void> {
     unwrapCoreResult(
-      await this.#invoke("sidebar-sections:item:move", input),
+      await this.#invoke("sidebar-sections:item:move", {
+        operationId: createBoundedOperationId("scenario.sidebar-section.move-item"),
+        payload: input,
+      }),
       "Sidebar Section item move",
     );
   }

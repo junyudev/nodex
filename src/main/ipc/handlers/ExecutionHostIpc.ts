@@ -2,14 +2,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
-import type { IpcApi } from "../../../shared/ipc-api";
 import { MainConfig } from "../../app/MainConfig";
 import { ExecutionHostRuntime } from "../../codex-application/ExecutionHostRuntime";
-import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-
-type ExecutionHostChannel = "worktrees:execution-hosts:get" | "worktrees:execution-hosts:update";
 
 export class ExecutionHostIpcError extends Schema.TaggedError<ExecutionHostIpcError>()(
   "ExecutionHostIpcError",
@@ -36,19 +33,15 @@ export const live: Layer.Layer<
         },
         catch: (cause) => new ExecutionHostIpcError({ operation: "authorize-renderer", cause }),
       });
-    const handle = <Channel extends ExecutionHostChannel>(
-      channel: Channel,
-      handler: (
-        event: IpcMainInvokeEvent,
-        ...args: IpcApi[Channel]["args"]
-      ) => Effect.Effect<IpcApi[Channel]["result"], unknown>,
-    ) =>
-      ipc.handle(channel, (event, ...args: IpcApi[Channel]["args"]) =>
-        authorize(event).pipe(Effect.andThen(handler(event, ...args))),
-      );
+    const { handlePlainCommand, handleQuery } = mapElectronIpcHandlers(
+      ipc,
+      (_channel, handler) =>
+        (event, ...args) =>
+          authorize(event).pipe(Effect.andThen(handler(event, ...args))),
+    );
 
-    yield* handle("worktrees:execution-hosts:get", () => executionHosts.settings);
-    yield* handle("worktrees:execution-hosts:update", (_, input) =>
+    yield* handleQuery("worktrees:execution-hosts:get", () => executionHosts.settings);
+    yield* handlePlainCommand("worktrees:execution-hosts:update", (_, input) =>
       executionHosts.updateSettings(input),
     );
   }),

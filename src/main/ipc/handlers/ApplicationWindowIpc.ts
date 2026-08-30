@@ -69,15 +69,15 @@ export const live = (
           catch: (cause) => new ApplicationWindowIpcError({ operation, cause }),
         });
 
-      yield* ipc.handle("electron-window:focus:get", (event) =>
+      yield* ipc.handleQuery("electron-window:focus:get", (event) =>
         authorize(event, "Window focus state").pipe(
           Effect.andThen(Effect.sync(() => windows.get(event.sender.id)?.isFocused() ?? false)),
         ),
       );
-      yield* ipc.handle("app:runtime-capabilities:get", (event) =>
+      yield* ipc.handleQuery("app:runtime-capabilities:get", (event) =>
         authorize(event, "Runtime capabilities").pipe(Effect.as(runtimeCapabilities)),
       );
-      yield* ipc.handle("window:show-emoji-panel", (event) =>
+      yield* ipc.handlePlainCommand("window:show-emoji-panel", (event) =>
         authorize(event, "Emoji panel").pipe(
           Effect.andThen(
             Effect.sync(() => {
@@ -89,7 +89,7 @@ export const live = (
           ),
         ),
       );
-      yield* ipc.handle("window:new", (event, input: unknown = {}) =>
+      yield* ipc.handlePlainCommand("window:new", (event, input: unknown = {}) =>
         authorize(event, "New window").pipe(
           Effect.andThen(
             parse("parse-new-window", () => WindowSessionNewWindowRequestSchema.parse(input)),
@@ -100,14 +100,14 @@ export const live = (
           Effect.as(true),
         ),
       );
-      yield* ipc.handle("window-sessions:bootstrap", (event) =>
+      yield* ipc.handleQuery("window-sessions:bootstrap", (event) =>
         authorize(event, "Window Session bootstrap").pipe(
           Effect.andThen(
             parse("bootstrap-window-session", () => applicationWindows.bootstrap(event.sender.id)),
           ),
         ),
       );
-      yield* ipc.handle("window-sessions:save-layout", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("window-sessions:save-layout", (event, input: unknown) =>
         authorize(event, "Window Session layout").pipe(
           Effect.andThen(
             parse("parse-window-layout", () => WindowSessionSaveLayoutInputSchema.parse(input)),
@@ -119,7 +119,7 @@ export const live = (
           ),
         ),
       );
-      yield* ipc.handle("window-sessions:update-bounds", (event, input: unknown) =>
+      yield* ipc.handlePlainCommand("window-sessions:update-bounds", (event, input: unknown) =>
         authorize(event, "Window Session bounds").pipe(
           Effect.andThen(
             parse("parse-window-bounds", () => WindowSessionBoundsSchema.strict().parse(input)),

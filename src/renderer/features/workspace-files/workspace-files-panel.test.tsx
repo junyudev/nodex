@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, vi, test } from "vit
 import { act, fireEvent } from "@testing-library/react";
 import { useState } from "react";
 import { renderWithMaitai, settleAsyncRender } from "../../test/dom";
+import { installWindowApi } from "../../test/browser-globals";
 import { TestQueryProvider } from "../../test/query";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { Project, ProjectSession, WorkspaceFileDirectoryEntry } from "@/lib/types";
@@ -53,91 +54,92 @@ const fileContents: Record<string, string> = {
   [LARGE_MARKDOWN_FILE]: `# Large\n\n${"linked content\n".repeat(20_000)}`,
 };
 
+const invoke = async (channel: string, ...args: unknown[]) => {
+  invokeCalls.push([channel, ...args]);
+  if (channel === "workspace-directory-entries") {
+    const input = args[0] as { directoryPath?: string };
+    const directoryPath = input.directoryPath ?? "";
+    return {
+      directoryPath,
+      parentPath: directoryPath ? "" : null,
+      entries: directoryEntries[directoryPath] ?? [],
+    };
+  }
+  if (channel === "read-file-metadata") {
+    const input = args[0] as { path: string };
+    const unsupported = input.path.endsWith(".zip");
+    const pdf = input.path.endsWith(".pdf");
+    const image = input.path.endsWith(".png");
+    return {
+      isFile: true,
+      sizeBytes:
+        input.path === HUGE_FILE
+          ? WORKSPACE_TEXT_LOAD_MAX_BYTES + 1
+          : unsupported
+            ? 12_000
+            : input.path === LARGE_PDF_FILE
+              ? 25_000_001
+              : pdf || image
+                ? 8
+                : (fileContents[input.path]?.length ?? 0),
+      createdAtMs: Date.parse(CREATED_AT),
+      mtimeMs: Date.parse(CREATED_AT),
+      contentKind: unsupported || pdf || image ? "binary" : "text",
+      mimeType: pdf ? "application/pdf" : image ? "image/png" : undefined,
+    };
+  }
+  if (channel === "read-file-binary") {
+    const input = args[0] as { path: string };
+    return {
+      contentsBase64: "JVBERi0xLjQ=",
+      mimeType: input.path.endsWith(".png") ? "image/png" : "application/pdf",
+    };
+  }
+  if (channel === "workspace-file-search") {
+    const input = args[0] as { query: string };
+    const matches = Object.values(directoryEntries)
+      .flat()
+      .filter(
+        (candidate) =>
+          candidate.type === "file" &&
+          candidate.path.toLowerCase().includes(input.query.toLowerCase()),
+      )
+      .map((candidate) => ({
+        path: candidate.path,
+        kind: "file" as const,
+        score: 0,
+      }));
+    return {
+      matches,
+      ancestorDirectories: [],
+      truncated: false,
+    };
+  }
+  if (channel === "read-file") {
+    const input = args[0] as { path: string };
+    const content = fileContents[input.path] ?? "";
+    return {
+      contents: content,
+    };
+  }
+  if (channel === "workspace-file-watch:start") {
+    return { subscriptionId: "00000000-0000-4000-8000-000000000001" };
+  }
+  if (channel === "workspace-file-watch:stop") return undefined;
+  if (channel === "write-file") {
+    return { outcome: "saved", mtimeMs: Date.parse(CREATED_AT) + 1 };
+  }
+  if (
+    channel === "open-file" ||
+    channel === "shell:open-file-link" ||
+    channel === "shell:open-external-url"
+  ) {
+    return true;
+  }
+  throw new Error(`Unexpected channel: ${channel}`);
+};
+
 vi.mock("@/lib/api", () => ({
-  invoke: async (channel: string, ...args: unknown[]) => {
-    invokeCalls.push([channel, ...args]);
-    if (channel === "workspace-directory-entries") {
-      const input = args[0] as { directoryPath?: string };
-      const directoryPath = input.directoryPath ?? "";
-      return {
-        directoryPath,
-        parentPath: directoryPath ? "" : null,
-        entries: directoryEntries[directoryPath] ?? [],
-      };
-    }
-    if (channel === "read-file-metadata") {
-      const input = args[0] as { path: string };
-      const unsupported = input.path.endsWith(".zip");
-      const pdf = input.path.endsWith(".pdf");
-      const image = input.path.endsWith(".png");
-      return {
-        isFile: true,
-        sizeBytes:
-          input.path === HUGE_FILE
-            ? WORKSPACE_TEXT_LOAD_MAX_BYTES + 1
-            : unsupported
-              ? 12_000
-              : input.path === LARGE_PDF_FILE
-                ? 25_000_001
-                : pdf || image
-                  ? 8
-                  : (fileContents[input.path]?.length ?? 0),
-        createdAtMs: Date.parse(CREATED_AT),
-        mtimeMs: Date.parse(CREATED_AT),
-        contentKind: unsupported || pdf || image ? "binary" : "text",
-        mimeType: pdf ? "application/pdf" : image ? "image/png" : undefined,
-      };
-    }
-    if (channel === "read-file-binary") {
-      const input = args[0] as { path: string };
-      return {
-        contentsBase64: "JVBERi0xLjQ=",
-        mimeType: input.path.endsWith(".png") ? "image/png" : "application/pdf",
-      };
-    }
-    if (channel === "workspace-file-search") {
-      const input = args[0] as { query: string };
-      const matches = Object.values(directoryEntries)
-        .flat()
-        .filter(
-          (candidate) =>
-            candidate.type === "file" &&
-            candidate.path.toLowerCase().includes(input.query.toLowerCase()),
-        )
-        .map((candidate) => ({
-          path: candidate.path,
-          kind: "file" as const,
-          score: 0,
-        }));
-      return {
-        matches,
-        ancestorDirectories: [],
-        truncated: false,
-      };
-    }
-    if (channel === "read-file") {
-      const input = args[0] as { path: string };
-      const content = fileContents[input.path] ?? "";
-      return {
-        contents: content,
-      };
-    }
-    if (channel === "workspace-file-watch:start") {
-      return { subscriptionId: "00000000-0000-4000-8000-000000000001" };
-    }
-    if (channel === "workspace-file-watch:stop") return undefined;
-    if (channel === "write-file") {
-      return { outcome: "saved", mtimeMs: Date.parse(CREATED_AT) + 1 };
-    }
-    if (
-      channel === "open-file" ||
-      channel === "shell:open-file-link" ||
-      channel === "shell:open-external-url"
-    ) {
-      return true;
-    }
-    throw new Error(`Unexpected channel: ${channel}`);
-  },
   subscribeBoardChanges: () => () => undefined,
   subscribeProjectSessionChanges: () => () => undefined,
   subscribeProjectChanges: () => () => undefined,
@@ -256,6 +258,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  installWindowApi({ invoke, on: () => () => undefined });
   invokeCalls = [];
   openFileTabCalls = [];
   pdfPreviewProps = null;

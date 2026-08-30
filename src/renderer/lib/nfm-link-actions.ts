@@ -3,8 +3,8 @@ import {
   type FileLinkOpenerId,
   type FileLinkTarget,
 } from "../../shared/file-link-openers";
-import { invoke } from "./api";
 import { readFileLinkOpener } from "./file-link-opener-settings";
+import { openFileLink, type FileLinkOpenPort } from "./file-system-operations";
 import { DEFAULT_NFM_AUTOLINK_SETTINGS, shouldAutoLinkValue } from "./nfm-autolink-settings";
 import { parsePageDeepLink } from "../../shared/nodex-deeplink";
 
@@ -302,7 +302,7 @@ export function resolveNfmLinkTooltipLabel(
 export async function openNfmResolvedLinkAction(
   action: NfmResolvedLinkAction,
   opener: FileLinkOpenerId = readFileLinkOpener(),
-  invokeImpl: typeof invoke = invoke,
+  openFile: FileLinkOpenPort = openFileLink,
   navigation: NfmLinkNavigation = {
     assign: (href) => window.location.assign(href),
     open: (url, target, features) => {
@@ -332,7 +332,7 @@ export async function openNfmResolvedLinkAction(
   }
 
   try {
-    return (await invokeImpl("shell:open-file-link", action.target, opener)) as boolean;
+    return await openFile(action.target, opener);
   } catch {
     return false;
   }

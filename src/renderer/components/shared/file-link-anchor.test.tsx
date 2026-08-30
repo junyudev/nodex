@@ -1,16 +1,18 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { renderWithMaitai as render, settleAsyncRender } from "../../test/dom";
 import { FileLinkAnchor } from "./file-link-anchor";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { invoke } from "@/lib/api";
+import { installWindowApi } from "../../test/browser-globals";
 
-vi.mock("@/lib/api", () => ({
-  invoke: vi.fn(async () => true),
-}));
+const invoke = vi.fn(async () => true);
 
 describe("FileLinkAnchor", () => {
+  beforeEach(() => {
+    installWindowApi({ invoke, on: () => () => undefined });
+  });
+
   test("opens a local reference in the Files panel and carries its location", async () => {
     const openWorkspaceFileTab = vi.fn(async () => true);
     const { container } = render(

@@ -115,12 +115,12 @@ export const live: Layer.Layer<
     const credential = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
       effect.pipe(Effect.mapError((cause) => new BrowserProfileIpcError({ operation, cause })));
 
-    yield* ipc.handle("browser-downloads-list", (event) =>
+    yield* ipc.handleQuery("browser-downloads-list", (event) =>
       trusted(event, "Browser download history").pipe(
         Effect.andThen(attempt("read-download-history", () => download.snapshot())),
       ),
     );
-    yield* ipc.handle("browser-download-action", (event, rawRequest: unknown) =>
+    yield* ipc.handlePlainCommand("browser-download-action", (event, rawRequest: unknown) =>
       trusted(event, "Browser download action").pipe(
         Effect.andThen(
           parse("parse-download-action", () =>
@@ -139,7 +139,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-download-history-clear", (event) =>
+    yield* ipc.handlePlainCommand("browser-download-history-clear", (event) =>
       trusted(event, "Browser download history clearing").pipe(
         Effect.andThen(
           download.clearHistory.pipe(
@@ -151,7 +151,7 @@ export const live: Layer.Layer<
         Effect.as({ ok: true as const }),
       ),
     );
-    yield* ipc.handle("browser-profile-capabilities", (event) =>
+    yield* ipc.handleQuery("browser-profile-capabilities", (event) =>
       trusted(event, "Browser Profile capabilities").pipe(
         Effect.andThen(
           attempt("read-browser-profile-capabilities", () => ({
@@ -165,7 +165,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-profile-import-profiles", (event) =>
+    yield* ipc.handleQuery("browser-profile-import-profiles", (event) =>
       trusted(event, "Browser Profile discovery").pipe(
         Effect.andThen(
           profileImport.listProfiles.pipe(
@@ -177,7 +177,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-profile-import", (event, rawInput: unknown) =>
+    yield* ipc.handlePlainCommand("browser-profile-import", (event, rawInput: unknown) =>
       trusted(event, "Browser Profile import").pipe(
         Effect.andThen(
           parse("parse-profile-import", () => BrowserProfileImportInputSchema.parse(rawInput)),
@@ -194,7 +194,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-credentials-list", (event, rawInput: unknown) =>
+    yield* ipc.handleQuery("browser-credentials-list", (event, rawInput: unknown) =>
       trusted(event, "Browser credential listing").pipe(
         Effect.andThen(
           parse("parse-credential-list", () => BrowserCredentialListInputSchema.parse(rawInput)),
@@ -205,12 +205,12 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-credentials-list-all", (event) =>
+    yield* ipc.handleQuery("browser-credentials-list-all", (event) =>
       trusted(event, "Browser credential listing").pipe(
         Effect.andThen(credential("list-all-browser-credentials", credentials.listAll)),
       ),
     );
-    yield* ipc.handle("browser-credential-fill", (event, rawInput: unknown) =>
+    yield* ipc.handlePlainCommand("browser-credential-fill", (event, rawInput: unknown) =>
       trusted(event, "Browser credential fill").pipe(
         Effect.andThen(
           parse("parse-credential-fill", () => BrowserCredentialFillInputSchema.parse(rawInput)),
@@ -219,7 +219,7 @@ export const live: Layer.Layer<
         Effect.flatMap((input) => credential("fill-browser-credential", credentials.fill(input))),
       ),
     );
-    yield* ipc.handle("browser-credential-generate-fill", (event, rawInput: unknown) =>
+    yield* ipc.handlePlainCommand("browser-credential-generate-fill", (event, rawInput: unknown) =>
       trusted(event, "Browser password generation").pipe(
         Effect.andThen(
           parse("parse-credential-generation", () =>
@@ -232,22 +232,24 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-credential-candidate-action", (event, rawInput: unknown) =>
-      trusted(event, "Browser credential save").pipe(
-        Effect.andThen(
-          parse("parse-credential-candidate-action", () =>
-            BrowserCredentialCandidateActionInputSchema.parse(rawInput),
+    yield* ipc.handlePlainCommand(
+      "browser-credential-candidate-action",
+      (event, rawInput: unknown) =>
+        trusted(event, "Browser credential save").pipe(
+          Effect.andThen(
+            parse("parse-credential-candidate-action", () =>
+              BrowserCredentialCandidateActionInputSchema.parse(rawInput),
+            ),
+          ),
+          Effect.flatMap((input) =>
+            credential(
+              "apply-credential-candidate-action",
+              credentials.actOnCandidate(event.sender.id, input),
+            ),
           ),
         ),
-        Effect.flatMap((input) =>
-          credential(
-            "apply-credential-candidate-action",
-            credentials.actOnCandidate(event.sender.id, input),
-          ),
-        ),
-      ),
     );
-    yield* ipc.handle("browser-credential-remove", (event, credentialId: unknown) =>
+    yield* ipc.handlePlainCommand("browser-credential-remove", (event, credentialId: unknown) =>
       trusted(event, "Browser credential removal").pipe(
         Effect.andThen(
           parse("parse-credential-removal", () =>
@@ -257,12 +259,12 @@ export const live: Layer.Layer<
         Effect.flatMap(({ id }) => credential("remove-browser-credential", credentials.remove(id))),
       ),
     );
-    yield* ipc.handle("browser-contact-info-list", (event) =>
+    yield* ipc.handleQuery("browser-contact-info-list", (event) =>
       trusted(event, "Browser contact info listing").pipe(
         Effect.andThen(credential("list-browser-contact-info", credentials.listContactInfo)),
       ),
     );
-    yield* ipc.handle("browser-contact-info-upsert", (event, rawInput: unknown) =>
+    yield* ipc.handlePlainCommand("browser-contact-info-upsert", (event, rawInput: unknown) =>
       trusted(event, "Browser contact info save").pipe(
         Effect.andThen(
           parse("parse-contact-info", () => BrowserContactInfoUpsertInputSchema.parse(rawInput)),
@@ -272,7 +274,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-contact-info-remove", (event, contactInfoId: unknown) =>
+    yield* ipc.handlePlainCommand("browser-contact-info-remove", (event, contactInfoId: unknown) =>
       trusted(event, "Browser contact info removal").pipe(
         Effect.andThen(
           parse("parse-contact-info-removal", () =>
@@ -287,7 +289,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-contact-info-fill", (event, rawInput: unknown) =>
+    yield* ipc.handlePlainCommand("browser-contact-info-fill", (event, rawInput: unknown) =>
       trusted(event, "Browser contact info fill").pipe(
         Effect.andThen(
           parse("parse-contact-info-fill", () => BrowserContactInfoFillInputSchema.parse(rawInput)),
@@ -298,7 +300,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-site-info", (event, rawInput: unknown) =>
+    yield* ipc.handleQuery("browser-site-info", (event, rawInput: unknown) =>
       trusted(event, "Browser site information").pipe(
         Effect.andThen(parse("parse-site-info", () => BrowserSiteInfoInputSchema.parse(rawInput))),
         Effect.tap((input) => requireViewScope(event.sender.id, input.browserViewScopeId)),
@@ -314,7 +316,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-extensions-list", (event) =>
+    yield* ipc.handleQuery("browser-extensions-list", (event) =>
       trusted(event, "Browser extensions").pipe(
         Effect.andThen(
           extensions.snapshot.pipe(
@@ -326,7 +328,7 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-extension-load", (event) =>
+    yield* ipc.handlePlainCommand("browser-extension-load", (event) =>
       Effect.gen(function* () {
         yield* trusted(event, "Browser extension loading");
         const window = yield* windows.fromWebContents(event.sender);
@@ -352,7 +354,7 @@ export const live: Layer.Layer<
           );
       }),
     );
-    yield* ipc.handle("browser-extension-remove", (event, extensionId: unknown) =>
+    yield* ipc.handlePlainCommand("browser-extension-remove", (event, extensionId: unknown) =>
       trusted(event, "Browser extension removal").pipe(
         Effect.andThen(
           parse("parse-extension-removal", () =>
@@ -379,10 +381,10 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-use-policy-get", (event) =>
+    yield* ipc.handleQuery("browser-use-policy-get", (event) =>
       trusted(event, "Browser Use policy").pipe(Effect.andThen(Effect.sync(policy.snapshot))),
     );
-    yield* ipc.handle("browser-use-policy-update-modes", (event, rawInput: unknown) =>
+    yield* ipc.handlePlainCommand("browser-use-policy-update-modes", (event, rawInput: unknown) =>
       trusted(event, "Browser Use policy update").pipe(
         Effect.andThen(
           parse("parse-browser-use-policy-modes", () =>
@@ -402,61 +404,65 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handle("browser-use-policy-update-origin-rule", (event, rawInput: unknown) =>
-      trusted(event, "Browser Use origin policy update").pipe(
-        Effect.andThen(
-          parse("parse-browser-use-origin-rule", () =>
-            BrowserUseOriginRuleUpdateSchema.parse(rawInput),
-          ),
-        ),
-        Effect.flatMap((input) =>
-          policy.updateOriginRule(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new BrowserProfileIpcError({
-                  operation: "update-browser-use-origin-rule",
-                  cause,
-                }),
+    yield* ipc.handlePlainCommand(
+      "browser-use-policy-update-origin-rule",
+      (event, rawInput: unknown) =>
+        trusted(event, "Browser Use origin policy update").pipe(
+          Effect.andThen(
+            parse("parse-browser-use-origin-rule", () =>
+              BrowserUseOriginRuleUpdateSchema.parse(rawInput),
             ),
           ),
-        ),
-      ),
-    );
-    yield* ipc.handle("browser-local-server-preferences-get", (event) =>
-      trusted(event, "Local server preferences").pipe(
-        Effect.andThen(localServerPreferences.snapshot),
-      ),
-    );
-    yield* ipc.handle("browser-local-server-preferences-update", (event, rawInput: unknown) =>
-      trusted(event, "Local server preferences update").pipe(
-        Effect.andThen(
-          parse("parse-local-server-preferences", () =>
-            BrowserLocalServerPreferencesUpdateSchema.parse(rawInput),
-          ),
-        ),
-        Effect.flatMap((input) =>
-          localServerPreferences.update(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new BrowserProfileIpcError({
-                  operation: "update-local-server-preferences",
-                  cause,
-                }),
-            ),
-          ),
-        ),
-        Effect.tap((preferences) =>
-          windows.all.pipe(
-            Effect.tap((all) =>
-              Effect.sync(() =>
-                safeBroadcastToWindows(all, "browser-local-server-preferences-changed", [
-                  preferences,
-                ]),
+          Effect.flatMap((input) =>
+            policy.updateOriginRule(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new BrowserProfileIpcError({
+                    operation: "update-browser-use-origin-rule",
+                    cause,
+                  }),
               ),
             ),
           ),
         ),
+    );
+    yield* ipc.handleQuery("browser-local-server-preferences-get", (event) =>
+      trusted(event, "Local server preferences").pipe(
+        Effect.andThen(localServerPreferences.snapshot),
       ),
+    );
+    yield* ipc.handlePlainCommand(
+      "browser-local-server-preferences-update",
+      (event, rawInput: unknown) =>
+        trusted(event, "Local server preferences update").pipe(
+          Effect.andThen(
+            parse("parse-local-server-preferences", () =>
+              BrowserLocalServerPreferencesUpdateSchema.parse(rawInput),
+            ),
+          ),
+          Effect.flatMap((input) =>
+            localServerPreferences.update(input).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new BrowserProfileIpcError({
+                    operation: "update-local-server-preferences",
+                    cause,
+                  }),
+              ),
+            ),
+          ),
+          Effect.tap((preferences) =>
+            windows.all.pipe(
+              Effect.tap((all) =>
+                Effect.sync(() =>
+                  safeBroadcastToWindows(all, "browser-local-server-preferences-changed", [
+                    preferences,
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
     );
 
     yield* ipc.on("browser-image-drag-started", (event, rawInput: unknown) =>

@@ -1,4 +1,5 @@
 import { expect, test } from "vite-plus/test";
+import { noOpLocalCommit } from "../../shared/testing/local-commit";
 import { createElectronCanvasSceneSyncAdapter } from "./electron-canvas-scene-sync-adapter";
 import type { ElectronRendererBridge } from "./electron-renderer-transport";
 
@@ -108,6 +109,83 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
     }),
   ).resolves.toMatchObject({ ok: true });
   expect(calls).toContain("canvas-scene:presence:publish");
+  unsubscribe();
+});
+
+test("Electron Canvas routes semantic mutations through typed LocalCommit admission", async () => {
+  const calls: Array<{ readonly channel: string; readonly request: unknown }> = [];
+  const accessContext = { kind: "project", projectId: "project-1" } as const;
+  const bridge = {
+    invoke: async (channel: string, request: unknown) => {
+      calls.push({ channel, request });
+      if (channel === "canvas-scene:subscribe") {
+        return { ok: true, value: { subscribed: true } };
+      }
+      if (channel === "canvas-scene:apply") {
+        return {
+          ok: true,
+          localCommit: noOpLocalCommit("store-1", 2),
+          value: {
+            mutationId: "mutation-1",
+            libraryId: "library-1",
+            accessContext,
+            documentId: "canvas-1",
+            storeEpoch: "store-1",
+            generation: 1,
+            baseHeadSeq: 1,
+            headSeq: 2,
+            duplicate: false,
+            outcome: "committed",
+            sceneHash: "b".repeat(64),
+            changedElementIds: [],
+            appliedAppStateKeys: [],
+            skippedAppStateKeys: [],
+            addedFileIds: [],
+            removedFileIds: [],
+            committedAt: "2026-08-31T00:00:00.000Z",
+          },
+        };
+      }
+      return { ok: true, value: { unsubscribed: true } };
+    },
+    on: () => () => undefined,
+  } as unknown as ElectronRendererBridge;
+  const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
+    libraryId: "library-1",
+    accessContext,
+  });
+  const unsubscribe = adapter.subscribe(
+    {
+      accessContext,
+      documentId: "canvas-1",
+      clientSessionId: "client-1",
+    },
+    () => undefined,
+  );
+
+  await expect(
+    adapter.applyMutation({
+      mutationId: "mutation-1",
+      accessContext,
+      documentId: "canvas-1",
+      storeEpoch: "store-1",
+      generation: 1,
+      baseHeadSeq: 1,
+      elementCandidates: [],
+      appStateIntents: {},
+      fileAdditions: {},
+      clientSessionId: "client-1",
+    }),
+  ).resolves.toMatchObject({
+    ok: true,
+    localCommit: noOpLocalCommit("store-1", 2),
+    value: { mutationId: "mutation-1", headSeq: 2 },
+  });
+  expect(calls.map(({ channel }) => channel).slice(0, 2)).toEqual([
+    "canvas-scene:subscribe",
+    "canvas-scene:apply",
+  ]);
+  expect(calls[1]?.request).toMatchObject({ mutationId: "mutation-1" });
   unsubscribe();
 });
 

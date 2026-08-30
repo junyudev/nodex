@@ -58,7 +58,7 @@ import {
   type OpenPageInNewChatInput,
   type SendPageToChatInput,
 } from "./page-chat-actions";
-import { invoke } from "./api";
+import { linkPageChat } from "./page-chat-runtime";
 import { queryKeys } from "./query-keys";
 import type { WorkbenchSceneNavigator } from "./workbench-scene-navigator";
 import type {
@@ -248,7 +248,7 @@ export function useWorkbenchSessionCommands({
       readonly pageId: string;
       readonly sessionId: string;
     }): Promise<void> => {
-      await invoke("page-chats:link", input.sessionId, {
+      await linkPageChat(input.sessionId, {
         pageAccessProjectId: input.pageAccessProjectId,
         pageId: input.pageId,
       });

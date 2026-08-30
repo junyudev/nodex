@@ -14,7 +14,7 @@ import type {
 import type {
   DocumentAwarenessPublishAck,
   DocumentAwarenessPublishRequest,
-  DocumentSyncApplyAck,
+  DocumentSyncApplyCommandResult,
   DocumentSyncApplyRequest,
   DocumentSyncCommandResult,
   DocumentSyncRealtimeEvent,
@@ -76,15 +76,9 @@ import type {
   LibraryBlockPropertyMutationRequestV2,
 } from "./block-property-mutations-v2";
 import type {
-  SidebarSectionArchiveInput,
-  SidebarSectionCreateInput,
   SidebarSectionItemWindow,
   SidebarSectionItemWindowInput,
   SidebarSectionItemRef,
-  SidebarSectionMoveItemInput,
-  SidebarSectionRenameInput,
-  SidebarSectionRevisionInput,
-  SidebarSectionSessionCreateInput,
   SidebarSectionSummary,
   SidebarSectionWindow,
   SidebarSectionWindowInput,
@@ -360,7 +354,8 @@ import type {
   CommandPaletteThreadListInput,
   CommandPaletteThreadSummary,
   BackupJobStatus,
-  CreateBackupInput,
+  BackupStartResult,
+  CreateBackupCommandInput,
   Project,
   ProjectActivitySummaryResult,
   PageChatActivitySummaryInput,
@@ -368,28 +363,16 @@ import type {
   PageChatLinkInput,
   PageChatWindow,
   PageChatWindowInput,
-  ProjectCreateInput,
-  ProjectLifecycleInput,
-  ProjectLifecycleMutationResult,
   ProjectWindow,
   ProjectWindowInput,
-  ProjectOrderInput,
-  ProjectPinnedInput,
-  ProjectPinnedOrderInput,
-  ProjectUpdateInput,
+  ProjectUpdateCommandInput,
   ProjectSession,
-  ProjectSessionCreateInput,
   ProjectSessionForkInput,
   ProjectSessionForkResult,
   ProjectSessionSummaryWindow,
   ProjectSessionSummaryWindowInput,
-  ProjectSessionPinnedInput,
-  ProjectSessionPinnedOrderInput,
-  ProjectSessionRenameInput,
   ProjectSessionThreadLink,
   ProjectSessionThreadLinkInput,
-  ProjectSessionUnreadInput,
-  ProjectSessionUpdateInput,
   RestoreBackupInput,
   RestoreBackupResult,
   TelemetrySettings,
@@ -432,6 +415,34 @@ import type {
   WorkspaceFileWriteResult,
 } from "./types";
 import type {
+  ProjectCreateCommandInput,
+  ProjectLifecycleCommandInput,
+  ProjectLifecycleCommandRejected,
+  ProjectLifecycleCommittedValue,
+  ProjectPinnedCommandInput,
+  ProjectPinnedOrderCommandInput,
+  ProjectReorderCommandInput,
+  ProjectSessionArchiveCommandInput,
+  ProjectSessionCreateCommandInput,
+  ProjectSessionDeleteCommandInput,
+  ProjectSessionEnsureDefaultDraftCommandInput,
+  ProjectSessionPinnedCommandInput,
+  ProjectSessionPinnedOrderCommandInput,
+  ProjectSessionRenameCommandInput,
+  ProjectSessionReorderCommandInput,
+  ProjectSessionUnreadCommandInput,
+  ProjectSessionUpdateCommandInput,
+  SidebarSectionCreateCommandInput,
+  SidebarSectionDeleteCommandInput,
+  SidebarSectionMoveItemCommandInput,
+  SidebarSectionRenameCommandInput,
+  SidebarSectionReorderCommandInput,
+  SidebarSectionRestoreCommandInput,
+  SidebarSectionSessionCreateCommandInput,
+  SidebarSectionSessionsArchiveCommandInput,
+  SidebarSectionSessionsReorderCommandInput,
+} from "./workspace-catalog-commands";
+import type {
   DatabaseListWindowInput,
   DatabaseListWindowSnapshot,
   DatabaseViewGroupsInput,
@@ -442,7 +453,7 @@ import type {
   LibraryDatabaseViewGroupsSnapshot,
   LibraryDatabaseViewWindowSnapshot,
 } from "./database-views";
-import type { CoreResult } from "./core-result";
+import type { CoreLocalCommitResult, CoreResult } from "./core-result";
 import type { NativeContextMenuItem, NativeContextMenuOptions } from "./native-context-menu";
 import type {
   CodexPendingWorktreeCreateInput,
@@ -658,6 +669,18 @@ export interface IpcApi {
     args: [];
     result: AppRuntimeCapabilities;
   };
+  "app:await-initialization": { args: []; result: void };
+  "app:get-core-authority-status": {
+    args: [];
+    result: import("./core-authority-status").CoreAuthorityStatus;
+  };
+  "app:relaunch-for-core-authority": { args: []; result: void };
+  "app:restart": { args: []; result: void };
+  "app:retry-core-authority": { args: []; result: void };
+  "git-worker:message-from-view": {
+    args: [message: import("./git-worker-protocol").GitWorkerMessageFromView];
+    result: void;
+  };
   "local-commit-audience:subscribe": {
     args: [address: import("./recipient-delivery").DeliveryAddress];
     result: void;
@@ -804,7 +827,7 @@ export interface IpcApi {
   };
   "document-sync:apply": {
     args: [request: ProjectScopedDocumentSyncApplyRequest];
-    result: DocumentSyncCommandResult<DocumentSyncApplyAck>;
+    result: DocumentSyncApplyCommandResult;
   };
   "canvas-scene:subscribe": {
     args: [request: CanvasSceneSubscribeRequest];
@@ -852,7 +875,7 @@ export interface IpcApi {
   };
   "library-document-sync:apply": {
     args: [request: DocumentSyncApplyRequest];
-    result: DocumentSyncCommandResult<DocumentSyncApplyAck>;
+    result: DocumentSyncApplyCommandResult;
   };
   "library-document-sync:awareness:publish": {
     args: [request: DocumentAwarenessPublishRequest];
@@ -902,21 +925,24 @@ export interface IpcApi {
     result: void;
   };
   "projects:create": {
-    args: [input: ProjectCreateInput];
-    result: CoreResult<Project>;
+    args: [command: ProjectCreateCommandInput];
+    result: CoreLocalCommitResult<Project>;
   };
   "projects:update": {
-    args: [projectId: string, updates: ProjectUpdateInput];
-    result: CoreResult<Project | null>;
+    args: [input: ProjectUpdateCommandInput];
+    result: CoreLocalCommitResult<Project>;
   };
-  "projects:reorder": { args: [input: ProjectOrderInput]; result: void };
+  "projects:reorder": {
+    args: [command: ProjectReorderCommandInput];
+    result: CoreLocalCommitResult<void>;
+  };
   "projects:set-pinned": {
-    args: [projectId: string, input: ProjectPinnedInput];
-    result: Project | null;
+    args: [command: ProjectPinnedCommandInput];
+    result: CoreLocalCommitResult<Project>;
   };
   "projects:set-pinned-order": {
-    args: [input: ProjectPinnedOrderInput];
-    result: void;
+    args: [command: ProjectPinnedOrderCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "projects:pick-source-roots": { args: []; result: string[] };
   "workspace:pick-directory": {
@@ -924,8 +950,8 @@ export interface IpcApi {
     result: string | null;
   };
   "projects:set-lifecycle": {
-    args: [projectId: string, input: ProjectLifecycleInput];
-    result: ProjectLifecycleMutationResult;
+    args: [command: ProjectLifecycleCommandInput];
+    result: CoreLocalCommitResult<ProjectLifecycleCommittedValue, ProjectLifecycleCommandRejected>;
   };
   "sidebar-sections:list": {
     args: [input?: SidebarSectionWindowInput];
@@ -940,40 +966,40 @@ export interface IpcApi {
     result: string | null;
   };
   "sidebar-sections:create": {
-    args: [input: SidebarSectionCreateInput];
-    result: CoreResult<SidebarSectionSummary>;
+    args: [command: SidebarSectionCreateCommandInput];
+    result: CoreLocalCommitResult<SidebarSectionSummary>;
   };
   "sidebar-sections:rename": {
-    args: [sectionId: string, input: SidebarSectionRenameInput];
-    result: CoreResult<SidebarSectionSummary>;
+    args: [command: SidebarSectionRenameCommandInput];
+    result: CoreLocalCommitResult<SidebarSectionSummary>;
   };
   "sidebar-sections:delete": {
-    args: [sectionId: string, input: SidebarSectionRevisionInput];
-    result: CoreResult<void>;
+    args: [command: SidebarSectionDeleteCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "sidebar-sections:restore": {
-    args: [sectionId: string, input: SidebarSectionRevisionInput];
-    result: CoreResult<SidebarSectionSummary>;
+    args: [command: SidebarSectionRestoreCommandInput];
+    result: CoreLocalCommitResult<SidebarSectionSummary>;
   };
   "sidebar-sections:item:move": {
-    args: [input: SidebarSectionMoveItemInput];
-    result: CoreResult<void>;
+    args: [command: SidebarSectionMoveItemCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "sidebar-sections:reorder": {
-    args: [sectionIds: string[]];
-    result: CoreResult<void>;
+    args: [command: SidebarSectionReorderCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "sidebar-sections:sessions:reorder": {
-    args: [sectionId: string, sessionIds: string[]];
-    result: CoreResult<void>;
+    args: [command: SidebarSectionSessionsReorderCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "sidebar-sections:sessions:archive-all": {
-    args: [sectionId: string, input?: SidebarSectionArchiveInput];
-    result: CoreResult<ProjectSession | null>;
+    args: [command: SidebarSectionSessionsArchiveCommandInput];
+    result: CoreLocalCommitResult<ProjectSession | null>;
   };
   "sidebar-sections:sessions:create": {
-    args: [input: SidebarSectionSessionCreateInput];
-    result: CoreResult<ProjectSession>;
+    args: [command: SidebarSectionSessionCreateCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "workspace:tasks:list": {
     args: [projectId: string | null, input?: ProjectSessionSummaryWindowInput];
@@ -984,45 +1010,48 @@ export interface IpcApi {
     result: ProjectSession | null;
   };
   "project-sessions:create": {
-    args: [input: ProjectSessionCreateInput];
-    result: ProjectSession;
+    args: [command: ProjectSessionCreateCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:ensure-default-draft": {
-    args: [projectId: string | null];
-    result: ProjectSession;
+    args: [command: ProjectSessionEnsureDefaultDraftCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:update": {
-    args: [sessionId: string, input: ProjectSessionUpdateInput];
-    result: ProjectSession | null;
+    args: [command: ProjectSessionUpdateCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:rename": {
-    args: [sessionId: string, input: ProjectSessionRenameInput];
-    result: ProjectSession | null;
+    args: [command: ProjectSessionRenameCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
-  "project-sessions:delete": { args: [sessionId: string]; result: boolean };
+  "project-sessions:delete": {
+    args: [command: ProjectSessionDeleteCommandInput];
+    result: CoreLocalCommitResult<boolean>;
+  };
   "project-sessions:reorder": {
-    args: [projectId: string | null, orderedSessionIds: string[]];
-    result: void;
+    args: [command: ProjectSessionReorderCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "project-sessions:set-pinned": {
-    args: [sessionId: string, input: ProjectSessionPinnedInput];
-    result: ProjectSession | null;
+    args: [command: ProjectSessionPinnedCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:set-pinned-order": {
-    args: [projectId: string, input: ProjectSessionPinnedOrderInput];
-    result: void;
+    args: [command: ProjectSessionPinnedOrderCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "project-sessions:archive": {
-    args: [sessionId: string];
-    result: ProjectSession | null;
+    args: [command: ProjectSessionArchiveCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:unarchive": {
-    args: [sessionId: string];
-    result: ProjectSession | null;
+    args: [command: ProjectSessionArchiveCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:mark-unread": {
-    args: [sessionId: string, input: ProjectSessionUnreadInput];
-    result: ProjectSession | null;
+    args: [command: ProjectSessionUnreadCommandInput];
+    result: CoreLocalCommitResult<ProjectSession>;
   };
   "project-sessions:fork": {
     args: [
@@ -1126,7 +1155,7 @@ export interface IpcApi {
   "backup:list": { args: []; result: BackupRecord[] };
   "backup:capacity:get": { args: []; result: BackupCapacity };
   "backup:storage-optimization:get": { args: []; result: SnapshotStorageOptimization };
-  "backup:create": { args: [input?: CreateBackupInput]; result: BackupJobStatus };
+  "backup:create": { args: [command: CreateBackupCommandInput]; result: BackupStartResult };
   "backup:job:get": { args: [jobId?: string]; result: BackupJobStatus | null };
   "backup:cancel": { args: [jobId: string]; result: BackupJobStatus };
   "backup:delete": {

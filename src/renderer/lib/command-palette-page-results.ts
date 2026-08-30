@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { isPriority, PRIORITY_VALUES } from "../../shared/priority";
 import { WORKFLOW_STATUS_ORDER } from "../../shared/workflow-status";
-import { invoke, searchPages } from "./api";
+import { searchPages } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import type {
   CommandMenuMode,
   CommandPalettePage,

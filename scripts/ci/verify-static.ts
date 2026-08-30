@@ -66,6 +66,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "tooling contracts",
   },
   {
+    command: ["run", "verify:renderer-command-boundaries"],
+    group: "repository-contracts",
+    id: "renderer-command-boundaries",
+    name: "renderer command boundaries",
+  },
+  {
     command: ["run", "verify:effect-boundaries"],
     group: "repository-contracts",
     id: "effect-boundaries",

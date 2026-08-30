@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -41,6 +42,7 @@ import {
 import type { CodexWorktreeWorkerEvent } from "../codex/codex-worktree-worker-protocol";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { createOperationId } from "../core-runtime/operation-identity";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAttachments } from "./CodexAttachments";
@@ -498,7 +500,13 @@ export const make: Effect.Effect<
       case "registerStableProject":
         runBackground(
           projectWorkspace
-            .createProject({ name: effect.label, sources: [...effect.workspaceRoots] })
+            .createProject({
+              operationId: createOperationId("pending-worktree.project.create"),
+              payload: {
+                projectId: randomUUID(),
+                input: { name: effect.label, sources: [...effect.workspaceRoots] },
+              },
+            })
             .pipe(
               Effect.matchEffect({
                 onFailure: (error) =>

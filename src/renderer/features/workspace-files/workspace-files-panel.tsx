@@ -28,7 +28,7 @@ import {
   NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { LazySourceViewer } from "@/components/ui/lazy-source-viewer";
-import { invoke, subscribeWorkspaceFileChanges } from "@/lib/api";
+import { subscribeWorkspaceFileChanges } from "@/lib/api";
 import {
   workspaceDirectoryQueryOptions,
   workspaceFileBinaryQueryOptions,
@@ -42,7 +42,15 @@ import { classifyContentBudget } from "@/lib/content-budget";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
 import { useFileReferenceRouter } from "@/lib/file-reference-router";
+import { openExternalUrl as openUrlExternally } from "@/lib/file-system-operations";
 import { useScopedAtom } from "@/lib/maitai";
+import {
+  readWorkspaceFileMetadata,
+  readWorkspaceFileText,
+  startWorkspaceFileWatch,
+  stopWorkspaceFileWatch,
+  writeWorkspaceFile,
+} from "@/lib/workspace-file-operations";
 import { FILE_LINK_OPENER_OPTIONS, type FileLinkOpenerId } from "../../../shared/file-link-openers";
 import {
   getWorkspaceFileDomTabId,
@@ -811,20 +819,20 @@ export function WorkspaceFilesPanel({
               },
               {
                 write: async (path, content, expectedMtimeMs) =>
-                  await invoke("write-file", {
+                  await writeWorkspaceFile({
                     hostId,
                     path,
                     content,
                     expectedMtimeMs,
                   }),
                 readDisk: async (path) => {
-                  const nextMetadata = await invoke("read-file-metadata", {
+                  const nextMetadata = await readWorkspaceFileMetadata({
                     hostId,
                     path,
                     contentSampleByteLimit: CONTENT_SAMPLE_BYTES,
                     contentSampleMaxFileBytes: WORKSPACE_TEXT_MAX_BYTES,
                   });
-                  const nextText = await invoke("read-file", {
+                  const nextText = await readWorkspaceFileText({
                     hostId,
                     path,
                     maxBytes: WORKSPACE_TEXT_MAX_BYTES,
@@ -857,13 +865,13 @@ export function WorkspaceFilesPanel({
               if (event.subscriptionId !== fileWatchSubscriptionId) return;
               void loadedController?.notifyExternalChange();
             });
-            void invoke("workspace-file-watch:start", {
+            void startWorkspaceFileWatch({
               hostId,
               path: selectedPath,
             })
               .then((result) => {
                 if (cancelled) {
-                  void invoke("workspace-file-watch:stop", {
+                  void stopWorkspaceFileWatch({
                     subscriptionId: result.subscriptionId,
                   });
                   return;
@@ -908,7 +916,7 @@ export function WorkspaceFilesPanel({
       unsubscribeFileWatch?.();
       if (binaryObjectUrl) URL.revokeObjectURL(binaryObjectUrl);
       if (fileWatchSubscriptionId) {
-        void invoke("workspace-file-watch:stop", {
+        void stopWorkspaceFileWatch({
           subscriptionId: fileWatchSubscriptionId,
         });
       }
@@ -1024,7 +1032,7 @@ export function WorkspaceFilesPanel({
   );
 
   const openExternalUrl = useCallback((url: string) => {
-    void invoke("shell:open-external-url", url).catch(() => {
+    void openUrlExternally(url).catch(() => {
       toast.danger("Unable to open external link");
     });
   }, []);

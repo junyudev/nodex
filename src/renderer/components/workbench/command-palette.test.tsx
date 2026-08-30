@@ -42,10 +42,14 @@ const apiMock: {
 }));
 
 vi.mock("../../lib/api", () => ({
-  invoke: (...args: unknown[]) => apiMock.invokeImplementation(...args),
   searchPages: (input: unknown) =>
     apiMock.invokeImplementation("pages:search", "test-request", input),
   subscribeLibraryChanges: () => () => undefined,
+}));
+
+vi.mock("../../lib/renderer-command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/renderer-command")>()),
+  invokeRendererQuery: (...args: unknown[]) => apiMock.invokeImplementation(...args),
 }));
 
 function makeCommandContext(

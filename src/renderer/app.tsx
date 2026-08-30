@@ -12,7 +12,7 @@ import { NodexModalHost } from "@/lib/modal-registry";
 import type { WindowSessionBootstrap } from "@/lib/types";
 import type { CoreAuthorityStatus } from "../shared/core-authority-status";
 import { useAppUpdateStatus } from "./app-providers";
-import { invoke } from "./lib/api";
+import { installAppUpdate } from "./lib/app-update-runtime";
 
 const READY_CORE_AUTHORITY_STATUS = { kind: "ready" } as const;
 const CORE_RECOVERY_NOTICE_DELAY_MS = 1_500;
@@ -99,7 +99,7 @@ export default function App({ windowSessionBootstrap }: AppProps) {
                   setDismissedUpdateVersion(appUpdateStatus.availableVersion);
                 }}
                 onRestart={() => {
-                  void invoke("app:update:install");
+                  void installAppUpdate();
                 }}
               />
             </div>

@@ -19,7 +19,7 @@ import {
 import { NodexButton } from "@/components/ui/button";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
-import { invoke } from "@/lib/api";
+import { openFileLink, openPathWithDefaultApplication } from "@/lib/file-system-operations";
 import { cn } from "@/lib/utils";
 import { trackImageToolOpen } from "../analytics/image-editor-analytics";
 import {
@@ -116,8 +116,8 @@ function LocalImageOpenControl({
     try {
       const opened =
         target === "default"
-          ? await invoke("shell:open-path-default", path)
-          : await invoke("shell:open-file-link", { path }, "fileManager");
+          ? await openPathWithDefaultApplication(path)
+          : await openFileLink({ path }, "fileManager");
       if (!opened) toast.danger("Could not open image");
     } catch {
       toast.danger("Could not open image");

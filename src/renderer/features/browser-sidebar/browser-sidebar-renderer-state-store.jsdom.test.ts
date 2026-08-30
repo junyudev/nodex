@@ -28,6 +28,7 @@ describe("browserSidebarRendererStateStore", () => {
     Object.defineProperty(window, "api", {
       configurable: true,
       value: {
+        invoke: mocks.invoke,
         on: (channel: string, handler: (payload: unknown) => void) => {
           handlers.set(channel, handler);
           return () => handlers.delete(channel);

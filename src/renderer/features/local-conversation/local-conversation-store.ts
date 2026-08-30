@@ -286,7 +286,7 @@ import {
   logAssistantStreamingDebugSampled,
 } from "../../lib/assistant-streaming-debug";
 import {
-  invoke,
+  runConversationOperation,
   subscribeCodexEvents,
   subscribeCodexRendererClientRequests,
 } from "./local-conversation-deps";
@@ -773,7 +773,7 @@ class IpcRendererOwnerAppServerRequestClient implements RendererOwnerAppServerRe
     conversationId: string,
     request: CodexOwnerAppServerRequestInput["request"],
   ): Promise<TResult> {
-    return (await invoke("codex:thread-owner:app-server-request", {
+    return (await runConversationOperation("codex:thread-owner:app-server-request", {
       conversationId,
       request,
     } satisfies CodexOwnerAppServerRequestInput)) as TResult;
@@ -2085,7 +2085,7 @@ async function resolveOwnerPromptImageInput(source: string): Promise<UserInput> 
   }
 
   if (parseAssetSource(normalizedSource)) {
-    const resolvedPath = await invoke("asset:resolve-path", normalizedSource);
+    const resolvedPath = await runConversationOperation("asset:resolve-path", normalizedSource);
     if (typeof resolvedPath !== "string" || !resolvedPath.trim()) {
       throw new Error(`Could not resolve image asset: ${normalizedSource}`);
     }
@@ -4251,11 +4251,15 @@ export class CodexAppServerManager {
     const threads: CodexThreadSummary[] = [];
     let after: string | null = null;
     do {
-      const window: CodexThreadSummaryWindow = await invoke("codex:threads:list", projectId, {
-        ...opts,
-        after,
-        first: 200,
-      });
+      const window: CodexThreadSummaryWindow = await runConversationOperation(
+        "codex:threads:list",
+        projectId,
+        {
+          ...opts,
+          after,
+          first: 200,
+        },
+      );
       threads.push(...window.items);
       after = window.nextCursor;
     } while (after !== null);
@@ -4264,23 +4268,27 @@ export class CodexAppServerManager {
   }
 
   async loadAvailableModels(): Promise<CodexModelOption[]> {
-    const models = (await invoke("codex:model:list")) as CodexModelOption[];
+    const models = (await runConversationOperation("codex:model:list")) as CodexModelOption[];
     this.setAvailableModels(models);
     return models;
   }
 
   async loadDictationState(): Promise<CodexDictationStateSnapshot> {
-    const nextState = (await invoke("codex:dictation:state:read")) as CodexDictationStateSnapshot;
+    const nextState = (await runConversationOperation(
+      "codex:dictation:state:read",
+    )) as CodexDictationStateSnapshot;
     this.setDictationState(nextState);
     return nextState;
   }
 
   async listCollaborationModes(): Promise<CodexCollaborationModePreset[]> {
-    return (await invoke("codex:collaboration-mode:list")) as CodexCollaborationModePreset[];
+    return (await runConversationOperation(
+      "codex:collaboration-mode:list",
+    )) as CodexCollaborationModePreset[];
   }
 
   async requestThreadStreamSnapshot(threadId: string): Promise<CodexConversationSnapshot | null> {
-    const conversation = (await invoke(
+    const conversation = (await runConversationOperation(
       "codex:thread:snapshot:request",
       threadId,
     )) as CodexConversationSnapshot | null;
@@ -4315,7 +4323,7 @@ export class CodexAppServerManager {
     let adoptedRenderer = false;
 
     try {
-      const result = await invoke("codex:thread:resume:request", threadId);
+      const result = await runConversationOperation("codex:thread:resume:request", threadId);
       if (result) {
         const acceptedReplica = resolveAcceptedConversationReplica({
           conversation: result.conversation,
@@ -4355,10 +4363,10 @@ export class CodexAppServerManager {
         this.seedOwnerStreamPublishCursor(threadId, checkpoint, acceptedReplica);
         adoptedRenderer = true;
         this.applyConversationSnapshot(threadId, materialized);
-        await invoke("codex:thread:resume-buffer:release", threadId);
+        await runConversationOperation("codex:thread:resume-buffer:release", threadId);
         const latestConversation = this.conversationsById.get(threadId) ?? materialized;
         await this.publishOwnerSnapshotTransaction(threadId, latestConversation, "owner resume");
-        await invoke("codex:thread-owner:pending-requests:replay", threadId);
+        await runConversationOperation("codex:thread-owner:pending-requests:replay", threadId);
         this.setConversationAttachmentState(threadId, {
           status: "attached",
         });
@@ -4401,13 +4409,13 @@ export class CodexAppServerManager {
 
   private async releaseResumeBufferAfterFailedResume(threadId: string): Promise<void> {
     try {
-      await invoke("codex:thread:resume-buffer:release", threadId);
+      await runConversationOperation("codex:thread:resume-buffer:release", threadId);
     } catch {}
   }
 
   async setThreadViewActive(threadId: string, active: boolean): Promise<boolean> {
     this.streamState.setConversationFollowing(threadId, active);
-    return (await invoke("codex:thread:view-active:set", {
+    return (await runConversationOperation("codex:thread:view-active:set", {
       threadId,
       active,
     })) as boolean;
@@ -4423,7 +4431,7 @@ export class CodexAppServerManager {
     options: { reannounce?: boolean } = {},
   ): Promise<boolean> {
     this.streamState.setConversationFollowing(threadId, following);
-    return (await invoke("codex:thread:stream-following:set", {
+    return (await runConversationOperation("codex:thread:stream-following:set", {
       threadId,
       following,
       ...(options.reannounce === true ? { reannounce: true } : {}),
@@ -4435,7 +4443,7 @@ export class CodexAppServerManager {
     surfaceId: string,
     presented: boolean,
   ): Promise<boolean> {
-    return (await invoke("codex:thread:presentation:set", {
+    return (await runConversationOperation("codex:thread:presentation:set", {
       threadId,
       surfaceId,
       presented,
@@ -4443,13 +4451,13 @@ export class CodexAppServerManager {
   }
 
   async markSubagentThreadOpened(threadId: string): Promise<boolean> {
-    return (await invoke("codex:subagent-thread:opened", threadId)) as boolean;
+    return (await runConversationOperation("codex:subagent-thread:opened", threadId)) as boolean;
   }
 
   async hydrateBackgroundSubagentThreads(
     input: CodexBackgroundSubagentThreadsHydrateInput,
   ): Promise<CodexThreadSummary[]> {
-    const summaries = (await invoke(
+    const summaries = (await runConversationOperation(
       "codex:thread:background-subagents:hydrate",
       input,
     )) as CodexThreadSummary[];
@@ -4460,7 +4468,7 @@ export class CodexAppServerManager {
   }
 
   async hydrateSubagentPanel(input: CodexSubagentPanelHydrateInput): Promise<CodexThreadSummary[]> {
-    const summaries = (await invoke(
+    const summaries = (await runConversationOperation(
       "codex:thread:subagents-panel:hydrate",
       input,
     )) as CodexThreadSummary[];
@@ -4480,7 +4488,7 @@ export class CodexAppServerManager {
         return this.conversationsById.get(threadId) ?? null;
       }
 
-      const conversation = (await invoke(
+      const conversation = (await runConversationOperation(
         "codex:thread:turns:load-older",
         threadId,
       )) as CodexConversationSnapshot | null;
@@ -4515,7 +4523,7 @@ export class CodexAppServerManager {
     threadId: string,
   ): Promise<CodexThreadOwnerLoadCompleteHistoryResult> {
     await this.ensureOwnerForConversationAction(threadId, "load complete history");
-    const conversation = (await invoke(
+    const conversation = (await runConversationOperation(
       "codex:thread:turns:load-complete",
       threadId,
     )) as CodexConversationSnapshot | null;
@@ -4686,7 +4694,7 @@ export class CodexAppServerManager {
 
     try {
       await this.loadPermissionState(input.projectId);
-      const result = (await invoke("codex:thread:start-for-session", {
+      const result = (await runConversationOperation("codex:thread:start-for-session", {
         ...input,
         permissionMode: this.readPermissionMode(input.projectId),
       })) as CodexThreadStartForSessionResult;
@@ -4730,7 +4738,7 @@ export class CodexAppServerManager {
       status: "attaching",
     });
     try {
-      const result = await invoke(
+      const result = await runConversationOperation(
         "codex:thread:fresh-owner:adopt",
         launch.threadId,
         launch.launchId,
@@ -4753,8 +4761,8 @@ export class CodexAppServerManager {
       });
       this.seedOwnerStreamPublishCursor(launch.threadId, checkpoint, acceptedReplica);
       this.applyConversationSnapshot(launch.threadId, conversation);
-      await invoke("codex:thread:resume-buffer:release", launch.threadId);
-      await invoke("codex:thread-owner:pending-requests:replay", launch.threadId);
+      await runConversationOperation("codex:thread:resume-buffer:release", launch.threadId);
+      await runConversationOperation("codex:thread-owner:pending-requests:replay", launch.threadId);
       this.setConversationAttachmentState(launch.threadId, {
         status: "attached",
       });
@@ -4806,7 +4814,7 @@ export class CodexAppServerManager {
       this.readConversation(input.parentThreadId) ?? this.readThreadSummary(input.parentThreadId);
     const projectId = parent?.projectId ?? null;
     await this.loadPermissionState(projectId);
-    const result = (await invoke("codex:thread:side-chat:start", {
+    const result = (await runConversationOperation("codex:thread:side-chat:start", {
       ...input,
       permissionMode: input.permissionMode ?? this.readPermissionMode(projectId),
     })) as CodexSideChatStartResult;
@@ -4819,14 +4827,19 @@ export class CodexAppServerManager {
       }
       return { ...result, conversation: attachedConversation };
     } catch (error) {
-      await invoke("codex:thread:side-chat:discard", result.threadId).catch(() => false);
+      await runConversationOperation("codex:thread:side-chat:discard", result.threadId).catch(
+        () => false,
+      );
       this.removeThreadLocalState(result.threadId);
       throw error;
     }
   }
 
   async discardSideChat(threadId: string): Promise<boolean> {
-    const result = (await invoke("codex:thread:side-chat:discard", threadId)) as boolean;
+    const result = (await runConversationOperation(
+      "codex:thread:side-chat:discard",
+      threadId,
+    )) as boolean;
     if (result) {
       this.removeThreadLocalState(threadId);
     }
@@ -4841,7 +4854,11 @@ export class CodexAppServerManager {
 
     this.applyThreadTitleUpdate(threadId, normalizedName);
     try {
-      const result = (await invoke("codex:thread:name:set", threadId, normalizedName)) as boolean;
+      const result = (await runConversationOperation(
+        "codex:thread:name:set",
+        threadId,
+        normalizedName,
+      )) as boolean;
       if (!result) {
         if (projectId) void this.loadThreads(projectId).catch(() => {});
       }
@@ -4853,7 +4870,7 @@ export class CodexAppServerManager {
   }
 
   async archiveThread(threadId: string, projectId: string | null): Promise<boolean> {
-    const result = (await invoke("codex:thread:archive", threadId)) as boolean;
+    const result = (await runConversationOperation("codex:thread:archive", threadId)) as boolean;
     if (result && projectId !== null) await this.loadThreads(projectId);
     return result;
   }
@@ -4862,7 +4879,10 @@ export class CodexAppServerManager {
     threadId: string,
     projectId: string | null,
   ): Promise<CodexThreadSummary | null> {
-    const result = (await invoke("codex:thread:unarchive", threadId)) as CodexThreadSummary | null;
+    const result = (await runConversationOperation(
+      "codex:thread:unarchive",
+      threadId,
+    )) as CodexThreadSummary | null;
     if (projectId !== null) await this.loadThreads(projectId, { includeArchived: true });
     return result;
   }
@@ -4968,7 +4988,7 @@ export class CodexAppServerManager {
     } = {},
   ): Promise<TResult> {
     try {
-      return (await invoke("codex:thread-follower:action", {
+      return (await runConversationOperation("codex:thread-follower:action", {
         conversationId,
         action,
       })) as TResult;
@@ -5706,7 +5726,7 @@ export class CodexAppServerManager {
     opts?: CodexTurnStartOptions,
   ): Promise<OwnerStreamRevisionResult | void> {
     await this.ensureOwnerForConversationAction(threadId, "enqueue follow-up");
-    await invoke("codex:thread:follow-up:enqueue", threadId, prompt, opts);
+    await runConversationOperation("codex:thread:follow-up:enqueue", threadId, prompt, opts);
   }
 
   async removeQueuedFollowUp(threadId: string, followUpId: string): Promise<void> {
@@ -5728,7 +5748,7 @@ export class CodexAppServerManager {
     followUpId: string,
   ): Promise<OwnerStreamRevisionResult | void> {
     await this.ensureOwnerForConversationAction(threadId, "remove queued follow-up");
-    await invoke("codex:thread:follow-up:remove", threadId, followUpId);
+    await runConversationOperation("codex:thread:follow-up:remove", threadId, followUpId);
   }
 
   async replaceQueuedFollowUp(
@@ -5769,7 +5789,7 @@ export class CodexAppServerManager {
     opts?: CodexTurnStartOptions,
   ): Promise<boolean> {
     await this.ensureOwnerForConversationAction(threadId, "replace queued follow-up");
-    return await invoke(
+    return await runConversationOperation(
       "codex:thread:follow-up:replace",
       threadId,
       followUpId,
@@ -5798,7 +5818,7 @@ export class CodexAppServerManager {
     orderedFollowUpIds: string[],
   ): Promise<OwnerStreamRevisionResult | void> {
     await this.ensureOwnerForConversationAction(threadId, "reorder queued follow-ups");
-    await invoke("codex:thread:follow-up:reorder", threadId, orderedFollowUpIds);
+    await runConversationOperation("codex:thread:follow-up:reorder", threadId, orderedFollowUpIds);
   }
 
   async resumeQueuedFollowUps(threadId: string): Promise<void> {
@@ -5813,7 +5833,7 @@ export class CodexAppServerManager {
 
   private async resumeQueuedFollowUpsAsOwner(threadId: string): Promise<void> {
     await this.ensureOwnerForConversationAction(threadId, "resume queued follow-ups");
-    await invoke("codex:thread:follow-up:resume", threadId);
+    await runConversationOperation("codex:thread:follow-up:resume", threadId);
   }
 
   async resolveQueuedFollowUpsAfterFreshStart(
@@ -5849,7 +5869,7 @@ export class CodexAppServerManager {
       threadId,
       "resolve queued follow-ups after fresh message",
     );
-    return await invoke(
+    return await runConversationOperation(
       "codex:thread:follow-up:resolve-after-fresh-start",
       threadId,
       expectedLedgerRevision,
@@ -5876,7 +5896,7 @@ export class CodexAppServerManager {
     followUpId: string,
   ): Promise<OwnerStreamRevisionResult | void> {
     await this.ensureOwnerForConversationAction(threadId, "send queued follow-up");
-    await invoke("codex:thread:follow-up:send-now", threadId, followUpId);
+    await runConversationOperation("codex:thread:follow-up:send-now", threadId, followUpId);
   }
 
   async editLastUserTurn(
@@ -6015,7 +6035,7 @@ export class CodexAppServerManager {
   }
 
   async getThreadGoal(threadId: string): Promise<ThreadGoal | null> {
-    return (await invoke("codex:thread:goal:get", threadId)) as ThreadGoal | null;
+    return (await runConversationOperation("codex:thread:goal:get", threadId)) as ThreadGoal | null;
   }
 
   async setThreadGoal(input: CodexThreadGoalSetActionInput): Promise<ThreadGoal | null> {
@@ -6169,7 +6189,7 @@ export class CodexAppServerManager {
   }
 
   async uploadFeedback(params: FeedbackUploadParams): Promise<void> {
-    await invoke("codex:feedback:upload", params);
+    await runConversationOperation("codex:feedback:upload", params);
   }
 
   async cleanBackgroundTerminals(threadId: string): Promise<boolean> {
@@ -6178,7 +6198,7 @@ export class CodexAppServerManager {
     }
 
     if (this.streamState.getRole(threadId)?.role === "owner") {
-      const cleaned = (await invoke(
+      const cleaned = (await runConversationOperation(
         "codex:thread:background-terminals:clean-silent",
         threadId,
       )) as boolean;
@@ -6191,7 +6211,10 @@ export class CodexAppServerManager {
       return cleaned;
     }
 
-    return (await invoke("codex:thread:background-terminals:clean", threadId)) as boolean;
+    return (await runConversationOperation(
+      "codex:thread:background-terminals:clean",
+      threadId,
+    )) as boolean;
   }
 
   async listBackgroundTerminals(threadId: string): Promise<ThreadBackgroundTerminal[]> {
@@ -6205,7 +6228,7 @@ export class CodexAppServerManager {
     }
 
     if (this.streamState.getRole(trimmedThreadId)?.role !== "owner") {
-      return (await invoke(
+      return (await runConversationOperation(
         "codex:thread:background-terminals:list",
         trimmedThreadId,
       )) as ThreadBackgroundTerminal[];
@@ -6240,13 +6263,13 @@ export class CodexAppServerManager {
     }
 
     if (this.streamState.getRole(trimmedThreadId)?.role !== "owner") {
-      return (await invoke("codex:thread:background-processes:list", {
+      return (await runConversationOperation("codex:thread:background-processes:list", {
         threadId: trimmedThreadId,
       })) as CodexBackgroundProcessRow[];
     }
 
     const observedTerminals = await this.listBackgroundTerminals(trimmedThreadId);
-    return (await invoke("codex:thread:background-processes:list", {
+    return (await runConversationOperation("codex:thread:background-processes:list", {
       threadId: trimmedThreadId,
       observedTerminals,
     })) as CodexBackgroundProcessRow[];
@@ -6264,7 +6287,7 @@ export class CodexAppServerManager {
       throw new Error("Please continue this conversation on the window where it was started.");
     }
 
-    return (await invoke("codex:thread:background-processes:run-action", {
+    return (await runConversationOperation("codex:thread:background-processes:run-action", {
       ...input,
       threadId,
     })) as CodexBackgroundProcessRow[];
@@ -6313,7 +6336,7 @@ export class CodexAppServerManager {
     }
 
     if (this.streamState.getRole(threadId)?.role !== "owner") {
-      return (await invoke("codex:thread:background-terminals:terminate", {
+      return (await runConversationOperation("codex:thread:background-terminals:terminate", {
         threadId,
         processId,
       })) as boolean;
@@ -6437,7 +6460,7 @@ export class CodexAppServerManager {
     let targetTurnId = expectedTurnId;
     let streamRevision = this.streamState.getRevision(input.threadId) ?? 0;
     try {
-      result = await invoke("codex:turn:steer", {
+      result = await runConversationOperation("codex:turn:steer", {
         ...input,
         expectedTurnId,
         intent: {
@@ -6539,7 +6562,7 @@ export class CodexAppServerManager {
           threadId,
           turnId: interruptedTurnId ?? turnId,
         })
-      : ((await invoke("codex:turn:interrupt", threadId, turnId)) as boolean);
+      : ((await runConversationOperation("codex:turn:interrupt", threadId, turnId)) as boolean);
   }
 
   private async declineOwnerRequestsBeforeInterrupt(threadId: string): Promise<void> {
@@ -6698,7 +6721,7 @@ export class CodexAppServerManager {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
     await this.ensureOwnerForConversationAction(conversationId, "respond to approval");
-    const responsePromise = invoke(
+    const responsePromise = runConversationOperation(
       "codex:approval:respond",
       conversationId,
       requestId,
@@ -6745,7 +6768,7 @@ export class CodexAppServerManager {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
     await this.ensureOwnerForConversationAction(conversationId, "respond to user input");
-    const responsePromise = invoke(
+    const responsePromise = runConversationOperation(
       "codex:user-input:respond",
       conversationId,
       requestId,
@@ -6794,7 +6817,7 @@ export class CodexAppServerManager {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
     await this.ensureOwnerForConversationAction(conversationId, "respond to MCP elicitation");
-    const responsePromise = invoke(
+    const responsePromise = runConversationOperation(
       "codex:mcp-elicitation:respond",
       conversationId,
       requestId,
@@ -6919,7 +6942,7 @@ export class CodexAppServerManager {
     const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
     if (!conversationId) return { accepted: false };
     await this.ensureOwnerForConversationAction(conversationId, "respond to permission request");
-    const responsePromise = invoke(
+    const responsePromise = runConversationOperation(
       "codex:permission-request:respond",
       conversationId,
       requestId,
@@ -6971,7 +6994,7 @@ export class CodexAppServerManager {
       return { accepted: false };
     }
 
-    const responsePromise = invoke(
+    const responsePromise = runConversationOperation(
       "codex:setup-codex-step:respond",
       conversationId,
       requestId,
@@ -7018,7 +7041,7 @@ export class CodexAppServerManager {
     )
       return { accepted: false };
 
-    const responsePromise = invoke(
+    const responsePromise = runConversationOperation(
       "codex:option-picker:respond",
       conversationId,
       requestId,
@@ -7054,7 +7077,7 @@ export class CodexAppServerManager {
     )
       return false;
 
-    const responsePromise = invoke(
+    const responsePromise = runConversationOperation(
       "codex:setup-context-picker:respond",
       conversationId,
       requestId,
@@ -7117,7 +7140,7 @@ export class CodexAppServerManager {
       return;
     }
 
-    const nextState = (await invoke(
+    const nextState = (await runConversationOperation(
       "codex:permission:mode:set",
       projectId,
       mode,
@@ -7165,7 +7188,7 @@ export class CodexAppServerManager {
 
   async setConversationUnreadState(conversationId: string, hasUnreadTurn: boolean): Promise<void> {
     if (!this.applyConversationUnreadState(conversationId, hasUnreadTurn)) return;
-    await invoke("codex:conversation-unread:set", conversationId, hasUnreadTurn);
+    await runConversationOperation("codex:conversation-unread:set", conversationId, hasUnreadTurn);
   }
 
   async markConversationAsRead(conversationId: string): Promise<void> {
@@ -7266,7 +7289,7 @@ export class CodexAppServerManager {
     );
 
     return {
-      accepted: (await invoke(
+      accepted: (await runConversationOperation(
         "codex:thread:plan-implementation:remove",
         threadId,
         turnId,
@@ -7320,7 +7343,9 @@ export class CodexAppServerManager {
 
   private async bootstrapAccountAndConnection(): Promise<void> {
     try {
-      const account = (await invoke("codex:account:read")) as CodexAccountSnapshot;
+      const account = (await runConversationOperation(
+        "codex:account:read",
+      )) as CodexAccountSnapshot;
       this.handleSharedObjectUpdated({
         hostId: this.hostId,
         object: {
@@ -7334,7 +7359,9 @@ export class CodexAppServerManager {
     }
 
     try {
-      const connection = (await invoke("codex:connection:status")) as CodexConnectionState;
+      const connection = (await runConversationOperation(
+        "codex:connection:status",
+      )) as CodexConnectionState;
       this.handleSharedObjectUpdated({
         hostId: this.hostId,
         object: {
@@ -7375,7 +7402,7 @@ export class CodexAppServerManager {
     }
 
     const loadPromise = (async () => {
-      const nextState = (await invoke(
+      const nextState = (await runConversationOperation(
         "codex:permission:state:get",
         projectId,
       )) as CodexPermissionState;
@@ -7810,14 +7837,19 @@ export class CodexAppServerManager {
 
     try {
       const serviceTier = readCodexServiceTier();
-      await invoke("codex:dynamic-tool-call:respond", conversationId, event.request.id, {
-        permissionMode: conversation.projectId
-          ? (this.permissionStateByScope.get(conversation.projectId)?.mode ??
-            DEFAULT_PERMISSION_STATE.mode)
-          : (this.permissionStateByScope.get(null)?.mode ?? DEFAULT_PERMISSION_STATE.mode),
-        serviceTierSelector:
-          serviceTier === "fast" ? { type: "custom", serviceTier } : { type: "standard" },
-      });
+      await runConversationOperation(
+        "codex:dynamic-tool-call:respond",
+        conversationId,
+        event.request.id,
+        {
+          permissionMode: conversation.projectId
+            ? (this.permissionStateByScope.get(conversation.projectId)?.mode ??
+              DEFAULT_PERMISSION_STATE.mode)
+            : (this.permissionStateByScope.get(null)?.mode ?? DEFAULT_PERMISSION_STATE.mode),
+          serviceTierSelector:
+            serviceTier === "fast" ? { type: "custom", serviceTier } : { type: "standard" },
+        },
+      );
     } finally {
       await this.ackOwnerNotification(conversationId, event.sequence);
     }
@@ -8869,7 +8901,7 @@ export class CodexAppServerManager {
       let accepted = false;
       try {
         accepted =
-          (await invoke("codex:thread-owner:notification:ack", {
+          (await runConversationOperation("codex:thread-owner:notification:ack", {
             conversationId,
             sequence,
           })) === true;
@@ -9431,7 +9463,7 @@ export class CodexAppServerManager {
     ownerNotificationSequence?: number,
   ): Promise<CodexThreadOwnerStreamStatePublishResult> {
     try {
-      const result = (await invoke("codex:thread-owner:stream-state:publish", {
+      const result = (await runConversationOperation("codex:thread-owner:stream-state:publish", {
         conversationId,
         change: {
           type: "patches",
@@ -9461,7 +9493,7 @@ export class CodexAppServerManager {
     ownerNotificationSequence?: number,
   ): Promise<CodexThreadOwnerStreamStatePublishResult> {
     try {
-      const result = (await invoke("codex:thread-owner:stream-state:publish", {
+      const result = (await runConversationOperation("codex:thread-owner:stream-state:publish", {
         conversationId,
         change: {
           type: "snapshot",
@@ -9612,7 +9644,7 @@ export class CodexAppServerManager {
   ): void {
     if (this.resyncInFlight.has(conversationId)) return;
     this.resyncInFlight.add(conversationId);
-    void invoke("codex:thread:stream-resync:request", {
+    void runConversationOperation("codex:thread:stream-resync:request", {
       conversationId,
       ownerClientId,
       observedCheckpoint: this.streamState.getCheckpoint(conversationId),
@@ -9627,7 +9659,7 @@ export class CodexAppServerManager {
     ownerClientId: string,
     checkpoint: CodexThreadStreamCheckpoint,
   ): void {
-    void invoke("codex:thread-follower:snapshot-applied", {
+    void runConversationOperation("codex:thread-follower:snapshot-applied", {
       conversationId,
       ownerClientId,
       checkpoint,
@@ -10560,7 +10592,7 @@ function startLocalConversationRendererClientRequestBridge(
 
       void (async () => {
         const response = await buildRendererClientResponse(activeManager, message);
-        await invoke("codex:renderer-client:response", response);
+        await runConversationOperation("codex:renderer-client:response", response);
       })();
     });
   }
@@ -11262,12 +11294,14 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     useCodexThreadSettings();
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
   const [personality, setPersonalityState] = useState<CodexPersonality>("friendly");
+  const personalityIntentVersion = useRef(0);
 
   useEffect(() => {
     let disposed = false;
-    void invoke("codex:personality:get")
+    const observedIntentVersion = personalityIntentVersion.current;
+    void runConversationOperation("codex:personality:get")
       .then((value) => {
-        if (disposed) return;
+        if (disposed || personalityIntentVersion.current !== observedIntentVersion) return;
         if (value === "none" || value === "friendly" || value === "pragmatic") {
           setPersonalityState(value);
         }
@@ -11587,8 +11621,21 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     [manager],
   );
   const setPersonality = useCallback(async (nextPersonality: CodexPersonality) => {
-    await invoke("codex:personality:set", nextPersonality);
-    setPersonalityState(nextPersonality);
+    const intentVersion = personalityIntentVersion.current + 1;
+    personalityIntentVersion.current = intentVersion;
+    let previousPersonality: CodexPersonality = "friendly";
+    setPersonalityState((current) => {
+      previousPersonality = current;
+      return nextPersonality;
+    });
+    try {
+      await runConversationOperation("codex:personality:set", nextPersonality);
+    } catch (error) {
+      if (personalityIntentVersion.current === intentVersion) {
+        setPersonalityState(previousPersonality);
+      }
+      throw error;
+    }
   }, []);
   const removePlanImplementationRequest = useCallback(
     async (threadId: string, turnId: string) =>
@@ -11704,7 +11751,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     async (
       input: AgentProviderCredentialMutationInput,
     ): Promise<AgentProviderCredentialMutationResult> => {
-      const result = (await invoke(
+      const result = (await runConversationOperation(
         "agent-runtime:credential:set",
         input,
       )) as AgentProviderCredentialMutationResult;
@@ -11717,7 +11764,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     async (
       input: AgentProviderCredentialDeleteInput,
     ): Promise<AgentProviderCredentialMutationResult> => {
-      const result = (await invoke(
+      const result = (await runConversationOperation(
         "agent-runtime:credential:delete",
         input,
       )) as AgentProviderCredentialMutationResult;

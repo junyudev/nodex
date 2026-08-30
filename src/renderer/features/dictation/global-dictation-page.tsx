@@ -9,14 +9,9 @@ import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { formatAcceleratorLabel } from "../../../shared/command-keybindings";
-import type {
-  DictationError,
-  DictationSettings,
-  MicrophoneAccessResult,
-} from "../../../shared/dictation";
+import type { DictationError, DictationSettings } from "../../../shared/dictation";
 import { DEFAULT_DICTATION_SETTINGS } from "../../../shared/dictation";
 import type { GlobalDictationRendererEvent } from "../../../shared/global-dictation";
-import type { IpcApi } from "../../../shared/ipc-api";
 import { cleanupDictationTranscript } from "./dictation-cleanup-client";
 import { transcribeDictationBlob } from "./dictation-buffered-client";
 import { createDictationHistoryPort } from "./dictation-history-client";
@@ -35,15 +30,7 @@ import {
 import { acquireMicrophone } from "./microphone-acquirer";
 import { useDictationSession } from "./use-dictation-session";
 import { useFloatingWindowPointerInteractivity } from "./use-floating-window-pointer-interactivity";
-
-const invoke = async <Channel extends keyof IpcApi>(
-  channel: Channel,
-  ...args: IpcApi[Channel]["args"]
-): Promise<IpcApi[Channel]["result"]> => {
-  const bridge = window.globalDictation;
-  if (!bridge) throw new Error("Global dictation bridge is unavailable");
-  return (await bridge.invoke(channel, ...args)) as IpcApi[Channel]["result"];
-};
+import { globalDictationTransport } from "./global-dictation-transport";
 
 const sendEvent = (event: GlobalDictationRendererEvent): Promise<boolean> =>
   window.globalDictation?.sendEvent(event) ?? Promise.resolve(false);
@@ -60,10 +47,10 @@ const defaultClock: DictationControllerPorts["clock"] = {
 
 const createGlobalHistoryPort = (): DictationControllerPorts["history"] =>
   createDictationHistoryPort({
-    create: async (input) => await invoke("codex:dictation:history:create", input),
-    append: async (input) => await invoke("codex:dictation:history:append", input),
-    finalize: async (input) => await invoke("codex:dictation:history:finalize", input),
-    setTranscript: async (input) => await invoke("codex:dictation:history:set-transcript", input),
+    create: globalDictationTransport.createHistory,
+    append: globalDictationTransport.appendHistory,
+    finalize: globalDictationTransport.finalizeHistory,
+    setTranscript: globalDictationTransport.setHistoryTranscript,
   });
 
 const transcribe = async (blob: Blob, signal: AbortSignal): Promise<string> =>
@@ -72,11 +59,11 @@ const transcribe = async (blob: Blob, signal: AbortSignal): Promise<string> =>
     transcribe: async (input) => {
       const requestId = crypto.randomUUID();
       const cancel = (): void => {
-        void invoke("codex:dictation:transcribe:cancel", requestId).catch(() => undefined);
+        void globalDictationTransport.cancelTranscription(requestId).catch(() => undefined);
       };
       signal.addEventListener("abort", cancel, { once: true });
       try {
-        return await invoke("codex:dictation:transcribe", { ...input, requestId });
+        return await globalDictationTransport.transcribe({ ...input, requestId });
       } finally {
         signal.removeEventListener("abort", cancel);
       }
@@ -390,20 +377,19 @@ export function GlobalDictationRoot() {
       new DictationSessionController({
         lease: {
           acquire: async (sessionId, surface) =>
-            await invoke("codex:dictation:microphone-lease:acquire", { sessionId, surface }),
+            await globalDictationTransport.acquireMicrophoneLease({ sessionId, surface }),
           release: async (sessionId) => {
-            await invoke("codex:dictation:microphone-lease:release", sessionId);
+            await globalDictationTransport.releaseMicrophoneLease(sessionId);
           },
         },
         permissions: {
-          request: async () =>
-            (await invoke("codex:dictation:microphone-access:request")) as MicrophoneAccessResult,
+          request: globalDictationTransport.requestMicrophoneAccess,
         },
         devices: {
           acquire: async () => {
             const [nextSettings, builtInMicrophoneLabelHint] = await Promise.all([
-              invoke("codex:dictation:settings:read").catch(() => DEFAULT_DICTATION_SETTINGS),
-              invoke("codex:dictation:microphone-route-hint:read").catch(() => null),
+              globalDictationTransport.readSettings().catch(() => DEFAULT_DICTATION_SETTINGS),
+              globalDictationTransport.readMicrophoneRouteHint().catch(() => null),
             ]);
             setSettings(nextSettings);
             return await acquireMicrophone({
@@ -421,9 +407,8 @@ export function GlobalDictationRoot() {
           transcript: async (transcript, signal) =>
             await cleanupDictationTranscript(transcript, {
               signal,
-              cleanup: async (input) => await invoke("codex:dictation:cleanup", input),
-              cancel: async (requestId) =>
-                await invoke("codex:dictation:transcribe:cancel", requestId),
+              cleanup: globalDictationTransport.cleanup,
+              cancel: globalDictationTransport.cancelTranscription,
             }),
         },
         history: createGlobalHistoryPort(),
@@ -444,7 +429,8 @@ export function GlobalDictationRoot() {
   const snapshot = useDictationSession(controller);
 
   useEffect(() => {
-    void invoke("codex:dictation:settings:read")
+    void globalDictationTransport
+      .readSettings()
       .then(setSettings)
       .catch(() => undefined);
     void sendEvent({ type: "ready" });

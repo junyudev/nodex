@@ -1,3 +1,5 @@
+import { invokeRendererControl } from "./renderer-command";
+
 type AssistantStreamingDebugFields = Record<string, unknown>;
 
 const ASSISTANT_STREAMING_DEBUG_MESSAGE = "Assistant streaming debug";
@@ -12,15 +14,13 @@ function sendAssistantStreamingDebugLog(
     return;
   }
 
-  void window.api
-    .invoke("diagnostics:renderer-log", {
-      message: ASSISTANT_STREAMING_DEBUG_MESSAGE,
-      fields: {
-        phase,
-        ...fields,
-      },
-    })
-    .catch(() => undefined);
+  void invokeRendererControl("diagnostics:renderer-log", {
+    message: ASSISTANT_STREAMING_DEBUG_MESSAGE,
+    fields: {
+      phase,
+      ...fields,
+    },
+  }).catch(() => undefined);
 }
 
 export function logAssistantStreamingDebug(

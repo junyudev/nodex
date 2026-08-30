@@ -75,7 +75,9 @@ that version's exact upstream tag only when its tests are needed to resolve deep
 - Do not hand-write parallel protocol field definitions in `src/shared/types.ts` unless the local type is intentionally a derived or view-model shape.
 - Keep data validation at boundaries (`src/main/http-server.ts`, generated Core contracts, and shared transport-neutral validators such as `src/shared/page-input-validation.ts`).
 - Prefer pure helpers in `src/renderer/lib/` for reusable behavior.
-- Keep renderer transport-agnostic by going through `src/renderer/lib/api.ts`.
+- Keep renderer presentation transport-agnostic: call semantic owner Interfaces, whose Modules
+  cross named typed query, control, or command Adapters. Use `src/renderer/lib/api.ts` only as a
+  narrow shared facade, never as a general invocation route.
 - Preserve project scoping for stateful UI and server operations.
 
 ## Architectural Preference

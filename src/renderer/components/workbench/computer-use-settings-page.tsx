@@ -14,7 +14,14 @@ import {
   NodexSettingsSection,
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
-import { invoke } from "@/lib/api";
+import {
+  readComputerUseSettings,
+  removeComputerUseAppApproval,
+  removeComputerUseMessageApproval,
+  setComputerUseAlwaysHidePictureInPicture,
+  setComputerUseLockedUse,
+  setComputerUseSoundMode,
+} from "@/lib/computer-use-settings";
 import type {
   ComputerUseSettingsSnapshot,
   ComputerUseSoundMode,
@@ -218,7 +225,7 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
     if (!open) return;
     let disposed = false;
     setError(null);
-    void invoke("computer-use-settings-get")
+    void readComputerUseSettings()
       .then((nextSnapshot) => {
         if (!disposed) setSnapshot(nextSnapshot);
       })
@@ -280,37 +287,33 @@ export function ComputerUseSettingsPage({ open }: { open: boolean }) {
         onRemoveAppApproval={(bundleIdentifier) =>
           mutate(
             `app:${bundleIdentifier}`,
-            () => invoke("computer-use-settings-remove-app-approval", bundleIdentifier),
+            () => removeComputerUseAppApproval(bundleIdentifier),
             "Allowed app removed",
           )
         }
         onRemoveMessageApproval={(chatGuid) =>
           mutate(
             `message:${chatGuid}`,
-            () => invoke("computer-use-settings-remove-message-approval", chatGuid),
+            () => removeComputerUseMessageApproval(chatGuid),
             "Allowed message thread removed",
           )
         }
         onSetAlwaysHidePictureInPicture={(value) =>
           mutate(
             "always-hide",
-            () => invoke("computer-use-settings-set-always-hide-pip", value),
+            () => setComputerUseAlwaysHidePictureInPicture(value),
             value ? "Picture in picture hidden" : "Picture in picture enabled",
           )
         }
         onSetLockedUseEnabled={(value) =>
           mutate(
             "locked-use",
-            () => invoke("computer-use-settings-set-locked-use", value),
+            () => setComputerUseLockedUse(value),
             value ? "Locked use enabled" : "Locked use disabled",
           )
         }
         onSetSoundMode={(value) =>
-          mutate(
-            "sound",
-            () => invoke("computer-use-settings-set-sound-mode", value),
-            "Click sound setting saved",
-          )
+          mutate("sound", () => setComputerUseSoundMode(value), "Click sound setting saved")
         }
       />
       {error ? (

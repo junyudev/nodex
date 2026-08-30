@@ -31,6 +31,7 @@ export async function deleteBoardPage(input: {
 }): Promise<boolean> {
   const outcome = await input.store.runOptimisticMutation<PageLifecycleExecutionResultV2>({
     kind: "page:delete",
+    operationIdentity: input.operationId,
     conflictKeys: conflictKeysForDelete(input.pageId),
     apply: buildDeletePageTransform(input.columnId, input.pageId),
     remoteLane: BOARD_PLACEMENT_REMOTE_LANE,
@@ -74,6 +75,7 @@ export async function moveBoardPage(input: {
       .filter((card) => card.id === input.move.pageId) ?? [];
   const outcome = await input.store.runOptimisticMutation<DatabaseApplyReceiptV2>({
     kind: "database:position",
+    operationIdentity: input.operationId,
     conflictKeys: conflictKeysForMove(input.move),
     apply: buildMovePageTransform(input.move, fallbackCards),
     remoteLane: BOARD_PLACEMENT_REMOTE_LANE,
@@ -116,6 +118,7 @@ export async function moveBoardPages(input: {
       .filter((card) => movingPageIds.has(card.id)) ?? [];
   const outcome = await input.store.runOptimisticMutation<DatabaseApplyReceiptV2>({
     kind: "database:position-many",
+    operationIdentity: input.operationId,
     conflictKeys: conflictKeysForMoveMany(input.move),
     apply: buildMovePagesTransform(input.move, fallbackCards),
     remoteLane: BOARD_PLACEMENT_REMOTE_LANE,

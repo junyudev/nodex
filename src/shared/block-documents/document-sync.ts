@@ -1,4 +1,5 @@
 import type { ApplyDocumentUpdate, DocumentId } from "./contracts";
+import type { LocalCommitApply, LocalCommitCommandSuccess } from "../local-commit-delivery";
 
 export const MAX_DOCUMENT_AWARENESS_UPDATE_BYTES = 64 * 1024;
 
@@ -136,6 +137,37 @@ export type DocumentSyncApplyAck = DocumentSyncApplyAckBase &
         readonly observed: import("@nodex/core-protocol").components["schemas"]["StoreObservation"];
       }
   );
+
+/** Final renderer-facing envelope for a durable Yjs update command. */
+export type DocumentSyncApplyCommandResult =
+  | LocalCommitCommandSuccess<DocumentSyncApplyAck>
+  | { readonly ok: false; readonly error: DocumentSyncCommandError };
+
+/** Projects the Document head ACK onto the common LocalCommit admission contract. */
+export const localCommitFromDocumentSyncApplyAck = (
+  acknowledgement: DocumentSyncApplyAck,
+): LocalCommitApply =>
+  acknowledgement.status === "committed"
+    ? {
+        status: "committed",
+        commit: acknowledgement.commit,
+        delivery: acknowledgement.delivery ?? null,
+      }
+    : {
+        status: "no_op",
+        observed: acknowledgement.observed,
+      };
+
+export const documentSyncApplyCommandResult = (
+  result: DocumentSyncCommandResult<DocumentSyncApplyAck>,
+): DocumentSyncApplyCommandResult =>
+  result.ok
+    ? {
+        ok: true,
+        value: result.value,
+        localCommit: localCommitFromDocumentSyncApplyAck(result.value),
+      }
+    : result;
 
 export interface DocumentSyncSubscribeRequest {
   readonly documentId: DocumentId;

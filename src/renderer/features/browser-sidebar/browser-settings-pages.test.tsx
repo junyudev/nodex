@@ -10,6 +10,18 @@ vi.mock("@/lib/api", () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
+vi.mock("@/lib/renderer-command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/renderer-command")>()),
+  invokePlainCommand: (definition: { readonly channel: string }, ...args: readonly unknown[]) =>
+    invokeMock(definition.channel, ...args),
+  invokePlainCommandWithTrace: (
+    definition: { readonly channel: string },
+    _trace: unknown,
+    ...args: readonly unknown[]
+  ) => invokeMock(definition.channel, ...args),
+  invokeRendererQuery: (...args: readonly unknown[]) => invokeMock(...args),
+}));
+
 const capabilities = {
   contactInfo: { available: true, provider: "test" },
   credentialVault: { available: true, provider: "test" },

@@ -2,7 +2,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
-import type { IpcApi } from "../../../shared/ipc-api";
 import { MainConfig } from "../../app/MainConfig";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
 import { makePersistedAtomStore } from "../../local-store/persisted-atoms";
@@ -16,11 +15,6 @@ export class ApplicationLocalStateIpcError extends Schema.TaggedError<Applicatio
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
 
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
-
 const diagnostics = getLogger({ subsystem: "renderer", component: "diagnostics" });
 
 export const live: Layer.Layer<never, never, ElectronIpc | MainConfig | WindowRuntime> =
@@ -30,8 +24,7 @@ export const live: Layer.Layer<never, never, ElectronIpc | MainConfig | WindowRu
       const persistedAtoms = makePersistedAtomStore(config.nodexHome);
       const ipc = yield* ElectronIpc;
       const windows = yield* WindowRuntime;
-      const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-        ipc.handle(channel, handler);
+      const { handleControl, handleQuery, handleRevisionedCommand } = ipc;
       const authorize = (event: IpcMainInvokeEvent) =>
         Effect.try({
           try: () => {
@@ -44,7 +37,7 @@ export const live: Layer.Layer<never, never, ElectronIpc | MainConfig | WindowRu
             new ApplicationLocalStateIpcError({ operation: "authorize-renderer", cause }),
         });
 
-      yield* handle("diagnostics:renderer-log", (event, input) =>
+      yield* handleControl("diagnostics:renderer-log", (event, input) =>
         authorize(event).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
@@ -53,10 +46,10 @@ export const live: Layer.Layer<never, never, ElectronIpc | MainConfig | WindowRu
           ),
         ),
       );
-      yield* handle("persisted-atom:sync-request", (event) =>
+      yield* handleQuery("persisted-atom:sync-request", (event) =>
         authorize(event).pipe(Effect.andThen(Effect.sync(() => persistedAtoms.readSnapshot()))),
       );
-      yield* handle("persisted-atom:update", (event, mutation) =>
+      yield* handleRevisionedCommand("persisted-atom:update", (event, mutation) =>
         authorize(event).pipe(
           Effect.andThen(
             Effect.try({

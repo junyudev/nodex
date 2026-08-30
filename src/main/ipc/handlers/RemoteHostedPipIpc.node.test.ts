@@ -6,6 +6,7 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { MainConfig } from "../../app/MainConfig";
 import { RemoteHostedPipRuntime } from "../../host-runtime/RemoteHostedPipRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { live } from "./RemoteHostedPipIpc";
 
@@ -14,7 +15,7 @@ type Handler = (event: IpcMainInvokeEvent, ...args: readonly unknown[]) => Effec
 it.effect("registers and releases the Remote Hosted PiP ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel, handler) =>
         Effect.acquireRelease(
           Effect.sync(() => handlers.set(channel, handler as Handler)),

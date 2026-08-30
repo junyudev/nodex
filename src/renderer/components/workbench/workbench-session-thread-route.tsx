@@ -19,7 +19,8 @@ import type {
   ThreadSummaryPanelComputerUsePipState,
   ThreadSummaryPanelScheduledAutomationRow,
 } from "@/features/local-conversation/thread-stage-types";
-import { getGitWorkerClient, invoke } from "@/lib/api";
+import { getGitWorkerClient } from "@/lib/api";
+import { listWorktreeEnvironmentConfigs } from "@/lib/managed-worktree-runtime";
 import {
   createCommandKeymapState,
   formatCommandShortcutLabel,
@@ -358,10 +359,7 @@ function ConnectedSessionThread({
     setNewThreadEnvironmentsLoading(true);
     setNewThreadEnvironmentsError(false);
     try {
-      const configs = (await invoke(
-        "worktrees:environments:configs:list",
-        effectiveProjectId,
-      )) as WorktreeEnvironmentConfigRecord[];
+      const configs = await listWorktreeEnvironmentConfigs(effectiveProjectId);
       const resolution = resolveLocalEnvironmentSelection({
         candidateSource: {
           status: "loaded",

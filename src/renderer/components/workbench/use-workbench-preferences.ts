@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { isCodexGitSettings } from "../../../shared/codex-git-settings";
-import { invoke } from "../../lib/api";
+import { readCodexGitSettings } from "../../lib/codex-git-settings";
 import {
   readComposerEnterBehavior,
   writeComposerEnterBehavior,
@@ -88,7 +88,7 @@ export function useWorkbenchPreferences() {
 
   useEffect(() => {
     let disposed = false;
-    void invoke("settings:git:get")
+    void readCodexGitSettings()
       .then((settings) => {
         if (disposed || !isCodexGitSettings(settings)) return;
         setWorktreeAutoBranchPrefix(writeWorktreeAutoBranchPrefix(settings.branchPrefix));

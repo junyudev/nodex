@@ -7,6 +7,7 @@ import { assert, it } from "@effect/vitest";
 import type { CodexSshExecutionHostConfig } from "../../../shared/types";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ExecutionHostRuntime } from "../../codex-application/ExecutionHostRuntime";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./ExecutionHostIpc";
@@ -14,7 +15,7 @@ import { live } from "./ExecutionHostIpc";
 it.effect("registers execution host settings ingress against its owning module", () =>
   Effect.gen(function* () {
     const channels = new Set<string>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -23,7 +24,7 @@ it.effect("registers execution host settings ingress against its owning module",
           () => Effect.sync(() => channels.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const activeSshHosts = yield* SubscriptionRef.make<
       ReadonlyMap<string, CodexSshExecutionHostConfig>
     >(new Map());

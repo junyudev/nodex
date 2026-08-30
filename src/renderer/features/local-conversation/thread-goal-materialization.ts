@@ -1,7 +1,21 @@
 import type { CodexThreadGoalDraftInput, CodexThreadGoalMaterializedDraft } from "@/lib/types";
-import { invoke } from "@/lib/api";
+import {
+  defineRendererCommand,
+  invokePlainCommand,
+  invokeRendererControl,
+  invokeRendererQuery,
+} from "@/lib/renderer-command";
 
 const THREAD_GOAL_LONG_OBJECTIVE_THRESHOLD = 4000;
+
+const materializeThreadGoalDraftCommand = defineRendererCommand({
+  key: "thread_goal.materialize_draft",
+  channel: "codex:thread:goal:materialize-draft",
+  authority: "external",
+  owner: "ThreadGoalMaterialization",
+  protocol: { kind: "pending_operation" },
+  trace: { scopeKind: "thread" },
+});
 
 function hasThreadGoalMaterializedAttachments(draft: CodexThreadGoalDraftInput): boolean {
   return draft.pastedTextAttachments.length > 0 || draft.imageAttachments.length > 0;
@@ -46,7 +60,7 @@ export async function materializeThreadGoalDraft(
   }
 
   return normalizeMaterializedDraftResponse(
-    await invoke("codex:thread:goal:materialize-draft", draft),
+    await invokePlainCommand(materializeThreadGoalDraftCommand, draft),
   );
 }
 
@@ -55,7 +69,10 @@ export async function cleanupMaterializedThreadGoalDraft(
 ): Promise<void> {
   if (!materialized?.attachmentDirectory) return;
   await runBestEffortThreadGoalCleanup(async () => {
-    await invoke("codex:thread:goal:materialized-cleanup", materialized.attachmentDirectory);
+    await invokeRendererControl(
+      "codex:thread:goal:materialized-cleanup",
+      materialized.attachmentDirectory,
+    );
   });
 }
 
@@ -66,7 +83,10 @@ export async function runBestEffortThreadGoalCleanup(
 }
 
 export async function readThreadGoalEditableObjective(objective: string): Promise<string> {
-  const editableObjective = await invoke("codex:thread:goal:editable-objective:read", objective);
+  const editableObjective = await invokeRendererQuery(
+    "codex:thread:goal:editable-objective:read",
+    objective,
+  );
   if (typeof editableObjective !== "string") {
     throw new Error("Thread goal editable objective returned an invalid response");
   }

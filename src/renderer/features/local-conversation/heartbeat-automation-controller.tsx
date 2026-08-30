@@ -6,7 +6,10 @@ import type {
   CodexPermissionState,
   CodexScheduledAutomation,
 } from "../../../shared/types";
-import { invoke } from "../../lib/api";
+import {
+  publishCodexHeartbeatEnabled,
+  publishCodexHeartbeatThreadState,
+} from "../../lib/codex-automation-runtime";
 import { useCodexScheduledAutomations } from "../../lib/use-codex-scheduled-automations";
 import {
   useConversationSubset,
@@ -89,7 +92,7 @@ export function HeartbeatAutomationController() {
 
   useEffect(() => {
     if (!electronAvailable) return;
-    void invoke("codex:scheduled-automations:heartbeat-enabled-changed", { enabled: true });
+    void publishCodexHeartbeatEnabled({ enabled: true });
   }, [electronAvailable]);
 
   useEffect(
@@ -162,7 +165,7 @@ export function HeartbeatAutomationController() {
       nextPublishedStateByThreadId.set(threadId, serialized);
       if (lastPublishedStateByThreadId.current.get(threadId) === serialized) continue;
 
-      void invoke("codex:scheduled-automations:heartbeat-thread-state-changed", state);
+      void publishCodexHeartbeatThreadState(state);
     }
     lastPublishedStateByThreadId.current = nextPublishedStateByThreadId;
   }, [conversations, electronAvailable, manager, targetThreadIds, targetThreadIdsKey]);

@@ -38,7 +38,7 @@ import {
   ConnectorGlobeIcon,
   PluginCubeIcon,
 } from "@/components/shared/icons";
-import { getGitWorkerClient, invoke } from "../../../../lib/api";
+import { openFileLink } from "../../../../lib/file-system-operations";
 import {
   CODEX_SUMMARY_PANEL_TRANSITION,
   CODEX_SUMMARY_PANEL_WIDTH,
@@ -51,6 +51,7 @@ import { useMcpResource, useMcpServerStatuses } from "../../../../lib/use-mcp-qu
 import { useCodexMcpApps } from "../../use-codex-mcp-apps";
 import { useGitBranchState } from "../../../../lib/use-git-branch-state";
 import { useSummaryGitState } from "../../data/use-summary-git-state";
+import { threadSummaryGitOperations } from "../../thread-summary-git-operations";
 import { cn } from "../../../../lib/utils";
 import type {
   CodexBackgroundTerminalRow,
@@ -697,8 +698,8 @@ function useSummaryGitActionStatus(
 
     let cancelled = false;
     setState({ loading: true, cwd, status: null });
-    void getGitWorkerClient()
-      .request({ method: "action-status", params: { cwd } })
+    void threadSummaryGitOperations
+      .readStatus(cwd)
       .then((result) => {
         if (cancelled) return;
         setState({ loading: false, cwd, status: result as GitActionStatusResult });
@@ -735,7 +736,8 @@ function useSummaryPullRequestStatus(
 
     let cancelled = false;
     setState({ loading: true, cwd, status: null });
-    void invoke("gh-pr-status", { cwd })
+    void threadSummaryGitOperations
+      .readPullRequestStatus(cwd)
       .then((result) => {
         if (cancelled) return;
         setState({ loading: false, cwd, status: result as GhPrStatusResult });
@@ -839,10 +841,7 @@ function useSummaryPanelBranchState({
       setBusy(true);
       onErrorMessage(null);
       try {
-        const result = await getGitWorkerClient().request({
-          method: "checkout-branch",
-          params: { cwd: requestedCwd, branch },
-        });
+        const result = await threadSummaryGitOperations.checkoutBranch(requestedCwd, branch);
         if (!isCurrentRequest()) return false;
         if (result.type === "error") throw new Error(result.errorMessage);
         setBranchState(parseBranchSelectorState(result.value));
@@ -876,10 +875,7 @@ function useSummaryPanelBranchState({
       setBusy(true);
       onErrorMessage(null);
       try {
-        const result = await getGitWorkerClient().request({
-          method: "create-branch",
-          params: { cwd: requestedCwd, branch },
-        });
+        const result = await threadSummaryGitOperations.createBranch(requestedCwd, branch);
         if (!isCurrentRequest()) return false;
         if (result.type === "error") throw new Error(result.errorMessage);
         setBranchState(parseBranchSelectorState(result.value));
@@ -1207,7 +1203,7 @@ export function ThreadSummaryPanelSurface({
     void refreshBranchState();
   }, [gitSummary, refreshBranchState]);
   const handleCancelGitAction = useCallback((operationId: string) => {
-    void invoke("git:action:cancel", { operationId }).finally(() => {
+    void threadSummaryGitOperations.cancel(operationId).finally(() => {
       setGitActionWorkflow((current) => (current?.operationId === operationId ? null : current));
       setGitActionDialogMode(null);
     });
@@ -1235,7 +1231,7 @@ export function ThreadSummaryPanelSurface({
       }
 
       const openDesktopFile = () =>
-        invoke("shell:open-file-link", { path: target.path }, "fileManager")
+        openFileLink({ path: target.path }, "fileManager")
           .then((opened) => {
             if (opened) return;
             onErrorMessage("Could not open output");

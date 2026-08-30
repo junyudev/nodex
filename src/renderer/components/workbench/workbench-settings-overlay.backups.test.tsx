@@ -34,11 +34,52 @@ const PROJECTS = [
 
 let mockInvokeImpl: ((channel: string, ...args: unknown[]) => Promise<unknown>) | null = null;
 
+const dispatchMockInvoke = async (channel: string, ...args: unknown[]) => {
+  if (!mockInvokeImpl) return null;
+  return await mockInvokeImpl(channel, ...args);
+};
+
 vi.mock("./workbench-settings-overlay-deps", () => ({
-  invoke: async (channel: string, ...args: unknown[]) => {
-    if (!mockInvokeImpl) return null;
-    return mockInvokeImpl(channel, ...args);
+  applyAgentImport: async (scanId: string, itemIds: readonly string[]) =>
+    await dispatchMockInvoke("agent-import:apply", { itemIds, scanId }),
+  backupRuntimePort: {
+    list: async () => await dispatchMockInvoke("backup:list"),
+    capacity: async () => await dispatchMockInvoke("backup:capacity:get"),
+    storageOptimization: async () => await dispatchMockInvoke("backup:storage-optimization:get"),
+    job: async (jobId?: string) => await dispatchMockInvoke("backup:job:get", jobId),
+    start: async (command: unknown) => await dispatchMockInvoke("backup:create", command),
+    cancel: async (jobId: string) => await dispatchMockInvoke("backup:cancel", jobId),
   },
+  deleteBackup: async (backupId: string) => await dispatchMockInvoke("backup:delete", backupId),
+  readBackupSettings: async () => await dispatchMockInvoke("settings:backup:get"),
+  readCodexPermissionState: async (projectId: string | null) =>
+    await dispatchMockInvoke("codex:permission:state:get", projectId),
+  readDiagnosticsSettings: async () => await dispatchMockInvoke("settings:diagnostics:get"),
+  readGitSettings: async () => await dispatchMockInvoke("settings:git:get"),
+  readHistorySettings: async () => await dispatchMockInvoke("settings:history:get"),
+  readTelemetrySettings: async () => await dispatchMockInvoke("settings:telemetry:get"),
+  readThirdPartyNotices: async () => await dispatchMockInvoke("settings:third-party-notices:get"),
+  restoreBackup: async (input: unknown) => await dispatchMockInvoke("backup:restore", input),
+  revealFileInManager: async (path: string) =>
+    await dispatchMockInvoke("shell:open-file-link", { path }, "fileManager"),
+  scanAgentImport: async (sourceKind: string) =>
+    await dispatchMockInvoke("agent-import:scan", { sourceKind }),
+  scanPickedAgentImportHome: async (sourceKind: string) =>
+    await dispatchMockInvoke("agent-import:scan-picked-home", { sourceKind }),
+  updateBackupSettings: async (input: unknown) =>
+    await dispatchMockInvoke("settings:backup:update", input),
+  updateCodexPermissionConfigValue: async (...args: unknown[]) =>
+    await dispatchMockInvoke("codex:permission:config-value:set", ...args),
+  updateCodexPermissionMode: async (...args: unknown[]) =>
+    await dispatchMockInvoke("codex:permission:mode:set", ...args),
+  updateDiagnosticsSettings: async (input: unknown) =>
+    await dispatchMockInvoke("settings:diagnostics:update", input),
+  updateGitSettings: async (input: unknown) =>
+    await dispatchMockInvoke("settings:git:update", input),
+  updateHistorySettings: async (input: unknown) =>
+    await dispatchMockInvoke("settings:history:update", input),
+  updateTelemetrySettings: async (input: unknown) =>
+    await dispatchMockInvoke("settings:telemetry:update", input),
 }));
 
 function buildDiagnosticsSettings(
@@ -541,6 +582,7 @@ describe("SettingsRouteShell backups", () => {
     let completeJob = false;
     let published = false;
     let jobReadCount = 0;
+    let requestedJobId = "";
     mockInvokeImpl = async (channel: string, ...args: unknown[]) => {
       switch (channel) {
         case "settings:backup:get":
@@ -560,37 +602,44 @@ describe("SettingsRouteShell backups", () => {
           return { retentionCount: 1000, envOverrides: { retentionCount: false } };
         case "backup:list":
           return published ? [created] : [];
-        case "backup:create":
+        case "backup:create": {
+          const command = args[0] as { operationId: string };
+          requestedJobId = command.operationId;
           return {
-            jobId: "job-background",
-            state: "queued",
-            phase: "queued",
-            completedUnits: 0,
-            totalUnits: 7,
-            startedAt: 1,
-            updatedAt: 1,
-            backup: null,
-            error: null,
-            progress: {
-              databaseCopiedPages: 0,
-              databaseTotalPages: 0,
-              databaseBusyRetries: 0,
-              assetBytesCopied: 0,
-              databaseCopyMs: 0,
-              assetCopyMs: 0,
-              validationMs: 0,
-              digestMs: 0,
-              publishMs: 0,
-              writerHeldMs: 0,
+            kind: "submitted",
+            operationId: requestedJobId,
+            job: {
+              jobId: requestedJobId,
+              state: "queued",
+              phase: "queued",
+              completedUnits: 0,
+              totalUnits: 7,
+              startedAt: 1,
+              updatedAt: 1,
+              backup: null,
+              error: null,
+              progress: {
+                databaseCopiedPages: 0,
+                databaseTotalPages: 0,
+                databaseBusyRetries: 0,
+                assetBytesCopied: 0,
+                databaseCopyMs: 0,
+                assetCopyMs: 0,
+                validationMs: 0,
+                digestMs: 0,
+                publishMs: 0,
+                writerHeldMs: 0,
+              },
             },
           };
+        }
         case "backup:job:get":
           if (!args[0]) return null;
           jobReadCount += 1;
           if (jobReadCount === 1) return null;
           if (!completeJob) {
             return {
-              jobId: "job-background",
+              jobId: requestedJobId,
               state: "running",
               phase: "validation",
               completedUnits: 3,
@@ -615,7 +664,7 @@ describe("SettingsRouteShell backups", () => {
           }
           published = true;
           return {
-            jobId: "job-background",
+            jobId: requestedJobId,
             state: "completed",
             phase: "ready",
             completedUnits: 7,

@@ -8,7 +8,7 @@ import {
   type BrowserUsePageClosedEvent,
   type BrowserUsePresentationRequest,
 } from "../../../shared/browser-sidebar";
-import { invoke } from "@/lib/api";
+import { invokeRendererQuery } from "@/lib/renderer-command";
 
 export interface BrowserSidebarRendererState {
   readonly state: BrowserSidebarStateSnapshot;
@@ -142,7 +142,7 @@ export function startBrowserSidebarRendererStateStore(): () => void {
     },
   );
 
-  void invoke("browser-sidebar-runtime-snapshot")
+  void invokeRendererQuery("browser-sidebar-runtime-snapshot")
     .then((runtimeSnapshot: BrowserSidebarRuntimeSnapshot) => {
       if (disposed) return;
       const next = {

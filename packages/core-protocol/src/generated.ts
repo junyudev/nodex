@@ -969,6 +969,10 @@ export interface components {
         };
         /** @enum {string} */
         readonly BackupJobState: "running" | "cancelling" | "cancelled" | "ready" | "failed";
+        readonly BackupStartCoalescence: {
+            readonly active_job_id: string;
+            readonly operation_id: string;
+        };
         /** @enum {string} */
         readonly BackupTrigger: "manual" | "auto" | "pre-restore";
         readonly CanvasCompactionStats: {
@@ -6331,6 +6335,13 @@ export interface components {
                 readonly label?: string | null;
                 readonly trigger: components["schemas"]["BackupTrigger"];
             } | {
+                readonly active_job_id: string;
+                readonly include_assets: boolean;
+                /** @enum {string} */
+                readonly kind: "coalesce_backup";
+                readonly label?: string | null;
+                readonly trigger: components["schemas"]["BackupTrigger"];
+            } | {
                 readonly job_id: string;
                 /** @enum {string} */
                 readonly kind: "cancel_backup";
@@ -8489,6 +8500,7 @@ export interface components {
                 readonly outcome: {
                     readonly backup_id?: string | null;
                     readonly cancelled_backup_job_id?: string | null;
+                    readonly coalesced_backup_job_id?: string | null;
                     readonly completed_tasks: readonly components["schemas"]["MaintenanceTask"][];
                     readonly safety_backup_id?: string | null;
                 };
@@ -8503,6 +8515,7 @@ export interface components {
                 readonly outcome: {
                     readonly backup_id?: string | null;
                     readonly cancelled_backup_job_id?: string | null;
+                    readonly coalesced_backup_job_id?: string | null;
                     readonly completed_tasks: readonly components["schemas"]["MaintenanceTask"][];
                     readonly safety_backup_id?: string | null;
                 };
@@ -9093,6 +9106,7 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "backups";
                 } | {
+                    readonly coalesced_starts: readonly components["schemas"]["BackupStartCoalescence"][];
                     readonly jobs: readonly components["schemas"]["BackupJobRecord"][];
                     /** @enum {string} */
                     readonly kind: "backup_jobs";

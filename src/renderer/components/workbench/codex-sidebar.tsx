@@ -34,7 +34,8 @@ import { NodexHoverCard } from "@/components/ui/hover-card";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
 import { toast } from "@/components/ui/toast";
-import { getGitWorkerClient, invoke, invokeCoreResult } from "@/lib/api";
+import { getGitWorkerClient } from "@/lib/api";
+import { openFileLink } from "@/lib/file-system-operations";
 import { CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION } from "@/lib/codex-panel-motion";
 import { formatElapsedSince, getNextElapsedTimeUpdateDelay } from "@/lib/elapsed-time";
 import { CODEX_SIDEBAR_PAGER_BUTTON_CLASS } from "@/lib/codex-sidebar-pagination";
@@ -46,7 +47,7 @@ import {
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { serializeSortableTranslation } from "@/lib/sortable-transform";
-import { waitForProjectCatalogUpdates } from "@/lib/project-update-queue";
+import { projectCatalogStoreFor } from "@/lib/project-catalog";
 import {
   gitRepositoryIdentityQueryOptions,
   localPathPresentationContextQueryOptions,
@@ -62,6 +63,10 @@ import type {
 } from "@/lib/types";
 import { useProjectAppearanceMutation } from "@/lib/use-project-appearance-mutation";
 import { cn } from "@/lib/utils";
+import {
+  workspaceProjectCommands,
+  workspaceSidebarCommands,
+} from "@/lib/workspace-catalog-commands";
 import {
   SIDEBAR_NEW_CHAT_ROW_CLASS,
   SIDEBAR_PROJECT_NEW_CHAT_BUTTON_CLASS,
@@ -464,6 +469,8 @@ export const CodexProjectActionsMenu = forwardRef<
   ref,
 ) {
   const appHandle = useScopeHandle(appScope);
+  const queryClient = useQueryClient();
+  const projectCatalog = useMemo(() => projectCatalogStoreFor(queryClient), [queryClient]);
   const [open, setOpen] = useState(false);
   const [archiveChatsOpen, setArchiveChatsOpen] = useState(false);
   const [createStableWorktreeOpen, setCreateStableWorktreeOpen] = useState(false);
@@ -488,7 +495,7 @@ export const CodexProjectActionsMenu = forwardRef<
 
   const openProjectFolder = async () => {
     if (!primaryWorkspaceRoot) return;
-    await invoke("shell:open-file-link", { path: primaryWorkspaceRoot }, "fileManager");
+    await openFileLink({ path: primaryWorkspaceRoot }, "fileManager");
   };
 
   const markAllThreadsRead = async () => {
@@ -504,7 +511,7 @@ export const CodexProjectActionsMenu = forwardRef<
   };
 
   const openProjectEditor = async () => {
-    const editableProject = await waitForProjectCatalogUpdates(project);
+    const editableProject = await projectCatalog.waitForProjectUpdates(project);
     let expectedBindingRevision = editableProject.bindingRevision;
     openModal(appHandle, ProjectEditDialog, {
       project: editableProject,
@@ -528,12 +535,12 @@ export const CodexProjectActionsMenu = forwardRef<
       await onSetProjectPinned(project.id, { pinned: false });
       return;
     }
-    await invoke("projects:set-pinned", project.id, { pinned: false });
+    await workspaceProjectCommands.setPinned(project.id, { pinned: false });
   };
 
   const moveProjectToSection = async (sectionId: string | null) => {
     await unpinBeforeSectionMove();
-    await invokeCoreResult("sidebar-sections:item:move", {
+    await workspaceSidebarCommands.moveItem({
       item: { kind: "project", projectId: project.id },
       sectionId,
       placement: { kind: "end" },
@@ -568,7 +575,7 @@ export const CodexProjectActionsMenu = forwardRef<
         allowEmpty: true,
         onSave: async (name) => {
           await unpinBeforeSectionMove();
-          await invokeCoreResult("sidebar-sections:create", {
+          await workspaceSidebarCommands.create({
             name,
             initialItem: { kind: "project", projectId: project.id },
           });
@@ -850,7 +857,7 @@ function CodexProjectHoverCardContent({
     : undefined;
 
   const openProjectSource = (path: string) => {
-    void invoke("shell:open-file-link", { path }, "fileManager")
+    void openFileLink({ path }, "fileManager")
       .then((opened) => {
         if (opened) return;
         throw new Error("Opening local folders is unavailable in this runtime");
@@ -863,7 +870,7 @@ function CodexProjectHoverCardContent({
   };
 
   const openProjectEditor = async () => {
-    const settledProject = await waitForProjectCatalogUpdates(project);
+    const settledProject = await appearanceMutation.waitForSettledProject();
     const editableProject = {
       ...settledProject,
       appearance: settledProject.appearance,

@@ -116,6 +116,7 @@ export async function createBoardPage({
   const operationId = createUuidV7();
   const outcome = await store.runOptimisticMutation<PageLifecycleExecutionResultV2>({
     kind: "page:create",
+    operationIdentity: operationId,
     conflictKeys: conflictKeysForCreate(status, optimisticPage.id),
     apply: buildCreateCardTransform(status, optimisticPage, placement),
     remoteLane: BOARD_PLACEMENT_REMOTE_LANE,

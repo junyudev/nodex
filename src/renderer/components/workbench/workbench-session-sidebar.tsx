@@ -77,7 +77,8 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
-import { invoke, invokeCoreResult } from "@/lib/api";
+import { setPendingWorktreePinnedBeforeThread } from "@/lib/pending-worktree-runtime";
+import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
 import {
   CODEX_SIDEBAR_FLOATING_ASIDE_CLASS,
   CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
@@ -1049,8 +1050,7 @@ function SidebarThreadOrganizerSections({
         const pendingItem = pendingItemsById.get(update.pendingWorktreeId);
         if (!pendingItem) return [];
         return [
-          invoke(
-            "codex:pending-worktree:set-pinned-before-thread",
+          setPendingWorktreePinnedBeforeThread(
             pendingItem.hostId,
             update.pendingWorktreeId,
             update.beforeThreadId,
@@ -2025,11 +2025,12 @@ export function ProjectSessionSidebar({
       const sectionId = readSidebarSectionContainerId(drop.targetContainerId);
       if (sectionId) {
         const targetItems = sectionCatalog.itemsBySectionId.get(sectionId) ?? [];
-        void invokeCoreResult("sidebar-sections:item:move", {
-          item: { kind: "project", projectId: drop.projectId },
-          sectionId,
-          placement: resolveSidebarSectionItemPlacement(targetItems, drop.beforeItemId),
-        })
+        void workspaceSidebarCommands
+          .moveItem({
+            item: { kind: "project", projectId: drop.projectId },
+            sectionId,
+            placement: resolveSidebarSectionItemPlacement(targetItems, drop.beforeItemId),
+          })
           .then(async () => {
             onSetSidebarSectionCollapsed(`custom:${sectionId}`, false);
             await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
@@ -2192,7 +2193,7 @@ export function ProjectSessionSidebar({
 
       if (targetSectionId) {
         const targetItems = sectionCatalog.itemsBySectionId.get(targetSectionId) ?? [];
-        await invokeCoreResult("sidebar-sections:item:move", {
+        await workspaceSidebarCommands.moveItem({
           item: { kind: "session", sessionId: session.id },
           sectionId: targetSectionId,
           placement: resolveSidebarSectionItemPlacement(targetItems, drop.beforeItemId),
@@ -2208,7 +2209,7 @@ export function ProjectSessionSidebar({
         (item) => item.kind === "session" && item.session.id === session.id,
       );
       if (directPlacement) {
-        await invokeCoreResult("sidebar-sections:item:move", {
+        await workspaceSidebarCommands.moveItem({
           item: { kind: "session", sessionId: session.id },
           sectionId: null,
           placement: { kind: "end" },

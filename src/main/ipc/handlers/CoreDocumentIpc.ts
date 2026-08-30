@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import type { IpcApi } from "../../../shared/ipc-api";
+import { documentSyncApplyCommandResult } from "../../../shared/block-documents/document-sync";
 import { MainConfig } from "../../app/MainConfig";
 import { DesktopDocumentSessionRuntime } from "../../core-client";
 import { DatabaseModule } from "../../database-application/DatabaseModule";
@@ -24,6 +25,20 @@ type Handler<Channel extends keyof IpcApi> = (
   event: IpcMainInvokeEvent,
   ...args: IpcApi[Channel]["args"]
 ) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
+
+type ProjectDocumentChannel =
+  | "document-sync:apply"
+  | "document-sync:awareness:publish"
+  | "document-sync:subscribe"
+  | "document-sync:sync"
+  | "document-sync:unsubscribe";
+
+type LibraryDocumentChannel =
+  | "library-document-sync:apply"
+  | "library-document-sync:awareness:publish"
+  | "library-document-sync:subscribe"
+  | "library-document-sync:sync"
+  | "library-document-sync:unsubscribe";
 
 const omitProjectScope = <Request extends { readonly projectId: string }>(
   request: Request,
@@ -73,8 +88,7 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const library = yield* LibraryModule;
     const windows = yield* WindowRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handleControl, handleLocalCommitCommand, handlePlainCommand, handleQuery } = ipc;
     const targetFor = (event: IpcMainInvokeEvent): DocumentSyncClientTarget | null => {
       try {
         requireTrustedAppRendererSender(event, "Document authority", config.rendererUrl);
@@ -93,37 +107,49 @@ export const live: Layer.Layer<
       });
     const unauthorizedResult = <A>() => Effect.succeed(documentSyncUnauthorized() as A);
 
-    yield* handle("page-target:resolve", (event, input) =>
+    yield* handleQuery("page-target:resolve", (event, input) =>
       authorize(event).pipe(Effect.andThen(library.resolvePageTarget(input))),
     );
-    yield* handle("page-ownership-path:resolve", (event, input) =>
+    yield* handleQuery("page-ownership-path:resolve", (event, input) =>
       authorize(event).pipe(Effect.andThen(library.resolvePageOwnershipPath(input))),
     );
-    yield* handle("database-view:reference:get", (event, input) =>
+    yield* handleQuery("database-view:reference:get", (event, input) =>
       authorize(event).pipe(Effect.andThen(database.resolveDatabaseViewReference(input))),
     );
-    yield* handle("block-document:owned:get", (event, projectId, ownerBlockId) =>
+    yield* handleQuery("block-document:owned:get", (event, projectId, ownerBlockId) =>
       authorize(event).pipe(
         Effect.andThen(documents.getOwnedDocumentDescriptor(projectId, ownerBlockId)),
       ),
     );
-    yield* handle("block-document:owned:prepare", (event, projectId, ownerBlockId) =>
+    yield* handlePlainCommand("block-document:owned:prepare", (event, projectId, ownerBlockId) =>
       authorize(event).pipe(
         Effect.andThen(documents.prepareOwnedBlockDocument(projectId, ownerBlockId)),
       ),
     );
-    yield* handle("library-block-document:owned:prepare", (event, ownerBlockId) =>
+    yield* handlePlainCommand("library-block-document:owned:prepare", (event, ownerBlockId) =>
       authorize(event).pipe(
         Effect.andThen(documents.prepareLibraryOwnedBlockDocument(ownerBlockId)),
       ),
     );
 
-    const projectDocumentCommand = <
+    const projectDocumentHandler =
+      <Channel extends ProjectDocumentChannel>(
+        operation: string,
+        execute: (
+          target: DocumentSyncClientTarget,
+          request: IpcApi[Channel]["args"][0],
+        ) => Effect.Effect<IpcApi[Channel]["result"]>,
+      ): Handler<Channel> =>
+      (event, request) => {
+        const target = targetFor(event);
+        if (!target) return unauthorizedResult<IpcApi[Channel]["result"]>();
+        return execute(target, request).pipe(Effect.withSpan(`CoreDocumentIpc.${operation}`));
+      };
+    const projectDocumentControl = <
       Channel extends
         | "document-sync:subscribe"
         | "document-sync:unsubscribe"
         | "document-sync:sync"
-        | "document-sync:apply"
         | "document-sync:awareness:publish",
     >(
       channel: Channel,
@@ -132,14 +158,21 @@ export const live: Layer.Layer<
         target: DocumentSyncClientTarget,
         request: IpcApi[Channel]["args"][0],
       ) => Effect.Effect<IpcApi[Channel]["result"]>,
+    ) => handleControl(channel, projectDocumentHandler<Channel>(operation, execute));
+    const projectDocumentApply = (
+      channel: "document-sync:apply",
+      operation: string,
+      execute: (
+        target: DocumentSyncClientTarget,
+        request: IpcApi["document-sync:apply"]["args"][0],
+      ) => Effect.Effect<IpcApi["document-sync:apply"]["result"]>,
     ) =>
-      handle(channel, (event, request) => {
-        const target = targetFor(event);
-        if (!target) return unauthorizedResult<IpcApi[Channel]["result"]>();
-        return execute(target, request).pipe(Effect.withSpan(`CoreDocumentIpc.${operation}`));
-      });
+      handleLocalCommitCommand(
+        channel,
+        projectDocumentHandler<"document-sync:apply">(operation, execute),
+      );
 
-    yield* projectDocumentCommand(
+    yield* projectDocumentControl(
       "document-sync:subscribe",
       "subscribe-project-document",
       (target, request) =>
@@ -149,7 +182,7 @@ export const live: Layer.Layer<
           omitProjectScope(request),
         ),
     );
-    yield* projectDocumentCommand(
+    yield* projectDocumentControl(
       "document-sync:unsubscribe",
       "unsubscribe-project-document",
       (target, request) =>
@@ -159,7 +192,7 @@ export const live: Layer.Layer<
           omitProjectScope(request),
         ),
     );
-    yield* projectDocumentCommand(
+    yield* projectDocumentControl(
       "document-sync:sync",
       "sync-project-document",
       (target, request) =>
@@ -169,17 +202,19 @@ export const live: Layer.Layer<
           omitProjectScope(request),
         ),
     );
-    yield* projectDocumentCommand(
+    yield* projectDocumentApply(
       "document-sync:apply",
       "apply-project-document",
       (target, request) =>
-        documents.applyUpdate(
-          { kind: "project", projectId: request.projectId },
-          target,
-          omitProjectScope(request),
-        ),
+        documents
+          .applyUpdate(
+            { kind: "project", projectId: request.projectId },
+            target,
+            omitProjectScope(request),
+          )
+          .pipe(Effect.map(documentSyncApplyCommandResult)),
     );
-    yield* projectDocumentCommand(
+    yield* projectDocumentControl(
       "document-sync:awareness:publish",
       "publish-project-awareness",
       (target, request) =>
@@ -190,12 +225,24 @@ export const live: Layer.Layer<
         ),
     );
 
-    const libraryDocumentCommand = <
+    const libraryDocumentHandler =
+      <Channel extends LibraryDocumentChannel>(
+        operation: string,
+        execute: (
+          target: DocumentSyncClientTarget,
+          request: IpcApi[Channel]["args"][0],
+        ) => Effect.Effect<IpcApi[Channel]["result"]>,
+      ): Handler<Channel> =>
+      (event, request) => {
+        const target = targetFor(event);
+        if (!target) return unauthorizedResult<IpcApi[Channel]["result"]>();
+        return execute(target, request).pipe(Effect.withSpan(`CoreDocumentIpc.${operation}`));
+      };
+    const libraryDocumentControl = <
       Channel extends
         | "library-document-sync:subscribe"
         | "library-document-sync:unsubscribe"
         | "library-document-sync:sync"
-        | "library-document-sync:apply"
         | "library-document-sync:awareness:publish",
     >(
       channel: Channel,
@@ -204,57 +251,67 @@ export const live: Layer.Layer<
         target: DocumentSyncClientTarget,
         request: IpcApi[Channel]["args"][0],
       ) => Effect.Effect<IpcApi[Channel]["result"]>,
+    ) => handleControl(channel, libraryDocumentHandler<Channel>(operation, execute));
+    const libraryDocumentApply = (
+      channel: "library-document-sync:apply",
+      operation: string,
+      execute: (
+        target: DocumentSyncClientTarget,
+        request: IpcApi["library-document-sync:apply"]["args"][0],
+      ) => Effect.Effect<IpcApi["library-document-sync:apply"]["result"]>,
     ) =>
-      handle(channel, (event, request) => {
-        const target = targetFor(event);
-        if (!target) return unauthorizedResult<IpcApi[Channel]["result"]>();
-        return execute(target, request).pipe(Effect.withSpan(`CoreDocumentIpc.${operation}`));
-      });
+      handleLocalCommitCommand(
+        channel,
+        libraryDocumentHandler<"library-document-sync:apply">(operation, execute),
+      );
 
-    yield* libraryDocumentCommand(
+    yield* libraryDocumentControl(
       "library-document-sync:subscribe",
       "subscribe-library-document",
       (target, request) => documents.subscribe({ kind: "library" }, target, request),
     );
-    yield* libraryDocumentCommand(
+    yield* libraryDocumentControl(
       "library-document-sync:unsubscribe",
       "unsubscribe-library-document",
       (target, request) => documents.unsubscribe({ kind: "library" }, target, request),
     );
-    yield* libraryDocumentCommand(
+    yield* libraryDocumentControl(
       "library-document-sync:sync",
       "sync-library-document",
       (target, request) => documents.sync({ kind: "library" }, target, request),
     );
-    yield* libraryDocumentCommand(
+    yield* libraryDocumentApply(
       "library-document-sync:apply",
       "apply-library-document",
-      (target, request) => documents.applyUpdate({ kind: "library" }, target, request),
+      (target, request) =>
+        documents
+          .applyUpdate({ kind: "library" }, target, request)
+          .pipe(Effect.map(documentSyncApplyCommandResult)),
     );
-    yield* libraryDocumentCommand(
+    yield* libraryDocumentControl(
       "library-document-sync:awareness:publish",
       "publish-library-awareness",
       (target, request) => documents.publishAwareness({ kind: "library" }, target, request),
     );
 
-    yield* handle("canvas-scene:subscribe", (event, request) => {
+    yield* handleControl("canvas-scene:subscribe", (event, request) => {
       const target = targetFor(event);
       if (!target)
         return Effect.succeed(canvasUnauthorized("Canvas scene subscription is unauthorized"));
       return documents.subscribeCanvasScene(target, request);
     });
-    yield* handle("canvas-scene:unsubscribe", (event, request) => {
+    yield* handleControl("canvas-scene:unsubscribe", (event, request) => {
       const target = targetFor(event);
       if (!target)
         return Effect.succeed(canvasUnauthorized("Canvas scene subscription is unauthorized"));
       return documents.unsubscribeCanvasScene(target, request);
     });
-    yield* handle("canvas-scene:sync", (event, request) => {
+    yield* handleControl("canvas-scene:sync", (event, request) => {
       const target = targetFor(event);
       if (!target) return Effect.succeed(canvasUnauthorized("Canvas scene sync is unauthorized"));
       return documents.syncCanvasScene(target, request);
     });
-    yield* handle("canvas-scene:apply", (event, request) => {
+    yield* handleLocalCommitCommand("canvas-scene:apply", (event, request) => {
       const target = targetFor(event);
       if (!target) {
         return Effect.succeed(
@@ -263,7 +320,7 @@ export const live: Layer.Layer<
       }
       return documents.applyCanvasSceneMutation(target, request);
     });
-    yield* handle("canvas-scene:presence:publish", (event, request) => {
+    yield* handleControl("canvas-scene:presence:publish", (event, request) => {
       const target = targetFor(event);
       if (!target) {
         return Effect.succeed({
@@ -278,13 +335,13 @@ export const live: Layer.Layer<
       }
       return documents.publishCanvasPresence(target, request);
     });
-    yield* handle("canvas-scene:compaction:read", (event, request) => {
+    yield* handleQuery("canvas-scene:compaction:read", (event, request) => {
       const target = targetFor(event);
       if (!target)
         return Effect.succeed(canvasUnauthorized("Canvas compaction read is unauthorized"));
       return documents.readCanvasSceneCompaction(target, request);
     });
-    yield* handle("canvas-scene:compaction:apply", (event, request) => {
+    yield* handleLocalCommitCommand("canvas-scene:compaction:apply", (event, request) => {
       const target = targetFor(event);
       if (!target) {
         return Effect.succeed(

@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import type { CoreResult } from "../../../shared/core-result";
 import type { IpcApi } from "../../../shared/ipc-api";
+import type { IpcQueryChannel } from "../../../shared/ipc-endpoint-policy";
 import type { DatabasePage } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
 import { CoreModuleResponseError } from "../../core-client/core-client";
@@ -29,11 +30,6 @@ export class DatabaseProjectionIpcError extends Schema.TaggedError<DatabaseProje
   "DatabaseProjectionIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 type CoreValue<Channel extends keyof IpcApi> =
   IpcApi[Channel]["result"] extends CoreResult<infer Value> ? Value : never;
@@ -75,8 +71,7 @@ export const live: Layer.Layer<
     const database = yield* DatabaseModule;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handleQuery } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -88,14 +83,14 @@ export const live: Layer.Layer<
         catch: (cause) =>
           new DatabaseProjectionIpcError({ operation: "authorize-renderer", cause }),
       });
-    const core = <Channel extends keyof IpcApi>(
+    const core = <Channel extends IpcQueryChannel>(
       channel: Channel,
       read: (
         event: IpcMainInvokeEvent,
         ...args: IpcApi[Channel]["args"]
       ) => Effect.Effect<CoreValue<Channel>, DatabaseProjectionReadError>,
     ) =>
-      handle(channel, (event, ...args) =>
+      handleQuery(channel, (event, ...args) =>
         authorize(event).pipe(
           Effect.andThen(
             read(event, ...args).pipe(
@@ -172,17 +167,19 @@ export const live: Layer.Layer<
     yield* core("library-database:view-groups:get", (_, input) =>
       database.viewGroups({ kind: "library" }, input),
     );
-    yield* handle("database-row:get", (event, projectId, pageId, status, minimumCommitCursor) =>
-      authorize(event).pipe(
-        Effect.andThen(
-          database.readRowPage({
-            projectId,
-            pageId,
-            status: status as DatabasePage["status"] | undefined,
-            minimumCommitCursor,
-          }),
+    yield* handleQuery(
+      "database-row:get",
+      (event, projectId, pageId, status, minimumCommitCursor) =>
+        authorize(event).pipe(
+          Effect.andThen(
+            database.readRowPage({
+              projectId,
+              pageId,
+              status: status as DatabasePage["status"] | undefined,
+              minimumCommitCursor,
+            }),
+          ),
         ),
-      ),
     );
   }),
 );

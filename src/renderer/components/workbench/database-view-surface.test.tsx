@@ -60,16 +60,14 @@ vi.mock("@/lib/database-property-options-runtime", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/database-property-options-runtime")>()),
   readPropertyOptionWindow: optionRuntime.read,
 }));
-vi.mock("@/lib/api", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/lib/api")>();
+vi.mock("@/lib/page-chat-runtime", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/page-chat-runtime")>();
   return {
     ...original,
-    invoke: async (...args: Parameters<typeof original.invoke>) => {
-      if (args[0] === "page-chats:activity-summaries") {
-        return { summaries: pageChatRuntime.summaries, projectionRevision: 1 };
-      }
-      return await original.invoke(...args);
-    },
+    readPageChatActivitySummaries: async () => ({
+      summaries: pageChatRuntime.summaries,
+      projectionRevision: 1,
+    }),
   };
 });
 

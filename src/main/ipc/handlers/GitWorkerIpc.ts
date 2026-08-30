@@ -22,7 +22,7 @@ export const live: Layer.Layer<never, never, ElectronIpc | GitWorkerRuntime | Ma
       const ipc = yield* ElectronIpc;
       const config = yield* MainConfig;
       const worker = yield* GitWorkerRuntime;
-      yield* ipc.handle(GIT_WORKER_MESSAGE_FROM_VIEW_CHANNEL, (event, rawMessage: unknown) =>
+      yield* ipc.handleControl(GIT_WORKER_MESSAGE_FROM_VIEW_CHANNEL, (event, rawMessage: unknown) =>
         Effect.try({
           try: () => {
             requireTrustedAppRendererSender(event, "Git worker", config.rendererUrl);

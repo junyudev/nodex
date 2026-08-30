@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type { CodexConversationImageAssetResolveResult } from "../../shared/types";
-import { invoke } from "./api";
+import { invokeRendererQuery as invoke } from "./renderer-command";
 import { queryKeys } from "./query-keys";
 
 export const CODEX_IMAGE_ASSET_STALE_TIME_MS = 5 * 60_000;

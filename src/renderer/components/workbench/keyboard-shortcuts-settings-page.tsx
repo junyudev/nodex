@@ -1,8 +1,11 @@
 import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { invoke } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
-import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
+import {
+  resetCommandKeybindings,
+  updateCommandKeybinding,
+  useCommandKeymapState,
+} from "@/lib/use-command-keymap-state";
 import { cn } from "@/lib/utils";
 import { NodexButton } from "../ui/button";
 import { HotkeySettingControl, type HotkeyCaptureMode } from "../ui/hotkey-setting-control";
@@ -120,14 +123,14 @@ export function KeyboardShortcutsSettingsPage() {
 
   const updateMutation = useMutation({
     mutationFn: ({ commandId, update }: CommitPayload) =>
-      invoke("set-codex-command-keybinding", commandId, update),
+      updateCommandKeybinding(commandId, update),
     onSuccess: (result) => {
       queryClient.setQueryData(queryKeys.settings.commandKeymap(), result.state);
     },
   });
 
   const resetAllMutation = useMutation({
-    mutationFn: () => invoke("reset-codex-command-keybindings"),
+    mutationFn: resetCommandKeybindings,
     onSuccess: (result) => {
       queryClient.setQueryData(queryKeys.settings.commandKeymap(), result.state);
       if (result.type === "rejected") {

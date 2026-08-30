@@ -20,6 +20,7 @@ import {
   invokeCalls,
   openPanelMenu,
   renderWorkbench,
+  rendererCommandPayload,
 } from "./workbench-testkit/workbench-shell-harness";
 
 async function ensureProjectRowExpanded(
@@ -210,13 +211,22 @@ describe("workbench session shell / sidebar-projects", () => {
       .__lastConnectedThreadStageProps;
     expect(
       invokeCalls.some(
-        (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === "alpha",
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "alpha",
       ),
     ).toBe(true);
     expect(props?.isNewThreadTab).toBe(true);
+    const alphaDefaultDraftId = rendererCommandPayload(
+      invokeCalls.find(
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "alpha",
+      ),
+    )?.candidateSessionId;
     expect(props?.newThreadTarget).toMatchObject({
       projectId: "alpha",
-      sessionId: "session:alpha:created",
+      sessionId: alphaDefaultDraftId,
     });
     expect(screen.getByLabelText("Prompt").getAttribute("placeholder")).toBe(
       "Write the first prompt for this new thread...",
@@ -456,14 +466,23 @@ describe("workbench session shell / sidebar-projects", () => {
     ).__lastConnectedThreadStageProps;
     expect(
       invokeCalls.some(
-        (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === null,
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === null,
       ),
     ).toBe(true);
     expect(props?.isNewThreadTab).toBe(true);
+    const projectlessDefaultDraftId = rendererCommandPayload(
+      invokeCalls.find(
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === null,
+      ),
+    )?.candidateSessionId;
     expect(props?.newThreadTarget).toMatchObject({
       projectId: null,
       projectName: "No project",
-      sessionId: "session:projectless:created",
+      sessionId: projectlessDefaultDraftId,
       runInTarget: "localProject",
     });
     expect(props?.newThreadProjectSelector).toMatchObject({
@@ -742,7 +761,9 @@ describe("workbench session shell / sidebar-projects", () => {
 
     expect(
       invokeCalls.some(
-        (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === "alpha",
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "alpha",
       ),
     ).toBe(true);
     const props = (
@@ -750,9 +771,16 @@ describe("workbench session shell / sidebar-projects", () => {
         __lastConnectedThreadStageProps?: Record<string, unknown>;
       }
     ).__lastConnectedThreadStageProps;
+    const alphaDefaultDraftId = rendererCommandPayload(
+      invokeCalls.find(
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "alpha",
+      ),
+    )?.candidateSessionId;
     expect(props?.newThreadTarget).toMatchObject({
       projectId: "alpha",
-      sessionId: "session:alpha:created",
+      sessionId: alphaDefaultDraftId,
     });
   });
 
@@ -794,16 +822,25 @@ describe("workbench session shell / sidebar-projects", () => {
       expect(promptCalls.length).toBe(0);
       expect(
         invokeCalls.some(
-          (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === "beta",
+          (call) =>
+            call[0] === "project-sessions:ensure-default-draft" &&
+            rendererCommandPayload(call)?.projectId === "beta",
         ),
       ).toBe(true);
+      const betaDefaultDraftId = rendererCommandPayload(
+        invokeCalls.find(
+          (call) =>
+            call[0] === "project-sessions:ensure-default-draft" &&
+            rendererCommandPayload(call)?.projectId === "beta",
+        ),
+      )?.candidateSessionId;
       await waitFor(() => {
         const latestProps = (
           globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> }
         ).__lastConnectedThreadStageProps;
         expect(latestProps?.newThreadTarget).toMatchObject({
           projectId: "beta",
-          sessionId: "session:beta:created",
+          sessionId: betaDefaultDraftId,
         });
       });
     } finally {
@@ -1324,7 +1361,9 @@ describe("workbench session shell / sidebar-projects", () => {
 
     expect(
       invokeCalls.some(
-        (call) => call[0] === "project-sessions:ensure-default-draft" && call[1] === "beta",
+        (call) =>
+          call[0] === "project-sessions:ensure-default-draft" &&
+          rendererCommandPayload(call)?.projectId === "beta",
       ),
     ).toBe(true);
     await waitFor(() => {

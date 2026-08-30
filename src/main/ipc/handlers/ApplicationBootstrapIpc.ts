@@ -66,7 +66,7 @@ export const live: Layer.Layer<
           new ApplicationBootstrapIpcError({ operation: "authorize-renderer", cause }),
       });
 
-    yield* ipc.handle("app:await-initialization", (event) =>
+    yield* ipc.handleQuery("app:await-initialization", (event) =>
       authorize(event, "Application initialization").pipe(
         Effect.andThen(
           initialization.current.pipe(
@@ -112,23 +112,25 @@ export const live: Layer.Layer<
         Effect.catch(() => Effect.void),
       ),
     );
-    yield* ipc.handle("app:flush-before-close:done", (event, claimedWebContentsId: unknown) =>
-      authorize(event, "Window close flush").pipe(
-        Effect.andThen(
-          Effect.try({
-            try: () => {
-              if (claimedWebContentsId !== event.sender.id) {
-                throw new Error("Window close flush sender does not own the claimed window");
-              }
-              windows.acknowledgeClose(event.sender.id);
-            },
-            catch: (cause) =>
-              new ApplicationBootstrapIpcError({ operation: "acknowledge-window-close", cause }),
-          }),
+    yield* ipc.handleControl(
+      "app:flush-before-close:done",
+      (event, claimedWebContentsId: unknown) =>
+        authorize(event, "Window close flush").pipe(
+          Effect.andThen(
+            Effect.try({
+              try: () => {
+                if (claimedWebContentsId !== event.sender.id) {
+                  throw new Error("Window close flush sender does not own the claimed window");
+                }
+                windows.acknowledgeClose(event.sender.id);
+              },
+              catch: (cause) =>
+                new ApplicationBootstrapIpcError({ operation: "acknowledge-window-close", cause }),
+            }),
+          ),
         ),
-      ),
     );
-    yield* ipc.handle(APP_RESTART_CHANNEL, (event) =>
+    yield* ipc.handlePlainCommand(APP_RESTART_CHANNEL, (event) =>
       authorize(event, "Application restart").pipe(
         Effect.andThen(shutdown.request({ _tag: "StartupFailure" })),
         Effect.asVoid,

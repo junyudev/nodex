@@ -8,6 +8,7 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import type { FileWatchHost } from "../../file-watch-host";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./WorkspaceFileIpc";
@@ -17,7 +18,7 @@ type Handler = (event: IpcMainInvokeEvent, ...args: readonly unknown[]) => Effec
 it.effect("releases active file watches and renderer listeners with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string, handler: Handler) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -26,7 +27,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
           () => Effect.sync(() => handlers.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     let acquireCount = 0;
     let disposeCount = 0;
     const fileWatchHost: FileWatchHost = {

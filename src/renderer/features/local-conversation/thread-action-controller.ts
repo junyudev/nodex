@@ -10,11 +10,23 @@ import type {
   ProjectSession,
 } from "@/lib/types";
 import type { useCodexAppServerControl } from "./local-conversation-store";
-import { invoke } from "@/lib/api";
+import {
+  defineRendererCommand,
+  invokePlainCommand,
+  invokeRendererQuery,
+} from "@/lib/renderer-command";
 import { captureBrowserUseRoute } from "@/lib/browser-use-route-capture";
 import { cleanupMaterializedThreadGoalDraft } from "./thread-goal-materialization";
 import type { ThreadStageActions } from "./thread-stage-types";
 import type { BrowserSidebarCommandResult } from "../../../shared/browser-sidebar";
+
+const captureTurnBrowserRouteCommand = defineRendererCommand({
+  key: "browser_use.capture_turn_route",
+  channel: "browser-sidebar-command",
+  authority: "main",
+  owner: "ThreadActionController",
+  protocol: { kind: "returned_value" },
+});
 
 type CodexControl = ReturnType<typeof useCodexAppServerControl>;
 
@@ -118,8 +130,8 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
         codexSessionId,
         projectId,
       },
-      (command) =>
-        invoke("browser-sidebar-command", command) as Promise<BrowserSidebarCommandResult>,
+      (command): Promise<BrowserSidebarCommandResult> =>
+        invokePlainCommand(captureTurnBrowserRouteCommand, command),
     );
   };
 
@@ -265,7 +277,7 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
         }
         const projectlessWorkspace =
           projectId === null
-            ? await invoke("codex:projectless-thread-cwd", {
+            ? await invokeRendererQuery("codex:projectless-thread-cwd", {
                 prompt,
                 createSplitDirectories: true,
               })

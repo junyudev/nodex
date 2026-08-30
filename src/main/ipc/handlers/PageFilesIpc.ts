@@ -6,7 +6,6 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
 import { lookup as lookupMimeType } from "mime-types";
-import type { IpcApi } from "../../../shared/ipc-api";
 import { parseContentAccessContext } from "../../../shared/content-access-context";
 import { PAGE_FILE_IMPORT_MAX_BYTES, PAGE_FILE_MAX_BYTES } from "../../../shared/page-files";
 import { MainConfig } from "../../app/MainConfig";
@@ -21,11 +20,6 @@ export class PageFilesIpcError extends Schema.TaggedError<PageFilesIpcError>()(
   "PageFilesIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
-
-type Handler<Channel extends keyof IpcApi> = (
-  event: IpcMainInvokeEvent,
-  ...args: IpcApi[Channel]["args"]
-) => Effect.Effect<IpcApi[Channel]["result"], unknown>;
 
 const assertPreparedBytes = (bytes: Uint8Array): Uint8Array => {
   if (!(bytes instanceof Uint8Array)) {
@@ -62,8 +56,7 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const library = yield* LibraryModule;
     const windows = yield* WindowRuntime;
-    const handle = <Channel extends keyof IpcApi>(channel: Channel, handler: Handler<Channel>) =>
-      ipc.handle(channel, handler);
+    const { handlePlainCommand, handleQuery } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
@@ -144,7 +137,7 @@ export const live: Layer.Layer<
         );
       });
 
-    yield* handle("page-files:pick-and-prepare", (event, rawAccess, input) =>
+    yield* handlePlainCommand("page-files:pick-and-prepare", (event, rawAccess, input) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
@@ -177,7 +170,7 @@ export const live: Layer.Layer<
       ),
     );
 
-    yield* handle("page-files:prepare-local-drop", (event, rawAccess, input) =>
+    yield* handlePlainCommand("page-files:prepare-local-drop", (event, rawAccess, input) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
@@ -192,7 +185,7 @@ export const live: Layer.Layer<
       ),
     );
 
-    yield* handle("page-files:prepare", (event, rawAccess, input) =>
+    yield* handlePlainCommand("page-files:prepare", (event, rawAccess, input) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
@@ -232,7 +225,7 @@ export const live: Layer.Layer<
       ),
     );
 
-    yield* handle("page-files:read", (event, rawAccess, input) =>
+    yield* handleQuery("page-files:read", (event, rawAccess, input) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
@@ -247,7 +240,7 @@ export const live: Layer.Layer<
       ),
     );
 
-    yield* handle("page-files:save", (event, rawAccess, input) =>
+    yield* handlePlainCommand("page-files:save", (event, rawAccess, input) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {

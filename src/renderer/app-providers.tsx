@@ -12,7 +12,7 @@ import { CodexServiceTierSettingsProvider } from "./lib/use-codex-service-tier-s
 import { CodexThreadSettingsProvider } from "./lib/use-codex-thread-settings";
 import { NodexQueryProvider } from "./lib/query-client";
 import { ThemeProvider } from "./lib/use-theme";
-import { invoke, subscribeAppUpdateStatus } from "./lib/api";
+import { readAppUpdateStatus, subscribeAppUpdateStatus } from "./lib/app-update-runtime";
 import type { AppUpdateStatus } from "./lib/types";
 import { createMaitaiStore, MaitaiProvider, preloadEagerPersistedAtoms } from "./lib/maitai";
 import { KeyboardLayoutProvider } from "./lib/keyboard-layout";
@@ -71,7 +71,7 @@ export function AppUpdateStatusProvider({ children }: AppProvidersProps) {
       observedPush = true;
       setStatus(nextStatus);
     });
-    void invoke("app:update:status")
+    void readAppUpdateStatus()
       .then((snapshot) => {
         if (!cancelled && !observedPush && isAppUpdateStatus(snapshot)) setStatus(snapshot);
       })

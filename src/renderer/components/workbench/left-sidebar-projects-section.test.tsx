@@ -18,10 +18,6 @@ let invokeCalls: unknown[][] = [];
 let mockInvokeImpl: ((channel: string, ...args: unknown[]) => Promise<unknown>) | null = null;
 
 vi.mock("@/lib/api", () => ({
-  invoke: async (channel: string, ...args: unknown[]) => {
-    invokeCalls.push([channel, ...args]);
-    return mockInvokeImpl?.(channel, ...args) ?? null;
-  },
   readLibraryDatabaseModule: async (request: {
     read: { nameHint: string; requestedPrefix?: string };
   }) => {
@@ -53,6 +49,29 @@ vi.mock("@/lib/api", () => ({
   subscribeAppUpdateStatus: () => () => undefined,
   getWindowFocusState: async () => true,
   subscribeWindowFocusChanges: () => () => undefined,
+}));
+
+vi.mock("@/lib/renderer-command", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/renderer-command")>()),
+  invokeRendererQuery: async (channel: string, ...args: unknown[]) => {
+    invokeCalls.push([channel, ...args]);
+    return mockInvokeImpl?.(channel, ...args) ?? null;
+  },
+}));
+
+vi.mock("@/lib/workbench-shell-operations", () => ({
+  pickProjectSourceRoots: async () => {
+    invokeCalls.push(["projects:pick-source-roots"]);
+    return (await mockInvokeImpl?.("projects:pick-source-roots")) ?? [];
+  },
+}));
+
+vi.mock("@/lib/file-system-operations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/file-system-operations")>()),
+  openFileLink: async (target: unknown, opener: unknown) => {
+    invokeCalls.push(["shell:open-file-link", target, opener]);
+    return true;
+  },
 }));
 
 const PROJECTS: Project[] = [

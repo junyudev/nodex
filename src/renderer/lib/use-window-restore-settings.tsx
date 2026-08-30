@@ -1,22 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
-import { invoke } from "./api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { queryKeys } from "./query-keys";
-import { windowRestoreSettingsQueryOptions } from "./query-options";
 import type { UpdateWindowRestoreSettingsInput, WindowRestoreSettings } from "./types";
-
-const DEFAULT_SETTINGS: WindowRestoreSettings = {
-  policy: "all",
-};
-
-function normalizeWindowRestoreSettings(value: unknown): WindowRestoreSettings {
-  if (typeof value !== "object" || value === null) return DEFAULT_SETTINGS;
-  const policy = (value as { policy?: unknown }).policy;
-  if (policy === "all" || policy === "last-window" || policy === "none") {
-    return { policy };
-  }
-  return DEFAULT_SETTINGS;
-}
+import {
+  DEFAULT_WINDOW_RESTORE_SETTINGS,
+  normalizeWindowRestoreSettings,
+  resetMainReturnedSettingsOwnersForTests,
+  windowRestoreSettingsOwnerFor,
+} from "./main-returned-settings";
 
 export function useWindowRestoreSettings(): {
   settings: WindowRestoreSettings;
@@ -25,21 +16,17 @@ export function useWindowRestoreSettings(): {
   reloadSettings: () => Promise<void>;
 } {
   const queryClient = useQueryClient();
-  const { data: settings, isPending } = useQuery({
-    ...windowRestoreSettingsQueryOptions(),
-    select: normalizeWindowRestoreSettings,
+  const owner = useMemo(() => windowRestoreSettingsOwnerFor(queryClient), [queryClient]);
+  const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const { isPending } = useQuery({
+    queryKey: queryKeys.settings.windowRestore(),
+    queryFn: owner.readCanonical,
   });
 
-  const { mutateAsync: updateSettingsRequest } = useMutation({
-    mutationFn: (input: UpdateWindowRestoreSettingsInput) =>
-      invoke("settings:window-restore:update", input) as Promise<WindowRestoreSettings>,
-    onSuccess: (result) => {
-      queryClient.setQueryData(
-        queryKeys.settings.windowRestore(),
-        normalizeWindowRestoreSettings(result),
-      );
-    },
-  });
+  useLayoutEffect(() => {
+    if (snapshot.renderToken === null) return;
+    owner.markRendered(snapshot.renderToken);
+  }, [owner, snapshot.renderToken]);
 
   const reloadSettings = useCallback(async () => {
     await queryClient.invalidateQueries({
@@ -50,18 +37,17 @@ export function useWindowRestoreSettings(): {
 
   const updateSettings = useCallback(
     async (input: UpdateWindowRestoreSettingsInput) => {
-      const result = await updateSettingsRequest(input);
-      return normalizeWindowRestoreSettings(result);
+      return await owner.update(normalizeWindowRestoreSettings(input));
     },
-    [updateSettingsRequest],
+    [owner],
   );
 
   return {
-    settings: settings ?? DEFAULT_SETTINGS,
+    settings: snapshot.value ?? DEFAULT_WINDOW_RESTORE_SETTINGS,
     isLoading: isPending,
     updateSettings,
     reloadSettings,
   };
 }
 
-export function __resetWindowRestoreSettingsForTests(): void {}
+export const __resetWindowRestoreSettingsForTests = resetMainReturnedSettingsOwnersForTests;
