@@ -281,11 +281,16 @@ export type DatabaseViewConditionalColor =
   | "pink"
   | "red";
 
+export type DatabaseViewConditionalColorSource = "fixed" | "property_option";
+
 export interface DatabaseViewConditionalColorRule {
   readonly ruleId: string;
   readonly propertyId: string;
-  readonly operator: DatabasePropertyFilterOperator;
+  readonly operator: DatabaseViewFilterOperator;
   readonly value?: DatabaseJsonValue;
+  /** Option-backed rules can inherit the first selected option's semantic color. */
+  readonly colorSource: DatabaseViewConditionalColorSource;
+  /** Fixed color retained while option-derived coloring is inactive. */
   readonly color: DatabaseViewConditionalColor;
 }
 
@@ -1433,33 +1438,38 @@ const parseConditionalColorRules = (
   const rules = value.map((candidate, index) => {
     const ruleLabel = `${label}[${index}]`;
     const rule = readRecord(candidate, ruleLabel);
-    assertExactKeys(rule, ruleLabel, ["ruleId", "propertyId", "operator", "color"], ["value"]);
-    const operators = new Set<DatabasePropertyFilterOperator>([
-      "equals",
-      "not_equals",
-      "contains",
-      "not_contains",
-      "is_empty",
-      "is_not_empty",
-    ]);
-    if (
-      !operators.has(rule.operator as DatabasePropertyFilterOperator) ||
-      !colors.has(rule.color as DatabaseViewConditionalColor)
-    ) {
+    assertExactKeys(
+      rule,
+      ruleLabel,
+      ["ruleId", "propertyId", "operator", "color"],
+      ["value", "colorSource"],
+    );
+    if (!colors.has(rule.color as DatabaseViewConditionalColor)) {
       throw new DatabaseMutationContractError(`${ruleLabel} is invalid`);
     }
-    const operator = rule.operator as DatabasePropertyFilterOperator;
-    const requiresValue = operator !== "is_empty" && operator !== "is_not_empty";
-    if (requiresValue !== (rule.value !== undefined)) {
-      throw new DatabaseMutationContractError(`${ruleLabel} has an invalid value arity`);
+    const requestedColorSource = (rule.colorSource ??
+      "fixed") as DatabaseViewConditionalColorSource;
+    if (requestedColorSource !== "fixed" && requestedColorSource !== "property_option") {
+      throw new DatabaseMutationContractError(`${ruleLabel}.colorSource is invalid`);
     }
+    const clause = parseViewFilterNode(
+      {
+        kind: "clause",
+        propertyId: rule.propertyId,
+        operator: rule.operator,
+        ...(rule.value === undefined ? {} : { value: rule.value }),
+      },
+      ruleLabel,
+      1,
+      { nodeCount: 0 },
+      true,
+    ) as DatabaseViewFilterClause;
     return {
       ruleId: readString(rule, "ruleId", ruleLabel),
-      propertyId: readString(rule, "propertyId", ruleLabel),
-      operator,
-      ...(rule.value === undefined
-        ? {}
-        : { value: canonicalizeJson(rule.value, `${ruleLabel}.value`) }),
+      propertyId: clause.propertyId,
+      operator: clause.operator,
+      ...(clause.value === undefined ? {} : { value: clause.value }),
+      colorSource: clause.operator === "is_empty" ? "fixed" : requestedColorSource,
       color: rule.color as DatabaseViewConditionalColor,
     };
   });
@@ -2746,6 +2756,10 @@ export const evaluateDatabaseViewFilter = (
 export const evaluateDatabaseViewConditionalColor = (
   rules: readonly DatabaseViewConditionalColorRule[],
   valueForPropertyId: (propertyId: string) => DatabaseJsonValue | undefined,
+  colorForPropertyOption?: (
+    propertyId: string,
+    optionId: string,
+  ) => DatabaseViewConditionalColor | null | undefined,
 ): DatabaseViewConditionalColor | null => {
   for (const rule of rules) {
     if (
@@ -2759,6 +2773,18 @@ export const evaluateDatabaseViewConditionalColor = (
         valueForPropertyId,
       )
     ) {
+      if (rule.colorSource === "property_option") {
+        const current = valueForPropertyId(rule.propertyId);
+        const optionIds = Array.isArray(current)
+          ? current.filter((candidate): candidate is string => typeof candidate === "string")
+          : typeof current === "string"
+            ? [current]
+            : [];
+        const firstOptionId = optionIds[0];
+        return firstOptionId && colorForPropertyOption
+          ? (colorForPropertyOption(rule.propertyId, firstOptionId) ?? null)
+          : null;
+      }
       return rule.color;
     }
   }

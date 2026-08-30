@@ -123,6 +123,42 @@ describe("general Database mutation contract", () => {
     ).toThrow("contains duplicate fields");
   });
 
+  test("normalizes conditional color compatibility fields and rejects incomplete typed values", () => {
+    const parsed = parseDatabaseViewConfigV6({
+      ...viewConfigV6(),
+      presentation: {
+        ...viewConfigV6().presentation,
+        conditionalColors: [
+          {
+            ruleId: "rule-compatible",
+            propertyId: "status",
+            operator: "is_not_empty",
+            color: "green",
+          },
+        ],
+      },
+    });
+    expect(parsed.presentation.conditionalColors[0]?.colorSource).toBe("fixed");
+
+    expect(() =>
+      parseDatabaseViewConfigV6({
+        ...viewConfigV6(),
+        presentation: {
+          ...viewConfigV6().presentation,
+          conditionalColors: [
+            {
+              ruleId: "rule-incomplete",
+              propertyId: "status",
+              operator: "select_is",
+              colorSource: "property_option",
+              color: "green",
+            },
+          ],
+        },
+      }),
+    ).toThrow("invalid value arity");
+  });
+
   test("resolves the first matching conditional color with typed empty and membership semantics", () => {
     const values = new Map<string, unknown>([
       ["status", "build"],
@@ -141,6 +177,7 @@ describe("general Database mutation contract", () => {
           propertyId: "status",
           operator: "equals",
           value: "build",
+          colorSource: "fixed",
           color: "orange",
         },
         {
@@ -148,6 +185,7 @@ describe("general Database mutation contract", () => {
           propertyId: "tags",
           operator: "contains",
           value: "urgent",
+          colorSource: "fixed",
           color: "red",
         },
       ]),
@@ -158,6 +196,7 @@ describe("general Database mutation contract", () => {
           ruleId: "rule-3",
           propertyId: "notes",
           operator: "is_empty",
+          colorSource: "fixed",
           color: "gray",
         },
       ]),
@@ -168,12 +207,14 @@ describe("general Database mutation contract", () => {
           ruleId: "rule-4",
           propertyId: "estimate",
           operator: "is_not_empty",
+          colorSource: "fixed",
           color: "blue",
         },
         {
           ruleId: "rule-5",
           propertyId: "done",
           operator: "is_empty",
+          colorSource: "fixed",
           color: "pink",
         },
       ]),
@@ -185,9 +226,43 @@ describe("general Database mutation contract", () => {
           propertyId: "tags",
           operator: "not_contains",
           value: "urgent",
+          colorSource: "fixed",
           color: "purple",
         },
       ]),
+    ).toBeNull();
+
+    expect(
+      evaluateDatabaseViewConditionalColor(
+        [
+          {
+            ruleId: "rule-option-color",
+            propertyId: "tags",
+            operator: "multi_select_contains",
+            value: ["urgent"],
+            colorSource: "property_option",
+            color: "gray",
+          },
+        ],
+        (propertyId) => values.get(propertyId) as never,
+        (propertyId, optionId) => (propertyId === "tags" && optionId === "urgent" ? "red" : null),
+      ),
+    ).toBe("red");
+    expect(
+      evaluateDatabaseViewConditionalColor(
+        [
+          {
+            ruleId: "rule-first-option-fallback",
+            propertyId: "tags",
+            operator: "multi_select_contains",
+            value: ["urgent"],
+            colorSource: "property_option",
+            color: "gray",
+          },
+        ],
+        (propertyId) => values.get(propertyId) as never,
+        (_propertyId, optionId) => (optionId === "frontend" ? "blue" : null),
+      ),
     ).toBeNull();
   });
 

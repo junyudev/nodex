@@ -80,6 +80,7 @@ const view = (id: string, rankKey: string): DatabaseViewRecordV2 => ({
           propertyId,
           operator: "equals",
           value: "high",
+          colorSource: "fixed",
           color: "red",
         },
       ],

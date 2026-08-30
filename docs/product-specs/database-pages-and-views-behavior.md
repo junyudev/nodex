@@ -236,10 +236,9 @@ the action will actually change, using neutral reset and accent save treatments
 without moving token geometry. Compact Reset and Save icon actions stay at the
 bar tail, while their tooltips explain the personal/shared scope and unsaved
 state. Both actions always apply directly to Filter and Sort together.
-Settings-rail presentation overrides and staged conditional-color edits use the
-same compact Reset and Save icon actions. Their multiline tooltips own the
-scope and restore explanation; the rail does not repeat that guidance as
-persistent footer prose.
+Settings-rail presentation overrides use the same compact Reset and Save icon
+actions. Their multiline tooltips own the scope and restore explanation; the
+rail does not repeat that guidance as persistent footer prose.
 
 Quick-filter tokens reorder horizontally and Sort rows reorder vertically with
 the shared continuous pointer gesture: mouse and stylus activate after 6px,
@@ -697,9 +696,28 @@ values or references.
 
 Conditional color rules belong to one View and are evaluated in their displayed
 order. The first matching rule supplies the row or card decoration; later rules
-do not layer over it. Rules refer to stable Property and option identities, are
-repaired when those dependencies change, and never mutate option colors or Page
-values.
+do not layer over it. A rule uses the same Property-typed operator and value
+contract as View filters. Creating one begins with a searchable Property choice;
+the selected Property then remains the rule's stable subject. Rules are reordered
+through their drag handles because display order is also evaluation priority.
+
+Every rule has either a fixed semantic background or an option-derived
+background. Select and Multi-select rules may inherit the matching Property
+option's color while the row has a value; Multi-select uses the first selected
+option. Empty-value conditions always use a fixed background. A missing or
+unrecognized option color leaves the matched card or row at its default
+background. Board and List apply the result to the whole card or row.
+Conditional-color edits synchronize automatically to the shared View after a
+short debounce whenever every typed rule is complete. Valid draft rules preview
+against the currently rendered rows immediately. Publication uses the shared
+receipt-fenced optimistic View-definition journal, which keeps that definition
+composed over canonical reads until the LocalCommit receipt materializes in the
+View projection. The editor stays interactive during publication and retains a
+newer local draft while an earlier publication hands off to canonical state.
+Closing the editor flushes any complete draft that has not already entered the
+publication lane. Incomplete typed rules remain local and are never published.
+Rules refer to stable Property and option identities, are repaired when those
+dependencies change, and never mutate option colors or Page values.
 
 ## Page editor behavior
 

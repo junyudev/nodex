@@ -2430,8 +2430,6 @@ export interface components {
             readonly system_role?: null | components["schemas"]["DatabasePropertySystemRole"];
             readonly updated_at: string;
         };
-        /** @enum {string} */
-        readonly DatabasePropertyFilterOperator: "equals" | "not_equals" | "contains" | "not_contains" | "is_empty" | "is_not_empty";
         readonly DatabasePropertyManagementPolicy: {
             readonly allowed_types: readonly components["schemas"]["DatabasePropertyType"][];
             readonly blocked_reasons: readonly string[];
@@ -2690,11 +2688,14 @@ export interface components {
         readonly DatabaseViewConditionalColor: "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red";
         readonly DatabaseViewConditionalColorRule: {
             readonly color: components["schemas"]["DatabaseViewConditionalColor"];
-            readonly operator: components["schemas"]["DatabasePropertyFilterOperator"];
+            readonly colorSource?: components["schemas"]["DatabaseViewConditionalColorSource"];
+            readonly operator: components["schemas"]["DatabaseViewFilterOperator"];
             readonly propertyId: string;
             readonly ruleId: string;
             readonly value?: unknown;
         };
+        /** @enum {string} */
+        readonly DatabaseViewConditionalColorSource: "fixed" | "property_option";
         readonly DatabaseViewContext: {
             readonly data_source: components["schemas"]["DatabaseDataSourceRecord"];
             readonly database: components["schemas"]["DatabaseContainerRecord"];

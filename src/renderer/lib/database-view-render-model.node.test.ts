@@ -14,6 +14,7 @@ import { testPropertySemantics } from "../../shared/testing/database-property-re
 import { upgradeDatabaseViewConfigV2 } from "../../shared/database-view-presentation";
 import {
   buildDatabaseViewRenderModel,
+  databaseViewConditionalColorForOption,
   withPublishedDatabaseViewDefinition,
 } from "./database-view-render-model";
 
@@ -177,6 +178,13 @@ const makeSnapshot = (
 };
 
 describe("Database View render model", () => {
+  test("maps durable option colors onto conditional surface colors", () => {
+    expect(databaseViewConditionalColorForOption("purple")).toBe("purple");
+    expect(databaseViewConditionalColorForOption("teal")).toBe("green");
+    expect(databaseViewConditionalColorForOption("default")).toBeNull();
+    expect(databaseViewConditionalColorForOption("#56ABFD")).toBeNull();
+  });
+
   test("projects the default single-Source View through the shared runtime", () => {
     const model = buildDatabaseViewRenderModel(makeSnapshot());
     expect(model.databaseViewId).toBe(viewId);
@@ -298,6 +306,27 @@ describe("Database View render model", () => {
     expect(published.query.rows).toBe(model.query.rows);
     expect(published.columns).toBe(model.columns);
     expect(withPublishedDatabaseViewDefinition(published, { rules })).toBe(published);
+  });
+
+  test("reprojects conditional colors immediately while their receipt is materializing", () => {
+    const model = buildDatabaseViewRenderModel(makeSnapshot());
+    const conditionalColors = [
+      {
+        ruleId: "rule-build",
+        propertyId: statusPropertyId,
+        operator: "select_is" as const,
+        value: "build",
+        colorSource: "fixed" as const,
+        color: "blue" as const,
+      },
+    ];
+
+    const published = withPublishedDatabaseViewDefinition(model, { conditionalColors });
+
+    expect(published.query.view.config.presentation.conditionalColors).toBe(conditionalColors);
+    expect(published.query.rows).toBe(model.query.rows);
+    expect(published.columns[2]?.rows[0]?.conditionalColor).toBe("blue");
+    expect(withPublishedDatabaseViewDefinition(published, { conditionalColors })).toBe(published);
   });
 
   test("rejects resources from a different Library", () => {

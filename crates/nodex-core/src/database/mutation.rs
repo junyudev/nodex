@@ -6,15 +6,15 @@ use nodex_core_contracts::database::{
     DatabaseListProjectionExpectation, DatabaseOperationOutcome, DatabaseOptionPlacement,
     DatabasePageLayoutPlacement, DatabasePagePosition, DatabasePagePropertyAddress,
     DatabasePagePropertyVisibility, DatabasePersonalViewChange, DatabasePropertyCapabilities,
-    DatabasePropertyFilterOperator, DatabasePropertyPlacement, DatabasePropertySchema,
-    DatabasePropertySetDelta, DatabasePropertyValueEdit, DatabasePropertyValueInput,
-    DatabasePropertyValueMutation, DatabaseReceipt, DatabaseRelationCardinality,
-    DatabaseTaskParentPage, DatabaseTransferTarget, DatabaseViewDefinition,
-    DatabaseViewDisclosureTarget, DatabaseViewField, DatabaseViewFilter,
-    DatabaseViewFilterOperator as ViewFilterOperator, DatabaseViewIntrinsicField,
-    DatabaseViewLayout, DatabaseViewPersonalPreferences, DatabaseViewPlacement,
-    DatabaseViewPreferencesOverrideInput, DatabaseViewPresentationOverrideInput,
-    DatabaseViewRulesOverrideInput, DatabaseViewSortDirection, DatabaseViewSortField,
+    DatabasePropertyPlacement, DatabasePropertySchema, DatabasePropertySetDelta,
+    DatabasePropertyValueEdit, DatabasePropertyValueInput, DatabasePropertyValueMutation,
+    DatabaseReceipt, DatabaseRelationCardinality, DatabaseTaskParentPage, DatabaseTransferTarget,
+    DatabaseViewConditionalColorSource, DatabaseViewDefinition, DatabaseViewDisclosureTarget,
+    DatabaseViewField, DatabaseViewFilter, DatabaseViewFilterOperator as ViewFilterOperator,
+    DatabaseViewIntrinsicField, DatabaseViewLayout, DatabaseViewPersonalPreferences,
+    DatabaseViewPlacement, DatabaseViewPreferencesOverrideInput,
+    DatabaseViewPresentationOverrideInput, DatabaseViewRulesOverrideInput,
+    DatabaseViewSortDirection, DatabaseViewSortField,
 };
 use nodex_core_contracts::{
     BoundModuleContext, CoreModuleEventPayload, ModuleApplyRequest, ModuleMutationReceipt,
@@ -6530,7 +6530,7 @@ pub(super) fn validate_view_definition(
         }
         let requires_value = !matches!(
             rule.operator,
-            DatabasePropertyFilterOperator::IsEmpty | DatabasePropertyFilterOperator::IsNotEmpty
+            ViewFilterOperator::IsEmpty | ViewFilterOperator::IsNotEmpty
         );
         if requires_value != rule.value.is_some() {
             return Err(invalid(
@@ -6669,6 +6669,16 @@ fn validate_view_property_capabilities(
             invalid("Database View conditional color references a missing Property")
         })?;
         let operator = conditional_filter_operator(rule.operator, &property.schema)?;
+        if rule.color_source == DatabaseViewConditionalColorSource::PropertyOption
+            && (!matches!(
+                property.schema,
+                DatabasePropertySchema::Select | DatabasePropertySchema::MultiSelect
+            ) || operator == ViewFilterOperator::IsEmpty)
+        {
+            return Err(invalid(
+                "Conditional color can only match a populated option Property",
+            ));
+        }
         validate_filter_capabilities(
             connection,
             library_id,
@@ -6797,37 +6807,58 @@ fn validate_filter_capabilities(
 }
 
 fn conditional_filter_operator(
-    operator: DatabasePropertyFilterOperator,
+    operator: ViewFilterOperator,
     schema: &DatabasePropertySchema,
 ) -> Result<ViewFilterOperator, StoreError> {
-    use DatabasePropertyFilterOperator as Generic;
     use DatabasePropertySchema as Schema;
     use ViewFilterOperator as Typed;
 
-    let typed = match (operator, schema) {
-        (Generic::IsEmpty, _) => Typed::IsEmpty,
-        (Generic::IsNotEmpty, _) => Typed::IsNotEmpty,
-        (Generic::Equals, Schema::Text) => Typed::TextIs,
-        (Generic::NotEquals, Schema::Text) => Typed::TextIsNot,
-        (Generic::Contains, Schema::Text) => Typed::TextContains,
-        (Generic::NotContains, Schema::Text) => Typed::TextDoesNotContain,
-        (Generic::Equals, Schema::Number { .. }) => Typed::NumberEquals,
-        (Generic::NotEquals, Schema::Number { .. }) => Typed::NumberDoesNotEqual,
-        (Generic::Equals, Schema::Checkbox) => Typed::CheckboxIs,
-        (Generic::NotEquals, Schema::Checkbox) => Typed::CheckboxIsNot,
-        (Generic::Equals, Schema::Select) => Typed::SelectIs,
-        (Generic::NotEquals, Schema::Select) => Typed::SelectIsNot,
-        (Generic::Contains, Schema::MultiSelect) => Typed::MultiSelectContains,
-        (Generic::NotContains, Schema::MultiSelect) => Typed::MultiSelectDoesNotContain,
-        (Generic::Equals, Schema::Date { .. } | Schema::Datetime { .. }) => Typed::DateIs,
-        (Generic::NotEquals, Schema::Date { .. } | Schema::Datetime { .. }) => Typed::DateIsNot,
-        (Generic::Contains, Schema::Relation { .. }) => Typed::RelationContains,
-        (Generic::NotContains, Schema::Relation { .. }) => Typed::RelationDoesNotContain,
-        _ => {
-            return Err(invalid(
-                "Conditional color operator is unsupported for its Property",
-            ));
-        }
+    let typed = match operator {
+        Typed::Equals => match schema {
+            Schema::Text => Typed::TextIs,
+            Schema::Number { .. } => Typed::NumberEquals,
+            Schema::Checkbox => Typed::CheckboxIs,
+            Schema::Select => Typed::SelectIs,
+            Schema::Date { .. } | Schema::Datetime { .. } => Typed::DateIs,
+            _ => {
+                return Err(invalid(
+                    "Conditional color operator is unsupported for its Property",
+                ));
+            }
+        },
+        Typed::NotEquals => match schema {
+            Schema::Text => Typed::TextIsNot,
+            Schema::Number { .. } => Typed::NumberDoesNotEqual,
+            Schema::Checkbox => Typed::CheckboxIsNot,
+            Schema::Select => Typed::SelectIsNot,
+            Schema::Date { .. } | Schema::Datetime { .. } => Typed::DateIsNot,
+            _ => {
+                return Err(invalid(
+                    "Conditional color operator is unsupported for its Property",
+                ));
+            }
+        },
+        Typed::Contains => match schema {
+            Schema::Text => Typed::TextContains,
+            Schema::MultiSelect => Typed::MultiSelectContains,
+            Schema::Relation { .. } => Typed::RelationContains,
+            _ => {
+                return Err(invalid(
+                    "Conditional color operator is unsupported for its Property",
+                ));
+            }
+        },
+        Typed::NotContains => match schema {
+            Schema::Text => Typed::TextDoesNotContain,
+            Schema::MultiSelect => Typed::MultiSelectDoesNotContain,
+            Schema::Relation { .. } => Typed::RelationDoesNotContain,
+            _ => {
+                return Err(invalid(
+                    "Conditional color operator is unsupported for its Property",
+                ));
+            }
+        },
+        typed => typed,
     };
     Ok(typed)
 }

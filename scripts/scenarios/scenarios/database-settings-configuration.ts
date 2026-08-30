@@ -275,6 +275,7 @@ const configureDatabase = async (
           propertyId: select.id,
           operator: "equals" as const,
           value: selectOptions[0],
+          colorSource: "fixed" as const,
           color: "blue" as const,
         },
       ],

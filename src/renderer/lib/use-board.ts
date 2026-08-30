@@ -78,7 +78,7 @@ export interface DatabaseViewBoardPageDropIntent {
 }
 
 export interface DatabaseViewDefinitionPublicationIntent {
-  readonly kind: "rules" | "presentation";
+  readonly kind: "rules" | "presentation" | "conditional-colors";
   readonly patch: PublishedDatabaseViewDefinitionPatch;
   readonly commit: (
     canonicalModel: DatabaseViewRenderModel,

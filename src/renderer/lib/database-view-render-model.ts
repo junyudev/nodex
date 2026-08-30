@@ -54,6 +54,12 @@ export interface PublishedDatabaseViewDefinitionPatch {
   readonly layout?: DatabaseViewLayout;
   readonly rules?: DatabaseViewRules;
   readonly presentation?: DatabaseViewPresentationConfig;
+  /**
+   * A narrow shared-decoration patch. Unlike a complete presentation
+   * publication, this composes over the latest canonical presentation each
+   * time the optimistic journal is replayed.
+   */
+  readonly conditionalColors?: readonly DatabaseViewConditionalColorRule[];
 }
 
 export type DatabaseViewAccessContext =
@@ -89,7 +95,35 @@ export interface DatabaseViewRenderRow {
 
 export const databaseViewConditionalColorBackground = (
   color: DatabaseViewConditionalColor,
-): string => `var(--${color}-bg)`;
+): string => `var(--conditional-color-${color}-background)`;
+
+export const databaseViewConditionalColorBorder = (color: DatabaseViewConditionalColor): string =>
+  `var(--conditional-color-${color}-border)`;
+
+const CONDITIONAL_OPTION_COLORS = new Set<DatabaseViewConditionalColor>([
+  "gray",
+  "brown",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
+  "red",
+]);
+
+/** Maps durable option colors onto the semantic background palette used by View surfaces. */
+export const databaseViewConditionalColorForOption = (
+  color: string | undefined,
+): DatabaseViewConditionalColor | null => {
+  const normalized = color?.trim().toLocaleLowerCase();
+  if (!normalized) return null;
+  if (normalized === "default") return null;
+  if (normalized === "teal" || normalized === "cyan") return "green";
+  return CONDITIONAL_OPTION_COLORS.has(normalized as DatabaseViewConditionalColor)
+    ? (normalized as DatabaseViewConditionalColor)
+    : null;
+};
 
 /**
  * Stable key of one independently paged group window: `key:<group>` for a
@@ -209,6 +243,13 @@ export const projectDataSourcePageRowToDatabaseViewRenderRow = (
     conditionalColor: evaluateDatabaseViewConditionalColor(
       conditionalColors,
       (propertyId) => row.values[propertyId]?.value,
+      (propertyId, optionId) => {
+        const property = propertyById(properties, propertyId);
+        const option = property
+          ? readDatabasePropertyOptions(property).find((candidate) => candidate.id === optionId)
+          : undefined;
+        return databaseViewConditionalColorForOption(option?.color);
+      },
     ),
   };
 };
@@ -352,20 +393,30 @@ export const withEffectiveDatabaseView = (
 };
 
 /**
- * Hands already-rendered effective settings to durable View metadata without
- * rebuilding its projection. The current rows and columns already represent
- * this coordinate; a receipt-fenced optimistic journal retains this patch only
- * until a canonical read materializes the same definition.
+ * Hands effective settings to durable View metadata while a receipt-fenced
+ * optimistic journal waits for a canonical read to materialize the same
+ * definition. Complete rules/presentation publications preserve the projection
+ * already rendered by their personal override; a direct conditional-color
+ * publication reprojects current rows because it has no Profile-local owner.
  */
 export const withPublishedDatabaseViewDefinition = (
   model: DatabaseViewRenderModel,
   patch: PublishedDatabaseViewDefinitionPatch,
 ): DatabaseViewRenderModel => {
   const layout = patch.layout ?? model.query.view.layout;
+  const presentation =
+    patch.presentation === undefined && patch.conditionalColors === undefined
+      ? undefined
+      : {
+          ...(patch.presentation ?? model.query.view.config.presentation),
+          ...(patch.conditionalColors === undefined
+            ? {}
+            : { conditionalColors: patch.conditionalColors }),
+        };
   const config = {
     ...model.query.view.config,
     ...(patch.rules === undefined ? {} : { rules: patch.rules }),
-    ...(patch.presentation === undefined ? {} : { presentation: patch.presentation }),
+    ...(presentation === undefined ? {} : { presentation }),
   };
   if (
     layout === model.query.view.layout &&
@@ -373,16 +424,25 @@ export const withPublishedDatabaseViewDefinition = (
   ) {
     return model;
   }
+  const query = {
+    ...model.query,
+    view: {
+      ...model.query.view,
+      layout,
+      config,
+    },
+  };
   return {
     ...model,
-    query: {
-      ...model.query,
-      view: {
-        ...model.query.view,
-        layout,
-        config,
-      },
-    },
+    ...(patch.conditionalColors === undefined
+      ? {}
+      : {
+          columns: buildDatabaseViewColumns(
+            query,
+            query.view.config.presentation.group?.propertyId ?? null,
+          ),
+        }),
+    query,
   };
 };
 

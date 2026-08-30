@@ -15,6 +15,7 @@ import type { WorkbenchTabProjection } from "@/lib/types";
 import { useBoard, type DatabaseViewBoardPageDropIntent } from "@/lib/use-board";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type {
+  DatabaseViewConditionalColorRule,
   DatabaseViewField,
   DatabaseViewLayout,
   DatabaseViewRules,
@@ -362,6 +363,10 @@ export function DbViewSessionTab({
   );
   const [publishingPresentation, setPublishingPresentation] = useState(false);
   const [rulePublishError, setRulePublishError] = useState<string | null>(null);
+  const [conditionalColorPreview, setConditionalColorPreview] = useState<{
+    readonly viewId: string;
+    readonly rules: readonly DatabaseViewConditionalColorRule[];
+  } | null>(null);
   const presentationActivity = resolveDatabaseViewPresentationActivity({
     loading: personalPreference.loading,
     saving: personalPreference.saving,
@@ -431,7 +436,7 @@ export function DbViewSessionTab({
         : null,
     [databaseView, presentationCapabilities],
   );
-  const effectivePresentation = useMemo(
+  const resolvedEffectivePresentation = useMemo(
     () =>
       databaseView
         ? resolveEffectiveDatabaseView(
@@ -445,6 +450,21 @@ export function DbViewSessionTab({
         : null,
     [databaseView, presentationCapabilities, presentationOverride, rulesOverride],
   );
+  const effectivePresentation = useMemo(() => {
+    if (
+      !resolvedEffectivePresentation ||
+      conditionalColorPreview?.viewId !== String(databaseViewId)
+    ) {
+      return resolvedEffectivePresentation;
+    }
+    return {
+      ...resolvedEffectivePresentation,
+      presentation: {
+        ...resolvedEffectivePresentation.presentation,
+        conditionalColors: conditionalColorPreview.rules,
+      },
+    };
+  }, [conditionalColorPreview, databaseViewId, resolvedEffectivePresentation]);
   const effectiveFilter = effectivePresentation
     ? effectiveDatabaseViewFilter(effectivePresentation.rules)
     : null;
@@ -702,6 +722,48 @@ export function DbViewSessionTab({
     personalPreference,
     runtime,
   ]);
+  const publishConditionalColors = useCallback(
+    async (conditionalColors: readonly DatabaseViewConditionalColorRule[]) => {
+      if (!databaseView) throw new Error("The Database View is not loaded");
+      await runtime.publishDatabaseViewDefinition({
+        kind: "conditional-colors",
+        patch: { conditionalColors },
+        commit: async (canonicalModel) => {
+          const presentation = {
+            ...canonicalModel.query.view.config.presentation,
+            conditionalColors,
+          };
+          const committed = await commitDatabaseViewOperations({
+            model: canonicalModel,
+            operations: [
+              {
+                kind: "put_view",
+                databaseId: canonicalModel.databaseId,
+                dataSourceId: canonicalModel.dataSourceId,
+                viewId: canonicalModel.databaseViewId,
+                expectedRevision: canonicalModel.query.view.revision,
+                name: canonicalModel.query.view.name,
+                layout: canonicalModel.query.view.layout,
+                config: { ...canonicalModel.query.view.config, presentation },
+                isDefault: canonicalModel.query.view.isDefault,
+              },
+            ],
+          });
+          if (!committed) {
+            throw new Error("The conditional colors no longer require publication");
+          }
+          return committed;
+        },
+      });
+    },
+    [databaseView, runtime],
+  );
+  const previewConditionalColors = useCallback(
+    (rules: readonly DatabaseViewConditionalColorRule[] | null) => {
+      setConditionalColorPreview(rules ? { viewId: String(databaseViewId), rules } : null);
+    },
+    [databaseViewId],
+  );
   const openTaskSearch = useCallback((selectQuery = false) => {
     setTaskSearchOpen(true);
     window.requestAnimationFrame(() => {
@@ -1008,6 +1070,8 @@ export function DbViewSessionTab({
               onChangePresentation={updateEffectivePresentation}
               onResetPresentation={() => void personalPreference.setPresentationOverride(null)}
               onPublishPresentation={publishEffectivePresentation}
+              onPreviewConditionalColors={previewConditionalColors}
+              onPublishConditionalColors={publishConditionalColors}
               onProjectionCommitted={runtime.refresh}
               onSelectView={(viewId, title) => onSelectDatabaseView?.(viewId, title)}
               onPush={(route) =>

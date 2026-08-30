@@ -524,10 +524,11 @@ export function DatabaseViewFilterValueField({
   readonly onRequestOptions?: (property: DataSourcePropertyRecordV2) => void;
   readonly accessContext?: DatabaseViewAccessContext;
   readonly disabled: boolean;
-  readonly presentation?: "advanced" | "quick";
+  readonly presentation?: "advanced" | "quick" | "conditional";
   readonly onChange: (value: DatabaseJsonValue) => void;
 }) {
   const role = resolveDataSourcePropertyPresentationRole(property);
+  const fillRow = presentation === "quick" || presentation === "conditional";
   const semanticKind: SemanticSelectPropertyKind | null =
     role.kind === "status" || role.kind === "priority" || role.kind === "estimate"
       ? role.kind
@@ -614,7 +615,8 @@ export function DatabaseViewFilterValueField({
             aria-label={`Filter value for ${property.name}`}
             className={cn(
               inputClass,
-              "inline-flex min-w-[120px] max-w-[180px] items-center gap-1.5 truncate text-left",
+              "inline-flex items-center gap-1.5 truncate text-left",
+              fillRow ? "w-full min-w-0 max-w-none" : "min-w-[120px] max-w-[180px]",
             )}
           >
             {selectedOption ? (
@@ -661,7 +663,11 @@ export function DatabaseViewFilterValueField({
           <button
             type="button"
             aria-label={`Filter value for ${property.name}`}
-            className={cn(inputClass, "min-w-[120px] max-w-[180px] gap-1.5 truncate text-left")}
+            className={cn(
+              inputClass,
+              "gap-1.5 truncate text-left",
+              fillRow ? "w-full min-w-0 max-w-none" : "min-w-[120px] max-w-[180px]",
+            )}
           >
             {selectedNames.length > 0 ? selectedNames.join(", ") : "Select option"}
           </button>
@@ -680,7 +686,7 @@ export function DatabaseViewFilterValueField({
         onChange={(event) =>
           onChange(event.target.value === "" ? null : Number(event.target.value))
         }
-        className={cn(inputClass, presentation === "quick" ? "w-full" : "w-28")}
+        className={cn(inputClass, fillRow ? "w-full" : "w-28")}
       />
     );
   }
@@ -693,7 +699,8 @@ export function DatabaseViewFilterValueField({
       <span
         className={cn(
           "flex items-center gap-1",
-          presentation === "quick" && "grid w-full grid-cols-[1fr_auto_1fr] px-2 pb-2",
+          fillRow && "grid w-full grid-cols-[1fr_auto_1fr]",
+          presentation === "quick" && "px-2 pb-2",
         )}
       >
         <input
@@ -702,7 +709,7 @@ export function DatabaseViewFilterValueField({
           value={start}
           disabled={disabled}
           onChange={(event) => onChange({ start: event.target.value, end })}
-          className={cn(inputClass, presentation === "quick" ? "w-full" : "w-32")}
+          className={cn(inputClass, fillRow ? "w-full" : "w-32")}
         />
         <span className="text-xs text-token-description-foreground">to</span>
         <input
@@ -711,7 +718,7 @@ export function DatabaseViewFilterValueField({
           value={end}
           disabled={disabled}
           onChange={(event) => onChange({ start, end: event.target.value })}
-          className={cn(inputClass, presentation === "quick" ? "w-full" : "w-32")}
+          className={cn(inputClass, fillRow ? "w-full" : "w-32")}
         />
       </span>
     );
@@ -826,7 +833,7 @@ export function DatabaseViewFilterValueField({
       ariaLabel={`Filter value for ${property.name}`}
       value={value}
       disabled={disabled}
-      className={presentation === "quick" ? "w-full" : undefined}
+      className={fillRow ? "w-full" : undefined}
       onChange={(next) => {
         if (property.valueType !== "datetime") {
           onChange(next);

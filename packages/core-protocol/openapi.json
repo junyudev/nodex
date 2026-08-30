@@ -9700,17 +9700,6 @@
           }
         }
       },
-      "DatabasePropertyFilterOperator": {
-        "type": "string",
-        "enum": [
-          "equals",
-          "not_equals",
-          "contains",
-          "not_contains",
-          "is_empty",
-          "is_not_empty"
-        ]
-      },
       "DatabasePropertyManagementPolicy": {
         "type": "object",
         "required": [
@@ -10761,8 +10750,11 @@
           "color": {
             "$ref": "#/components/schemas/DatabaseViewConditionalColor"
           },
+          "colorSource": {
+            "$ref": "#/components/schemas/DatabaseViewConditionalColorSource"
+          },
           "operator": {
-            "$ref": "#/components/schemas/DatabasePropertyFilterOperator"
+            "$ref": "#/components/schemas/DatabaseViewFilterOperator"
           },
           "propertyId": {
             "type": "string"
@@ -10773,6 +10765,13 @@
           "value": {}
         },
         "additionalProperties": false
+      },
+      "DatabaseViewConditionalColorSource": {
+        "type": "string",
+        "enum": [
+          "fixed",
+          "property_option"
+        ]
       },
       "DatabaseViewContext": {
         "type": "object",

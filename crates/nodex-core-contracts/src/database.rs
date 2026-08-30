@@ -530,14 +530,24 @@ pub enum DatabaseViewConditionalColor {
     Red,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseViewConditionalColorSource {
+    #[default]
+    Fixed,
+    PropertyOption,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DatabaseViewConditionalColorRule {
     pub rule_id: String,
     pub property_id: String,
-    pub operator: DatabasePropertyFilterOperator,
+    pub operator: DatabaseViewFilterOperator,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<Value>,
+    #[serde(default)]
+    pub color_source: DatabaseViewConditionalColorSource,
     pub color: DatabaseViewConditionalColor,
 }
 

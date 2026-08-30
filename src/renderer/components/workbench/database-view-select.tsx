@@ -28,6 +28,7 @@ interface DatabaseViewSelectProps {
   readonly searchPlaceholder?: string;
   readonly className?: string;
   readonly contentWidth?: NodexDropdownContentWidth;
+  readonly align?: "start" | "center" | "end";
   readonly chrome?: NodexDropdownButtonTriggerProps["chrome"];
   readonly size?: NodexDropdownButtonTriggerProps["size"];
   readonly showChevron?: boolean;
@@ -47,6 +48,7 @@ export function DatabaseViewSelect({
   searchPlaceholder,
   className,
   contentWidth = "sm",
+  align = "end",
   chrome,
   size = "xs",
   showChevron = true,
@@ -79,7 +81,7 @@ export function DatabaseViewSelect({
       searchAriaLabel={search === "filter" ? `Search ${ariaLabel}` : undefined}
       onValueChange={onValueChange}
       contentWidth={contentWidth}
-      align="end"
+      align={align}
       options={options.map((option) => ({
         value: option.value,
         label: option.label,

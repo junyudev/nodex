@@ -9,7 +9,9 @@ import {
   startTransition,
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
@@ -19,6 +21,8 @@ import {
 
 import {
   BoardIcon,
+  CheckmarkIcon,
+  ChevronDownIcon,
   ChevronRightIcon,
   CloseIcon,
   CopyIcon,
@@ -43,6 +47,7 @@ import {
 } from "@/components/ui/continuous-sortable";
 import { NodexContextMenuRoot, NodexContextMenuTrigger } from "@/components/ui/context-menu";
 import { Input, NodexCompactFramedInput } from "@/components/ui/input";
+import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { databasePropertyOptionDotColor } from "@/components/database/property-value-chip";
 import { SemanticPropertyOptionIcon } from "@/components/database/semantic-property-editors";
 import {
@@ -52,6 +57,10 @@ import {
   normalizedDatabaseViewPropertyOrder,
   toggleDatabaseViewPropertyVisibility,
 } from "@/lib/database-view-property-visibility";
+import {
+  databaseConditionalColorRulesFingerprint,
+  reconcileDatabaseConditionalColorDraft,
+} from "@/lib/database-conditional-color-sync";
 import {
   changeDatabaseViewLayoutOperation,
   createDataSourcePropertyOperation,
@@ -65,7 +74,12 @@ import {
   putDatabaseViewOperation,
   restoreDataSourcePropertyOperation,
 } from "@/lib/database-settings-operations";
-import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
+import {
+  databaseViewConditionalColorBackground,
+  databaseViewConditionalColorBorder,
+  type DatabaseViewAccessContext,
+  type DatabaseViewRenderModel,
+} from "@/lib/database-view-render-model";
 import type { DatabaseViewPresentationActivity } from "@/lib/database-view-presentation-activity";
 import { cn } from "@/lib/utils";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
@@ -77,15 +91,16 @@ import type {
 } from "../../../../shared/database-module-v2";
 import type {
   DatabasePropertyOption,
-  DatabasePropertyFilterOperator,
   DatabasePropertyValueType,
   DatabaseViewCompletedRange,
+  DatabaseViewConditionalColor,
   DatabaseViewConditionalColorRule,
   DatabaseViewFilterClause,
   DatabaseViewFilterOperator,
   DatabaseViewLayout,
   EffectiveDatabaseView,
 } from "../../../../shared/database-kernel";
+import { databaseViewFilterClauseIsEmpty } from "../../../../shared/database-view-rules";
 import {
   createCustomOptionId,
   parseDataSourceOptionId,
@@ -100,13 +115,12 @@ import {
 } from "../../database/data-source-property-presentation";
 import { DatabaseViewSelect } from "../database-view-select";
 import {
+  DatabaseRulePropertyLabel,
   DatabaseViewFilterValueField,
   FILTER_OPERATOR_LABELS,
 } from "../database-view-filter-editors";
 import {
-  createDatabaseViewFilterClause,
   databaseFilterClauseWithOperator,
-  databaseFilterClauseWithProperty,
   filterOperatorsForProperty,
   readDatabasePropertyOptions,
 } from "@/lib/database-view-authoring";
@@ -1362,297 +1376,603 @@ const conditionalColorRuleClause = (
   ...(rule.value === undefined ? {} : { value: rule.value }),
 });
 
-const conditionalColorOperator = (
-  operator: DatabaseViewFilterOperator,
-): DatabasePropertyFilterOperator => {
-  if (operator === "is_empty" || operator === "is_not_empty") return operator;
-  if (operator.includes("does_not") || operator.endsWith("_is_not")) {
-    return operator.includes("contain") ? "not_contains" : "not_equals";
-  }
-  if (operator.includes("contain")) return "contains";
-  return "equals";
-};
-
 const conditionalColorRuleWithClause = (
   rule: DatabaseViewConditionalColorRule,
   clause: DatabaseViewFilterClause,
 ): DatabaseViewConditionalColorRule => ({
   ruleId: rule.ruleId,
   propertyId: clause.propertyId,
-  operator: conditionalColorOperator(clause.operator),
+  operator: clause.operator,
   ...(clause.value === undefined ? {} : { value: clause.value }),
+  colorSource:
+    clause.operator === "is_empty" && rule.colorSource === "property_option"
+      ? "fixed"
+      : rule.colorSource,
   color: rule.color,
 });
 
-const moveConditionalColorRule = (
+const legacyConditionalColorOperator = (
+  operator: DatabaseViewFilterOperator,
+  property: DataSourcePropertyRecordV2,
+): DatabaseViewFilterOperator => {
+  if (operator === "is_empty" || operator === "is_not_empty") return operator;
+  if (
+    operator !== "equals" &&
+    operator !== "not_equals" &&
+    operator !== "contains" &&
+    operator !== "not_contains"
+  ) {
+    return operator;
+  }
+  const negative = operator === "not_equals" || operator === "not_contains";
+  if (property.valueType === "text") {
+    if (operator === "contains" || operator === "not_contains") {
+      return negative ? "text_does_not_contain" : "text_contains";
+    }
+    return negative ? "text_is_not" : "text_is";
+  }
+  if (property.valueType === "number") return negative ? "number_does_not_equal" : "number_equals";
+  if (property.valueType === "checkbox") return negative ? "checkbox_is_not" : "checkbox_is";
+  if (property.valueType === "select") return negative ? "select_is_not" : "select_is";
+  if (property.valueType === "multi_select") {
+    return negative ? "multi_select_does_not_contain" : "multi_select_contains";
+  }
+  if (property.valueType === "date" || property.valueType === "datetime") {
+    return negative ? "date_is_not" : "date_is";
+  }
+  if (property.valueType === "relation") {
+    return negative ? "relation_does_not_contain" : "relation_contains";
+  }
+  return filterOperatorsForProperty(property)[0] ?? "is_empty";
+};
+
+const normalizeConditionalColorRule = (
+  rule: DatabaseViewConditionalColorRule,
+  properties: readonly DataSourcePropertyRecordV2[],
+): DatabaseViewConditionalColorRule => {
+  const property = properties.find((candidate) => candidate.propertyId === rule.propertyId);
+  if (!property || filterOperatorsForProperty(property).includes(rule.operator)) return rule;
+  const operator = legacyConditionalColorOperator(rule.operator, property);
+  const nextClause = databaseFilterClauseWithOperator(property, operator);
+  return conditionalColorRuleWithClause(
+    rule,
+    rule.value === undefined ? nextClause : { ...nextClause, value: rule.value },
+  );
+};
+
+const normalizeConditionalColorRules = (
   rules: readonly DatabaseViewConditionalColorRule[],
-  index: number,
-  direction: "up" | "down",
-): readonly DatabaseViewConditionalColorRule[] => {
-  const target = direction === "up" ? index - 1 : index + 1;
-  if (target < 0 || target >= rules.length) return rules;
+  properties: readonly DataSourcePropertyRecordV2[],
+): DatabaseViewConditionalColorRule[] =>
+  rules.map((rule) => normalizeConditionalColorRule(rule, properties));
+
+const conditionalColorPropertyCanMatchOption = (
+  property: DataSourcePropertyRecordV2,
+  operator: DatabaseViewFilterOperator,
+): boolean =>
+  (property.valueType === "select" || property.valueType === "multi_select") &&
+  operator !== "is_empty";
+
+const createConditionalColorRule = (
+  property: DataSourcePropertyRecordV2,
+): DatabaseViewConditionalColorRule => {
+  const operators = filterOperatorsForProperty(property);
+  const operator = operators.includes("is_not_empty")
+    ? "is_not_empty"
+    : (operators[0] ?? "is_empty");
+  const clause = databaseFilterClauseWithOperator(property, operator);
+  return {
+    ruleId: createUuidV7(),
+    propertyId: property.propertyId,
+    operator: clause.operator,
+    ...(clause.value === undefined ? {} : { value: clause.value }),
+    colorSource: conditionalColorPropertyCanMatchOption(property, clause.operator)
+      ? "property_option"
+      : "fixed",
+    color: "green",
+  };
+};
+
+const reorderConditionalColorRules = (
+  rules: readonly DatabaseViewConditionalColorRule[],
+  sourceId: string,
+  targetId: string,
+): DatabaseViewConditionalColorRule[] => {
+  const sourceIndex = rules.findIndex((rule) => rule.ruleId === sourceId);
+  const targetIndex = rules.findIndex((rule) => rule.ruleId === targetId);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return [...rules];
   const next = [...rules];
-  [next[index], next[target]] = [next[target]!, next[index]!];
+  const [moved] = next.splice(sourceIndex, 1);
+  if (!moved) return [...rules];
+  next.splice(targetIndex, 0, moved);
   return next;
 };
+
+const CONDITIONAL_COLOR_SYNC_DELAY_MS = 250;
+
+const CONDITIONAL_COLOR_LABELS: Readonly<Record<DatabaseViewConditionalColor, string>> = {
+  gray: "Gray",
+  brown: "Brown",
+  orange: "Orange",
+  yellow: "Yellow",
+  green: "Green",
+  blue: "Blue",
+  purple: "Purple",
+  pink: "Pink",
+  red: "Red",
+};
+
+function ConditionalColorPicker({
+  rule,
+  property,
+  disabled,
+  onChange,
+}: {
+  readonly rule: DatabaseViewConditionalColorRule;
+  readonly property: DataSourcePropertyRecordV2;
+  readonly disabled: boolean;
+  readonly onChange: (rule: DatabaseViewConditionalColorRule) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const canMatchOption = conditionalColorPropertyCanMatchOption(property, rule.operator);
+  const matchingOption = canMatchOption && rule.colorSource === "property_option";
+  const matchLabel = property.valueType === "multi_select" ? "Match first option" : "Match option";
+  return (
+    <NodexPopover open={open} onOpenChange={setOpen}>
+      <NodexPopoverTrigger>
+        <button
+          type="button"
+          aria-label={`Background color for ${property.name}`}
+          disabled={disabled}
+          className="inline-flex h-6 min-w-0 max-w-[164px] shrink-0 items-center gap-1 rounded-md px-1 text-sm text-token-text-primary outline-hidden hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-token-focus disabled:opacity-40"
+        >
+          {matchingOption ? null : (
+            <span
+              className="size-4 shrink-0 rounded-[4px]"
+              style={{
+                backgroundColor: databaseViewConditionalColorBackground(rule.color),
+                boxShadow: `inset 0 0 0 1px ${databaseViewConditionalColorBorder(rule.color)}`,
+              }}
+            />
+          )}
+          <span className="truncate">
+            {matchingOption ? matchLabel : CONDITIONAL_COLOR_LABELS[rule.color]}
+          </span>
+          <ChevronDownIcon className="icon-2xs shrink-0 text-token-description-foreground" />
+        </button>
+      </NodexPopoverTrigger>
+      <NodexPopoverContent className="w-[182px] rounded-[10px] p-1" align="end">
+        {canMatchOption ? (
+          <>
+            <div className="flex h-7 items-center px-2 text-sm text-token-text-primary">
+              <span className="min-w-0 flex-1 truncate">{matchLabel}</span>
+              <NodexSwitch
+                size="compact"
+                ariaLabel={matchLabel}
+                checked={matchingOption}
+                disabled={disabled}
+                onCheckedChange={(checked) =>
+                  onChange({ ...rule, colorSource: checked ? "property_option" : "fixed" })
+                }
+              />
+            </div>
+            <div className="mx-2 my-1 border-t-[0.5px] border-token-border/70" />
+          </>
+        ) : null}
+        <div
+          className={cn(
+            "grid grid-cols-5 gap-x-1 gap-y-2 p-2 transition-opacity",
+            matchingOption && "opacity-40",
+          )}
+        >
+          {OPTION_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              aria-label={`Use ${CONDITIONAL_COLOR_LABELS[color]} background`}
+              aria-pressed={!matchingOption && rule.color === color}
+              disabled={disabled}
+              className="relative grid size-[26px] place-items-center rounded-md outline-hidden hover:ring-2 hover:ring-token-border focus-visible:ring-2 focus-visible:ring-token-focus"
+              style={{
+                backgroundColor: databaseViewConditionalColorBackground(color),
+                boxShadow: `inset 0 0 0 1px ${databaseViewConditionalColorBorder(color)}`,
+              }}
+              onClick={() => {
+                onChange({ ...rule, colorSource: "fixed", color });
+                setOpen(false);
+              }}
+            >
+              {!matchingOption && rule.color === color ? (
+                <CheckmarkIcon className="size-3.5 text-token-text-primary" />
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </NodexPopoverContent>
+    </NodexPopover>
+  );
+}
+
+function SortableConditionalColorRule({
+  rule,
+  property,
+  layout,
+  options,
+  accessContext,
+  disabled,
+  onRequestOptions,
+  onChange,
+  onDelete,
+}: {
+  readonly rule: DatabaseViewConditionalColorRule;
+  readonly property: DataSourcePropertyRecordV2;
+  readonly layout: DatabaseViewLayout;
+  readonly options: readonly DatabasePropertyOption[];
+  readonly accessContext: DatabaseViewAccessContext;
+  readonly disabled: boolean;
+  readonly onRequestOptions: (property: DataSourcePropertyRecordV2) => void;
+  readonly onChange: (rule: DatabaseViewConditionalColorRule) => void;
+  readonly onDelete: () => void;
+}) {
+  const sortable = useContinuousSortable({ id: rule.ruleId, disabled });
+  const clause = conditionalColorRuleClause(rule);
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={sortable.style}
+      data-conditional-color-rule={rule.ruleId}
+      data-conditional-color-dragging={sortable.isDragging ? "true" : undefined}
+      className={cn(
+        "group relative w-full rounded-[10px] border border-transparent bg-token-foreground/5",
+        sortable.isDragging && "shadow-lg ring-[0.5px] ring-token-border",
+      )}
+    >
+      <button
+        ref={sortable.setActivatorNodeRef}
+        type="button"
+        aria-label={`Reorder conditional color for ${property.name}`}
+        disabled={disabled}
+        {...sortable.attributes}
+        {...sortable.listeners}
+        className="absolute -left-2.5 top-1 z-10 inline-flex size-5 touch-none cursor-grab items-center justify-center rounded-md bg-token-main-surface-secondary text-token-description-foreground opacity-0 outline-hidden transition-opacity hover:text-token-text-primary focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-token-focus group-hover:opacity-100 active:cursor-grabbing disabled:cursor-not-allowed"
+      >
+        <DragHandleDotsIcon className="size-3" />
+      </button>
+      <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_max-content_24px] items-center gap-1 px-2 pt-1">
+        <DatabaseRulePropertyLabel
+          property={property}
+          className="text-sm text-token-text-primary [&_svg]:text-token-text-primary"
+        />
+        <DatabaseViewSelect
+          ariaLabel={`Conditional color operator for ${property.name}`}
+          value={rule.operator}
+          valueLabel={FILTER_OPERATOR_LABELS[rule.operator]}
+          disabled={disabled}
+          onValueChange={(operator) =>
+            onChange(
+              conditionalColorRuleWithClause(
+                rule,
+                databaseFilterClauseWithOperator(property, operator as DatabaseViewFilterOperator),
+              ),
+            )
+          }
+          options={filterOperatorsForProperty(property).map((operator) => ({
+            value: operator,
+            label: FILTER_OPERATOR_LABELS[operator],
+          }))}
+          triggerWidth="content"
+          chrome="transparent"
+          className="max-w-[132px] px-1 text-sm text-token-text-primary"
+        />
+        <NodexIconButton
+          icon={DeleteIcon}
+          size="xs"
+          tone="danger"
+          ariaLabel={`Delete conditional color for ${property.name}`}
+          disabled={disabled}
+          onClick={onDelete}
+        />
+      </div>
+      {rule.value === undefined ? null : (
+        <div className="px-2 pb-2 pt-1">
+          <DatabaseViewFilterValueField
+            clause={clause}
+            property={property}
+            options={options}
+            onRequestOptions={onRequestOptions}
+            accessContext={accessContext}
+            disabled={disabled}
+            presentation="conditional"
+            onChange={(value) => onChange({ ...rule, value })}
+          />
+        </div>
+      )}
+      <div className="grid min-h-8 grid-cols-[minmax(0,1fr)_max-content] items-center gap-2 px-3 pb-2 text-sm">
+        <span className="min-w-0 truncate whitespace-nowrap text-token-text-primary">
+          {layout === "board" ? "Card background" : "Page background"}
+        </span>
+        <ConditionalColorPicker
+          rule={rule}
+          property={property}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      </div>
+    </div>
+  );
+}
 
 function ViewConditionalColorRoute({
   runtime,
   activeView,
   properties,
   optionRegistries,
+  accessContext,
   onRequestPropertyOptions,
-  onProjectionCommitted,
+  onPreviewConditionalColors,
+  onPublishConditionalColors,
 }: {
   readonly runtime: DatabaseSettingsRuntime;
   readonly activeView: DatabaseViewRecordV2;
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
+  readonly accessContext: DatabaseViewAccessContext;
   readonly onRequestPropertyOptions: (property: DataSourcePropertyRecordV2) => void;
-  readonly onProjectionCommitted: () => void | Promise<void>;
+  readonly onPreviewConditionalColors: (
+    rules: readonly DatabaseViewConditionalColorRule[] | null,
+  ) => void;
+  readonly onPublishConditionalColors: (
+    rules: readonly DatabaseViewConditionalColorRule[],
+  ) => Promise<void>;
 }) {
-  const eligibleProperties = properties.filter(
-    (property) =>
-      property.lifecycle === "active" && property.capabilities.filterOperators.length > 0,
+  const eligibleProperties = properties
+    .filter(
+      (property) =>
+        property.lifecycle === "active" && property.capabilities.filterOperators.length > 0,
+    )
+    .toSorted((left, right) => left.name.localeCompare(right.name));
+  const sharedRules = useMemo(
+    () =>
+      normalizeConditionalColorRules(activeView.config.presentation.conditionalColors, properties),
+    [activeView.config.presentation.conditionalColors, properties],
   );
-  const [rules, setRules] = useState(activeView.config.presentation.conditionalColors);
-  const [error, setError] = useState<string | null>(null);
+  const sharedFingerprint = useMemo(
+    () => databaseConditionalColorRulesFingerprint(sharedRules),
+    [sharedRules],
+  );
+  const [rules, setRules] = useState<readonly DatabaseViewConditionalColorRule[]>(sharedRules);
+  const rulesFingerprint = useMemo(() => databaseConditionalColorRulesFingerprint(rules), [rules]);
+  const previewRules = useMemo(
+    () =>
+      rules.filter((rule) => !databaseViewFilterClauseIsEmpty(conditionalColorRuleClause(rule))),
+    [rules],
+  );
+  const previewFingerprint = useMemo(
+    () => databaseConditionalColorRulesFingerprint(previewRules),
+    [previewRules],
+  );
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
+  const rulesRef = useRef<HTMLDivElement | null>(null);
+  const ruleDnd = useContinuousSortableDnd({ axis: "vertical", containerRef: rulesRef });
+  const previousSharedRulesRef = useRef<readonly DatabaseViewConditionalColorRule[]>(sharedRules);
+  const lastSyncAttemptRef = useRef<string | null>(null);
+  const inFlightFingerprintRef = useRef<string | null>(null);
+  // This route is keyed by View. Its mounted publisher must keep that View's
+  // store authority when an unsaved debounce is flushed during unmount.
+  const mountedPublisherRef = useRef(onPublishConditionalColors);
+  const updatePreview = useEffectEvent((next: readonly DatabaseViewConditionalColorRule[] | null) =>
+    onPreviewConditionalColors(next),
+  );
   useEffect(() => {
-    setRules(activeView.config.presentation.conditionalColors);
-    setError(null);
-  }, [activeView.config.presentation.conditionalColors, activeView.revision]);
-  const changed =
-    JSON.stringify(rules) !== JSON.stringify(activeView.config.presentation.conditionalColors);
+    updatePreview(previewRules);
+  }, [previewFingerprint, previewRules]);
+  useEffect(() => {
+    const previousShared = previousSharedRulesRef.current;
+    previousSharedRulesRef.current = sharedRules;
+    setRules((draft) =>
+      reconcileDatabaseConditionalColorDraft({ previousShared, nextShared: sharedRules, draft }),
+    );
+  }, [sharedFingerprint, sharedRules]);
+  const changed = rulesFingerprint !== sharedFingerprint;
+  const complete = rules.every(
+    (rule) => !databaseViewFilterClauseIsEmpty(conditionalColorRuleClause(rule)),
+  );
+  const latestSyncRef = useRef({ changed, complete, rules, rulesFingerprint });
+  latestSyncRef.current = { changed, complete, rules, rulesFingerprint };
+  useEffect(
+    () => () => {
+      updatePreview(null);
+      const latest = latestSyncRef.current;
+      if (
+        !latest.changed ||
+        !latest.complete ||
+        inFlightFingerprintRef.current === latest.rulesFingerprint
+      ) {
+        return;
+      }
+      void mountedPublisherRef.current(latest.rules).catch(() => undefined);
+    },
+    [],
+  );
+  const busy = runtime.pendingKey !== null;
   const updateRule = (
     ruleId: string,
     update: (rule: DatabaseViewConditionalColorRule) => DatabaseViewConditionalColorRule,
   ) => setRules((current) => current.map((rule) => (rule.ruleId === ruleId ? update(rule) : rule)));
-  const save = async () => {
-    if (!changed || runtime.pendingKey !== null) return;
-    setError(null);
-    const next = await runtime.mutate({
-      pendingKey: `conditional-colors:${activeView.viewId}`,
-      preferredViewId: activeView.viewId,
-      buildOperations: (authority) => {
-        const current = authority.database.views.find(
-          (view) => view.lifecycle === "active" && view.viewId === activeView.viewId,
+  const syncRules = useEffectEvent(
+    async (nextRules: readonly DatabaseViewConditionalColorRule[]) => {
+      const nextFingerprint = databaseConditionalColorRulesFingerprint(nextRules);
+      inFlightFingerprintRef.current = nextFingerprint;
+      setSyncing(true);
+      setSyncError(null);
+      try {
+        await onPublishConditionalColors(nextRules);
+        if (databaseConditionalColorRulesFingerprint(rules) === nextFingerprint) {
+          updatePreview(null);
+        }
+      } catch (cause) {
+        setSyncError(
+          cause instanceof Error ? cause.message : "Conditional colors could not be synchronized",
         );
-        if (!current) return [];
-        return [
-          putDatabaseViewOperation(current, {
-            config: {
-              ...current.config,
-              presentation: { ...current.config.presentation, conditionalColors: rules },
-            },
-          }),
-        ];
-      },
-    });
-    if (!next) {
-      setError("Couldn’t save conditional colors. Review the latest View and try again.");
-      return;
+      } finally {
+        if (inFlightFingerprintRef.current === nextFingerprint) {
+          inFlightFingerprintRef.current = null;
+        }
+        setSyncing(false);
+      }
+    },
+  );
+  useEffect(() => {
+    if (!changed || !complete || busy || syncing) return;
+    const attemptKey = `${activeView.viewId}:${activeView.revision}:${sharedFingerprint}:${rulesFingerprint}`;
+    if (lastSyncAttemptRef.current === attemptKey) return;
+    const timeout = window.setTimeout(() => {
+      lastSyncAttemptRef.current = attemptKey;
+      void syncRules(rules);
+    }, CONDITIONAL_COLOR_SYNC_DELAY_MS);
+    return () => window.clearTimeout(timeout);
+  }, [
+    activeView.viewId,
+    activeView.revision,
+    changed,
+    complete,
+    rules,
+    rulesFingerprint,
+    sharedFingerprint,
+    busy,
+    syncing,
+  ]);
+  useEffect(() => {
+    if (!changed) {
+      lastSyncAttemptRef.current = null;
     }
-    void onProjectionCommitted();
-  };
+  }, [changed]);
+  useEffect(() => {
+    if (busy) {
+      lastSyncAttemptRef.current = null;
+    }
+  }, [busy]);
+  const finishDrag = () => setDraggedRuleId(null);
   return (
-    <div className="flex min-h-full flex-col">
-      <div className="px-3 pb-2 pt-3">
-        <p className="text-xs leading-5 text-token-description-foreground">
-          The first matching rule colors the whole {activeView.layout === "board" ? "card" : "row"}
-          in this View only.
-        </p>
-      </div>
-      <div className="space-y-2 px-2 pb-3">
-        {rules.map((rule, index) => {
-          const property = eligibleProperties.find(
-            (candidate) => candidate.propertyId === rule.propertyId,
-          );
-          if (!property) {
-            return (
-              <div
-                key={rule.ruleId}
-                className="flex min-h-9 items-center gap-2 border-l-2 border-token-error-foreground px-2 text-xs text-token-error-foreground"
-              >
-                <span className="min-w-0 flex-1 truncate">Referenced property is unavailable</span>
-                <NodexIconButton
-                  icon={DeleteIcon}
-                  size="xs"
-                  tone="danger"
-                  ariaLabel="Remove invalid conditional color rule"
-                  onClick={() => setRules((current) => current.filter((item) => item !== rule))}
-                />
-              </div>
-            );
-          }
-          const clause = conditionalColorRuleClause(rule);
-          return (
-            <div
-              key={rule.ruleId}
-              className="border-l-2 px-2 py-2"
-              style={{ borderColor: `var(--${rule.color}-text)` }}
+    <DndContext
+      sensors={ruleDnd.sensors}
+      modifiers={ruleDnd.modifiers}
+      collisionDetection={ruleDnd.collisionDetection}
+      onDragStart={(event) => {
+        setDraggedRuleId(String(event.active.id));
+        document.getSelection()?.removeAllRanges();
+      }}
+      onDragCancel={finishDrag}
+      onDragEnd={(event) => {
+        finishDrag();
+        const targetId = event.over ? String(event.over.id) : null;
+        if (!targetId) return;
+        setRules((current) =>
+          reorderConditionalColorRules(current, String(event.active.id), targetId),
+        );
+      }}
+    >
+      <div
+        className="flex min-h-full flex-col"
+        data-conditional-color-dragged-rule={draggedRuleId ?? undefined}
+      >
+        <div className="flex flex-col gap-3 px-4 py-3">
+          <div ref={rulesRef} className="flex flex-col gap-3">
+            <SortableContext
+              items={rules.map((rule) => rule.ruleId)}
+              strategy={verticalListSortingStrategy}
             >
-              <div className="flex flex-wrap items-center gap-1.5">
-                <DatabaseViewSelect
-                  ariaLabel={`Conditional color property ${property.name}`}
-                  search="filter"
-                  searchPlaceholder="Search properties…"
-                  value={property.propertyId}
-                  valueLabel={property.name}
-                  disabled={runtime.pendingKey !== null}
-                  onValueChange={(propertyId) => {
-                    const nextProperty = eligibleProperties.find(
-                      (candidate) => candidate.propertyId === propertyId,
-                    );
-                    if (!nextProperty) return;
-                    updateRule(rule.ruleId, (current) =>
-                      conditionalColorRuleWithClause(
-                        current,
-                        databaseFilterClauseWithProperty(clause, nextProperty),
-                      ),
-                    );
-                  }}
-                  options={eligibleProperties.map((candidate) => ({
-                    value: candidate.propertyId,
-                    label: candidate.name,
-                  }))}
-                  className="min-w-28 max-w-40"
-                />
-                <DatabaseViewSelect
-                  ariaLabel={`Conditional color operator for ${property.name}`}
-                  value={rule.operator}
-                  valueLabel={FILTER_OPERATOR_LABELS[rule.operator]}
-                  disabled={runtime.pendingKey !== null}
-                  onValueChange={(operator) =>
-                    updateRule(rule.ruleId, (current) =>
-                      conditionalColorRuleWithClause(
-                        current,
-                        databaseFilterClauseWithOperator(
-                          property,
-                          operator as DatabaseViewFilterOperator,
-                        ),
-                      ),
-                    )
-                  }
-                  options={filterOperatorsForProperty(property).map((operator) => ({
-                    value: operator,
-                    label: FILTER_OPERATOR_LABELS[operator],
-                  }))}
-                  className="min-w-24"
-                />
-                <DatabaseViewFilterValueField
-                  clause={clause}
-                  property={property}
-                  options={
-                    optionRegistries[property.propertyId] ?? readDatabasePropertyOptions(property)
-                  }
-                  onRequestOptions={onRequestPropertyOptions}
-                  disabled={runtime.pendingKey !== null}
-                  onChange={(value) =>
-                    updateRule(rule.ruleId, (current) => ({ ...current, value }))
-                  }
-                />
-              </div>
-              <div className="mt-2 flex items-center gap-1">
-                {OPTION_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    aria-label={`Use ${color} for conditional color rule`}
-                    aria-pressed={rule.color === color}
-                    disabled={runtime.pendingKey !== null}
-                    className={cn(
-                      "size-5 rounded-full border outline-none transition-transform focus-visible:ring-2 focus-visible:ring-token-focus-border",
-                      rule.color === color
-                        ? "scale-100 border-token-text-primary"
-                        : "scale-75 border-transparent hover:scale-90",
-                    )}
-                    style={{ background: `var(--${color}-bg)` }}
-                    onClick={() => updateRule(rule.ruleId, (current) => ({ ...current, color }))}
-                  />
-                ))}
-                <span className="ml-auto flex items-center gap-0.5">
-                  <NodexIconButton
-                    icon={MoveUpIcon}
-                    size="xs"
-                    ariaLabel="Move conditional color rule up"
-                    disabled={index === 0 || runtime.pendingKey !== null}
-                    onClick={() =>
-                      setRules((current) => moveConditionalColorRule(current, index, "up"))
+              {rules.map((rule) => {
+                const property = eligibleProperties.find(
+                  (candidate) => candidate.propertyId === rule.propertyId,
+                );
+                if (!property) {
+                  return (
+                    <div
+                      key={rule.ruleId}
+                      className="flex min-h-9 items-center gap-2 rounded-[10px] border border-token-error-foreground/35 bg-token-error-background/10 px-2 text-xs text-token-error-foreground"
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        Referenced property is unavailable
+                      </span>
+                      <NodexIconButton
+                        icon={DeleteIcon}
+                        size="xs"
+                        tone="danger"
+                        ariaLabel="Remove invalid conditional color rule"
+                        onClick={() =>
+                          setRules((current) => current.filter((item) => item !== rule))
+                        }
+                      />
+                    </div>
+                  );
+                }
+                return (
+                  <SortableConditionalColorRule
+                    key={rule.ruleId}
+                    rule={rule}
+                    property={property}
+                    layout={activeView.layout}
+                    options={
+                      optionRegistries[property.propertyId] ?? readDatabasePropertyOptions(property)
+                    }
+                    accessContext={accessContext}
+                    disabled={busy}
+                    onRequestOptions={onRequestPropertyOptions}
+                    onChange={(next) => updateRule(rule.ruleId, () => next)}
+                    onDelete={() =>
+                      setRules((current) => current.filter((item) => item.ruleId !== rule.ruleId))
                     }
                   />
-                  <NodexIconButton
-                    icon={MoveDownIcon}
-                    size="xs"
-                    ariaLabel="Move conditional color rule down"
-                    disabled={index === rules.length - 1 || runtime.pendingKey !== null}
-                    onClick={() =>
-                      setRules((current) => moveConditionalColorRule(current, index, "down"))
-                    }
-                  />
-                  <NodexIconButton
-                    icon={DeleteIcon}
-                    size="xs"
-                    tone="danger"
-                    ariaLabel="Delete conditional color rule"
-                    disabled={runtime.pendingKey !== null}
-                    onClick={() => setRules((current) => current.filter((item) => item !== rule))}
-                  />
-                </span>
-              </div>
-            </div>
-          );
-        })}
-        {rules.length === 0 ? (
-          <p className="py-6 text-center text-xs text-token-description-foreground">
-            No color rules yet
+                );
+              })}
+            </SortableContext>
+          </div>
+          <DatabaseViewSelect
+            ariaLabel={rules.length === 0 ? "New color setting" : "Add another color setting"}
+            value=""
+            valueLabel={
+              <span className="flex w-full items-center justify-center gap-2">
+                <PlusIcon className="size-4" />
+                {rules.length === 0 ? "New color setting" : "Add another"}
+              </span>
+            }
+            disabled={eligibleProperties.length === 0 || busy}
+            search="filter"
+            searchPlaceholder="Search for a property…"
+            align="start"
+            contentWidth="panel"
+            showChevron={false}
+            triggerWidth="fill"
+            chrome={rules.length === 0 ? "transparent" : "outline"}
+            className={cn(
+              "h-8 px-2 text-sm",
+              rules.length === 0 &&
+                "bg-(--accent-blue) text-white hover:bg-(--accent-blue-hover) [&_svg]:text-white",
+            )}
+            options={eligibleProperties.map((property) => ({
+              value: property.propertyId,
+              label: <DatabaseRulePropertyLabel property={property} />,
+              searchText: property.name,
+            }))}
+            onValueChange={(propertyId) => {
+              const property = eligibleProperties.find(
+                (candidate) => candidate.propertyId === propertyId,
+              );
+              if (!property) return;
+              setRules((current) => [...current, createConditionalColorRule(property)]);
+            }}
+          />
+        </div>
+        {syncError ? (
+          <p role="alert" className="px-4 pb-3 text-xs text-token-error-foreground">
+            {syncError}
           </p>
         ) : null}
-        <NodexButton
-          size="sm"
-          variant="ghost"
-          className="w-full justify-start"
-          disabled={eligibleProperties.length === 0 || runtime.pendingKey !== null}
-          onClick={() => {
-            const property = eligibleProperties[0];
-            if (!property) return;
-            const clause = createDatabaseViewFilterClause(property);
-            setRules((current) => [
-              ...current,
-              {
-                ruleId: createUuidV7(),
-                propertyId: clause.propertyId,
-                operator: conditionalColorOperator(clause.operator),
-                ...(clause.value === undefined ? {} : { value: clause.value }),
-                color: "blue",
-              },
-            ]);
-          }}
-        >
-          <PlusIcon className="mr-2 size-4" /> Add rule
-        </NodexButton>
       </div>
-      {error ? (
-        <p role="alert" className="px-3 pb-2 text-xs text-token-error-foreground">
-          {error}
-        </p>
-      ) : null}
-      <div className="sticky bottom-0 mt-auto flex min-h-8 items-center justify-end gap-0.5 border-t-[0.5px] border-token-border/70 bg-token-main-surface-primary px-2 py-1">
-        <DatabaseViewChangeAction
-          kind="reset"
-          label="Reset conditional color changes"
-          tooltip={"Discard these color changes\nRestore saved colors"}
-          disabled={!changed || runtime.pendingKey !== null}
-          onClick={() => setRules(activeView.config.presentation.conditionalColors)}
-        />
-        <DatabaseViewChangeAction
-          kind="publish"
-          label="Save conditional color changes"
-          tooltip={"Save these color changes\nFor everyone"}
-          disabled={!changed || runtime.pendingKey !== null}
-          onClick={() => void save()}
-        />
-      </div>
-    </div>
+    </DndContext>
   );
 }
 
@@ -2836,6 +3156,8 @@ export function DatabaseSettingsRail({
   onChangePresentation,
   onResetPresentation,
   onPublishPresentation,
+  onPreviewConditionalColors,
+  onPublishConditionalColors,
   onProjectionCommitted,
   onSelectView,
   onPush,
@@ -2857,6 +3179,12 @@ export function DatabaseSettingsRail({
   readonly onChangePresentation: (next: EffectiveDatabaseView) => void;
   readonly onResetPresentation: () => void;
   readonly onPublishPresentation: () => void | Promise<void>;
+  readonly onPreviewConditionalColors: (
+    rules: readonly DatabaseViewConditionalColorRule[] | null,
+  ) => void;
+  readonly onPublishConditionalColors: (
+    rules: readonly DatabaseViewConditionalColorRule[],
+  ) => Promise<void>;
   readonly onProjectionCommitted: () => void | Promise<void>;
   readonly onSelectView: (viewId: string, title: string) => void;
   readonly onPush: (route: DatabaseSettingsRoute) => void;
@@ -2890,10 +3218,15 @@ export function DatabaseSettingsRail({
   const activeView = authority?.database.views.find(
     (view) => view.lifecycle === "active" && view.viewId === model.databaseViewId,
   );
+  const personalPresentation = {
+    ...effectivePresentation.presentation,
+    // Conditional colors are shared-only and never participate in the
+    // Profile-local presentation override or its Reset/Save affordances.
+    conditionalColors: durablePresentation.presentation.conditionalColors,
+  };
   const hasPersonalOverride =
     effectivePresentation.layout !== durablePresentation.layout ||
-    JSON.stringify(effectivePresentation.presentation) !==
-      JSON.stringify(durablePresentation.presentation);
+    JSON.stringify(personalPresentation) !== JSON.stringify(durablePresentation.presentation);
   const presentationLocked = presentationActivity.interactionLocked;
   const personalActions = (
     <PersonalViewActions
@@ -2989,12 +3322,15 @@ export function DatabaseSettingsRail({
   } else if (route.kind === "view_conditional_color") {
     body = (
       <ViewConditionalColorRoute
+        key={String(activeView.viewId)}
         runtime={runtime}
         activeView={activeView}
         properties={model.query.properties}
         optionRegistries={optionRegistries}
+        accessContext={model.accessContext}
         onRequestPropertyOptions={onRequestPropertyOptions}
-        onProjectionCommitted={onProjectionCommitted}
+        onPreviewConditionalColors={onPreviewConditionalColors}
+        onPublishConditionalColors={onPublishConditionalColors}
       />
     );
   } else if (route.kind === "source_properties") {

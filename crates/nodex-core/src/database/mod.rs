@@ -3079,10 +3079,46 @@ mod tests {
         let color_rule = json!({
             "ruleId": "rule:tone",
             "propertyId": "p_tone0000",
-            "operator": "equals",
+            "operator": "text_is",
             "value": "urgent",
+            "colorSource": "fixed",
             "color": "red"
         });
+        let mut invalid_source_config = view_config(
+            json!({ "kind": "group", "operator": "and", "children": [] }),
+            None,
+            &["status"],
+        );
+        invalid_source_config["presentation"]["conditionalColors"] = json!([{
+            "ruleId": "rule:tone",
+            "propertyId": "p_tone0000",
+            "operator": "text_is",
+            "value": "urgent",
+            "colorSource": "property_option",
+            "color": "red"
+        }]);
+        let invalid_source = module
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id: "operation:reject-option-color-on-text".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![DatabaseIntent::PutView {
+                        database_id: DATABASE_ID.to_owned(),
+                        data_source_id: SOURCE_ID.to_owned(),
+                        view_id: VIEW_ID.to_owned(),
+                        expected_revision: 1,
+                        name: "Board".to_owned(),
+                        layout: DatabaseViewLayout::Board,
+                        definition: view_definition(invalid_source_config),
+                        is_default: true,
+                        before_view_id: None,
+                    }],
+                },
+            )
+            .expect_err("only option Properties can supply conditional colors");
+        assert_eq!(invalid_source.code, CoreErrorCode::InvalidInput);
         let mut duplicate_config = view_config(
             json!({ "kind": "group", "operator": "and", "children": [] }),
             None,
