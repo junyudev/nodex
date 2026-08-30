@@ -65,7 +65,7 @@ function createSelectionEditorStub(
   return {
     getSelectionCutBlocks: () => selection,
     getParentBlock: (id: string) => parentById[id],
-    blocksToFullHTML: (blocks) => {
+    blocksToClipboardHTML: (blocks) => {
       return `<full>${renderVisibleSelectionText(blocks as TestSelectionBlock[])}</full>`;
     },
     blocksToHTMLLossy: (blocks) => {
@@ -102,7 +102,28 @@ describe("special block copy", () => {
     });
   });
 
-  test("prefers canonical clipboard HTML over rendered full HTML", () => {
+  test("marks a complete current Block forest as a closed clipboard Slice", () => {
+    const options: Array<{ slice?: "closed" } | undefined> = [];
+    const current = {
+      id: "current",
+      type: "paragraph",
+      content: [{ type: "text", text: "Current", styles: {} }],
+      children: [],
+    };
+    const editor = {
+      ...createSelectionEditorStub({ blocks: [] }),
+      blocksToClipboardHTML: (_blocks, nextOptions) => {
+        options.push(nextOptions);
+        return "<clipboard>Current</clipboard>";
+      },
+    } satisfies SelectionEditorLike;
+
+    createCopiedBlockPayload(editor, [current]);
+
+    expect(options).toEqual([{ slice: "closed" }]);
+  });
+
+  test("uses canonical clipboard HTML for complete Blocks", () => {
     const current = {
       id: "current",
       type: "paragraph",
@@ -113,7 +134,6 @@ describe("special block copy", () => {
     const editor = {
       ...createSelectionEditorStub({ blocks: [] }),
       blocksToClipboardHTML: () => "<clipboard>canonical</clipboard>",
-      blocksToFullHTML: () => "<full>interactive UI</full>",
     } satisfies SelectionEditorLike;
 
     const payload = createCopiedBlockPayload(editor, [current]);
@@ -879,7 +899,7 @@ describe("special block copy", () => {
         blockCutAtStart: "code-1",
         blockCutAtEnd: "code-1",
       }),
-      blocksToFullHTML: (blocks) => {
+      blocksToClipboardHTML: (blocks) => {
         return `<full>${renderVisibleSelectionText(blocks as TestSelectionBlock[])}</full>`;
       },
       blocksToHTMLLossy: (blocks) => {
@@ -1032,10 +1052,10 @@ describe("special block copy", () => {
       ) {
         return this.parentById[id];
       },
-      blocksToFullHTML(
+      blocksToClipboardHTML(
         blocks: SelectionEditorLike extends never
           ? never
-          : Parameters<NonNullable<SelectionEditorLike["blocksToFullHTML"]>>[0],
+          : Parameters<NonNullable<SelectionEditorLike["blocksToClipboardHTML"]>>[0],
       ) {
         return `<full>${renderVisibleSelectionText(blocks as TestSelectionBlock[])}</full>`;
       },

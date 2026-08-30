@@ -162,7 +162,7 @@ export const createInternalHTMLSerializer = <
 
   const serializeBlocks = (
     blocks: PartialBlock<BSchema, I, S>[],
-    options: { document?: Document },
+    options: { document?: Document; slice?: "closed" },
     canonicalInlineContent: boolean,
   ): string => {
     let element = serializeBlocksInternalHTML(editor, blocks, serializer, {
@@ -172,6 +172,14 @@ export const createInternalHTMLSerializer = <
 
     for (const transform of transforms) {
       element = transform(element);
+    }
+
+    // When the caller identifies this materialized Block forest as complete,
+    // ProseMirror must be told that it is a closed Slice. Otherwise its paste
+    // parser calls `Slice.maxOpen(...)`, which can lift descendants out of
+    // their parent when the selection ends in atomic Blocks such as Images.
+    if (options.slice === "closed") {
+      element.setAttribute("data-pm-slice", "0 0 []");
     }
 
     return element.outerHTML;
@@ -184,7 +192,7 @@ export const createInternalHTMLSerializer = <
     ) => serializeBlocks(blocks, options, false),
     serializeBlocksForClipboard: (
       blocks: PartialBlock<BSchema, I, S>[],
-      options: { document?: Document },
+      options: { document?: Document; slice?: "closed" },
     ) => serializeBlocks(blocks, options, true),
   };
 };

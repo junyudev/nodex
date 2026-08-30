@@ -191,6 +191,12 @@ describe("plain inline content", () => {
     expect(clipboardHTML).not.toContain("custom-plain-editor-ui");
     expect(clipboardHTML).not.toContain("custom-atomic-editor-ui");
     expect(clipboardHTML).not.toContain("custom-styled-editor-ui");
+    expect(clipboardHTML).not.toContain("data-pm-slice");
+
+    const closedClipboardHTML = editor.blocksToClipboardHTML(editor.document, {
+      slice: "closed",
+    });
+    expect(closedClipboardHTML).toContain('data-pm-slice="0 0 []"');
 
     const normalized = document.createElement("div");
     normalized.innerHTML = clipboardHTML;

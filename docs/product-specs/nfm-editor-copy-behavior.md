@@ -1,7 +1,7 @@
 # NFM Editor Copy Behavior
 
 Status: Active
-Last Updated: 2026-08-29
+Last Updated: 2026-08-30
 
 This document describes copy-related behavior inside the NFM / BlockNote editor. It covers ordinary selection copy/cut, structural selection copy/cut, and the separate image-toolbar copy action.
 
@@ -117,7 +117,11 @@ For a non-empty selection, the helper starts from `editor.getSelectionCutBlocks(
 
 - `clipboardHTML` from the editor's lossless clipboard serializer. Custom inline
   content uses canonical schema wrappers rather than mounted NodeView UI, so
-  browser HTML normalization cannot split the surrounding inline sequence.
+  browser HTML normalization cannot split the surrounding inline sequence. A
+  complete Block forest is explicitly serialized as a closed ProseMirror Slice,
+  so paste never infers a deeper open boundary and lifts descendants out of
+  their copied parent. Partial text selections remain open and retain their
+  normal boundary-merge behavior.
 - `externalHTML` from `editor.blocksToHTMLLossy(...)`
 - `structuredText` from `blockNoteToNfm(...)` plus `serializeClipboardText(...)`
 

@@ -67,12 +67,15 @@ export class ExportManager<
    * Serializes blocks into a lossless clipboard format. Unlike full rendered
    * HTML, custom inline content uses canonical schema wrappers so interactive
    * NodeView DOM cannot invalidate surrounding phrasing content.
+   * @param options Mark a complete Block forest as a closed clipboard Slice;
+   * omit this for partial selections whose boundaries must remain open.
    */
   public blocksToClipboardHTML(
     blocks: PartialBlock<BSchema, ISchema, SSchema>[] = this.editor.document,
+    options: { slice?: "closed" } = {},
   ): string {
     const exporter = createInternalHTMLSerializer(this.editor.pmSchema, this.editor);
-    return exporter.serializeBlocksForClipboard(blocks, {});
+    return exporter.serializeBlocksForClipboard(blocks, options);
   }
 
   /**

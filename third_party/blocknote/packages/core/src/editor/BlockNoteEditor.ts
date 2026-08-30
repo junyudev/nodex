@@ -1351,11 +1351,14 @@ export class BlockNoteEditor<
    * Serializes blocks into lossless HTML for editor clipboard round trips.
    * Custom inline content is represented by canonical schema wrappers rather
    * than its interactive NodeView DOM.
+   * @param options Mark a complete Block forest as a closed clipboard Slice;
+   * omit this for partial selections whose boundaries must remain open.
    */
   public blocksToClipboardHTML(
     blocks: PartialBlock<BSchema, ISchema, SSchema>[] = this.document,
+    options: { slice?: "closed" } = {},
   ): string {
-    return this._exportManager.blocksToClipboardHTML(blocks);
+    return this._exportManager.blocksToClipboardHTML(blocks, options);
   }
 
   /**

@@ -2,6 +2,8 @@ import {
   BlockNoteEditor,
   BlockNoteSchema,
   defaultBlockSpecs,
+  getNodeById,
+  MultipleNodeSelection,
   type CustomBlockConfig,
 } from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
@@ -14,6 +16,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 
 import { NODEX_STRUCTURAL_CLIPBOARD_MIME } from "../../../../shared/clipboard-paste";
 import { NfmStructuredClipboardExtension } from "./nfm-editor-extensions";
+import { nfmSchema } from "./nfm-schema";
 
 const typedOwnerConfig = {
   type: "page",
@@ -113,6 +116,122 @@ function renderClipboardEditor(editor: AnyBlockNoteEditor) {
 }
 
 describe("current Block clipboard behavior in Chromium", () => {
+  test("preserves nested Blocks around consecutive Images through copy and cut", async () => {
+    const editor = BlockNoteEditor.create({
+      schema: nfmSchema,
+      initialContent: [
+        {
+          id: "parent",
+          type: "paragraph",
+          content: "Parent",
+          children: [
+            { id: "parent-child", type: "paragraph", content: "Parent child" },
+            { id: "after-child", type: "paragraph", content: "After child" },
+          ],
+        },
+        {
+          id: "image-one",
+          type: "image",
+          props: {
+            url: "data:image/png;base64,YQ==",
+            caption: "First caption",
+            name: "one.png",
+            showPreview: true,
+          },
+        },
+        {
+          id: "image-two",
+          type: "image",
+          props: {
+            url: "data:image/png;base64,Yg==",
+            caption: "Second caption",
+            name: "two.png",
+            showPreview: true,
+          },
+        },
+        {
+          id: "after-root",
+          type: "paragraph",
+          content: "After root",
+          children: [{ id: "after-root-child", type: "paragraph", content: "After root child" }],
+        },
+        { id: "tail", type: "paragraph", content: "Tail" },
+      ],
+      extensions: [NfmStructuredClipboardExtension()],
+    });
+    const rendered = renderClipboardEditor(editor);
+
+    try {
+      await act(settleEditor);
+      const view = requireView(editor);
+      await act(async () => {
+        const parent = getNodeById("parent", view.state.doc);
+        const imageTwo = getNodeById("image-two", view.state.doc);
+        if (!parent || !imageTwo) throw new Error("Missing fixture range");
+        view.dispatch(
+          view.state.tr.setSelection(
+            MultipleNodeSelection.create(
+              view.state.doc,
+              parent.posBeforeNode,
+              imageTwo.posBeforeNode + imageTwo.node.nodeSize,
+            ),
+          ),
+        );
+        editor.focus();
+        await settleEditor();
+      });
+
+      const copied = await dispatchClipboardEvent(view, "copy");
+      const clipboardHtml = copied.data.getData("blocknote/html");
+      expect(clipboardHtml).toContain('data-pm-slice="0 0 []"');
+      const parsed = editor.tryParseHTMLToBlocks(clipboardHtml);
+
+      expect(parsed.map((block) => block.id)).toEqual(["parent", "image-one", "image-two"]);
+      expect(parsed[0]?.children.map((block) => block.id)).toEqual(["parent-child", "after-child"]);
+
+      const cut = await dispatchClipboardEvent(view, "cut");
+      const cutHtml = cut.data.getData("blocknote/html");
+      expect(cutHtml).toBe(clipboardHtml);
+      expect(editor.getBlock("parent")).toBeUndefined();
+      expect(editor.getBlock("image-one")).toBeUndefined();
+      expect(editor.getBlock("image-two")).toBeUndefined();
+
+      const target = BlockNoteEditor.create({
+        schema: nfmSchema,
+        initialContent: [
+          {
+            id: "target-root",
+            type: "paragraph",
+            content: "Target root",
+            children: [{ id: "target-child", type: "paragraph", content: "Target child" }],
+          },
+        ],
+      });
+      const targetRendered = renderClipboardEditor(target);
+      try {
+        await act(settleEditor);
+        await setTextSelection(target, "target-child", "Target child".length);
+        await act(async () => {
+          target.pasteHTML(cutHtml, true);
+          await settleEditor();
+        });
+
+        const insertedRootParentId = target.getParentBlock("parent")?.id;
+        expect(insertedRootParentId).toBeDefined();
+        expect(target.getParentBlock("parent-child")?.id).toBe("parent");
+        expect(target.getParentBlock("after-child")?.id).toBe("parent");
+        expect(target.getParentBlock("image-one")?.id).toBe(insertedRootParentId);
+        expect(target.getParentBlock("image-two")?.id).toBe(insertedRootParentId);
+      } finally {
+        targetRendered.unmount();
+        target._tiptapEditor.destroy();
+      }
+    } finally {
+      rendered.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
   test("does not start a structural copy without a standard portable presentation", async () => {
     const onStructuralClipboard = vi.fn(() => true);
     const onStructuralClipboardUnavailable = vi.fn();
@@ -190,6 +309,7 @@ describe("current Block clipboard behavior in Chromium", () => {
       expect(copied.data.getData("text/html")).not.toContain("Outside");
       expect(copied.data.getData("blocknote/html")).toContain("Current");
       expect(copied.data.getData("blocknote/html")).toContain("Child");
+      expect(copied.data.getData("blocknote/html")).toContain('data-pm-slice="0 0 []"');
       expect(editor.prosemirrorState.selection.empty).toBe(true);
       expect(editor.prosemirrorState.selection.from).toBe(selectionBefore.from);
       expect(editor.prosemirrorState.selection.to).toBe(selectionBefore.to);
@@ -223,6 +343,7 @@ describe("current Block clipboard behavior in Chromium", () => {
       expect(copied.dispatched).toBe(false);
       expect(copied.data.getData("text/plain")).toBe("urr");
       expect(copied.data.getData("text/html")).not.toContain("Child");
+      expect(copied.data.getData("blocknote/html")).not.toContain('data-pm-slice="0 0 []"');
       expect(editor.prosemirrorState.selection.empty).toBe(false);
     } finally {
       rendered.unmount();

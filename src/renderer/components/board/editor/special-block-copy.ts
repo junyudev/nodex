@@ -75,8 +75,7 @@ export interface SelectionEditorLike {
   getSelectionCutBlocks?: (expandToWords?: boolean) => SelectionCutBlocksLike;
   getSelection?: () => SelectionLike | undefined;
   getParentBlock?: (id: string) => SelectionBlockLike | undefined;
-  blocksToFullHTML?: (blocks: SelectionBlockLike[]) => string;
-  blocksToClipboardHTML?: (blocks: SelectionBlockLike[]) => string;
+  blocksToClipboardHTML?: (blocks: SelectionBlockLike[], options?: { slice?: "closed" }) => string;
   blocksToHTMLLossy?: (blocks: SelectionBlockLike[]) => string;
 }
 
@@ -649,25 +648,37 @@ export function resolveStructuredPlainTextForSelection(
 
 function canSerializeSelectionHtml(
   editor: SelectionEditorLike,
-): editor is SelectionEditorLike & Required<Pick<SelectionEditorLike, "blocksToHTMLLossy">> {
+): editor is SelectionEditorLike &
+  Required<Pick<SelectionEditorLike, "blocksToClipboardHTML" | "blocksToHTMLLossy">> {
   return (
-    typeof editor.blocksToHTMLLossy === "function" &&
-    (typeof editor.blocksToClipboardHTML === "function" ||
-      typeof editor.blocksToFullHTML === "function")
+    typeof editor.blocksToClipboardHTML === "function" &&
+    typeof editor.blocksToHTMLLossy === "function"
   );
 }
 
 function serializeBlocksToClipboardHTML(
   editor: SelectionEditorLike,
   blocks: SelectionBlockLike[],
+  closedSlice: boolean,
 ): string {
-  if (typeof editor.blocksToClipboardHTML === "function") {
-    return editor.blocksToClipboardHTML(blocks);
+  if (typeof editor.blocksToClipboardHTML !== "function") {
+    throw new Error("Failed to serialize copied Blocks to clipboard HTML");
   }
-  if (typeof editor.blocksToFullHTML === "function") {
-    return editor.blocksToFullHTML(blocks);
+  return editor.blocksToClipboardHTML(blocks, closedSlice ? { slice: "closed" } : undefined);
+}
+
+function selectionIsClosedSlice(editor: SelectionEditorLike): boolean {
+  const selection = editor.prosemirrorView?.state?.selection as
+    | { content?: () => { openStart?: unknown; openEnd?: unknown } }
+    | undefined;
+  if (typeof selection?.content !== "function") return false;
+
+  try {
+    const slice = selection.content();
+    return slice.openStart === 0 && slice.openEnd === 0;
+  } catch {
+    return false;
   }
-  throw new Error("Failed to serialize copied Blocks to clipboard HTML");
 }
 
 export function createCopiedSelectionPayloadFromSelection(
@@ -682,7 +693,11 @@ export function createCopiedSelectionPayloadFromSelection(
         normalizedBlocks,
       );
       return {
-        clipboardHTML: serializeBlocksToClipboardHTML(editor, normalizedBlocks),
+        clipboardHTML: serializeBlocksToClipboardHTML(
+          editor,
+          normalizedBlocks,
+          selectionIsClosedSlice(editor),
+        ),
         externalHTML: editor.blocksToHTMLLossy(normalizedBlocks),
         structuredText:
           literalCodeSelection ?? serializeSelectionToStructuredPlainText(normalizedBlocks),
@@ -714,7 +729,7 @@ export function createCopiedBlockPayload(
   }
 
   return {
-    clipboardHTML: serializeBlocksToClipboardHTML(editor, normalizedBlocks),
+    clipboardHTML: serializeBlocksToClipboardHTML(editor, normalizedBlocks, true),
     externalHTML: editor.blocksToHTMLLossy(normalizedBlocks),
     structuredText: serializeSelectionToStructuredPlainText(normalizedBlocks),
   };
