@@ -14,7 +14,6 @@ import {
   verticalListSortingStrategy,
   type AnimateLayoutChanges,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   Fragment,
   createContext,
@@ -27,6 +26,7 @@ import {
   type ReactNode,
 } from "react";
 import { replaceVisibleCodexSidebarThreadKeyOrder } from "@/lib/codex-sidebar-thread-sync";
+import { serializeSortableTranslation } from "@/lib/sortable-transform";
 import { useCanonicalOrderHandoff } from "@/lib/use-canonical-order-handoff";
 import { cn } from "@/lib/utils";
 import {
@@ -1505,7 +1505,7 @@ export function SidebarThreadSortableItem({
   });
   const activeDrag = isDragging || activeThreadKey === threadKey;
   const style: CSSProperties = {
-    transform: CSS.Translate.toString(dragActive ? null : transform),
+    transform: serializeSortableTranslation(dragActive ? null : transform),
   };
 
   return (

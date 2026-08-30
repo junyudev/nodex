@@ -9,11 +9,12 @@ import {
   type UniqueIdentifier,
 } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
-import { CSS, type Transform } from "@dnd-kit/utilities";
+import type { Transform } from "@dnd-kit/utilities";
 import { createPortal } from "react-dom";
 import { useMemo, type CSSProperties, type ReactNode, type RefObject } from "react";
 
 import { ContinuousPointerSensor } from "@/lib/continuous-pointer-sensor";
+import { serializeSortableTranslation } from "@/lib/sortable-transform";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 
 const ACTIVATION_DISTANCE = 6;
@@ -108,7 +109,7 @@ export function useContinuousSortable({
     transition: reducedMotion ? null : SIBLING_TRANSITION,
   });
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(sortable.transform),
+    transform: serializeSortableTranslation(sortable.transform),
     // The active surface follows every pointer sample; only its siblings ease
     // into newly reserved positions.
     transition: sortable.isDragging ? undefined : sortable.transition,

@@ -14,7 +14,6 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "motion/react";
 import {
   useEffect,
@@ -43,6 +42,7 @@ import {
   SidebarManualOrderIcon,
   StopIcon,
 } from "@/components/shared/icons";
+import { serializeSortableTranslation } from "@/lib/sortable-transform";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -364,7 +364,7 @@ function QueuedFollowUpRow({
     <motion.div
       ref={setNodeRef}
       style={{
-        transform: CSS.Transform.toString(transform),
+        transform: serializeSortableTranslation(transform),
         transition,
       }}
       initial={{ height: 0, opacity: 0 }}

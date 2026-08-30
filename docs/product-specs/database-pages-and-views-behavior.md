@@ -243,8 +243,9 @@ rail does not repeat that guidance as persistent footer prose.
 Quick-filter tokens reorder horizontally and Sort rows reorder vertically with
 the shared continuous pointer gesture: mouse and stylus activate after 6px,
 then follow every pointer sample, stay clamped to their drag-start container,
-and commit once on drop without remount flicker. Sort fields are unique within
-one View and use type-aware direction wording. The Sort editor is a compact
+preserve the dragged source's own dimensions while crossing differently sized
+targets, and commit once on drop without remount flicker. Sort fields are unique
+within one View and use type-aware direction wording. The Sort editor is a compact
 vertical list: field and direction controls consume only the width their content
 needs up to a bounded maximum, a flexible tail lane absorbs remaining row width
 before the aligned delete action, and adjacent rows retain a compact 4px gap.
@@ -287,8 +288,9 @@ section boundary changes order and visibility together. Property pointer drag
 activates after 6px, retains the threshold-crossing pointer delta on that frame,
 then tracks every vertical pointer sample while sibling Properties and the
 shown/hidden boundary ease into their candidate positions. The dragged row is
-represented by one overlay, stays horizontally locked and vertically bounded
-to the Property list, and commits one presentation change only on drop. A Data
+represented by one overlay, preserves its source dimensions, stays horizontally
+locked and vertically bounded to the Property list, and commits one presentation
+change only on drop. A Data
 Source owns the order used when its Pages open and assigns each schema Property **Always show**,
 **Hide when empty**, or **Always hide**. Hidden Page Properties remain reachable
 through one disclosure; expanding it is Page-session state and does not change
@@ -700,6 +702,8 @@ do not layer over it. A rule uses the same Property-typed operator and value
 contract as View filters. Creating one begins with a searchable Property choice;
 the selected Property then remains the rule's stable subject. Rules are reordered
 through their drag handles because display order is also evaluation priority.
+The dragged rule preserves its source dimensions while crossing rules with
+different editor heights.
 
 Every rule has either a fixed semantic background or an option-derived
 background. Select and Multi-select rules may inherit the matching Property

@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 import {
   ArchiveIcon,
@@ -40,6 +39,7 @@ import {
   NodexDropdownRadioItem,
 } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
+import { serializeSortableTranslation } from "@/lib/sortable-transform";
 import {
   invoke,
   invokeCoreResult,
@@ -139,7 +139,7 @@ function SectionRootSortable({
     <div
       ref={setNodeRef}
       className={cn(isDragging && "opacity-20")}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
+      style={{ transform: serializeSortableTranslation(transform), transition }}
     >
       {children({
         headingButtonRef: setActivatorNodeRef,

@@ -11,7 +11,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useSortable } from "@dnd-kit/sortable";
-import { CSS, useCombinedRefs, type Transform } from "@dnd-kit/utilities";
+import { useCombinedRefs, type Transform } from "@dnd-kit/utilities";
 import {
   BranchStatusIcon,
   CheckmarkIcon,
@@ -45,6 +45,7 @@ import {
 } from "@/lib/codex-sidebar-run-location";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
+import { serializeSortableTranslation } from "@/lib/sortable-transform";
 import { waitForProjectCatalogUpdates } from "@/lib/project-update-queue";
 import {
   gitRepositoryIdentityQueryOptions,
@@ -208,7 +209,7 @@ export function getCodexSidebarSortableStyle(
   transition: string | undefined,
 ): CSSProperties {
   return {
-    transform: CSS.Translate.toString(transform),
+    transform: serializeSortableTranslation(transform),
     transition,
   };
 }
