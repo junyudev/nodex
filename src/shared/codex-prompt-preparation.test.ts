@@ -1,5 +1,9 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { prepareCodexPrompt, splitCodexPromptAgentConfigLines } from "./codex-prompt-preparation";
+import {
+  collectCodexPromptAgentConfigs,
+  prepareCodexPrompt,
+  splitCodexPromptAgentConfigLines,
+} from "./codex-prompt-preparation";
 
 describe("Codex prompt preparation", () => {
   test("keeps pasted text as a bounded sidecar until the main command boundary", async () => {
@@ -121,7 +125,7 @@ describe("Codex prompt preparation", () => {
     const parsed = splitCodexPromptAgentConfigLines(
       [
         "Investigate the owner path",
-        '<agent-config mode="plan" model="gpt-test" reasoning="high" />',
+        '<agent-config mode="plan" provider="openai" model="gpt-test" reasoning="high" speed="fast" permission="auto" />',
       ].join("\n"),
     );
 
@@ -129,10 +133,26 @@ describe("Codex prompt preparation", () => {
     expect(parsed.agentConfigs).toEqual([
       {
         mode: "plan",
+        provider: "openai",
         model: "gpt-test",
         reasoning: "high",
+        speed: "fast",
+        permission: "auto",
       },
     ]);
+  });
+
+  test("collects structured Agent config sidecars without scanning fallback text", () => {
+    const structured = [{ provider: "anthropic", model: "claude-sonnet" }];
+    expect(
+      collectCodexPromptAgentConfigs('<agent-config provider="openai" />', {
+        text: "Do the work",
+        agentConfigs: structured,
+      }),
+    ).toEqual(structured);
+    expect(
+      collectCodexPromptAgentConfigs('<agent-config provider="openai" speed="fast" />', undefined),
+    ).toEqual([{ provider: "openai", speed: "fast" }]);
   });
 
   test("keeps app and chat mentions structured in both live and pending input", async () => {

@@ -353,8 +353,11 @@ function nfmInlineToBN(items: NfmInlineContent[]): BNInlineContent[] {
         type: "agentConfig",
         props: {
           mode: item.mode ?? "",
+          provider: item.provider ?? "",
           model: item.model ?? "",
           reasoning: item.reasoning ?? "",
+          speed: item.speed ?? "",
+          permission: item.permission ?? "",
           unknownAttributes: item.unknownAttributes?.join(",") ?? "",
           rawAttributes: item.rawAttributes ?? "",
         },
@@ -899,8 +902,11 @@ function bnInlineToNfm(content: unknown): NfmInlineContent[] {
     } else if (item.type === "agentConfig") {
       const props = item.props ?? {};
       const mode = normalizeString(props.mode);
+      const provider = normalizeString(props.provider);
       const model = normalizeString(props.model);
       const reasoning = normalizeString(props.reasoning);
+      const speed = normalizeString(props.speed);
+      const permission = normalizeString(props.permission);
       const unknownAttributes = (normalizeString(props.unknownAttributes) ?? "")
         .split(",")
         .map((value) => value.trim())
@@ -910,8 +916,11 @@ function bnInlineToNfm(content: unknown): NfmInlineContent[] {
       items.push({
         type: "agentConfig",
         ...(mode ? { mode } : {}),
+        ...(provider ? { provider } : {}),
         ...(model ? { model } : {}),
         ...(reasoning ? { reasoning } : {}),
+        ...(speed ? { speed } : {}),
+        ...(permission ? { permission } : {}),
         ...(unknownAttributes.length > 0 ? { unknownAttributes } : {}),
         ...(rawAttributes ? { rawAttributes } : {}),
       });

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { CodexModelOption } from "@/lib/types";
+import type { CodexModelOption, CodexPermissionState } from "@/lib/types";
 import {
   AgentConfigInlineContentView,
+  resolveDefaultAgentConfigIntelligence,
   type AgentConfigInlineContentUpdate,
   type AgentConfigProps,
 } from "./agent-config-chip";
+import type { AgentConfigRuntimeValue } from "./agent-config-runtime";
 
 const STORY_MODELS: CodexModelOption[] = [
   {
@@ -46,6 +48,26 @@ const STORY_MODELS: CodexModelOption[] = [
   },
 ];
 
+const STORY_PERMISSION_STATE: CodexPermissionState = {
+  mode: "auto",
+  effectivePreset: "auto",
+  availableModes: ["auto", "guardian-approvals", "full-access", "custom"],
+  approvalPolicy: "on-request",
+  approvalsReviewer: "user",
+  sandboxMode: "workspace-write",
+  sandbox: null,
+  autoReviewAvailable: true,
+  configTarget: { source: "project", filePath: null },
+};
+
+const STORY_RUNTIME: AgentConfigRuntimeValue = {
+  projectId: "storybook-project",
+  availableModels: STORY_MODELS,
+  availableModelsLoading: false,
+  defaultIntelligence: resolveDefaultAgentConfigIntelligence(STORY_MODELS),
+  permissionState: STORY_PERMISSION_STATE,
+};
+
 function AgentConfigChipStorySurface({
   initialProps,
   open = true,
@@ -64,7 +86,7 @@ function AgentConfigChipStorySurface({
           updateInlineContent={(update: AgentConfigInlineContentUpdate) => {
             setProps(update.props);
           }}
-          availableModels={STORY_MODELS}
+          runtime={STORY_RUNTIME}
           defaultOpen={open}
         />{" "}
         then continue with the prompt.
@@ -111,6 +133,20 @@ export const CombinedLongModelOpen: Story = {
       mode: "plan",
       model: "gpt-5.5-enterprise-preview-with-extended-context",
       reasoning: "high",
+    },
+    open: true,
+  },
+};
+
+export const FullyConfiguredInteraction: Story = {
+  args: {
+    initialProps: {
+      mode: "plan",
+      provider: "openai",
+      model: "gpt-5.5",
+      reasoning: "high",
+      speed: "fast",
+      permission: "auto",
     },
     open: true,
   },

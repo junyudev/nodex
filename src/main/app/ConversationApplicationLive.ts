@@ -101,6 +101,10 @@ import {
   make as makeCodexNotificationAdmission,
 } from "../codex-application/CodexNotificationAdmission";
 import {
+  CodexAgentConfigRuntime,
+  make as makeCodexAgentConfigRuntime,
+} from "../codex-application/CodexAgentConfigRuntime";
+import {
   CodexTurnPreparation,
   make as makeCodexTurnPreparation,
 } from "../codex-application/CodexTurnPreparation";
@@ -458,8 +462,11 @@ const notificationAdmission = Layer.effect(
   CodexNotificationAdmission,
   makeCodexNotificationAdmission,
 ).pipe(Layer.provideMerge(turnAuthority));
-const turnPreparation = Layer.effect(CodexTurnPreparation, makeCodexTurnPreparation).pipe(
+const agentConfig = Layer.effect(CodexAgentConfigRuntime, makeCodexAgentConfigRuntime).pipe(
   Layer.provideMerge(notificationAdmission),
+);
+const turnPreparation = Layer.effect(CodexTurnPreparation, makeCodexTurnPreparation).pipe(
+  Layer.provideMerge(agentConfig),
 );
 const turnCommands = Layer.effect(CodexTurnCommands, makeCodexTurnCommands).pipe(
   Layer.provideMerge(turnPreparation),

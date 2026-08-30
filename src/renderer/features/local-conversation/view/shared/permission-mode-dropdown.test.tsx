@@ -112,6 +112,46 @@ describe("permission mode dropdown", () => {
     expect(onSelect).toHaveBeenCalledWith("custom");
   });
 
+  test("supports an explicit inherit row without inventing a permission mode", async () => {
+    const onInherit = vi.fn();
+    const view = renderPermissionDropdown({
+      selectedMode: null,
+      allowInherit: true,
+      onInherit,
+    });
+
+    expect(view.getByText("Use current/default")).toBeTruthy();
+    await openPermissionMenu(view);
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Use current/default" }));
+      await Promise.resolve();
+    });
+
+    expect(onInherit).toHaveBeenCalledTimes(1);
+  });
+
+  test("can expose Full access as unavailable without opening a consent dialog", async () => {
+    const onSelect = vi.fn();
+    const view = renderPermissionDropdown({
+      onSelect,
+      confirmFullAccess: false,
+      fullAccessDisabledReason: "Enable Full access in Composer first",
+    });
+    await openPermissionMenu(view);
+
+    const fullAccess = view.getByRole("menuitem", { name: /Full access/u });
+    expect(fullAccess.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      fireEvent.focus(fullAccess);
+      fireEvent.click(fullAccess);
+      await Promise.resolve();
+    });
+
+    expect(await view.findByText("Enable Full access in Composer first")).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(view.queryByRole("dialog")).toBeNull();
+  });
+
   test("confirms Full access after the menu closes", async () => {
     const onSelect = vi.fn();
     const view = renderPermissionDropdown({ onSelect });

@@ -2779,8 +2779,11 @@ export interface CodexReviewDiffCommentAttachment {
 
 export interface CodexPromptAgentConfigInput {
   mode?: string;
+  provider?: string;
   model?: string;
   reasoning?: string;
+  speed?: string;
+  permission?: string;
   unknownAttributes?: string[];
 }
 

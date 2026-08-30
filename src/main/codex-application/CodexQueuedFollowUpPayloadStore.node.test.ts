@@ -32,6 +32,16 @@ it.effect("freezes volatile prompt evidence and hydrates portable file attachmen
         text: "Inspect the evidence",
         images: [{ source: "data:image/png;base64,cXVldWUtaW1hZ2U=" }],
         fileAttachments: [{ label: "notes.txt", path: localFile, fsPath: localFile }],
+        agentConfigs: [
+          {
+            mode: "plan",
+            provider: "openai",
+            model: "gpt-5.6-sol",
+            reasoning: "high",
+            speed: "fast",
+            permission: "auto",
+          },
+        ],
       },
     });
 
@@ -57,6 +67,7 @@ it.effect("freezes volatile prompt evidence and hydrates portable file attachmen
       fs.readFileSync(hydrated.promptInput.fileAttachments?.[0]?.fsPath ?? "", "utf8"),
       "durable queue notes",
     );
+    assert.deepStrictEqual(hydrated.promptInput.agentConfigs, row.promptInput.agentConfigs);
   }),
 );
 

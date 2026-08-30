@@ -141,10 +141,10 @@ describe("readonly NFM BlockNote preview", () => {
     expect(attachmentChip.querySelector('[data-file-tab-icon="document"]')).not.toBeNull();
 
     fireEvent.click(attachmentChip);
-    fireEvent.click(view.getByText("Plan mode"));
+    fireEvent.click(view.getByText("Agent config"));
     await settleAsyncRender();
 
-    expect(textContent(view.container).includes("Plan mode")).toBe(true);
+    expect(textContent(view.container).includes("Agent config")).toBe(true);
     expect(textContent(view.container).includes("019-thread")).toBe(true);
     expect(document.body.querySelector('[role="dialog"]') === null).toBe(true);
     expect(document.body.querySelector('[data-slot="popover-content"]') === null).toBe(true);

@@ -248,7 +248,8 @@ describe("NFM code fences", () => {
   });
 
   test("agent config round-trips inline", () => {
-    const nfm = 'before <agent-config mode="plan" model="gpt-5.5" reasoning="high" /> after';
+    const nfm =
+      'before <agent-config mode="plan" provider="openai" model="gpt-5.5" reasoning="high" speed="fast" permission="auto" /> after';
     const blocks = parseNfm(nfm);
 
     expect(blocks[0]?.type).toBe("paragraph");
@@ -256,8 +257,11 @@ describe("NFM code fences", () => {
     expect(blocks[0].content[1]?.type).toBe("agentConfig");
     if (blocks[0].content[1]?.type !== "agentConfig") return;
     expect(blocks[0].content[1].mode).toBe("plan");
+    expect(blocks[0].content[1].provider).toBe("openai");
     expect(blocks[0].content[1].model).toBe("gpt-5.5");
     expect(blocks[0].content[1].reasoning).toBe("high");
+    expect(blocks[0].content[1].speed).toBe("fast");
+    expect(blocks[0].content[1].permission).toBe("auto");
     expect(serializeNfm(blocks)).toBe(nfm);
     expect(serializeClipboardText(blocks)).toBe(nfm);
   });

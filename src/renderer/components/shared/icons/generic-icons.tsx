@@ -20,7 +20,6 @@ import {
   ContactRound as LucideContactRound,
   CornerDownLeft as LucideCornerDownLeft,
   Filter as LucideFilter,
-  Gauge as LucideGauge,
   GitBranchPlus as LucideGitBranchPlus,
   Hash as LucideHash,
   ImagePlus as LucideImagePlus,
@@ -188,7 +187,6 @@ export const CornerDownLeft: LucideIconType = /* @__PURE__ */ createGenericIcon(
   "CornerDownLeft",
 );
 export const Filter: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideFilter, "Filter");
-export const Gauge: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideGauge, "Gauge");
 export const GitBranchPlus: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideGitBranchPlus,
   "GitBranchPlus",

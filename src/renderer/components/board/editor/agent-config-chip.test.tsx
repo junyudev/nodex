@@ -56,8 +56,9 @@ describe("agent config chip helpers", () => {
       rawAttributes: "",
     });
 
-    expect(chip.label).toBe("Plan mode");
-    expect(chip.detail).toBe("GPT-5.5 · High");
+    expect(chip.label).toBe("Agent config");
+    expect(chip.summary).toBe("Plan · GPT-5.5");
+    expect(chip.detail).toBe("Plan · GPT-5.5 · High");
     expect(chip.invalid).toBe(false);
   });
 
@@ -73,7 +74,7 @@ describe("agent config chip helpers", () => {
       MODELS,
     );
 
-    expect(chip.detail).toBe("GPT-5.5");
+    expect(chip.summary).toBe("Plan · GPT-5.5");
   });
 
   test("marks invalid values and unknown attributes without dropping them", () => {
@@ -87,7 +88,7 @@ describe("agent config chip helpers", () => {
 
     expect(props.mode).toBe("planning");
     expect(props.rawAttributes).toBe('mood="plan"');
-    expect(chip.label).toBe("Invalid config");
+    expect(chip.label).toBe("Agent config");
     expect(chip.invalid).toBe(true);
   });
 
@@ -111,10 +112,10 @@ describe("agent config chip helpers", () => {
     expect(update.props.rawAttributes).toBe("");
   });
 
-  test("reset returns malformed chips to a valid plan-mode default", () => {
+  test("reset returns malformed chips to the inherited default", () => {
     const update = buildAgentConfigResetUpdate();
 
-    expect(update.props.mode).toBe("plan");
+    expect(update.props.mode).toBe("");
     expect(update.props.model).toBe("");
     expect(update.props.reasoning).toBe("");
     expect(update.props.unknownAttributes).toBe("");
@@ -148,7 +149,7 @@ describe("agent config chip popover", () => {
     });
 
     await act(async () => {
-      fireEvent.click(view.getByText("Plan mode"));
+      fireEvent.click(view.getByText("Agent config"));
       await settleAsyncRender();
     });
 
@@ -194,17 +195,21 @@ describe("agent config chip popover", () => {
     );
 
     await act(async () => {
-      const trigger = view.getByLabelText("Agent config model");
+      const trigger = view.getByLabelText("Agent intelligence");
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await settleAsyncRender();
     });
-    const search = view.getByRole("combobox", { name: "Search agent models" });
     await act(async () => {
-      fireEvent.change(search, { target: { value: "5.5" } });
-      fireEvent.click(view.getByRole("option", { name: /GPT-5\.5/u }));
+      fireEvent.click(view.getByLabelText("Model GPT-5.5"));
+      await settleAsyncRender();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "GPT-5.5" }));
       await settleAsyncRender();
     });
 
+    expect(updates[0]?.props.provider).toBe("openai");
     expect(updates[0]?.props.model).toBe("gpt-5.5");
   });
 
@@ -222,17 +227,21 @@ describe("agent config chip popover", () => {
     );
 
     await act(async () => {
-      const trigger = view.getByLabelText("Agent config reasoning");
+      const trigger = view.getByLabelText("Agent intelligence");
       fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
       fireEvent.click(trigger);
       await settleAsyncRender();
     });
     await act(async () => {
-      fireEvent.click(view.getByText("High"));
+      fireEvent.click(view.getByLabelText("Effort High"));
+      await settleAsyncRender();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Medium"));
       await settleAsyncRender();
     });
 
-    expect(updates[0]?.props.reasoning).toBe("high");
+    expect(updates[0]?.props.reasoning).toBe("medium");
   });
 
   test("reset clears malformed props", async () => {
@@ -259,7 +268,7 @@ describe("agent config chip popover", () => {
       await settleAsyncRender();
     });
 
-    expect(updates[0]?.props.mode).toBe("plan");
+    expect(updates[0]?.props.mode).toBe("");
     expect(updates[0]?.props.unknownAttributes).toBe("");
     expect(updates[0]?.props.rawAttributes).toBe("");
   });

@@ -12,7 +12,14 @@ describe("nfm codex prompt input", () => {
           { type: "text", text: " with mode ", styles: {} },
           {
             type: "agentConfig",
-            props: { mode: "plan", model: "gpt-5.2-codex", reasoning: "high" },
+            props: {
+              mode: "plan",
+              provider: "openai",
+              model: "gpt-5.2-codex",
+              reasoning: "high",
+              speed: "fast",
+              permission: "auto",
+            },
           },
         ],
         children: [],
@@ -35,7 +42,10 @@ describe("nfm codex prompt input", () => {
     expect(promptInput.images?.[0]?.caption).toBe("Architecture sketch");
     expect(promptInput.agentConfigs?.length).toBe(1);
     expect(promptInput.agentConfigs?.[0]?.mode).toBe("plan");
+    expect(promptInput.agentConfigs?.[0]?.provider).toBe("openai");
     expect(promptInput.agentConfigs?.[0]?.model).toBe("gpt-5.2-codex");
     expect(promptInput.agentConfigs?.[0]?.reasoning).toBe("high");
+    expect(promptInput.agentConfigs?.[0]?.speed).toBe("fast");
+    expect(promptInput.agentConfigs?.[0]?.permission).toBe("auto");
   });
 });

@@ -40,6 +40,7 @@ type GatewayTurnStartParams = ClientRequestParamsByMethod["turn/start"];
 type GatewayTurnSteerParams = ClientRequestParamsByMethod["turn/steer"];
 
 export type CodexTurnStartOverrides = CodexTurnStartOptions & {
+  readonly agentConfigPermissionMode?: boolean;
   readonly clientUserMessageId?: string;
   readonly preparedPrompt?: CodexPreparedPrompt;
   readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];

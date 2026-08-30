@@ -314,6 +314,7 @@ export const make: Effect.Effect<
         reasoningEffort: executionProfile?.reasoningEffort ?? params.reasoningEffort ?? undefined,
         collaborationMode: collaborationMode(params.collaborationMode),
         permissionMode: permissionMode(params.agentMode),
+        agentConfigPermissionMode: params.agentConfigPermissionMode,
         ...(worktreeInit ? { worktreeInit } : {}),
       });
       if (!turn) {

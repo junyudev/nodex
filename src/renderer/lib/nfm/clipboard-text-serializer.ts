@@ -207,8 +207,11 @@ function serializeInlinePlainText(items: NfmInlineContent[]): string {
       if (item.type === "agentConfig") {
         const attrs: string[] = [];
         if (item.mode) attrs.push(`mode="${item.mode}"`);
+        if (item.provider) attrs.push(`provider="${item.provider}"`);
         if (item.model) attrs.push(`model="${item.model}"`);
         if (item.reasoning) attrs.push(`reasoning="${item.reasoning}"`);
+        if (item.speed) attrs.push(`speed="${item.speed}"`);
+        if (item.permission) attrs.push(`permission="${item.permission}"`);
         return attrs.length > 0 ? `<agent-config ${attrs.join(" ")} />` : "<agent-config />";
       }
       if (item.type === "threadMention") {

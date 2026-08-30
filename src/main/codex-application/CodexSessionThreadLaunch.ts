@@ -9,7 +9,11 @@ import * as LayerMap from "effect/LayerMap";
 import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import { summarizeCodexPendingWorktreeLabel } from "../../shared/codex-pending-worktree";
-import { createCodexTextUserInput } from "../../shared/codex-prompt-preparation";
+import {
+  collectCodexPromptAgentConfigs,
+  createCodexTextUserInput,
+  splitCodexPromptAgentConfigLines,
+} from "../../shared/codex-prompt-preparation";
 import { assertUuidV7 } from "../../shared/uuid-v7";
 import type {
   CodexConversationSnapshot,
@@ -29,6 +33,7 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
+import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
@@ -40,6 +45,10 @@ import { CodexTurnCommands, type CodexTurnCommandsError } from "./CodexTurnComma
 import { CodexTurnPreparation } from "./CodexTurnPreparation";
 
 type GatewayThreadStartParams = ClientRequestParamsByMethod["thread/start"];
+type PreparedSessionThreadLaunchInput = CodexThreadStartForSessionInput & {
+  /** The permission was authored in document content and must not become an elevation prompt. */
+  readonly agentConfigPermissionMode?: boolean;
+};
 
 export interface CodexSessionThreadLaunchContext {
   readonly browserViewScopeId: string;
@@ -49,7 +58,7 @@ export interface CodexSessionThreadLaunchContext {
 export class CodexSessionThreadLaunchError extends Data.TaggedError(
   "CodexSessionThreadLaunchError",
 )<{
-  readonly operation: "admit" | "pending" | "start" | "commit" | "first-turn";
+  readonly operation: "admit" | "prepare" | "pending" | "start" | "commit" | "first-turn";
   readonly sessionId: string;
   readonly cause: unknown;
 }> {}
@@ -100,6 +109,7 @@ export const make: Effect.Effect<
   CodexSessionThreadLaunch["Service"],
   never,
   | CodexFreshThreadLaunchRuntime
+  | CodexAgentConfigRuntime
   | CodexAttachments
   | CodexAppServerCapabilities
   | CodexGateway
@@ -116,6 +126,7 @@ export const make: Effect.Effect<
   | Scope.Scope
 > = Effect.gen(function* () {
   const core = yield* CoreModules;
+  const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
   const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
@@ -180,7 +191,7 @@ export const make: Effect.Effect<
   });
 
   const enqueuePending = (
-    input: CodexThreadStartForSessionInput & { readonly projectId: string },
+    input: PreparedSessionThreadLaunchInput & { readonly projectId: string },
     sourceRoots: readonly string[],
   ): Effect.Effect<CodexThreadStartForSessionResult, CodexSessionThreadLaunchError> =>
     Effect.gen(function* () {
@@ -196,6 +207,7 @@ export const make: Effect.Effect<
             imageAttachments: [...input.threadGoalDraft.imageAttachments],
           }
         : null;
+      const collaborationModel = input.executionProfile?.modelId ?? input.model?.trim();
       const allocated = allocateCodexPendingWorktreeRequest({
         hostId: gateway.localHostId,
         launchMode: "start-conversation",
@@ -220,12 +232,24 @@ export const make: Effect.Effect<
           fileAttachments: [],
           addedFiles: [],
           agentMode: input.permissionMode ?? "auto",
+          agentConfigPermissionMode: input.agentConfigPermissionMode,
           shouldSendPermissionOverrides: true,
           model: null,
           executionProfile: input.executionProfile ?? null,
           serviceTier: input.serviceTier ?? null,
           reasoningEffort: input.reasoningEffort ?? null,
-          collaborationMode: null,
+          collaborationMode:
+            input.collaborationMode && collaborationModel
+              ? {
+                  mode: input.collaborationMode,
+                  settings: {
+                    model: collaborationModel,
+                    reasoning_effort:
+                      input.executionProfile?.reasoningEffort ?? input.reasoningEffort ?? null,
+                    developer_instructions: null,
+                  },
+                }
+              : null,
           config: {},
           threadSource:
             input.threadSource === "subagent" || input.threadSource === "system"
@@ -270,7 +294,7 @@ export const make: Effect.Effect<
     }).pipe(Effect.mapError((cause) => fail("pending", input.sessionId, cause)));
 
   const startImmediate = Effect.fn("CodexSessionThreadLaunch.startImmediate")(function* (
-    input: CodexThreadStartForSessionInput,
+    input: PreparedSessionThreadLaunchInput,
     context: CodexSessionThreadLaunchContext,
     sourceRoots: readonly string[],
     capability: CodexAppServerCapabilitySnapshot,
@@ -395,6 +419,9 @@ export const make: Effect.Effect<
               serviceTier,
               permissionMode: input.permissionMode,
               reasoningEffort,
+              ...(input.agentConfigPermissionMode === undefined
+                ? {}
+                : { agentConfigPermissionMode: input.agentConfigPermissionMode }),
               collaborationMode: input.collaborationMode,
             },
             rendererOwnsState: true,
@@ -433,6 +460,9 @@ export const make: Effect.Effect<
         serviceTier,
         permissionMode: input.permissionMode,
         ...(reasoningEffort ? { reasoningEffort } : {}),
+        ...(input.agentConfigPermissionMode === undefined
+          ? {}
+          : { agentConfigPermissionMode: input.agentConfigPermissionMode }),
         collaborationMode: input.collaborationMode,
       });
       if (!turn) {
@@ -465,6 +495,50 @@ export const make: Effect.Effect<
     );
   });
 
+  /** Resolves document-authored launch settings before a Thread or pending worktree is created. */
+  const prepareAgentConfig = Effect.fn("CodexSessionThreadLaunch.prepareAgentConfig")(function* (
+    input: CodexThreadStartForSessionInput,
+    sourceRoots: readonly string[],
+  ): Effect.fn.Return<PreparedSessionThreadLaunchInput, CodexSessionThreadLaunchError> {
+    const configs = collectCodexPromptAgentConfigs(input.prompt, input.promptInput);
+    if (configs.length === 0) return input;
+
+    const workspaceRoots = input.projectlessWorkspace
+      ? [input.projectlessWorkspace.workspaceRoot]
+      : [...sourceRoots];
+    const prepared = yield* agentConfig
+      .prepare({
+        target: {
+          kind: "new-thread",
+          fallbackExecutionProfile: input.executionProfile ?? null,
+        },
+        configs,
+        permissionContext: { projectId: input.projectId, workspaceRoots },
+      })
+      .pipe(Effect.mapError((cause) => fail("prepare", input.sessionId, cause)));
+    const prompt = input.promptInput
+      ? input.prompt
+      : splitCodexPromptAgentConfigLines(input.prompt).text;
+    const promptInput = input.promptInput ? { ...input.promptInput, agentConfigs: [] } : undefined;
+
+    return {
+      ...input,
+      prompt,
+      ...(promptInput ? { promptInput } : {}),
+      ...(prepared.executionProfile
+        ? {
+            executionProfile: prepared.executionProfile,
+            model: prepared.executionProfile.modelId,
+            serviceTier: prepared.executionProfile.serviceTier,
+            reasoningEffort: prepared.executionProfile.reasoningEffort ?? undefined,
+          }
+        : {}),
+      ...(prepared.collaborationMode ? { collaborationMode: prepared.collaborationMode } : {}),
+      ...(prepared.permissionMode ? { permissionMode: prepared.permissionMode } : {}),
+      ...(prepared.permissionMode ? { agentConfigPermissionMode: true } : {}),
+    };
+  });
+
   return CodexSessionThreadLaunch.of({
     start: (input, context) =>
       runExclusive(
@@ -484,21 +558,25 @@ export const make: Effect.Effect<
             });
             const project = yield* admit(input);
             const sourceRoots = project?.sources.map((source) => source.root) ?? [];
-            if ((input.runInTarget ?? "localProject") === "newWorktree") {
-              if (!input.projectId || !project) {
+            const preparedInput = yield* prepareAgentConfig(input, sourceRoots);
+            if ((preparedInput.runInTarget ?? "localProject") === "newWorktree") {
+              if (!preparedInput.projectId || !project) {
                 return yield* fail(
                   "pending",
-                  input.sessionId,
+                  preparedInput.sessionId,
                   new Error("Projectless Threads cannot create managed worktrees"),
                 );
               }
-              return yield* enqueuePending({ ...input, projectId: input.projectId }, sourceRoots);
+              return yield* enqueuePending(
+                { ...preparedInput, projectId: preparedInput.projectId },
+                sourceRoots,
+              );
             }
             const capability = yield* capabilities.forHost(gateway.localHostId);
             return yield* threadStarts.materialize(
               capability.hostId,
               capability.generation,
-              startImmediate(input, context, sourceRoots, capability),
+              startImmediate(preparedInput, context, sourceRoots, capability),
               (result) => (result.kind === "started" ? result.detail.threadId : null),
             );
           }),

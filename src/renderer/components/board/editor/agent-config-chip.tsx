@@ -1,13 +1,16 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { createReactInlineContentSpec } from "@blocknote/react";
-import { AlertTriangle, Gauge } from "@/components/shared/icons/generic-icons";
-import { NodexLogoMarkIcon, ResetIcon, SettingsGeneralIcon } from "@/components/shared/icons";
 import {
-  NodexDropdownButtonTrigger,
-  NodexOptionPicker,
-  NodexDropdownSeparator,
-  type NodexOptionPickerOption,
-} from "@/components/ui/dropdown";
+  AgentIntelligenceDropdown,
+  type AgentIntelligenceSelection,
+} from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
+import { NodexLogoMarkIcon, ResetIcon } from "@/components/shared/icons";
+import { NodexDropdownSeparator, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
+import {
+  inlineTintedChipIconClassName,
+  inlineTintedChipLabelClassName,
+  inlineTintedChipVariants,
+} from "@/components/ui/inline-tinted-chip";
 import {
   NodexPopover,
   NodexPopoverContent,
@@ -15,33 +18,36 @@ import {
   NodexPopoverTrigger,
 } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import {
-  inlineTintedChipIconClassName,
-  inlineTintedChipLabelClassName,
-  inlineTintedChipVariants,
-} from "@/components/ui/inline-tinted-chip";
-import { useCodexAvailableModels } from "@/features/local-conversation/local-conversation-store";
+import { PermissionModeDropdown } from "@/features/local-conversation/view/shared/permission-mode-dropdown";
 import {
   formatCodexModelLabel,
   formatCodexReasoningEffortLabel,
-  resolveCodexReasoningEffortOptions,
+  resolveDefaultCodexModel,
 } from "@/lib/codex-thread-settings";
-import type {
-  CodexModelOption,
-  CodexReasoningEffort,
-  CodexReasoningEffortOption,
-} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { agentConfigInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
+import { normalizeCodexServiceTier } from "../../../../shared/codex-service-tier";
 import {
   CodexCollaborationModeKindSchema,
+  CodexPermissionModeSchema,
   CodexReasoningEffortSchema,
 } from "../../../../shared/schemas/codex";
+import type {
+  CodexModelOption,
+  CodexPermissionMode,
+  CodexReasoningEffort,
+} from "../../../../shared/types";
+import { useAgentConfigRuntime, type AgentConfigRuntimeValue } from "./agent-config-runtime";
+
+const CODEX_PROVIDER_ID = "openai";
 
 export interface AgentConfigProps {
   mode: string;
+  provider: string;
   model: string;
   reasoning: string;
+  speed: string;
+  permission: string;
   unknownAttributes: string;
   rawAttributes: string;
 }
@@ -51,10 +57,19 @@ export interface AgentConfigInlineContentUpdate {
   props: AgentConfigProps;
 }
 
-type AgentConfigFieldPatch = Partial<Pick<AgentConfigProps, "mode" | "model" | "reasoning">>;
+type AgentConfigFieldPatch = Partial<
+  Pick<AgentConfigProps, "mode" | "provider" | "model" | "reasoning" | "speed" | "permission">
+>;
 
-const ALL_REASONING_EFFORTS: CodexReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
-const MODE_OPTIONS: Array<{ value: string; label: string }> = [
+export type AgentConfigIntelligenceSelection =
+  | {
+      readonly kind: "ready";
+      readonly inheritance: "explicit" | "inherited";
+      readonly selection: AgentIntelligenceSelection;
+    }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
+const MODE_OPTIONS: readonly { readonly value: string; readonly label: string }[] = [
   { value: "", label: "Inherit" },
   { value: "default", label: "Default" },
   { value: "plan", label: "Plan" },
@@ -65,17 +80,58 @@ export function normalizeAgentConfigProps(
 ): AgentConfigProps {
   return {
     mode: typeof input?.mode === "string" ? input.mode : "",
+    provider: typeof input?.provider === "string" ? input.provider : "",
     model: typeof input?.model === "string" ? input.model : "",
     reasoning: typeof input?.reasoning === "string" ? input.reasoning : "",
+    speed: typeof input?.speed === "string" ? input.speed : "",
+    permission: typeof input?.permission === "string" ? input.permission : "",
     unknownAttributes: typeof input?.unknownAttributes === "string" ? input.unknownAttributes : "",
     rawAttributes: typeof input?.rawAttributes === "string" ? input.rawAttributes : "",
   };
 }
 
-function formatReasoningLabel(value: string): string {
-  if (!value) return "";
-  const parsed = parseReasoningEffort(value);
-  return parsed ? formatCodexReasoningEffortLabel(parsed) : value;
+function hasExplicitIntelligence(props: AgentConfigProps): boolean {
+  return Boolean(props.provider || props.model || props.reasoning || props.speed);
+}
+
+function hasExplicitAgentConfig(props: AgentConfigProps): boolean {
+  return Boolean(
+    props.mode ||
+    props.provider ||
+    props.model ||
+    props.reasoning ||
+    props.speed ||
+    props.permission ||
+    props.unknownAttributes ||
+    props.rawAttributes,
+  );
+}
+
+function findVisibleModel(
+  models: readonly CodexModelOption[],
+  modelId: string,
+): CodexModelOption | null {
+  return (
+    models.find(
+      (candidate) => !candidate.hidden && (candidate.id === modelId || candidate.model === modelId),
+    ) ?? null
+  );
+}
+
+export function resolveDefaultAgentConfigIntelligence(
+  models: readonly CodexModelOption[],
+): AgentIntelligenceSelection | null {
+  const model = resolveDefaultCodexModel(models);
+  if (!model) return null;
+  const reasoningEffort =
+    model.defaultReasoningEffort ?? model.supportedReasoningEfforts[0]?.reasoningEffort;
+  if (!reasoningEffort) return null;
+  return {
+    kind: "codex",
+    model: model.id,
+    reasoningEffort,
+    serviceTier: normalizeCodexServiceTier(model.defaultServiceTier),
+  };
 }
 
 function parseReasoningEffort(value: string): CodexReasoningEffort | null {
@@ -83,54 +139,134 @@ function parseReasoningEffort(value: string): CodexReasoningEffort | null {
   return parsed.success ? parsed.data : null;
 }
 
+export function resolveAgentConfigIntelligenceSelection(input: {
+  props: Partial<AgentConfigProps> | undefined;
+  models: readonly CodexModelOption[];
+  defaultSelection: AgentIntelligenceSelection | null;
+}): AgentConfigIntelligenceSelection {
+  const props = normalizeAgentConfigProps(input.props);
+  if (!input.defaultSelection) {
+    return { kind: "unavailable", reason: "Codex model catalog is unavailable." };
+  }
+  if (props.provider && props.provider !== CODEX_PROVIDER_ID) {
+    return { kind: "unavailable", reason: `Provider '${props.provider}' is unavailable.` };
+  }
+  if (!hasExplicitIntelligence(props)) {
+    return { kind: "ready", inheritance: "inherited", selection: input.defaultSelection };
+  }
+
+  const model = props.model
+    ? findVisibleModel(input.models, props.model)
+    : findVisibleModel(input.models, input.defaultSelection.model);
+  if (!model) {
+    return {
+      kind: "unavailable",
+      reason: props.model
+        ? `Model '${props.model}' is unavailable.`
+        : "The current/default Codex model is unavailable.",
+    };
+  }
+
+  const inheritedReasoning =
+    model.id === input.defaultSelection.model ? input.defaultSelection.reasoningEffort : null;
+  const reasoningEffort = props.reasoning
+    ? parseReasoningEffort(props.reasoning)
+    : (inheritedReasoning ??
+      model.defaultReasoningEffort ??
+      model.supportedReasoningEfforts[0]?.reasoningEffort ??
+      null);
+  if (
+    !reasoningEffort ||
+    !model.supportedReasoningEfforts.some((option) => option.reasoningEffort === reasoningEffort)
+  ) {
+    return {
+      kind: "unavailable",
+      reason: `Effort '${props.reasoning || reasoningEffort || "default"}' is unavailable for ${model.displayName}.`,
+    };
+  }
+
+  const inheritedSpeed =
+    model.id === input.defaultSelection.model ? input.defaultSelection.serviceTier : null;
+  const serviceTier = props.speed
+    ? normalizeCodexServiceTier(props.speed)
+    : (inheritedSpeed ?? normalizeCodexServiceTier(model.defaultServiceTier));
+  if (props.speed && serviceTier !== null && serviceTier !== "fast") {
+    return {
+      kind: "unavailable",
+      reason: `Speed '${props.speed}' is unavailable for ${model.displayName}.`,
+    };
+  }
+
+  return {
+    kind: "ready",
+    inheritance: "explicit",
+    selection: { kind: "codex", model: model.id, reasoningEffort, serviceTier },
+  };
+}
+
 function isKnownAgentConfigMode(value: string): boolean {
   return value === "" || CodexCollaborationModeKindSchema.safeParse(value).success;
 }
 
-function isKnownAgentConfigReasoning(value: string): boolean {
-  return value === "" || CodexReasoningEffortSchema.safeParse(value).success;
+function parsePermissionMode(value: string): CodexPermissionMode | null {
+  const parsed = CodexPermissionModeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function formatPermissionMode(value: string): string {
+  switch (value) {
+    case "auto":
+      return "Ask for approval";
+    case "guardian-approvals":
+      return "Approve for me";
+    case "full-access":
+      return "Full access";
+    case "custom":
+      return "Custom";
+    default:
+      return value;
+  }
 }
 
 export function resolveAgentConfigChip(
   input: Partial<AgentConfigProps> | undefined,
-  models: CodexModelOption[] = [],
-): {
-  label: string;
-  detail: string;
-  invalid: boolean;
-} {
+  models: readonly CodexModelOption[] = [],
+): { label: string; summary: string; detail: string; invalid: boolean } {
   const props = normalizeAgentConfigProps(input);
+  const model = props.model ? findVisibleModel(models, props.model) : null;
+  const modeLabel = props.mode ? (props.mode === "plan" ? "Plan" : "Default") : "";
+  const modelLabel =
+    model?.displayName ?? (props.model ? formatCodexModelLabel(props.model, []) : "");
+  const reasoningLabel = props.reasoning ? formatCodexReasoningEffortLabel(props.reasoning) : "";
+  const speedLabel = props.speed
+    ? normalizeCodexServiceTier(props.speed) === null
+      ? "Standard"
+      : props.speed === "fast"
+        ? "Fast"
+        : props.speed
+    : "";
+  const permissionLabel = props.permission ? formatPermissionMode(props.permission) : "";
+  const summary = [modeLabel, modelLabel].filter(Boolean).join(" · ");
+  const detail = [modeLabel, modelLabel, reasoningLabel, speedLabel, permissionLabel]
+    .filter(Boolean)
+    .join(" · ");
   const invalid =
     props.unknownAttributes.trim().length > 0 ||
+    Boolean(props.rawAttributes.trim()) ||
     !isKnownAgentConfigMode(props.mode) ||
-    !isKnownAgentConfigReasoning(props.reasoning);
-  const label =
-    props.mode === "plan"
-      ? "Plan mode"
-      : props.mode === "default"
-        ? "Default mode"
-        : "Agent config";
-  const modelLabel = props.model ? formatCodexModelLabel(props.model, models) : "";
-  const detail = [modelLabel, formatReasoningLabel(props.reasoning)]
-    .filter((value) => value.trim().length > 0)
-    .join(" · ");
-
-  return {
-    label: invalid ? "Invalid config" : label,
-    detail,
-    invalid,
-  };
+    Boolean(props.provider && props.provider !== CODEX_PROVIDER_ID) ||
+    Boolean(props.permission && !parsePermissionMode(props.permission));
+  return { label: "Agent config", summary, detail, invalid };
 }
 
 export function buildAgentConfigUpdate(
   current: Partial<AgentConfigProps> | undefined,
   patch: AgentConfigFieldPatch,
 ): AgentConfigInlineContentUpdate {
-  const props = normalizeAgentConfigProps(current);
   return {
     type: "agentConfig",
     props: {
-      ...props,
+      ...normalizeAgentConfigProps(current),
       ...patch,
       unknownAttributes: "",
       rawAttributes: "",
@@ -138,49 +274,37 @@ export function buildAgentConfigUpdate(
   };
 }
 
+export function buildAgentConfigSelectionPatch(
+  selection: AgentIntelligenceSelection,
+): AgentConfigFieldPatch {
+  return {
+    provider: CODEX_PROVIDER_ID,
+    model: selection.model,
+    reasoning: selection.reasoningEffort,
+    speed: selection.serviceTier === null ? "standard" : selection.serviceTier,
+  };
+}
+
 export function buildAgentConfigResetUpdate(): AgentConfigInlineContentUpdate {
   return {
     type: "agentConfig",
     props: {
-      mode: "plan",
+      mode: "",
+      provider: "",
       model: "",
       reasoning: "",
+      speed: "",
+      permission: "",
       unknownAttributes: "",
       rawAttributes: "",
     },
   };
 }
 
-function getVisibleModels(models: CodexModelOption[]): CodexModelOption[] {
-  return models.filter((model) => !model.hidden);
-}
-
-function getReasoningOptions(
-  modelId: string,
-  models: CodexModelOption[],
-): CodexReasoningEffortOption[] {
-  if (!modelId) {
-    return ALL_REASONING_EFFORTS.map((reasoningEffort) => ({
-      reasoningEffort,
-      description: formatCodexReasoningEffortLabel(reasoningEffort),
-    }));
-  }
-
-  const selectedModel = models.find((model) => model.id === modelId && !model.hidden);
-  if (!selectedModel || selectedModel.supportedReasoningEfforts.length === 0) {
-    return ALL_REASONING_EFFORTS.map((reasoningEffort) => ({
-      reasoningEffort,
-      description: formatCodexReasoningEffortLabel(reasoningEffort),
-    }));
-  }
-
-  return resolveCodexReasoningEffortOptions(modelId, models);
-}
-
 function AgentConfigControlRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2 px-2 py-1.5">
-      <div className="text-xs text-token-description-foreground">{label}</div>
+    <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-2 px-2 py-1.5">
+      <div className="truncate text-xs text-token-description-foreground">{label}</div>
       <div className="min-w-0">{children}</div>
     </div>
   );
@@ -195,7 +319,7 @@ function ModeSegmentedControl({
 }) {
   return (
     <div
-      className="grid grid-cols-3 gap-0.5 rounded-lg bg-token-foreground/5 p-0.5"
+      className="grid grid-cols-3 gap-px rounded-md bg-token-foreground/[0.055] p-px"
       role="group"
       aria-label="Agent config mode"
     >
@@ -205,11 +329,10 @@ function ModeSegmentedControl({
           type="button"
           aria-pressed={value === option.value}
           className={cn(
-            "h-6 rounded-md px-2 text-xs text-token-description-foreground outline-hidden",
-            "hover:bg-token-foreground/5 hover:text-token-foreground",
-            "focus-visible:ring-token-focus focus-visible:ring-2",
+            "h-6 rounded-[5px] px-2 text-xs text-token-description-foreground outline-hidden transition-colors",
+            "hover:bg-token-bg/70 hover:text-token-foreground focus-visible:ring-token-focus focus-visible:ring-2",
             value === option.value &&
-              "bg-token-bg text-token-foreground shadow-[0_0_0_0.5px_color-mix(in_srgb,var(--foreground)_10%,transparent)]",
+              "bg-token-bg text-token-foreground shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_8%,transparent)]",
           )}
           onClick={() => onValueChange(option.value)}
         >
@@ -220,123 +343,68 @@ function ModeSegmentedControl({
   );
 }
 
+function UnavailableSettingsTrigger({ label }: { label: string }) {
+  return (
+    <NodexSettingsDropdownTrigger
+      disabled
+      aria-label={label}
+      className="w-full min-w-0 justify-between"
+    >
+      <span className="truncate">Unavailable</span>
+    </NodexSettingsDropdownTrigger>
+  );
+}
+
 function AgentConfigPopoverBody({
   props,
   chip,
-  availableModels,
+  runtime,
+  models,
+  defaultSelection,
+  loading,
   onPatch,
   onReset,
 }: {
   props: AgentConfigProps;
   chip: ReturnType<typeof resolveAgentConfigChip>;
-  availableModels: CodexModelOption[];
+  runtime: AgentConfigRuntimeValue | null;
+  models: readonly CodexModelOption[];
+  defaultSelection: AgentIntelligenceSelection | null;
+  loading: boolean;
   onPatch: (patch: AgentConfigFieldPatch) => void;
   onReset: () => void;
 }) {
-  const visibleModels = useMemo(() => getVisibleModels(availableModels), [availableModels]);
-  const modelIsVisible = props.model
-    ? visibleModels.some((model) => model.id === props.model)
-    : true;
-  const modelOptions = useMemo(() => {
-    const options: NodexOptionPickerOption[] = [
-      {
-        value: "",
-        label: "Use current/default",
-        subText: "No one-send model override",
-      },
-    ];
-
-    if (props.model && !modelIsVisible) {
-      options.push({
-        value: props.model,
-        label: "Unavailable model",
-        subText: props.model,
-        disabled: true,
-      });
-    }
-
-    for (const model of visibleModels) {
-      options.push({
-        value: model.id,
-        label: formatCodexModelLabel(model.id, availableModels),
-        subText: model.id,
-      });
-    }
-
-    return options;
-  }, [availableModels, modelIsVisible, props.model, visibleModels]);
-  const reasoningOptions = useMemo(() => {
-    const supportedOptions = getReasoningOptions(props.model, availableModels);
-    const options: NodexOptionPickerOption[] = [
-      {
-        value: "",
-        label: "Use current/default",
-        subText: "No one-send reasoning override",
-      },
-    ];
-    const supportedValues = new Set(supportedOptions.map((option) => option.reasoningEffort));
-    const selectedReasoning = parseReasoningEffort(props.reasoning);
-
-    if (props.reasoning && (!selectedReasoning || !supportedValues.has(selectedReasoning))) {
-      options.push({
-        value: props.reasoning,
-        label: "Unsupported reasoning",
-        subText: props.reasoning,
-        disabled: true,
-      });
-    }
-
-    for (const option of supportedOptions) {
-      options.push({
-        value: option.reasoningEffort,
-        label: formatCodexReasoningEffortLabel(option.reasoningEffort),
-        subText: option.description,
-      });
-    }
-
-    return options;
-  }, [availableModels, props.model, props.reasoning]);
-  const modelLabel = props.model
-    ? formatCodexModelLabel(props.model, availableModels)
-    : "Use current/default";
-  const reasoningLabel = props.reasoning
-    ? formatReasoningLabel(props.reasoning)
-    : "Use current/default";
-  const modelHelp =
-    visibleModels.length === 0
-      ? "Model list unavailable. Existing values are preserved until changed."
-      : props.model && !modelIsVisible
-        ? "This model is not currently available in Nodex."
-        : null;
+  const intelligence = resolveAgentConfigIntelligenceSelection({
+    props,
+    models,
+    defaultSelection,
+  });
+  const permissionMode = props.permission ? parsePermissionMode(props.permission) : null;
+  const invalidReason = chip.invalid
+    ? "Unsupported Agent config attributes or values."
+    : hasExplicitIntelligence(props) && intelligence.kind === "unavailable"
+      ? intelligence.reason
+      : null;
+  const fullAccessEnabled =
+    runtime?.projectId !== null &&
+    runtime?.permissionState.mode === "full-access" &&
+    runtime.permissionState.effectivePreset === "full-access";
 
   return (
-    <div className="w-[min(22rem,calc(100vw-2rem))] p-1 text-sm">
-      <div className="flex items-start gap-2 px-2 py-1.5">
-        <div
-          className={cn(
-            "mt-0.5 rounded-lg p-1.5",
-            chip.invalid
-              ? "bg-token-foreground/8 text-token-description-foreground"
-              : "bg-token-charts-blue/10 text-token-charts-blue",
-          )}
-        >
-          {chip.invalid ? (
-            <AlertTriangle className="size-3.5" />
-          ) : (
-            <SettingsGeneralIcon className="size-3.5" />
-          )}
+    <div className="w-[min(21.5rem,calc(100vw-2rem))] p-1 text-sm">
+      <div className="flex items-start gap-2 px-2 pt-1.5 pb-2">
+        <div className="mt-px flex size-6 shrink-0 items-center justify-center rounded-md border border-token-border/70 text-token-description-foreground">
+          <NodexLogoMarkIcon className="icon-2xs" monochrome />
         </div>
         <div className="min-w-0 flex-1">
           <NodexPopoverTitle className="truncate text-sm font-medium text-token-foreground">
-            {chip.label}
+            Agent config
           </NodexPopoverTitle>
-          <div className="mt-0.5 text-xs text-token-description-foreground">
-            {chip.invalid
-              ? "Fix this chip before sending the prompt."
-              : "Applies only to this prompt send."}
+          <div className="mt-0.5 text-xs leading-4 text-token-description-foreground">
+            {invalidReason ?? "Applies only to this prompt send."}
           </div>
         </div>
-        {chip.invalid ? (
+        {hasExplicitAgentConfig(props) ? (
           <button
             type="button"
             className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs text-token-description-foreground hover:bg-token-foreground/5 hover:text-token-foreground"
@@ -346,66 +414,63 @@ function AgentConfigPopoverBody({
               onReset();
             }}
           >
-            <ResetIcon className="size-3" />
+            <ResetIcon className="icon-xxs shrink-0" />
             <span>Reset</span>
           </button>
         ) : null}
       </div>
 
-      <NodexDropdownSeparator paddingClassName="py-1" />
+      <NodexDropdownSeparator paddingClassName="py-0" />
 
-      <AgentConfigControlRow label="Mode">
-        <ModeSegmentedControl
-          value={isKnownAgentConfigMode(props.mode) ? props.mode : ""}
-          onValueChange={(mode) => onPatch({ mode })}
-        />
-      </AgentConfigControlRow>
+      <div className="divide-y divide-token-border/55">
+        <AgentConfigControlRow label="Mode">
+          <ModeSegmentedControl
+            value={isKnownAgentConfigMode(props.mode) ? props.mode : ""}
+            onValueChange={(mode) => onPatch({ mode })}
+          />
+        </AgentConfigControlRow>
 
-      <AgentConfigControlRow label="Model">
-        <NodexOptionPicker
-          value={props.model}
-          options={modelOptions}
-          search="filter"
-          searchPlaceholder="Search models…"
-          searchAriaLabel="Search agent models"
-          onValueChange={(model) => onPatch({ model })}
-          contentWidth="menu"
-          triggerButton={
-            <NodexDropdownButtonTrigger
-              size="xs"
-              aria-label="Agent config model"
-              className="w-full justify-between"
-              muted={!props.model}
-            >
-              <span className="min-w-0 truncate">{modelLabel}</span>
-            </NodexDropdownButtonTrigger>
-          }
-        />
-        {modelHelp ? (
-          <div className="mt-1 text-[11px] leading-4 text-token-description-foreground">
-            {modelHelp}
-          </div>
-        ) : null}
-      </AgentConfigControlRow>
+        <AgentConfigControlRow label="Model">
+          {intelligence.kind === "ready" ? (
+            <AgentIntelligenceDropdown
+              models={models}
+              selection={intelligence.selection}
+              inheritance={intelligence.inheritance}
+              allowInherit
+              triggerStyle="settings"
+              onSelectionChange={(selection) => onPatch(buildAgentConfigSelectionPatch(selection))}
+              onInherit={() => onPatch({ provider: "", model: "", reasoning: "", speed: "" })}
+            />
+          ) : (
+            <UnavailableSettingsTrigger
+              label={loading ? "Codex model catalog loading" : "Agent intelligence"}
+            />
+          )}
+        </AgentConfigControlRow>
 
-      <AgentConfigControlRow label="Reasoning">
-        <NodexOptionPicker
-          value={props.reasoning}
-          options={reasoningOptions}
-          onValueChange={(reasoning) => onPatch({ reasoning })}
-          contentWidth="menu"
-          triggerButton={
-            <NodexDropdownButtonTrigger
-              size="xs"
-              aria-label="Agent config reasoning"
-              className="w-full justify-between"
-              muted={!props.reasoning}
-            >
-              <span className="min-w-0 truncate">{reasoningLabel}</span>
-            </NodexDropdownButtonTrigger>
-          }
-        />
-      </AgentConfigControlRow>
+        <AgentConfigControlRow label="Permission">
+          {runtime ? (
+            <PermissionModeDropdown
+              selectedMode={permissionMode}
+              availableModes={runtime.permissionState.availableModes}
+              autoReviewAvailable={runtime.permissionState.autoReviewAvailable}
+              triggerStyle="settings"
+              triggerClassName="w-full min-w-0"
+              allowInherit
+              confirmFullAccess={false}
+              fullAccessDisabledReason={
+                fullAccessEnabled
+                  ? undefined
+                  : "Enable Full access in Composer or Permissions before using it here"
+              }
+              onInherit={() => onPatch({ permission: "" })}
+              onSelect={(permission) => onPatch({ permission })}
+            />
+          ) : (
+            <UnavailableSettingsTrigger label="Permission mode" />
+          )}
+        </AgentConfigControlRow>
+      </div>
     </div>
   );
 }
@@ -413,21 +478,27 @@ function AgentConfigPopoverBody({
 export function AgentConfigInlineContentView({
   inlineContent,
   updateInlineContent,
+  runtime: runtimeOverride,
   availableModels,
   defaultOpen = false,
 }: {
   inlineContent: { props: Partial<AgentConfigProps> };
   updateInlineContent: (update: AgentConfigInlineContentUpdate) => void;
-  availableModels: CodexModelOption[];
+  runtime?: AgentConfigRuntimeValue | null;
+  availableModels?: readonly CodexModelOption[];
   defaultOpen?: boolean;
 }) {
+  const runtimeContext = useAgentConfigRuntime();
+  const runtime = runtimeOverride === undefined ? runtimeContext : runtimeOverride;
+  const models = availableModels ?? runtime?.availableModels ?? [];
+  const defaultSelection =
+    runtime?.defaultIntelligence ?? resolveDefaultAgentConfigIntelligence(models);
   const [open, setOpen] = useState(defaultOpen);
   const props = normalizeAgentConfigProps(inlineContent.props);
-  const chip = resolveAgentConfigChip(props, availableModels);
+  const chip = resolveAgentConfigChip(props, models);
   const title = chip.invalid
-    ? "This agent config has invalid attributes or values."
+    ? "This Agent config has invalid attributes or values."
     : [chip.label, chip.detail].filter(Boolean).join(" · ");
-  const Icon = props.reasoning ? Gauge : props.mode ? NodexLogoMarkIcon : SettingsGeneralIcon;
 
   const handlePatch = (patch: AgentConfigFieldPatch) => {
     updateInlineContent(buildAgentConfigUpdate(props, patch));
@@ -442,45 +513,59 @@ export function AgentConfigInlineContentView({
               type="button"
               contentEditable={false}
               className={cn(
-                inlineTintedChipVariants({
-                  tone: chip.invalid ? "neutral" : "accent",
-                  interactive: true,
-                }),
-                "blend outline-hidden focus-visible:ring-token-focus focus-visible:ring-2",
+                inlineTintedChipVariants({ tone: "neutral", interactive: true }),
+                "blend max-w-[22rem] border border-token-border/55 bg-token-foreground/[0.035] shadow-none outline-hidden focus-visible:ring-token-focus focus-visible:ring-2",
               )}
-              onMouseDown={(event) => {
-                event.preventDefault();
-              }}
+              onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 setOpen((current) => !current);
               }}
             >
-              <Icon
-                className={inlineTintedChipIconClassName}
-                {...(Icon === NodexLogoMarkIcon ? { monochrome: true } : {})}
+              <NodexLogoMarkIcon
+                className={cn(
+                  inlineTintedChipIconClassName,
+                  "shrink-0 text-token-description-foreground",
+                )}
+                monochrome
               />
-              <span className={cn(inlineTintedChipLabelClassName, "blend truncate")}>
-                {chip.label}
+              <span
+                className={cn(
+                  inlineTintedChipLabelClassName,
+                  "blend truncate font-medium text-token-foreground",
+                )}
+              >
+                Agent config
               </span>
-              {chip.detail ? (
-                <span
-                  className={cn(inlineTintedChipLabelClassName, "blend ml-1 truncate opacity-70")}
-                >
-                  {chip.detail}
-                </span>
+              {chip.summary ? (
+                <>
+                  <span aria-hidden className="mx-1 text-token-description-foreground/35">
+                    ·
+                  </span>
+                  <span
+                    className={cn(
+                      inlineTintedChipLabelClassName,
+                      "blend max-w-[10rem] truncate text-token-description-foreground",
+                    )}
+                  >
+                    {chip.summary}
+                  </span>
+                </>
               ) : null}
             </button>
           </NodexPopoverTrigger>
         </NodexTooltip>
       </span>
 
-      <NodexPopoverContent side="top" align="start" className="w-full" initialFocus={false}>
+      <NodexPopoverContent side="top" align="start" className="w-auto" initialFocus={false}>
         <AgentConfigPopoverBody
           props={props}
           chip={chip}
-          availableModels={availableModels}
+          runtime={runtime}
+          models={models}
+          defaultSelection={defaultSelection}
+          loading={runtime?.availableModelsLoading ?? false}
           onPatch={handlePatch}
           onReset={() => updateInlineContent(buildAgentConfigResetUpdate())}
         />
@@ -496,12 +581,10 @@ function AgentConfigInlineContent({
   inlineContent: { props: Partial<AgentConfigProps> };
   updateInlineContent: (update: AgentConfigInlineContentUpdate) => void;
 }) {
-  const availableModels = useCodexAvailableModels();
   return (
     <AgentConfigInlineContentView
       inlineContent={inlineContent}
       updateInlineContent={updateInlineContent}
-      availableModels={availableModels}
     />
   );
 }
@@ -522,9 +605,9 @@ export function createAgentConfigInlineContentSpec() {
       );
       return (
         <span className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--foreground)_7%,transparent)] px-2 py-0.5 text-xs text-[var(--foreground)]">
-          <SettingsGeneralIcon className="size-3" />
-          <span>{chip.label}</span>
-          {chip.detail ? <span className="opacity-60">({chip.detail})</span> : null}
+          <NodexLogoMarkIcon className="icon-xxs shrink-0" monochrome />
+          <span>Agent config</span>
+          {chip.summary ? <span className="opacity-60">({chip.summary})</span> : null}
         </span>
       );
     },

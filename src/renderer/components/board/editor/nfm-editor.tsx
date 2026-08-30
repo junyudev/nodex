@@ -147,6 +147,8 @@ import {
   ThreadMentionRuntimeProvider,
   type ThreadMentionRuntimeValue,
 } from "./thread-mention-chip";
+import { AgentConfigRuntimeProvider, type AgentConfigRuntimeValue } from "./agent-config-runtime";
+import { resolveDefaultAgentConfigIntelligence } from "./agent-config-chip";
 import { prepareOwnedBlockDocument, transferBlocks } from "@/lib/api";
 import { readCodexThreadSummary } from "@/lib/codex-thread-summary";
 import { serializeNfm, blockNoteToNfm, applyToggleStatesFromDom } from "@/lib/nfm";
@@ -194,6 +196,7 @@ import {
 } from "@/lib/canvas-host-operations";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import {
+  useCodexAvailableModels,
   useCodexPermissionState,
   useDefaultCodexAppServerManager,
   useProjectThreadSummaries,
@@ -479,6 +482,7 @@ function NfmEditorInstance({
   const { settings: pasteResourceSettings } = usePasteResourceSettings();
   const codexManager = useDefaultCodexAppServerManager();
   const codexPermissionState = useCodexPermissionState(executionProjectId);
+  const availableCodexModels = useCodexAvailableModels();
   const projectThreadSummaries = useProjectThreadSummaries(executionProjectId);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2756,6 +2760,17 @@ function NfmEditorInstance({
     ],
   );
 
+  const agentConfigRuntimeValue = useMemo<AgentConfigRuntimeValue>(
+    () => ({
+      projectId: executionProjectId,
+      availableModels: availableCodexModels,
+      availableModelsLoading: availableCodexModels.length === 0,
+      defaultIntelligence: resolveDefaultAgentConfigIntelligence(availableCodexModels),
+      permissionState: codexPermissionState,
+    }),
+    [availableCodexModels, codexPermissionState, executionProjectId],
+  );
+
   const blockReferenceRuntimeValue = useMemo<BlockReferenceHostRuntime>(() => {
     const currentDocumentOwnerBlockId = documentOwnerBlockId ?? sourcePageContext?.pageId;
     return {
@@ -3010,67 +3025,74 @@ function NfmEditorInstance({
           />
         ) : null}
         <BlockReferenceRuntimeProvider value={blockReferenceRuntimeValue}>
-          <ThreadSectionRuntimeProvider value={threadSectionRuntimeValue}>
-            <ThreadMentionRuntimeProvider value={threadMentionRuntimeValue}>
-              <NfmEditorContextMenu
-                editor={editor}
-                onPreparePaste={() =>
-                  structuralEditingController.current?.prepareNextStructuralPaste() ??
-                  (() => undefined)
-                }
-              >
-                <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
-                  <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
-                    <BlockNoteView
-                      editor={editor}
-                      onEditorViewMount={(editorRoot) => {
-                        editorSession?.restoreSelection(editor);
-                        onEditorViewMount?.(editorRoot);
-                      }}
-                      onEditorViewUnmount={() => {
-                        onEditorViewUnmount?.();
-                        editorSession?.captureSelection(editor);
-                      }}
-                      editable
-                      onChange={handleChange}
-                      theme={themeMode}
-                      attributionTooltip={false}
-                      formattingToolbar={false}
-                      emojiPicker={false}
-                      linkToolbar={false}
-                      slashMenu={false}
-                      sideMenu={false}
-                      tableHandles={false}
-                      data-theming-css-variables-demo
-                    >
-                      <NfmSideMenuOpenProvider>
-                        <NfmCodeBlockController />
-                        <NfmSideMenuShortcutController />
-                        <SideMenuController
-                          sideMenu={customSideMenu}
-                          floatingUIOptions={sideMenuFloatingOptions}
-                        />
-                        <NfmFormattingToolbarController formattingToolbar={NfmFormattingToolbar} />
-                        <NfmLinkToolbarController
-                          linkToolbar={renderLinkToolbar}
-                          floatingUIOptions={{
-                            useTransitionStylesProps: {
-                              duration: 0,
-                            },
-                            useTransitionStatusProps: {
-                              duration: 0,
-                            },
-                          }}
-                        />
-                        <NfmSlashMenu executionProjectId={executionProjectId} allowPageReferences />
-                        <NfmTableHandlesController />
-                      </NfmSideMenuOpenProvider>
-                    </BlockNoteView>
-                  </NfmSideMenuRuntimeProvider>
-                </NfmTextActionMenuRuntimeProvider>
-              </NfmEditorContextMenu>
-            </ThreadMentionRuntimeProvider>
-          </ThreadSectionRuntimeProvider>
+          <AgentConfigRuntimeProvider value={agentConfigRuntimeValue}>
+            <ThreadSectionRuntimeProvider value={threadSectionRuntimeValue}>
+              <ThreadMentionRuntimeProvider value={threadMentionRuntimeValue}>
+                <NfmEditorContextMenu
+                  editor={editor}
+                  onPreparePaste={() =>
+                    structuralEditingController.current?.prepareNextStructuralPaste() ??
+                    (() => undefined)
+                  }
+                >
+                  <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
+                    <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>
+                      <BlockNoteView
+                        editor={editor}
+                        onEditorViewMount={(editorRoot) => {
+                          editorSession?.restoreSelection(editor);
+                          onEditorViewMount?.(editorRoot);
+                        }}
+                        onEditorViewUnmount={() => {
+                          onEditorViewUnmount?.();
+                          editorSession?.captureSelection(editor);
+                        }}
+                        editable
+                        onChange={handleChange}
+                        theme={themeMode}
+                        attributionTooltip={false}
+                        formattingToolbar={false}
+                        emojiPicker={false}
+                        linkToolbar={false}
+                        slashMenu={false}
+                        sideMenu={false}
+                        tableHandles={false}
+                        data-theming-css-variables-demo
+                      >
+                        <NfmSideMenuOpenProvider>
+                          <NfmCodeBlockController />
+                          <NfmSideMenuShortcutController />
+                          <SideMenuController
+                            sideMenu={customSideMenu}
+                            floatingUIOptions={sideMenuFloatingOptions}
+                          />
+                          <NfmFormattingToolbarController
+                            formattingToolbar={NfmFormattingToolbar}
+                          />
+                          <NfmLinkToolbarController
+                            linkToolbar={renderLinkToolbar}
+                            floatingUIOptions={{
+                              useTransitionStylesProps: {
+                                duration: 0,
+                              },
+                              useTransitionStatusProps: {
+                                duration: 0,
+                              },
+                            }}
+                          />
+                          <NfmSlashMenu
+                            executionProjectId={executionProjectId}
+                            allowPageReferences
+                          />
+                          <NfmTableHandlesController />
+                        </NfmSideMenuOpenProvider>
+                      </BlockNoteView>
+                    </NfmSideMenuRuntimeProvider>
+                  </NfmTextActionMenuRuntimeProvider>
+                </NfmEditorContextMenu>
+              </ThreadMentionRuntimeProvider>
+            </ThreadSectionRuntimeProvider>
+          </AgentConfigRuntimeProvider>
         </BlockReferenceRuntimeProvider>
         {pasteResourceDialog && (
           <PasteResourceDialog

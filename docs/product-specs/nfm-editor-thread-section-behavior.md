@@ -7,6 +7,8 @@ This document describes the current notebook-style `threadSection` behavior insi
 
 This is intentionally narrower than the main product spec. It is the detailed source of truth for runnable prompt sections in Page descriptions.
 
+Inline execution settings inside a section follow [NFM Editor Agent Config Behavior](nfm-editor-agent-config-behavior.md). The section sender preserves the structured Agent config sidecar while removing its markup from model-visible text.
+
 ## Scope
 
 Included:

@@ -490,8 +490,11 @@ describe("blocknote adapter", () => {
             type: "agentConfig",
             props: {
               mode: "plan",
+              provider: "openai",
               model: "gpt-5.5",
               reasoning: "high",
+              speed: "fast",
+              permission: "auto",
               unknownAttributes: "",
               rawAttributes: "",
             },
@@ -506,15 +509,18 @@ describe("blocknote adapter", () => {
     if (nfmBlocks[0]?.type !== "paragraph") return;
     expect(nfmBlocks[0].content[1]?.type).toBe("agentConfig");
     expect(serializeNfm(nfmBlocks)).toBe(
-      'Use <agent-config mode="plan" model="gpt-5.5" reasoning="high" />',
+      'Use <agent-config mode="plan" provider="openai" model="gpt-5.5" reasoning="high" speed="fast" permission="auto" />',
     );
 
     const reloaded = nfmToBlockNote(nfmBlocks);
     const agentConfig = Array.isArray(reloaded[0]?.content) ? reloaded[0]?.content[1] : undefined;
     expect(agentConfig?.type).toBe("agentConfig");
     expect(agentConfig?.props.mode).toBe("plan");
+    expect(agentConfig?.props.provider).toBe("openai");
     expect(agentConfig?.props.model).toBe("gpt-5.5");
     expect(agentConfig?.props.reasoning).toBe("high");
+    expect(agentConfig?.props.speed).toBe("fast");
+    expect(agentConfig?.props.permission).toBe("auto");
   });
 
   test("thread mention inline content round-trips between BlockNote and NFM", () => {

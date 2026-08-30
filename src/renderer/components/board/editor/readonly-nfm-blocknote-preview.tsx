@@ -22,7 +22,7 @@ import {
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { BoxSelect, Link2, Rows3 } from "@/components/shared/icons/generic-icons";
-import { NodexLogoMarkIcon, RefreshIcon, SettingsGeneralIcon } from "@/components/shared/icons";
+import { NodexLogoMarkIcon, RefreshIcon } from "@/components/shared/icons";
 
 import { cn } from "@/lib/utils";
 import { nfmSyntaxHighlighter } from "@/lib/syntax-highlighting";
@@ -227,27 +227,19 @@ const createReadonlyAgentConfigInlineContentSpec = () =>
   createReactInlineContentSpec(agentConfigInlineContentConfig, {
     render: ({ inlineContent }) => {
       const chip = resolveAgentConfigChip(inlineContent.props as Partial<AgentConfigProps>);
-      const Icon = chip.invalid
-        ? SettingsGeneralIcon
-        : chip.detail
-          ? NodexLogoMarkIcon
-          : SettingsGeneralIcon;
       return (
         <NodexTooltip tooltipContent={[chip.label, chip.detail].filter(Boolean).join(" - ")}>
           <span
             contentEditable={false}
             className={inlineTintedChipVariants({
-              tone: chip.invalid ? "neutral" : "accent",
+              tone: "neutral",
             })}
           >
-            <Icon
-              className={inlineTintedChipIconClassName}
-              {...(Icon === NodexLogoMarkIcon ? { monochrome: true } : {})}
-            />
+            <NodexLogoMarkIcon className={inlineTintedChipIconClassName} monochrome />
             <span className={cn(inlineTintedChipLabelClassName, "truncate")}>{chip.label}</span>
-            {chip.detail ? (
+            {chip.summary ? (
               <span className={cn(inlineTintedChipLabelClassName, "ml-1 truncate opacity-70")}>
-                {chip.detail}
+                {chip.summary}
               </span>
             ) : null}
           </span>

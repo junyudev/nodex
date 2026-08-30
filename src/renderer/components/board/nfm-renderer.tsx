@@ -25,7 +25,6 @@ import type {
 import { FileLinkAnchor } from "../shared/file-link-anchor";
 import { parseNfm } from "@/lib/nfm/parser";
 import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
-import { formatCodexModelLabel } from "@/lib/codex-thread-settings";
 import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
 import { formatDateMentionPlainText } from "@/lib/nfm/date-mention";
 import { cn } from "@/lib/utils";
@@ -41,6 +40,7 @@ import { MermaidCodePreview } from "@/components/board/editor/mermaid-code-previ
 import { useTheme } from "@/lib/use-theme";
 import { resolveCodeLanguage } from "../../../shared/nfm/code-language-catalog";
 import { latexToHTMLString } from "@blocknote/math-block";
+import { resolveAgentConfigChip } from "./editor/agent-config-chip";
 
 interface NfmRendererProps {
   content: string;
@@ -573,28 +573,23 @@ function InlineItem({
   }
 
   if (item.type === "agentConfig") {
-    const invalid = (item.unknownAttributes?.length ?? 0) > 0;
-    const label = invalid
-      ? "Invalid config"
-      : item.mode === "plan"
-        ? "Plan mode"
-        : item.mode === "default"
-          ? "Default mode"
-          : "Agent config";
-    const modelLabel = item.model ? formatCodexModelLabel(item.model, []) : "";
-    const detail = [modelLabel, item.reasoning].filter(Boolean).join(" · ");
+    const chip = resolveAgentConfigChip({
+      ...item,
+      unknownAttributes: item.unknownAttributes?.join(",") ?? "",
+      rawAttributes: item.rawAttributes ?? "",
+    });
     return (
       <span
         className={cn(
           "inline-flex max-w-[18rem] items-center gap-1 rounded-full px-2 py-0.5 align-middle text-[12px] leading-5",
-          invalid
+          chip.invalid
             ? "bg-token-foreground/8 text-token-description-foreground"
-            : "bg-token-charts-blue/10 text-token-charts-blue",
+            : "border border-token-border/55 bg-token-foreground/[0.035] text-token-foreground",
         )}
       >
         <NodexLogoMarkIcon monochrome className="size-3 shrink-0" />
-        <span className="truncate">{label}</span>
-        {detail ? <span className="truncate opacity-70">{detail}</span> : null}
+        <span className="truncate">{chip.label}</span>
+        {chip.summary ? <span className="truncate opacity-70">{chip.summary}</span> : null}
       </span>
     );
   }

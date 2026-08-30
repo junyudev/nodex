@@ -8,7 +8,7 @@ import {
   INTELLIGENCE_SELECTOR_MENU_WIDTH_PX,
   resolveIntelligenceSelectorAlignOffset,
   resolveIntelligenceSelectorExpandedContentWidth,
-} from "./intelligence-selector-trigger";
+} from "@/components/shared/agent-runtime/intelligence-selector-trigger";
 
 describe("intelligence selector trigger geometry", () => {
   test("expands short labels to the menu width without moving its centered anchor", () => {

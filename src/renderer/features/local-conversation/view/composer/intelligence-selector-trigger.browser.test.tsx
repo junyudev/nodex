@@ -5,7 +5,7 @@ import {
   buildIntelligenceSelectorLabelMeasurementKey,
   IntelligenceSelectorTrigger,
   useIntelligenceSelectorTriggerGeometry,
-} from "./intelligence-selector-trigger";
+} from "@/components/shared/agent-runtime/intelligence-selector-trigger";
 import "../../../../globals.css";
 
 function SemanticallyStableCandidatesHarness({ revision }: { readonly revision: number }) {

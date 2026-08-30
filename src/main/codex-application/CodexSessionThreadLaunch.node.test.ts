@@ -20,6 +20,7 @@ import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { CodexAttachments } from "./CodexAttachments";
+import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { make, type CodexSessionThreadLaunchContext } from "./CodexSessionThreadLaunch";
@@ -73,6 +74,7 @@ const harness = (
     readonly preparedClientUserMessageId?: string;
     readonly promoteFails?: boolean;
     readonly responseOverrides?: Readonly<Record<string, unknown>>;
+    readonly prepareAgentConfig?: CodexAgentConfigRuntime["Service"]["prepare"];
   } = {},
 ) => {
   const events: string[] = [];
@@ -199,6 +201,12 @@ const harness = (
           forHost: () => Effect.succeed(capability),
           forThread: () => Effect.succeed(capability),
           isCurrent: () => Effect.succeed(true),
+        }),
+      ),
+      Effect.provideService(
+        CodexAgentConfigRuntime,
+        CodexAgentConfigRuntime.of({
+          prepare: options.prepareAgentConfig ?? (() => Effect.succeed({ hasConfig: false })),
         }),
       ),
       Effect.provideService(
@@ -500,6 +508,107 @@ it.effect("preserves the semantic source of protocol-created child Threads", () 
     yield* service.start({ ...input(), threadSource: "subagent" }, context);
 
     assert.strictEqual(test.threadStartParams[0]?.threadSource, "subagent");
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("preserves first-submission identity while consuming Agent config for either owner", () =>
+  Effect.gen(function* () {
+    const profile: CodexExecutionProfile = {
+      modelId: "gpt-5.6-luna",
+      reasoningEffort: "max",
+      serviceTier: "fast",
+    };
+    for (const ownerClientId of [null, "renderer-a"]) {
+      const scope = yield* Scope.make();
+      const test = harness(scope, {
+        prepareAgentConfig: () =>
+          Effect.succeed({
+            hasConfig: true,
+            executionProfile: profile,
+            collaborationMode: "plan",
+            permissionMode: "auto",
+          }),
+      });
+      const service = yield* test.effect;
+
+      yield* service.start(
+        {
+          ...input(),
+          promptInput: {
+            text: "Ship it",
+            agentConfigs: [{ provider: "openai", model: "gpt-5.6-luna" }],
+          },
+        },
+        { ...context, ownerClientId },
+      );
+
+      assert.strictEqual(test.threadStartParams[0]?.model, "gpt-5.6-luna");
+      assert.strictEqual(test.threadStartParams[0]?.serviceTier, "fast");
+      assert.strictEqual(test.threadStartParams[0]?.historyMode, "paginated");
+      assert.strictEqual(test.acceptedCapabilities[0], test.capability);
+      const overrides = ownerClientId
+        ? test.preparationInputs[0]?.overrides
+        : test.firstTurnOverrides[0];
+      assert.deepInclude(overrides, {
+        clientUserMessageId: firstSubmission.clientUserMessageId,
+        model: "gpt-5.6-luna",
+        serviceTier: "fast",
+        reasoningEffort: "max",
+        collaborationMode: "plan",
+        permissionMode: "auto",
+        agentConfigPermissionMode: true,
+        promptInput: { text: "Ship it", agentConfigs: [] },
+      });
+      if (ownerClientId) assert.deepInclude(test.freshLaunches[0], firstSubmission);
+      yield* Scope.close(scope, Exit.void);
+    }
+  }),
+);
+
+it.effect("freezes resolved Agent config into a pending worktree request", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const profile: CodexExecutionProfile = {
+      modelId: "gpt-5.6-luna",
+      reasoningEffort: "max",
+      serviceTier: "fast",
+    };
+    const test = harness(scope, {
+      prepareAgentConfig: () =>
+        Effect.succeed({
+          hasConfig: true,
+          executionProfile: profile,
+          collaborationMode: "plan",
+          permissionMode: "auto",
+        }),
+    });
+    const service = yield* test.effect;
+
+    const result = yield* service.start(
+      {
+        ...input(),
+        prompt: '<agent-config model="gpt-5.6-luna" />\nShip it',
+        runInTarget: "newWorktree",
+      },
+      context,
+    );
+
+    assert.strictEqual(result.kind, "pending");
+    const request = test.pendingWorktreeRequests[0];
+    assert.strictEqual(request?.launchMode, "start-conversation");
+    if (request?.launchMode !== "start-conversation") return;
+    assert.strictEqual(request.prompt, "Ship it");
+    assert.deepStrictEqual(request.firstSubmission, firstSubmission);
+    assert.deepStrictEqual(request.startConversationParamsInput.executionProfile, profile);
+    assert.strictEqual(request.startConversationParamsInput.agentMode, "auto");
+    assert.strictEqual(request.startConversationParamsInput.agentConfigPermissionMode, true);
+    assert.strictEqual(request.startConversationParamsInput.collaborationMode?.mode, "plan");
+    assert.deepEqual(request.startConversationParamsInput.projectAssignment, {
+      projectKind: "local",
+      projectId: "project-a",
+      pendingCoreUpdate: false,
+    });
     yield* Scope.close(scope, Exit.void);
   }),
 );

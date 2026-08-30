@@ -96,8 +96,11 @@ function stripPromptSideEffectsFromInline(
     if (item.type === "agentConfig") {
       agentConfigs.push({
         ...(item.mode ? { mode: item.mode } : {}),
+        ...(item.provider ? { provider: item.provider } : {}),
         ...(item.model ? { model: item.model } : {}),
         ...(item.reasoning ? { reasoning: item.reasoning } : {}),
+        ...(item.speed ? { speed: item.speed } : {}),
+        ...(item.permission ? { permission: item.permission } : {}),
         ...(item.unknownAttributes?.length ? { unknownAttributes: item.unknownAttributes } : {}),
       });
       continue;

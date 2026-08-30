@@ -61,8 +61,11 @@ function parsePromptAgentConfigLine(line: string): CodexPromptAgentConfigInput |
 
   return {
     ...(item.mode ? { mode: item.mode } : {}),
+    ...(item.provider ? { provider: item.provider } : {}),
     ...(item.model ? { model: item.model } : {}),
     ...(item.reasoning ? { reasoning: item.reasoning } : {}),
+    ...(item.speed ? { speed: item.speed } : {}),
+    ...(item.permission ? { permission: item.permission } : {}),
     ...(item.unknownAttributes?.length ? { unknownAttributes: item.unknownAttributes } : {}),
   };
 }
@@ -87,6 +90,16 @@ export function splitCodexPromptAgentConfigLines(prompt: string): {
     text: textLines.join("\n"),
     agentConfigs,
   };
+}
+
+/** Reads Agent config sidecars without materializing any other prompt inputs. */
+export function collectCodexPromptAgentConfigs(
+  prompt: string,
+  promptInput: CodexPromptInput | undefined,
+): readonly CodexPromptAgentConfigInput[] {
+  return promptInput
+    ? [...(promptInput.agentConfigs ?? [])]
+    : splitCodexPromptAgentConfigLines(prompt).agentConfigs;
 }
 
 function resolveMentionInput(input: { readonly name: string; readonly path: string }): UserInput {

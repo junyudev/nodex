@@ -14,7 +14,7 @@ import { FastModeIcon, ChevronDownIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
-import { COMPOSER_FOOTER_GHOST_BUTTON_CLASS_NAME } from "../shared/composer-footer-controls";
+import { COMPOSER_FOOTER_GHOST_BUTTON_CLASS_NAME } from "../../../features/local-conversation/view/shared/composer-footer-controls";
 
 export const INTELLIGENCE_SELECTOR_MENU_WIDTH_PX = 224;
 export const INTELLIGENCE_SELECTOR_FAST_SLOT_WIDTH_PX = 18;

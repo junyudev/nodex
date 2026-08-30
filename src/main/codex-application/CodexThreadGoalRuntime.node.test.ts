@@ -77,6 +77,7 @@ const settings = (
     Effect.die("Unexpected settings update"),
 ): CodexThreadSettingsRuntime["Service"] =>
   CodexThreadSettingsRuntime.of({
+    readExecutionProfile: () => Effect.succeed(null),
     update,
     awaitCurrent: () => Effect.void,
     remoteUpdateSupport: () => "unknown",

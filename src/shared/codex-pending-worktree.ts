@@ -93,6 +93,8 @@ export interface CodexPendingStartConversationParamsInput {
   readonly fileAttachments: readonly CodexLiveFileAttachment[];
   readonly addedFiles: readonly CodexLiveFileAttachment[];
   readonly agentMode: CodexAgentMode;
+  /** Keeps content-origin permission checks active after the NFM sidecar is consumed. */
+  readonly agentConfigPermissionMode?: boolean;
   readonly permissionProfileId?: string | undefined;
   readonly shouldSendPermissionOverrides: boolean;
   readonly model: null;

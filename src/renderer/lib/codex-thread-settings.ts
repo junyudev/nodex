@@ -222,7 +222,7 @@ export function resolveCodexThreadSettings(
 
 export function formatCodexModelLabel(
   modelId: string | undefined,
-  models: CodexModelOption[],
+  models: readonly CodexModelOption[],
 ): string {
   if (!modelId) return DEFAULT_MODEL_LABEL;
 

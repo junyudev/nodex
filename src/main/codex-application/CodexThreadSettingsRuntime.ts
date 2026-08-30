@@ -63,6 +63,9 @@ export type CodexThreadSettingsError = CodexRuntimeError | CodexThreadSettingsOp
 export class CodexThreadSettingsRuntime extends Context.Service<
   CodexThreadSettingsRuntime,
   {
+    readonly readExecutionProfile: (
+      threadId: string,
+    ) => Effect.Effect<CodexExecutionProfile | null, CodexThreadSettingsOperationError>;
     readonly update: (
       input: CodexThreadSettingsUpdateCommand,
     ) => Effect.Effect<CodexConversationThreadSettings, CodexThreadSettingsError>;
@@ -244,6 +247,11 @@ export const make: Effect.Effect<
     return resolved;
   });
 
+  const readExecutionProfile = (threadId: string) =>
+    readCoreThread(threadId).pipe(
+      Effect.map((thread) => buildCoreWorkspaceThreadSummary(thread).executionProfile ?? null),
+    );
+
   const prepare = Effect.fn("CodexThreadSettingsRuntime.prepare")(function* (
     input: CodexThreadSettingsUpdateCommand,
   ) {
@@ -332,6 +340,7 @@ export const make: Effect.Effect<
   });
 
   return CodexThreadSettingsRuntime.of({
+    readExecutionProfile,
     update,
     awaitCurrent: (threadId) => runMutation(threadId, Effect.void),
     remoteUpdateSupport: () => remoteUpdateSupport,

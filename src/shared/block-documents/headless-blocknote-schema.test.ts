@@ -52,8 +52,11 @@ describe("headless Block Document schema", () => {
             type: "agentConfig",
             props: {
               mode: "agent",
+              provider: "openai",
               model: "gpt-5",
               reasoning: "high",
+              speed: "fast",
+              permission: "auto",
               unknownAttributes: "",
               rawAttributes: "mode=agent",
             },

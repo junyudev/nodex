@@ -104,8 +104,11 @@ export const agentConfigInlineContentConfig = {
   type: "agentConfig",
   propSchema: {
     mode: { default: "" },
+    provider: { default: "" },
     model: { default: "" },
     reasoning: { default: "" },
+    speed: { default: "" },
+    permission: { default: "" },
     unknownAttributes: { default: "" },
     rawAttributes: { default: "" },
   },

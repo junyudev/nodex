@@ -61,8 +61,11 @@ pub enum NfmInlineContent {
     },
     AgentConfig {
         mode: Option<String>,
+        provider: Option<String>,
         model: Option<String>,
         reasoning: Option<String>,
+        speed: Option<String>,
+        permission: Option<String>,
         raw_attributes: Option<String>,
     },
     ThreadMention {
@@ -505,8 +508,11 @@ fn append_agent_config(item: &Map<String, Value>, output: &mut Vec<NfmInlineCont
     let props = item.get("props").and_then(Value::as_object);
     output.push(NfmInlineContent::AgentConfig {
         mode: props.and_then(|props| map_non_empty_string(props, "mode")),
+        provider: props.and_then(|props| map_non_empty_string(props, "provider")),
         model: props.and_then(|props| map_non_empty_string(props, "model")),
         reasoning: props.and_then(|props| map_non_empty_string(props, "reasoning")),
+        speed: props.and_then(|props| map_non_empty_string(props, "speed")),
+        permission: props.and_then(|props| map_non_empty_string(props, "permission")),
         raw_attributes: props.and_then(|props| map_non_empty_string(props, "rawAttributes")),
     });
 }
@@ -1085,19 +1091,29 @@ fn serialize_inline_item(item: &NfmInlineContent) -> String {
         }
         NfmInlineContent::AgentConfig {
             mode,
+            provider,
             model,
             reasoning,
+            speed,
+            permission,
             raw_attributes,
         } => {
-            let attrs = [("mode", mode), ("model", model), ("reasoning", reasoning)]
-                .into_iter()
-                .filter_map(|(name, value)| {
-                    value
-                        .as_ref()
-                        .filter(|value| !value.is_empty())
-                        .map(|value| format!("{name}=\"{}\"", escape_xml_attr(value)))
-                })
-                .collect::<Vec<_>>();
+            let attrs = [
+                ("mode", mode),
+                ("provider", provider),
+                ("model", model),
+                ("reasoning", reasoning),
+                ("speed", speed),
+                ("permission", permission),
+            ]
+            .into_iter()
+            .filter_map(|(name, value)| {
+                value
+                    .as_ref()
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!("{name}=\"{}\"", escape_xml_attr(value)))
+            })
+            .collect::<Vec<_>>();
             if !attrs.is_empty() {
                 return format!("<agent-config {} />", attrs.join(" "));
             }
@@ -1907,12 +1923,24 @@ impl<'a> InlineParser<'a> {
             }
             "<agent-config" => NfmInlineContent::AgentConfig {
                 mode: attrs.get("mode").filter(|value| !value.is_empty()).cloned(),
+                provider: attrs
+                    .get("provider")
+                    .filter(|value| !value.is_empty())
+                    .cloned(),
                 model: attrs
                     .get("model")
                     .filter(|value| !value.is_empty())
                     .cloned(),
                 reasoning: attrs
                     .get("reasoning")
+                    .filter(|value| !value.is_empty())
+                    .cloned(),
+                speed: attrs
+                    .get("speed")
+                    .filter(|value| !value.is_empty())
+                    .cloned(),
+                permission: attrs
+                    .get("permission")
                     .filter(|value| !value.is_empty())
                     .cloned(),
                 raw_attributes: (!raw.trim().is_empty()).then(|| raw.trim_start().to_owned()),

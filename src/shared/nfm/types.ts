@@ -96,8 +96,11 @@ export interface NfmAttachmentInlineContent {
 export interface NfmAgentConfigInlineContent {
   type: "agentConfig";
   mode?: string;
+  provider?: string;
   model?: string;
   reasoning?: string;
+  speed?: string;
+  permission?: string;
   unknownAttributes?: string[];
   rawAttributes?: string;
 }

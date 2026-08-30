@@ -22,7 +22,6 @@ import type {
   CodexConversationThreadSettings,
   CodexLiveFileAttachment,
   CodexPreparedPrompt,
-  CodexPromptAgentConfigInput,
   CodexPromptInput,
   CodexQueuedFollowUp,
   CodexReasoningEffort,
@@ -33,13 +32,16 @@ import type {
 import type { CodexCanonicalSteeringUserMessageItem } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { ProfileAssets } from "../local-store/ProfileAssets";
 import { buildTurnPermissionOverrides } from "../codex/codex-permission-resolver";
+import {
+  CodexAgentConfigRuntime,
+  validateCodexAgentConfigPermissionDecision,
+} from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexConversationContext } from "./CodexConversationContext";
 import { CodexPermissions, resolveCanonicalPermissionContext } from "./CodexPermissions";
 import { CodexPreferences } from "./CodexPreferences";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
-import { ComposerCatalog } from "./ComposerCatalog";
 
 export interface CodexTurnStartPlan {
   readonly threadId: string;
@@ -100,6 +102,8 @@ export interface CodexTurnStartPreparationInput {
     readonly collaborationMode?: CodexCollaborationModeKind | null;
     readonly summary?: TurnStartParams["summary"];
     readonly permissionMode?: import("../../shared/types").CodexPermissionMode;
+    /** Preserves the content-origin safety check after new-task preflight consumes the atom. */
+    readonly agentConfigPermissionMode?: boolean;
     readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];
     readonly worktreeInit?: CodexCanonicalWorktreeInitItem;
   };
@@ -128,17 +132,6 @@ const normalizeText = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
-};
-
-const parseMode = (value: string): CodexCollaborationModeKind | null =>
-  value === "default" || value === "plan" ? value : null;
-
-const parseEffort = (value: string): CodexReasoningEffort | null => {
-  const normalized = normalizeText(value);
-  if (!normalized || normalized.length > 64 || /[\u0000-\u001f\u007f-\u009f]/u.test(normalized)) {
-    return null;
-  }
-  return normalized;
 };
 
 const imageInput = (
@@ -194,78 +187,27 @@ export function projectCodexTurnServiceTier(
 export const make: Effect.Effect<
   CodexTurnPreparation["Service"],
   never,
+  | CodexAgentConfigRuntime
   | CodexAttachments
   | CodexConversationContext
   | CodexConversationProjection
   | CodexPermissions
   | CodexPreferences
   | CodexThreadSettingsRuntime
-  | ComposerCatalog
   | ProfileAssets
 > = Effect.gen(function* () {
+  const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
   const projection = yield* CodexConversationProjection;
   const permissions = yield* CodexPermissions;
   const preferences = yield* CodexPreferences;
   const threadSettings = yield* CodexThreadSettingsRuntime;
-  const composerCatalog = yield* ComposerCatalog;
   const assets = yield* ProfileAssets;
-
-  const resolveAgentConfigOverrides = Effect.fn("CodexTurnPreparation.agentConfigOverrides")(
-    function* (
-      configs: readonly CodexPromptAgentConfigInput[],
-      operation: "start" | "steer",
-      threadId: string,
-    ) {
-      const fail = (cause: unknown) =>
-        Effect.fail(new CodexTurnPreparationError({ operation, threadId, cause }));
-      let mode: CodexCollaborationModeKind | undefined;
-      let effort: CodexReasoningEffort | undefined;
-      let model: string | undefined;
-      for (const config of configs) {
-        if ((config.unknownAttributes?.length ?? 0) > 0) {
-          return yield* fail(
-            new Error(
-              `Unsupported agent config attributes: ${config.unknownAttributes?.join(", ")}`,
-            ),
-          );
-        }
-        if (config.mode !== undefined) {
-          mode = parseMode(config.mode) ?? undefined;
-          if (!mode) return yield* fail(new Error(`Unsupported agent config mode: ${config.mode}`));
-        }
-        if (config.reasoning !== undefined) {
-          effort = parseEffort(config.reasoning) ?? undefined;
-          if (!effort) {
-            return yield* fail(
-              new Error(`Unsupported agent config reasoning: ${config.reasoning}`),
-            );
-          }
-        }
-        if (config.model !== undefined) model = config.model;
-      }
-      if (model !== undefined) {
-        const catalog = yield* composerCatalog.listModels;
-        const selected = catalog.find(
-          (candidate) => !candidate.hidden && (candidate.id === model || candidate.model === model),
-        );
-        if (!selected) return yield* fail(new Error(`Unsupported agent config model: ${model}`));
-        model = selected.id;
-      }
-      return {
-        ...(mode ? { mode } : {}),
-        ...(effort ? { effort } : {}),
-        ...(model ? { model } : {}),
-      };
-    },
-  );
 
   const preparePrompt = Effect.fn("CodexTurnPreparation.preparePrompt")(function* (
     prompt: string,
     promptInput: CodexPromptInput | undefined,
-    operation: "start" | "steer",
-    threadId: string,
     preparedInput?: CodexPreparedPrompt,
   ) {
     const prepared = preparedInput
@@ -275,11 +217,6 @@ export const make: Effect.Effect<
             resolveImageInput: (source) => imageInput(source, assets.resolveAssetPath),
           }),
         );
-    const overrides = yield* resolveAgentConfigOverrides(
-      prepared.agentConfigs,
-      operation,
-      threadId,
-    );
     const pasted = yield* Effect.forEach(prepared.pastedTextAttachments, (attachment) =>
       "text" in attachment
         ? Effect.succeed(attachment.text)
@@ -297,33 +234,44 @@ export const make: Effect.Effect<
         ...pastedItems,
         ...prepared.inputItems.slice(insertionIndex),
       ],
-      overrides,
     };
   });
 
   const start: CodexTurnPreparation["Service"]["start"] = (input) =>
     Effect.gen(function* () {
       yield* threadSettings.awaitCurrent(input.threadId);
-      const state = yield* projection.read(input.threadId);
       const prepared = yield* preparePrompt(
         input.prompt,
         input.overrides?.promptInput,
-        "start",
-        input.threadId,
         input.overrides?.preparedPrompt,
       );
-      const settings = state.canonical.sidecar.latestThreadSettings;
-      const hydration = state.canonical.sidecar.hydrationContext;
-      const hydratedSettings = hydration?.latestThreadSettings ?? null;
       const liveContext = yield* conversationContext.read(input.threadId);
       const projectId = liveContext.projectId;
       const cwd = liveContext.cwd;
       const workspaceRoots = [...liveContext.writableRoots];
-      const permission = yield* permissions.resolve({
-        projectId,
-        requestedMode: input.overrides?.permissionMode,
-        workspaceRoots,
+      const preparedAgentConfig = yield* agentConfig.prepare({
+        target: { kind: "existing-thread", threadId: input.threadId },
+        configs: prepared.agentConfigs,
+        permissionContext: { projectId, workspaceRoots },
       });
+      const state = yield* projection.read(input.threadId);
+      const settings = state.canonical.sidecar.latestThreadSettings;
+      const hydration = state.canonical.sidecar.hydrationContext;
+      const hydratedSettings = hydration?.latestThreadSettings ?? null;
+      const requestedPermissionMode =
+        preparedAgentConfig.permissionMode ?? input.overrides?.permissionMode;
+      const permission =
+        preparedAgentConfig.permissionDecision ??
+        (yield* permissions.resolve({
+          projectId,
+          requestedMode: requestedPermissionMode,
+          workspaceRoots,
+        }));
+      if (input.overrides?.agentConfigPermissionMode && requestedPermissionMode) {
+        yield* Effect.try(() =>
+          validateCodexAgentConfigPermissionDecision(requestedPermissionMode, permission),
+        );
+      }
       const turnPermissions = buildTurnPermissionOverrides({
         permissionState: permission.state,
         workspaceRoots,
@@ -331,20 +279,20 @@ export const make: Effect.Effect<
       const fallbackCollaboration =
         settings?.collaborationMode ?? hydratedSettings?.collaborationMode ?? null;
       const model =
-        normalizeText(prepared.overrides.model) ??
+        normalizeText(preparedAgentConfig.executionProfile?.modelId) ??
         normalizeText(input.overrides?.model) ??
         normalizeText(settings?.model) ??
         normalizeText(hydratedSettings?.model) ??
         normalizeText(fallbackCollaboration?.settings.model);
       const effort =
-        prepared.overrides.effort ??
+        preparedAgentConfig.executionProfile?.reasoningEffort ??
         input.overrides?.reasoningEffort ??
         settings?.effort ??
         hydratedSettings?.effort ??
         fallbackCollaboration?.settings.reasoning_effort ??
         null;
       const mode =
-        prepared.overrides.mode ??
+        preparedAgentConfig.collaborationMode ??
         input.overrides?.collaborationMode ??
         fallbackCollaboration?.mode ??
         null;
@@ -357,10 +305,15 @@ export const make: Effect.Effect<
         configuredSummary: settings?.summary ?? hydratedSettings?.summary,
         explicitSummary,
       });
-      const serviceTierRequest = projectCodexTurnServiceTier(
-        input.overrides,
-        settings?.serviceTier ?? hydratedSettings?.serviceTier,
-      );
+      const serviceTierRequest = preparedAgentConfig.executionProfile
+        ? projectCodexTurnServiceTier(
+            { serviceTier: preparedAgentConfig.executionProfile.serviceTier },
+            settings?.serviceTier ?? hydratedSettings?.serviceTier,
+          )
+        : projectCodexTurnServiceTier(
+            input.overrides,
+            settings?.serviceTier ?? hydratedSettings?.serviceTier,
+          );
       const serviceTier = serviceTierRequest.serviceTier ?? null;
       const clientUserMessageId = input.overrides?.clientUserMessageId ?? randomUUID();
       const request: TurnStartParams = {
@@ -503,15 +456,10 @@ export const make: Effect.Effect<
     Effect.gen(function* () {
       const threadId = input.command.threadId;
       const state = yield* projection.read(threadId);
-      const prepared = yield* preparePrompt(
-        input.command.prompt,
-        input.command.promptInput,
-        "steer",
-        threadId,
-      );
+      const prepared = yield* preparePrompt(input.command.prompt, input.command.promptInput);
       const fail = (cause: unknown) =>
         Effect.fail(new CodexTurnPreparationError({ operation: "steer", threadId, cause }));
-      if (prepared.overrides.mode || prepared.overrides.model || prepared.overrides.effort) {
+      if (prepared.agentConfigs.length > 0) {
         return yield* fail(new Error("Agent config cannot be steered into a running turn"));
       }
       if (!prepared.promptText.trim())

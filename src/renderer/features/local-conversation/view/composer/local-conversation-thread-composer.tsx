@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -10,11 +9,6 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import {
-  formatCodexModelLabel,
-  formatCodexReasoningEffortLabel,
-  resolveCodexReasoningEffortOptions,
-} from "@/lib/codex-thread-settings";
 import { resolveContextWindowIndicatorState } from "@/lib/codex-context-window";
 import type {
   CodexComposerAppshotContext,
@@ -23,9 +17,7 @@ import type {
   CodexPermissionState,
   CodexPromptDocumentInput,
   CodexPromptInput,
-  CodexReasoningEffort,
   CodexReviewDiffCommentAttachment,
-  CodexServiceTier,
   CodexThreadGoalDraftInput,
   CodexThreadGoalMaterializedDraft,
 } from "@/lib/types";
@@ -57,7 +49,6 @@ import {
 import { cn } from "../../../../lib/utils";
 import {
   CloseIcon,
-  FastModeIcon,
   GoalClearIcon,
   GoalTargetIcon,
   ComposerAddFilesIcon,
@@ -96,14 +87,6 @@ import {
   ContextWindowIndicator,
   captureComposerAppshot,
   invokeBrowserSidebarCommand,
-  NodexDropdownItem,
-  NodexDropdownMenu,
-  NodexDropdownMessage,
-  NodexDropdownSearchInput,
-  NodexDropdownSection,
-  NodexDropdownSelectedIcon,
-  NodexDropdownSummarySubmenuItem,
-  NodexDropdownTitle,
   NodexTooltip,
   PermissionModeDropdown,
   pickComposerFiles,
@@ -181,12 +164,7 @@ import {
   COMPOSER_FOOTER_PLAN_ACCESSORY_BUTTON_CLASS_NAME,
   ComposerFooterAccessoryDivider,
 } from "../shared/composer-footer-controls";
-import {
-  IntelligenceSelectorTrigger,
-  INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX,
-  type IntelligenceSelectorLabelCandidate,
-  useIntelligenceSelectorTriggerGeometry,
-} from "./intelligence-selector-trigger";
+import { AgentIntelligenceDropdown } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import {
   clearComposerCompletedDraftAtom,
   composerAddedFilesAtom,
@@ -285,19 +263,6 @@ interface ThreadComposerProps {
   intelligenceController?: ComposerIntelligenceController;
 }
 
-const SERVICE_TIER_OPTIONS = [
-  {
-    value: null,
-    label: "Standard",
-    description: "Default speed, normal usage",
-  },
-  {
-    value: "fast" as const,
-    label: "Fast",
-    description: "1.5x speed · More usage",
-  },
-];
-
 function isElectronLikeComposerEnvironment(): boolean {
   if (typeof window === "undefined") {
     return false;
@@ -308,19 +273,6 @@ function isElectronLikeComposerEnvironment(): boolean {
   }
 
   return document.documentElement.dataset.codexWindowType === "electron";
-}
-
-function formatCompactCodexModelLabel(
-  modelId: string,
-  models: ThreadFooterModel["availableModels"],
-): string {
-  const label = formatCodexModelLabel(modelId, models).trim();
-  if (!label) return modelId;
-
-  const withoutGptPrefix = label.replace(/^GPT(?:[-\s])?/i, "");
-  const withoutCodexSuffix = withoutGptPrefix.replace(/(?:[-\s])?Codex.*$/i, "");
-  const compact = withoutCodexSuffix.trim();
-  return compact || label;
 }
 
 interface ComposerAttachmentState {
@@ -940,107 +892,6 @@ function PlanKeywordSuggestion({
   );
 }
 
-function resolveReasoningEffortForModelChange(input: {
-  currentReasoningEffort: CodexReasoningEffort;
-  nextModelId: string;
-  models: ThreadFooterModel["availableModels"];
-}): CodexReasoningEffort | null {
-  const nextModel = input.models.find(
-    (candidate) => candidate.id === input.nextModelId && !candidate.hidden,
-  );
-  const supportedOptions = resolveCodexReasoningEffortOptions(input.nextModelId, input.models);
-  const supportedEfforts = new Set(supportedOptions.map((option) => option.reasoningEffort));
-
-  if (supportedEfforts.has(input.currentReasoningEffort)) {
-    return input.currentReasoningEffort;
-  }
-
-  const preferredEfforts: Array<CodexReasoningEffort | null | undefined> = [
-    nextModel?.defaultReasoningEffort,
-    supportedEfforts.has("high") ? "high" : null,
-    supportedOptions[0]?.reasoningEffort,
-  ];
-
-  for (const effort of preferredEfforts) {
-    if (effort && supportedEfforts.has(effort)) {
-      return effort;
-    }
-  }
-
-  return null;
-}
-
-function renderModelMenuLabel(input: {
-  modelId: string;
-  availableModels: ThreadFooterModel["availableModels"];
-  serviceTier: CodexServiceTier;
-  showFastIndicator: boolean;
-}) {
-  return (
-    <span className="flex min-w-0 items-center gap-1 tabular-nums">
-      {input.showFastIndicator && input.serviceTier === "fast" ? (
-        <FastModeIcon className="icon-2xs shrink-0 text-token-foreground" />
-      ) : null}
-      <span className="truncate whitespace-nowrap">
-        {formatCodexModelLabel(input.modelId, input.availableModels)}
-      </span>
-    </span>
-  );
-}
-
-function ModelSelectorMenuItem({
-  candidate,
-  model,
-  serviceTier,
-  showFastIndicator,
-  controller,
-}: {
-  candidate: ThreadFooterModel["availableModels"][number];
-  model: ThreadFooterModel;
-  serviceTier: CodexServiceTier;
-  showFastIndicator: boolean;
-  controller: ComposerIntelligenceController;
-}) {
-  const selection = controller.selection as Extract<
-    ComposerIntelligenceController["selection"],
-    { kind: "codex" }
-  >;
-  const isSelected = candidate.id === selection.model;
-  const description = candidate.description.trim().replace(/\.$/u, "");
-
-  return (
-    <NodexDropdownItem
-      key={candidate.id}
-      onSelect={(event) => {
-        event.preventDefault();
-        const nextReasoningEffort = resolveReasoningEffortForModelChange({
-          currentReasoningEffort: selection.reasoningEffort,
-          nextModelId: candidate.id,
-          models: model.availableModels,
-        });
-
-        if (!nextReasoningEffort) return;
-        controller.select({
-          kind: "codex",
-          model: candidate.id,
-          reasoningEffort: nextReasoningEffort,
-          serviceTier: selection.serviceTier,
-        });
-      }}
-      rightSlot={isSelected ? <NodexDropdownSelectedIcon /> : null}
-      tooltipText={description || undefined}
-      data-model-selected={isSelected ? "true" : undefined}
-    >
-      {renderModelMenuLabel({
-        modelId: candidate.id,
-        availableModels: model.availableModels,
-        serviceTier,
-        showFastIndicator,
-      })}
-    </NodexDropdownItem>
-  );
-}
-
 export function ModelSelectorDropdown({
   model,
   controller,
@@ -1052,195 +903,17 @@ export function ModelSelectorDropdown({
     ComposerIntelligenceController["selection"],
     { kind: "codex" }
   >;
-  const menuOpen = controller.isOpen;
-  const setMenuOpen = controller.setOpen;
-  const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
-  const normalizedQuery = deferredQuery.trim().toLocaleLowerCase();
-  const matchingModels = model.availableModels.filter(
-    (candidate) =>
-      !candidate.hidden &&
-      (!normalizedQuery ||
-        `${candidate.displayName} ${candidate.id}`.toLocaleLowerCase().includes(normalizedQuery)),
-  );
-  const visibleModels = matchingModels.slice(0, 50);
-  const hiddenMatchCount = matchingModels.length - visibleModels.length;
-  const modelLabel = formatCompactCodexModelLabel(selection.model, model.availableModels);
-  const reasoningLabel = formatCodexReasoningEffortLabel(selection.reasoningEffort);
-  const labelCandidates = useMemo<readonly IntelligenceSelectorLabelCandidate[]>(() => {
-    const candidates = model.availableModels
-      .filter((candidate) => !candidate.hidden)
-      .flatMap((candidate) => {
-        const modelCandidateLabel = formatCompactCodexModelLabel(
-          candidate.id,
-          model.availableModels,
-        );
-        const efforts =
-          candidate.supportedReasoningEfforts.length > 0
-            ? candidate.supportedReasoningEfforts.map((option) => option.reasoningEffort)
-            : [candidate.defaultReasoningEffort ?? selection.reasoningEffort];
-        return efforts.map((effort) => ({
-          id: `${candidate.id}:${effort}`,
-          modelLabel: modelCandidateLabel,
-          reasoningLabel: formatCodexReasoningEffortLabel(effort),
-        }));
-      });
-
-    return [
-      ...candidates,
-      {
-        id: `selected:${selection.model}:${selection.reasoningEffort}`,
-        modelLabel,
-        reasoningLabel,
-      },
-    ];
-  }, [
-    model.availableModels,
-    selection.model,
-    selection.reasoningEffort,
-    modelLabel,
-    reasoningLabel,
-  ]);
-  const triggerGeometry = useIntelligenceSelectorTriggerGeometry(labelCandidates);
 
   return (
-    <NodexDropdownMenu
-      open={menuOpen}
-      onOpenChange={setMenuOpen}
-      triggerButton={
-        <IntelligenceSelectorTrigger
-          ref={controller.triggerRef}
-          geometry={triggerGeometry}
-          isOpen={menuOpen}
-          labelCandidates={labelCandidates}
-          modelLabel={modelLabel}
-          reasoningLabel={reasoningLabel}
-          showFastIndicator={selection.serviceTier === "fast"}
-          aria-keyshortcuts={model.modelPickerShortcut?.ariaKeyShortcuts}
-        />
-      }
-      triggerTooltipContent="Select model"
-      triggerTooltipShortcutLabel={model.modelPickerShortcut?.label}
-      side="top"
-      align="end"
-      alignOffset={triggerGeometry.alignOffset}
-      sideOffset={INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX}
-      contentClassName="w-56"
-    >
-      <div className="flex flex-col">
-        <NodexDropdownSummarySubmenuItem
-          ariaLabel={`Model ${formatCodexModelLabel(selection.model, model.availableModels)}`}
-          label="Model"
-          value={formatCodexModelLabel(selection.model, model.availableModels)}
-          contentClassName="w-[280px]"
-        >
-          <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
-            <NodexDropdownTitle>Model</NodexDropdownTitle>
-            {model.availableModels.filter((candidate) => !candidate.hidden).length > 8 ? (
-              <NodexDropdownSearchInput
-                value={query}
-                placeholder="Filter models…"
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            ) : null}
-            <div className="vertical-scroll-fade-mask flex max-h-[250px] flex-col overflow-y-auto">
-              {visibleModels.length === 0 ? (
-                <NodexDropdownMessage compact centered>
-                  No matching models
-                </NodexDropdownMessage>
-              ) : (
-                visibleModels.map((candidate) => (
-                  <ModelSelectorMenuItem
-                    key={candidate.id}
-                    candidate={candidate}
-                    model={model}
-                    serviceTier={selection.serviceTier}
-                    showFastIndicator
-                    controller={controller}
-                  />
-                ))
-              )}
-              {hiddenMatchCount > 0 ? (
-                <NodexDropdownMessage compact centered>
-                  Refine the search to see {hiddenMatchCount} more models
-                </NodexDropdownMessage>
-              ) : null}
-            </div>
-          </NodexDropdownSection>
-        </NodexDropdownSummarySubmenuItem>
-
-        <NodexDropdownSummarySubmenuItem
-          ariaLabel={`Effort ${reasoningLabel}`}
-          label="Effort"
-          value={reasoningLabel}
-          contentClassName="min-w-[180px]"
-        >
-          <NodexDropdownSection className="flex min-w-[180px] flex-col overflow-hidden">
-            <NodexDropdownTitle>Effort</NodexDropdownTitle>
-            {resolveCodexReasoningEffortOptions(selection.model, model.availableModels).map(
-              (option) => (
-                <NodexDropdownItem
-                  key={option.reasoningEffort}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    controller.select({
-                      ...selection,
-                      reasoningEffort: option.reasoningEffort,
-                    });
-                  }}
-                  rightSlot={
-                    option.reasoningEffort === selection.reasoningEffort ? (
-                      <NodexDropdownSelectedIcon />
-                    ) : null
-                  }
-                  tooltipText={option.description || undefined}
-                  subText={
-                    option.reasoningEffort === "ultra" ? "Consumes usage limits faster" : undefined
-                  }
-                  allowWrap={option.reasoningEffort === "ultra"}
-                  data-intelligence-option={option.reasoningEffort}
-                  data-reasoning-selected={
-                    option.reasoningEffort === selection.reasoningEffort ? "true" : undefined
-                  }
-                >
-                  {formatCodexReasoningEffortLabel(option.reasoningEffort)}
-                </NodexDropdownItem>
-              ),
-            )}
-          </NodexDropdownSection>
-        </NodexDropdownSummarySubmenuItem>
-
-        <NodexDropdownSummarySubmenuItem
-          ariaLabel={`Speed ${selection.serviceTier === "fast" ? "Fast" : "Standard"}`}
-          label="Speed"
-          value={selection.serviceTier === "fast" ? "Fast" : "Standard"}
-          contentClassName="w-[233px]"
-        >
-          <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
-            <NodexDropdownTitle>Speed</NodexDropdownTitle>
-            {SERVICE_TIER_OPTIONS.map((option) => (
-              <NodexDropdownItem
-                key={option.label}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  controller.select({
-                    ...selection,
-                    serviceTier: option.value,
-                  });
-                }}
-                rightSlot={
-                  option.value === selection.serviceTier ? <NodexDropdownSelectedIcon /> : null
-                }
-                subText={option.description}
-                allowWrap
-              >
-                {option.label}
-              </NodexDropdownItem>
-            ))}
-          </NodexDropdownSection>
-        </NodexDropdownSummarySubmenuItem>
-      </div>
-    </NodexDropdownMenu>
+    <AgentIntelligenceDropdown
+      models={model.availableModels}
+      selection={selection}
+      open={controller.isOpen}
+      onOpenChange={controller.setOpen}
+      onSelectionChange={(nextSelection) => controller.select(nextSelection)}
+      triggerRef={controller.triggerRef}
+      shortcut={model.modelPickerShortcut}
+    />
   );
 }
 

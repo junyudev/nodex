@@ -988,15 +988,23 @@ fn inline_item_json(item: &NfmInlineContent) -> Value {
         }
         NfmInlineContent::AgentConfig {
             mode,
+            provider,
             model,
             reasoning,
+            speed,
+            permission,
             raw_attributes,
         } => {
             let raw = raw_attributes.clone().unwrap_or_default();
             let attrs = parse_xml_attrs(&raw);
             let unknown = attrs
                 .keys()
-                .filter(|key| !matches!(key.as_str(), "mode" | "model" | "reasoning"))
+                .filter(|key| {
+                    !matches!(
+                        key.as_str(),
+                        "mode" | "provider" | "model" | "reasoning" | "speed" | "permission"
+                    )
+                })
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(",");
@@ -1004,8 +1012,11 @@ fn inline_item_json(item: &NfmInlineContent) -> Value {
                 "type": "agentConfig",
                 "props": {
                     "mode": mode.clone().unwrap_or_default(),
+                    "provider": provider.clone().unwrap_or_default(),
                     "model": model.clone().unwrap_or_default(),
                     "reasoning": reasoning.clone().unwrap_or_default(),
+                    "speed": speed.clone().unwrap_or_default(),
+                    "permission": permission.clone().unwrap_or_default(),
                     "unknownAttributes": unknown,
                     "rawAttributes": raw,
                 }
