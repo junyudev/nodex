@@ -6,6 +6,7 @@ import * as Clock from "effect/Clock";
 import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type { ThreadForkParams, ThreadForkResponse } from "@nodex/codex-app-server-protocol/v2";
 import type {
+  CodexCanonicalHydratedPermissionContext,
   CodexSideChatStartInput,
   CodexSideChatStartResult,
   CodexThreadSummary,
@@ -48,6 +49,32 @@ interface CodexSideChatPlan {
     readonly overrides: CodexTurnStartOverrides;
   } | null;
 }
+
+const forkSandboxMode = (
+  policy: CodexCanonicalHydratedPermissionContext["sandboxPolicy"],
+): ThreadForkParams["sandbox"] => {
+  if (policy.type === "dangerFullAccess") return "danger-full-access";
+  if (policy.type === "readOnly") return "read-only";
+  if (policy.type === "workspaceWrite") return "workspace-write";
+  return null;
+};
+
+const forkPermissionOverrides = (
+  context: CodexCanonicalHydratedPermissionContext | null,
+): Pick<
+  ThreadForkParams,
+  "approvalPolicy" | "approvalsReviewer" | "permissions" | "runtimeWorkspaceRoots" | "sandbox"
+> => {
+  if (!context) return {};
+  return {
+    approvalPolicy: context.approvalPolicy,
+    approvalsReviewer: context.approvalsReviewer,
+    runtimeWorkspaceRoots: [...context.runtimeWorkspaceRoots],
+    ...(context.activePermissionProfile
+      ? { permissions: context.activePermissionProfile.id }
+      : { sandbox: forkSandboxMode(context.sandboxPolicy) }),
+  };
+};
 
 export class CodexSideChatProjectionError extends Data.TaggedError("CodexSideChatProjectionError")<{
   readonly operation: "prepare" | "commit" | "finish" | "inspect" | "discard" | "rollback";
@@ -105,7 +132,15 @@ export const make: Effect.Effect<
         cause: new Error("Side chat requires a parent Thread"),
       });
     }
-    const parent = yield* directory.resolve({ threadId: parentThreadId, fidelity: "full" }).pipe(
+    const currentParentSnapshot = conversations.current(parentThreadId)?.readSnapshot() ?? null;
+    if (currentParentSnapshot?.source?.sideConversation === true) {
+      return yield* new CodexSideChatProjectionError({
+        operation: "prepare",
+        threadId: parentThreadId,
+        cause: new Error("Side chats cannot be started from another side chat"),
+      });
+    }
+    const parent = yield* directory.resolve({ threadId: parentThreadId, fidelity: "durable" }).pipe(
       Effect.mapError(
         (cause) =>
           new CodexSideChatProjectionError({
@@ -115,29 +150,38 @@ export const make: Effect.Effect<
           }),
       ),
     );
-    if (!parent?.snapshot) {
+    if (!parent) {
       return yield* new CodexSideChatProjectionError({
         operation: "prepare",
         threadId: parentThreadId,
         cause: new Error(`Parent Thread '${parentThreadId}' was not found`),
       });
     }
-    if (parent.snapshot.source?.sideConversation === true) {
+    // Durable identity is sufficient to fork. A resident bounded projection may refine
+    // live execution overrides, but its absence never implies complete or missing history.
+    const currentSnapshot = parent.snapshot ?? currentParentSnapshot;
+    if (
+      currentSnapshot?.source?.sideConversation === true ||
+      parent.summary.source?.sideConversation === true
+    ) {
       return yield* new CodexSideChatProjectionError({
         operation: "prepare",
         threadId: parentThreadId,
         cause: new Error("Side chats cannot be started from another side chat"),
       });
     }
-    const cwd = parent.snapshot.cwd?.trim() || parent.durable.cwd?.trim() || "";
+    const cwd = currentSnapshot?.cwd?.trim() || parent.durable.cwd?.trim() || "";
     if (!cwd) {
       return yield* new CodexSideChatProjectionError({
         operation: "prepare",
         threadId: parentThreadId,
-        cause: new Error("Side chat requires a materialized parent workspace"),
+        cause: new Error("Side chat requires a parent workspace"),
       });
     }
-    const executionProfile = parent.snapshot.executionProfile;
+    const executionProfile = currentSnapshot?.executionProfile ?? parent.durable.executionProfile;
+    const permissions =
+      (parent.canonical ?? currentSnapshot?.canonicalState)?.sidecar.hydrationContext
+        ?.currentPermissions ?? null;
     const promptInput = input.promptInput
       ? { ...input.promptInput, text: input.prompt?.trim() ?? input.promptInput.text }
       : undefined;
@@ -159,6 +203,7 @@ export const make: Effect.Effect<
         path: null,
         cwd,
         threadSource: "user",
+        ...forkPermissionOverrides(permissions),
         config: {
           ...(executionProfile?.harnessId ? { harness: executionProfile.harnessId } : {}),
           ...((input.reasoningEffort ?? executionProfile?.reasoningEffort)
@@ -209,24 +254,18 @@ export const make: Effect.Effect<
         cause: new Error("Thread fork did not return a valid Thread id"),
       });
     }
-    const parent = plan.parent.snapshot;
-    if (!parent) {
-      return yield* new CodexSideChatProjectionError({
-        operation: "commit",
-        threadId,
-        cause: new Error("Side chat parent projection was released"),
-      });
-    }
+    const parentCwd = plan.forkRequest.cwd ?? plan.parent.durable.cwd ?? "/";
     const cwd =
       resolveCodexCanonicalHydratedCwd({
         requestedCwd: plan.forkRequest.cwd ?? null,
         responseCwd: response.cwd,
         threadCwd: response.thread.cwd,
-        fallbackCwd: parent.cwd ?? "/",
-      }) ??
-      parent.cwd ??
-      "/";
-    const permissions = createCodexCanonicalWorkspacePermissionContext([cwd]);
+        fallbackCwd: parentCwd,
+      }) ?? parentCwd;
+    const fallbackWorkspaceRoots = plan.forkRequest.runtimeWorkspaceRoots?.length
+      ? plan.forkRequest.runtimeWorkspaceRoots
+      : [cwd];
+    const permissions = createCodexCanonicalWorkspacePermissionContext(fallbackWorkspaceRoots);
     const canonical = createCodexCanonicalHydratedConversationState(
       { ...response.thread, turns: [] },
       {

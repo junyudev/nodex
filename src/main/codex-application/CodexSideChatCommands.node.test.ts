@@ -6,8 +6,13 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
-import type { Thread, ThreadForkResponse } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  Thread,
+  ThreadForkParams,
+  ThreadForkResponse,
+} from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationSnapshot } from "../../shared/types";
+import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import {
   CodexEphemeralThreadRouting,
@@ -24,35 +29,62 @@ import {
   live as conversationRuntimeMapLive,
 } from "./internal/ConversationEntityMap";
 import { make as makeCommands } from "./CodexSideChatCommands";
-import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatPolicy";
+import { SIDE_CHAT_BOUNDARY_TEXT, SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "./CodexSideChatPolicy";
 
 const parentThreadId = "parent-a";
 const sideThreadId = "side-a";
 const remoteHostId = "remote-a";
 
-const protocolThread = (threadId: string): Thread =>
-  ({
-    id: threadId,
-    turns: [],
-    cwd: "/workspace",
-    createdAt: 100,
-    updatedAt: 100,
-    preview: "",
-    name: null,
-    modelProvider: "openai",
-  }) as unknown as Thread;
+const protocolThread = (threadId: string): Thread => ({
+  id: threadId,
+  extra: null,
+  sessionId: `session-${threadId}`,
+  forkedFromId: null,
+  parentThreadId: null,
+  preview: "",
+  ephemeral: false,
+  section: null,
+  sectionEnteredAt: null,
+  historyMode: "paginated",
+  modelProvider: "openai",
+  createdAt: 100,
+  updatedAt: 100,
+  recencyAt: 100,
+  status: { type: "idle" },
+  path: null,
+  cwd: "/workspace",
+  cliVersion: "test",
+  source: "appServer",
+  canAcceptDirectInput: true,
+  threadSource: null,
+  agentNickname: null,
+  agentRole: null,
+  gitInfo: null,
+  name: null,
+  turns: [],
+});
 
 const forkResponse = {
-  thread: protocolThread(sideThreadId),
+  thread: {
+    ...protocolThread(sideThreadId),
+    ephemeral: true,
+    forkedFromId: parentThreadId,
+  },
   cwd: "/workspace",
   model: "gpt-test",
   reasoningEffort: null,
   modelProvider: "openai",
   approvalPolicy: "never",
   approvalsReviewer: "user",
-  sandbox: { type: "workspaceWrite", writableRoots: ["/workspace"] },
+  sandbox: {
+    type: "workspaceWrite",
+    writableRoots: ["/workspace", "/shared"],
+    networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
+  },
   activePermissionProfile: null,
-  runtimeWorkspaceRoots: ["/workspace"],
+  runtimeWorkspaceRoots: ["/workspace", "/shared"],
 } as unknown as ThreadForkResponse;
 
 const requestFailure = (method: string): CodexRuntimeError =>
@@ -70,7 +102,22 @@ interface SideChatHarnessOptions {
   readonly inject?: Effect.Effect<unknown, CodexRuntimeError>;
   readonly initialTurn?: Effect.Effect<void, CodexRuntimeError>;
   readonly unsubscribe?: Effect.Effect<unknown, CodexRuntimeError>;
+  readonly parentProjection?: "materialized" | "released";
+  readonly parentSideConversation?: boolean;
 }
+
+interface PhysicalRequest {
+  readonly hostId: string;
+  readonly method: string;
+  readonly params: Readonly<Record<string, unknown>>;
+}
+
+const PARENT_HISTORY_METHODS = new Set([
+  "thread/read",
+  "thread/resume",
+  "thread/turns/list",
+  "thread/items/list",
+]);
 
 const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =>
   Effect.gen(function* () {
@@ -79,12 +126,19 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
     const routingContext = yield* Layer.buildWithScope(codexEphemeralThreadRoutingLive, scope);
     const routing = Context.get(routingContext, CodexEphemeralThreadRouting);
     const events: string[] = [];
+    const requests: PhysicalRequest[] = [];
+    const directoryFidelities: string[] = [];
 
     const gateway = CodexGateway.of({
       localHostId: "local",
       requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
       requestOnHost: ((hostId: string, method: string, params: { threadId?: string }) =>
         Effect.suspend(() => {
+          requests.push({
+            hostId,
+            method,
+            params: params as Readonly<Record<string, unknown>>,
+          });
           events.push(`request:${hostId}:${method}:${params.threadId ?? parentThreadId}`);
           if (method === "thread/fork") return Effect.succeed(forkResponse);
           if (method === "thread/inject_items") {
@@ -129,7 +183,13 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
       projectId: "project-a",
       source: { parentThreadId: null },
       cwd: "/workspace",
-      executionProfile: null,
+      executionProfile: {
+        providerId: "openai",
+        modelId: "gpt-parent",
+        harnessId: "harness-a",
+        reasoningEffort: "high",
+        serviceTier: "priority",
+      },
       queuedFollowUps: {
         status: "ready",
         ledgerRevision: 0,
@@ -140,17 +200,56 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
         error: null,
       },
     } as unknown as CodexConversationSnapshot;
+    const parentCanonical = createCodexCanonicalHydratedConversationState(
+      protocolThread(parentThreadId),
+      {
+        model: "gpt-parent",
+        reasoningEffort: "high",
+        cwd: "/workspace",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+          writableRoots: ["/workspace", "/shared"],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+        activePermissionProfile: { id: ":workspace", extends: null },
+        runtimeWorkspaceRoots: ["/workspace", "/shared"],
+      },
+    );
+    const parentIsMaterialized = options.parentProjection !== "released";
+    if (options.parentSideConversation && parentIsMaterialized) {
+      conversations.entity(parentThreadId).installSnapshot({
+        ...parentSnapshot,
+        source: { parentThreadId: "root-a", sideConversation: true },
+      });
+    }
+    const durableSummary = options.parentSideConversation
+      ? {
+          ...parentSnapshot,
+          source: { parentThreadId: "root-a", sideConversation: true },
+        }
+      : parentSnapshot;
     const directoryEntry = {
-      fidelity: "full",
-      durable: { cwd: "/workspace" },
-      summary: parentSnapshot,
-      canonical: null,
-      snapshot: parentSnapshot,
+      fidelity: "durable",
+      durable: {
+        cwd: "/workspace",
+        executionProfile: parentSnapshot.executionProfile,
+        executionHostId: remoteHostId,
+      },
+      summary: durableSummary,
+      canonical: parentIsMaterialized ? parentCanonical : null,
+      snapshot: parentIsMaterialized ? parentSnapshot : null,
     } as never;
     const directory = CodexThreadDirectory.of({
       // The canonical directory serializes remote materialization in the Thread lane.
       // Side-chat admission must therefore never hold that same non-reentrant lane.
-      resolve: () => conversations.runCommand(parentThreadId, Effect.succeed(directoryEntry)),
+      resolve: (input) => {
+        directoryFidelities.push(input.fidelity);
+        return conversations.runCommand(parentThreadId, Effect.succeed(directoryEntry));
+      },
       descendants: () => Effect.die("unused"),
       acceptRollbackResult: () => Effect.die("unused"),
       acceptImportResult: () => Effect.die("unused"),
@@ -200,6 +299,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
     return {
       commands,
       conversations,
+      directoryFidelities,
       events,
       markExisting: () => {
         conversations.entity(sideThreadId).installSnapshot({
@@ -208,9 +308,108 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
           source: { parentThreadId, sideConversation: true },
         });
       },
+      parentHistoryRequestCount: () =>
+        requests.filter(
+          (request) =>
+            PARENT_HISTORY_METHODS.has(request.method) &&
+            request.params.threadId === parentThreadId,
+        ).length,
+      requests,
       routing,
     };
   });
+
+it.effect("forks from durable parent context without requesting parent history", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope);
+
+    const result = yield* harness.commands.start({ parentThreadId });
+    const fork = harness.requests.find((request) => request.method === "thread/fork");
+    assert.isDefined(fork);
+    const params = fork.params as unknown as ThreadForkParams;
+
+    assert.strictEqual(result.threadId, sideThreadId);
+    assert.deepEqual(harness.directoryFidelities, ["durable"]);
+    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
+    assert.strictEqual(fork.hostId, remoteHostId);
+    assert.strictEqual(params.threadId, parentThreadId);
+    assert.strictEqual(params.cwd, "/workspace");
+    assert.strictEqual(params.model, "gpt-parent");
+    assert.strictEqual(params.modelProvider, "openai");
+    assert.strictEqual(params.serviceTier, "priority");
+    assert.strictEqual(params.ephemeral, true);
+    assert.strictEqual(params.excludeTurns, true);
+    assert.deepEqual(params.runtimeWorkspaceRoots, ["/workspace", "/shared"]);
+    assert.strictEqual(params.approvalPolicy, "on-request");
+    assert.strictEqual(params.approvalsReviewer, "user");
+    assert.strictEqual(params.permissions, ":workspace");
+    assert.isUndefined(params.sandbox);
+    assert.strictEqual(params.developerInstructions, SIDE_CHAT_DEVELOPER_INSTRUCTIONS);
+    assert.deepInclude(params.config, {
+      harness: "harness-a",
+      model_reasoning_effort: "high",
+    });
+    assert.deepEqual(
+      harness.requests.map((request) => request.method),
+      ["thread/fork", "thread/inject_items"],
+    );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("uses durable execution metadata when the bounded parent projection was released", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope, { parentProjection: "released" });
+
+    const result = yield* harness.commands.start({ parentThreadId });
+    const fork = harness.requests.find((request) => request.method === "thread/fork");
+    assert.isDefined(fork);
+    const params = fork.params as unknown as ThreadForkParams;
+
+    assert.strictEqual(result.threadId, sideThreadId);
+    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
+    assert.strictEqual(params.cwd, "/workspace");
+    assert.strictEqual(params.model, "gpt-parent");
+    assert.isUndefined(params.runtimeWorkspaceRoots);
+    assert.isUndefined(params.permissions);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects a nested side chat before resolving or loading its parent", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope, { parentSideConversation: true });
+
+    const exit = yield* Effect.exit(harness.commands.start({ parentThreadId }));
+
+    assert.isTrue(Exit.isFailure(exit));
+    assert.deepEqual(harness.directoryFidelities, []);
+    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
+    assert.deepEqual(harness.requests, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects a durable nested side chat after its bounded projection was released", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope, {
+      parentProjection: "released",
+      parentSideConversation: true,
+    });
+
+    const exit = yield* Effect.exit(harness.commands.start({ parentThreadId }));
+
+    assert.isTrue(Exit.isFailure(exit));
+    assert.deepEqual(harness.directoryFidelities, ["durable"]);
+    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
+    assert.deepEqual(harness.requests, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
 
 it.effect("keeps a remote side chat on its parent's host through the initial Turn", () =>
   Effect.gen(function* () {
