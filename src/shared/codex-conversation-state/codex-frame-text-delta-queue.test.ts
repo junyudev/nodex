@@ -257,6 +257,26 @@ describe("CodexFrameTextDeltaQueue", () => {
     expect(callbacks.join(",")).toBe("first,second");
   });
 
+  test("pressure flushes a bounded terminal callback batch before admitting more", () => {
+    const scheduler = new ManualFrameTextDeltaScheduler();
+    const order: string[] = [];
+    const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
+      scheduler,
+      maxDrainCallbacks: 2,
+      onFlush: () => order.push("text"),
+    });
+
+    queue.enqueue(delta("x".repeat(100)));
+    expect(queue.drainBefore(() => order.push("first"), "conversation-a")).toBe(true);
+    expect(queue.drainBefore(() => order.push("second"), "conversation-a")).toBe(true);
+    expect(queue.drainBefore(() => order.push("third"), "conversation-a")).toBe(false);
+
+    expect(order).toEqual(["text", "first", "second"]);
+    order.push("third");
+    expect(order).toEqual(["text", "first", "second", "third"]);
+    expect(scheduler.frameCount).toBe(0);
+  });
+
   test("disposal drops pending buffers and terminal callbacks", () => {
     const scheduler = new ManualFrameTextDeltaScheduler();
     let callbackCalls = 0;
@@ -277,6 +297,71 @@ describe("CodexFrameTextDeltaQueue", () => {
     expect(scheduler.frameCount).toBe(0);
     expect(flushCalls).toBe(0);
     expect(callbackCalls).toBe(0);
+  });
+
+  test("rejects per-key and aggregate pressure before concatenating another delta", () => {
+    const scheduler = new ManualFrameTextDeltaScheduler();
+    const flushed: string[] = [];
+    const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
+      scheduler,
+      maxBufferedKeys: 2,
+      maxBufferedCodeUnitsPerKey: 4,
+      maxBufferedCodeUnits: 5,
+      onFlush: (updates) => flushed.push(...updates.map((update) => update.delta)),
+    });
+
+    expect(queue.enqueue(delta("1234"))).toEqual({ accepted: true });
+    expect(queue.enqueue(delta("5"))).toMatchObject({
+      accepted: false,
+      reason: "per-key-code-units",
+      bufferedCodeUnits: 4,
+      incomingCodeUnits: 1,
+    });
+    expect(
+      queue.enqueue(delta("x", { conversationId: "conversation-b", itemId: "item-b" })),
+    ).toEqual({ accepted: true });
+    expect(
+      queue.enqueue(delta("y", { conversationId: "conversation-b", itemId: "item-b" })),
+    ).toMatchObject({
+      accepted: false,
+      reason: "total-code-units",
+      bufferedCodeUnits: 5,
+      incomingCodeUnits: 1,
+    });
+
+    scheduler.runNextFrame();
+    expect(flushed).toEqual(["1234", "x"]);
+  });
+
+  test("bounds distinct keys and releases admission as frames or conversations drain", () => {
+    const scheduler = new ManualFrameTextDeltaScheduler();
+    const flushed: string[] = [];
+    const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
+      scheduler,
+      targetCharsPerFrame: 2,
+      maxBufferedKeys: 2,
+      maxBufferedCodeUnitsPerKey: 8,
+      maxBufferedCodeUnits: 6,
+      onFlush: (updates) => flushed.push(...updates.map((update) => update.delta)),
+    });
+
+    expect(queue.enqueue(delta("1234"))).toEqual({ accepted: true });
+    expect(
+      queue.enqueue(delta("b", { conversationId: "conversation-b", itemId: "item-b" })),
+    ).toEqual({ accepted: true });
+    expect(
+      queue.enqueue(delta("c", { conversationId: "conversation-c", itemId: "item-c" })),
+    ).toMatchObject({ accepted: false, reason: "key-count" });
+
+    scheduler.runNextFrame();
+    expect(flushed).toEqual(["12", "b"]);
+    expect(
+      queue.enqueue(delta("cd", { conversationId: "conversation-c", itemId: "item-c" })),
+    ).toEqual({ accepted: true });
+    queue.discardConversation("conversation-a");
+    expect(
+      queue.enqueue(delta("ef", { conversationId: "conversation-d", itemId: "item-d" })),
+    ).toEqual({ accepted: true });
   });
 
   test("scoped teardown drops only that conversation without flushing or stranding others", () => {
@@ -309,6 +394,36 @@ describe("CodexFrameTextDeltaQueue", () => {
 
     expect(flushed.join("|")).toBe("conversation-b|conversation-b");
     expect(callbacks.join(",")).toBe("b-completed");
+  });
+
+  test("terminal flush publishes only the addressed conversation and preserves the global timer", () => {
+    const scheduler = new ManualFrameTextDeltaScheduler();
+    const flushed: string[] = [];
+    const terminal: boolean[] = [];
+    const queue = new CodexFrameTextDeltaQueue<SequencedDelta>({
+      scheduler,
+      onFlush: (updates, context) => {
+        flushed.push(updates.map((update) => `${update.conversationId}:${update.delta}`).join(","));
+        terminal.push(context.terminalDrainCommit);
+      },
+    });
+
+    queue.enqueue(delta("a"));
+    queue.enqueue(
+      delta("b", {
+        conversationId: "conversation-b",
+        itemId: "item-b",
+      }),
+    );
+
+    queue.flushConversationNow("conversation-a");
+    expect(flushed).toEqual(["conversation-a:a"]);
+    expect(terminal).toEqual([true]);
+    expect(scheduler.frameCount).toBe(1);
+
+    scheduler.runNextFrame();
+    expect(flushed).toEqual(["conversation-a:a", "conversation-b:b"]);
+    expect(terminal).toEqual([true, false]);
   });
 
   test("scoped teardown completes surviving drains when it removes the last buffer", () => {

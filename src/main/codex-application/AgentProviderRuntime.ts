@@ -14,6 +14,7 @@ import type {
   AgentProviderCredentialMutationResult,
   AgentProviderOption,
 } from "../../shared/agent-runtime";
+import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import {
   parseHarnessResponse,
   parseModelResponse,
@@ -61,6 +62,12 @@ export class AgentProviderRuntime extends Context.Service<
 >()("nodex/main/codex-application/AgentProviderRuntime") {}
 
 const supportedProviderIds = new Set<string>(SUPPORTED_PROVIDER_IDS);
+
+/** A credential mutation must not scan an unbounded Thread catalog before restarting the runtime. */
+export const CODEX_IDLE_CHECK_THREAD_PAGE_SIZE = 100;
+export const CODEX_IDLE_CHECK_MAX_THREAD_PAGES = 20;
+export const CODEX_IDLE_CHECK_MAX_PAGE_BYTES = 8 * 1024 * 1024;
+export const CODEX_IDLE_CHECK_PAGE_TIMEOUT_MS = 10_000;
 
 const projectionError = (operation: string, cause: unknown) =>
   new AgentProviderRuntimeError({
@@ -159,18 +166,41 @@ export const live: Layer.Layer<AgentProviderRuntime, never, CodexGateway | Provi
 
       const hasActiveWork = Effect.fn("AgentProviderRuntime.hasActiveWork")(function* () {
         let cursor: string | null = null;
-        do {
+        const seenCursors = new Set<string | null>();
+        for (let pageNumber = 0; pageNumber < CODEX_IDLE_CHECK_MAX_THREAD_PAGES; pageNumber += 1) {
+          // Unknown catalog state is deliberately treated as active: credential changes must not
+          // interrupt a potentially running Thread just because a bounded idle scan ran out.
+          if (seenCursors.has(cursor)) return true;
+          seenCursors.add(cursor);
           const response: ClientRequestResponsesByMethod["thread/list"] =
-            yield* gateway.requestLocal("thread/list", {
-              archived: false,
-              cursor,
-              limit: 100,
-              useStateDbOnly: true,
-            });
+            yield* gateway.requestLocal(
+              "thread/list",
+              {
+                archived: false,
+                cursor,
+                limit: CODEX_IDLE_CHECK_THREAD_PAGE_SIZE,
+                useStateDbOnly: true,
+              },
+              {
+                priority: "background",
+                source: "thread_list",
+                timeoutMs: CODEX_IDLE_CHECK_PAGE_TIMEOUT_MS,
+              },
+            );
+          if (
+            response.data.length > CODEX_IDLE_CHECK_THREAD_PAGE_SIZE ||
+            cappedApproximateValueBytes(response.data, CODEX_IDLE_CHECK_MAX_PAGE_BYTES) >
+              CODEX_IDLE_CHECK_MAX_PAGE_BYTES
+          ) {
+            return true;
+          }
           if (response.data.some((thread) => thread.status.type === "active")) return true;
-          cursor = response.nextCursor ?? null;
-        } while (cursor !== null);
-        return false;
+          const nextCursor = response.nextCursor ?? null;
+          if (nextCursor === null) return false;
+          if (seenCursors.has(nextCursor)) return true;
+          cursor = nextCursor;
+        }
+        return true;
       });
 
       const restartIfIdle = Effect.fn("AgentProviderRuntime.restartIfIdle")(function* () {

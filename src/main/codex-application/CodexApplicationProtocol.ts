@@ -21,6 +21,8 @@ import {
   type CodexServerRequestRawLifecycleResult,
 } from "../../shared/codex-conversation-state/codex-server-request-lifecycle";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
+import { sanitizeCodexLiveLifecycleNotification } from "../../shared/codex-conversation-state/codex-live-turn-residency";
+import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import { parseCodexAppServerMessage } from "../codex/codex-app-server-message-parser";
 import {
   CODEX_SERVER_REQUEST_OCCURRENCE_ID,
@@ -53,7 +55,7 @@ import { CodexRendererConversationRegistry } from "./CodexRendererConversationRe
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { conversationIngressOverflow } from "./internal/ConversationEntityState";
-import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
+import { ThreadCreationRuntime, type ThreadCreationRelease } from "./ThreadCreationRuntime";
 import { NODEX_APP_TOOL_NAMESPACE } from "../../shared/nodex-agent-tools/identity";
 import { NodexAgentProtocolTools } from "../nodex-agent-application/NodexAgentProtocolTools";
 
@@ -70,8 +72,8 @@ export class CodexApplicationProtocol extends Context.Service<
     readonly releaseResume: (threadId: string) => Effect.Effect<void>;
     readonly discardResume: (threadId: string, reason: unknown) => Effect.Effect<void>;
     readonly clearConversationBuffer: (threadId: string, reason: unknown) => Effect.Effect<void>;
-    /** Replays a notification that arrived before its local Thread materialization committed. */
-    readonly releaseThreadStart: (threadId: string) => Effect.Effect<void>;
+    /** Replays notifications buffered by the exact materializing Endpoint generation. */
+    readonly releaseThreadStart: (release: ThreadCreationRelease) => Effect.Effect<void>;
   }
 >()("nodex/main/codex-application/CodexApplicationProtocol") {}
 
@@ -135,6 +137,19 @@ const parseNotification = (
   });
   return parsed.success && parsed.data.kind === "notification" ? parsed.data.notification : null;
 };
+
+/**
+ * `thread/started` may arrive with an embedded full transcript. The occurrence itself is queued
+ * before effects run, so replace its params immediately after parsing rather than relying on a
+ * downstream reducer to omit the history.
+ */
+const toCodexSanitizedNotificationOccurrence = (
+  occurrence: CodexApplicationNotificationOccurrence,
+  notification: CodexServerNotification,
+): CodexApplicationNotificationOccurrence =>
+  occurrence.params === notification.params
+    ? occurrence
+    : { ...occurrence, params: notification.params };
 
 const projectId = (
   conversations: ConversationEntityMap["Service"],
@@ -633,12 +648,22 @@ export const make: Effect.Effect<
                 occurrence,
                 bypassResume: false,
                 startsThread: false,
-                deferThreadStart: false,
+                deferThreadStart: null,
               }),
             ).pipe(
               Effect.flatMap((admission) => {
                 if (admission === "overflow") {
                   return Effect.die(conversationIngressOverflow(threadId));
+                }
+                if (admission === "generation-mismatch") {
+                  return inbox
+                    .failGeneration(
+                      occurrence,
+                      new Error(
+                        `Codex request generation did not match the buffered start for '${threadId}'`,
+                      ),
+                    )
+                    .pipe(Effect.as(ProtocolRequestBuffered));
                 }
                 return admission === "buffered"
                   ? Effect.succeed(ProtocolRequestBuffered)
@@ -666,36 +691,62 @@ export const make: Effect.Effect<
     );
 
   const observe: CodexApplicationProtocol["Service"]["observe"] = (occurrence) => {
-    const notification = parseNotification(occurrence);
-    if (!notification) return Effect.void;
+    const parsedNotification = parseNotification(occurrence);
+    if (!parsedNotification) return Effect.void;
+    const notification = sanitizeCodexLiveLifecycleNotification(
+      toCodexThreadStartedMetadataNotification(parsedNotification),
+    );
+    const metadataOccurrence = toCodexSanitizedNotificationOccurrence(occurrence, notification);
     const threadId = codexProtocolNotificationThreadId(notification);
     if (!threadId) {
       return inbox
-        .interpretNotification(occurrence, observeNotification(occurrence, notification))
+        .interpretNotification(
+          metadataOccurrence,
+          observeNotification(metadataOccurrence, notification),
+        )
         .pipe(Effect.asVoid);
     }
     return inbox
       .interpretNotification(
-        occurrence,
+        metadataOccurrence,
         conversations.runCommand(
           threadId,
           Effect.sync(() => {
             return conversations.entity(threadId).offerProtocolOccurrence({
-              occurrence,
+              occurrence: metadataOccurrence,
               bypassResume: false,
               startsThread: notification.method === "thread/started",
               deferThreadStart:
                 notification.method === "thread/started" &&
-                threadStarts.defer(occurrence.hostId, threadId),
+                threadStarts.defer(
+                  metadataOccurrence.hostId,
+                  metadataOccurrence.generation,
+                  threadId,
+                )
+                  ? {
+                      hostId: metadataOccurrence.hostId,
+                      generation: metadataOccurrence.generation,
+                    }
+                  : null,
             });
           }).pipe(
             Effect.flatMap((admission) => {
               if (admission === "overflow") {
                 return Effect.die(conversationIngressOverflow(threadId));
               }
+              if (admission === "generation-mismatch") {
+                return inbox
+                  .failGeneration(
+                    metadataOccurrence,
+                    new Error(
+                      `Codex notification generation did not match the buffered start for '${threadId}'`,
+                    ),
+                  )
+                  .pipe(Effect.as("retain" as const));
+              }
               return admission === "buffered"
                 ? Effect.succeed("retain" as const)
-                : observeNotification(occurrence, notification);
+                : observeNotification(metadataOccurrence, notification);
             }),
           ),
         ),
@@ -733,10 +784,17 @@ export const make: Effect.Effect<
         Effect.as(false),
       );
     }
-    const notification = parseNotification(occurrence);
-    if (!notification) return Effect.succeed(false);
+    const parsedNotification = parseNotification(occurrence);
+    if (!parsedNotification) return Effect.succeed(false);
+    const notification = sanitizeCodexLiveLifecycleNotification(
+      toCodexThreadStartedMetadataNotification(parsedNotification),
+    );
+    const metadataOccurrence = toCodexSanitizedNotificationOccurrence(occurrence, notification);
     return inbox
-      .interpretNotification(occurrence, observeNotification(occurrence, notification))
+      .interpretNotification(
+        metadataOccurrence,
+        observeNotification(metadataOccurrence, notification),
+      )
       .pipe(
         Effect.map(
           (interpretation) =>
@@ -807,28 +865,54 @@ export const make: Effect.Effect<
       .pipe(Effect.flatMap((retire) => (retire ? conversations.retire(threadId) : Effect.void)));
   };
 
-  const releaseThreadStart = (threadId: string): Effect.Effect<void> => {
-    const aggregate = conversations.current(threadId);
+  const releaseThreadStart = (release: ThreadCreationRelease): Effect.Effect<void> => {
+    const aggregate = conversations.current(release.threadId);
     if (!aggregate) return Effect.void;
     return conversations
       .runCommand(
-        threadId,
+        release.threadId,
         Effect.sync(() => {
-          const buffered = aggregate.takeThreadStartEventBuffer();
-          return buffered
-            ? compactCodexApplicationProtocolOccurrences({
-                threadId,
-                canonicalState: aggregate.readCanonicalState(),
-                events: buffered,
-              })
-            : null;
+          const buffered = aggregate.takeThreadStartEventBuffer(release);
+          if (buffered?.kind !== "matched") return buffered;
+          return {
+            kind: "matched" as const,
+            events: compactCodexApplicationProtocolOccurrences({
+              threadId: release.threadId,
+              canonicalState: aggregate.readCanonicalState(),
+              events: buffered.events,
+            }),
+          };
         }).pipe(
           Effect.flatMap((buffered) =>
-            buffered ? replayBuffered(buffered) : Effect.succeed(false),
+            buffered === null
+              ? Effect.succeed(false)
+              : buffered.kind === "matched"
+                ? replayBuffered(buffered.events)
+                : Effect.forEach(
+                    buffered.events,
+                    (occurrence) =>
+                      inbox.failGeneration(
+                        occurrence,
+                        new Error(
+                          `Buffered start generation did not match release ${release.hostId}:${release.generation}`,
+                        ),
+                      ),
+                    { concurrency: "unbounded", discard: true },
+                  ).pipe(
+                    Effect.andThen(
+                      rejectBuffered(
+                        buffered.events,
+                        new Error("Buffered Codex start crossed an Endpoint generation"),
+                      ),
+                    ),
+                    Effect.as(false),
+                  ),
           ),
         ),
       )
-      .pipe(Effect.flatMap((retire) => (retire ? conversations.retire(threadId) : Effect.void)));
+      .pipe(
+        Effect.flatMap((retire) => (retire ? conversations.retire(release.threadId) : Effect.void)),
+      );
   };
 
   const service = CodexApplicationProtocol.of({

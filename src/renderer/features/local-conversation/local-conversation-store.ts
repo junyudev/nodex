@@ -24,7 +24,6 @@ import type {
   ThreadBackgroundTerminalsTerminateResponse,
   ThreadGoal,
   ThreadGoalSetParams,
-  ThreadRollbackResponse,
   Thread,
   ThreadItem,
   ThreadSettings,
@@ -35,6 +34,13 @@ import type {
   UserInput,
 } from "@nodex/codex-app-server-protocol/v2";
 import { parseAssetSource } from "../../../shared/assets";
+import type {
+  CodexPersistedHistoryOccurrenceHydrateInput,
+  CodexPersistedHistoryOccurrenceHydrateRequest,
+  CodexPersistedHistoryOccurrenceHydrateResult,
+  CodexPersistedHistoryOccurrenceResolution,
+  CodexThreadOwnerPersistedHistoryHydrationResult,
+} from "../../../shared/codex-persisted-history-search";
 import {
   createEmptyCodexPreparedPrompt,
   prepareCodexPrompt,
@@ -102,7 +108,7 @@ import type {
   CodexSteerTurnInput,
   CodexThreadActionResult,
   CodexThreadGoalSetActionInput,
-  CodexThreadOwnerLoadCompleteHistoryResult,
+  CodexThreadOwnerHistoryMutationResult,
   CodexThreadOwnerActionRequest,
   CodexPromptInput,
   CodexReasoningEffort,
@@ -147,6 +153,7 @@ import type {
   CodexBackgroundProcessRow,
   CodexBackgroundProcessRunActionInput,
   CodexThreadActiveFlag,
+  CodexThreadHistoryEditResult,
   CodexThreadOwnerStreamStatePublishResult,
   CodexThreadRuntimeStatus,
   CodexThreadStreamCheckpoint,
@@ -166,6 +173,17 @@ import {
   applyCodexConversationStateUpdates,
   buildCodexConversationStateUpdates,
 } from "../../../shared/codex-conversation-patches";
+import {
+  applyCodexConversationHistoryMutation,
+  codexConversationHistoryPageRequestKey,
+  type CodexConversationHistoryMutation,
+  type CodexConversationHistoryPageRequest,
+  type CodexConversationHistoryPageResult,
+} from "../../../shared/codex-conversation-history-page";
+import type {
+  CodexHistoryResidencyPinsInput,
+  CodexHistoryResidencyPinsResult,
+} from "../../../shared/codex-history-residency-pins";
 import {
   buildCodexThreadStreamCheckpoint,
   hashCodexConversationReplica,
@@ -187,10 +205,11 @@ import {
   toCodexFrameTextDelta,
 } from "../../../shared/codex-conversation-state/codex-frame-text-delta";
 import {
-  buildCodexFrameTextDeltaKey,
   CodexFrameTextDeltaQueue,
   type CodexFrameTextDeltaUpdate,
 } from "../../../shared/codex-conversation-state/codex-frame-text-delta-queue";
+import { CodexFrameTextDeltaSequenceTracker } from "../../../shared/codex-conversation-state/codex-frame-text-delta-sequence-tracker";
+import { boundChangedCodexLiveTurns } from "../../../shared/codex-conversation-state/codex-live-turn-residency";
 import {
   groupCodexCommandOutputUpdatesByConversation,
   reduceCodexConversationCommandOutput,
@@ -257,10 +276,7 @@ import { normalizeCodexManualThreadTitle } from "../../../shared/codex-thread-ti
 import { isCodexNotificationChildConversation } from "../../../shared/codex-thread-notification";
 import { shouldShowAutoReviewInterruptionWarning } from "../../../shared/codex-transcript-special-items";
 import { extractCodexThreadSubagentMetadata } from "../../../shared/codex-subagent-metadata";
-import {
-  getTerminalInteractionBufferKey,
-  parseTerminalInteractionInput,
-} from "../../../shared/codex-terminal-interaction";
+import { CodexTerminalInteractionAccumulator } from "../../../shared/codex-terminal-interaction";
 import {
   resolveCodexReasoningEffortOptions,
   resolveCodexThreadSettings,
@@ -635,26 +651,48 @@ interface OwnerServerRequestReplyResult {
   readonly streamRevision?: number;
 }
 
-interface OwnerTextDeltaSequenceSegment {
-  sequence: number;
-  remainingCodeUnits: number;
-}
-
-interface OwnerTextDeltaSequenceBuffer {
-  conversationId: string;
-  segments: OwnerTextDeltaSequenceSegment[];
-}
-
 interface OwnerNotificationCompletionState {
   nextSequenceToAck: number;
   readonly completedSequences: Set<number>;
   reservedAckThrough: number | null;
 }
 
+export const CODEX_OWNER_NOTIFICATION_MAX_TRACKED_CONVERSATIONS = 32;
+export const CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES_PER_CONVERSATION = 1_024;
+export const CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES = 4_096;
+export const CODEX_OWNER_RECOVERY_MAX_CONVERSATIONS = 32;
+export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES_PER_CONVERSATION = 256;
+export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES = 1_024;
+export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES_PER_CONVERSATION = 4 * 1_024 * 1_024;
+export const CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES = 16 * 1_024 * 1_024;
+export const CODEX_OWNER_STREAM_MAX_IDLE_WAITERS_PER_CONVERSATION = 256;
+export const CODEX_OWNER_STREAM_MAX_IDLE_WAITERS = 1_024;
+export const CODEX_OWNER_STREAM_IPC_DEADLINE_MS = 30_000;
+
+interface DeferredOwnerRecoveryMessage {
+  readonly apply: () => void;
+  readonly approximateBytes: number;
+}
+
+interface DeferredOwnerRecoveryQueue {
+  readonly messages: DeferredOwnerRecoveryMessage[];
+  approximateBytes: number;
+}
+
 type OwnerNotificationSequenceInput = number | readonly number[];
 
 interface OwnerStreamPublishIdleWaiter {
   resolve: () => void;
+  reject: (error: Error) => void;
+}
+
+function runWithOwnerStreamDeadline<T>(operation: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`${label} exceeded the owner-stream IPC deadline`));
+    }, CODEX_OWNER_STREAM_IPC_DEADLINE_MS);
+    void operation.then(resolve, reject).finally(() => clearTimeout(timeout));
+  });
 }
 
 function shouldWarnForMissingOutputDeltaTarget(): boolean {
@@ -710,10 +748,10 @@ interface RendererOwnerAppServerRequestClient {
     conversationId: string,
     request: CodexOwnerAppServerRequestInput["request"],
   ): Promise<TResult>;
-  rollbackThreadForEdit(
+  revertThreadForEdit(
     conversationId: string,
-    params: { threadId: string; turnId: string; numTurns: number },
-  ): Promise<ThreadRollbackResponse>;
+    params: { threadId: string; beforeTurnId: string },
+  ): Promise<CodexThreadHistoryEditResult>;
   forkConversationFromTurn(
     conversationId: string,
     params: { threadId: string; turnId: string; message: string },
@@ -779,12 +817,12 @@ class IpcRendererOwnerAppServerRequestClient implements RendererOwnerAppServerRe
     } satisfies CodexOwnerAppServerRequestInput)) as TResult;
   }
 
-  async rollbackThreadForEdit(
+  async revertThreadForEdit(
     conversationId: string,
-    params: { threadId: string; turnId: string; numTurns: number },
-  ): Promise<ThreadRollbackResponse> {
+    params: { threadId: string; beforeTurnId: string },
+  ): Promise<CodexThreadHistoryEditResult> {
     return await this.sendRequest(conversationId, {
-      method: "thread/rollback",
+      method: "thread/revert",
       params,
     });
   }
@@ -1868,8 +1906,28 @@ function applyOwnerCanonicalTurnProjection(
       isBackgroundSubagentsEnabled: true,
       preserveExistingUpdatedAt: options.preserveExistingUpdatedAt,
     });
+    const lifecycleStatusChangedItemIds = collectCodexLifecycleStatusChangedItemIds(
+      beforeTurn,
+      afterTurn,
+    );
+    const canonicalItemsUnchanged = Boolean(
+      beforeTurn &&
+      beforeTurn.items.length === afterTurn.items.length &&
+      beforeTurn.items.every((item, index) => item === afterTurn.items[index]),
+    );
+    const didItemProjectionChange =
+      sourceTurnId !== targetTurnId ||
+      beforeTurn === null ||
+      !canonicalItemsUnchanged ||
+      beforeTurn.protocol.status !== afterTurn.protocol.status ||
+      !areCodexCanonicalTurnParamsEqual(beforeTurn.sidecar.params, afterTurn.sidecar.params) ||
+      lifecycleStatusChangedItemIds.size > 0 ||
+      beforeTurn.sidecar.commandExecutionStartedAtMsById !==
+        afterTurn.sidecar.commandExecutionStartedAtMsById ||
+      beforeTurn.sidecar.interruptedCommandExecutionItemIds !==
+        afterTurn.sidecar.interruptedCommandExecutionItemIds;
     const didTurnProjectionChange =
-      projection.changedRawOwnerIds.length > 0 ||
+      didItemProjectionChange ||
       sourceTurnId !== targetTurnId ||
       beforeTurn === null ||
       beforeTurn.protocol.status !== afterTurn.protocol.status ||
@@ -1882,7 +1940,6 @@ function applyOwnerCanonicalTurnProjection(
         afterTurn.sidecar.firstTurnWorkItemStartedAtMs ||
       beforeTurn.sidecar.finalAssistantStartedAtMs !==
         afterTurn.sidecar.finalAssistantStartedAtMs ||
-      collectCodexLifecycleStatusChangedItemIds(beforeTurn, afterTurn).size > 0 ||
       beforeTurn.sidecar.commandExecutionStartedAtMsById !==
         afterTurn.sidecar.commandExecutionStartedAtMsById ||
       beforeTurn.sidecar.interruptedCommandExecutionItemIds !==
@@ -1902,15 +1959,17 @@ function applyOwnerCanonicalTurnProjection(
     }
     hiddenTurns.push({ sourceTurnKey, targetTurnKey, itemTypes: hiddenItemTypes });
 
-    const projectedTurnItems = projection.transcript.map((entry) => {
-      const item = entry as CodexConversationItem;
-      if (!item.mcpToolCall) return item;
-      const mcpToolCall = completeCodexMcpToolCallForTurn(
-        item.mcpToolCall,
-        afterTurn.protocol.status,
-      );
-      return mcpToolCall === item.mcpToolCall ? item : { ...item, mcpToolCall };
-    });
+    const projectedTurnItems = didItemProjectionChange
+      ? projection.transcript.map((entry) => {
+          const item = entry as CodexConversationItem;
+          if (!item.mcpToolCall) return item;
+          const mcpToolCall = completeCodexMcpToolCallForTurn(
+            item.mcpToolCall,
+            afterTurn.protocol.status,
+          );
+          return mcpToolCall === item.mcpToolCall ? item : { ...item, mcpToolCall };
+        })
+      : currentTurn.items;
     const nextTurn: CodexConversationTurn = {
       ...currentTurn,
       turnId: targetTurnId,
@@ -2349,6 +2408,7 @@ function buildOwnerTurnSummaryFromProtocolTurn(
 
 function materializeOwnerCanonicalTurn(
   currentTurn: CodexConversationTurn,
+  previousCanonicalTurn: CodexCanonicalTurnState | null,
   canonicalTurn: CodexCanonicalTurnState,
   observedAtMs: number,
   turnIndex: number,
@@ -2358,7 +2418,7 @@ function materializeOwnerCanonicalTurn(
   const projection = applyCodexLifecycleProjectionDiff({
     threadId: currentTurn.threadId,
     turnKey: buildCodexTurnOccurrenceKey(turnId, turnIndex),
-    beforeTurn: null,
+    beforeTurn: previousCanonicalTurn,
     afterTurn: canonicalTurn,
     currentViews: currentTurn.items.map(projectConversationItemToIdentityView),
     currentTranscript: currentTurn.items,
@@ -2440,6 +2500,7 @@ function buildOwnerCanonicalTurnPlaceholder(
 
 function materializeOwnerCanonicalConversationSnapshot(
   conversation: CodexConversationSnapshot,
+  previousCanonicalState: CodexCanonicalConversationState | null = null,
 ): CodexConversationSnapshot {
   const canonicalState = conversation.canonicalState;
   if (!canonicalState) return conversation;
@@ -2450,7 +2511,22 @@ function materializeOwnerCanonicalConversationSnapshot(
       buildOwnerCanonicalTurnPlaceholder(conversation.threadId, canonicalTurn);
     const observedAtMs =
       canonicalTurn.sidecar.turnStartedAtMs ?? currentTurn.startedAt ?? conversation.updatedAt;
-    return materializeOwnerCanonicalTurn(currentTurn, canonicalTurn, observedAtMs, turnIndex);
+    const indexedPrevious = previousCanonicalState?.turns[turnIndex] ?? null;
+    const previousCanonicalTurn =
+      indexedPrevious?.protocol.id === canonicalTurn.protocol.id
+        ? indexedPrevious
+        : canonicalTurn.protocol.id === null
+          ? null
+          : (previousCanonicalState?.turns.findLast(
+              (turn) => turn.protocol.id === canonicalTurn.protocol.id,
+            ) ?? null);
+    return materializeOwnerCanonicalTurn(
+      currentTurn,
+      previousCanonicalTurn,
+      canonicalTurn,
+      observedAtMs,
+      turnIndex,
+    );
   });
 
   return {
@@ -2465,13 +2541,29 @@ function finalizeOwnerConversationMutation(
   previous: CodexConversationSnapshot,
   candidate: CodexConversationSnapshot,
 ): CodexConversationSnapshot {
-  if (candidate.canonicalState === previous.canonicalState) return candidate;
-  return materializeOwnerCanonicalConversationSnapshot(candidate);
+  const previousCanonical = previous.canonicalState;
+  const candidateCanonical = candidate.canonicalState;
+  if (!previousCanonical || !candidateCanonical || candidateCanonical === previousCanonical) {
+    return candidate;
+  }
+  const boundedCanonical = boundChangedCodexLiveTurns(previousCanonical, candidateCanonical);
+  const materialized = materializeOwnerCanonicalConversationSnapshot(
+    boundedCanonical === candidateCanonical
+      ? candidate
+      : { ...candidate, canonicalState: boundedCanonical },
+    previousCanonical,
+  );
+  // Read/unread is a standalone local state plane and is intentionally excluded from owner stream
+  // hashes. Reprojecting canonical Turn metadata must not resurrect an older unread bit.
+  return applyStandaloneUnreadStateToSnapshot(
+    materialized,
+    candidate.hasUnreadTurn ?? previous.hasUnreadTurn ?? false,
+  );
 }
 
 function materializeOwnerRollbackConversation(
   currentConversation: CodexConversationSnapshot,
-  rollbackResponse: ThreadRollbackResponse,
+  rollbackResponse: CodexThreadHistoryEditResult,
 ): CodexConversationSnapshot {
   const thread = rollbackResponse.thread;
   const now = Date.now();
@@ -2504,6 +2596,9 @@ function materializeOwnerRollbackConversation(
         ...summary,
         items: currentTurn?.items ?? [],
       },
+      currentConversation.canonicalState?.turns.findLast(
+        (candidate) => candidate.protocol.id === canonicalTurn.protocol.id,
+      ) ?? null,
       canonicalTurn,
       canonicalTurn.sidecar.turnStartedAtMs ?? now,
       turnIndex,
@@ -2532,15 +2627,9 @@ function materializeOwnerRollbackConversation(
     createdAt,
     updatedAt,
     resumeState: "resumed",
-    turnPagination: {
-      olderCursor: null,
-      backwardsCursor: null,
-      oldestLoadedTurnId: turns[0]?.turnId ?? null,
-      isLoadingOlder: false,
-      hasLoadedOldest: true,
-      loadedTurnCount: turns.length,
-      itemsView: "full",
-    },
+    turnPagination: rollbackResponse.turnPagination,
+    turnItemsPaginationById: rollbackResponse.turnItemsPaginationById,
+    historyRows: undefined,
     turns,
     requests: [],
     canonicalRequests: [],
@@ -3796,9 +3885,9 @@ export class CodexAppServerManager {
   >();
   private readonly attachmentStateByThreadId = new Map<string, LocalConversationAttachmentState>();
   private readonly interruptedTurnResumesInFlightByThreadId = new Map<string, Promise<unknown>>();
-  private readonly olderTurnLoadsInFlightByThread = new Map<
+  private readonly historyPageLoadsInFlightByTarget = new Map<
     string,
-    Promise<CodexConversationSnapshot | null>
+    Promise<CodexConversationHistoryPageResult>
   >();
   private readonly primaryConversationRequestByThread = new Map<
     string,
@@ -3821,10 +3910,11 @@ export class CodexAppServerManager {
   private readonly recentConversationIds: string[] = [];
   private readonly activeGoalContinuationPromises = new Map<string, Promise<void>>();
   private readonly activeGoalContinuationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly ownerTextDeltaSequenceTracker = new CodexFrameTextDeltaSequenceTracker();
   private readonly ownerTextDeltaQueue = new CodexFrameTextDeltaQueue<OwnerFrameTextDeltaUpdate>({
     onFlush: (updates, context) => {
       const completedSequencesByConversationId =
-        this.consumeOwnerTextDeltaSequenceSegments(updates);
+        this.ownerTextDeltaSequenceTracker.consume(updates);
       this.applyOwnerTextDeltas(updates, {
         notifyMode: context.terminalDrainCommit ? "sync" : "default",
         completedSequencesByConversationId,
@@ -3838,10 +3928,6 @@ export class CodexAppServerManager {
     },
   });
   private readonly ownerRollbackTombstonesByConversationId = new Map<string, Set<string>>();
-  private readonly ownerTextDeltaSequenceBuffersByKey = new Map<
-    string,
-    OwnerTextDeltaSequenceBuffer
-  >();
   private readonly ownerNotificationCompletionByConversationId = new Map<
     string,
     OwnerNotificationCompletionState
@@ -3868,7 +3954,7 @@ export class CodexAppServerManager {
       readonly streamRevision: number | null;
     }
   >();
-  private readonly terminalInputBuffers = new Map<string, string>();
+  private readonly terminalInputBuffers = new CodexTerminalInteractionAccumulator();
   private readonly ownerAppServerRequestClient = new IpcRendererOwnerAppServerRequestClient();
   private readonly pendingNodexAgentAuthorizations = new Map<
     string,
@@ -3890,7 +3976,10 @@ export class CodexAppServerManager {
   private readonly relationshipCallbacks = new Map<string, Set<StoreListener>>();
   private anyConversationCallbacks = new Set<AnyConversationListener>();
   private anyConversationMetaCallbacks = new Set<AnyConversationListener>();
-  private readonly deferredOwnerMessagesByRequestRecovery = new Map<string, Array<() => void>>();
+  private readonly deferredOwnerMessagesByRequestRecovery = new Map<
+    string,
+    DeferredOwnerRecoveryQueue
+  >();
   private readonly lastAnySnapshotById = new Map<string, ConversationAnyProjection>();
   private readonly lastMetaSnapshotById = new Map<string, ConversationMetaProjection>();
   private lastAnyOrderKey: string | null = null;
@@ -3985,7 +4074,7 @@ export class CodexAppServerManager {
   destroy(): void {
     this.cancelPendingNodexAgentAuthorizations();
     this.ownerTextDeltaQueue.dispose();
-    this.ownerTextDeltaSequenceBuffersByKey.clear();
+    this.ownerTextDeltaSequenceTracker.clear();
     this.ownerNotificationCompletionByConversationId.clear();
     this.unclaimedOwnerNotificationSequencesByConversationId.clear();
     this.outputDeltaQueue.dispose();
@@ -4478,67 +4567,131 @@ export class CodexAppServerManager {
     return summaries;
   }
 
-  requestThreadOlderTurns(threadId: string): Promise<CodexConversationSnapshot | null> {
-    const existing = this.olderTurnLoadsInFlightByThread.get(threadId);
+  requestHistoryPage(
+    request: CodexConversationHistoryPageRequest,
+  ): Promise<CodexConversationHistoryPageResult> {
+    const key = codexConversationHistoryPageRequestKey(request);
+    const existing = this.historyPageLoadsInFlightByTarget.get(key);
     if (existing) return existing;
 
     const loadPromise = (async () => {
-      if (this.isFollowerForConversation(threadId)) {
-        await this.waitForCompleteHistoryFromOwner(threadId);
-        return this.conversationsById.get(threadId) ?? null;
+      if (this.isFollowerForConversation(request.threadId)) {
+        return await this.waitForHistoryPageFromOwner(request);
       }
-
-      const conversation = (await runConversationOperation(
-        "codex:thread:turns:load-older",
-        threadId,
-      )) as CodexConversationSnapshot | null;
-      if (conversation) {
-        const materialized = materializeOwnerCanonicalConversationSnapshot(conversation);
-        this.applyConversationSnapshot(threadId, materialized);
-        return materialized;
-      }
-      return conversation;
+      return (await this.loadHistoryPageAsOwner(request)).page;
     })();
 
-    this.olderTurnLoadsInFlightByThread.set(threadId, loadPromise);
+    this.historyPageLoadsInFlightByTarget.set(key, loadPromise);
     void loadPromise.finally(() => {
-      if (this.olderTurnLoadsInFlightByThread.get(threadId) === loadPromise) {
-        this.olderTurnLoadsInFlightByThread.delete(threadId);
+      if (this.historyPageLoadsInFlightByTarget.get(key) === loadPromise) {
+        this.historyPageLoadsInFlightByTarget.delete(key);
       }
     });
     return loadPromise;
   }
 
-  async requestThreadCompleteHistory(threadId: string): Promise<CodexConversationSnapshot | null> {
+  /** Publishes a Main-authored bounded history mutation through the current owner authority. */
+  async publishLocalConversationHistoryMutation(
+    threadId: string,
+    mutation: CodexConversationHistoryMutation,
+  ): Promise<number> {
     if (this.isFollowerForConversation(threadId)) {
-      await this.waitForCompleteHistoryFromOwner(threadId);
-      return this.conversationsById.get(threadId) ?? null;
+      const result = await this.runFollowerActionThroughOwner<{ revision: number }>(threadId, {
+        type: "publishHistoryMutation",
+        threadId,
+        mutation,
+      });
+      await this.waitForOwnerPublishedRevision(threadId, result.revision);
+      return result.revision;
     }
-
-    await this.loadCompleteHistoryAsOwner(threadId);
-    return this.conversationsById.get(threadId) ?? null;
+    await this.ensureOwnerForConversationAction(threadId, "publish bounded history");
+    return await this.publishOwnerHistoryMutation(threadId, mutation);
   }
 
-  private async loadCompleteHistoryAsOwner(
-    threadId: string,
-  ): Promise<CodexThreadOwnerLoadCompleteHistoryResult> {
-    await this.ensureOwnerForConversationAction(threadId, "load complete history");
-    const conversation = (await runConversationOperation(
-      "codex:thread:turns:load-complete",
-      threadId,
-    )) as CodexConversationSnapshot | null;
-    const currentRevision = this.streamState.getRevision(threadId) ?? 0;
-    if (!conversation) {
-      return { revision: currentRevision };
+  async setHistoryResidencyPins(
+    pins: CodexHistoryResidencyPinsInput,
+  ): Promise<CodexHistoryResidencyPinsResult> {
+    const result = (await runConversationOperation(
+      "codex:thread:history-residency-pins:set",
+      pins,
+    )) as CodexHistoryResidencyPinsResult;
+    if (result.status !== "applied" || !result.mutation) return result;
+    const role = this.streamState.getRole(pins.threadId);
+    if (role?.role === "follower") {
+      const publication = await this.runFollowerActionThroughOwner<{ revision: number }>(
+        pins.threadId,
+        {
+          type: "publishHistoryMutation",
+          threadId: pins.threadId,
+          mutation: result.mutation,
+        },
+      );
+      await this.waitForOwnerPublishedRevision(pins.threadId, publication.revision);
+      return result;
     }
-    const materialized = materializeOwnerCanonicalConversationSnapshot(conversation);
+    await this.ensureOwnerForConversationAction(pins.threadId, "publish history eviction");
+    await this.publishOwnerHistoryMutation(pins.threadId, result.mutation);
+    return result;
+  }
 
+  private async loadHistoryPageAsOwner(
+    request: CodexConversationHistoryPageRequest,
+  ): Promise<CodexThreadOwnerHistoryMutationResult> {
+    await this.ensureOwnerForConversationAction(request.threadId, "load history page");
+    const page = (await runConversationOperation(
+      "codex:thread:history-page:load",
+      request,
+    )) as CodexConversationHistoryPageResult;
     return {
-      revision: await this.publishOwnerSnapshotTransaction(
-        threadId,
-        materialized,
-        "complete history",
-      ),
+      revision: await this.publishOwnerHistoryMutation(request.threadId, page.mutation),
+      page,
+    };
+  }
+
+  async hydratePersistedHistoryOccurrence(
+    input: CodexPersistedHistoryOccurrenceHydrateInput,
+  ): Promise<CodexPersistedHistoryOccurrenceResolution> {
+    const request: CodexPersistedHistoryOccurrenceHydrateRequest = {
+      ...input,
+      requestId: createOwnerGeneratedItemId("persisted-history-hydration"),
+    };
+    const role = this.streamState.getRole(input.threadId);
+    if (role?.role === "follower") {
+      const result =
+        await this.runFollowerActionThroughOwner<CodexThreadOwnerPersistedHistoryHydrationResult>(
+          input.threadId,
+          { type: "hydratePersistedHistoryOccurrence", input: request },
+          { fallback: () => this.hydratePersistedHistoryOccurrenceAsOwner(request) },
+        );
+      await this.waitForOwnerPublishedRevision(input.threadId, result.revision);
+      return result.hydration;
+    }
+
+    await this.ensureOwnerForConversationAction(
+      input.threadId,
+      "hydrate persisted history occurrence",
+    );
+    return (await this.hydratePersistedHistoryOccurrenceAsOwner(request)).hydration;
+  }
+
+  private async hydratePersistedHistoryOccurrenceAsOwner(
+    input: CodexPersistedHistoryOccurrenceHydrateRequest,
+  ): Promise<CodexThreadOwnerPersistedHistoryHydrationResult> {
+    await this.ensureOwnerForConversationAction(
+      input.threadId,
+      "hydrate persisted history occurrence",
+    );
+    const result = (await runConversationOperation(
+      "codex:thread:history-search:hydrate",
+      input,
+    )) as CodexPersistedHistoryOccurrenceHydrateResult;
+    const { mutation, ...hydration } = result;
+    return {
+      revision:
+        mutation === null
+          ? (this.streamState.getRevision(input.threadId) ?? 0)
+          : await this.publishOwnerHistoryMutation(input.threadId, mutation),
+      hydration,
     };
   }
 
@@ -4632,6 +4785,69 @@ export class CodexAppServerManager {
 
     await this.waitForOwnerStreamPublishIdle(threadId);
     return this.streamState.getRevision(threadId) ?? expectedRevision;
+  }
+
+  /** Publishes the exact bounded history delta without recursively diffing the resident graph. */
+  private async publishOwnerHistoryMutation(
+    threadId: string,
+    mutation: CodexConversationHistoryMutation,
+  ): Promise<number> {
+    await this.waitForOwnerStreamPublishIdle(threadId);
+    const role = this.streamState.getRole(threadId);
+    const checkpoint = this.streamState.getCheckpoint(threadId);
+    const currentConversation = this.conversationsById.get(threadId);
+    if (!role || role.role !== "owner" || !checkpoint || !currentConversation) {
+      throw new Error(`Cannot publish history mutation without owner authority for ${threadId}`);
+    }
+    const cursor = this.ensureOwnerStreamPublishCursor(threadId, checkpoint, currentConversation);
+    if (cursor.inFlight || cursor.dirty) {
+      throw new Error(`Cannot publish history mutation while owner stream is busy for ${threadId}`);
+    }
+    const accepted = applyCodexConversationHistoryMutation(cursor.acceptedDocument, mutation);
+    const presented = applyCodexConversationHistoryMutation(currentConversation, mutation);
+    if (!accepted.ok) {
+      throw new Error(`Could not apply history mutation for ${threadId}: ${accepted.reason}`);
+    }
+    if (!presented.ok) {
+      throw new Error(`Could not apply history mutation for ${threadId}: ${presented.reason}`);
+    }
+
+    const baseCheckpoint = cursor.acceptedCheckpoint;
+    const nextCheckpoint = buildCodexThreadStreamCheckpoint({
+      ownerEpoch: baseCheckpoint.ownerEpoch,
+      revision: baseCheckpoint.revision + 1,
+      conversation: accepted.conversation,
+    });
+    cursor.inFlight = true;
+    this.applyConversationSnapshot(threadId, presented.conversation);
+    const result = await this.dispatchOwnerStreamHistoryMutation(
+      threadId,
+      baseCheckpoint,
+      nextCheckpoint,
+      mutation,
+    );
+    if (this.ownerStreamPublishCursorsByConversationId.get(threadId) !== cursor) {
+      throw new Error(`Owner authority changed while publishing history for ${threadId}`);
+    }
+    if (!result.accepted) {
+      cursor.inFlight = false;
+      if (result.recovery) {
+        this.adoptOwnerSnapshotRecovery(threadId, cursor, result.recovery);
+      } else {
+        this.markOwnerStreamPublishUnavailable(threadId);
+      }
+      throw new Error(`Could not publish history mutation for ${threadId}: ${result.reason}`);
+    }
+    cursor.acceptedCheckpoint = result.checkpoint;
+    cursor.acceptedDocument = this.consumeOwnerStandaloneUnreadStateOverride(
+      cursor,
+      accepted.conversation,
+    );
+    cursor.inFlight = false;
+    this.streamState.recordOwnerCheckpoint(threadId, result.checkpoint);
+    this.processOwnerStreamPublishCursor(threadId);
+    this.resolveOwnerStreamPublishIdleWaiters(threadId);
+    return result.checkpoint.revision;
   }
 
   /**
@@ -5011,14 +5227,10 @@ export class CodexAppServerManager {
     label: string;
     action: CodexThreadOwnerActionRequest;
     executeAsOwner: () => Promise<TResult>;
-    requireCompleteHistory?: boolean;
     waitForStreamRevision?: boolean;
   }): Promise<TResult> {
     const role = this.streamState.getRole(input.conversationId);
     if (role?.role === "follower") {
-      if (input.requireCompleteHistory === true) {
-        await this.waitForCompleteHistoryFromOwner(input.conversationId);
-      }
       const result = await this.runFollowerActionThroughOwner<TResult>(
         input.conversationId,
         input.action,
@@ -5075,22 +5287,28 @@ export class CodexAppServerManager {
     }
   }
 
-  private async waitForCompleteHistoryFromOwner(threadId: string): Promise<void> {
+  private async waitForHistoryPageFromOwner(
+    request: CodexConversationHistoryPageRequest,
+  ): Promise<CodexConversationHistoryPageResult> {
+    const role = this.streamState.getRole(request.threadId);
+    if (role?.role !== "follower" || !role.ownerClientId) {
+      throw new Error(`Cannot route history page without a follower owner for ${request.threadId}`);
+    }
+    const result = await this.runFollowerActionThroughOwner<CodexThreadOwnerHistoryMutationResult>(
+      request.threadId,
+      { type: "loadHistoryPage", request },
+    );
+    await this.waitForOwnerPublishedRevision(request.threadId, result.revision);
+    return result.page;
+  }
+
+  private async waitForOwnerPublishedRevision(threadId: string, revision: number): Promise<void> {
     const role = this.streamState.getRole(threadId);
     if (role?.role !== "follower" || !role.ownerClientId) return;
-
-    const result =
-      await this.runFollowerActionThroughOwner<CodexThreadOwnerLoadCompleteHistoryResult>(
-        threadId,
-        {
-          type: "loadCompleteHistory",
-          threadId,
-        },
-      );
     await this.streamState.waitForRevision({
       conversationId: threadId,
       ownerClientId: role.ownerClientId,
-      revision: result.revision,
+      revision,
       timeoutMs: COMPLETE_HISTORY_WAIT_TIMEOUT_MS,
     });
   }
@@ -5311,9 +5529,17 @@ export class CodexAppServerManager {
           action.turnId,
           action.message,
         );
-      case "loadCompleteHistory":
+      case "loadHistoryPage":
+        this.assertOwnerForConversation(action.request.threadId);
+        return await this.loadHistoryPageAsOwner(action.request);
+      case "publishHistoryMutation":
         this.assertOwnerForConversation(action.threadId);
-        return await this.loadCompleteHistoryAsOwner(action.threadId);
+        return {
+          revision: await this.publishOwnerHistoryMutation(action.threadId, action.mutation),
+        };
+      case "hydratePersistedHistoryOccurrence":
+        this.assertOwnerForConversation(action.input.threadId);
+        return await this.hydratePersistedHistoryOccurrenceAsOwner(action.input);
       case "enqueueQueuedFollowUp":
         this.assertOwnerForConversation(action.threadId);
         return await this.enqueueQueuedFollowUpAsOwner(action.threadId, action.prompt, action.opts);
@@ -5916,7 +6142,6 @@ export class CodexAppServerManager {
         opts,
       },
       executeAsOwner: () => this.editLastUserTurnAsOwner(threadId, turnId, message, opts),
-      requireCompleteHistory: true,
       waitForStreamRevision: true,
     });
   }
@@ -5948,10 +6173,9 @@ export class CodexAppServerManager {
       throw new Error("Only the latest completed user turn can be edited");
     }
     const replacementPromptInput = buildOwnerEditReplacementPromptInput(targetTurn, message);
-    const rollbackResult = await this.ownerAppServerRequestClient.rollbackThreadForEdit(threadId, {
+    const rollbackResult = await this.ownerAppServerRequestClient.revertThreadForEdit(threadId, {
       threadId,
-      turnId,
-      numTurns: 1,
+      beforeTurnId: turnId,
     });
     const conversationAtRollback = this.conversationsById.get(threadId);
     if (!conversationAtRollback) {
@@ -5996,7 +6220,6 @@ export class CodexAppServerManager {
         message,
       },
       executeAsOwner: () => this.forkConversationFromTurnAsOwner(threadId, turnId, message),
-      requireCompleteHistory: true,
     });
   }
 
@@ -7330,7 +7553,7 @@ export class CodexAppServerManager {
     this.lastAnyOrderKey = null;
     this.lastMetaOrderKey = null;
     this.ownerTextDeltaQueue.dispose();
-    this.ownerTextDeltaSequenceBuffersByKey.clear();
+    this.ownerTextDeltaSequenceTracker.clear();
     this.ownerNotificationCompletionByConversationId.clear();
     this.unclaimedOwnerNotificationSequencesByConversationId.clear();
     this.outputDeltaQueue.dispose();
@@ -7549,6 +7772,52 @@ export class CodexAppServerManager {
     this.notifyControlCallbacks();
   }
 
+  private deferOwnerRecoveryMessage(
+    conversationId: string,
+    message: unknown,
+    apply: () => void,
+  ): boolean {
+    const queue = this.deferredOwnerMessagesByRequestRecovery.get(conversationId);
+    if (!queue) return false;
+
+    let approximateBytes: number;
+    try {
+      const encoded = JSON.stringify(message);
+      approximateBytes = new TextEncoder().encode(encoded ?? "null").byteLength;
+    } catch {
+      approximateBytes = CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES + 1;
+    }
+    const totalMessages = [...this.deferredOwnerMessagesByRequestRecovery.values()].reduce(
+      (total, candidate) => total + candidate.messages.length,
+      0,
+    );
+    const totalBytes = [...this.deferredOwnerMessagesByRequestRecovery.values()].reduce(
+      (total, candidate) => total + candidate.approximateBytes,
+      0,
+    );
+    if (
+      queue.messages.length + 1 > CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES_PER_CONVERSATION ||
+      totalMessages + 1 > CODEX_OWNER_RECOVERY_MAX_DEFERRED_MESSAGES ||
+      queue.approximateBytes + approximateBytes >
+        CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES_PER_CONVERSATION ||
+      totalBytes + approximateBytes > CODEX_OWNER_RECOVERY_MAX_DEFERRED_BYTES
+    ) {
+      return false;
+    }
+
+    queue.messages.push({ apply, approximateBytes });
+    queue.approximateBytes += approximateBytes;
+    return true;
+  }
+
+  private discardDeferredOwnerRecoveryMessages(conversationId: string): void {
+    const queue = this.deferredOwnerMessagesByRequestRecovery.get(conversationId);
+    if (!queue) return;
+    queue.messages.length = 0;
+    queue.approximateBytes = 0;
+    this.deferredOwnerMessagesByRequestRecovery.delete(conversationId);
+  }
+
   private handleThreadOwnerNotification(event: CodexThreadOwnerNotificationEvent): void {
     if (event.hostId !== this.hostId) {
       return;
@@ -7560,11 +7829,21 @@ export class CodexAppServerManager {
       ? this.deferredOwnerMessagesByRequestRecovery.get(eventConversationId)
       : null;
     if (deferredMessages) {
-      deferredMessages.push(() => this.handleThreadOwnerNotification(event));
+      if (
+        !this.deferOwnerRecoveryMessage(eventConversationId!, event, () =>
+          this.handleThreadOwnerNotification(event),
+        )
+      ) {
+        this.markOwnerStreamPublishUnavailable(eventConversationId!);
+      }
       return;
     }
-    if (eventConversationId) {
-      this.beginOwnerNotificationHandling(eventConversationId, event.sequence);
+    if (
+      eventConversationId &&
+      !this.beginOwnerNotificationHandling(eventConversationId, event.sequence)
+    ) {
+      this.markOwnerStreamPublishUnavailable(eventConversationId);
+      return;
     }
 
     try {
@@ -7622,10 +7901,12 @@ export class CodexAppServerManager {
         return;
       }
 
-      if (
-        event.notification.method === "item/reasoning/summaryPartAdded" ||
-        event.notification.method === "item/fileChange/outputDelta"
-      ) {
+      if (event.notification.method === "item/reasoning/summaryPartAdded") {
+        this.handleOwnerReasoningSummaryPartAddedNotification(event);
+        return;
+      }
+
+      if (event.notification.method === "item/fileChange/outputDelta") {
         this.handleOwnerNoopItemNotification(event);
         return;
       }
@@ -7697,12 +7978,21 @@ export class CodexAppServerManager {
         );
       }
 
-      this.claimOwnerNotificationSequence(frameTextDelta.conversationId, event.sequence);
-      this.trackOwnerTextDeltaSequence(frameTextDelta, event.sequence);
-      this.ownerTextDeltaQueue.enqueue({
+      const queued = this.ownerTextDeltaQueue.enqueue({
         ...frameTextDelta,
         ownerNotificationSequence: event.sequence,
       });
+      // The sequence becomes ACK-eligible only after both bounded buffers own the same delta.
+      if (!queued.accepted) {
+        this.markOwnerStreamPublishUnavailable(frameTextDelta.conversationId);
+        return;
+      }
+      const tracked = this.ownerTextDeltaSequenceTracker.track(frameTextDelta, event.sequence);
+      if (!tracked.accepted) {
+        this.markOwnerStreamPublishUnavailable(frameTextDelta.conversationId);
+        return;
+      }
+      this.claimOwnerNotificationSequence(frameTextDelta.conversationId, event.sequence);
     } catch (error) {
       if (eventConversationId) {
         this.claimOwnerNotificationSequence(eventConversationId, event.sequence);
@@ -7724,10 +8014,19 @@ export class CodexAppServerManager {
     const conversationId = event.request.params.threadId;
     const deferredMessages = this.deferredOwnerMessagesByRequestRecovery.get(conversationId);
     if (deferredMessages) {
-      deferredMessages.push(() => this.handleThreadOwnerRequest(event));
+      if (
+        !this.deferOwnerRecoveryMessage(conversationId, event, () =>
+          this.handleThreadOwnerRequest(event),
+        )
+      ) {
+        this.markOwnerStreamPublishUnavailable(conversationId);
+      }
       return;
     }
-    this.registerOwnerNotificationSequence(conversationId, event.sequence);
+    if (!this.registerOwnerNotificationSequence(conversationId, event.sequence)) {
+      this.markOwnerStreamPublishUnavailable(conversationId);
+      return;
+    }
     if (!conversationId) {
       void this.ackOwnerNotification("", event.sequence);
       return;
@@ -7746,11 +8045,27 @@ export class CodexAppServerManager {
     event: CodexThreadOwnerRequestEvent,
     conversationId: string,
   ): Promise<void> {
-    const deferredMessages: Array<() => void> = [];
+    if (
+      !this.deferredOwnerMessagesByRequestRecovery.has(conversationId) &&
+      this.deferredOwnerMessagesByRequestRecovery.size >= CODEX_OWNER_RECOVERY_MAX_CONVERSATIONS
+    ) {
+      this.markOwnerStreamPublishUnavailable(conversationId);
+      return;
+    }
+    const deferredMessages: DeferredOwnerRecoveryQueue = {
+      messages: [],
+      approximateBytes: 0,
+    };
     this.deferredOwnerMessagesByRequestRecovery.set(conversationId, deferredMessages);
     let recovered = false;
     try {
-      const conversation = await this.requestThreadStreamResume(conversationId);
+      const conversation = await runWithOwnerStreamDeadline(
+        this.requestThreadStreamResume(conversationId),
+        `Owner request recovery for ${conversationId}`,
+      );
+      if (this.deferredOwnerMessagesByRequestRecovery.get(conversationId) !== deferredMessages) {
+        return;
+      }
       const canonicalState = conversation?.canonicalState;
       if (!canonicalState || canonicalState.protocol.id !== conversationId) {
         return;
@@ -7761,13 +8076,15 @@ export class CodexAppServerManager {
     } catch {
       // Recovery failure is handled by the fail-closed path below.
     } finally {
-      this.deferredOwnerMessagesByRequestRecovery.delete(conversationId);
-      if (!recovered) {
-        this.handleOwnerReducerUnavailable(conversationId);
-        await this.ackOwnerNotification(conversationId, event.sequence);
-      }
-      for (const applyDeferredMessage of deferredMessages) {
-        applyDeferredMessage();
+      if (this.deferredOwnerMessagesByRequestRecovery.get(conversationId) === deferredMessages) {
+        this.deferredOwnerMessagesByRequestRecovery.delete(conversationId);
+        if (!recovered) {
+          this.handleOwnerReducerUnavailable(conversationId);
+          await this.ackOwnerNotification(conversationId, event.sequence);
+        }
+        for (const deferredMessage of deferredMessages.messages) {
+          deferredMessage.apply();
+        }
       }
     }
   }
@@ -8207,6 +8524,9 @@ export class CodexAppServerManager {
     }
 
     const payload = toOwnerTurnLifecyclePayload(event.notification);
+    if (method === "turn/completed") {
+      this.terminalInputBuffers.clearTurn(payload.threadId, payload.turnId);
+    }
     if (this.ackOwnerNotificationIfTombstoned(payload.threadId, [payload.turnId], event.sequence))
       return;
 
@@ -8268,6 +8588,13 @@ export class CodexAppServerManager {
 
     const payload = toOwnerItemLifecyclePayload(event.notification);
     const itemId = payload.item.id;
+    if (payload.turnId) {
+      this.terminalInputBuffers.clearItem({
+        conversationId: payload.threadId,
+        turnId: payload.turnId,
+        itemId,
+      });
+    }
     if (
       this.ackOwnerNotificationIfTombstoned(
         payload.threadId,
@@ -8335,7 +8662,7 @@ export class CodexAppServerManager {
           void this.hydrateBackgroundSubagentThreads({
             rootThreadId: payload.threadId,
             threadIds: [...effect.receiverThreadIds],
-            includeTurns: true,
+            includeTail: true,
           }).catch((error) => {
             console.warn("Failed to hydrate collaboration receiver threads", {
               threadId: payload.threadId,
@@ -8495,22 +8822,16 @@ export class CodexAppServerManager {
   }
 
   private handleOwnerNoopItemNotification(event: CodexThreadOwnerNotificationEvent): void {
-    if (
-      event.notification.method !== "item/reasoning/summaryPartAdded" &&
-      event.notification.method !== "item/fileChange/outputDelta"
-    )
-      return;
+    if (event.notification.method !== "item/fileChange/outputDelta") return;
 
     void this.ackOwnerNotification(event.notification.params.threadId, event.sequence);
   }
 
-  private handleOwnerTerminalInteractionNotification(
+  private handleOwnerReasoningSummaryPartAddedNotification(
     event: CodexThreadOwnerNotificationEvent,
   ): void {
-    if (event.notification.method !== "item/commandExecution/terminalInteraction") return;
+    if (event.notification.method !== "item/reasoning/summaryPartAdded") return;
     const payload = event.notification.params;
-
-    const bufferKey = getTerminalInteractionBufferKey(payload.threadId, payload.itemId);
     if (
       this.ackOwnerNotificationIfTombstoned(
         payload.threadId,
@@ -8520,14 +8841,68 @@ export class CodexAppServerManager {
     ) {
       return;
     }
-    const parsed = parseTerminalInteractionInput(
-      this.terminalInputBuffers.get(bufferKey) ?? "",
+    const currentCanonical = this.conversationsById.get(payload.threadId)?.canonicalState;
+    if (!currentCanonical || currentCanonical.protocol.id !== payload.threadId) {
+      this.handleOwnerReducerUnavailable(payload.threadId);
+      void this.ackOwnerNotification(payload.threadId, event.sequence);
+      return;
+    }
+    this.publishOwnerConversationMutation(payload.threadId, event.sequence, (conversation) => {
+      const before = conversation.canonicalState;
+      if (!before || before.protocol.id !== payload.threadId) return null;
+      const result = reduceCodexConversationEventWithEffects(
+        before,
+        { type: "notification", notification: event.notification },
+        { now: () => Date.now() },
+      );
+      if (result.state === before) return conversation;
+      const projection = applyOwnerCanonicalTurnProjection(conversation, before, result.state, {
+        observedAtMs: Date.now(),
+        preserveExistingUpdatedAt: true,
+      });
+      this.applyOwnerCanonicalHiddenTurns(payload.threadId, projection.hiddenTurns);
+      return {
+        ...projection.conversation,
+        canonicalState: result.state,
+        canonicalRequests: [...result.state.requests],
+        hasUnreadTurn: result.state.sidecar.hasUnreadTurn,
+      };
+    });
+  }
+
+  private handleOwnerTerminalInteractionNotification(
+    event: CodexThreadOwnerNotificationEvent,
+  ): void {
+    if (event.notification.method !== "item/commandExecution/terminalInteraction") return;
+    const payload = event.notification.params;
+
+    if (
+      this.ackOwnerNotificationIfTombstoned(
+        payload.threadId,
+        [payload.turnId, payload.itemId],
+        event.sequence,
+      )
+    ) {
+      return;
+    }
+    const parsed = this.terminalInputBuffers.accept(
+      {
+        conversationId: payload.threadId,
+        turnId: payload.turnId,
+        itemId: payload.itemId,
+      },
       payload.stdin,
     );
-    if (parsed.inputBuffer.length > 0) {
-      this.terminalInputBuffers.set(bufferKey, parsed.inputBuffer);
-    } else {
-      this.terminalInputBuffers.delete(bufferKey);
+    if (parsed.disposition === "overflow") {
+      console.warn("Dropping overflowing commandExecution/terminalInteraction", {
+        threadId: payload.threadId,
+        turnId: payload.turnId,
+        itemId: payload.itemId,
+        reason: parsed.reason,
+      });
+      this.claimOwnerNotificationSequence(payload.threadId, event.sequence);
+      this.markOwnerStreamPublishUnavailable(payload.threadId);
+      return;
     }
     if (parsed.commands.length === 0) return;
 
@@ -8688,8 +9063,12 @@ export class CodexAppServerManager {
       if (ownerConversationIds.has(conversationId)) {
         this.ownerTextDeltaQueue.discardConversation(conversationId);
         this.outputDeltaQueue.discardConversation(conversationId);
+        this.discardDeferredOwnerRecoveryMessages(conversationId);
         this.discardOwnerNotificationState(conversationId);
-        this.cancelOwnerStreamPublishQueues(conversationId);
+        this.cancelOwnerStreamPublishQueues(
+          conversationId,
+          new Error(`Owner stream transport reset for ${conversationId}`),
+        );
       }
       void this.setThreadStreamFollowingWithOptions(conversationId, true, {
         reannounce: true,
@@ -8722,84 +9101,65 @@ export class CodexAppServerManager {
     });
   }
 
-  private trackOwnerTextDeltaSequence(update: CodexFrameTextDeltaUpdate, sequence: number): void {
-    const key = buildCodexFrameTextDeltaKey(update);
-    const existing = this.ownerTextDeltaSequenceBuffersByKey.get(key);
-    const segment = {
-      sequence,
-      remainingCodeUnits: update.delta.length,
-    };
-    if (existing) {
-      existing.segments.push(segment);
-      return;
-    }
-
-    this.ownerTextDeltaSequenceBuffersByKey.set(key, {
-      conversationId: update.conversationId,
-      segments: [segment],
-    });
-  }
-
-  private consumeOwnerTextDeltaSequenceSegments(
-    updates: readonly OwnerFrameTextDeltaUpdate[],
-  ): ReadonlyMap<string, readonly number[]> {
-    const completedByConversationId = new Map<string, number[]>();
-    for (const update of updates) {
-      const key = buildCodexFrameTextDeltaKey(update);
-      const buffer = this.ownerTextDeltaSequenceBuffersByKey.get(key);
-      if (!buffer) continue;
-
-      let remainingFlushedCodeUnits = update.delta.length;
-      while (buffer.segments.length > 0) {
-        const segment = buffer.segments[0];
-        if (!segment) break;
-        if (segment.remainingCodeUnits > remainingFlushedCodeUnits) {
-          segment.remainingCodeUnits -= remainingFlushedCodeUnits;
-          break;
-        }
-
-        remainingFlushedCodeUnits -= segment.remainingCodeUnits;
-        buffer.segments.shift();
-        const completed = completedByConversationId.get(buffer.conversationId);
-        if (completed) {
-          completed.push(segment.sequence);
-        } else {
-          completedByConversationId.set(buffer.conversationId, [segment.sequence]);
-        }
-
-        if (remainingFlushedCodeUnits === 0 && buffer.segments[0]?.remainingCodeUnits !== 0) {
-          break;
-        }
-      }
-
-      if (buffer.segments.length === 0) {
-        this.ownerTextDeltaSequenceBuffersByKey.delete(key);
-      }
-    }
-    return completedByConversationId;
-  }
-
   private discardOwnerNotificationState(conversationId: string): void {
-    for (const [key, buffer] of this.ownerTextDeltaSequenceBuffersByKey.entries()) {
-      if (buffer.conversationId === conversationId) {
-        this.ownerTextDeltaSequenceBuffersByKey.delete(key);
-      }
-    }
+    this.ownerTextDeltaSequenceTracker.discardConversation(conversationId);
     this.ownerNotificationCompletionByConversationId.delete(conversationId);
     this.unclaimedOwnerNotificationSequencesByConversationId.delete(conversationId);
   }
 
-  private beginOwnerNotificationHandling(conversationId: string, sequence: number): void {
-    this.registerOwnerNotificationSequence(conversationId, sequence);
+  private pendingOwnerNotificationSequenceCount(conversationId?: string): number {
+    const conversationIds = new Set([
+      ...this.ownerNotificationCompletionByConversationId.keys(),
+      ...this.unclaimedOwnerNotificationSequencesByConversationId.keys(),
+    ]);
+    let total = 0;
+    for (const candidateConversationId of conversationIds) {
+      if (conversationId !== undefined && candidateConversationId !== conversationId) continue;
+      const completion =
+        this.ownerNotificationCompletionByConversationId.get(candidateConversationId);
+      total += completion?.completedSequences.size ?? 0;
+      if (completion?.reservedAckThrough !== null && completion?.reservedAckThrough !== undefined) {
+        total += 1;
+      }
+      total +=
+        this.unclaimedOwnerNotificationSequencesByConversationId.get(candidateConversationId)
+          ?.size ?? 0;
+    }
+    return total;
+  }
+
+  private canRetainOwnerNotificationSequences(
+    conversationId: string,
+    additionalCount: number,
+  ): boolean {
+    if (additionalCount <= 0) return true;
+    return (
+      this.pendingOwnerNotificationSequenceCount(conversationId) + additionalCount <=
+        CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES_PER_CONVERSATION &&
+      this.pendingOwnerNotificationSequenceCount() + additionalCount <=
+        CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES
+    );
+  }
+
+  private beginOwnerNotificationHandling(conversationId: string, sequence: number): boolean {
+    if (!this.registerOwnerNotificationSequence(conversationId, sequence)) return false;
     const sequences = this.unclaimedOwnerNotificationSequencesByConversationId.get(conversationId);
     if (sequences) {
+      if (
+        !sequences.has(sequence) &&
+        !this.canRetainOwnerNotificationSequences(conversationId, 1)
+      ) {
+        return false;
+      }
       sequences.add(sequence);
-      return;
+      return true;
     }
+    if (!this.canRetainOwnerNotificationSequences(conversationId, 1)) return false;
     this.unclaimedOwnerNotificationSequencesByConversationId.set(
       conversationId,
       new Set([sequence]),
     );
+    return true;
   }
 
   private claimOwnerNotificationSequence(conversationId: string, sequence: number): void {
@@ -8820,9 +9180,16 @@ export class CodexAppServerManager {
     void this.ackOwnerNotification(conversationId, sequence);
   }
 
-  private registerOwnerNotificationSequence(conversationId: string, sequence: number): void {
-    if (sequence <= 0 || this.ownerNotificationCompletionByConversationId.has(conversationId)) {
-      return;
+  private registerOwnerNotificationSequence(conversationId: string, sequence: number): boolean {
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) return false;
+    if (this.ownerNotificationCompletionByConversationId.has(conversationId)) {
+      return true;
+    }
+    if (
+      this.ownerNotificationCompletionByConversationId.size >=
+      CODEX_OWNER_NOTIFICATION_MAX_TRACKED_CONVERSATIONS
+    ) {
+      return false;
     }
 
     this.ownerNotificationCompletionByConversationId.set(conversationId, {
@@ -8830,27 +9197,38 @@ export class CodexAppServerManager {
       completedSequences: new Set(),
       reservedAckThrough: null,
     });
+    return true;
   }
 
   private recordOwnerNotificationCompletions(
     conversationId: string,
     input: OwnerNotificationSequenceInput,
-  ): void {
+  ): boolean {
     const sequences = typeof input === "number" ? [input] : input;
-    const firstSequence = sequences.find((sequence) => sequence > 0);
-    if (firstSequence === undefined) return;
+    const firstSequence = sequences.find(
+      (sequence) => Number.isSafeInteger(sequence) && sequence > 0,
+    );
+    if (firstSequence === undefined) return sequences.every((value) => value === 0);
 
     for (const sequence of sequences) {
       this.claimOwnerNotificationSequence(conversationId, sequence);
     }
-    this.registerOwnerNotificationSequence(conversationId, firstSequence);
+    if (!this.registerOwnerNotificationSequence(conversationId, firstSequence)) return false;
     const state = this.ownerNotificationCompletionByConversationId.get(conversationId);
-    if (!state) return;
-    for (const sequence of sequences) {
-      if (sequence >= state.nextSequenceToAck) {
-        state.completedSequences.add(sequence);
-      }
+    if (!state) return false;
+    const additions = new Set(
+      sequences.filter(
+        (sequence) =>
+          Number.isSafeInteger(sequence) &&
+          sequence >= state.nextSequenceToAck &&
+          !state.completedSequences.has(sequence),
+      ),
+    );
+    if (!this.canRetainOwnerNotificationSequences(conversationId, additions.size)) return false;
+    for (const sequence of additions) {
+      state.completedSequences.add(sequence);
     }
+    return true;
   }
 
   private reserveOwnerNotificationAck(conversationId: string): number {
@@ -8901,10 +9279,13 @@ export class CodexAppServerManager {
       let accepted = false;
       try {
         accepted =
-          (await runConversationOperation("codex:thread-owner:notification:ack", {
-            conversationId,
-            sequence,
-          })) === true;
+          (await runWithOwnerStreamDeadline(
+            runConversationOperation("codex:thread-owner:notification:ack", {
+              conversationId,
+              sequence,
+            }),
+            `Owner notification ACK for ${conversationId}`,
+          )) === true;
       } catch {
         accepted = false;
       }
@@ -9078,9 +9459,22 @@ export class CodexAppServerManager {
       return Promise.resolve();
     }
 
-    return new Promise((resolve) => {
-      const waiter: OwnerStreamPublishIdleWaiter = { resolve };
+    return new Promise((resolve, reject) => {
       const waiters = this.ownerStreamPublishIdleWaitersByConversationId.get(conversationId);
+      const totalWaiters = [...this.ownerStreamPublishIdleWaitersByConversationId.values()].reduce(
+        (total, candidates) => total + candidates.size,
+        0,
+      );
+      if (
+        (waiters?.size ?? 0) >= CODEX_OWNER_STREAM_MAX_IDLE_WAITERS_PER_CONVERSATION ||
+        totalWaiters >= CODEX_OWNER_STREAM_MAX_IDLE_WAITERS
+      ) {
+        const error = new Error(`Owner stream waiters exceeded their bound for ${conversationId}`);
+        this.markOwnerStreamPublishUnavailable(conversationId);
+        reject(error);
+        return;
+      }
+      const waiter: OwnerStreamPublishIdleWaiter = { resolve, reject };
       if (waiters) {
         waiters.add(waiter);
         return;
@@ -9105,13 +9499,25 @@ export class CodexAppServerManager {
     }
   }
 
+  private rejectOwnerStreamPublishIdleWaiters(conversationId: string, error: Error): void {
+    const waiters = this.ownerStreamPublishIdleWaitersByConversationId.get(conversationId);
+    if (!waiters) return;
+    this.ownerStreamPublishIdleWaitersByConversationId.delete(conversationId);
+    for (const waiter of waiters) {
+      waiter.reject(error);
+    }
+  }
+
   private queueOwnerStreamCursorPublish(
     conversationId: string,
     ownerNotificationSequence: OwnerNotificationSequenceInput,
     cursor: OwnerStreamPublishCursor,
   ): void {
     cursor.dirty = true;
-    this.recordOwnerNotificationCompletions(conversationId, ownerNotificationSequence);
+    if (!this.recordOwnerNotificationCompletions(conversationId, ownerNotificationSequence)) {
+      this.markOwnerStreamPublishUnavailable(conversationId);
+      return;
+    }
     this.processOwnerStreamPublishCursor(conversationId);
   }
 
@@ -9266,11 +9672,14 @@ export class CodexAppServerManager {
       cursor.standaloneUnreadStateOverride ?? recovery.conversationState.hasUnreadTurn;
     const convergedConversation =
       typeof authoritativeUnread === "boolean"
-        ? applyStandaloneUnreadStateToSnapshot(localConversation, authoritativeUnread)
-        : localConversation;
-    if (convergedConversation !== localConversation) {
-      this.applyConversationSnapshot(conversationId, convergedConversation);
-    }
+        ? applyStandaloneUnreadStateToSnapshot(recovery.conversationState, authoritativeUnread)
+        : recovery.conversationState;
+    // Main recovery is the accepted authority. Replaying the stale owner document here would
+    // resurrect history that Main already evicted; only the standalone unread override survives.
+    this.applyConversationSnapshot(
+      conversationId,
+      materializeOwnerCanonicalConversationSnapshot(convergedConversation),
+    );
     return toSharedConversationDocument(convergedConversation);
   }
 
@@ -9334,11 +9743,15 @@ export class CodexAppServerManager {
       return;
     }
 
-    const nextConversation = buildNextConversation(currentConversation);
-    if (!nextConversation || nextConversation === currentConversation) {
+    const candidateConversation = buildNextConversation(currentConversation);
+    if (!candidateConversation || candidateConversation === currentConversation) {
       void this.ackOwnerNotification(conversationId, ownerNotificationSequence);
       return;
     }
+    const nextConversation = finalizeOwnerConversationMutation(
+      currentConversation,
+      candidateConversation,
+    );
 
     if (buildCodexConversationStateUpdates(currentConversation, nextConversation).length === 0) {
       this.applyConversationSnapshot(
@@ -9381,11 +9794,15 @@ export class CodexAppServerManager {
       return;
     }
 
-    const nextConversation = buildNextConversation(currentConversation);
-    if (!nextConversation || nextConversation === currentConversation) {
+    const candidateConversation = buildNextConversation(currentConversation);
+    if (!candidateConversation || candidateConversation === currentConversation) {
       void this.ackOwnerNotification(conversationId, ownerNotificationSequence);
       return;
     }
+    const nextConversation = finalizeOwnerConversationMutation(
+      currentConversation,
+      candidateConversation,
+    );
 
     const cursor = this.ensureOwnerStreamPublishCursor(
       conversationId,
@@ -9450,7 +9867,10 @@ export class CodexAppServerManager {
     conversationId: string,
     sequence: OwnerNotificationSequenceInput,
   ): Promise<void> {
-    this.recordOwnerNotificationCompletions(conversationId, sequence);
+    if (!this.recordOwnerNotificationCompletions(conversationId, sequence)) {
+      this.markOwnerStreamPublishUnavailable(conversationId);
+      return Promise.resolve();
+    }
     this.flushOwnerNotificationCompletions(conversationId);
     return Promise.resolve();
   }
@@ -9463,18 +9883,52 @@ export class CodexAppServerManager {
     ownerNotificationSequence?: number,
   ): Promise<CodexThreadOwnerStreamStatePublishResult> {
     try {
-      const result = (await runConversationOperation("codex:thread-owner:stream-state:publish", {
-        conversationId,
-        change: {
-          type: "patches",
-          baseRevision: baseCheckpoint.revision,
-          revision: checkpoint.revision,
-          patches,
-        },
-        baseCheckpoint,
-        checkpoint,
-        ownerNotificationSequence,
-      })) as CodexThreadOwnerStreamStatePublishResult | boolean;
+      const result = (await runWithOwnerStreamDeadline(
+        runConversationOperation("codex:thread-owner:stream-state:publish", {
+          conversationId,
+          change: {
+            type: "patches",
+            baseRevision: baseCheckpoint.revision,
+            revision: checkpoint.revision,
+            patches,
+          },
+          baseCheckpoint,
+          checkpoint,
+          ownerNotificationSequence,
+        }),
+        `Owner patch publication for ${conversationId}`,
+      )) as CodexThreadOwnerStreamStatePublishResult | boolean;
+      if (result === true) return { accepted: true, checkpoint };
+      if (result === false) {
+        return { accepted: false, reason: "base-checkpoint-mismatch", recovery: null };
+      }
+      return result;
+    } catch {
+      return { accepted: false, reason: "not-owner", recovery: null };
+    }
+  }
+
+  private async dispatchOwnerStreamHistoryMutation(
+    conversationId: string,
+    baseCheckpoint: CodexThreadStreamCheckpoint,
+    checkpoint: CodexThreadStreamCheckpoint,
+    mutation: CodexConversationHistoryMutation,
+  ): Promise<CodexThreadOwnerStreamStatePublishResult> {
+    try {
+      const result = (await runWithOwnerStreamDeadline(
+        runConversationOperation("codex:thread-owner:stream-state:publish", {
+          conversationId,
+          change: {
+            type: "historyMutation",
+            baseRevision: baseCheckpoint.revision,
+            revision: checkpoint.revision,
+            mutation,
+          },
+          baseCheckpoint,
+          checkpoint,
+        }),
+        `Owner history publication for ${conversationId}`,
+      )) as CodexThreadOwnerStreamStatePublishResult | boolean;
       if (result === true) return { accepted: true, checkpoint };
       if (result === false) {
         return { accepted: false, reason: "base-checkpoint-mismatch", recovery: null };
@@ -9493,17 +9947,20 @@ export class CodexAppServerManager {
     ownerNotificationSequence?: number,
   ): Promise<CodexThreadOwnerStreamStatePublishResult> {
     try {
-      const result = (await runConversationOperation("codex:thread-owner:stream-state:publish", {
-        conversationId,
-        change: {
-          type: "snapshot",
-          revision: checkpoint.revision,
-          conversationState: toSharedConversationDocument(conversation),
-        },
-        baseCheckpoint,
-        checkpoint,
-        ownerNotificationSequence,
-      })) as CodexThreadOwnerStreamStatePublishResult | boolean;
+      const result = (await runWithOwnerStreamDeadline(
+        runConversationOperation("codex:thread-owner:stream-state:publish", {
+          conversationId,
+          change: {
+            type: "snapshot",
+            revision: checkpoint.revision,
+            conversationState: toSharedConversationDocument(conversation),
+          },
+          baseCheckpoint,
+          checkpoint,
+          ownerNotificationSequence,
+        }),
+        `Owner snapshot publication for ${conversationId}`,
+      )) as CodexThreadOwnerStreamStatePublishResult | boolean;
       if (result === true) return { accepted: true, checkpoint };
       if (result === false) {
         return { accepted: false, reason: "base-checkpoint-mismatch", recovery: null };
@@ -9514,10 +9971,14 @@ export class CodexAppServerManager {
     }
   }
 
-  private cancelOwnerStreamPublishQueues(conversationId?: string): void {
+  private cancelOwnerStreamPublishQueues(conversationId?: string, error?: Error): void {
     if (typeof conversationId === "string") {
       this.ownerStreamPublishCursorsByConversationId.delete(conversationId);
-      this.resolveOwnerStreamPublishIdleWaiters(conversationId);
+      if (error) {
+        this.rejectOwnerStreamPublishIdleWaiters(conversationId, error);
+      } else {
+        this.resolveOwnerStreamPublishIdleWaiters(conversationId);
+      }
       return;
     }
 
@@ -9530,8 +9991,12 @@ export class CodexAppServerManager {
   private markOwnerStreamPublishUnavailable(conversationId: string): void {
     this.ownerTextDeltaQueue.discardConversation(conversationId);
     this.outputDeltaQueue.discardConversation(conversationId);
+    this.discardDeferredOwnerRecoveryMessages(conversationId);
     this.discardOwnerNotificationState(conversationId);
-    this.cancelOwnerStreamPublishQueues(conversationId);
+    this.cancelOwnerStreamPublishQueues(
+      conversationId,
+      new Error(`Owner stream became unavailable for ${conversationId}`),
+    );
     this.queueOwnerProjectionFenceByConversationId.delete(conversationId);
     const conversation = this.conversationsById.get(conversationId);
     if (!conversation) {
@@ -9773,7 +10238,17 @@ export class CodexAppServerManager {
     }
 
     try {
-      const nextReplica = applyCodexConversationStateUpdates(currentReplica, event.change.patches);
+      const nextReplica =
+        event.change.type === "historyMutation"
+          ? (() => {
+              const applied = applyCodexConversationHistoryMutation(
+                currentReplica,
+                event.change.mutation,
+              );
+              if (!applied.ok) throw new Error(applied.reason);
+              return applied.conversation;
+            })()
+          : applyCodexConversationStateUpdates(currentReplica, event.change.patches);
       if (hashCodexConversationReplica(nextReplica) !== checkpoint.canonicalHash) {
         this.requestOwnerFollowerStreamResync(
           event.conversationId,
@@ -9795,7 +10270,8 @@ export class CodexAppServerManager {
         event.conversationId,
         nextConversation,
         undefined,
-        shouldSynchronouslyNotifyStreamingProsePatch(nextConversation, event.change.patches)
+        event.change.type === "patches" &&
+          shouldSynchronouslyNotifyStreamingProsePatch(nextConversation, event.change.patches)
           ? "sync"
           : "default",
       );
@@ -10046,8 +10522,13 @@ export class CodexAppServerManager {
     this.streamState.removeConversation(normalizedThreadId);
     this.ownerTextDeltaQueue.discardConversation(normalizedThreadId);
     this.outputDeltaQueue.discardConversation(normalizedThreadId);
+    this.terminalInputBuffers.clearConversation(normalizedThreadId);
+    this.discardDeferredOwnerRecoveryMessages(normalizedThreadId);
     this.discardOwnerNotificationState(normalizedThreadId);
-    this.cancelOwnerStreamPublishQueues(normalizedThreadId);
+    this.cancelOwnerStreamPublishQueues(
+      normalizedThreadId,
+      new Error(`Thread ${normalizedThreadId} was removed`),
+    );
     this.ownerRollbackTombstonesByConversationId.delete(normalizedThreadId);
     this.queueOwnerProjectionFenceByConversationId.delete(normalizedThreadId);
     this.clearActiveGoalContinuationTimer(normalizedThreadId);
@@ -10862,16 +11343,32 @@ export function setLocalConversationThreadPresented(
   return getDefaultLocalConversationManager().setThreadPresented(threadId, surfaceId, presented);
 }
 
-export function requestLocalConversationOlderTurns(
-  threadId: string,
-): Promise<CodexConversationSnapshot | null> {
-  return getDefaultLocalConversationManager().requestThreadOlderTurns(threadId);
+export function requestLocalConversationHistoryPage(
+  request: CodexConversationHistoryPageRequest,
+): Promise<CodexConversationHistoryPageResult> {
+  return getDefaultLocalConversationManager().requestHistoryPage(request);
 }
 
-export function requestLocalConversationCompleteHistory(
+export function publishLocalConversationHistoryMutation(
   threadId: string,
-): Promise<CodexConversationSnapshot | null> {
-  return getDefaultLocalConversationManager().requestThreadCompleteHistory(threadId);
+  mutation: CodexConversationHistoryMutation,
+): Promise<number> {
+  return getDefaultLocalConversationManager().publishLocalConversationHistoryMutation(
+    threadId,
+    mutation,
+  );
+}
+
+export function setLocalConversationHistoryResidencyPins(
+  pins: CodexHistoryResidencyPinsInput,
+): Promise<CodexHistoryResidencyPinsResult> {
+  return getDefaultLocalConversationManager().setHistoryResidencyPins(pins);
+}
+
+export function hydrateLocalPersistedHistoryOccurrence(
+  input: CodexPersistedHistoryOccurrenceHydrateInput,
+): Promise<CodexPersistedHistoryOccurrenceResolution> {
+  return getDefaultLocalConversationManager().hydratePersistedHistoryOccurrence(input);
 }
 
 export function setLocalConversationComposerIntent(

@@ -95,6 +95,12 @@ function LocalConversationThreadBodyLayout({
               cwd={model.cwd}
               turns={model.turns}
               turnPagination={model.turnPagination ?? null}
+              historyRows={model.historyRows}
+              conversationEntityGeneration={model.conversationEntityGeneration}
+              historyTopologyGeneration={model.historyTopologyGeneration}
+              historyMutationRevision={model.historyMutationRevision}
+              historyItemWindowsByTurnId={model.historyItemWindowsByTurnId}
+              turnItemsPaginationById={model.turnItemsPaginationById}
               requests={model.requests}
               canonicalRequests={model.canonicalRequests ?? []}
               resumeState={model.resumeState}
@@ -244,6 +250,12 @@ export const LocalConversationThreadBody = memo(
     left.model.parentTurns === right.model.parentTurns &&
     left.model.turns === right.model.turns &&
     left.model.turnPagination === right.model.turnPagination &&
+    left.model.historyRows === right.model.historyRows &&
+    left.model.conversationEntityGeneration === right.model.conversationEntityGeneration &&
+    left.model.historyTopologyGeneration === right.model.historyTopologyGeneration &&
+    left.model.historyMutationRevision === right.model.historyMutationRevision &&
+    left.model.historyItemWindowsByTurnId === right.model.historyItemWindowsByTurnId &&
+    left.model.turnItemsPaginationById === right.model.turnItemsPaginationById &&
     left.model.requests === right.model.requests &&
     left.model.canonicalRequests === right.model.canonicalRequests &&
     left.model.capabilityFlags === right.model.capabilityFlags,

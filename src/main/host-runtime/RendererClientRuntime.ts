@@ -6,8 +6,19 @@ import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import {
+  RENDERER_DELIVERY_DATA_CHANNEL,
+  type RendererDeliveryDataEnvelope,
+  type RendererDeliveryJsonValue,
+  type RendererDeliveryRoutedPayload,
+  type RendererDeliveryTarget,
+  type RendererDeliveryTransferAbortEnvelope,
+  type RendererDeliveryTransferAckEnvelope,
+} from "../../shared/renderer-delivery-transport";
 import type { CodexRendererClientRequestMessage } from "../../shared/types";
 import {
+  DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS,
+  DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS_PER_TARGET,
   DEFAULT_RENDERER_CLIENT_REQUEST_TIMEOUT_MS,
   RENDERER_CLIENT_REQUEST_CHANNEL,
   RendererClientRuntimeError,
@@ -23,9 +34,15 @@ import {
 import { safeSendToWebContents } from "../ipc-safe-send";
 import { getLogger } from "../logging/logger";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
+import {
+  make as makeRendererDelivery,
+  RendererDeliveryAdapter,
+  RendererDeliveryAdapterError,
+} from "./RendererDelivery";
 
 interface RegisteredRendererClient {
   readonly clientId: string;
+  readonly generation: number;
   readonly webContents: RendererClientWebContents;
   readonly destroyListener: () => void;
 }
@@ -38,10 +55,31 @@ interface PendingRendererClientRequest {
   readonly result: Deferred.Deferred<unknown, RendererClientRuntimeError>;
 }
 
+interface PendingRendererDeliveryAcknowledgment {
+  readonly targetWebContentsId: number;
+  readonly result: Deferred.Deferred<
+    RendererDeliveryTransferAckEnvelope,
+    RendererDeliveryAdapterError
+  >;
+}
+
 const runtimeLogger = getLogger({ subsystem: "codex", component: "renderer-client-runtime" });
 
 const createClientId = (): string => `renderer:${randomUUID()}`;
 const createRequestId = (): string => `renderer-request:${randomUUID()}`;
+
+const acknowledgmentKey = (acknowledgment: RendererDeliveryTransferAckEnvelope): string =>
+  JSON.stringify([
+    acknowledgment.targetId,
+    acknowledgment.generation,
+    acknowledgment.transferId,
+    acknowledgment.sequence,
+  ]);
+
+const targetOf = (client: RegisteredRendererClient): RendererDeliveryTarget => ({
+  targetId: client.clientId,
+  generation: client.generation,
+});
 
 const makeError = (input: {
   readonly message: string;
@@ -68,6 +106,17 @@ export const live = (
       const requestIdFactory = options.requestIdFactory ?? createRequestId;
       const defaultTimeoutMs =
         options.defaultRequestTimeoutMs ?? DEFAULT_RENDERER_CLIENT_REQUEST_TIMEOUT_MS;
+      const maxPendingRequests = Math.max(
+        1,
+        Math.floor(options.maxPendingRequests ?? DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS),
+      );
+      const maxPendingRequestsPerTarget = Math.max(
+        1,
+        Math.floor(
+          options.maxPendingRequestsPerTarget ??
+            DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS_PER_TARGET,
+        ),
+      );
       const logger = options.logger ?? runtimeLogger;
       const send =
         options.send ??
@@ -78,17 +127,108 @@ export const live = (
       const clientsByWebContentsId = new Map<number, RegisteredRendererClient>();
       const webContentsIdByClientId = new Map<string, number>();
       const pendingRequests = new Map<string, PendingRendererClientRequest>();
+      const pendingRequestCountByTargetClientId = new Map<string, number>();
+      const pendingDeliveryAcknowledgments = new Map<
+        string,
+        PendingRendererDeliveryAcknowledgment
+      >();
+      let nextGeneration = 1;
+
+      const deliveryAdapter = RendererDeliveryAdapter.of({
+        deliver: (envelope: RendererDeliveryDataEnvelope | RendererDeliveryTransferAbortEnvelope) =>
+          Effect.gen(function* () {
+            const webContentsId = webContentsIdByClientId.get(envelope.targetId);
+            const client =
+              webContentsId === undefined ? undefined : clientsByWebContentsId.get(webContentsId);
+            if (!client || client.generation !== envelope.generation) {
+              return yield* new RendererDeliveryAdapterError({
+                operation: `deliver.${envelope.kind}`,
+                reason: "unavailable",
+                cause: new Error("Renderer delivery target generation is unavailable"),
+              });
+            }
+            if (client.webContents.isDestroyed()) {
+              return yield* new RendererDeliveryAdapterError({
+                operation: `deliver.${envelope.kind}`,
+                reason: "destroyed",
+                cause: new Error("Renderer delivery target was destroyed"),
+              });
+            }
+
+            if (envelope.kind === "inline" || envelope.kind === "transferAbort") {
+              if (send(client.webContents, RENDERER_DELIVERY_DATA_CHANNEL, [envelope])) return null;
+              return yield* new RendererDeliveryAdapterError({
+                operation: `deliver.${envelope.kind}`,
+                reason: client.webContents.isDestroyed() ? "destroyed" : "send-failed",
+                cause: new Error("Electron rejected renderer delivery"),
+              });
+            }
+
+            const acknowledgment: RendererDeliveryTransferAckEnvelope = {
+              version: envelope.version,
+              kind: "transferAck",
+              targetId: envelope.targetId,
+              generation: envelope.generation,
+              transferId: envelope.transferId,
+              sequence: envelope.sequence,
+            };
+            const key = acknowledgmentKey(acknowledgment);
+            if (pendingDeliveryAcknowledgments.has(key)) {
+              return yield* new RendererDeliveryAdapterError({
+                operation: `deliver.${envelope.kind}`,
+                reason: "send-failed",
+                cause: new Error("Renderer delivery already awaits this acknowledgment"),
+              });
+            }
+            const result = yield* Deferred.make<
+              RendererDeliveryTransferAckEnvelope,
+              RendererDeliveryAdapterError
+            >();
+            const pending = { targetWebContentsId: client.webContents.id, result };
+            pendingDeliveryAcknowledgments.set(key, pending);
+            if (!send(client.webContents, RENDERER_DELIVERY_DATA_CHANNEL, [envelope])) {
+              pendingDeliveryAcknowledgments.delete(key);
+              return yield* new RendererDeliveryAdapterError({
+                operation: `deliver.${envelope.kind}`,
+                reason: client.webContents.isDestroyed() ? "destroyed" : "send-failed",
+                cause: new Error("Electron rejected renderer delivery"),
+              });
+            }
+            return yield* Deferred.await(result).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  if (pendingDeliveryAcknowledgments.get(key) === pending) {
+                    pendingDeliveryAcknowledgments.delete(key);
+                  }
+                }),
+              ),
+            );
+          }),
+      });
+      const rendererDelivery = yield* makeRendererDelivery().pipe(
+        Effect.provideService(RendererDeliveryAdapter, deliveryAdapter),
+      );
 
       const publish = (event: RendererClientEvent): Effect.Effect<void> =>
         PubSub.publish(events, event).pipe(Effect.asVoid);
 
+      const deletePending = (
+        requestId: string,
+        expected: PendingRendererClientRequest,
+      ): boolean => {
+        if (pendingRequests.get(requestId) !== expected) return false;
+        pendingRequests.delete(requestId);
+        const nextCount =
+          (pendingRequestCountByTargetClientId.get(expected.targetClientId) ?? 1) - 1;
+        if (nextCount <= 0) pendingRequestCountByTargetClientId.delete(expected.targetClientId);
+        else pendingRequestCountByTargetClientId.set(expected.targetClientId, nextCount);
+        return true;
+      };
+
       const removePending = (
         requestId: string,
         expected: PendingRendererClientRequest,
-      ): Effect.Effect<void> =>
-        Effect.sync(() => {
-          if (pendingRequests.get(requestId) === expected) pendingRequests.delete(requestId);
-        });
+      ): Effect.Effect<void> => Effect.sync(() => void deletePending(requestId, expected));
 
       const disposeWebContents = Effect.fn("RendererClientRuntime.disposeWebContents")(
         (webContentsId: number, reason = "disposed"): Effect.Effect<void> =>
@@ -101,12 +241,13 @@ export const live = (
               const pending = [...pendingRequests.values()].filter(
                 (entry) => entry.targetWebContentsId === webContentsId,
               );
-              for (const entry of pending) pendingRequests.delete(entry.requestId);
+              for (const entry of pending) deletePending(entry.requestId, entry);
               return { client, pending };
             });
             if (!removed) return;
 
             removed.client.webContents.off?.("destroyed", removed.client.destroyListener);
+            yield* rendererDelivery.releaseTarget(targetOf(removed.client));
             const error = makeError({
               message: `Renderer client ${removed.client.clientId} was ${reason}`,
               operation: "dispose-client",
@@ -154,7 +295,14 @@ export const live = (
         const destroyListener = () => {
           callbacks(disposeWebContents(webContents.id, "destroyed"));
         };
-        clientsByWebContentsId.set(webContents.id, { clientId, webContents, destroyListener });
+        const generation = nextGeneration;
+        nextGeneration += 1;
+        clientsByWebContentsId.set(webContents.id, {
+          clientId,
+          generation,
+          webContents,
+          destroyListener,
+        });
         webContentsIdByClientId.set(clientId, webContents.id);
         webContents.once?.("destroyed", destroyListener);
         callbacks(
@@ -178,6 +326,47 @@ export const live = (
         return client;
       };
 
+      const deliverToRegistered = Effect.fn("RendererClientRuntime.deliverToRegistered")((
+        client: RegisteredRendererClient,
+        channel: string,
+        args: readonly unknown[],
+      ): Effect.Effect<void> => {
+        const payload: RendererDeliveryRoutedPayload = {
+          channel,
+          args: args as readonly RendererDeliveryJsonValue[],
+        };
+        return rendererDelivery.enqueue(targetOf(client), payload).pipe(
+          Effect.flatMap((receipt) => receipt.completion),
+          Effect.catch((error) =>
+            Effect.gen(function* () {
+              logger.warn("Renderer delivery failed", {
+                channel,
+                clientId: client.clientId,
+                generation: client.generation,
+                reason: error.reason,
+              });
+
+              // A failed latest revision is not recoverable by waiting for a later message: there
+              // may never be one. Revoke this exact renderer generation so owner/follower state is
+              // re-elected now and the renderer obtains a fresh generation on its next IPC ingress.
+              // The identity fence prevents a late failure from disposing a replacement client.
+              if (clientsByWebContentsId.get(client.webContents.id) !== client) return;
+              yield* disposeWebContents(client.webContents.id, `delivery-failed:${error.reason}`);
+            }),
+          ),
+          Effect.asVoid,
+        );
+      });
+
+      const enqueueToRegistered = (
+        client: RegisteredRendererClient,
+        channel: string,
+        args: readonly unknown[],
+      ): boolean => {
+        callbacks(deliverToRegistered(client, channel, args));
+        return true;
+      };
+
       const request = Effect.fn("RendererClientRuntime.request")(
         <A = unknown>(
           targetClientId: string,
@@ -199,6 +388,20 @@ export const live = (
 
             const requestId = requestIdFactory();
             const timeoutMs = requestOptions.timeoutMs ?? defaultTimeoutMs;
+            const targetPendingCount = pendingRequestCountByTargetClientId.get(targetClientId) ?? 0;
+            if (
+              pendingRequests.size >= maxPendingRequests ||
+              targetPendingCount >= maxPendingRequestsPerTarget
+            ) {
+              return yield* makeError({
+                message: `Renderer client request capacity is exhausted for ${targetClientId}`,
+                operation: "request-admission",
+                reason: "pressure",
+                clientId: targetClientId,
+                requestId,
+                method,
+              });
+            }
             const result = yield* Deferred.make<unknown, RendererClientRuntimeError>();
             const pending: PendingRendererClientRequest = {
               requestId,
@@ -209,8 +412,9 @@ export const live = (
             };
             const message: CodexRendererClientRequestMessage = { requestId, method, params };
             pendingRequests.set(requestId, pending);
+            pendingRequestCountByTargetClientId.set(targetClientId, targetPendingCount + 1);
             if (!send(target.webContents, RENDERER_CLIENT_REQUEST_CHANNEL, [message])) {
-              pendingRequests.delete(requestId);
+              deletePending(requestId, pending);
               return yield* makeError({
                 message: `Renderer client ${targetClientId} is unavailable`,
                 operation: "request-send",
@@ -264,7 +468,7 @@ export const live = (
             return false;
           }
 
-          pendingRequests.delete(response.requestId);
+          deletePending(response.requestId, pending);
           if (response.type === "error") {
             yield* Deferred.fail(
               pending.result,
@@ -282,6 +486,50 @@ export const live = (
           yield* Deferred.succeed(pending.result, response.result);
           return true;
         });
+
+      const handleDeliveryAcknowledgment: RendererClientRuntimeService["handleDeliveryAcknowledgment"] =
+        (webContents, acknowledgment) =>
+          Effect.gen(function* () {
+            const webContentsId = webContentsIdByClientId.get(acknowledgment.targetId);
+            const client =
+              webContentsId === undefined ? undefined : clientsByWebContentsId.get(webContentsId);
+            if (
+              !client ||
+              client.webContents.id !== webContents.id ||
+              client.generation !== acknowledgment.generation
+            ) {
+              logger.warn("Ignored renderer delivery acknowledgment from a stale target", {
+                targetId: acknowledgment.targetId,
+                generation: acknowledgment.generation,
+                webContentsId: webContents.id,
+              });
+              return false;
+            }
+
+            const key = acknowledgmentKey(acknowledgment);
+            const pending = pendingDeliveryAcknowledgments.get(key);
+            if (!pending) {
+              logger.debug("Ignored unknown renderer delivery acknowledgment", {
+                targetId: acknowledgment.targetId,
+                generation: acknowledgment.generation,
+                transferId: acknowledgment.transferId,
+                sequence: acknowledgment.sequence,
+              });
+              return false;
+            }
+            if (pending.targetWebContentsId !== webContents.id) {
+              logger.warn("Ignored renderer delivery acknowledgment from non-target webContents", {
+                targetId: acknowledgment.targetId,
+                expectedWebContentsId: pending.targetWebContentsId,
+                actualWebContentsId: webContents.id,
+              });
+              return false;
+            }
+
+            pendingDeliveryAcknowledgments.delete(key);
+            yield* Deferred.succeed(pending.result, acknowledgment);
+            return true;
+          });
 
       const disposeAll = Effect.fn("RendererClientRuntime.disposeAll")(() =>
         Effect.forEach(
@@ -307,7 +555,12 @@ export const live = (
               { discard: true },
             ),
           ),
-          Effect.andThen(Effect.sync(() => pendingRequests.clear())),
+          Effect.andThen(
+            Effect.sync(() => {
+              pendingRequests.clear();
+              pendingRequestCountByTargetClientId.clear();
+            }),
+          ),
           Effect.andThen(PubSub.shutdown(events)),
           Effect.asVoid,
         ),
@@ -324,7 +577,7 @@ export const live = (
         getPendingRequestCount: () => pendingRequests.size,
         sendToClient: (clientId, channel, args) => {
           const client = findClient(clientId);
-          return client ? send(client.webContents, channel, args) : false;
+          return client ? enqueueToRegistered(client, channel, args) : false;
         },
         sendToClients: (clientIds, channel, args, deliveryOptions = {}) => {
           const sentClientIds: string[] = [];
@@ -337,7 +590,7 @@ export const live = (
               unavailableClientIds.push(clientId);
               continue;
             }
-            if (send(client.webContents, channel, args)) sentClientIds.push(clientId);
+            if (enqueueToRegistered(client, channel, args)) sentClientIds.push(clientId);
             else failedClientIds.push(clientId);
           }
           return { sentClientIds, unavailableClientIds, failedClientIds };
@@ -351,7 +604,7 @@ export const live = (
             ) {
               continue;
             }
-            if (send(client.webContents, channel, args)) sentCount += 1;
+            if (enqueueToRegistered(client, channel, args)) sentCount += 1;
           }
           return sentCount;
         },
@@ -389,6 +642,7 @@ export const live = (
             ),
           ),
         handleResponse,
+        handleDeliveryAcknowledgment,
         disposeClient: (clientId, reason = "disposed") => {
           const webContentsId = webContentsIdByClientId.get(clientId);
           return webContentsId === undefined

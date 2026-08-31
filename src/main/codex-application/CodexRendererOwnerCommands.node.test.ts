@@ -57,7 +57,7 @@ const makeHarness = () => {
     ),
     Effect.provideService(
       CodexThreadRollbackCommands,
-      CodexThreadRollbackCommands.of({ rollbackLatestForEdit: () => Effect.die("unused") }),
+      CodexThreadRollbackCommands.of({ revertLatestForEdit: () => Effect.die("unused") }),
     ),
     Effect.provideService(
       CodexTurnCommands,

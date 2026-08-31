@@ -7,7 +7,7 @@ import type { DesktopProjectWorkspaceThread } from "../core-client/project-works
 import { CodexConversationRelationships } from "./CodexConversationRelationships";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { buildWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
-import { make } from "./CodexSubagentCatalog";
+import { CODEX_SUBAGENT_CATALOG_MAX_ENTRIES, make } from "./CodexSubagentCatalog";
 
 const relationships = CodexConversationRelationships.of({ refresh: () => Effect.succeed([]) });
 
@@ -46,6 +46,7 @@ const entry = (threadId: string, fidelity: CodexThreadDirectoryEntry["fidelity"]
   const durable = workspaceThread(threadId);
   return {
     fidelity,
+    historyMode: null,
     durable,
     summary: buildWorkspaceThreadSummary(durable),
     canonical: null,
@@ -58,6 +59,7 @@ it.effect("deduplicates background hydration and requests the final fidelity", (
     Effect.gen(function* () {
       const reads: unknown[] = [];
       const directory = CodexThreadDirectory.of({
+        materializeInCurrentLane: () => Effect.die("unused"),
         resolve: () => Effect.die("unused"),
         descendants: (input) =>
           Effect.sync(() => {
@@ -80,14 +82,14 @@ it.effect("deduplicates background hydration and requests the final fidelity", (
       const summaries = yield* runtime.hydrateBackground({
         rootThreadId: "root",
         threadIds: [" child-1 ", "child-1", "", "child-2"],
-        includeTurns: true,
+        includeTail: true,
       });
 
       assert.deepEqual(reads, [
         {
           rootThreadId: "root",
           threadIds: ["child-1", "child-2"],
-          fidelity: "full",
+          fidelity: "tail",
         },
       ]);
       assert.deepEqual(
@@ -103,6 +105,7 @@ it.effect("delegates panel lineage and fidelity to the authoritative Directory",
     Effect.gen(function* () {
       const calls: unknown[] = [];
       const directory = CodexThreadDirectory.of({
+        materializeInCurrentLane: () => Effect.die("unused"),
         resolve: () => Effect.die("unused"),
         descendants: (input) =>
           Effect.sync(() => {
@@ -125,7 +128,7 @@ it.effect("delegates panel lineage and fidelity to the authoritative Directory",
       const summaries = yield* runtime.hydratePanel({
         rootThreadId: "root",
         threadIds: ["child-2"],
-        includeTurns: false,
+        includeTail: false,
       });
 
       assert.deepEqual(calls, [
@@ -143,6 +146,7 @@ it.effect("opens full-fidelity delivery and clears both subagent indexes", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const directory = CodexThreadDirectory.of({
+        materializeInCurrentLane: () => Effect.die("unused"),
         resolve: () => Effect.die("unused"),
         descendants: () => Effect.die("unused"),
         acceptRollbackResult: () => Effect.die("unused"),
@@ -168,11 +172,56 @@ it.effect("opens full-fidelity delivery and clears both subagent indexes", () =>
   ),
 );
 
+it.effect(
+  "evicts old background-only subagents instead of retaining an unbounded delta index",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = CodexThreadDirectory.of({
+          materializeInCurrentLane: () => Effect.die("unused"),
+          resolve: () => Effect.die("unused"),
+          descendants: () => Effect.die("unused"),
+          acceptRollbackResult: () => Effect.die("unused"),
+          acceptImportResult: () => Effect.die("unused"),
+          acceptForkResult: () => Effect.die("unused"),
+          observeMetadata: () => Effect.die("unused"),
+          acceptStandaloneStart: () => Effect.die("unused"),
+          acceptResumeResult: () => Effect.die("unused"),
+          acceptSessionStart: () => Effect.die("unused"),
+        });
+        const runtime = yield* make.pipe(
+          Effect.provideService(CodexConversationRelationships, relationships),
+          Effect.provideService(CodexThreadDirectory, directory),
+        );
+
+        for (let index = 0; index <= CODEX_SUBAGENT_CATALOG_MAX_ENTRIES; index += 1) {
+          runtime.observe(`child-${index}`);
+        }
+
+        assert.isFalse(runtime.shouldDropDelta("item/agentMessage/delta", "child-0"));
+        assert.isTrue(
+          runtime.shouldDropDelta(
+            "item/agentMessage/delta",
+            `child-${CODEX_SUBAGENT_CATALOG_MAX_ENTRIES}`,
+          ),
+        );
+        assert.isTrue(yield* runtime.open(`child-${CODEX_SUBAGENT_CATALOG_MAX_ENTRIES}`));
+        assert.isFalse(
+          runtime.shouldDropDelta(
+            "item/agentMessage/delta",
+            `child-${CODEX_SUBAGENT_CATALOG_MAX_ENTRIES}`,
+          ),
+        );
+      }),
+    ),
+);
+
 it.effect("owner Scope close interrupts active Directory hydration", () =>
   Effect.gen(function* () {
     const ownerScope = yield* Scope.make();
     let interrupted = false;
     const directory = CodexThreadDirectory.of({
+      materializeInCurrentLane: () => Effect.die("unused"),
       resolve: () => Effect.die("unused"),
       descendants: () =>
         Effect.never.pipe(Effect.onInterrupt(() => Effect.sync(() => (interrupted = true)))),

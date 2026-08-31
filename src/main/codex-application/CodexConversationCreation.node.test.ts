@@ -2,6 +2,10 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
+import {
+  CodexAppServerCapabilities,
+  createCodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
@@ -69,14 +73,19 @@ const request = (): CodexPendingWorktreeEntry => ({
 
 it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
   Effect.gen(function* () {
-    const requests: string[] = [];
+    const requests: Array<{ readonly method: string; readonly scheduling: unknown }> = [];
     const unsupported = () => Effect.die(new Error("unused"));
+    const capability = createCodexAppServerCapabilitySnapshot({
+      hostId: "local",
+      generation: 17,
+      userAgent: "codex-app-server/0.145.0-alpha.15",
+    });
     const gateway = CodexGateway.of({
       localHostId: "local",
       events: Stream.empty,
-      requestLocal: (method: string) =>
+      requestLocal: (method: string, _params: unknown, scheduling: unknown) =>
         Effect.sync(() => {
-          requests.push(method);
+          requests.push({ method, scheduling });
           if (method === "thread/start") return { thread: { id: "thread-created" } };
           return {};
         }) as never,
@@ -93,6 +102,14 @@ it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
       restartHost: unsupported,
     });
     const service = yield* make.pipe(
+      Effect.provideService(
+        CodexAppServerCapabilities,
+        CodexAppServerCapabilities.of({
+          forHost: () => Effect.succeed(capability),
+          forThread: () => Effect.succeed(capability),
+          isCurrent: () => Effect.succeed(true),
+        }),
+      ),
       Effect.provideService(
         CodexAttachments,
         CodexAttachments.of({
@@ -152,6 +169,11 @@ it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
     assert.deepEqual(yield* service.launchPending(request(), "/worktree", false), {
       threadId: "thread-created",
     });
-    assert.deepEqual(requests, ["thread/start"]);
+    assert.deepEqual(requests, [
+      {
+        method: "thread/start",
+        scheduling: { expectedHostId: "local", expectedGeneration: 17 },
+      },
+    ]);
   }),
 );

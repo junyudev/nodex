@@ -2,7 +2,6 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type { CodexHostMessage, CodexThreadFollowerActionInput } from "../../shared/types";
 import {
-  COMPLETE_HISTORY_RENDERER_CLIENT_REQUEST_TIMEOUT_MS,
   type RendererClientDeliveryResult,
   type RendererClientBroadcastOptions,
   type RendererClientRequestOptions,
@@ -174,15 +173,8 @@ export const runThreadFollowerActionThroughOwner = Effect.fn(
     return yield* ownerFollowerError("resolve-runtime", "Renderer client runtime is unavailable");
   }
 
-  const requestOptions =
-    input.action.type === "loadCompleteHistory"
-      ? { timeoutMs: COMPLETE_HISTORY_RENDERER_CLIENT_REQUEST_TIMEOUT_MS }
-      : {};
-
   return yield* router.requireThreadOwner(ownerClientId, input.conversationId).pipe(
-    Effect.andThen(
-      router.request(ownerClientId, "thread-owner-action", input.action, requestOptions),
-    ),
+    Effect.andThen(router.request(ownerClientId, "thread-owner-action", input.action, {})),
     Effect.mapError((error) =>
       isRendererOwnerUnavailableError(error)
         ? ownerFollowerError(

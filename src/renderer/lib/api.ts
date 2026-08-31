@@ -1,4 +1,5 @@
 import { resolveRendererTransport } from "./renderer-transport";
+import type { IpcApi } from "../../shared/ipc-api";
 import type {
   ContentAccessContext,
   ContentAccessIdentity,
@@ -342,6 +343,58 @@ export function getGitWorkerClient(): GitWorkerClient {
     subscribe: (listener) => transport.subscribeGitWorkerMessages(listener),
   });
   return gitWorkerClient;
+}
+
+export function searchCodexPersistedHistory(threadId: string, query: string) {
+  return invokeRendererQuery("codex:thread:history-search", threadId, query);
+}
+
+function invokeCancellableCodexPromptRail<
+  Channel extends "codex:thread:prompt-rail:index" | "codex:thread:prompt-rail:reveal",
+>(
+  channel: Channel,
+  request: IpcApi[Channel]["args"][0],
+  signal?: AbortSignal,
+): Promise<IpcApi[Channel]["result"]> {
+  const requestId = (request as { readonly requestId: string }).requestId;
+  if (signal?.aborted) {
+    return Promise.resolve({ status: "cancelled", requestId } as IpcApi[Channel]["result"]);
+  }
+
+  const cancel = () => {
+    void invokeRendererControl("codex:thread:prompt-rail:cancel", requestId).catch(
+      () => undefined,
+    );
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
+  const invocation = Reflect.apply(invokeRendererControl, undefined, [channel, request]) as Promise<
+    IpcApi[Channel]["result"]
+  >;
+  return invocation.finally(() => {
+    signal?.removeEventListener("abort", cancel);
+  });
+}
+
+export function loadCodexPromptRailIndex(
+  request: import("../../shared/codex-prompt-rail-history").CodexPromptRailIndexRequest,
+  options: { readonly signal?: AbortSignal } = {},
+) {
+  return invokeCancellableCodexPromptRail(
+    "codex:thread:prompt-rail:index",
+    request,
+    options.signal,
+  );
+}
+
+export function revealCodexPromptRailTurn(
+  request: import("../../shared/codex-prompt-rail-history").CodexPromptRailRevealRequest,
+  options: { readonly signal?: AbortSignal } = {},
+) {
+  return invokeCancellableCodexPromptRail(
+    "codex:thread:prompt-rail:reveal",
+    request,
+    options.signal,
+  );
 }
 
 export function readMicrophoneAccess(): Promise<MicrophoneAccessStatus> {

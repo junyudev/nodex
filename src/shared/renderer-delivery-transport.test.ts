@@ -9,6 +9,7 @@ import {
   RENDERER_DELIVERY_CHUNK_BYTES,
   RENDERER_DELIVERY_INLINE_MAX_BYTES,
   RENDERER_DELIVERY_MAX_ACTIVE_TRANSFERS,
+  RENDERER_DELIVERY_MAX_APPROXIMATE_PAYLOAD_BYTES,
   RENDERER_DELIVERY_MAX_CHUNKS,
   RENDERER_DELIVERY_MAX_ENCODED_BYTES,
   RENDERER_DELIVERY_MAX_JSON_DEPTH,
@@ -117,6 +118,23 @@ describe("renderer delivery payload codec", () => {
     expect(over.kind).toBe("transfer");
   });
 
+  test("counts JSON escaping and UTF-8 bytes before serialization", () => {
+    const payload = {
+      ascii: 'quote " slash \\ newline\n',
+      unicode: "长线程 🚀",
+      loneSurrogate: "\ud800",
+      numbers: [-0, 1.5, 1e100],
+    };
+    const dispatch = encodeRendererDelivery({
+      target: TARGET,
+      transferId: "exact:encoded-size",
+      payload,
+    });
+    const expected = new TextEncoder().encode(JSON.stringify(payload)).byteLength;
+
+    expect(dispatch.envelopes[0]).toMatchObject({ encodedBytes: expected });
+  });
+
   test("rejects cyclic, unsupported, non-finite, accessor, and over-deep payloads", () => {
     const cyclic: { self?: unknown } = {};
     cyclic.self = cyclic;
@@ -141,6 +159,18 @@ describe("renderer delivery payload codec", () => {
         encodeRendererDelivery({ target: TARGET, transferId: "invalid", payload }),
       );
     }
+  });
+
+  test("rejects an oversized object graph before walking or stringifying it", () => {
+    const sparse = new Array(Math.floor(RENDERER_DELIVERY_MAX_APPROXIMATE_PAYLOAD_BYTES / 8) + 1);
+
+    expectError("payloadTooLarge", () =>
+      encodeRendererDelivery({
+        target: TARGET,
+        transferId: "oversized:preflight",
+        payload: sparse,
+      }),
+    );
   });
 
   test("strictly parses envelope shape, byte metadata, and transfer budgets", () => {

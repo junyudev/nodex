@@ -18,7 +18,6 @@ import {
   resolveTurnCenterDistanceFromBottom,
   resolveVirtualizedTurnViewportState,
   resolveVisibleTurnRangeFromBottomDistance,
-  shouldLoadOlderThreadTurns,
   shouldShowThreadScrollToBottomControl,
 } from "./local-conversation-turn-virtualization";
 
@@ -41,6 +40,34 @@ describe("buildVirtualizedTurnLayout", () => {
     expect(layout.totalHeightPx).toBe(324);
     expect(layout.turnKeys.join(",")).toBe("turn_1,turn_2,turn_3");
     expect(layout.turnIndexByKey.get("turn_2")).toBe(1);
+  });
+
+  test("keeps a measured content anchor stable when an older page replaces the history gap", () => {
+    const previousLayout = buildVirtualizedTurnLayout({
+      entries: [
+        { turnKey: "history-gap", estimatedHeightPx: 144 },
+        { turnKey: "turn_2", estimatedHeightPx: 100 },
+        { turnKey: "turn_3", estimatedHeightPx: 100 },
+      ],
+      gapPx: 12,
+    });
+    const nextLayout = buildVirtualizedTurnLayout({
+      entries: [
+        { turnKey: "turn_1", estimatedHeightPx: 100 },
+        { turnKey: "turn_2", estimatedHeightPx: 100 },
+        { turnKey: "turn_3", estimatedHeightPx: 100 },
+      ],
+      gapPx: 12,
+    });
+
+    expect(
+      resolveAnchorPreservedDistanceFromBottom({
+        anchorKey: "turn_2",
+        distanceFromBottomPx: 112,
+        previousLayout,
+        nextLayout,
+      }),
+    ).toBe(112);
   });
 
   test("prefers measured heights over estimated heights", () => {
@@ -360,66 +387,5 @@ describe("latest turn follow helpers", () => {
         scrollDistanceFromBottomPx: 130,
       }),
     ).toBe(true);
-  });
-});
-
-describe("older turn loading helper", () => {
-  test("loads when the viewport approaches the oldest rendered content", () => {
-    expect(
-      shouldLoadOlderThreadTurns({
-        hasLoadedOldest: false,
-        isLoading: false,
-        scrollDistanceFromBottomPx: 4_400,
-        turnsBottomInsetPx: 0,
-        totalHeightPx: 5_000,
-        viewportHeightPx: 320,
-      }),
-    ).toBe(true);
-
-    expect(
-      shouldLoadOlderThreadTurns({
-        hasLoadedOldest: false,
-        isLoading: false,
-        scrollDistanceFromBottomPx: 4_000,
-        turnsBottomInsetPx: 0,
-        totalHeightPx: 5_000,
-        viewportHeightPx: 320,
-      }),
-    ).toBe(false);
-  });
-
-  test("accounts for list bottom inset and suppresses complete or in-flight loads", () => {
-    expect(
-      shouldLoadOlderThreadTurns({
-        hasLoadedOldest: false,
-        isLoading: false,
-        scrollDistanceFromBottomPx: 4_600,
-        turnsBottomInsetPx: 220,
-        totalHeightPx: 5_000,
-        viewportHeightPx: 320,
-      }),
-    ).toBe(true);
-
-    expect(
-      shouldLoadOlderThreadTurns({
-        hasLoadedOldest: true,
-        isLoading: false,
-        scrollDistanceFromBottomPx: 4_600,
-        turnsBottomInsetPx: 220,
-        totalHeightPx: 5_000,
-        viewportHeightPx: 320,
-      }),
-    ).toBe(false);
-
-    expect(
-      shouldLoadOlderThreadTurns({
-        hasLoadedOldest: false,
-        isLoading: true,
-        scrollDistanceFromBottomPx: 4_600,
-        turnsBottomInsetPx: 220,
-        totalHeightPx: 5_000,
-        viewportHeightPx: 320,
-      }),
-    ).toBe(false);
   });
 });

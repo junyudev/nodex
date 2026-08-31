@@ -79,6 +79,8 @@ import { CodexEndpointMap } from "../codex-runtime/CodexEndpointMap";
 import { CodexEventHub } from "../codex-runtime/CodexEventHub";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import * as CodexRuntimeLive from "../codex-runtime/CodexRuntimeLive";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexRequestScheduler } from "../codex-runtime/CodexRequestScheduler";
 import {
   createElectronProviderCredentialStore,
   type ProviderCredentialStore,
@@ -313,6 +315,8 @@ export const live: Layer.Layer<
   | CodexConversations
   | ConversationEntityMap
   | CodexGateway
+  | CodexAppServerCapabilities
+  | CodexRequestScheduler
   | CodexEndpointMap
   | CodexEventHub
   | ProviderCredentials.ProviderCredentials

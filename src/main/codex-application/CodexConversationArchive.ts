@@ -1,5 +1,4 @@
 import * as path from "node:path";
-import type { Turn } from "@nodex/codex-app-server-protocol/v2/Turn";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -7,18 +6,18 @@ import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type { CodexThreadSummary } from "../../shared/types";
 import { AutomationApplication } from "../automation-application/AutomationApplication";
 import {
-  AUTOMATION_ARCHIVE_TURN_CAPTURE_LIMIT,
-  hasAutomationArchiveMessage,
-  resolveAutomationArchiveMessagesFromProtocolTurns,
+  hasCompleteAutomationArchiveExchange,
+  readBoundedAutomationArchiveExcerpt,
   resolveAutomationArchiveMessagesFromTranscript,
   type AutomationArchiveMessages,
-} from "../automation-application/AutomationExecution";
+} from "../automation-application/AutomationArchiveExcerpt";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import {
   normalizeWorktreePathForIdentity,
   resolveWorktreePathComparisonKey,
 } from "../codex/codex-managed-worktree-effects";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import {
   ProjectWorkspace,
@@ -26,6 +25,7 @@ import {
   type ProjectWorkspaceError,
 } from "../project-application/ProjectWorkspace";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
+import { CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
 import { buildWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
@@ -67,7 +67,9 @@ export const make: Effect.Effect<
   | AutomationApplication
   | AutomationRoutingIndex
   | CodexApplicationEventHub
+  | CodexAppServerCapabilities
   | CodexGateway
+  | CodexHistoryPageAdapter
   | ConversationEntityMap
   | ManagedWorktreeRuntime
   | NodexAgentAuthorizationRuntime
@@ -76,7 +78,9 @@ export const make: Effect.Effect<
   const automation = yield* AutomationApplication;
   const automationRouting = yield* AutomationRoutingIndex;
   const events = yield* CodexApplicationEventHub;
+  const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
+  const historyPages = yield* CodexHistoryPageAdapter;
   const conversations = yield* ConversationEntityMap;
   const managedWorktrees = yield* ManagedWorktreeRuntime;
   const authorizations = yield* NodexAgentAuthorizationRuntime;
@@ -197,27 +201,29 @@ export const make: Effect.Effect<
     const local = snapshot
       ? resolveAutomationArchiveMessagesFromTranscript(snapshot.turns.flatMap((turn) => turn.items))
       : { archivedUserMessage: null, archivedAssistantMessage: null };
-    if (hasAutomationArchiveMessage(local)) return Effect.succeed(local);
-    return gateway
-      .requestForThread(threadId, "thread/turns/list", {
-        threadId,
-        limit: AUTOMATION_ARCHIVE_TURN_CAPTURE_LIMIT,
-        sortDirection: "desc",
-        itemsView: "full",
-      })
-      .pipe(
-        Effect.map((page) =>
-          resolveAutomationArchiveMessagesFromProtocolTurns(
-            [...page.data].reverse() as unknown as readonly Turn[],
-          ),
+    if (hasCompleteAutomationArchiveExchange(local)) return Effect.succeed(local);
+    return readBoundedAutomationArchiveExcerpt(historyPages, capabilities, threadId, local).pipe(
+      Effect.tap((excerpt) =>
+        excerpt.resolution === "truncated"
+          ? Effect.logWarning("Automation archive excerpt reached its bounded read limit").pipe(
+              Effect.annotateLogs({
+                threadId,
+                truncationReason: excerpt.truncationReason,
+                inspectedTurnCount: excerpt.inspectedTurnCount,
+                inspectedItemCount: excerpt.inspectedItemCount,
+                approximateProjectedBytes: excerpt.approximateProjectedBytes,
+              }),
+            )
+          : Effect.void,
+      ),
+      Effect.map((excerpt) => excerpt.messages),
+      Effect.catch((cause) =>
+        Effect.logWarning("Could not read bounded Thread excerpt for Automation archive").pipe(
+          Effect.annotateLogs({ threadId, cause }),
+          Effect.as(local),
         ),
-        Effect.catch((cause) =>
-          Effect.logWarning("Could not capture Automation messages while archiving Thread").pipe(
-            Effect.annotateLogs({ threadId, cause }),
-            Effect.as({ archivedUserMessage: null, archivedAssistantMessage: null }),
-          ),
-        ),
-      );
+      ),
+    );
   };
 
   const finishAutomationArchive = (

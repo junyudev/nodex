@@ -9,7 +9,11 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { createCodexCanonicalWorkspacePermissionContext } from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexCanonicalHydratedPermissionContext } from "../../shared/types";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import { projectCodexGatewayThreadResumeResponse } from "../codex-runtime/CodexGatewayProtocolProjection";
 import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
 import { rewriteExecutionWorkspaceRoots } from "../codex/codex-execution-workspace-roots";
@@ -124,6 +128,7 @@ export const live: Layer.Layer<
   CodexThreadExecution,
   never,
   | CodexConversationProjection
+  | CodexAppServerCapabilities
   | CodexGateway
   | CodexTurnCommands
   | ConversationCommands
@@ -135,6 +140,7 @@ export const live: Layer.Layer<
   CodexThreadExecution,
   Effect.gen(function* () {
     const projection = yield* CodexConversationProjection;
+    const capabilities = yield* CodexAppServerCapabilities;
     const gateway = yield* CodexGateway;
     const turns = yield* CodexTurnCommands;
     const conversations = yield* ConversationCommands;
@@ -235,6 +241,30 @@ export const live: Layer.Layer<
       preparation: ManagedWorktreeHandoffPreparation | null,
     ) =>
       Effect.gen(function* () {
+        const capability = yield* capabilities.forHost(location.hostId);
+        if (!capability.flags.paginatedHistory) {
+          return yield* error(
+            "switch-runtime",
+            threadId,
+            new Error("Task handoff requires bounded paginated history support"),
+          );
+        }
+        const ensureCurrent = (snapshot: CodexAppServerCapabilitySnapshot) =>
+          capabilities
+            .isCurrent(snapshot)
+            .pipe(
+              Effect.flatMap((current) =>
+                current
+                  ? Effect.void
+                  : Effect.fail(
+                      error(
+                        "switch-runtime",
+                        threadId,
+                        new Error("Task handoff host generation changed during runtime switch"),
+                      ),
+                    ),
+              ),
+            );
         const permissions = yield* permissionContext(threadId, location.workspaceRoots);
         let rolloutPath: string | null = null;
         if (preparation?.prepared.direction === "cross-host") {
@@ -253,10 +283,17 @@ export const live: Layer.Layer<
             );
           }
         } else {
-          const metadata = yield* gateway.requestOnHost(location.hostId, "thread/read", {
-            threadId,
-            includeTurns: false,
-          });
+          yield* ensureCurrent(capability);
+          const metadata = yield* gateway.requestOnHost(
+            location.hostId,
+            "thread/read",
+            {
+              threadId,
+              includeTurns: false,
+            },
+            codexGatewayGenerationFence(capability),
+          );
+          yield* ensureCurrent(capability);
           rolloutPath = metadata.thread.path ?? null;
           if (metadata.thread.status.type !== "notLoaded") {
             const settings: ThreadSettingsUpdateParams = {
@@ -268,7 +305,14 @@ export const live: Layer.Layer<
                 ? { permissions: permissions.activePermissionProfile.id }
                 : { sandboxPolicy: permissions.sandboxPolicy }),
             };
-            yield* gateway.requestOnHost(location.hostId, "thread/settings/update", settings);
+            yield* ensureCurrent(capability);
+            yield* gateway.requestOnHost(
+              location.hostId,
+              "thread/settings/update",
+              settings,
+              codexGatewayGenerationFence(capability),
+            );
+            yield* ensureCurrent(capability);
           }
         }
         const toolConfig = yield* tools.threadConfig;
@@ -280,17 +324,24 @@ export const live: Layer.Layer<
             }) as Schema.JsonObject,
           catch: (cause) => error("switch-runtime", threadId, cause),
         });
+        yield* ensureCurrent(capability);
         const response = projectCodexGatewayThreadResumeResponse(
-          yield* gateway.requestOnHost(location.hostId, "thread/resume", {
-            threadId,
-            history: null,
-            path: rolloutPath,
-            cwd: location.cwd,
-            config,
-            excludeTurns: true,
-            ...resumePermissions(permissions),
-          }),
+          yield* gateway.requestOnHost(
+            location.hostId,
+            "thread/resume",
+            {
+              threadId,
+              history: null,
+              path: rolloutPath,
+              cwd: location.cwd,
+              config,
+              excludeTurns: true,
+              ...resumePermissions(permissions),
+            },
+            codexGatewayGenerationFence(capability),
+          ),
         );
+        yield* ensureCurrent(capability);
         yield* Effect.try({
           try: () => assertResumeLocation(threadId, location, response),
           catch: (cause) => error("switch-runtime", threadId, cause),
@@ -369,26 +420,28 @@ export const live: Layer.Layer<
           ),
         ),
       commit: (threadId, location) =>
-        core.workspace
-          .apply({
-            operationId: createOperationId("thread-execution.handoff"),
-            intent: {
-              kind: "set_thread_execution_location",
-              thread_id: threadId,
-              location: {
-                execution_host_id: location.hostId,
-                cwd: location.cwd,
-                managed_worktree_path: location.managedWorktreePath,
-                runtime_workspace_roots: [...location.workspaceRoots],
-                projectless_output_directory: location.projectlessOutputDirectory,
-                projectless_workspace_browser_root: location.projectlessWorkspaceBrowserRoot,
-              },
-            },
-          })
-          .pipe(
-            Effect.asVoid,
-            Effect.mapError((cause) => error("commit", threadId, cause)),
-          ),
+        conversationRuntimes
+          .runCommand(
+            threadId,
+            core.workspace
+              .apply({
+                operationId: createOperationId("thread-execution.handoff"),
+                intent: {
+                  kind: "set_thread_execution_location",
+                  thread_id: threadId,
+                  location: {
+                    execution_host_id: location.hostId,
+                    cwd: location.cwd,
+                    managed_worktree_path: location.managedWorktreePath,
+                    runtime_workspace_roots: [...location.workspaceRoots],
+                    projectless_output_directory: location.projectlessOutputDirectory,
+                    projectless_workspace_browser_root: location.projectlessWorkspaceBrowserRoot,
+                  },
+                },
+              })
+              .pipe(Effect.asVoid),
+          )
+          .pipe(Effect.mapError((cause) => error("commit", threadId, cause))),
       followUp: (threadId, prompt) =>
         turns.start(threadId, prompt).pipe(
           Effect.flatMap((turn) =>

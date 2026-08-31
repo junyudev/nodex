@@ -1080,6 +1080,22 @@ export interface ThreadBodySurfaceModel {
   cwd: string | null;
   turns: CodexConversationTurn[];
   turnPagination?: CodexConversationTurnPagination | null;
+  historyRows?: readonly import("../../../shared/codex-conversation-state/codex-history-topology").CodexHistoryRow[];
+  conversationEntityGeneration?: number;
+  historyTopologyGeneration?: number;
+  historyMutationRevision?: number;
+  historyItemWindowsByTurnId?: Readonly<
+    Record<
+      string,
+      import("../../../shared/codex-conversation-history-page").CodexConversationHistoryItemWindowSnapshot
+    >
+  >;
+  turnItemsPaginationById?: Readonly<
+    Record<
+      string,
+      import("../../../shared/codex-conversation-state/codex-history-topology").CodexHistoryTurnItemsPagination
+    >
+  >;
   requests: CodexConversationServerRequest[];
   canonicalRequests?: CodexCanonicalServerRequest[];
   resumeState: CodexConversationResumeState | null;

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -14,6 +15,12 @@ import { motion } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
+import {
+  MARKER_NAVIGATION_MAX_VIRTUAL_VIEWPORT_PX,
+  MARKER_NAVIGATION_ROW_HEIGHT_PX,
+  MARKER_NAVIGATION_VIRTUALIZE_AFTER,
+  projectMarkerNavigationVirtualWindow,
+} from "./marker-navigation-window";
 
 export type MarkerNavigationRevealMode = "smooth" | "instant";
 
@@ -227,12 +234,14 @@ export interface MarkerNavigationRailProps<TItem extends MarkerNavigationItem> {
     mode: MarkerNavigationRevealMode,
   ) => HTMLElement | null | Promise<HTMLElement | null>;
   onClickItem?: (item: TItem) => void;
+  onItemPreviewIntent?: (item: TItem) => void;
   getRowDataAttributes?: (item: TItem) => Record<string, string | undefined>;
   listDataAttributes?: Record<string, string | undefined>;
   markerClassName?: string;
   navClassName?: string;
   side?: MarkerNavigationRailSide;
   tooltipSide?: "top" | "right" | "bottom" | "left";
+  virtualizeAfter?: number;
 }
 
 export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
@@ -250,12 +259,14 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
   highlightTarget,
   onRevealMissingItem,
   onClickItem,
+  onItemPreviewIntent,
   getRowDataAttributes,
   listDataAttributes,
   markerClassName,
   navClassName,
   side = "left",
   tooltipSide,
+  virtualizeAfter = Number.POSITIVE_INFINITY,
 }: MarkerNavigationRailProps<TItem>) {
   const reducedMotion = useResolvedReducedMotion();
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -269,6 +280,11 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
   const [scrubTargetId, setScrubTargetId] = useState<string | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [canRender, setCanRender] = useState(false);
+  const [keyboardFocusItemId, setKeyboardFocusItemId] = useState<string | null>(null);
+  const [virtualViewport, setVirtualViewport] = useState(() => ({
+    scrollTop: Math.max(0, items.length * MARKER_NAVIGATION_ROW_HEIGHT_PX - 400),
+    height: 400,
+  }));
 
   useEffect(() => {
     isScrubbingRef.current = isScrubbing;
@@ -277,7 +293,25 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
   const lastItemId = items[items.length - 1]?.id ?? null;
   const itemIds = useMemo(() => new Set(items.map((item) => item.id)), [items]);
   const itemsById = useMemo(() => new Map(items.map((item) => [item.id, item] as const)), [items]);
+  const itemIndexById = useMemo(
+    () => new Map(items.map((item, index) => [item.id, index] as const)),
+    [items],
+  );
   const itemIdsKey = useMemo(() => items.map((item) => item.id).join("\n"), [items]);
+  const shouldVirtualize =
+    items.length >= Math.max(MARKER_NAVIGATION_VIRTUALIZE_AFTER, virtualizeAfter);
+  const virtualWindow = useMemo(
+    () =>
+      projectMarkerNavigationVirtualWindow({
+        itemCount: items.length,
+        scrollTop: virtualViewport.scrollTop,
+        viewportHeight: virtualViewport.height,
+      }),
+    [items.length, virtualViewport.height, virtualViewport.scrollTop],
+  );
+  const renderedItems = shouldVirtualize
+    ? items.slice(virtualWindow.startIndex, virtualWindow.endIndex)
+    : items;
 
   useEffect(() => {
     setCurrentItemIds((current) => {
@@ -293,6 +327,24 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
     () => items.find((item) => currentItemIds.has(item.id))?.id ?? lastItemId,
     [currentItemIds, items, lastItemId],
   );
+
+  useLayoutEffect(() => {
+    const listElement = listRef.current;
+    if (!listElement || !shouldVirtualize) return;
+    const activeIndex = Math.max(0, itemIndexById.get(currentPrimaryItemId ?? "") ?? -1);
+    const height = Math.min(
+      listElement.clientHeight || 400,
+      MARKER_NAVIGATION_MAX_VIRTUAL_VIEWPORT_PX,
+    );
+    const rowTop = activeIndex * MARKER_NAVIGATION_ROW_HEIGHT_PX;
+    const rowBottom = rowTop + MARKER_NAVIGATION_ROW_HEIGHT_PX;
+    let scrollTop = listElement.scrollTop;
+    if (rowTop < listElement.scrollTop || rowBottom > listElement.scrollTop + height) {
+      scrollTop = Math.max(0, rowBottom - height);
+      listElement.scrollTop = scrollTop;
+    }
+    setVirtualViewport({ scrollTop, height });
+  }, [canRender, currentPrimaryItemId, itemIdsKey, itemIndexById, shouldVirtualize]);
 
   useEffect(() => {
     if (!scrollElement || !contentElement || !portalTarget) {
@@ -552,6 +604,68 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
     [onClickItem, revealItem],
   );
 
+  const focusVirtualItem = useCallback(
+    (item: TItem) => {
+      setKeyboardFocusItemId(item.id);
+      const listElement = listRef.current;
+      if (!listElement || !shouldVirtualize) return;
+      const index = itemIndexById.get(item.id) ?? -1;
+      if (index < 0) return;
+      const rowTop = index * MARKER_NAVIGATION_ROW_HEIGHT_PX;
+      const viewportHeight = Math.min(
+        listElement.clientHeight || virtualViewport.height,
+        MARKER_NAVIGATION_MAX_VIRTUAL_VIEWPORT_PX,
+      );
+      let scrollTop = listElement.scrollTop;
+      if (rowTop < listElement.scrollTop) {
+        scrollTop = rowTop;
+        listElement.scrollTop = scrollTop;
+      } else if (
+        rowTop + MARKER_NAVIGATION_ROW_HEIGHT_PX >
+        listElement.scrollTop + viewportHeight
+      ) {
+        scrollTop = rowTop + MARKER_NAVIGATION_ROW_HEIGHT_PX - viewportHeight;
+        listElement.scrollTop = scrollTop;
+      }
+      setVirtualViewport({
+        scrollTop,
+        height: viewportHeight,
+      });
+      requestAnimationFrame(() => {
+        listElement
+          .querySelector<HTMLElement>(
+            `[data-marker-navigation-item-id="${escapeMarkerNavigationAttributeSelectorValue(item.id)}"]`,
+          )
+          ?.focus();
+      });
+    },
+    [itemIndexById, shouldVirtualize, virtualViewport.height],
+  );
+
+  const handleRowKeyDown = useCallback(
+    (item: TItem, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if (!shouldVirtualize) return;
+      const index = itemIndexById.get(item.id) ?? -1;
+      if (index < 0) return;
+      const nextIndex =
+        event.key === "ArrowUp"
+          ? Math.max(0, index - 1)
+          : event.key === "ArrowDown"
+            ? Math.min(items.length - 1, index + 1)
+            : event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? items.length - 1
+                : null;
+      if (nextIndex === null || nextIndex === index) return;
+      const nextItem = items[nextIndex];
+      if (!nextItem) return;
+      event.preventDefault();
+      focusVirtualItem(nextItem);
+    },
+    [focusVirtualItem, itemIndexById, items, shouldVirtualize],
+  );
+
   if (!canRender || !portalTarget || items.length === 0) return null;
 
   const resolvedTooltipSide = tooltipSide ?? (side === "left" ? "right" : "left");
@@ -574,11 +688,26 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
         data-marker-navigation-rail-list="true"
         data-scrubbing={scrubTargetId !== null ? "true" : undefined}
         className="vertical-scroll-fade-mask hide-scrollbar flex max-h-[min(70vh,40rem)] flex-col overflow-y-auto overscroll-contain [--edge-fade-distance:2.5rem]"
+        onScroll={(event) => {
+          if (!shouldVirtualize) return;
+          setVirtualViewport({
+            scrollTop: event.currentTarget.scrollTop,
+            height: Math.min(
+              event.currentTarget.clientHeight || virtualViewport.height,
+              MARKER_NAVIGATION_MAX_VIRTUAL_VIEWPORT_PX,
+            ),
+          });
+        }}
         {...listDataAttributes}
       >
-        {items.map((item) => {
+        {shouldVirtualize && virtualWindow.paddingBeforePx > 0 ? (
+          <div aria-hidden="true" style={{ height: virtualWindow.paddingBeforePx, flex: "none" }} />
+        ) : null}
+        {renderedItems.map((item) => {
           const isCurrent = currentItemIds.has(item.id);
           const isScrubTarget = scrubTargetId === item.id;
+          const globalIndex = itemIndexById.get(item.id) ?? -1;
+          const activeKeyboardItemId = keyboardFocusItemId ?? currentPrimaryItemId;
           return (
             <NodexTooltip
               key={item.id}
@@ -588,6 +717,9 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
               sideOffset={0}
               delayOpen
               open={isScrubTarget && scrubTargetId !== null ? true : undefined}
+              onOpenChange={(open) => {
+                if (open) onItemPreviewIntent?.(item);
+              }}
               surface="rich"
               tooltipClassName="!m-0 !rounded-xl !border-0 !bg-transparent !p-0 !shadow-none !ring-0 !backdrop-blur-none"
               tooltipBodyClassName="block w-full"
@@ -598,6 +730,11 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
                 data-scrub-target={isScrubTarget ? "true" : undefined}
                 aria-label={rowAriaLabel(item)}
                 aria-current={isCurrent ? "true" : undefined}
+                aria-posinset={shouldVirtualize ? globalIndex + 1 : undefined}
+                aria-setsize={shouldVirtualize ? items.length : undefined}
+                tabIndex={
+                  shouldVirtualize ? (item.id === activeKeyboardItemId ? 0 : -1) : undefined
+                }
                 className={cn(
                   "group/navigation-row flex h-2.5 w-9 shrink-0 cursor-interaction items-center outline-none",
                   side === "right" && "justify-end",
@@ -608,6 +745,11 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
                 onPointerCancel={clearPointerScrub}
                 onLostPointerCapture={clearPointerScrub}
                 onClick={(event) => handleClick(item, event)}
+                onFocus={() => {
+                  setKeyboardFocusItemId(item.id);
+                  onItemPreviewIntent?.(item);
+                }}
+                onKeyDown={(event) => handleRowKeyDown(item, event)}
                 {...getRowDataAttributes?.(item)}
               >
                 <span className="flex h-0.5 w-[30px] items-center">
@@ -627,6 +769,9 @@ export function MarkerNavigationRail<TItem extends MarkerNavigationItem>({
             </NodexTooltip>
           );
         })}
+        {shouldVirtualize && virtualWindow.paddingAfterPx > 0 ? (
+          <div aria-hidden="true" style={{ height: virtualWindow.paddingAfterPx, flex: "none" }} />
+        ) : null}
       </div>
     </motion.nav>,
     portalTarget,

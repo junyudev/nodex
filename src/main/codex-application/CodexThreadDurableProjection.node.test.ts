@@ -1,3 +1,4 @@
+import type { Thread, Turn } from "@nodex/codex-app-server-protocol/v2";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -52,6 +53,35 @@ const coreThread = (overrides: Partial<CoreThread> = {}): CoreThread =>
     linked_at: "2026-08-24T00:00:00.000Z",
     ...overrides,
   }) as CoreThread;
+
+const appThread = (turns: readonly Turn[]): Thread => ({
+  id: "thread-a",
+  extra: null,
+  sessionId: "session-a",
+  forkedFromId: null,
+  parentThreadId: null,
+  preview: "notification preview",
+  ephemeral: false,
+  section: null,
+  sectionEnteredAt: null,
+  historyMode: "paginated",
+  modelProvider: "openai",
+  createdAt: 1,
+  updatedAt: 2,
+  recencyAt: 2,
+  status: { type: "idle" },
+  path: null,
+  cwd: "/repo",
+  cliVersion: "test",
+  source: "unknown",
+  canAcceptDirectInput: true,
+  threadSource: null,
+  agentNickname: null,
+  agentRole: null,
+  gitInfo: null,
+  name: "Thread A",
+  turns: [...turns],
+});
 
 it.effect("serially commits archive and delete observations before scheduling sidebar repair", () =>
   Effect.gen(function* () {
@@ -135,5 +165,79 @@ it.effect("serially commits archive and delete observations before scheduling si
       },
       { kind: "codex", value: { type: "threadDeleted", threadId: "thread-a" } },
     ]);
+  }),
+);
+
+it.effect("never treats thread/started as a history transport", () =>
+  Effect.gen(function* () {
+    const stored = coreThread();
+    const hydrated: Array<Parameters<CodexConversationProjection["Service"]["hydrate"]>[0]> = [];
+    const workspace: CoreModuleClients["workspace"] = {
+      read: () => Effect.succeed({ value: { kind: "thread", thread: stored } } as never),
+      apply: () => Effect.succeed({} as never),
+    };
+    const service = yield* make.pipe(
+      Effect.provideService(
+        CodexApplicationEventHub,
+        CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+      ),
+      Effect.provideService(
+        CodexConversationProjection,
+        CodexConversationProjection.of({
+          hydrate: (input: Parameters<CodexConversationProjection["Service"]["hydrate"]>[0]) =>
+            Effect.sync(() => {
+              hydrated.push(input);
+            }),
+        } as unknown as CodexConversationProjection["Service"]),
+      ),
+      Effect.provideService(
+        CodexSidebarSyncRuntime,
+        CodexSidebarSyncRuntime.of({
+          scheduleNotification: () => undefined,
+        } as unknown as CodexSidebarSyncRuntime["Service"]),
+      ),
+      Effect.provideService(
+        ConversationEntityMap,
+        ConversationEntityMap.of({
+          current: () => null,
+        } as unknown as ConversationEntityMap["Service"]),
+      ),
+      Effect.provideService(
+        CoreModules,
+        CoreModules.of({ workspace } as unknown as CoreModuleClients),
+      ),
+    );
+    const poisonTurn: Turn = {
+      id: "turn-poison",
+      items: Array.from({ length: 1_000 }, (_, index) => ({
+        type: "agentMessage",
+        id: `poison-${index}`,
+        text: "must not become resident",
+        phase: null,
+        memoryCitation: null,
+      })),
+      status: "completed",
+      error: null,
+      itemsView: "full",
+      startedAt: 1,
+      completedAt: 2,
+      durationMs: 1_000,
+    };
+
+    yield* service.observe({
+      hostId: "local",
+      generation: 1,
+      occurrenceId: "local:1:inbox-a:43",
+      occurrenceToken: 43,
+      notification: {
+        method: "thread/started",
+        params: { thread: appThread([poisonTurn]) },
+      },
+    });
+
+    assert.lengthOf(hydrated, 1);
+    assert.deepEqual(hydrated[0]?.canonical.turns, []);
+    assert.strictEqual(hydrated[0]?.pagination.loadedTurnCount, 0);
+    assert.isTrue(hydrated[0]?.pagination.hasLoadedOldest);
   }),
 );

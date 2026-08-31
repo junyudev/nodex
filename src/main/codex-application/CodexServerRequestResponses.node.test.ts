@@ -220,7 +220,8 @@ const makeHarness = (
         CodexOwnerNotificationDrainRuntime,
         CodexOwnerNotificationDrainRuntime.of({
           next: () => 1,
-          ack: () => undefined,
+          canAck: () => true,
+          ack: () => true,
           awaitCurrent: () => Effect.void,
           resetOwner: () => undefined,
           release: () => undefined,

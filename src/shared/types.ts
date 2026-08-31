@@ -47,7 +47,7 @@ import type {
   ThreadBackgroundTerminal as CodexAppServerThreadBackgroundTerminal,
   ThreadCompactStartParams as CodexAppServerThreadCompactStartParams,
   ThreadMemoryModeSetParams as CodexAppServerThreadMemoryModeSetParams,
-  ThreadRollbackParams as CodexAppServerThreadRollbackParams,
+  Thread as CodexAppServerThread,
   ThreadStatus as CodexAppServerThreadStatus,
   ThreadSettings as CodexAppServerThreadSettings,
   ThreadSource as CodexAppServerThreadSource,
@@ -76,6 +76,7 @@ import type {
   ThreadMemoryMode as CodexAppServerThreadMemoryMode,
 } from "@nodex/codex-app-server-protocol";
 import type { AgentExecutionProfile } from "./agent-runtime";
+import type { CodexPersistedHistoryOccurrenceHydrateRequest } from "./codex-persisted-history-search";
 import type {
   NodexClipboardEnvelopeV1,
   NodexStructuralClipboardDescriptorV1,
@@ -2829,10 +2830,22 @@ export interface CodexThreadActionResult {
   streamRevision?: number;
 }
 
+/** Bounded resident history returned after editing the latest user Turn. */
+export interface CodexThreadHistoryEditResult {
+  thread: CodexAppServerThread;
+  turnPagination: CodexConversationTurnPagination;
+  turnItemsPaginationById?: Readonly<
+    Record<
+      string,
+      import("./codex-conversation-state/codex-history-topology").CodexHistoryTurnItemsPagination
+    >
+  >;
+}
+
 export type CodexOwnerAppServerRequest =
   | {
-      method: "thread/rollback";
-      params: CodexAppServerThreadRollbackParams & { turnId: string };
+      method: "thread/revert";
+      params: { threadId: string; beforeTurnId: string };
     }
   | {
       method: "thread/fork";
@@ -4484,6 +4497,28 @@ export interface CodexConversationSnapshot extends CodexThreadSummary {
   threadGoalResumeConfirmation?: CodexAppServerThreadGoal | null;
   resumeState: CodexConversationResumeState;
   turnPagination?: CodexConversationTurnPagination;
+  /** Per-Turn item residency; absent means the legacy all-items-loaded projection. */
+  turnItemsPaginationById?: Readonly<
+    Record<
+      string,
+      import("./codex-conversation-state/codex-history-topology").CodexHistoryTurnItemsPagination
+    >
+  >;
+  /** Sparse resident-history ordering; content keys address `turns`, gaps address boundaries. */
+  historyRows?: readonly import("./codex-conversation-state/codex-history-topology").CodexHistoryRow[];
+  /** Main-owned Conversation Entity generation; prevents delayed renderer writes from ABA reuse. */
+  conversationEntityGeneration?: number;
+  /** Fences viewport residency pins against replacement history topology. */
+  historyTopologyGeneration?: number;
+  /** Monotonic acknowledgement fence for bounded history mutations within one topology. */
+  historyMutationRevision?: number;
+  /** Bounded per-Turn item segments. Ordinary item paging mutates this without replaying history. */
+  historyItemWindowsByTurnId?: Readonly<
+    Record<
+      string,
+      import("./codex-conversation-history-page").CodexConversationHistoryItemWindowSnapshot
+    >
+  >;
   turns: CodexConversationTurn[];
   /** Lossless event document for owner/no-owner canonical reducer handoff. */
   canonicalState?: CodexCanonicalConversationState | null;
@@ -4503,16 +4538,34 @@ export interface CodexConversationSnapshot extends CodexThreadSummary {
   capabilityFlags: CodexConversationCapabilityFlags;
 }
 
+/** Renderer-owned handle for an explicit, generation-fenced complete-history export. */
+export interface CodexConversationHistoryExportStartResult {
+  jobId: string;
+  mode: "paginated" | "resident";
+  completedTurnCount: number;
+  /** Paginated app-server history does not currently expose an exact total. */
+  totalTurnCount: number | null;
+}
+
+/** One bounded export page. Pages are never installed into the resident conversation snapshot. */
+export interface CodexConversationHistoryExportNextResult {
+  jobId: string;
+  turn: CodexConversationTurn | null;
+  completedTurnCount: number;
+  totalTurnCount: number | null;
+  done: boolean;
+}
+
 export interface CodexBackgroundSubagentThreadsHydrateInput {
   rootThreadId: string;
   threadIds: string[];
-  includeTurns?: boolean;
+  includeTail?: boolean;
 }
 
 export interface CodexSubagentPanelHydrateInput {
   rootThreadId: string;
   threadIds?: string[];
-  includeTurns?: boolean;
+  includeTail?: boolean;
 }
 
 export type CodexConversationPatchPathSegment = string | number;
@@ -4635,6 +4688,13 @@ export type CodexThreadStreamStateChange =
       baseRevision: number;
       revision: number;
       patches: CodexConversationStateUpdate[];
+    }
+  | {
+      /** Bounded resident-history delta; never expands into a whole-document diff. */
+      type: "historyMutation";
+      baseRevision: number;
+      revision: number;
+      mutation: import("./codex-conversation-history-page").CodexConversationHistoryMutation;
     };
 
 /**
@@ -4659,6 +4719,7 @@ export type CodexThreadStreamPublishRejectionReason =
   | "base-checkpoint-mismatch"
   | "revision-gap"
   | "checkpoint-mismatch"
+  | "owner-notification-sequence-mismatch"
   | "patch-apply-failed";
 
 export type CodexThreadOwnerStreamStatePublishResult =
@@ -4759,8 +4820,17 @@ export type CodexThreadOwnerActionRequest =
       message: string;
     }
   | {
-      type: "loadCompleteHistory";
+      type: "loadHistoryPage";
+      request: import("./codex-conversation-history-page").CodexConversationHistoryPageRequest;
+    }
+  | {
+      type: "publishHistoryMutation";
       threadId: string;
+      mutation: import("./codex-conversation-history-page").CodexConversationHistoryMutation;
+    }
+  | {
+      type: "hydratePersistedHistoryOccurrence";
+      input: CodexPersistedHistoryOccurrenceHydrateRequest;
     }
   | {
       type: "enqueueQueuedFollowUp";
@@ -4848,8 +4918,9 @@ export interface CodexThreadFollowerActionInput {
   action: CodexThreadOwnerActionRequest;
 }
 
-export interface CodexThreadOwnerLoadCompleteHistoryResult {
+export interface CodexThreadOwnerHistoryMutationResult {
   revision: number;
+  page: import("./codex-conversation-history-page").CodexConversationHistoryPageResult;
 }
 
 export interface CodexThreadOwnerStreamStatePublishInput {

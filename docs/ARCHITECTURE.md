@@ -606,12 +606,13 @@ as Side Chat does not acquire the parent's lane because it reads but does not mu
 Every app-server operation that materializes a new Thread (`thread/start` or `thread/fork`) is
 admitted by the application-scoped `ThreadCreationRuntime`. It assigns a local launch intent and
 owns the physical operation after a renderer waiter disappears. Because `thread/started` may arrive
-before the response reveals its Thread id, the runtime temporarily fences that host cohort; the
+before the response reveals its Thread id, the runtime temporarily fences that exact host-generation cohort; the
 response's exact Thread id is the commit correlation. The owning launch, fork, automation, import,
 side-chat, or internal-thread transaction commits canonical and durable identity before emitting a
 one-way release to the protocol actor. Application transactions never wait for replay
 acknowledgement, and a failed or interrupted materialization drains otherwise-unidentified started
-Threads when its launch cohort becomes quiescent.
+Threads when its launch cohort becomes quiescent. A replacement Endpoint cannot append to or release
+the previous generation's start buffer; a mismatch fails and settles the affected generation.
 Every notification retains its endpoint host and generation through replay and durable projection,
 so a previously unknown remote Thread can never acquire local execution authority by default. Its
 Core idempotency identity also includes a process-unique Inbox namespace in addition to the local
@@ -633,23 +634,31 @@ flowchart LR
     Coordinator <--> Entity
 ```
 
-A Thread directory joins full-fidelity app-server reads with Core's durable identity and execution
-metadata. Hydration, resume, and fresh launch seed durable facts first, buffer concurrent protocol
-occurrences behind a generation fence, and publish only a complete accepted state. Endpoint
+A Thread directory joins durable identity and execution metadata with explicit metadata,
+bounded-tail, and live app-server reads. It exposes no generic complete-history fidelity.
+Hydration, resume, and fresh launch seed durable facts first, buffer concurrent protocol
+occurrences behind a generation fence, and publish only a complete accepted resident state. Endpoint
 replacement, Thread removal, or failed hydration invalidates that generation's pending requests,
 buffers, command fibers, and renderer checkpoint. Recovery rebuilds from Core plus a fresh
-app-server read; it never merges two generations or treats a sidebar summary as transcript
-authority.
+bounded app-server tail; it never merges two generations or treats a sidebar summary as transcript
+authority. Explicit full-history export is a separate cancellable iterator and never expands the
+resident entity.
 
 Semantic application capabilities own complete transactions at their domain boundary. Turn start
 and steering, Session launch, resume,
-fork, rollback, side chat, compaction, history, goals and settings, read state, queued follow-ups,
+fork, identity-based revert, side chat, compaction, history, goals and settings, read state, queued follow-ups,
 archive, handoff, and background-process actions compose the same Thread lane, Gateway, Core
 Workspace, and private entity state. Project-owned commands also enter the Project lifecycle gate before
 admission. A transaction that already owns the Thread lane performs its entity transitions
 directly; it never re-enters the lane through a sibling public command. Optimistic state is
 committed or compensated within the owning transaction, and interruption reaches the same physical
 Gateway, worker, or Core operation.
+
+Long-running handoff preparation may perform reversible filesystem and host work outside the Thread
+lane, but its durable execution-location commit enters that lane. Persistent fork holds the same
+lane across its final Core host revalidation and generation-fenced app-server mutation. This makes
+the durable host read, fork dispatch, and handoff commit one causal order without holding a semantic
+lock across unrelated preparation I/O.
 
 Queued follow-ups have one deep live owner. Core persists the ordered exact-revision ledger and
 content-addressed payload evidence; Main's scoped queue Module owns hydration, terminal recovery,
@@ -689,13 +698,21 @@ or transport reset requests a fresh barrier instead of merging competing documen
 fans accepted application changes to renderer projection and native notification consumers; those
 consumers own their subscriptions and cannot mutate canonical state.
 
+Conversation history inside the private Entity is a sparse topology of islands, entities, and
+explicit boundaries. Turn pages and per-Turn item pages merge atomically under host-generation and
+cursor fences. Count-and-byte retention updates canonical state, snapshots, accepted replicas,
+pagination, and renderer rows as one transaction; visible/search/live entities are pinned while
+opaque retention cuts remain inert rather than inventing a cursor. Renderer gaps request one page
+through the current owner, and persisted search hydrates only a bounded island around the selected
+occurrence.
+
 Conversation Relationships are a derived presentation projection, never another parent/child
 authority. For one parent, Main combines child Thread identities observed in canonical collaboration
-items with Core's durable child-Thread relationship, then enriches them from loaded full-fidelity
+items with Core's durable child-Thread relationship, then enriches them from loaded metadata or tail
 conversation state. The projection excludes archived or reparented children, preserves canonical
 collaboration order before durable creation order, and derives display identity and request role
 without writing those choices back to Core or the transcript. Missing friendly child metadata
-triggers a keyed full-fidelity directory repair; relationship invalidation rebuilds and publishes
+triggers a keyed metadata directory repair; relationship invalidation rebuilds and publishes
 the complete parent projection. Restart, resume, reparenting, and late child materialization
 therefore converge by recomputation rather than replaying a separate relationship store.
 

@@ -10,11 +10,14 @@ import type {
   CodexCanonicalLiveTurnParams,
   CodexConversationThreadSettings,
   CodexConversationSnapshot,
+  CodexConversationResumeState,
   CodexConversationTurnPagination,
   CodexThreadSummary,
   CodexThreadStatusType,
 } from "../../shared/types";
 import type { CodexCanonicalSteeringUserMessageItem } from "../../shared/codex-conversation-state/codex-conversation-state";
+import type { CodexHistoryTurnItemsPagination } from "../../shared/codex-conversation-state/codex-history-topology";
+import { flattenCodexHistoryTopology } from "../../shared/codex-conversation-state/codex-history-topology";
 import type { ConversationEntityState } from "./internal/ConversationEntityState";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -25,6 +28,8 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { buildCodexCanonicalTurnSummary } from "./CodexConversationServerRequestProjection";
 import { buildCoreWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
 import { projectCodexThreadDirectorySnapshot } from "./CodexThreadDirectoryProjection";
+import { projectCodexConversationHistoryItemWindows } from "./CodexConversationHistoryProjection";
+import type { CodexHydratedHistoryItemSegment } from "./CodexHistoryPageAdapter";
 
 export interface CodexConversationProjectionState {
   readonly canonical: CodexCanonicalConversationState;
@@ -49,7 +54,12 @@ export interface CodexConversationProjectionService {
     readonly summary: CodexThreadSummary;
     readonly canonical: CodexCanonicalConversationState;
     readonly pagination: CodexConversationTurnPagination;
+    readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+    readonly itemSegmentsByTurnId?: Readonly<
+      Record<string, readonly CodexHydratedHistoryItemSegment[]>
+    >;
     readonly observedAtMs: number;
+    readonly resumeState?: CodexConversationResumeState;
   }) => Effect.Effect<CodexConversationSnapshot, CodexConversationProjectionError>;
   readonly admitTurn: (input: {
     readonly threadId: string;
@@ -294,25 +304,46 @@ export const make: Effect.Effect<
           const conversation = conversations.entity(input.threadId);
           const before = conversation.readCanonicalState();
           const accepted = conversation.read().acceptedReplica;
+          const resumeState = input.resumeState ?? "resumed";
           conversation.acceptCanonicalState(input.canonical);
-          conversation.setResumeState("resumed");
-          conversation.initializeHistory(input.pagination, input.canonical.turns.length);
-          const snapshot = projectCodexThreadDirectorySnapshot({
+          conversation.initializeHistory(
+            input.pagination,
+            input.canonical.turns.length,
+            input.itemsPaginationByTurnId,
+          );
+          const projectedSnapshot = projectCodexThreadDirectorySnapshot({
             summary: input.summary,
             current: conversation.readSnapshot(),
             before,
             after: input.canonical,
             pagination: conversation.readTurnPagination(),
+            itemsPaginationByTurnId: conversation.readAllTurnItemsPagination(),
+            historyRows: flattenCodexHistoryTopology(conversation.readHistoryTopology()),
+            historyTopologyGeneration: conversation.readHistoryTopology().generation,
             observedAtMs: input.observedAtMs,
+            resumeState,
           });
+          const snapshot = input.itemSegmentsByTurnId
+            ? {
+                ...projectedSnapshot,
+                historyItemWindowsByTurnId: projectCodexConversationHistoryItemWindows({
+                  canonical: input.canonical,
+                  snapshot: projectedSnapshot,
+                  itemsPaginationByTurnId: conversation.readAllTurnItemsPagination(),
+                  itemSegmentsByTurnId: input.itemSegmentsByTurnId,
+                }),
+              }
+            : projectedSnapshot;
           conversation.installSnapshot(snapshot);
+          conversation.setResumeState(resumeState);
+          const installedSnapshot = conversation.readSnapshot() ?? snapshot;
           if (projectReplica(input.threadId) && accepted) {
             return conversation.advanceReplica({
-              conversation: snapshot,
+              conversation: installedSnapshot,
               ownerEpoch: accepted.checkpoint.ownerEpoch,
             }).replica.conversation;
           }
-          return snapshot;
+          return installedSnapshot;
         },
         catch: (cause) =>
           new CodexConversationProjectionError({

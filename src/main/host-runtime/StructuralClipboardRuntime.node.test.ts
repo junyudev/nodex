@@ -96,6 +96,7 @@ const rendererClientLayer = (events: RendererClientRuntime["Service"]["events"] 
       queryThreadRole: () => Effect.never,
       requireThreadOwner: () => Effect.never,
       handleResponse: () => Effect.succeed(false),
+      handleDeliveryAcknowledgment: () => Effect.succeed(false),
       disposeClient: () => Effect.void,
       events,
     }),

@@ -10,7 +10,11 @@ import type {
   CodexThreadSummary,
 } from "../../shared/types";
 import { CodexConversationRelationships } from "./CodexConversationRelationships";
-import { CodexThreadDirectory } from "./CodexThreadDirectory";
+import {
+  CODEX_SUBAGENT_DISCOVERY_MAX_REQUEST_IDS,
+  CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS,
+  CodexThreadDirectory,
+} from "./CodexThreadDirectory";
 
 const BACKGROUND_DELTA_METHODS = new Set<CodexServerNotification["method"]>([
   "item/agentMessage/delta",
@@ -19,6 +23,9 @@ const BACKGROUND_DELTA_METHODS = new Set<CodexServerNotification["method"]>([
   "item/reasoning/textDelta",
   "item/commandExecution/outputDelta",
 ] satisfies readonly CodexServerNotification["method"][]);
+
+/** Bounded LRU metadata is enough to decide whether a background delta needs projection. */
+export const CODEX_SUBAGENT_CATALOG_MAX_ENTRIES = CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS;
 
 export class CodexSubagentCatalogError extends Data.TaggedError("CodexSubagentCatalogError")<{
   readonly operation: "discover" | "hydrate";
@@ -44,8 +51,22 @@ export class CodexSubagentCatalog extends Context.Service<
   }
 >()("nodex/main/codex-application/CodexSubagentCatalog") {}
 
-const normalizeIds = (threadIds: readonly string[]): readonly string[] =>
-  Array.from(new Set(threadIds.map((threadId) => threadId.trim()).filter(Boolean)));
+const normalizeIds = (
+  threadIds: readonly string[],
+): { readonly ids: readonly string[]; readonly overflowed: boolean } => {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const rawThreadId of threadIds) {
+    const threadId = rawThreadId.trim();
+    if (!threadId || seen.has(threadId)) continue;
+    if (ids.length >= CODEX_SUBAGENT_DISCOVERY_MAX_REQUEST_IDS) {
+      return { ids, overflowed: true };
+    }
+    seen.add(threadId);
+    ids.push(threadId);
+  }
+  return { ids, overflowed: false };
+};
 
 export const make: Effect.Effect<
   CodexSubagentCatalog["Service"],
@@ -55,8 +76,22 @@ export const make: Effect.Effect<
   const relationships = yield* CodexConversationRelationships;
   const directory = yield* CodexThreadDirectory;
   const ownerScope = yield* Scope.Scope;
-  const known = new Set<string>();
-  const fullFidelity = new Set<string>();
+  /** `true` means a tail is hydrated; `false` means drop noisy background deltas for this child. */
+  const known = new Map<string, boolean>();
+
+  const rememberThread = (threadId: string, tailHydrated: boolean): boolean => {
+    const normalized = threadId.trim();
+    if (!normalized) return false;
+    const existing = known.get(normalized) ?? false;
+    known.delete(normalized);
+    while (known.size >= CODEX_SUBAGENT_CATALOG_MAX_ENTRIES) {
+      const oldest = known.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      known.delete(oldest);
+    }
+    known.set(normalized, existing || tailHydrated);
+    return true;
+  };
 
   const refreshRelationships = (rootThreadId: string): Effect.Effect<void> =>
     relationships.refresh(rootThreadId).pipe(
@@ -78,14 +113,12 @@ export const make: Effect.Effect<
     );
 
   const observe = (threadId: string): void => {
-    const normalized = threadId.trim();
-    if (normalized) known.add(normalized);
+    rememberThread(threadId, false);
   };
 
-  const remember = (summaries: readonly CodexThreadSummary[], complete: boolean) => {
+  const remember = (summaries: readonly CodexThreadSummary[], withTail: boolean) => {
     for (const summary of summaries) {
-      observe(summary.threadId);
-      if (complete) fullFidelity.add(summary.threadId);
+      rememberThread(summary.threadId, withTail);
     }
     return summaries;
   };
@@ -94,61 +127,81 @@ export const make: Effect.Effect<
     input: CodexBackgroundSubagentThreadsHydrateInput,
   ): Effect.Effect<readonly CodexThreadSummary[], CodexSubagentCatalogError> =>
     runOwned(
-      directory
-        .descendants({
-          rootThreadId: input.rootThreadId,
-          threadIds: normalizeIds(input.threadIds),
-          fidelity: input.includeTurns === true ? "full" : "metadata",
-        })
-        .pipe(
-          Effect.map((entries) =>
-            remember(
-              entries.map((entry) => entry.summary),
-              input.includeTurns === true,
+      Effect.gen(function* () {
+        const threadIds = normalizeIds(input.threadIds);
+        if (threadIds.overflowed) {
+          return yield* new CodexSubagentCatalogError({
+            operation: "hydrate",
+            cause: new Error(
+              `Subagent hydration exceeds its ${CODEX_SUBAGENT_DISCOVERY_MAX_REQUEST_IDS}-Thread budget`,
             ),
-          ),
-          Effect.tap(() => refreshRelationships(input.rootThreadId)),
-          Effect.mapError(
-            (cause) => new CodexSubagentCatalogError({ operation: "hydrate", cause }),
-          ),
-        ),
+          });
+        }
+        return yield* directory
+          .descendants({
+            rootThreadId: input.rootThreadId,
+            threadIds: threadIds.ids,
+            fidelity: input.includeTail === true ? "tail" : "metadata",
+          })
+          .pipe(
+            Effect.map((entries) =>
+              remember(
+                entries.map((entry) => entry.summary),
+                input.includeTail === true,
+              ),
+            ),
+            Effect.tap(() => refreshRelationships(input.rootThreadId)),
+            Effect.mapError(
+              (cause) => new CodexSubagentCatalogError({ operation: "hydrate", cause }),
+            ),
+          );
+      }),
     );
 
   const hydratePanel = (
     input: CodexSubagentPanelHydrateInput,
   ): Effect.Effect<readonly CodexThreadSummary[], CodexSubagentCatalogError> =>
     runOwned(
-      directory
-        .descendants({
-          rootThreadId: input.rootThreadId,
-          ...(input.threadIds === undefined ? {} : { threadIds: input.threadIds }),
-          fidelity: input.includeTurns === true ? "full" : "metadata",
-        })
-        .pipe(
-          Effect.map((entries) =>
-            remember(
-              entries.map((entry) => entry.summary),
-              input.includeTurns === true,
+      Effect.gen(function* () {
+        const threadIds = normalizeIds(input.threadIds ?? []);
+        if (threadIds.overflowed) {
+          return yield* new CodexSubagentCatalogError({
+            operation: "discover",
+            cause: new Error(
+              `Subagent panel hydration exceeds its ${CODEX_SUBAGENT_DISCOVERY_MAX_REQUEST_IDS}-Thread budget`,
             ),
-          ),
-          Effect.tap(() => refreshRelationships(input.rootThreadId)),
-          Effect.mapError(
-            (cause) => new CodexSubagentCatalogError({ operation: "discover", cause }),
-          ),
-        ),
+          });
+        }
+        return yield* directory
+          .descendants({
+            rootThreadId: input.rootThreadId,
+            ...(input.threadIds === undefined ? {} : { threadIds: threadIds.ids }),
+            fidelity: input.includeTail === true ? "tail" : "metadata",
+          })
+          .pipe(
+            Effect.map((entries) =>
+              remember(
+                entries.map((entry) => entry.summary),
+                input.includeTail === true,
+              ),
+            ),
+            Effect.tap(() => refreshRelationships(input.rootThreadId)),
+            Effect.mapError(
+              (cause) => new CodexSubagentCatalogError({ operation: "discover", cause }),
+            ),
+          );
+      }),
     );
 
   const clear = (threadId: string): void => {
     const normalized = threadId.trim();
     if (!normalized) return;
     known.delete(normalized);
-    fullFidelity.delete(normalized);
   };
 
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
       known.clear();
-      fullFidelity.clear();
     }),
   );
 
@@ -157,11 +210,7 @@ export const make: Effect.Effect<
     hydratePanel,
     open: (threadId) =>
       Effect.sync(() => {
-        const normalized = threadId.trim();
-        if (!normalized) return false;
-        known.add(normalized);
-        fullFidelity.add(normalized);
-        return true;
+        return rememberThread(threadId, true);
       }),
     observe,
     shouldDropDelta: (method, threadId) => {
@@ -169,8 +218,7 @@ export const make: Effect.Effect<
       return (
         normalized.length > 0 &&
         BACKGROUND_DELTA_METHODS.has(method) &&
-        known.has(normalized) &&
-        !fullFidelity.has(normalized)
+        known.get(normalized) === false
       );
     },
     clear,

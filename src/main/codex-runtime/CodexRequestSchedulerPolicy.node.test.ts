@@ -88,6 +88,7 @@ describe("Codex request scheduler method policy", () => {
 
   test("derives background lanes and queue expiry without reading a clock", () => {
     expect(codexRequestBackgroundLane("background", "tail_history")).toBe("thread");
+    expect(codexRequestBackgroundLane("background", "history_export")).toBe("thread");
     expect(codexRequestBackgroundLane("background", null)).toBe("metadata");
     expect(codexRequestBackgroundLane("interactive", "tail_history")).toBeNull();
     expect(
@@ -165,7 +166,7 @@ describe("Codex request coalescing policy", () => {
     }
   });
 
-  test("coalesces selected reads including item pages and fails open for unsafe params", () => {
+  test("coalesces selected reads including exact item pages and fails open for unsafe params", () => {
     expect(
       codexRequestCoalescingKey(scheduledRequest("items", { method: "thread/items/list" })),
     ).not.toBeNull();
@@ -186,6 +187,17 @@ describe("Codex request coalescing policy", () => {
     expect(first).toBe(
       new TextEncoder().encode('{"method":"thread/read","params":{"a":1,"z":"😀"}}').byteLength,
     );
+  });
+
+  test("rejects an oversized request before stable JSON materialization", () => {
+    const oversized = "x".repeat(CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request);
+
+    expect(codexScheduledRequestBytes("thread/read", { oversized })).toBe(
+      CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request + 1,
+    );
+    expect(
+      codexRequestCoalescingKey(scheduledRequest("oversized", { params: { oversized } })),
+    ).toBeNull();
   });
 
   test("caps logical waiters independently of the physical queue", () => {

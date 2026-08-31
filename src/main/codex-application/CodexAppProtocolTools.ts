@@ -12,7 +12,6 @@ import type {
   CodexScheduledAutomationReasoningEffort,
   CodexScheduledAutomationStatus,
   CodexScheduledAutomationUpdateInput,
-  CodexTranscriptEntry,
 } from "../../shared/types";
 import {
   CODEX_APP_TOOL_NAMESPACE,
@@ -25,16 +24,11 @@ import {
   CODEX_APP_HANDOFF_MAX_WAIT_MS,
   CODEX_APP_LOCAL_HOST_DISPLAY_NAME,
   CODEX_APP_LOCAL_HOST_ID,
-  CODEX_APP_READ_THREAD_DEFAULT_MAX_OUTPUT_CHARS,
-  CODEX_APP_READ_THREAD_DEFAULT_TURN_LIMIT,
-  CODEX_APP_READ_THREAD_MAX_OUTPUT_CHARS,
-  CODEX_APP_READ_THREAD_MAX_TURN_LIMIT,
 } from "../codex/codex-app-meta-thread-tools";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { CodexDynamicCreatePermissionMode } from "../codex/codex-dynamic-create-permissions";
 import { parseCodexDynamicCreateThreadInput } from "../codex/codex-dynamic-thread-create";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
-import { getCodexFileChangeList } from "../../shared/codex-file-change";
 import { CoreModules } from "../core-runtime/CoreModules";
 import type { ProjectWorkspaceIntent, ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { createOperationId } from "../core-runtime/operation-identity";
@@ -44,6 +38,7 @@ import { AutomationApplication } from "../automation-application/AutomationAppli
 import { CodexConversationFork } from "./CodexConversationFork";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexProjectSessionFork } from "./CodexProjectSessionFork";
+import { CodexReadThreadHistory } from "./CodexReadThreadHistory";
 import { CodexSessionThreadLaunch } from "./CodexSessionThreadLaunch";
 import { CodexSidebarSectionSync } from "./CodexSidebarSectionSync";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
@@ -160,12 +155,6 @@ const reasoningEffort = (value: unknown): CodexReasoningEffort | undefined =>
   value === "ultra"
     ? value
     : undefined;
-
-const truncate = (value: string, maxChars: number): string => {
-  if (maxChars <= 0) return "";
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, Math.max(0, maxChars - 3))}...`;
-};
 
 const textSuccess = (text: string): DynamicToolCallResponse => ({
   success: true,
@@ -354,74 +343,6 @@ const automationUpdateInput = (
         reasoningEffort: args.reasoningEffort ?? null,
       };
 
-const serializeThreadItem = (
-  item: CodexTranscriptEntry,
-  includeOutputs: boolean,
-  maxOutputCharsPerItem: number,
-): Record<string, unknown> => {
-  if (item.semanticKind === "userMessage" || item.kind === "userMessage") {
-    return { type: "userMessage", id: item.itemId, text: item.markdownText ?? "" };
-  }
-  if (item.semanticKind === "assistantMessage" || item.kind === "assistantMessage") {
-    return {
-      type: "agentMessage",
-      id: item.itemId,
-      text: item.markdownText ?? "",
-      phase: item.assistantPhase ?? null,
-    };
-  }
-  if (item.semanticKind === "reasoning") {
-    return {
-      type: "reasoning",
-      id: item.itemId,
-      summary: item.markdownText ?? "",
-      ...(includeOutputs
-        ? { content: truncate(item.markdownText ?? "", maxOutputCharsPerItem) }
-        : {}),
-    };
-  }
-  if (item.kind === "commandExecution") {
-    return {
-      type: "commandExecution",
-      id: item.itemId,
-      command: item.command ?? null,
-      cwd: item.cwd ?? null,
-      status: item.status ?? null,
-      exitCode: item.exitCode ?? null,
-      durationMs: item.durationMs ?? null,
-      ...(includeOutputs && item.aggregatedOutput != null
-        ? { output: truncate(item.aggregatedOutput, maxOutputCharsPerItem) }
-        : {}),
-    };
-  }
-  if (item.kind === "fileChange") {
-    return {
-      type: "fileChange",
-      id: item.itemId,
-      status: item.status ?? null,
-      changes: getCodexFileChangeList(item.fileChange?.changes).map((change) => {
-        const diff =
-          change.type === "update"
-            ? change.unifiedDiff
-            : change.type === "nonRenderable"
-              ? ""
-              : change.content;
-        return {
-          path: change.path,
-          kind: change.type === "nonRenderable" ? change.originalType : change.type,
-          ...(includeOutputs ? { diff: truncate(diff, maxOutputCharsPerItem) } : {}),
-        };
-      }),
-    };
-  }
-  return {
-    type: item.semanticKind ?? item.kind,
-    id: item.itemId,
-    status: item.status ?? null,
-    text: item.markdownText ?? null,
-  };
-};
-
 export const make: Effect.Effect<
   CodexAppProtocolTools["Service"],
   never,
@@ -430,6 +351,7 @@ export const make: Effect.Effect<
   | CodexConversationFork
   | CodexPendingServerRequestRuntime
   | CodexProjectSessionFork
+  | CodexReadThreadHistory
   | CodexSessionThreadLaunch
   | CodexSidebarSectionSync
   | CodexThreadCatalog
@@ -446,6 +368,7 @@ export const make: Effect.Effect<
   const conversationFork = yield* CodexConversationFork;
   const pending = yield* CodexPendingServerRequestRuntime;
   const projectSessionFork = yield* CodexProjectSessionFork;
+  const readThreadHistory = yield* CodexReadThreadHistory;
   const sessionLaunch = yield* CodexSessionThreadLaunch;
   const sectionSync = yield* CodexSidebarSectionSync;
   const catalog = yield* CodexThreadCatalog;
@@ -462,7 +385,7 @@ export const make: Effect.Effect<
   ) {
     const normalized = threadId.trim();
     if (!normalized) return yield* toolError("Thread id is required");
-    const entry = yield* directory.resolve({ threadId: normalized, fidelity: "full" });
+    const entry = yield* directory.resolve({ threadId: normalized, fidelity: "metadata" });
     if (!entry) return yield* toolError(`Thread '${normalized}' was not found`);
     return entry;
   });
@@ -653,68 +576,25 @@ export const make: Effect.Effect<
   ) {
     const threadId = stringArg(args.threadId);
     if (!threadId) return yield* toolError("read_thread requires threadId");
-    const entry = yield* requireThread(threadId);
-    const snapshot = entry.snapshot;
-    if (!snapshot) return yield* toolError(`Thread '${threadId}' has no snapshot`);
-    const cursor = stringArg(args.cursor);
-    const limit = intArg(
-      args.turnLimit,
-      CODEX_APP_READ_THREAD_DEFAULT_TURN_LIMIT,
-      1,
-      CODEX_APP_READ_THREAD_MAX_TURN_LIMIT,
-    );
-    const maxOutputChars = intArg(
-      args.maxOutputCharsPerItem,
-      CODEX_APP_READ_THREAD_DEFAULT_MAX_OUTPUT_CHARS,
-      0,
-      CODEX_APP_READ_THREAD_MAX_OUTPUT_CHARS,
-    );
-    const cursorIndex = cursor
-      ? snapshot.turns.findIndex((turn) => turn.turnId === cursor)
-      : snapshot.turns.length;
-    if (cursorIndex < 0)
-      return yield* toolError(`Unknown cursor for thread ${threadId}: ${cursor}`);
-    const preceding = snapshot.turns.slice(0, cursorIndex);
-    const page = preceding
-      .filter((turn): turn is typeof turn & { readonly turnId: string } => turn.turnId !== null)
-      .slice(-limit)
-      .reverse();
-    return {
-      schemaVersion: 1,
-      thread: {
-        id: snapshot.threadId,
-        hostId: entry.durable.executionHostId,
-        title: snapshot.threadName,
-        preview: snapshot.threadPreview,
-        status: {
-          type: snapshot.statusType,
-          ...(snapshot.statusActiveFlags.length > 0
-            ? { activeFlags: snapshot.statusActiveFlags }
-            : {}),
-        },
-        cwd: snapshot.cwd,
-        createdAt: snapshot.createdAt,
-        updatedAt: snapshot.updatedAt,
-      },
-      page: {
-        order: "newest_first",
-        limit,
-        nextCursor: preceding.length > page.length ? (page.at(-1)?.turnId ?? null) : null,
-        hasMore: preceding.length > page.length,
-      },
-      turns: page.map((turn) => ({
-        id: turn.turnId,
-        status: turn.status,
-        error: turn.errorMessage ? { message: turn.errorMessage, additionalDetails: null } : null,
-        startedAt: turn.startedAt ?? turn.turnStartedAtMs ?? null,
-        firstTurnWorkItemStartedAtMs: turn.firstTurnWorkItemStartedAtMs ?? null,
-        completedAt: turn.completedAt ?? null,
-        durationMs: turn.durationMs ?? null,
-        items: turn.items.map((item) =>
-          serializeThreadItem(item, args.includeOutputs === true, maxOutputChars),
+    return yield* readThreadHistory
+      .read({
+        threadId,
+        cursor: stringArg(args.cursor),
+        turnLimit: typeof args.turnLimit === "number" ? args.turnLimit : null,
+        includeOutputs: args.includeOutputs === true,
+        maxOutputCharsPerItem:
+          typeof args.maxOutputCharsPerItem === "number" ? args.maxOutputCharsPerItem : null,
+      })
+      .pipe(
+        Effect.mapError((cause) =>
+          toolError(
+            cause.reason === "unknown-cursor"
+              ? `Unknown cursor for thread ${threadId}: ${stringArg(args.cursor)}`
+              : failureMessage(cause.cause),
+            cause,
+          ),
         ),
-      })),
-    };
+      );
   });
 
   const executeInfallible = (

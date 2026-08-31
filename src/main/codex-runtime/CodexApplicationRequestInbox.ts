@@ -15,6 +15,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SynchronizedRef from "effect/SynchronizedRef";
+import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import { createUuidV7 } from "../../shared/uuid-v7";
 
 export interface CodexApplicationRequestOccurrence {
@@ -70,8 +71,11 @@ export class CodexApplicationRequestGenerationUnavailable extends Schema.TaggedE
 export class CodexApplicationIngressOverflow extends Schema.TaggedError<CodexApplicationIngressOverflow>()(
   "CodexApplicationIngressOverflow",
   {
-    channel: Schema.Literals(["occurrences", "settlements"]),
+    channel: Schema.Literals(["occurrences", "settlements", "occurrence-bytes"]),
     capacity: Schema.Int,
+    maximumBufferedBytes: Schema.optional(Schema.Int),
+    maximumOccurrenceBytes: Schema.optional(Schema.Int),
+    observedBytes: Schema.optional(Schema.Int),
     hostId: Schema.String,
     generation: Schema.Int,
     occurrenceId: Schema.String,
@@ -158,20 +162,44 @@ export class CodexApplicationRequestInbox extends Context.Service<
 interface GenerationState {
   readonly failed: boolean;
   readonly lease: object;
-  readonly pending: ReadonlyMap<number, CodexApplicationRequestOccurrence>;
+  /** Requests retain their occurrence after FIFO dequeue until the response is settled. */
+  readonly pending: ReadonlyMap<number, RetainedRequestOccurrence>;
   readonly processingScope: Scope.Scope;
   readonly settlements: Queue.Queue<CodexApplicationRequestSettlement>;
   readonly termination: Deferred.Deferred<never, CodexApplicationConsequenceFailure>;
 }
 
+interface RetainedRequestOccurrence {
+  readonly occurrence: CodexApplicationRequestOccurrence;
+}
+
+interface BufferedOccurrence {
+  readonly occurrence: CodexApplicationProtocolOccurrence;
+}
+
+/** A payload stays charged until no FIFO or pending-request reference remains. */
+interface OccurrenceReservation {
+  readonly approximateBytes: number;
+  readonly queued: boolean;
+  readonly pending: boolean;
+}
+
 export interface CodexApplicationRequestInboxCapacities {
   readonly occurrences: number;
   readonly settlements: number;
+  /** Maximum approximate bytes retained across FIFO ingress plus pending requests. */
+  readonly occurrenceBytes?: number;
+  /** Maximum approximate bytes admitted for any one request or notification. */
+  readonly singleOccurrenceBytes?: number;
 }
 
 interface InboxState {
   readonly closed: boolean;
   readonly nextOccurrenceToken: number;
+  /** Unique retained occurrence payloads; requests stay charged until settlement. */
+  readonly occurrenceCount: number;
+  readonly occurrenceBytes: number;
+  readonly occurrenceReservations: ReadonlyMap<number, OccurrenceReservation>;
   readonly generations: ReadonlyMap<string, GenerationState>;
 }
 
@@ -199,6 +227,14 @@ const unavailable = (
 const isInterruptedOnly = (cause: Cause.Cause<unknown>): boolean =>
   cause.reasons.length > 0 && cause.reasons.every(Cause.isInterruptReason);
 
+const DEFAULT_OCCURRENCE_BYTE_CAPACITY = 16 * 1024 * 1024;
+const DEFAULT_SINGLE_OCCURRENCE_BYTE_CAPACITY = 2 * 1024 * 1024;
+
+const positiveInteger = (value: number | undefined, fallback: number): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.max(1, Math.floor(value))
+    : fallback;
+
 /**
  * Owns physical server-request completion before any Codex endpoint is opened. Each endpoint
  * generation receives an exact scoped lease and a lossless settlement queue, so application
@@ -210,14 +246,111 @@ export const makeWithCapacities = (
   Effect.gen(function* () {
     const occurrenceCapacity = Math.max(1, Math.floor(capacities.occurrences));
     const settlementCapacity = Math.max(1, Math.floor(capacities.settlements));
-    const occurrences =
-      yield* Queue.dropping<CodexApplicationProtocolOccurrence>(occurrenceCapacity);
+    const occurrenceByteCapacity = positiveInteger(
+      capacities.occurrenceBytes,
+      DEFAULT_OCCURRENCE_BYTE_CAPACITY,
+    );
+    const singleOccurrenceByteCapacity = Math.min(
+      occurrenceByteCapacity,
+      positiveInteger(capacities.singleOccurrenceBytes, DEFAULT_SINGLE_OCCURRENCE_BYTE_CAPACITY),
+    );
+    const occurrences = yield* Queue.dropping<BufferedOccurrence>(occurrenceCapacity);
     const inboxId = createUuidV7();
     const state = yield* SynchronizedRef.make<InboxState>({
       closed: false,
       nextOccurrenceToken: 1,
+      occurrenceCount: 0,
+      occurrenceBytes: 0,
+      occurrenceReservations: new Map(),
       generations: new Map(),
     });
+
+    const occurrenceBytes = (occurrence: CodexApplicationProtocolOccurrence): number =>
+      cappedApproximateValueBytes(occurrence, singleOccurrenceByteCapacity);
+
+    const overflowForOccurrence = (
+      occurrence: CodexApplicationProtocolOccurrence,
+      observedBytes: number,
+    ) =>
+      new CodexApplicationIngressOverflow({
+        channel: "occurrence-bytes",
+        capacity: occurrenceCapacity,
+        maximumBufferedBytes: occurrenceByteCapacity,
+        maximumOccurrenceBytes: singleOccurrenceByteCapacity,
+        observedBytes,
+        hostId: occurrence.hostId,
+        generation: occurrence.generation,
+        occurrenceId: occurrence.occurrenceId,
+      });
+
+    const reserveOccurrence = (
+      current: InboxState,
+      occurrenceToken: number,
+      approximateBytes: number,
+      pending: boolean,
+    ): InboxState => {
+      const occurrenceReservations = new Map(current.occurrenceReservations);
+      occurrenceReservations.set(occurrenceToken, { approximateBytes, queued: true, pending });
+      return {
+        ...current,
+        occurrenceCount: current.occurrenceCount + 1,
+        occurrenceBytes: current.occurrenceBytes + approximateBytes,
+        occurrenceReservations,
+      };
+    };
+
+    const releaseOccurrenceReference = (
+      current: InboxState,
+      occurrenceToken: number,
+      reference: "queued" | "pending",
+    ): InboxState => {
+      const reservation = current.occurrenceReservations.get(occurrenceToken);
+      if (!reservation || !reservation[reference]) return current;
+      const nextReservation = { ...reservation, [reference]: false };
+      const occurrenceReservations = new Map(current.occurrenceReservations);
+      if (nextReservation.queued || nextReservation.pending) {
+        occurrenceReservations.set(occurrenceToken, nextReservation);
+        return { ...current, occurrenceReservations };
+      }
+      occurrenceReservations.delete(occurrenceToken);
+      return {
+        ...current,
+        occurrenceCount: Math.max(0, current.occurrenceCount - 1),
+        occurrenceBytes: Math.max(0, current.occurrenceBytes - reservation.approximateBytes),
+        occurrenceReservations,
+      };
+    };
+
+    const releaseTakenOccurrence = (buffered: BufferedOccurrence) =>
+      SynchronizedRef.update(state, (current) =>
+        releaseOccurrenceReference(current, buffered.occurrence.occurrenceToken, "queued"),
+      ).pipe(Effect.as(buffered.occurrence));
+
+    const takeOccurrence = Effect.uninterruptibleMask((restore) =>
+      restore(Queue.take(occurrences)).pipe(
+        Effect.flatMap((buffered) => releaseTakenOccurrence(buffered)),
+      ),
+    );
+
+    const failOccurrenceGeneration = (
+      current: InboxState,
+      active: GenerationState,
+      occurrence: CodexApplicationProtocolOccurrence,
+      cause: CodexApplicationIngressOverflow,
+    ): Effect.Effect<InboxState> => {
+      const key = generationKey(occurrence.hostId, occurrence.generation);
+      const generations = new Map(current.generations);
+      generations.set(key, { ...active, failed: true });
+      return Deferred.fail(
+        active.termination,
+        new CodexApplicationConsequenceFailure({
+          hostId: occurrence.hostId,
+          generation: occurrence.generation,
+          occurrenceId: occurrence.occurrenceId,
+          cause,
+        }),
+      ).pipe(Effect.as({ ...current, generations }));
+    };
 
     const settle: CodexApplicationRequestInboxService["settle"] = (occurrence, outcome) =>
       SynchronizedRef.modifyEffect(
@@ -226,7 +359,7 @@ export const makeWithCapacities = (
           const key = generationKey(occurrence.hostId, occurrence.generation);
           const generation = current.generations.get(key);
           const pending = generation?.pending.get(occurrence.occurrenceToken);
-          if (!generation || generation.failed || pending !== occurrence) {
+          if (!generation || generation.failed || pending?.occurrence !== occurrence) {
             return Effect.succeed([false, current] as const);
           }
 
@@ -234,12 +367,17 @@ export const makeWithCapacities = (
           nextPending.delete(occurrence.occurrenceToken);
           const nextGenerations = new Map(current.generations);
           nextGenerations.set(key, { ...generation, pending: nextPending });
+          const released = releaseOccurrenceReference(
+            current,
+            occurrence.occurrenceToken,
+            "pending",
+          );
           return Queue.offer(generation.settlements, { occurrence, outcome }).pipe(
             Effect.flatMap((accepted): Effect.Effect<readonly [boolean, InboxState]> => {
               if (accepted) {
                 return Effect.succeed([
                   true,
-                  { ...current, generations: nextGenerations },
+                  { ...current, ...released, generations: nextGenerations },
                 ] as const);
               }
               const failedGenerations = new Map(nextGenerations);
@@ -258,7 +396,7 @@ export const makeWithCapacities = (
                     occurrenceId: occurrence.occurrenceId,
                   }),
                 }),
-              ).pipe(Effect.as([false, { ...current, generations: failedGenerations }] as const));
+              ).pipe(Effect.as([false, { ...released, generations: failedGenerations }] as const));
             }),
           );
         },
@@ -272,19 +410,21 @@ export const makeWithCapacities = (
         state,
         (current): Effect.Effect<readonly [boolean, InboxState]> => {
           for (const [key, generation] of current.generations) {
-            const occurrence = generation.pending.get(occurrenceToken);
-            if (!occurrence) continue;
+            const pending = generation.pending.get(occurrenceToken);
+            if (!pending) continue;
+            const occurrence = pending.occurrence;
             const nextPending = new Map(generation.pending);
             nextPending.delete(occurrenceToken);
             const nextGenerations = new Map(current.generations);
             nextGenerations.set(key, { ...generation, pending: nextPending });
             if (generation.failed) return Effect.succeed([false, current] as const);
+            const released = releaseOccurrenceReference(current, occurrenceToken, "pending");
             return Queue.offer(generation.settlements, { occurrence, outcome }).pipe(
               Effect.flatMap((accepted): Effect.Effect<readonly [boolean, InboxState]> => {
                 if (accepted) {
                   return Effect.succeed([
                     true,
-                    { ...current, generations: nextGenerations },
+                    { ...current, ...released, generations: nextGenerations },
                   ] as const);
                 }
                 const failedGenerations = new Map(nextGenerations);
@@ -303,7 +443,9 @@ export const makeWithCapacities = (
                       occurrenceId: occurrence.occurrenceId,
                     }),
                   }),
-                ).pipe(Effect.as([false, { ...current, generations: failedGenerations }] as const));
+                ).pipe(
+                  Effect.as([false, { ...released, generations: failedGenerations }] as const),
+                );
               }),
             );
           }
@@ -369,44 +511,82 @@ export const makeWithCapacities = (
                 method: input.method,
                 params: input.params,
               };
+              const approximateBytes = occurrenceBytes(occurrence);
+              const observedBytes = current.occurrenceBytes + approximateBytes;
+              if (
+                approximateBytes > singleOccurrenceByteCapacity ||
+                observedBytes > occurrenceByteCapacity
+              ) {
+                return failOccurrenceGeneration(
+                  current,
+                  active,
+                  occurrence,
+                  overflowForOccurrence(occurrence, observedBytes),
+                ).pipe(
+                  Effect.map((next): readonly [AdmissionResult, InboxState] => [
+                    { _tag: "Unavailable" as const, reason: "overflow" as const },
+                    next,
+                  ]),
+                );
+              }
+              if (current.occurrenceCount >= occurrenceCapacity) {
+                return failOccurrenceGeneration(
+                  current,
+                  active,
+                  occurrence,
+                  new CodexApplicationIngressOverflow({
+                    channel: "occurrences",
+                    capacity: occurrenceCapacity,
+                    hostId,
+                    generation,
+                    occurrenceId: occurrence.occurrenceId,
+                  }),
+                ).pipe(
+                  Effect.map((next): readonly [AdmissionResult, InboxState] => [
+                    { _tag: "Unavailable" as const, reason: "overflow" as const },
+                    next,
+                  ]),
+                );
+              }
               const pending = new Map(active.pending);
-              pending.set(occurrence.occurrenceToken, occurrence);
+              pending.set(occurrence.occurrenceToken, { occurrence });
               const generations = new Map(current.generations);
               generations.set(key, { ...active, pending });
-              return Queue.offer(occurrences, occurrence).pipe(
+              return Queue.offer(occurrences, { occurrence }).pipe(
                 Effect.flatMap(
                   (accepted): Effect.Effect<readonly [AdmissionResult, InboxState]> => {
                     if (accepted) {
-                      return Effect.succeed([
-                        { _tag: "Accepted" as const, occurrence },
+                      const acceptedState = reserveOccurrence(
                         {
                           ...current,
                           nextOccurrenceToken: current.nextOccurrenceToken + 1,
                           generations,
                         },
+                        occurrence.occurrenceToken,
+                        approximateBytes,
+                        true,
+                      );
+                      return Effect.succeed([
+                        { _tag: "Accepted" as const, occurrence },
+                        acceptedState,
                       ] as const);
                     }
-                    const failedGenerations = new Map(current.generations);
-                    failedGenerations.set(key, { ...active, failed: true });
-                    return Deferred.fail(
-                      active.termination,
-                      new CodexApplicationConsequenceFailure({
+                    return failOccurrenceGeneration(
+                      current,
+                      active,
+                      occurrence,
+                      new CodexApplicationIngressOverflow({
+                        channel: "occurrences",
+                        capacity: occurrenceCapacity,
                         hostId,
                         generation,
                         occurrenceId: occurrence.occurrenceId,
-                        cause: new CodexApplicationIngressOverflow({
-                          channel: "occurrences",
-                          capacity: occurrenceCapacity,
-                          hostId,
-                          generation,
-                          occurrenceId: occurrence.occurrenceId,
-                        }),
                       }),
                     ).pipe(
-                      Effect.as([
+                      Effect.map((next): readonly [AdmissionResult, InboxState] => [
                         { _tag: "Unavailable" as const, reason: "overflow" as const },
-                        { ...current, generations: failedGenerations },
-                      ] as const),
+                        next,
+                      ]),
                     );
                   },
                 ),
@@ -426,18 +606,30 @@ export const makeWithCapacities = (
             if (active?.lease !== lease || active.pending.size === 0) {
               return Effect.succeed([0, current] as const);
             }
-            const outstanding = [...active.pending.values()];
+            let released = current;
+            for (const occurrenceToken of active.pending.keys()) {
+              released = releaseOccurrenceReference(released, occurrenceToken, "pending");
+            }
+            const outstanding = active.pending.values();
             const generations = new Map(current.generations);
             generations.set(key, { ...active, pending: new Map() });
             return Effect.forEach(
               outstanding,
-              (occurrence) =>
+              (pending) =>
                 Queue.offer(active.settlements, {
-                  occurrence,
+                  occurrence: pending.occurrence,
                   outcome: { kind: "error", error },
                 }),
               { discard: true },
-            ).pipe(Effect.as([outstanding.length, { ...current, generations }] as const));
+            ).pipe(
+              Effect.as([
+                active.pending.size,
+                {
+                  ...released,
+                  generations,
+                },
+              ] as const),
+            );
           });
 
         return {
@@ -463,8 +655,18 @@ export const makeWithCapacities = (
         }
         const generations = new Map(current.generations);
         generations.delete(key);
+        let released = current;
+        for (const occurrenceToken of active.pending.keys()) {
+          released = releaseOccurrenceReference(released, occurrenceToken, "pending");
+        }
         return Queue.shutdown(active.settlements).pipe(
-          Effect.as([undefined, { ...current, generations }] as const),
+          Effect.as([
+            undefined,
+            {
+              ...released,
+              generations,
+            },
+          ] as const),
         );
       });
     });
@@ -483,7 +685,10 @@ export const makeWithCapacities = (
         const active = current.generations.get(
           generationKey(occurrence.hostId, occurrence.generation),
         );
-        if (active?.failed || active?.pending.get(occurrence.occurrenceToken) !== occurrence) {
+        if (
+          active?.failed ||
+          active?.pending.get(occurrence.occurrenceToken)?.occurrence !== occurrence
+        ) {
           return { kind: "withdrawn" } as const;
         }
 
@@ -554,34 +759,56 @@ export const makeWithCapacities = (
           occurrenceId: `${input.hostId}:${input.generation}:${inboxId}:${occurrenceToken}`,
           occurrenceToken,
         };
-        return Queue.offer(occurrences, occurrence).pipe(
+        const approximateBytes = occurrenceBytes(occurrence);
+        const observedBytes = current.occurrenceBytes + approximateBytes;
+        if (
+          approximateBytes > singleOccurrenceByteCapacity ||
+          observedBytes > occurrenceByteCapacity
+        ) {
+          return failOccurrenceGeneration(
+            current,
+            active,
+            occurrence,
+            overflowForOccurrence(occurrence, observedBytes),
+          ).pipe(Effect.map((next): readonly [undefined, InboxState] => [undefined, next]));
+        }
+        if (current.occurrenceCount >= occurrenceCapacity) {
+          return failOccurrenceGeneration(
+            current,
+            active,
+            occurrence,
+            new CodexApplicationIngressOverflow({
+              channel: "occurrences",
+              capacity: occurrenceCapacity,
+              hostId: input.hostId,
+              generation: input.generation,
+              occurrenceId: occurrence.occurrenceId,
+            }),
+          ).pipe(Effect.map((next): readonly [undefined, InboxState] => [undefined, next]));
+        }
+        return Queue.offer(occurrences, { occurrence }).pipe(
           Effect.flatMap((accepted) => {
             if (accepted) {
-              return Effect.succeed([
-                undefined,
+              const acceptedState = reserveOccurrence(
                 { ...current, nextOccurrenceToken: current.nextOccurrenceToken + 1 },
-              ] as const);
+                occurrence.occurrenceToken,
+                approximateBytes,
+                false,
+              );
+              return Effect.succeed([undefined, acceptedState] as const);
             }
-            const generations = new Map(current.generations);
-            generations.set(generationKey(input.hostId, input.generation), {
-              ...active,
-              failed: true,
-            });
-            return Deferred.fail(
-              active.termination,
-              new CodexApplicationConsequenceFailure({
+            return failOccurrenceGeneration(
+              current,
+              active,
+              occurrence,
+              new CodexApplicationIngressOverflow({
+                channel: "occurrences",
+                capacity: occurrenceCapacity,
                 hostId: input.hostId,
                 generation: input.generation,
                 occurrenceId: occurrence.occurrenceId,
-                cause: new CodexApplicationIngressOverflow({
-                  channel: "occurrences",
-                  capacity: occurrenceCapacity,
-                  hostId: input.hostId,
-                  generation: input.generation,
-                  occurrenceId: occurrence.occurrenceId,
-                }),
               }),
-            ).pipe(Effect.as([undefined, { ...current, generations }] as const));
+            ).pipe(Effect.map((next): readonly [undefined, InboxState] => [undefined, next]));
           }),
         );
       });
@@ -594,13 +821,23 @@ export const makeWithCapacities = (
           { discard: true },
         ).pipe(
           Effect.andThen(Queue.shutdown(occurrences)),
-          Effect.as([undefined, { ...current, closed: true, generations: new Map() }] as const),
+          Effect.as([
+            undefined,
+            {
+              ...current,
+              closed: true,
+              occurrenceCount: 0,
+              occurrenceBytes: 0,
+              occurrenceReservations: new Map(),
+              generations: new Map(),
+            },
+          ] as const),
         ),
       ),
     );
 
     return CodexApplicationRequestInbox.of({
-      occurrences: Stream.fromQueue(occurrences),
+      occurrences: Stream.fromEffectRepeat(takeOccurrence),
       publishNotification,
       openGeneration,
       settle,

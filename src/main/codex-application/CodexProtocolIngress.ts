@@ -51,7 +51,7 @@ export const live: Layer.Layer<
       Stream.runDrain,
     );
     const releases = threadStarts.releases.pipe(
-      Stream.runForEach((release) => protocol.releaseThreadStart(release.threadId)),
+      Stream.runForEach((release) => protocol.releaseThreadStart(release)),
     );
     const actor = Effect.raceFirst(
       threadStarts.termination,

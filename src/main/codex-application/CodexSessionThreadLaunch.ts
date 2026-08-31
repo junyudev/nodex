@@ -17,7 +17,11 @@ import type {
   CodexThreadStartForSessionInput,
   CodexThreadStartForSessionResult,
 } from "../../shared/types";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { allocateCodexPendingWorktreeRequest } from "../codex/codex-pending-worktree-request";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -93,6 +97,7 @@ export const make: Effect.Effect<
   never,
   | CodexFreshThreadLaunchRuntime
   | CodexAttachments
+  | CodexAppServerCapabilities
   | CodexGateway
   | CodexPendingWorktreeRuntime
   | CodexThreadDirectory
@@ -106,6 +111,7 @@ export const make: Effect.Effect<
 > = Effect.gen(function* () {
   const core = yield* CoreModules;
   const attachments = yield* CodexAttachments;
+  const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
   const projectLifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const pendingWorktrees = yield* CodexPendingWorktreeRuntime;
@@ -253,6 +259,7 @@ export const make: Effect.Effect<
     input: CodexThreadStartForSessionInput,
     context: CodexSessionThreadLaunchContext,
     sourceRoots: readonly string[],
+    capability: CodexAppServerCapabilitySnapshot,
   ): Effect.fn.Return<CodexThreadStartForSessionResult, CodexSessionThreadLaunchFailure> {
     const projectless = input.projectlessWorkspace;
     const workspaceRoots = projectless ? [projectless.workspaceRoot] : [...sourceRoots];
@@ -289,6 +296,7 @@ export const make: Effect.Effect<
       const response = (yield* gateway.requestLocal(
         "thread/start",
         request as GatewayThreadStartParams,
+        codexGatewayGenerationFence(capability),
       )) as unknown as ThreadStartResponse;
       startedThreadId = response.thread.id;
       const entry = yield* directory
@@ -386,7 +394,11 @@ export const make: Effect.Effect<
               });
               if (!startedThreadId || linked) return;
               yield* gateway
-                .requestLocal("thread/delete", { threadId: startedThreadId })
+                .requestLocal(
+                  "thread/delete",
+                  { threadId: startedThreadId },
+                  codexGatewayGenerationFence(capability),
+                )
                 .pipe(Effect.ignore);
             }),
       ),
@@ -412,9 +424,11 @@ export const make: Effect.Effect<
               }
               return yield* enqueuePending({ ...input, projectId: input.projectId }, sourceRoots);
             }
+            const capability = yield* capabilities.forHost(gateway.localHostId);
             return yield* threadStarts.materialize(
-              gateway.localHostId,
-              startImmediate(input, context, sourceRoots),
+              capability.hostId,
+              capability.generation,
+              startImmediate(input, context, sourceRoots, capability),
               (result) => (result.kind === "started" ? result.detail.threadId : null),
             );
           }),

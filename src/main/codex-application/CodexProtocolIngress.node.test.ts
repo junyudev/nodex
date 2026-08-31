@@ -31,7 +31,7 @@ it.effect("turns an unexpected canonical ingress exit into runtime-fatal health"
       occurrences: Stream.die("canonical ingress defect"),
     } as unknown as CodexApplicationRequestInbox["Service"]);
     const threadStarts = ThreadCreationRuntime.of({
-      materialize: (_hostId, operation) => operation,
+      materialize: (_hostId, _generation, operation) => operation,
       defer: () => false,
       releases: Stream.never,
       termination: Effect.never,

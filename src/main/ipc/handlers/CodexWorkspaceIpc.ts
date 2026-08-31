@@ -13,6 +13,8 @@ import { MainConfig } from "../../app/MainConfig";
 import { AgentImportRuntime } from "../../codex-application/AgentImportRuntime";
 import { CodexBackgroundProcesses } from "../../codex-application/CodexBackgroundProcesses";
 import { CodexConversationHistoryRuntime } from "../../codex-application/CodexConversationHistoryRuntime";
+import { CodexPersistedHistorySearchRuntime } from "../../codex-application/CodexPersistedHistorySearchRuntime";
+import { CodexConversationHistoryExport } from "../../codex-application/CodexConversationHistoryExport";
 import { CodexConversationResumeRuntime } from "../../codex-application/CodexConversationResumeRuntime";
 import { CodexFreshThreadLaunchRuntime } from "../../codex-application/CodexFreshThreadLaunchRuntime";
 import { CodexManualCompactionRuntime } from "../../codex-application/CodexManualCompactionRuntime";
@@ -131,6 +133,8 @@ export const live = Layer.effectDiscard(
     const threadReadState = yield* CodexThreadReadState;
     const agentImport = yield* AgentImportRuntime;
     const conversationHistory = yield* CodexConversationHistoryRuntime;
+    const persistedHistorySearch = yield* CodexPersistedHistorySearchRuntime;
+    const conversationHistoryExport = yield* CodexConversationHistoryExport;
     const conversationResume = yield* CodexConversationResumeRuntime;
     const queuedFollowUps = yield* CodexQueuedFollowUps;
     const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
@@ -681,23 +685,54 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    registerEffectControl("codex:thread:turns:load-older", (_, threadId) =>
+    registerEffectControl("codex:thread:history-page:load", (_, request) =>
       conversationHistory
-        .loadPage(threadId)
+        .loadPage(request)
         .pipe(
           Effect.mapError(
-            (cause) => new CodexIpcError({ operation: "codex:thread:turns:load-older", cause }),
+            (cause) => new CodexIpcError({ operation: "codex:thread:history-page:load", cause }),
           ),
         ),
     );
-    registerEffectControl("codex:thread:turns:load-complete", (_, threadId) =>
-      conversationHistory
-        .loadComplete(threadId, false)
+    registerEffectQuery("codex:thread:history-search", (_, threadId, query) =>
+      persistedHistorySearch
+        .search(threadId, query)
         .pipe(
           Effect.mapError(
-            (cause) => new CodexIpcError({ operation: "codex:thread:turns:load-complete", cause }),
+            (cause) => new CodexIpcError({ operation: "codex:thread:history-search", cause }),
           ),
         ),
+    );
+    registerEffectControl("codex:thread:history-search:hydrate", (_, input) =>
+      persistedHistorySearch
+        .hydrateOccurrence(input)
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new CodexIpcError({ operation: "codex:thread:history-search:hydrate", cause }),
+          ),
+        ),
+    );
+    registerEffectControl("codex:thread:history-export:start", (event, threadId) =>
+      conversationHistoryExport
+        .start({ consumerId: String(event.sender.id), threadId })
+        .pipe(
+          Effect.mapError(
+            (cause) => new CodexIpcError({ operation: "codex:thread:history-export:start", cause }),
+          ),
+        ),
+    );
+    registerEffectControl("codex:thread:history-export:next", (event, jobId) =>
+      conversationHistoryExport
+        .next({ consumerId: String(event.sender.id), jobId })
+        .pipe(
+          Effect.mapError(
+            (cause) => new CodexIpcError({ operation: "codex:thread:history-export:next", cause }),
+          ),
+        ),
+    );
+    registerEffectControl("codex:thread:history-export:cancel", (event, jobId) =>
+      conversationHistoryExport.cancel({ consumerId: String(event.sender.id), jobId }),
     );
 
     registerEffectPlainCommand("codex:thread:name:set", (_, threadId: string, name: string) =>

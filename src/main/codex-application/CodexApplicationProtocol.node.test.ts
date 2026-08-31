@@ -95,6 +95,8 @@ const withProtocol = <A, E>(
     readonly inbox: CodexApplicationRequestInbox["Service"];
     readonly conversations: ConversationEntityMap["Service"];
     readonly appliedNotifications: string[];
+    readonly appliedThreadStartedTurns: (readonly unknown[])[];
+    readonly appliedTurnStartedItems: (readonly unknown[])[];
     readonly protocol: CodexApplicationProtocol["Service"];
     readonly threadStarts: ThreadCreationRuntime["Service"];
   }) => Effect.Effect<A, E>,
@@ -150,10 +152,18 @@ const withProtocol = <A, E>(
       respond: () => Effect.succeed(null),
     });
     const appliedNotifications: string[] = [];
+    const appliedThreadStartedTurns: (readonly unknown[])[] = [];
+    const appliedTurnStartedItems: (readonly unknown[])[] = [];
     const notificationEffects = CodexProtocolNotificationEffects.of({
       apply: ({ notification }) =>
         Effect.sync(() => {
           appliedNotifications.push(notification.method);
+          if (notification.method === "thread/started") {
+            appliedThreadStartedTurns.push(notification.params.thread.turns);
+          }
+          if (notification.method === "turn/started") {
+            appliedTurnStartedItems.push(notification.params.turn.items);
+          }
           if (notification.method !== "serverRequest/resolved") return;
           const entries = pending.takeAll(
             "user-input",
@@ -209,6 +219,8 @@ const withProtocol = <A, E>(
 
     const result = yield* run({
       appliedNotifications,
+      appliedThreadStartedTurns,
+      appliedTurnStartedItems,
       inbox,
       conversations,
       protocol,
@@ -218,49 +230,117 @@ const withProtocol = <A, E>(
     return result;
   });
 
-it.effect("replays thread/started only after its local materialization commits", () =>
-  withProtocol(({ appliedNotifications, inbox, threadStarts }) =>
-    Effect.gen(function* () {
-      const generationScope = yield* Scope.make();
-      yield* inbox
-        .openGeneration("local", 8)
-        .pipe(Effect.provideService(Scope.Scope, generationScope));
-      const commit = yield* Deferred.make<string>();
-      const materialization = yield* threadStarts
-        .materialize("local", Deferred.await(commit), (threadId) => threadId)
-        .pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-      yield* inbox.publishNotification({
-        hostId: "local",
-        generation: 8,
-        protocol: "generated",
-        method: "thread/started",
-        params: {
-          thread: {
-            id: "thread-gated",
-            sessionId: "session-thread-gated",
-            preview: "",
-            ephemeral: false,
-            modelProvider: "openai",
-            createdAt: 1,
-            updatedAt: 1,
-            status: { type: "idle" },
-            cwd: "/repo",
-            cliVersion: "test",
-            source: "unknown",
-            turns: [],
+it.effect("replays bounded lifecycle metadata after its local materialization commits", () =>
+  withProtocol(
+    ({
+      appliedNotifications,
+      appliedThreadStartedTurns,
+      appliedTurnStartedItems,
+      inbox,
+      threadStarts,
+    }) =>
+      Effect.gen(function* () {
+        const generationScope = yield* Scope.make();
+        yield* inbox
+          .openGeneration("local", 8)
+          .pipe(Effect.provideService(Scope.Scope, generationScope));
+        const commit = yield* Deferred.make<string>();
+        const materialization = yield* threadStarts
+          .materialize("local", 8, Deferred.await(commit), (threadId) => threadId)
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        const poisonTurns = [
+          {
+            id: "poison-turn",
+            items: [
+              {
+                id: "poison-item",
+                type: "agentMessage",
+                text: "must never enter the deferred thread-start buffer",
+              },
+            ],
           },
-        },
-      });
-      yield* Effect.yieldNow;
-      assert.deepEqual(appliedNotifications, []);
+        ];
+        yield* inbox.publishNotification({
+          hostId: "local",
+          generation: 8,
+          protocol: "generated",
+          method: "thread/started",
+          params: {
+            thread: {
+              id: "thread-gated",
+              sessionId: "session-thread-gated",
+              preview: "",
+              ephemeral: false,
+              modelProvider: "openai",
+              createdAt: 1,
+              updatedAt: 1,
+              status: { type: "idle" },
+              cwd: "/repo",
+              cliVersion: "test",
+              source: "unknown",
+              turns: poisonTurns,
+            },
+          },
+        });
+        const boundedTurnItems = [
+          {
+            id: "giant-turn-item",
+            type: "agentMessage",
+            text: "bounded live output",
+            phase: null,
+            memoryCitation: null,
+          },
+        ];
+        yield* inbox.publishNotification({
+          hostId: "local",
+          generation: 8,
+          protocol: "generated",
+          method: "turn/started",
+          params: {
+            threadId: "thread-gated",
+            turn: {
+              id: "turn-gated",
+              items: boundedTurnItems,
+              itemsView: "full",
+              status: "inProgress",
+              error: null,
+              startedAt: 1,
+              completedAt: null,
+              durationMs: null,
+            },
+          },
+        });
+        yield* Effect.yieldNow;
+        assert.deepEqual(appliedNotifications, []);
+        assert.deepEqual(appliedThreadStartedTurns, []);
+        assert.deepEqual(appliedTurnStartedItems, []);
 
-      yield* Deferred.succeed(commit, "thread-gated");
-      assert.strictEqual(yield* Fiber.join(materialization), "thread-gated");
-      while (appliedNotifications.length === 0) yield* Effect.yieldNow;
-      assert.deepEqual(appliedNotifications, ["thread/started"]);
-      yield* Scope.close(generationScope, Exit.void);
-    }),
+        yield* Deferred.succeed(commit, "thread-gated");
+        assert.strictEqual(yield* Fiber.join(materialization), "thread-gated");
+        for (let attempt = 0; attempt < 1_000 && appliedNotifications.length < 2; attempt += 1) {
+          yield* Effect.yieldNow;
+        }
+        assert.deepEqual(appliedNotifications, ["thread/started", "turn/started"]);
+        assert.deepEqual(appliedThreadStartedTurns, [[]]);
+        assert.notStrictEqual(appliedThreadStartedTurns[0], poisonTurns);
+        const marker = appliedTurnStartedItems[0]?.[0] as
+          | {
+              readonly id?: unknown;
+              readonly type?: unknown;
+              readonly text?: unknown;
+              readonly phase?: unknown;
+              readonly memoryCitation?: unknown;
+            }
+          | undefined;
+        assert.strictEqual(marker?.id, "giant-turn-item");
+        assert.strictEqual(marker?.type, "agentMessage");
+        assert.strictEqual(marker?.text, "bounded live output");
+        assert.strictEqual(marker?.phase, null);
+        assert.strictEqual(marker?.memoryCitation, null);
+        assert.strictEqual(appliedTurnStartedItems[0], boundedTurnItems);
+        yield* Scope.close(generationScope, Exit.void);
+      }),
   ),
 );
 

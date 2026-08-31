@@ -316,7 +316,7 @@ export const make: Effect.Effect<
         directory
           .resolve({
             threadId: source.threadId,
-            fidelity: "full",
+            fidelity: "tail",
             hostId: source.directory.durable.executionHostId,
           })
           .pipe(
@@ -342,7 +342,9 @@ export const make: Effect.Effect<
     return yield* conversations.runCommand(
       source.threadId,
       Effect.gen(function* () {
-        yield* notificationDrain.awaitCurrent(source.threadId);
+        yield* notificationDrain
+          .awaitCurrent(source.threadId)
+          .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));
         const current = yield* projection
           .read(source.threadId)
           .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));
@@ -351,7 +353,7 @@ export const make: Effect.Effect<
           source,
           {
             ...source.directory,
-            fidelity: "full",
+            fidelity: "tail",
             canonical: current.canonical,
             snapshot: current.snapshot,
           },

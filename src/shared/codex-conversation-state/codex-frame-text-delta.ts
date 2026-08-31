@@ -9,6 +9,10 @@ import type {
   CodexFrameTextDeltaTarget,
   CodexFrameTextDeltaUpdate,
 } from "./codex-frame-text-delta-queue";
+import {
+  appendCodexReasoningPartDelta,
+  canAppendCodexReasoningPartDelta,
+} from "./codex-reasoning-parts";
 
 export type CodexFrameTextDeltaNotification = Extract<
   ServerNotification,
@@ -95,24 +99,6 @@ function expectedProtocolItemType(target: CodexFrameTextDeltaTarget): string {
   return "reasoning";
 }
 
-function isValidReasoningIndex(index: number): boolean {
-  return Number.isSafeInteger(index) && index >= 0;
-}
-
-function appendIndexedDelta(values: unknown, index: number, delta: string): readonly string[] {
-  const currentValues = Array.isArray(values) ? values : [];
-  if (index < currentValues.length && delta.length === 0) {
-    return currentValues;
-  }
-
-  const nextValues = currentValues.map((value) => String(value ?? ""));
-  while (nextValues.length <= index) {
-    nextValues.push("");
-  }
-  nextValues[index] = `${nextValues[index] ?? ""}${delta}`;
-  return nextValues;
-}
-
 function reduceRawItem(
   item: ProtocolItemRecord,
   update: CodexFrameTextDeltaUpdate,
@@ -125,12 +111,20 @@ function reduceRawItem(
       return { ...item, text };
     }
     case "reasoningSummary": {
-      const summary = appendIndexedDelta(item.summary, update.target.summaryIndex, update.delta);
+      const summary = appendCodexReasoningPartDelta(
+        item.summary,
+        update.target.summaryIndex,
+        update.delta,
+      );
       if (summary === item.summary) return item;
       return { ...item, summary };
     }
     case "reasoningContent": {
-      const content = appendIndexedDelta(item.content, update.target.contentIndex, update.delta);
+      const content = appendCodexReasoningPartDelta(
+        item.content,
+        update.target.contentIndex,
+        update.delta,
+      );
       if (content === item.content) return item;
       return { ...item, content };
     }
@@ -184,6 +178,25 @@ export function toCodexFrameTextDelta(
     itemId: notification.params.itemId,
     target,
     delta: notification.params.delta,
+  };
+}
+
+/**
+ * The protocol announces a new reasoning-summary part before its text delta. Represent that
+ * announcement as an empty dense append so subsequent text cannot require sparse padding.
+ */
+export function toCodexReasoningSummaryPartAddedDelta(
+  notification: CodexReasoningSummaryPartAddedNotification,
+): CodexFrameTextDeltaUpdate {
+  return {
+    conversationId: notification.params.threadId,
+    turnId: notification.params.turnId,
+    itemId: notification.params.itemId,
+    target: {
+      type: "reasoningSummary",
+      summaryIndex: notification.params.summaryIndex,
+    },
+    delta: "",
   };
 }
 
@@ -245,7 +258,16 @@ export function reduceCodexFrameTextDeltaItems(
       : update.target.type === "reasoningContent"
         ? update.target.contentIndex
         : null;
-  if (reasoningIndex !== null && !isValidReasoningIndex(reasoningIndex)) {
+  const reasoningParts =
+    update.target.type === "reasoningSummary"
+      ? item.summary
+      : update.target.type === "reasoningContent"
+        ? item.content
+        : null;
+  if (
+    reasoningIndex !== null &&
+    !canAppendCodexReasoningPartDelta(reasoningParts, reasoningIndex)
+  ) {
     return { items, disposition: "invalidReasoningIndex", itemIndex };
   }
 

@@ -12,17 +12,24 @@ import {
   createCodexCanonicalHydratedConversationState,
   createCodexCanonicalWorkspacePermissionContext,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
+import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
+import type { CodexHistoryTurnItemsPagination } from "../../shared/codex-conversation-state/codex-history-topology";
 import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
 import type {
   CodexCanonicalConversationState,
   CodexConversationSnapshot,
+  CodexConversationResumeState,
   CodexConversationTurnPagination,
   CodexThreadSummary,
 } from "../../shared/types";
 import type { AgentExecutionProfile } from "../../shared/agent-runtime";
 import type { DesktopProjectWorkspaceThread } from "../core-client/project-workspace-adapter";
 import { CoreModuleResponseError } from "../core-client/core-client";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import {
   projectCodexGatewayThreadReadThread,
   projectCodexGatewayThreadResumeResponse,
@@ -32,6 +39,10 @@ import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexConversationProjection } from "./CodexConversationProjection";
+import {
+  CodexHistoryPageAdapter,
+  type CodexHydratedHistoryItemSegment,
+} from "./CodexHistoryPageAdapter";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import {
   buildWorkspaceThreadSummary,
@@ -42,10 +53,38 @@ import {
   projectCoreWorkspaceThread,
 } from "./CodexThreadDirectoryProjection";
 
-export type CodexThreadDirectoryFidelity = "durable" | "metadata" | "full" | "live";
+export type CodexThreadDirectoryFidelity =
+  | "durable"
+  | "metadata"
+  | "tail"
+  | "materialized"
+  | "live";
+export type CodexThreadDirectoryResolveFidelity = Exclude<
+  CodexThreadDirectoryFidelity,
+  "materialized"
+>;
+
+/**
+ * Directory discovery is a metadata convenience, never a transcript transport. These limits
+ * deliberately fail closed: a panel must retry a bounded query rather than retain every child
+ * ever created beneath a long-lived root Thread.
+ */
+export const CODEX_SUBAGENT_DISCOVERY_PAGE_SIZE = 200;
+export const CODEX_SUBAGENT_DISCOVERY_MAX_PAGES = 10;
+export const CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS = 256;
+export const CODEX_SUBAGENT_DISCOVERY_MAX_PAGE_BYTES = 8 * 1024 * 1024;
+export const CODEX_SUBAGENT_DISCOVERY_MAX_RESULT_BYTES = 4 * 1024 * 1024;
+export const CODEX_SUBAGENT_DISCOVERY_MAX_REQUEST_IDS = 64;
+export const CODEX_SUBAGENT_TAIL_HYDRATION_MAX_RESULTS = 16;
+export const CODEX_SUBAGENT_TAIL_HYDRATION_MAX_RESULT_BYTES = 16 * 1024 * 1024;
+export const CODEX_SUBAGENT_DISCOVERY_PAGE_TIMEOUT_MS = 10_000;
+export const CODEX_SUBAGENT_DISCOVERY_SCAN_DEADLINE_MS = 30_000;
+const CODEX_SUBAGENT_LINEAGE_MAX_DEPTH = 128;
 
 export interface CodexThreadDirectoryEntry {
   readonly fidelity: CodexThreadDirectoryFidelity;
+  /** Persisted history contract observed from app-server, when this read reached app-server. */
+  readonly historyMode: Thread["historyMode"] | null;
   readonly durable: DesktopProjectWorkspaceThread;
   readonly summary: CodexThreadSummary;
   readonly canonical: CodexCanonicalConversationState | null;
@@ -70,13 +109,21 @@ export class CodexThreadDirectory extends Context.Service<
      */
     readonly resolve: (input: {
       readonly threadId: string;
-      readonly fidelity: CodexThreadDirectoryFidelity;
+      readonly fidelity: CodexThreadDirectoryResolveFidelity;
+      readonly hostId?: string;
+    }) => Effect.Effect<CodexThreadDirectoryEntry | null, CodexThreadDirectoryError>;
+    /**
+     * Resumes one Thread without acquiring its non-reentrant causal lane. Only callers already
+     * executing inside that lane may use this seam.
+     */
+    readonly materializeInCurrentLane: (input: {
+      readonly threadId: string;
       readonly hostId?: string;
     }) => Effect.Effect<CodexThreadDirectoryEntry | null, CodexThreadDirectoryError>;
     readonly descendants: (input: {
       readonly rootThreadId: string;
       readonly threadIds?: readonly string[];
-      readonly fidelity: Exclude<CodexThreadDirectoryFidelity, "live">;
+      readonly fidelity: Exclude<CodexThreadDirectoryResolveFidelity, "live">;
     }) => Effect.Effect<readonly CodexThreadDirectoryEntry[], CodexThreadDirectoryError>;
     /**
      * Accepts a Thread returned by a protocol mutation while the caller owns the Thread lane.
@@ -88,6 +135,8 @@ export class CodexThreadDirectory extends Context.Service<
       readonly thread: Thread;
       readonly executionHostId?: string;
       readonly fallbackCwd?: string | null;
+      readonly pagination: CodexConversationTurnPagination;
+      readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
     }) => Effect.Effect<CodexThreadDirectoryEntry, CodexThreadDirectoryError>;
     /** Accepts an exact persistent fork and inherits its durable execution authority. */
     readonly acceptForkResult: (input: {
@@ -103,6 +152,8 @@ export class CodexThreadDirectory extends Context.Service<
     /** Accepts an imported rollout as a standalone local Thread. */
     readonly acceptImportResult: (input: {
       readonly response: ThreadForkResponse;
+      /** Exact endpoint generation that produced the fork response. */
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly fallbackCwd: string;
       readonly executionHostId?: string;
     }) => Effect.Effect<CodexThreadDirectoryEntry, CodexThreadDirectoryError>;
@@ -131,6 +182,8 @@ export class CodexThreadDirectory extends Context.Service<
     /** Accepts an explicit Main-owned resume after the caller selected its runtime parameters. */
     readonly acceptResumeResult: (input: {
       readonly response: ThreadResumeResponse;
+      /** Exact endpoint generation that produced the resume response. */
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly executionHostId: string;
       readonly fallbackCwd: string;
     }) => Effect.Effect<CodexThreadDirectoryEntry, CodexThreadDirectoryError>;
@@ -150,8 +203,27 @@ interface DurableThread {
   readonly thread: DesktopProjectWorkspaceThread;
 }
 
-const normalizeIds = (threadIds: readonly string[]): readonly string[] =>
-  Array.from(new Set(threadIds.map((threadId) => threadId.trim()).filter(Boolean)));
+interface DiscoveredSubagentRecord {
+  readonly record: Record<string, unknown>;
+  readonly parentThreadId: string;
+}
+
+const normalizeIds = (
+  threadIds: readonly string[],
+): { readonly ids: readonly string[]; readonly overflowed: boolean } => {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const rawThreadId of threadIds) {
+    const threadId = rawThreadId.trim();
+    if (!threadId || seen.has(threadId)) continue;
+    if (ids.length >= CODEX_SUBAGENT_DISCOVERY_MAX_REQUEST_IDS) {
+      return { ids, overflowed: true };
+    }
+    seen.add(threadId);
+    ids.push(threadId);
+  }
+  return { ids, overflowed: false };
+};
 
 const normalizeTurn = (turn: Turn): Turn => ({
   ...turn,
@@ -173,30 +245,6 @@ const isCoreNotFound = (cause: unknown): boolean =>
   cause.cause instanceof CoreModuleResponseError &&
   cause.cause.coreError.code === "not_found";
 
-const isRolloutMaterializationFailure = (cause: unknown): boolean => {
-  const seen = new Set<unknown>();
-  let current: unknown = cause;
-  while (current !== null && current !== undefined && !seen.has(current)) {
-    seen.add(current);
-    const record = current as { readonly cause?: unknown; readonly message?: unknown };
-    const message = typeof record.message === "string" ? record.message.toLowerCase() : "";
-    const isLegacyRolloutError =
-      message.includes("failed to load rollout") &&
-      (message.includes("empty session file") ||
-        message.includes("materialized") ||
-        message.includes("is empty"));
-    const isPreMaterializedThreadError =
-      message.includes("not materialized yet") ||
-      (message.includes("includeturns") && message.includes("before first user message")) ||
-      message.includes("includeturns is unavailable");
-    if (isLegacyRolloutError || isPreMaterializedThreadError) {
-      return true;
-    }
-    current = record.cause;
-  }
-  return false;
-};
-
 const fullPagination = (thread: Thread): CodexConversationTurnPagination => ({
   olderCursor: null,
   backwardsCursor: null,
@@ -212,6 +260,8 @@ export const make: Effect.Effect<
   never,
   | CodexApplicationEventHub
   | CodexConversationProjection
+  | CodexHistoryPageAdapter
+  | CodexAppServerCapabilities
   | CodexGateway
   | ConversationEntityMap
   | CoreModules
@@ -220,6 +270,8 @@ export const make: Effect.Effect<
   const ownerScope = yield* Scope.Scope;
   const events = yield* CodexApplicationEventHub;
   const projection = yield* CodexConversationProjection;
+  const historyPages = yield* CodexHistoryPageAdapter;
+  const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
   const conversations = yield* ConversationEntityMap;
   const core = yield* CoreModules;
@@ -229,6 +281,76 @@ export const make: Effect.Effect<
     threadId: string,
     cause: unknown,
   ) => new CodexThreadDirectoryError({ operation, threadId, cause });
+
+  /**
+   * A mutation or metadata read is not a transcript transport. Validate the raw wire object
+   * before copying it, so a non-compliant endpoint cannot be made safe by overwriting `turns`.
+   */
+  const requireMetadataShell = (
+    operation: CodexThreadDirectoryError["operation"],
+    threadId: string,
+    thread: {
+      readonly turns: readonly unknown[];
+      readonly historyMode?: Thread["historyMode"];
+    },
+    requirePaginatedHistory: boolean,
+  ): Effect.Effect<void, CodexThreadDirectoryError> => {
+    if (thread.turns.length !== 0) {
+      return Effect.fail(
+        error(
+          operation,
+          threadId,
+          new Error("Codex app-server returned inline Thread history at a metadata boundary"),
+        ),
+      );
+    }
+    if (!requirePaginatedHistory || thread.historyMode === "paginated") return Effect.void;
+    return Effect.fail(
+      error(
+        operation,
+        threadId,
+        new Error("Codex app-server did not return the required paginated history shell"),
+      ),
+    );
+  };
+
+  const requireCurrentCapability = (
+    threadId: string,
+    capability: CodexAppServerCapabilitySnapshot,
+    stage: string,
+    operation: CodexThreadDirectoryError["operation"] = "read",
+  ): Effect.Effect<void, CodexThreadDirectoryError> =>
+    capabilities.isCurrent(capability).pipe(
+      Effect.mapError((cause) => error(operation, threadId, cause)),
+      Effect.flatMap((current) =>
+        current
+          ? Effect.void
+          : Effect.fail(
+              error(
+                operation,
+                threadId,
+                new Error(`Codex app-server generation changed while ${stage}`),
+              ),
+            ),
+      ),
+    );
+
+  const requireCapabilityHost = (
+    threadId: string,
+    capability: CodexAppServerCapabilitySnapshot,
+    hostId: string,
+  ): Effect.Effect<void, CodexThreadDirectoryError> =>
+    capability.hostId === hostId
+      ? Effect.void
+      : Effect.fail(
+          error(
+            "materialize",
+            threadId,
+            new Error(
+              `Codex app-server capability belongs to '${capability.hostId}', not '${hostId}'`,
+            ),
+          ),
+        );
 
   const runOwned = <A>(
     operation: Effect.Effect<A, CodexThreadDirectoryError>,
@@ -265,11 +387,13 @@ export const make: Effect.Effect<
   const entry = (
     durable: DurableThread,
     fidelity: CodexThreadDirectoryFidelity,
+    observedHistoryMode?: Thread["historyMode"],
   ): CodexThreadDirectoryEntry => {
     const aggregate = conversations.current(durable.thread.threadId);
     const state = aggregate?.read();
     return {
       fidelity,
+      historyMode: observedHistoryMode ?? state?.canonicalState?.protocol.historyMode ?? null,
       durable: durable.thread,
       summary: buildWorkspaceThreadSummary(durable.thread),
       canonical: state?.canonicalState ?? null,
@@ -371,8 +495,14 @@ export const make: Effect.Effect<
     readonly thread: Thread;
     readonly context?: ThreadResumeResponse;
     readonly pagination: CodexConversationTurnPagination;
+    readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+    readonly itemSegmentsByTurnId?: Readonly<
+      Record<string, readonly CodexHydratedHistoryItemSegment[]>
+    >;
     readonly pendingRequests?: readonly [];
     readonly hasUnreadTurn?: boolean;
+    readonly fidelity?: "tail" | "materialized" | "live";
+    readonly resumeState?: CodexConversationResumeState;
   }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
     const threadId = input.durable.thread.threadId;
     const aggregate = conversations.entity(threadId);
@@ -409,6 +539,7 @@ export const make: Effect.Effect<
           runtimeWorkspaceRoots: [...permissions.runtimeWorkspaceRoots],
           pendingRequests: input.pendingRequests ?? aggregate.readServerRequests(),
           hasUnreadTurn: input.hasUnreadTurn ?? input.durable.thread.hasUnreadTurn,
+          turnItemsPaginationById: input.itemsPaginationByTurnId,
         }),
       catch: (cause) => error("materialize", threadId, cause),
     });
@@ -419,11 +550,15 @@ export const make: Effect.Effect<
         summary: buildWorkspaceThreadSummary(input.durable.thread),
         canonical,
         pagination: input.pagination,
+        itemsPaginationByTurnId: input.itemsPaginationByTurnId,
+        itemSegmentsByTurnId: input.itemSegmentsByTurnId,
         observedAtMs,
+        resumeState: input.resumeState,
       })
       .pipe(Effect.mapError((cause) => error("materialize", threadId, cause)));
     return {
-      fidelity: input.context ? "live" : "full",
+      fidelity: input.fidelity ?? (input.context ? "live" : "materialized"),
+      historyMode: input.thread.historyMode,
       durable: input.durable.thread,
       summary: buildWorkspaceThreadSummary(input.durable.thread),
       canonical,
@@ -433,15 +568,36 @@ export const make: Effect.Effect<
 
   const readRemote = Effect.fn("CodexThreadDirectory.readRemote")(function* (
     threadId: string,
-    fidelity: Exclude<CodexThreadDirectoryFidelity, "durable">,
+    fidelity: Exclude<CodexThreadDirectoryResolveFidelity, "durable">,
     hostId: string,
   ): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
+    const readMetadata = (capability: CodexAppServerCapabilitySnapshot) =>
+      gateway
+        .requestOnHost(
+          hostId,
+          "thread/read",
+          { threadId, includeTurns: false },
+          codexGatewayGenerationFence(capability),
+        )
+        .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
     if (fidelity === "live") {
-      const gatewayResponse = yield* gateway
-        .requestOnHost(hostId, "thread/resume", {
+      const capability = yield* capabilities
+        .forHost(hostId)
+        .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
+      if (!capability.flags.paginatedHistory) {
+        return yield* error(
+          "read",
           threadId,
-          initialTurnsPage: { limit: 20, sortDirection: "desc", itemsView: "full" },
-        })
+          new Error("Live Thread resume requires bounded paginated history support"),
+        );
+      }
+      const gatewayResponse = yield* gateway
+        .requestOnHost(
+          hostId,
+          "thread/resume",
+          { threadId, excludeTurns: true },
+          codexGatewayGenerationFence(capability),
+        )
         .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
       const response = projectCodexGatewayThreadResumeResponse(gatewayResponse);
       if (response.thread.id !== threadId) {
@@ -451,37 +607,141 @@ export const make: Effect.Effect<
           new Error(`Expected Thread '${threadId}' but received '${response.thread.id}'`),
         );
       }
-      const page = response.initialTurnsPage;
+      yield* requireMetadataShell("read", threadId, response.thread, true);
+      yield* requireCurrentCapability(threadId, capability, "accepting Thread resume metadata");
+      const metadataThread = normalizeThread(response.thread);
+      const durable = yield* persistObservation({
+        thread: metadataThread,
+        executionHostId: hostId,
+      });
+      const paginatedPage = yield* historyPages
+        .loadTurnPage({
+          capability,
+          threadId,
+          cursor: response.turnsBackwardsCursor ?? null,
+          initialItemsCursor: response.itemsBackwardsCursor ?? null,
+          purpose: "initial",
+        })
+        .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
+      yield* requireCurrentCapability(threadId, capability, "loading Thread history");
       const thread = normalizeThread({
         ...response.thread,
-        turns: page ? [...page.data].reverse() : [...response.thread.turns],
+        turns: [...paginatedPage.turns],
       });
-      const durable = yield* persistObservation({ thread, executionHostId: hostId });
-      const pagination: CodexConversationTurnPagination = page
-        ? {
-            olderCursor: page.nextCursor ?? null,
-            backwardsCursor: response.turnsBackwardsCursor ?? null,
-            oldestLoadedTurnId: thread.turns[0]?.id ?? null,
-            isLoadingOlder: false,
-            hasLoadedOldest: page.nextCursor == null,
-            loadedTurnCount: thread.turns.length,
-            itemsView: "full",
-          }
-        : fullPagination(thread);
-      return yield* hydrate({ durable, thread, context: response, pagination });
+      const pagination: CodexConversationTurnPagination = {
+        olderCursor: paginatedPage.nextCursor,
+        backwardsCursor: paginatedPage.backwardsCursor,
+        oldestLoadedTurnId: thread.turns[0]?.id ?? null,
+        isLoadingOlder: false,
+        hasLoadedOldest: paginatedPage.nextCursor === null,
+        loadedTurnCount: thread.turns.length,
+        itemsView: Object.values(paginatedPage.itemsPaginationByTurnId).every(
+          (item) => item.itemsView === "full",
+        )
+          ? "full"
+          : "summary",
+      };
+      return yield* hydrate({
+        durable,
+        thread,
+        context: response,
+        pagination,
+        itemsPaginationByTurnId: paginatedPage?.itemsPaginationByTurnId,
+        itemSegmentsByTurnId: paginatedPage?.itemSegmentsByTurnId,
+      });
     }
 
-    const read = (includeTurns: boolean) =>
-      gateway
-        .requestOnHost(hostId, "thread/read", { threadId, includeTurns })
+    if (fidelity === "tail") {
+      const capability = yield* capabilities
+        .forHost(hostId)
         .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
-    const response = yield* fidelity === "full"
-      ? read(true).pipe(
-          Effect.catch((failure) =>
-            isRolloutMaterializationFailure(failure.cause) ? read(false) : Effect.fail(failure),
-          ),
-        )
-      : read(false);
+      const metadataResponse = yield* readMetadata(capability);
+      if (metadataResponse.thread.id !== threadId) {
+        return yield* error(
+          "read",
+          threadId,
+          new Error(`Expected Thread '${threadId}' but received '${metadataResponse.thread.id}'`),
+        );
+      }
+      const rawMetadataThread = projectCodexGatewayThreadReadThread(metadataResponse.thread);
+      yield* requireMetadataShell("read", threadId, rawMetadataThread, false);
+      if (capability.flags.paginatedHistory && rawMetadataThread.historyMode !== "paginated") {
+        return yield* error(
+          "read",
+          threadId,
+          new Error("Codex app-server omitted paginated history from a paginated host response"),
+        );
+      }
+      yield* requireCurrentCapability(threadId, capability, "accepting Thread metadata");
+      const metadataThread = normalizeThread(rawMetadataThread);
+      const durable = yield* persistObservation({
+        thread: metadataThread,
+        executionHostId: hostId,
+      });
+      if (capability.flags.paginatedHistory && metadataThread.historyMode === "paginated") {
+        const page = yield* historyPages
+          .loadTurnPage({
+            capability,
+            threadId,
+            cursor: null,
+            initialItemsCursor: null,
+            purpose: "initial",
+          })
+          .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
+        yield* requireCurrentCapability(threadId, capability, "loading Thread history");
+        const thread = normalizeThread({ ...metadataThread, turns: [...page.turns] });
+        return yield* hydrate({
+          durable,
+          thread,
+          fidelity: "tail",
+          pagination: {
+            olderCursor: page.nextCursor,
+            backwardsCursor: page.backwardsCursor,
+            oldestLoadedTurnId: thread.turns[0]?.id ?? null,
+            isLoadingOlder: false,
+            hasLoadedOldest: page.nextCursor === null,
+            loadedTurnCount: thread.turns.length,
+            itemsView: Object.values(page.itemsPaginationByTurnId).every(
+              (item) => item.itemsView === "full",
+            )
+              ? "full"
+              : "summary",
+          },
+          itemsPaginationByTurnId: page.itemsPaginationByTurnId,
+          itemSegmentsByTurnId: page.itemSegmentsByTurnId,
+        });
+      }
+
+      const resident = entry(durable, "tail", metadataThread.historyMode);
+      if (resident.snapshot) return resident;
+
+      // Legacy history has no bounded read primitive. Keep metadata useful, but never turn a tail
+      // read into the old unbounded `thread/read(includeTurns: true)` compatibility path.
+      const accepted = yield* hydrate({
+        durable,
+        thread: { ...metadataThread, turns: [] },
+        fidelity: "tail",
+        pagination: {
+          olderCursor: null,
+          backwardsCursor: null,
+          oldestLoadedTurnId: null,
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+          loadedTurnCount: 0,
+          itemsView: "notLoaded",
+        },
+      });
+      const aggregate = conversations.current(threadId);
+      aggregate?.setResumeState("needs_resume");
+      return {
+        ...accepted,
+        snapshot: aggregate?.readSnapshot() ?? accepted.snapshot,
+      };
+    }
+    const capability = yield* capabilities
+      .forHost(hostId)
+      .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
+    const response = yield* readMetadata(capability);
     if (response.thread.id !== threadId) {
       return yield* error(
         "read",
@@ -489,16 +749,17 @@ export const make: Effect.Effect<
         new Error(`Expected Thread '${threadId}' but received '${response.thread.id}'`),
       );
     }
-    const thread = normalizeThread(projectCodexGatewayThreadReadThread(response.thread));
+    const rawThread = projectCodexGatewayThreadReadThread(response.thread);
+    yield* requireMetadataShell("read", threadId, rawThread, false);
+    yield* requireCurrentCapability(threadId, capability, "accepting Thread metadata");
+    const thread = normalizeThread(rawThread);
     const durable = yield* persistObservation({ thread, executionHostId: hostId });
-    return fidelity === "full"
-      ? yield* hydrate({ durable, thread, pagination: fullPagination(thread) })
-      : entry(durable, "metadata");
+    return entry(durable, "metadata", thread.historyMode);
   });
 
   const resolvePhysical = Effect.fn("CodexThreadDirectory.resolve")(function* (input: {
     readonly threadId: string;
-    readonly fidelity: CodexThreadDirectoryFidelity;
+    readonly fidelity: CodexThreadDirectoryResolveFidelity;
     readonly hostId?: string;
   }): Effect.fn.Return<CodexThreadDirectoryEntry | null, CodexThreadDirectoryError> {
     const threadId = input.threadId.trim();
@@ -516,14 +777,55 @@ export const make: Effect.Effect<
   const discover = Effect.fn("CodexThreadDirectory.discover")(function* (
     root: DurableThread,
   ): Effect.fn.Return<readonly CodexThreadDirectoryEntry[], CodexThreadDirectoryError> {
-    const summaries: CodexThreadDirectoryEntry[] = [];
-    const seenCursors = new Set<string>();
+    const capability = yield* capabilities
+      .forHost(root.thread.executionHostId)
+      .pipe(Effect.mapError((cause) => error("discover", root.thread.threadId, cause)));
+    if (capability.hostId !== root.thread.executionHostId) {
+      return yield* error(
+        "discover",
+        root.thread.threadId,
+        new Error(
+          `Codex app-server capability belongs to '${capability.hostId}', not '${root.thread.executionHostId}'`,
+        ),
+      );
+    }
+    yield* requireCurrentCapability(
+      root.thread.threadId,
+      capability,
+      "starting subagent discovery",
+      "discover",
+    );
+    const discovered: DiscoveredSubagentRecord[] = [];
+    const seenCursors = new Set<string | null>();
+    const seenThreadIds = new Set<string>();
     const rootCreatedAtSeconds = Math.floor(root.thread.createdAt / 1_000);
     let cursor: string | null = null;
-    do {
+    let resultBytes = 0;
+    let completed = false;
+    const startedAtMs = yield* Clock.currentTimeMillis;
+
+    for (let pageNumber = 0; pageNumber < CODEX_SUBAGENT_DISCOVERY_MAX_PAGES; pageNumber += 1) {
+      const remainingDeadlineMs =
+        CODEX_SUBAGENT_DISCOVERY_SCAN_DEADLINE_MS -
+        ((yield* Clock.currentTimeMillis) - startedAtMs);
+      if (remainingDeadlineMs <= 0) {
+        return yield* error(
+          "discover",
+          root.thread.threadId,
+          new Error("Subagent Thread discovery exceeded its total deadline"),
+        );
+      }
+      if (seenCursors.has(cursor)) {
+        return yield* error(
+          "discover",
+          root.thread.threadId,
+          new Error("Subagent Thread discovery cursor did not advance"),
+        );
+      }
+      seenCursors.add(cursor);
       const params: ThreadListParams = {
         cursor,
-        limit: 200,
+        limit: CODEX_SUBAGENT_DISCOVERY_PAGE_SIZE,
         sortKey: "created_at",
         sortDirection: "desc",
         sourceKinds: ["subAgentThreadSpawn"],
@@ -532,20 +834,60 @@ export const make: Effect.Effect<
         ancestorThreadId: root.thread.threadId,
       };
       const response = yield* gateway
-        .requestOnHost(root.thread.executionHostId, "thread/list", params)
+        .requestOnHost(root.thread.executionHostId, "thread/list", params, {
+          priority: "background",
+          source: "thread_list",
+          timeoutMs: Math.min(CODEX_SUBAGENT_DISCOVERY_PAGE_TIMEOUT_MS, remainingDeadlineMs),
+          ...codexGatewayGenerationFence(capability),
+        })
         .pipe(Effect.mapError((cause) => error("discover", root.thread.threadId, cause)));
+      if (response.data.length > CODEX_SUBAGENT_DISCOVERY_PAGE_SIZE) {
+        return yield* error(
+          "discover",
+          root.thread.threadId,
+          new Error(
+            `Subagent Thread discovery page returned ${response.data.length} entries for limit ${CODEX_SUBAGENT_DISCOVERY_PAGE_SIZE}`,
+          ),
+        );
+      }
+      if (
+        cappedApproximateValueBytes(response.data, CODEX_SUBAGENT_DISCOVERY_MAX_PAGE_BYTES) >
+        CODEX_SUBAGENT_DISCOVERY_MAX_PAGE_BYTES
+      ) {
+        return yield* error(
+          "discover",
+          root.thread.threadId,
+          new Error("Subagent Thread discovery page exceeds its byte budget"),
+        );
+      }
       for (const thread of response.data) {
+        yield* requireMetadataShell("discover", thread.id, thread, false);
         const record = thread as unknown as Record<string, unknown>;
         const parentThreadId = extractCodexThreadSubagentMetadata(record).parentThreadId;
         if (!parentThreadId) continue;
-        const durable = yield* persistObservation({
-          thread: record,
-          parentThreadId,
-          lineageRootThreadId: root.thread.threadId,
-          executionHostId: root.thread.executionHostId,
-          fallbackCwd: typeof record.cwd === "string" ? record.cwd : root.thread.cwd,
-        });
-        summaries.push(entry(durable, "metadata"));
+        const threadId = typeof record.id === "string" ? record.id.trim() : "";
+        if (!threadId || seenThreadIds.has(threadId)) continue;
+        if (discovered.length >= CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS) {
+          return yield* error(
+            "discover",
+            root.thread.threadId,
+            new Error(
+              `Subagent Thread discovery exceeds its ${CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS}-result budget`,
+            ),
+          );
+        }
+        const remainingBytes = CODEX_SUBAGENT_DISCOVERY_MAX_RESULT_BYTES - resultBytes;
+        const recordBytes = cappedApproximateValueBytes(record, remainingBytes);
+        if (recordBytes > remainingBytes) {
+          return yield* error(
+            "discover",
+            root.thread.threadId,
+            new Error("Subagent Thread discovery exceeds its result byte budget"),
+          );
+        }
+        discovered.push({ record, parentThreadId });
+        seenThreadIds.add(threadId);
+        resultBytes += recordBytes;
       }
       const reachedOlderThreads =
         rootCreatedAtSeconds > 0 &&
@@ -554,11 +896,50 @@ export const make: Effect.Effect<
             typeof thread.createdAt === "number" && thread.createdAt < rootCreatedAtSeconds,
         );
       const nextCursor = reachedOlderThreads ? null : (response.nextCursor ?? null);
-      if (!nextCursor || seenCursors.has(nextCursor)) break;
-      seenCursors.add(nextCursor);
+      if (nextCursor === null) {
+        completed = true;
+        break;
+      }
+      if (seenCursors.has(nextCursor)) {
+        return yield* error(
+          "discover",
+          root.thread.threadId,
+          new Error("Subagent Thread discovery response repeated its continuation cursor"),
+        );
+      }
+      if (pageNumber + 1 >= CODEX_SUBAGENT_DISCOVERY_MAX_PAGES) {
+        return yield* error(
+          "discover",
+          root.thread.threadId,
+          new Error(
+            `Subagent Thread discovery exceeds its ${CODEX_SUBAGENT_DISCOVERY_MAX_PAGES}-page budget`,
+          ),
+        );
+      }
       cursor = nextCursor;
-    } while (cursor);
-    return summaries;
+    }
+    if (!completed) {
+      return yield* error(
+        "discover",
+        root.thread.threadId,
+        new Error("Subagent Thread discovery exhausted its page budget"),
+      );
+    }
+    yield* requireCurrentCapability(
+      root.thread.threadId,
+      capability,
+      "accepting subagent discovery",
+      "discover",
+    );
+    return yield* Effect.forEach(discovered, ({ record, parentThreadId }) =>
+      persistObservation({
+        thread: record,
+        parentThreadId,
+        lineageRootThreadId: root.thread.threadId,
+        executionHostId: root.thread.executionHostId,
+        fallbackCwd: typeof record.cwd === "string" ? record.cwd : root.thread.cwd,
+      }).pipe(Effect.map((durable) => entry(durable, "metadata"))),
+    );
   });
 
   const isDescendant = Effect.fn("CodexThreadDirectory.isDescendant")(function* (
@@ -568,7 +949,11 @@ export const make: Effect.Effect<
     if (rootThreadId === threadId) return false;
     const visited = new Set<string>();
     let current: string | null = threadId;
-    while (current && !visited.has(current)) {
+    for (
+      let depth = 0;
+      current && !visited.has(current) && depth < CODEX_SUBAGENT_LINEAGE_MAX_DEPTH;
+      depth += 1
+    ) {
       visited.add(current);
       const durable: DurableThread | null = yield* readDurable(current);
       const parentThreadId: string | null = durable?.thread.parentThreadId ?? null;
@@ -578,10 +963,97 @@ export const make: Effect.Effect<
     return false;
   });
 
+  const admitDescendantEntries = Effect.fn("CodexThreadDirectory.admitDescendantEntries")(
+    function* (
+      candidates: readonly CodexThreadDirectoryEntry[],
+      fidelity: Exclude<CodexThreadDirectoryResolveFidelity, "live">,
+      rootThreadId: string,
+    ): Effect.fn.Return<readonly CodexThreadDirectoryEntry[], CodexThreadDirectoryError> {
+      const maximumResults =
+        fidelity === "tail"
+          ? CODEX_SUBAGENT_TAIL_HYDRATION_MAX_RESULTS
+          : CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS;
+      const maximumBytes =
+        fidelity === "tail"
+          ? CODEX_SUBAGENT_TAIL_HYDRATION_MAX_RESULT_BYTES
+          : CODEX_SUBAGENT_DISCOVERY_MAX_RESULT_BYTES;
+      if (candidates.length > maximumResults) {
+        return yield* error(
+          "discover",
+          rootThreadId,
+          new Error(`Subagent ${fidelity} hydration exceeds its ${maximumResults}-result budget`),
+        );
+      }
+      const admitted: CodexThreadDirectoryEntry[] = [];
+      let admittedBytes = 0;
+      for (const candidate of candidates) {
+        const remainingBytes = maximumBytes - admittedBytes;
+        const candidateBytes = cappedApproximateValueBytes(candidate, remainingBytes);
+        if (candidateBytes > remainingBytes) {
+          return yield* error(
+            "discover",
+            rootThreadId,
+            new Error(`Subagent ${fidelity} hydration exceeds its result byte budget`),
+          );
+        }
+        admitted.push(candidate);
+        admittedBytes += candidateBytes;
+      }
+      return admitted;
+    },
+  );
+
+  const resolveDescendants = Effect.fn("CodexThreadDirectory.resolveDescendants")(function* (
+    candidates: readonly CodexThreadDirectoryEntry[],
+    fidelity: Exclude<CodexThreadDirectoryResolveFidelity, "live">,
+    rootThreadId: string,
+  ): Effect.fn.Return<readonly CodexThreadDirectoryEntry[], CodexThreadDirectoryError> {
+    if (fidelity === "metadata") {
+      return yield* admitDescendantEntries(candidates, fidelity, rootThreadId);
+    }
+    if (fidelity === "durable") {
+      return yield* admitDescendantEntries(
+        candidates.map((candidate) => ({ ...candidate, fidelity: "durable" as const })),
+        fidelity,
+        rootThreadId,
+      );
+    }
+    if (candidates.length > CODEX_SUBAGENT_TAIL_HYDRATION_MAX_RESULTS) {
+      return yield* error(
+        "discover",
+        rootThreadId,
+        new Error(
+          `Subagent tail hydration exceeds its ${CODEX_SUBAGENT_TAIL_HYDRATION_MAX_RESULTS}-result budget`,
+        ),
+      );
+    }
+    const resolved: CodexThreadDirectoryEntry[] = [];
+    let resolvedBytes = 0;
+    for (const candidate of candidates) {
+      const entry = yield* resolvePhysical({
+        threadId: candidate.summary.threadId,
+        fidelity,
+      });
+      if (!entry) continue;
+      const remainingBytes = CODEX_SUBAGENT_TAIL_HYDRATION_MAX_RESULT_BYTES - resolvedBytes;
+      const entryBytes = cappedApproximateValueBytes(entry, remainingBytes);
+      if (entryBytes > remainingBytes) {
+        return yield* error(
+          "discover",
+          rootThreadId,
+          new Error("Subagent tail hydration exceeds its result byte budget"),
+        );
+      }
+      resolved.push(entry);
+      resolvedBytes += entryBytes;
+    }
+    return resolved;
+  });
+
   const descendants = (input: {
     readonly rootThreadId: string;
     readonly threadIds?: readonly string[];
-    readonly fidelity: Exclude<CodexThreadDirectoryFidelity, "live">;
+    readonly fidelity: Exclude<CodexThreadDirectoryResolveFidelity, "live">;
   }): Effect.Effect<readonly CodexThreadDirectoryEntry[], CodexThreadDirectoryError> =>
     runOwned(
       Effect.gen(function* () {
@@ -592,39 +1064,37 @@ export const make: Effect.Effect<
         const rootDurable = yield* readDurable(rootThreadId);
         if (!rootDurable) return [];
         const requested = normalizeIds(input.threadIds ?? []);
-        if (requested.length === 0) {
+        if (requested.overflowed) {
+          return yield* error(
+            "discover",
+            rootThreadId,
+            new Error(
+              `Subagent selection exceeds its ${CODEX_SUBAGENT_DISCOVERY_MAX_REQUEST_IDS}-Thread budget`,
+            ),
+          );
+        }
+        if (requested.ids.length === 0) {
           const discovered = yield* discover(rootDurable);
-          if (input.fidelity === "metadata") return discovered;
-          if (input.fidelity === "durable") {
-            return discovered.map((candidate): CodexThreadDirectoryEntry => ({
-              ...candidate,
-              fidelity: "durable",
-            }));
-          }
-          return yield* Effect.forEach(
-            discovered,
-            (candidate) =>
-              resolvePhysical({ threadId: candidate.summary.threadId, fidelity: input.fidelity }),
-            { concurrency: 4 },
-          ).pipe(Effect.map((entries) => entries.filter((value) => value !== null)));
+          return yield* resolveDescendants(discovered, input.fidelity, rootThreadId);
         }
 
         const known = yield* Effect.forEach(
-          requested,
+          requested.ids,
           (threadId) => isDescendant(rootThreadId, threadId),
-          { concurrency: 4 },
+          { concurrency: 2 },
         );
         if (known.some((value) => !value)) yield* discover(rootDurable);
         const accepted = yield* Effect.filter(
-          requested,
+          requested.ids,
           (threadId) => isDescendant(rootThreadId, threadId),
-          { concurrency: 4 },
+          { concurrency: 2 },
         );
-        return yield* Effect.forEach(
-          accepted,
-          (threadId) => resolvePhysical({ threadId, fidelity: input.fidelity }),
-          { concurrency: 4 },
-        ).pipe(Effect.map((entries) => entries.filter((value) => value !== null)));
+        const candidates: CodexThreadDirectoryEntry[] = [];
+        for (const threadId of accepted) {
+          const candidate = yield* resolvePhysical({ threadId, fidelity: "metadata" });
+          if (candidate) candidates.push(candidate);
+        }
+        return yield* resolveDescendants(candidates, input.fidelity, rootThreadId);
       }).pipe(
         Effect.mapError((cause) =>
           cause instanceof CodexThreadDirectoryError
@@ -640,6 +1110,8 @@ export const make: Effect.Effect<
       readonly thread: Thread;
       readonly executionHostId?: string;
       readonly fallbackCwd?: string | null;
+      readonly pagination: CodexConversationTurnPagination;
+      readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
       const expectedThreadId = input.expectedThreadId.trim();
       if (!expectedThreadId || input.thread.id !== expectedThreadId) {
@@ -659,7 +1131,8 @@ export const make: Effect.Effect<
       return yield* hydrate({
         durable,
         thread,
-        pagination: fullPagination(thread),
+        pagination: input.pagination,
+        itemsPaginationByTurnId: input.itemsPaginationByTurnId,
         pendingRequests: [],
         hasUnreadTurn: false,
       });
@@ -695,6 +1168,16 @@ export const make: Effect.Effect<
         new Error(
           `Fork '${childThreadId}' belongs to '${input.response.thread.forkedFromId}', not '${sourceThreadId}'`,
         ),
+      );
+    }
+    if (
+      input.response.thread.historyMode !== "paginated" ||
+      input.response.thread.turns.length > 0
+    ) {
+      return yield* error(
+        "materialize",
+        childThreadId,
+        new Error("Forked Thread must return a metadata-only paginated shell"),
       );
     }
     const source = yield* readDurable(sourceThreadId);
@@ -736,6 +1219,7 @@ export const make: Effect.Effect<
     const thread = normalizeThread({
       ...input.response.thread,
       forkedFromId: sourceThreadId,
+      turns: [],
     });
     yield* persistObservation({
       thread,
@@ -776,43 +1260,97 @@ export const make: Effect.Effect<
         new Error("Core did not return the materialized fork Thread"),
       );
     }
-    return yield* hydrate({
+    const accepted = yield* hydrate({
       durable,
       thread,
       context: input.response as unknown as ThreadResumeResponse,
-      pagination: fullPagination(thread),
+      pagination: {
+        olderCursor: null,
+        backwardsCursor: null,
+        oldestLoadedTurnId: null,
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        loadedTurnCount: 0,
+        itemsView: "notLoaded",
+      },
       pendingRequests: [],
       hasUnreadTurn: false,
+      fidelity: "tail",
+      resumeState: "needs_resume",
     });
+    return entry(durable, "tail", accepted.historyMode ?? thread.historyMode);
   });
 
   const acceptImportResult = Effect.fn("CodexThreadDirectory.acceptImportResult")(
     function* (input: {
       readonly response: ThreadForkResponse;
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly fallbackCwd: string;
       readonly executionHostId?: string;
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
-      const thread = normalizeThread(input.response.thread);
-      const threadId = thread.id.trim();
-      if (!threadId || threadId !== thread.id) {
+      const threadId = input.response.thread.id.trim();
+      if (!threadId || threadId !== input.response.thread.id) {
         return yield* error(
           "materialize",
           threadId,
           new Error("Imported rollout did not return a valid Thread id"),
         );
       }
+      const executionHostId = input.executionHostId?.trim() || input.capability.hostId;
+      yield* requireCapabilityHost(threadId, input.capability, executionHostId);
+      if (!input.capability.flags.paginatedHistory) {
+        return yield* error(
+          "materialize",
+          threadId,
+          new Error("Native session import requires bounded paginated history support"),
+        );
+      }
+      yield* requireMetadataShell("materialize", threadId, input.response.thread, true);
+      yield* requireCurrentCapability(
+        threadId,
+        input.capability,
+        "accepting imported Thread metadata",
+      );
+      const metadataThread = normalizeThread(input.response.thread);
       const durable = yield* persistObservation({
-        thread,
+        thread: metadataThread,
         executionProfile: null,
         managedWorktreePath: null,
-        executionHostId: input.executionHostId,
+        executionHostId,
         fallbackCwd: input.fallbackCwd,
         hasUnreadTurn: false,
       });
+
+      const page = yield* historyPages
+        .loadTurnPage({
+          capability: input.capability,
+          threadId,
+          cursor: null,
+          initialItemsCursor: null,
+          purpose: "initial",
+        })
+        .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
+      yield* requireCurrentCapability(threadId, input.capability, "bootstrapping imported history");
+      const thread = normalizeThread({ ...metadataThread, turns: [...page.turns] });
       return yield* hydrate({
         durable,
         thread,
-        pagination: fullPagination(thread),
+        fidelity: "tail",
+        pagination: {
+          olderCursor: page.nextCursor,
+          backwardsCursor: page.backwardsCursor,
+          oldestLoadedTurnId: thread.turns[0]?.id ?? null,
+          isLoadingOlder: false,
+          hasLoadedOldest: page.nextCursor === null,
+          loadedTurnCount: thread.turns.length,
+          itemsView: Object.values(page.itemsPaginationByTurnId).every(
+            (item) => item.itemsView === "full",
+          )
+            ? "full"
+            : "summary",
+        },
+        itemsPaginationByTurnId: page.itemsPaginationByTurnId,
+        itemSegmentsByTurnId: page.itemSegmentsByTurnId,
         pendingRequests: [],
         hasUnreadTurn: false,
       });
@@ -830,15 +1368,17 @@ export const make: Effect.Effect<
       readonly projectlessOutputDirectory?: string | null;
       readonly projectlessWorkspaceBrowserRoot?: string | null;
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
-      const thread = normalizeThread(input.response.thread as unknown as Thread);
-      const threadId = thread.id.trim();
-      if (!threadId || threadId !== thread.id) {
+      const rawThread = input.response.thread as unknown as Thread;
+      const threadId = rawThread.id.trim();
+      if (!threadId || threadId !== rawThread.id) {
         return yield* error(
           "materialize",
           threadId,
           new Error("Thread start did not return a valid Thread id"),
         );
       }
+      yield* requireMetadataShell("materialize", threadId, rawThread, false);
+      const thread = normalizeThread(rawThread);
       const cwd = input.response.cwd || thread.cwd || input.fallbackCwd;
       yield* core.workspace
         .apply({
@@ -896,21 +1436,23 @@ export const make: Effect.Effect<
       readonly projectlessOutputDirectory?: string | null;
       readonly projectlessWorkspaceBrowserRoot?: string | null;
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
-      const cwd = input.response.cwd || input.response.thread.cwd || input.fallbackCwd;
-      const thread = normalizeThread({
-        ...(input.response.thread as unknown as Thread),
-        cwd,
-        projectlessOutputDirectory: input.projectlessOutputDirectory ?? null,
-        projectlessWorkspaceBrowserRoot: input.projectlessWorkspaceBrowserRoot ?? null,
-      } as unknown as Thread);
-      const threadId = thread.id.trim();
-      if (!threadId || threadId !== thread.id) {
+      const rawThread = input.response.thread as unknown as Thread;
+      const threadId = rawThread.id.trim();
+      if (!threadId || threadId !== rawThread.id) {
         return yield* error(
           "materialize",
           threadId,
           new Error("Standalone Thread start did not return a valid Thread id"),
         );
       }
+      yield* requireMetadataShell("materialize", threadId, rawThread, false);
+      const cwd = input.response.cwd || rawThread.cwd || input.fallbackCwd;
+      const thread = normalizeThread({
+        ...rawThread,
+        cwd,
+        projectlessOutputDirectory: input.projectlessOutputDirectory ?? null,
+        projectlessWorkspaceBrowserRoot: input.projectlessWorkspaceBrowserRoot ?? null,
+      } as unknown as Thread);
       const durable = yield* persistObservation({
         thread,
         executionProfile: input.executionProfile,
@@ -941,52 +1483,90 @@ export const make: Effect.Effect<
   const acceptResumeResult = Effect.fn("CodexThreadDirectory.acceptResumeResult")(
     function* (input: {
       readonly response: ThreadResumeResponse;
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly executionHostId: string;
       readonly fallbackCwd: string;
     }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
-      const thread = normalizeThread(input.response.thread);
-      const threadId = thread.id.trim();
-      if (!threadId || threadId !== thread.id) {
+      const rawThread = input.response.thread;
+      const threadId = rawThread.id.trim();
+      if (!threadId || threadId !== rawThread.id) {
         return yield* error(
           "materialize",
           threadId,
           new Error("Thread resume did not return a valid Thread id"),
         );
       }
-      const cwd = input.response.cwd || thread.cwd || input.fallbackCwd;
+      yield* requireCapabilityHost(threadId, input.capability, input.executionHostId);
+      if (!input.capability.flags.paginatedHistory) {
+        return yield* error(
+          "materialize",
+          threadId,
+          new Error("Thread resume requires bounded paginated history support"),
+        );
+      }
+      yield* requireMetadataShell("materialize", threadId, rawThread, true);
+      yield* requireCurrentCapability(
+        threadId,
+        input.capability,
+        "accepting resumed Thread metadata",
+      );
+      const cwd = input.response.cwd || rawThread.cwd || input.fallbackCwd;
+      const metadataThread = normalizeThread({ ...rawThread, cwd });
       const durable = yield* persistObservation({
-        thread: { ...thread, cwd },
+        thread: metadataThread,
         executionHostId: input.executionHostId,
         fallbackCwd: cwd,
       });
-      const page = input.response.initialTurnsPage;
+      const paginatedPage = yield* historyPages
+        .loadTurnPage({
+          capability: input.capability,
+          threadId,
+          cursor: input.response.turnsBackwardsCursor ?? null,
+          initialItemsCursor: input.response.itemsBackwardsCursor ?? null,
+          purpose: "initial",
+        })
+        .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
+      yield* requireCurrentCapability(threadId, input.capability, "accepting resume history");
       const resumedThread = normalizeThread({
-        ...thread,
+        ...metadataThread,
         cwd,
-        turns: page ? [...page.data].reverse() : [...thread.turns],
+        turns: [...paginatedPage.turns],
       });
-      const pagination: CodexConversationTurnPagination = page
-        ? {
-            olderCursor: page.nextCursor ?? null,
-            backwardsCursor: input.response.turnsBackwardsCursor ?? null,
-            oldestLoadedTurnId: resumedThread.turns[0]?.id ?? null,
-            isLoadingOlder: false,
-            hasLoadedOldest: page.nextCursor == null,
-            loadedTurnCount: resumedThread.turns.length,
-            itemsView: "full",
-          }
-        : fullPagination(resumedThread);
+      const pagination: CodexConversationTurnPagination = {
+        olderCursor: paginatedPage.nextCursor,
+        backwardsCursor: paginatedPage.backwardsCursor,
+        oldestLoadedTurnId: resumedThread.turns[0]?.id ?? null,
+        isLoadingOlder: false,
+        hasLoadedOldest: paginatedPage.nextCursor === null,
+        loadedTurnCount: resumedThread.turns.length,
+        itemsView: Object.values(paginatedPage.itemsPaginationByTurnId).every(
+          (item) => item.itemsView === "full",
+        )
+          ? "full"
+          : "summary",
+      };
       return yield* hydrate({
         durable,
         thread: resumedThread,
         context: input.response,
         pagination,
+        itemsPaginationByTurnId: paginatedPage?.itemsPaginationByTurnId,
+        itemSegmentsByTurnId: paginatedPage?.itemSegmentsByTurnId,
       });
     },
   );
 
   return CodexThreadDirectory.of({
     resolve: (input) => runOwned(resolvePhysical(input)),
+    materializeInCurrentLane: (input) =>
+      Effect.gen(function* () {
+        const threadId = input.threadId.trim();
+        if (!threadId) return null;
+        const durable = yield* readDurable(threadId);
+        const hostId = durable?.thread.executionHostId ?? input.hostId?.trim();
+        if (!hostId) return null;
+        return yield* readRemote(threadId, "live", hostId);
+      }),
     descendants,
     acceptRollbackResult: (input) => runOwned(acceptRollbackResult(input)),
     acceptForkResult: (input) => runOwned(acceptForkResult(input)),
@@ -996,11 +1576,15 @@ export const make: Effect.Effect<
     acceptResumeResult: (input) => runOwned(acceptResumeResult(input)),
     observeMetadata: (input) =>
       runOwned(
-        persistObservation({
-          thread: normalizeThread(input.thread),
-          inferredInitialProjectId: input.inferredInitialProjectId,
-          executionHostId: input.executionHostId,
-        }).pipe(Effect.map((durable) => entry(durable, "metadata"))),
+        Effect.gen(function* () {
+          yield* requireMetadataShell("materialize", input.thread.id, input.thread, false);
+          const durable = yield* persistObservation({
+            thread: normalizeThread(input.thread),
+            inferredInitialProjectId: input.inferredInitialProjectId,
+            executionHostId: input.executionHostId,
+          });
+          return entry(durable, "metadata");
+        }),
       ),
   });
 });

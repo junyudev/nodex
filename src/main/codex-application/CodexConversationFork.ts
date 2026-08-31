@@ -9,7 +9,6 @@ import * as Effect from "effect/Effect";
 import {
   appendCodexCanonicalForkedFromConversationItem,
   appendCodexCanonicalWorktreeInitItem,
-  createCodexCanonicalHydratedConversationState,
   type CodexCanonicalWorktreeInitItem,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexForkBrowserSceneContext } from "../../shared/codex-fork-browser-transfer";
@@ -19,8 +18,11 @@ import type {
   ProjectSession,
 } from "../../shared/types";
 import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
-import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
@@ -28,7 +30,7 @@ import { CodexForkTitlePolicy } from "./CodexForkTitlePolicy";
 import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
 import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
-import { CodexThreadDirectory } from "./CodexThreadDirectory";
+import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -122,6 +124,8 @@ export const make: Effect.Effect<
 
   const forkPhysical = Effect.fn("CodexConversationFork.forkPhysical")(function* (
     input: CodexConversationForkInput,
+    source: CodexThreadDirectoryEntry,
+    capability: CodexAppServerCapabilitySnapshot,
   ): Effect.fn.Return<CodexConversationForkResult, CodexConversationForkError> {
     const sourceThreadId = input.sourceThreadId.trim();
     const requestedLastTurnId = input.lastTurnId;
@@ -132,25 +136,21 @@ export const make: Effect.Effect<
     if (requestedLastTurnId != null && !lastTurnId) {
       return yield* error("admit", sourceThreadId, new Error("Fork turn is required"));
     }
-    yield* notificationDrain.awaitCurrent(sourceThreadId);
-    const source = yield* directory
-      .resolve({ threadId: sourceThreadId, fidelity: "durable" })
-      .pipe(Effect.mapError((cause) => error("admit", sourceThreadId, cause)));
-    if (!source) {
-      return yield* error(
-        "admit",
-        sourceThreadId,
-        new Error(`Thread '${sourceThreadId}' was not found`),
-      );
-    }
-    const capability = yield* capabilities
-      .forHost(source.durable.executionHostId)
+    yield* notificationDrain
+      .awaitCurrent(sourceThreadId)
       .pipe(Effect.mapError((cause) => error("admit", sourceThreadId, cause)));
     if (!capability.flags.paginatedHistory) {
       return yield* error(
         "admit",
         sourceThreadId,
         new Error("This Codex host cannot return a bounded persistent fork"),
+      );
+    }
+    if (source.historyMode !== "paginated") {
+      return yield* error(
+        "admit",
+        sourceThreadId,
+        new Error("Only paginated Threads can be forked without loading unbounded history"),
       );
     }
     if (lastTurnId && !capability.flags.forkLastTurnId) {
@@ -214,7 +214,21 @@ export const make: Effect.Effect<
         new Error("Codex app-server generation changed before persistent fork dispatch"),
       );
     }
-    let response = (yield* gateway
+    const currentSource = yield* core.workspace
+      .read({ kind: "thread", thread_id: sourceThreadId })
+      .pipe(Effect.mapError((cause) => error("fork", sourceThreadId, cause)));
+    if (
+      currentSource.value.kind !== "thread" ||
+      currentSource.value.thread.execution_host_id !== capability.hostId ||
+      currentSource.value.thread.execution_host_id !== source.durable.executionHostId
+    ) {
+      return yield* error(
+        "fork",
+        sourceThreadId,
+        new Error("Fork source execution host changed before persistent fork dispatch"),
+      );
+    }
+    const response = (yield* gateway
       .requestOnHost(
         source.durable.executionHostId,
         "thread/fork",
@@ -223,23 +237,25 @@ export const make: Effect.Effect<
           conversationId: sourceThreadId,
           priority: "interactive",
           source: "thread_fork",
+          ...codexGatewayGenerationFence(capability),
         },
       )
       .pipe(
         Effect.mapError((cause) => error("fork", sourceThreadId, cause)),
       )) as unknown as ThreadForkResponse;
-    if (response.thread.turns.length !== 0) {
-      yield* Effect.logWarning("Bounded Thread fork returned inline history; discarding it").pipe(
-        Effect.annotateLogs({
-          sourceThreadId,
-          childThreadId: response.thread.id,
-          inlineTurnCount: response.thread.turns.length,
-        }),
+    if (!(yield* capabilities.isCurrent(capability).pipe(Effect.orElseSucceed(() => false)))) {
+      return yield* error(
+        "fork",
+        sourceThreadId,
+        new Error("Codex app-server generation changed while forking the Thread"),
       );
-      response = {
-        ...response,
-        thread: { ...response.thread, turns: [] },
-      };
+    }
+    if (response.thread.historyMode !== "paginated" || response.thread.turns.length !== 0) {
+      return yield* error(
+        "fork",
+        sourceThreadId,
+        new Error("Bounded Thread fork returned inline or non-paginated history"),
+      );
     }
     const child = yield* directory
       .acceptForkResult({
@@ -248,23 +264,14 @@ export const make: Effect.Effect<
         ...(input.target ? { target: input.target } : {}),
       })
       .pipe(Effect.mapError((cause) => error("materialize", sourceThreadId, cause)));
-    const boundedCanonical = yield* Effect.try({
-      try: () =>
-        createCodexCanonicalHydratedConversationState(response.thread, {
-          model: response.model,
-          reasoningEffort: response.reasoningEffort,
-          cwd: response.cwd || input.target?.cwd || source.durable.cwd || "/",
-          approvalPolicy: response.approvalPolicy,
-          approvalsReviewer: response.approvalsReviewer,
-          sandboxPolicy: response.sandbox,
-          activePermissionProfile: response.activePermissionProfile,
-          runtimeWorkspaceRoots: [...response.runtimeWorkspaceRoots],
-          pendingRequests: [],
-          hasUnreadTurn: false,
-        }),
-      catch: (cause) => error("materialize", sourceThreadId, cause),
-    });
-    const withForkMarker = appendCodexCanonicalForkedFromConversationItem(boundedCanonical, {
+    if (!child.canonical || !child.snapshot?.turnPagination) {
+      return yield* error(
+        "materialize",
+        sourceThreadId,
+        new Error(`Forked Thread '${child.summary.threadId}' has no bounded history projection`),
+      );
+    }
+    const withForkMarker = appendCodexCanonicalForkedFromConversationItem(child.canonical, {
       id: randomUUID(),
       type: "forkedFromConversation",
       sourceConversationId: sourceThreadId,
@@ -279,16 +286,10 @@ export const make: Effect.Effect<
         threadId: child.summary.threadId,
         summary: child.summary,
         canonical,
-        pagination: {
-          olderCursor: null,
-          backwardsCursor: null,
-          oldestLoadedTurnId: null,
-          isLoadingOlder: false,
-          hasLoadedOldest: false,
-          loadedTurnCount: 0,
-          itemsView: "notLoaded",
-        },
+        pagination: child.snapshot.turnPagination,
+        itemsPaginationByTurnId: child.snapshot.turnItemsPaginationById,
         observedAtMs,
+        resumeState: "needs_resume",
       })
       .pipe(Effect.mapError((cause) => error("project", sourceThreadId, cause)));
     if (childTitle) {
@@ -374,19 +375,23 @@ export const make: Effect.Effect<
         if (!sourceThreadId) {
           return yield* error("admit", input.sourceThreadId, new Error("Fork source is required"));
         }
-        const durable = yield* directory
-          .resolve({ threadId: sourceThreadId, fidelity: "durable" })
+        const source = yield* directory
+          .resolve({ threadId: sourceThreadId, fidelity: "metadata" })
           .pipe(Effect.mapError((cause) => error("admit", sourceThreadId, cause)));
-        if (!durable) {
+        if (!source) {
           return yield* error(
             "admit",
             sourceThreadId,
             new Error(`Thread '${sourceThreadId}' was not found`),
           );
         }
+        const capability = yield* capabilities
+          .forHost(source.durable.executionHostId)
+          .pipe(Effect.mapError((cause) => error("admit", sourceThreadId, cause)));
         return yield* threadStarts.materialize(
-          durable.durable.executionHostId,
-          conversations.runCommand(sourceThreadId, forkPhysical(input)),
+          source.durable.executionHostId,
+          capability.generation,
+          conversations.runCommand(sourceThreadId, forkPhysical(input, source, capability)),
           (result) => result.threadId,
         );
       }).pipe(

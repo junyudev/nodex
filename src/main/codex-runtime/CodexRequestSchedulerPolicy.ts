@@ -1,3 +1,5 @@
+import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
+
 export const CODEX_REQUEST_SCHEDULER_LIMITS = {
   totalInFlight: 6,
   nonCriticalInFlight: 5,
@@ -40,6 +42,7 @@ export type CodexRequestBackgroundLane = "metadata" | "thread" | null;
 
 export type CodexRequestSchedulingSource =
   | "collab_hydration"
+  | "history_export"
   | "recent_threads"
   | "tail_history"
   | "thread_catalog"
@@ -76,11 +79,13 @@ const COALESCIBLE_METHODS = new Set<string>([
   "thread/loaded/list",
   "thread/read",
   "thread/turns/list",
+  // Exact tuple identity keeps cursor ownership isolated while avoiding duplicate physical reads.
   "thread/items/list",
 ]);
 
 const THREAD_BACKGROUND_SOURCES = new Set<CodexRequestSchedulingSource>([
   "collab_hydration",
+  "history_export",
   "recent_threads",
   "tail_history",
   "thread_catalog",
@@ -258,6 +263,10 @@ const utf8Encoder = new TextEncoder();
 
 /** Returns the deterministic JSON bytes retained by the scheduler, or null for non-JSON input. */
 export const codexScheduledRequestBytes = (method: string, params: unknown): number | null => {
+  const maximumBytes = CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request;
+  if (cappedApproximateValueBytes({ method, params }, maximumBytes) > maximumBytes) {
+    return maximumBytes + 1;
+  }
   const encodedParams = stableJson(params);
   if (encodedParams === null) return null;
   return utf8Encoder.encode(`{"method":${JSON.stringify(method)},"params":${encodedParams}}`)
@@ -280,6 +289,14 @@ export const codexRequestCoalescingKey = (
   options: { readonly coalesce?: boolean } = {},
 ): string | null => {
   if (options.coalesce === false || !isCodexRequestCoalescible(request.method)) return null;
+  if (
+    cappedApproximateValueBytes(
+      { method: request.method, params: request.params },
+      CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request,
+    ) > CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request
+  ) {
+    return null;
+  }
   const params = stableJson(request.params);
   if (params === null) return null;
   return JSON.stringify([

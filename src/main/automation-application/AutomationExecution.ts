@@ -3,9 +3,7 @@ import { open as openFile } from "node:fs/promises";
 import * as path from "node:path";
 import type { CollaborationMode as CodexAppServerCollaborationMode } from "@nodex/codex-app-server-protocol";
 import type { DynamicToolSpec } from "@nodex/codex-app-server-protocol/v2/DynamicToolSpec";
-import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2/ThreadItem";
 import type { ThreadStartResponse } from "@nodex/codex-app-server-protocol/v2/ThreadStartResponse";
-import type { Turn } from "@nodex/codex-app-server-protocol/v2/Turn";
 import type {
   ClientRequestParamsByMethod,
   ClientRequestResponsesByMethod,
@@ -20,7 +18,6 @@ import * as Schema from "effect/Schema";
 import type { AgentExecutionProfile } from "../../shared/agent-runtime";
 import { resolveCodexCanonicalHydratedCwd } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { createCodexTextUserInput } from "../../shared/codex-prompt-preparation";
-import { stripCodexRemarkDirectiveLines } from "../../shared/codex-remark-directives";
 import type {
   CodexAutomationRunsUpdatedEvent,
   CodexHeartbeatAutomationCollaborationMode,
@@ -29,8 +26,6 @@ import type {
   CodexScheduledAutomationCreateInput,
   CodexScheduledAutomationRunNowInput,
   CodexScheduledAutomationUpdateInput,
-  CodexTranscriptEntry,
-  CodexUserAttachment,
 } from "../../shared/types";
 import { MainConfig } from "../app/MainConfig";
 import {
@@ -57,7 +52,11 @@ import {
   buildTurnPermissionOverrides,
 } from "../codex/codex-permission-resolver";
 import { computeCodexScheduledAutomationIntervalMs } from "../local-store/codex-scheduled-automation-schedule";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import {
   projectCodexGatewayThreadReadThread,
   projectCodexGatewayThreadResumeResponse,
@@ -75,6 +74,7 @@ import { AgentProviderRuntime } from "../codex-application/AgentProviderRuntime"
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbeatTurnCompletion";
+import { CodexHistoryPageAdapter } from "../codex-application/CodexHistoryPageAdapter";
 import { CodexPermissions } from "../codex-application/CodexPermissions";
 import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
@@ -89,11 +89,25 @@ import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime"
 import { ManagedWorktreeRetentionRuntime } from "../codex-application/ManagedWorktreeRetentionRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { AutomationApplication } from "./AutomationApplication";
+import {
+  hasCompleteAutomationArchiveExchange,
+  readBoundedAutomationArchiveExcerpt,
+  resolveAutomationArchiveMessagesFromTranscript,
+  type AutomationArchiveMessages,
+} from "./AutomationArchiveExcerpt";
+
+export {
+  AUTOMATION_ARCHIVE_ITEM_CAPTURE_LIMIT,
+  AUTOMATION_ARCHIVE_PROJECTED_BYTE_LIMIT,
+  AUTOMATION_ARCHIVE_TURN_CAPTURE_LIMIT,
+  hasCompleteAutomationArchiveExchange,
+  resolveAutomationArchiveMessagesFromTranscript,
+  type AutomationArchiveMessages,
+} from "./AutomationArchiveExcerpt";
 
 const HEARTBEAT_ROLLOUT_TAIL_BYTES = 256 * 1024;
 const HEARTBEAT_TERMINAL_ROLLOUT_EVENTS = new Set(["task_complete", "response_item", "event_msg"]);
 const HEARTBEAT_ACTIVE_ROLLOUT_EVENTS = new Set(["response_item", "event_msg", "item", "unknown"]);
-export const AUTOMATION_ARCHIVE_TURN_CAPTURE_LIMIT = 20;
 const THREAD_START_EXPERIMENTAL_RAW_EVENTS = false;
 const NODEX_AGENT_DYNAMIC_TOOL_SPECS = buildNodexAgentDynamicToolSpecs();
 type GatewayThreadStartParams = ClientRequestParamsByMethod["thread/start"];
@@ -105,11 +119,6 @@ interface AutomationRunContext {
   readonly reason: "scheduled" | "run-now";
   readonly leaseId?: string;
   readonly heartbeat?: CodexScheduledAutomationHeartbeatRunContext;
-}
-
-export interface AutomationArchiveMessages {
-  readonly archivedUserMessage: string | null;
-  readonly archivedAssistantMessage: string | null;
 }
 
 export class AutomationExecutionError extends Schema.TaggedError<AutomationExecutionError>()(
@@ -145,16 +154,6 @@ export interface AutomationExecutionOptions {
   readonly runtimeVersion: string | null;
 }
 
-const normalizeArchiveText = (value: string | null | undefined): string | null => {
-  const normalized = stripCodexRemarkDirectiveLines(value);
-  return normalized.length > 0 ? normalized : null;
-};
-
-const formatArchiveAttachment = (attachment: CodexUserAttachment): string =>
-  attachment.type === "image"
-    ? `image: ${attachment.source}`
-    : `${attachment.sourceKind === "skill" ? "skill" : "mention"}: ${attachment.label} (${attachment.path})`;
-
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -165,107 +164,6 @@ const nonEmptyString = (value: unknown): string | null => {
   const normalized = value.trim();
   return normalized ? normalized : null;
 };
-
-const formatRawArchiveContent = (value: unknown): string | null => {
-  const item = asRecord(value);
-  if (!item) return null;
-  const type = nonEmptyString(item.type);
-  if (type === "text") return nonEmptyString(item.text);
-  if (type === "image" || type === "localImage" || type === "audio" || type === "localAudio") {
-    const source =
-      nonEmptyString(item.url) ?? nonEmptyString(item.path) ?? nonEmptyString(item.source);
-    return source ? `${type}: ${source}` : null;
-  }
-  if (type === "skill" || type === "mention") {
-    const name = nonEmptyString(item.name);
-    const itemPath = nonEmptyString(item.path);
-    return name && itemPath ? `${type}: ${name} (${itemPath})` : null;
-  }
-  return null;
-};
-
-const formatArchiveUserMessage = (entry: CodexTranscriptEntry): string | null => {
-  const raw = asRecord(entry.rawItem);
-  const rawContent = Array.isArray(raw?.content)
-    ? raw.content.map(formatRawArchiveContent).filter((line): line is string => line !== null)
-    : [];
-  if (rawContent.length > 0) return rawContent.join("\n");
-  const lines = [
-    normalizeArchiveText(entry.markdownText),
-    ...(entry.userAttachments ?? []).map(formatArchiveAttachment),
-  ].filter((line): line is string => line !== null);
-  return lines.length > 0 ? lines.join("\n") : null;
-};
-
-export const resolveAutomationArchiveMessagesFromTranscript = (
-  transcript: readonly CodexTranscriptEntry[],
-): AutomationArchiveMessages => {
-  let archivedUserMessage: string | null = null;
-  let archivedAssistantMessage: string | null = null;
-  for (let index = transcript.length - 1; index >= 0; index -= 1) {
-    const entry = transcript[index];
-    if (!entry) continue;
-    if (archivedUserMessage === null && entry.kind === "userMessage") {
-      archivedUserMessage = formatArchiveUserMessage(entry);
-    }
-    if (archivedAssistantMessage === null && entry.kind === "assistantMessage") {
-      archivedAssistantMessage = normalizeArchiveText(entry.markdownText);
-    }
-    if (archivedUserMessage !== null && archivedAssistantMessage !== null) break;
-  }
-  return { archivedUserMessage, archivedAssistantMessage };
-};
-
-const formatProtocolUserMessage = (
-  item: Extract<ThreadItem, { readonly type: "userMessage" }>,
-): string | null => {
-  const lines = item.content.flatMap((entry): string[] => {
-    switch (entry.type) {
-      case "text": {
-        const text = nonEmptyString(entry.text);
-        return text ? [text] : [];
-      }
-      case "image":
-      case "audio":
-        return [`${entry.type}: ${entry.url}`];
-      case "localImage":
-      case "localAudio":
-        return [`${entry.type}: ${entry.path}`];
-      case "skill":
-      case "mention":
-        return [`${entry.type}: ${entry.name} (${entry.path})`];
-    }
-  });
-  return lines.length > 0 ? lines.join("\n") : null;
-};
-
-export const resolveAutomationArchiveMessagesFromProtocolTurns = (
-  turns: readonly Turn[],
-): AutomationArchiveMessages => {
-  let archivedUserMessage: string | null = null;
-  let archivedAssistantMessage: string | null = null;
-  for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
-    const turn = turns[turnIndex];
-    if (!turn) continue;
-    for (let itemIndex = turn.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
-      const item = turn.items[itemIndex];
-      if (!item) continue;
-      if (archivedUserMessage === null && item.type === "userMessage") {
-        archivedUserMessage = formatProtocolUserMessage(item);
-      }
-      if (archivedAssistantMessage === null && item.type === "agentMessage") {
-        archivedAssistantMessage = normalizeArchiveText(item.text);
-      }
-      if (archivedUserMessage !== null && archivedAssistantMessage !== null) {
-        return { archivedUserMessage, archivedAssistantMessage };
-      }
-    }
-  }
-  return { archivedUserMessage, archivedAssistantMessage };
-};
-
-export const hasAutomationArchiveMessage = (messages: AutomationArchiveMessages): boolean =>
-  messages.archivedUserMessage !== null || messages.archivedAssistantMessage !== null;
 
 const buildHeartbeatPermissionOverrides = (
   permissions: CodexHeartbeatAutomationPermissions,
@@ -336,9 +234,11 @@ export const live = (
   | AgentProviderRuntime
   | AutomationApplication
   | CodexApplicationEventHub
+  | CodexAppServerCapabilities
   | CodexGateway
   | CodexGitProbe
   | CodexHeartbeatTurnCompletion
+  | CodexHistoryPageAdapter
   | CodexPermissions
   | CodexRendererConversationRegistry
   | CodexThreadDirectory
@@ -362,9 +262,11 @@ export const live = (
       const agentProviders = yield* AgentProviderRuntime;
       const automation = yield* AutomationApplication;
       const events = yield* CodexApplicationEventHub;
+      const capabilities = yield* CodexAppServerCapabilities;
       const gateway = yield* CodexGateway;
       const git = yield* CodexGitProbe;
       const heartbeatCompletion = yield* CodexHeartbeatTurnCompletion;
+      const historyPages = yield* CodexHistoryPageAdapter;
       const permissions = yield* CodexPermissions;
       const rendererConversations = yield* CodexRendererConversationRegistry;
       const directory = yield* CodexThreadDirectory;
@@ -390,6 +292,30 @@ export const live = (
       const protect = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
         effect.pipe(Effect.mapError((cause) => error(operation, cause)));
       const fail = (operation: string, cause: unknown) => Effect.fail(error(operation, cause));
+      const assertHostGeneration = (
+        operation: string,
+        snapshot: CodexAppServerCapabilitySnapshot,
+      ): Effect.Effect<void, AutomationExecutionError> =>
+        capabilities.isCurrent(snapshot).pipe(
+          Effect.mapError((cause) => error(operation, cause)),
+          Effect.flatMap((current) =>
+            current
+              ? Effect.void
+              : fail(
+                  operation,
+                  new Error(`Codex host '${snapshot.hostId}' generation changed during request`),
+                ),
+          ),
+        );
+      const fencedHostRequest = <A, E>(
+        operation: string,
+        snapshot: CodexAppServerCapabilitySnapshot,
+        request: () => Effect.Effect<A, E>,
+      ): Effect.Effect<A, E | AutomationExecutionError> =>
+        assertHostGeneration(operation, snapshot).pipe(
+          Effect.andThen(Effect.suspend(request)),
+          Effect.tap(() => assertHostGeneration(operation, snapshot)),
+        );
       const notify = (event: CodexAutomationRunsUpdatedEvent): void =>
         events.publish({ kind: "codex", value: { type: "automationRunsUpdated", event } });
 
@@ -487,10 +413,19 @@ export const live = (
       ) {
         const durable = yield* directory.resolve({ threadId, fidelity: "durable" });
         if (!durable) return null;
-        const response = yield* gateway.requestOnHost(
-          durable.durable.executionHostId,
-          "thread/read",
-          { threadId, includeTurns: false },
+        const hostGeneration = yield* capabilities
+          .forHost(durable.durable.executionHostId)
+          .pipe(Effect.mapError((cause) => error("read-heartbeat-thread", cause)));
+        const response = yield* fencedHostRequest("read-heartbeat-thread", hostGeneration, () =>
+          gateway.requestOnHost(
+            durable.durable.executionHostId,
+            "thread/read",
+            {
+              threadId,
+              includeTurns: false,
+            },
+            codexGatewayGenerationFence(hostGeneration),
+          ),
         );
         if (response.thread.id !== threadId) {
           return yield* fail(
@@ -506,6 +441,7 @@ export const live = (
         return {
           entry: accepted,
           rolloutPath: response.thread.path?.trim() || null,
+          hostGeneration,
         };
       });
 
@@ -648,31 +584,39 @@ export const live = (
             });
         const browserConfig = yield* desktopTools.threadConfig;
         const resume = projectCodexGatewayThreadResumeResponse(
-          yield* gateway.requestOnHost(target.entry.durable.executionHostId, "thread/resume", {
-            threadId: targetThreadId,
-            history: null,
-            path: target.rolloutPath,
-            model: target.entry.durable.executionProfile?.modelId ?? null,
-            modelProvider: target.entry.durable.executionProfile?.providerId ?? null,
-            serviceTier: target.entry.durable.executionProfile?.serviceTier ?? null,
-            cwd: requestedCwd,
-            approvalPolicy: null,
-            sandbox: null,
-            config: {
-              ...(browserConfig ?? {}),
-              ...buildCodexThreadConfigOverrides(),
-              ...(target.entry.durable.executionProfile?.harnessId
-                ? { harness: target.entry.durable.executionProfile.harnessId }
-                : {}),
-              ...(target.entry.durable.executionProfile?.reasoningEffort
-                ? {
-                    model_reasoning_effort: target.entry.durable.executionProfile.reasoningEffort,
-                  }
-                : {}),
-            },
-            personality: null,
-            excludeTurns: true,
-          }),
+          yield* fencedHostRequest("resume-heartbeat-thread", target.hostGeneration, () =>
+            gateway.requestOnHost(
+              target.entry.durable.executionHostId,
+              "thread/resume",
+              {
+                threadId: targetThreadId,
+                history: null,
+                path: target.rolloutPath,
+                model: target.entry.durable.executionProfile?.modelId ?? null,
+                modelProvider: target.entry.durable.executionProfile?.providerId ?? null,
+                serviceTier: target.entry.durable.executionProfile?.serviceTier ?? null,
+                cwd: requestedCwd,
+                approvalPolicy: null,
+                sandbox: null,
+                config: {
+                  ...(browserConfig ?? {}),
+                  ...buildCodexThreadConfigOverrides(),
+                  ...(target.entry.durable.executionProfile?.harnessId
+                    ? { harness: target.entry.durable.executionProfile.harnessId }
+                    : {}),
+                  ...(target.entry.durable.executionProfile?.reasoningEffort
+                    ? {
+                        model_reasoning_effort:
+                          target.entry.durable.executionProfile.reasoningEffort,
+                      }
+                    : {}),
+                },
+                personality: null,
+                excludeTurns: true,
+              },
+              codexGatewayGenerationFence(target.hostGeneration),
+            ),
+          ),
         );
         if (resume.thread.id !== targetThreadId) {
           return yield* fail(
@@ -682,6 +626,7 @@ export const live = (
         }
         const accepted = yield* directory.acceptResumeResult({
           response: resume,
+          capability: target.hostGeneration,
           executionHostId: target.entry.durable.executionHostId,
           fallbackCwd: requestedCwd,
         });
@@ -723,7 +668,12 @@ export const live = (
                 .startAndWait(request)
                 .pipe(Effect.mapError((cause) => error("start-heartbeat-turn", cause)))
             : gateway
-                .requestForThread(targetThreadId, "turn/start", request)
+                .requestForThread(
+                  targetThreadId,
+                  "turn/start",
+                  request,
+                  codexGatewayGenerationFence(target.hostGeneration),
+                )
                 .pipe(Effect.mapError((cause) => error("start-heartbeat-turn", cause)));
         yield* Effect.gen(function* () {
           const result = yield* startTurn;
@@ -910,6 +860,7 @@ export const live = (
         readonly reasoningEffort: string | null;
         readonly now: number;
       }) {
+        const capability = yield* capabilities.forHost(gateway.localHostId);
         const pendingThreadId = `pending:${randomUUID()}`;
         if (
           yield* automation.runs.begin({
@@ -993,6 +944,7 @@ export const live = (
           const response = (yield* gateway.requestLocal(
             "thread/start",
             params,
+            codexGatewayGenerationFence(capability),
           )) as GatewayThreadStartResponse as unknown as ThreadStartResponse;
           const effectiveCwd =
             resolveCodexCanonicalHydratedCwd({
@@ -1079,7 +1031,7 @@ export const live = (
           });
         });
         yield* threadStarts
-          .materialize(gateway.localHostId, transaction, () => threadId)
+          .materialize(capability.hostId, capability.generation, transaction, () => threadId)
           .pipe(
             Effect.onExit((exit) =>
               !Exit.isSuccess(exit) && threadId === null
@@ -1196,30 +1148,35 @@ export const live = (
               snapshot.turns.flatMap((turn) => turn.items),
             )
           : { archivedUserMessage: null, archivedAssistantMessage: null };
-        if (hasAutomationArchiveMessage(local)) return Effect.succeed(local);
-        return gateway
-          .requestForThread(threadId, "thread/turns/list", {
-            threadId,
-            limit: AUTOMATION_ARCHIVE_TURN_CAPTURE_LIMIT,
-            sortDirection: "desc",
-            itemsView: "full",
-          })
-          .pipe(
-            Effect.map((page) =>
-              resolveAutomationArchiveMessagesFromProtocolTurns(
-                [...page.data].reverse() as unknown as readonly Turn[],
-              ),
-            ),
-            Effect.catch((cause) =>
-              Effect.sync(() => {
-                logger.warn("Failed to list Thread turns for Automation archive", {
-                  threadId,
-                  cause,
-                });
-                return { archivedUserMessage: null, archivedAssistantMessage: null };
-              }),
-            ),
-          );
+        if (hasCompleteAutomationArchiveExchange(local)) return Effect.succeed(local);
+        return readBoundedAutomationArchiveExcerpt(
+          historyPages,
+          capabilities,
+          threadId,
+          local,
+        ).pipe(
+          Effect.map((excerpt) => {
+            if (excerpt.resolution === "truncated") {
+              logger.warn("Automation archive excerpt reached its bounded read limit", {
+                threadId,
+                truncationReason: excerpt.truncationReason,
+                inspectedTurnCount: excerpt.inspectedTurnCount,
+                inspectedItemCount: excerpt.inspectedItemCount,
+                approximateProjectedBytes: excerpt.approximateProjectedBytes,
+              });
+            }
+            return excerpt.messages;
+          }),
+          Effect.catch((cause) =>
+            Effect.sync(() => {
+              logger.warn("Failed to read bounded Thread excerpt for Automation archive", {
+                threadId,
+                cause,
+              });
+              return local;
+            }),
+          ),
+        );
       };
 
       return AutomationExecution.of({

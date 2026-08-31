@@ -1,4 +1,23 @@
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
+import type {
+  CodexPersistedHistoryOccurrenceHydrateRequest,
+  CodexPersistedHistoryOccurrenceHydrateResult,
+  CodexPersistedHistorySearchPage,
+} from "./codex-persisted-history-search";
+import type {
+  CodexHistoryResidencyPinsInput,
+  CodexHistoryResidencyPinsResult,
+} from "./codex-history-residency-pins";
+import type {
+  CodexConversationHistoryPageRequest,
+  CodexConversationHistoryPageResult,
+} from "./codex-conversation-history-page";
+import type {
+  CodexPromptRailIndexCommandResult,
+  CodexPromptRailIndexRequest,
+  CodexPromptRailRevealCommandResult,
+  CodexPromptRailRevealRequest,
+} from "./codex-prompt-rail-history";
 import type { GitRepositoryIdentity } from "./git-repository-identity";
 import type { ContentAccessContext } from "./content-access-context";
 import type { LocalPathPresentationContext } from "./local-path-presentation";
@@ -2143,13 +2162,45 @@ export interface IpcApi {
     args: [input: CodexUserInputAutoResolutionTarget];
     result: boolean;
   };
-  "codex:thread:turns:load-older": {
-    args: [threadId: string];
-    result: CodexConversationSnapshot | null;
+  "codex:thread:history-page:load": {
+    args: [request: CodexConversationHistoryPageRequest];
+    result: CodexConversationHistoryPageResult;
   };
-  "codex:thread:turns:load-complete": {
+  "codex:thread:prompt-rail:index": {
+    args: [request: CodexPromptRailIndexRequest];
+    result: CodexPromptRailIndexCommandResult;
+  };
+  "codex:thread:prompt-rail:reveal": {
+    args: [request: CodexPromptRailRevealRequest];
+    result: CodexPromptRailRevealCommandResult;
+  };
+  "codex:thread:prompt-rail:cancel": {
+    args: [requestId: string];
+    result: boolean;
+  };
+  "codex:thread:history-residency-pins:set": {
+    args: [input: CodexHistoryResidencyPinsInput];
+    result: CodexHistoryResidencyPinsResult;
+  };
+  "codex:thread:history-search": {
+    args: [threadId: string, query: string];
+    result: CodexPersistedHistorySearchPage;
+  };
+  "codex:thread:history-search:hydrate": {
+    args: [input: CodexPersistedHistoryOccurrenceHydrateRequest];
+    result: CodexPersistedHistoryOccurrenceHydrateResult;
+  };
+  "codex:thread:history-export:start": {
     args: [threadId: string];
-    result: CodexConversationSnapshot | null;
+    result: import("./types").CodexConversationHistoryExportStartResult;
+  };
+  "codex:thread:history-export:next": {
+    args: [jobId: string];
+    result: import("./types").CodexConversationHistoryExportNextResult;
+  };
+  "codex:thread:history-export:cancel": {
+    args: [jobId: string];
+    result: boolean;
   };
   "codex:thread:name:set": {
     args: [threadId: string, name: string];

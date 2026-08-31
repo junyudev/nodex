@@ -17,7 +17,15 @@ import {
   resolveCodexCanonicalHydratedCwd,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
-import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
+import {
+  CodexGateway,
+  CodexThreadHostResolver,
+  codexGatewayGenerationFence,
+} from "../codex-runtime/CodexGateway";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import {
   CodexEphemeralThreadRouting,
   type CodexEphemeralThreadRoutingError,
@@ -104,6 +112,7 @@ export const make: Effect.Effect<
   CodexSideChatCommandsService,
   never,
   | CodexConversationProjection
+  | CodexAppServerCapabilities
   | CodexGateway
   | CodexThreadHostResolver
   | CodexEphemeralThreadRouting
@@ -113,6 +122,7 @@ export const make: Effect.Effect<
   | ConversationEntityMap
 > = Effect.gen(function* () {
   const conversations = yield* ConversationEntityMap;
+  const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
   const hostResolver = yield* CodexThreadHostResolver;
   const routing = yield* CodexEphemeralThreadRouting;
@@ -354,13 +364,18 @@ export const make: Effect.Effect<
       ),
     );
 
-  const cleanup = (hostId: string, threadId: string) =>
+  const cleanup = (capability: CodexAppServerCapabilitySnapshot, threadId: string) =>
     Effect.all(
       [
         ignoreCleanupFailure(
           "unsubscribe",
           threadId,
-          gateway.requestOnHost(hostId, "thread/unsubscribe", { threadId }),
+          gateway.requestOnHost(
+            capability.hostId,
+            "thread/unsubscribe",
+            { threadId },
+            codexGatewayGenerationFence(capability),
+          ),
         ),
         ignoreCleanupFailure("route-remove", threadId, routing.remove(threadId)),
         ignoreCleanupFailure("projection-rollback", threadId, conversations.retire(threadId)),
@@ -368,64 +383,113 @@ export const make: Effect.Effect<
       { concurrency: 1, discard: true },
     );
 
-  const startPrepared = (plan: CodexSideChatPlan, hostId: string) =>
-    gateway.requestOnHost(hostId, "thread/fork", plan.forkRequest as GatewayThreadForkParams).pipe(
-      Effect.map((response) => response as unknown as ThreadForkResponse),
-      Effect.flatMap((response) => {
-        const threadId = response.thread.id.trim();
-        if (!threadId || threadId !== response.thread.id) {
-          return Effect.fail(
-            new CodexSideChatProjectionError({
-              operation: "commit",
-              threadId: plan.parentThreadId,
-              cause: new Error("Thread fork did not return a valid thread id"),
-            }),
-          );
-        }
-        return Effect.acquireUseRelease(
-          routing.register(threadId, hostId).pipe(Effect.as({ hostId, threadId })),
-          () =>
-            gateway
-              .requestOnHost(hostId, "thread/inject_items", {
-                threadId,
-                items: [
-                  {
-                    type: "message",
-                    role: "user",
-                    content: [{ type: "input_text", text: SIDE_CHAT_BOUNDARY_TEXT }],
-                  },
-                ],
-              } as GatewayThreadInjectItemsParams)
-              .pipe(
-                Effect.andThen(acceptFork(plan, response)),
-                Effect.tap((result) =>
-                  plan.initialTurn
-                    ? turns
-                        .start(result.threadId, plan.initialTurn.prompt, plan.initialTurn.overrides)
-                        .pipe(Effect.asVoid)
-                    : Effect.void,
-                ),
+  const capabilityFailure = (threadId: string, cause: unknown): CodexSideChatProjectionError =>
+    new CodexSideChatProjectionError({ operation: "prepare", threadId, cause });
+
+  const ensureCurrent = (plan: CodexSideChatPlan, snapshot: CodexAppServerCapabilitySnapshot) =>
+    capabilities.isCurrent(snapshot).pipe(
+      Effect.mapError((cause) => capabilityFailure(plan.parentThreadId, cause)),
+      Effect.flatMap((current) =>
+        current
+          ? Effect.void
+          : Effect.fail(
+              capabilityFailure(
+                plan.parentThreadId,
+                new Error("Side chat host generation changed during fork"),
               ),
-          (lease, exit) =>
-            Exit.isFailure(exit) ? cleanup(lease.hostId, lease.threadId) : Effect.void,
-        );
-      }),
+            ),
+      ),
     );
+
+  const startPrepared = Effect.fn("CodexSideChatCommands.startPrepared")(function* (
+    plan: CodexSideChatPlan,
+    hostId: string,
+    capability: CodexAppServerCapabilitySnapshot,
+  ) {
+    if (
+      !capability.flags.paginatedHistory ||
+      !capability.flags.ephemeralFork ||
+      !capability.flags.sideConversation
+    ) {
+      return yield* capabilityFailure(
+        plan.parentThreadId,
+        new Error("Side chat requires bounded paginated ephemeral-fork support"),
+      );
+    }
+    yield* ensureCurrent(plan, capability);
+    const response = (yield* gateway.requestOnHost(
+      hostId,
+      "thread/fork",
+      plan.forkRequest as GatewayThreadForkParams,
+      codexGatewayGenerationFence(capability),
+    )) as unknown as ThreadForkResponse;
+    if (response.thread.historyMode !== "paginated" || response.thread.turns.length > 0) {
+      return yield* capabilityFailure(
+        plan.parentThreadId,
+        new Error("Side chat fork returned inline or non-paginated history"),
+      );
+    }
+    yield* ensureCurrent(plan, capability);
+    const threadId = response.thread.id.trim();
+    if (!threadId || threadId !== response.thread.id) {
+      return yield* new CodexSideChatProjectionError({
+        operation: "commit",
+        threadId: plan.parentThreadId,
+        cause: new Error("Thread fork did not return a valid thread id"),
+      });
+    }
+    return yield* Effect.acquireUseRelease(
+      routing.register(threadId, hostId).pipe(Effect.as({ hostId, threadId })),
+      () =>
+        gateway
+          .requestOnHost(
+            hostId,
+            "thread/inject_items",
+            {
+              threadId,
+              items: [
+                {
+                  type: "message",
+                  role: "user",
+                  content: [{ type: "input_text", text: SIDE_CHAT_BOUNDARY_TEXT }],
+                },
+              ],
+            } as GatewayThreadInjectItemsParams,
+            codexGatewayGenerationFence(capability),
+          )
+          .pipe(
+            Effect.andThen(ensureCurrent(plan, capability)),
+            Effect.andThen(acceptFork(plan, response)),
+            Effect.tap((result) =>
+              plan.initialTurn
+                ? turns
+                    .start(result.threadId, plan.initialTurn.prompt, plan.initialTurn.overrides)
+                    .pipe(Effect.asVoid)
+                : Effect.void,
+            ),
+          ),
+      (lease, exit) => (Exit.isFailure(exit) ? cleanup(capability, lease.threadId) : Effect.void),
+    );
+  });
 
   const start: CodexSideChatCommandsService["start"] = (input) => {
     return prepare(input).pipe(
       Effect.flatMap((plan) =>
-        hostResolver
-          .resolve(plan.parentThreadId)
-          .pipe(
-            Effect.flatMap((hostId) =>
-              threadStarts.materialize(
-                hostId,
-                startPrepared(plan, hostId),
-                (result) => result.threadId,
+        hostResolver.resolve(plan.parentThreadId).pipe(
+          Effect.flatMap((hostId) =>
+            capabilities.forHost(hostId).pipe(
+              Effect.mapError((cause) => capabilityFailure(plan.parentThreadId, cause)),
+              Effect.flatMap((capability) =>
+                threadStarts.materialize(
+                  hostId,
+                  capability.generation,
+                  startPrepared(plan, hostId, capability),
+                  (result) => result.threadId,
+                ),
               ),
             ),
           ),
+        ),
       ),
     );
   };
@@ -451,7 +515,18 @@ export const make: Effect.Effect<
                   : hostResolver.resolve(sideChat.parentThreadId),
               ),
               Effect.flatMap((hostId) =>
-                gateway.requestOnHost(hostId, "thread/unsubscribe", { threadId }),
+                capabilities
+                  .forHost(hostId)
+                  .pipe(
+                    Effect.flatMap((capability) =>
+                      gateway.requestOnHost(
+                        hostId,
+                        "thread/unsubscribe",
+                        { threadId },
+                        codexGatewayGenerationFence(capability),
+                      ),
+                    ),
+                  ),
               ),
               Effect.catch((cause) =>
                 Effect.logWarning("Failed to unsubscribe side chat").pipe(

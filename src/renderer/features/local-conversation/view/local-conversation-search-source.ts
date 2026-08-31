@@ -23,31 +23,35 @@ export interface LocalConversationSearchSource {
 export function createLocalConversationSearchSource(input: LocalConversationSearchSource) {
   const cachedUnitsByTurnKey = new Map<string, CachedSearchTurnState>();
 
+  const getUnitsForTurn = (entry: VisibleConversationTurnEntry): ThreadSearchUnitModel[] => {
+    const cached = cachedUnitsByTurnKey.get(entry.turnKey);
+    if (cached?.entry === entry) return cached.units;
+
+    const units = selectTurnRenderModel({
+      entry,
+      canEditTurnUserPrefix: false,
+      canForkTurn: false,
+      cwd: input.cwd,
+      projectlessOutputDirectory: input.projectlessOutputDirectory,
+    }).searchUnits;
+    cachedUnitsByTurnKey.set(entry.turnKey, { entry, units });
+    return units;
+  };
+
   return {
     ...input,
+    getUnitsForTurn,
     findMatches(query: string): ThreadSearchUnitModel[] {
       const normalizedQuery = query.trim().toLowerCase();
       if (!normalizedQuery) return [];
 
-      return input.getTurns().flatMap((entry) => {
-        const cached = cachedUnitsByTurnKey.get(entry.turnKey);
-        let units: ThreadSearchUnitModel[];
-
-        if (cached?.entry === entry) {
-          units = cached.units;
-        } else {
-          units = selectTurnRenderModel({
-            entry,
-            canEditTurnUserPrefix: false,
-            canForkTurn: false,
-            cwd: input.cwd,
-            projectlessOutputDirectory: input.projectlessOutputDirectory,
-          }).searchUnits;
-          cachedUnitsByTurnKey.set(entry.turnKey, { entry, units });
-        }
-
-        return units.filter((unit) => unit.text.toLowerCase().includes(normalizedQuery));
-      });
+      return input
+        .getTurns()
+        .flatMap((entry) =>
+          getUnitsForTurn(entry).filter((unit) =>
+            unit.text.toLowerCase().includes(normalizedQuery),
+          ),
+        );
     },
   };
 }

@@ -82,7 +82,7 @@ const makeHarness = () => {
     },
   } as const;
   const directoryEntry = {
-    fidelity: "full",
+    fidelity: "materialized",
     durable: {
       threadId: sourceThreadId,
       sessionId,

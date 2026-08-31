@@ -30,7 +30,13 @@ import type {
   CodexConversationTurnPagination,
   CodexThreadStatusType,
 } from "../../../lib/types";
-import { requestLocalConversationOlderTurns } from "../local-conversation-store";
+import { searchCodexPersistedHistory } from "../../../lib/api";
+import {
+  hydrateLocalPersistedHistoryOccurrence,
+  publishLocalConversationHistoryMutation,
+  requestLocalConversationHistoryPage,
+  setLocalConversationHistoryResidencyPins,
+} from "../local-conversation-store";
 import { selectVisibleConversationTurnEntries } from "../selectors";
 import type {
   ThreadBodyModel,
@@ -65,9 +71,34 @@ import type {
 import { LocalConversationResumeLoader } from "./shared/local-conversation-resume-loader";
 import { LOCAL_CONVERSATION_CONTENT_CLASS_NAME } from "./shared/local-conversation-view-constants";
 import { createLocalConversationSearchSource } from "./local-conversation-search-source";
+import {
+  isLocalConversationPersistedSearchMatchMeta,
+  projectLocalConversationPersistedSearchResult,
+  resolveLocalConversationPersistedSearchTarget,
+  type LocalConversationSearchTarget,
+} from "./local-conversation-persisted-search";
+import { projectLocalConversationLegacyHistoryRows } from "./local-conversation-history-gap";
+import {
+  createLocalConversationHistoryResidencyPinPublisher,
+  type LocalConversationHistoryResidencyPinPublisher,
+} from "./local-conversation-history-residency-pins";
 import { LocalConversationSelectedTextSideChatOverlay } from "./local-conversation-selected-text-side-chat-overlay";
-import { ThreadUserMessageNavigationRailLazy } from "./thread-user-message-navigation-rail-lazy";
+import {
+  LocalConversationPromptRail,
+  waitForLocalConversationPromptRailResidentTarget,
+} from "./local-conversation-prompt-rail";
 import { formatBoundedWorktreeOutput } from "../../../../shared/worktree-output";
+import type { CodexPromptRailReveal } from "../../../../shared/codex-prompt-rail-history";
+import type {
+  CodexHistoryBoundaryRef,
+  CodexHistoryRow,
+  CodexHistoryTurnItemsPagination,
+} from "../../../../shared/codex-conversation-state/codex-history-topology";
+import {
+  createCodexConversationHistoryTurnItemsRef,
+  type CodexConversationHistoryItemWindowSnapshot,
+  type CodexConversationHistoryTurnItemsRef,
+} from "../../../../shared/codex-conversation-history-page";
 
 const PROGRESS_PHASES = [
   { key: "creatingWorktree", label: "Worktree" },
@@ -314,6 +345,12 @@ interface LocalConversationThreadBodyOwnerProps {
   cwd: string | null;
   turns: CodexConversationTurn[];
   turnPagination: CodexConversationTurnPagination | null;
+  historyRows?: readonly CodexHistoryRow[];
+  conversationEntityGeneration?: number;
+  historyTopologyGeneration?: number;
+  historyMutationRevision?: number;
+  historyItemWindowsByTurnId?: Readonly<Record<string, CodexConversationHistoryItemWindowSnapshot>>;
+  turnItemsPaginationById?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
   requests: CodexConversationServerRequest[];
   canonicalRequests: CodexCanonicalServerRequest[];
   resumeState: CodexConversationResumeState | null;
@@ -367,6 +404,12 @@ export function LocalConversationThreadBodyOwner({
   cwd,
   turns,
   turnPagination,
+  historyRows: canonicalHistoryRows,
+  conversationEntityGeneration,
+  historyTopologyGeneration,
+  historyMutationRevision,
+  historyItemWindowsByTurnId,
+  turnItemsPaginationById,
   requests,
   canonicalRequests,
   resumeState,
@@ -394,6 +437,12 @@ export function LocalConversationThreadBodyOwner({
   const setupProgressLogRef = useRef<HTMLDivElement>(null);
   const contentRootRef = useRef<HTMLDivElement | null>(null);
   const listApiRef = useRef<LocalConversationVirtualizedTurnListApi | null>(null);
+  const historyResidencyPinPublisherRef =
+    useRef<LocalConversationHistoryResidencyPinPublisher | null>(null);
+  historyResidencyPinPublisherRef.current ??= createLocalConversationHistoryResidencyPinPublisher({
+    publish: setLocalConversationHistoryResidencyPins,
+  });
+  const historyResidencyPinPublisher = historyResidencyPinPublisherRef.current;
   const [forkDialogState, setForkDialogState] = useState<{
     threadId: string;
     turnId: string;
@@ -407,7 +456,6 @@ export function LocalConversationThreadBodyOwner({
     if (!threadId || !actions.onRetryThreadAttachment) return;
     void actions.onRetryThreadAttachment(threadId);
   }, [actions, threadId]);
-  const [isOlderHistoryLoading, setIsOlderHistoryLoading] = useState(false);
   const conversation = useMemo<CodexConversationSnapshot | null>(
     () =>
       threadId
@@ -429,6 +477,12 @@ export function LocalConversationThreadBodyOwner({
             latestCollaborationMode: undefined,
             resumeState: resumeState ?? "needs_resume",
             turnPagination: turnPagination ?? undefined,
+            historyRows: canonicalHistoryRows,
+            conversationEntityGeneration,
+            historyTopologyGeneration,
+            historyMutationRevision,
+            historyItemWindowsByTurnId,
+            turnItemsPaginationById,
             turns,
             requests,
             canonicalRequests,
@@ -448,13 +502,19 @@ export function LocalConversationThreadBodyOwner({
         : null,
     [
       canonicalRequests,
+      canonicalHistoryRows,
       capabilityFlags,
+      conversationEntityGeneration,
       cwd,
       projectlessOutputDirectory,
       requests,
       resumeState,
       statusType,
       threadId,
+      historyTopologyGeneration,
+      historyMutationRevision,
+      historyItemWindowsByTurnId,
+      turnItemsPaginationById,
       turnPagination,
       turns,
     ],
@@ -485,6 +545,111 @@ export function LocalConversationThreadBodyOwner({
       timestampSeparatorAtMs: timestamps[index] ?? null,
     }));
   }, [parentTurns.length, turnEntries, turnPagination?.hasLoadedOldest]);
+  const historyRows = useMemo(
+    () =>
+      canonicalHistoryRows ??
+      projectLocalConversationLegacyHistoryRows({
+        conversationId: conversation?.threadId ?? body.threadId ?? "unattached",
+        pagination: turnPagination,
+        turnKeys: virtualizedEntries.map((entry) => entry.turnKey),
+      }),
+    [
+      body.threadId,
+      canonicalHistoryRows,
+      conversation?.threadId,
+      turnPagination,
+      virtualizedEntries,
+    ],
+  );
+  const hasCanonicalHistoryTopology =
+    canonicalHistoryRows !== undefined &&
+    conversationEntityGeneration !== undefined &&
+    historyTopologyGeneration !== undefined &&
+    historyMutationRevision !== undefined;
+  const historyTurnItemsRefs = useMemo(() => {
+    if (historyTopologyGeneration === undefined) return {};
+    return Object.fromEntries(
+      Object.entries(turnItemsPaginationById ?? {}).flatMap(([turnId, pagination]) => {
+        const window = historyItemWindowsByTurnId?.[turnId] ?? null;
+        const older = createCodexConversationHistoryTurnItemsRef({
+          turnId,
+          expectedTopologyGeneration: historyTopologyGeneration,
+          pagination,
+          edge: "older",
+          window,
+        });
+        const newer = createCodexConversationHistoryTurnItemsRef({
+          turnId,
+          expectedTopologyGeneration: historyTopologyGeneration,
+          pagination,
+          edge: "newer",
+          window,
+        });
+        return older || newer ? [[turnId, { older, newer }] as const] : [];
+      }),
+    );
+  }, [historyItemWindowsByTurnId, historyTopologyGeneration, turnItemsPaginationById]);
+  useEffect(() => {
+    if (
+      !threadId ||
+      !hasCanonicalHistoryTopology ||
+      conversationEntityGeneration === undefined ||
+      historyTopologyGeneration === undefined ||
+      historyMutationRevision === undefined
+    ) {
+      historyResidencyPinPublisher.clear();
+      return;
+    }
+    historyResidencyPinPublisher.setTarget({
+      threadId,
+      conversationGeneration: conversationEntityGeneration,
+      generation: historyTopologyGeneration,
+      historyMutationRevision,
+    });
+  }, [
+    hasCanonicalHistoryTopology,
+    historyResidencyPinPublisher,
+    conversationEntityGeneration,
+    historyTopologyGeneration,
+    historyMutationRevision,
+    threadId,
+  ]);
+  useEffect(
+    () => () => {
+      // React Strict Mode replays effects without recreating the component instance. Clear the
+      // active target while keeping the publisher reusable for the replayed setup.
+      historyResidencyPinPublisher.clear();
+    },
+    [historyResidencyPinPublisher],
+  );
+  const handleVisibleHistoryTurnIdsChange = useCallback(
+    (turnIds: readonly string[]) => {
+      if (
+        !threadId ||
+        !hasCanonicalHistoryTopology ||
+        conversationEntityGeneration === undefined ||
+        historyTopologyGeneration === undefined ||
+        historyMutationRevision === undefined
+      ) {
+        return;
+      }
+      historyResidencyPinPublisher.observe({
+        threadId,
+        conversationGeneration: conversationEntityGeneration,
+        generation: historyTopologyGeneration,
+        historyMutationRevision,
+        turnIds,
+      });
+    },
+    [
+      hasCanonicalHistoryTopology,
+      historyResidencyPinPublisher,
+      conversationEntityGeneration,
+      historyTopologyGeneration,
+      historyMutationRevision,
+      threadId,
+    ],
+  );
   const userMessageNavigationItems = useMemo(
     () =>
       buildThreadUserMessageNavigationItems(turnEntries, {
@@ -493,8 +658,17 @@ export function LocalConversationThreadBodyOwner({
       } satisfies ProjectlessOutputScope),
     [cwd, projectlessOutputDirectory, turnEntries],
   );
+  const userMessageNavigationItemsRef = useRef(userMessageNavigationItems);
+  userMessageNavigationItemsRef.current = userMessageNavigationItems;
   const currentTurnEntriesRef = useRef(turnEntries);
   currentTurnEntriesRef.current = turnEntries;
+  const persistedSearchSessionRef = useRef<{
+    threadId: string;
+    hostId: string;
+    hostGeneration: number;
+    topologyGeneration: number;
+  } | null>(null);
+  const persistedSearchTargetsRef = useRef(new Map<string, LocalConversationSearchTarget>());
   const latestTurnSearchKey = turnEntries.at(-1)?.turnSearchKey ?? null;
   const previousLatestTurnSearchKeyRef = useRef(latestTurnSearchKey);
 
@@ -550,20 +724,44 @@ export function LocalConversationThreadBodyOwner({
     [onRestoreSnapshotChange],
   );
 
-  const handleLoadOlderTurns = useCallback(async () => {
-    const targetThreadId = threadId ?? body.threadId;
-    if (!targetThreadId || turnPagination?.hasLoadedOldest === true) {
-      return "stop";
-    }
-
-    setIsOlderHistoryLoading(true);
-    try {
-      const snapshot = await requestLocalConversationOlderTurns(targetThreadId);
-      return snapshot?.turnPagination?.hasLoadedOldest === true ? "stop" : "continue";
-    } finally {
-      setIsOlderHistoryLoading(false);
-    }
-  }, [body.threadId, threadId, turnPagination?.hasLoadedOldest]);
+  const handleLoadHistoryBoundary = useCallback(
+    async (boundary: CodexHistoryBoundaryRef) => {
+      const targetThreadId = threadId ?? body.threadId;
+      if (
+        !targetThreadId ||
+        conversationEntityGeneration === undefined ||
+        historyMutationRevision === undefined
+      ) {
+        return;
+      }
+      await requestLocalConversationHistoryPage({
+        threadId: targetThreadId,
+        expectedConversationGeneration: conversationEntityGeneration,
+        expectedHistoryMutationRevision: historyMutationRevision,
+        target: { kind: "turnBoundary", boundary },
+      });
+    },
+    [body.threadId, conversationEntityGeneration, historyMutationRevision, threadId],
+  );
+  const handleLoadHistoryTurnItems = useCallback(
+    async (items: CodexConversationHistoryTurnItemsRef) => {
+      const targetThreadId = threadId ?? body.threadId;
+      if (
+        !targetThreadId ||
+        conversationEntityGeneration === undefined ||
+        historyMutationRevision === undefined
+      ) {
+        return;
+      }
+      await requestLocalConversationHistoryPage({
+        threadId: targetThreadId,
+        expectedConversationGeneration: conversationEntityGeneration,
+        expectedHistoryMutationRevision: historyMutationRevision,
+        target: { kind: "turnItems", items },
+      });
+    },
+    [body.threadId, conversationEntityGeneration, historyMutationRevision, threadId],
+  );
 
   const searchSource = useMemo(
     () =>
@@ -612,6 +810,8 @@ export function LocalConversationThreadBodyOwner({
 
   useEffect(() => {
     clearContentSearchMarks(contentRootRef.current);
+    persistedSearchSessionRef.current = null;
+    persistedSearchTargetsRef.current.clear();
     setForkDialogState(null);
   }, [body.threadId]);
 
@@ -634,12 +834,40 @@ export function LocalConversationThreadBodyOwner({
     () => ({
       domain: "conversation",
       contextId: searchSource.routeContextId,
-      search(query, limit) {
-        const normalizedQuery = query.trim().toLowerCase();
-        if (!normalizedQuery) {
+      async search(query, limit, options) {
+        const literalQuery = query.trim();
+        if (!literalQuery) {
           return { query, matches: [], totalMatches: 0, capped: false };
         }
+        const persistedThreadId = threadId ?? body.threadId;
+        if (persistedThreadId && capabilityFlags.canSearch) {
+          try {
+            const page = await searchCodexPersistedHistory(persistedThreadId, literalQuery);
+            if (options?.signal.aborted) {
+              return { query, matches: [], totalMatches: 0, capped: false };
+            }
+            persistedSearchSessionRef.current = {
+              threadId: page.threadId,
+              hostId: page.hostId,
+              hostGeneration: page.hostGeneration,
+              topologyGeneration: page.topologyGeneration,
+            };
+            persistedSearchTargetsRef.current.clear();
+            return projectLocalConversationPersistedSearchResult({
+              page,
+              contextId: searchSource.routeContextId,
+              limit,
+            });
+          } catch {
+            if (options?.signal.aborted) {
+              return { query, matches: [], totalMatches: 0, capped: false };
+            }
+          }
+        }
 
+        persistedSearchSessionRef.current = null;
+        persistedSearchTargetsRef.current.clear();
+        const normalizedQuery = query.trim().toLowerCase();
         const matches: ContentSearchLocalMatch[] = [];
         let capped = false;
         for (const unit of searchSource.findMatches(normalizedQuery)) {
@@ -673,11 +901,78 @@ export function LocalConversationThreadBodyOwner({
         };
       },
       async ensureVisible(match, { signal }) {
-        if (!isConversationSearchMatchMeta(match.meta)) return;
-        await searchSource.scrollAdapter.scrollToTurn(match.meta.turnKey, { signal });
+        if (isConversationSearchMatchMeta(match.meta)) {
+          await searchSource.scrollAdapter.scrollToTurn(match.meta.turnKey, { signal });
+          return;
+        }
+        if (!isLocalConversationPersistedSearchMatchMeta(match.meta)) return;
+        const meta = match.meta;
+        const persistedThreadId = threadId ?? body.threadId;
+        if (!persistedThreadId || meta.threadId !== persistedThreadId) return;
+
+        clearContentSearchMarks(contentRootRef.current);
+        persistedSearchTargetsRef.current.delete(match.id);
+        const session = persistedSearchSessionRef.current;
+        const topologyGeneration =
+          session?.threadId === meta.threadId &&
+          session.hostId === meta.hostId &&
+          session.hostGeneration === meta.hostGeneration
+            ? session.topologyGeneration
+            : meta.topologyGeneration;
+        const resolution = await hydrateLocalPersistedHistoryOccurrence({
+          threadId: meta.threadId,
+          hostId: meta.hostId,
+          hostGeneration: meta.hostGeneration,
+          topologyGeneration,
+          occurrence: meta.occurrence,
+        });
+        if (signal.aborted) return;
+        persistedSearchSessionRef.current = {
+          threadId: meta.threadId,
+          hostId: meta.hostId,
+          hostGeneration: meta.hostGeneration,
+          topologyGeneration: resolution.topologyGeneration,
+        };
+
+        let target: LocalConversationSearchTarget | null = null;
+        let entry = currentTurnEntriesRef.current.find(
+          (candidate) => candidate.turnId === meta.occurrence.turnId,
+        );
+        for (let attempt = 0; attempt < 5 && !target; attempt += 1) {
+          if (entry) {
+            target = resolveLocalConversationPersistedSearchTarget({
+              entry,
+              occurrence: meta.occurrence,
+              itemOccurrenceIndex: meta.itemOccurrenceIndex,
+              query: meta.query,
+              units: searchSource.getUnitsForTurn(entry),
+            });
+          }
+          if (target || signal.aborted) break;
+          await nextAnimationFrame();
+          entry = currentTurnEntriesRef.current.find(
+            (candidate) => candidate.turnId === meta.occurrence.turnId,
+          );
+        }
+        if (signal.aborted) return;
+        if (target) {
+          persistedSearchTargetsRef.current.set(match.id, target);
+          await searchSource.scrollAdapter.scrollToTurn(target.turnKey, { signal });
+          return;
+        }
+        if (resolution.status === "bounded-incomplete" && entry) {
+          await searchSource.scrollAdapter.scrollToTurn(entry.turnKey, { signal });
+          return;
+        }
+        throw new Error("Hydrated persisted-history occurrence is not renderable");
       },
       activate(match, query) {
-        if (!isConversationSearchMatchMeta(match.meta)) return;
+        const target = isConversationSearchMatchMeta(match.meta)
+          ? match.meta
+          : isLocalConversationPersistedSearchMatchMeta(match.meta)
+            ? persistedSearchTargetsRef.current.get(match.id)
+            : null;
+        if (!target) return;
         const root = contentRootRef.current;
         if (!root) return;
         const result = applyContentSearchDomMarks({
@@ -685,16 +980,13 @@ export function LocalConversationThreadBodyOwner({
           query,
           idPrefix: "content-search:conversation",
         });
-        const unitSelector = `[data-content-search-unit-key="${escapeAttributeSelectorValue(match.meta.unitKey)}"]`;
+        const unitSelector = `[data-content-search-unit-key="${escapeAttributeSelectorValue(target.unitKey)}"]`;
         const unitElement = root.querySelector<HTMLElement>(unitSelector);
         const unitMarks = Array.from(
           unitElement?.querySelectorAll<HTMLElement>(`mark.${CONTENT_SEARCH_MARK_CLASS}`) ?? [],
         );
         const activeElement =
-          unitMarks[match.meta.occurrenceIndex] ??
-          unitMarks[0] ??
-          result.matches[0]?.element ??
-          null;
+          unitMarks[target.occurrenceIndex] ?? unitMarks[0] ?? result.matches[0]?.element ?? null;
         if (!activeElement) return;
         activeElement.classList.add(CONTENT_SEARCH_ACTIVE_MARK_CLASS);
         activeElement.scrollIntoView({ block: "center", inline: "nearest" });
@@ -703,7 +995,7 @@ export function LocalConversationThreadBodyOwner({
         clearContentSearchMarks(contentRootRef.current);
       },
     }),
-    [searchSource],
+    [body.threadId, capabilityFlags.canSearch, searchSource, threadId],
   );
   useRegisterContentSearchSource(contentSearchSource);
 
@@ -810,6 +1102,27 @@ export function LocalConversationThreadBodyOwner({
     },
     [],
   );
+  const handlePublishPromptRailReveal = useCallback(async (reveal: CodexPromptRailReveal) => {
+    await publishLocalConversationHistoryMutation(reveal.threadId, reveal.mutation);
+  }, []);
+  const handleRevealInstalledPromptRailTurn = useCallback(
+    async (
+      reveal: CodexPromptRailReveal,
+      mode: "smooth" | "instant",
+      signal: AbortSignal,
+    ): Promise<HTMLElement | null> =>
+      await waitForLocalConversationPromptRailResidentTarget({
+        turnId: reveal.turnId,
+        mode,
+        signal,
+        readResidentItems: () => userMessageNavigationItemsRef.current,
+        revealResidentItem: async (item) => {
+          const target = await handleRevealUserMessageNavigationItem(item);
+          return signal.aborted ? null : target;
+        },
+      }),
+    [handleRevealUserMessageNavigationItem],
+  );
 
   const selectedTextSideChatOverlayEnabled = Boolean(
     threadId && !isSideChat && actions.onOpenSideChat && body.emptyState.type === "none",
@@ -817,9 +1130,14 @@ export function LocalConversationThreadBodyOwner({
 
   return (
     <>
-      <ThreadUserMessageNavigationRailLazy
-        items={userMessageNavigationItems}
-        onRevealItem={handleRevealUserMessageNavigationItem}
+      <LocalConversationPromptRail
+        enabled={Boolean((threadId ?? body.threadId) && historyTopologyGeneration !== undefined)}
+        threadId={threadId ?? body.threadId}
+        topologyGeneration={historyTopologyGeneration ?? null}
+        residentItems={userMessageNavigationItems}
+        publishReveal={handlePublishPromptRailReveal}
+        revealResidentItem={handleRevealUserMessageNavigationItem}
+        revealInstalledTurn={handleRevealInstalledPromptRailTurn}
       />
       <LocalConversationSelectedTextSideChatOverlay
         enabled={selectedTextSideChatOverlayEnabled}
@@ -913,6 +1231,7 @@ export function LocalConversationThreadBodyOwner({
             <LocalConversationVirtualizedTurnList
               key={conversation?.threadId ?? body.threadId ?? "unattached"}
               entries={virtualizedEntries}
+              historyRows={historyRows}
               conversationId={conversation?.threadId ?? body.threadId ?? ""}
               threadCwd={conversation?.cwd ?? null}
               projectWorkspacePath={projectWorkspacePath}
@@ -942,9 +1261,10 @@ export function LocalConversationThreadBodyOwner({
               latestTurnSynchronousMeasurementKey={body.latestTurnId ?? body.turnCount}
               onLatestTurnRestoreStateChange={handleLatestTurnRestoreStateChange}
               onRestoreStateChange={handleVirtualizedTurnRestoreStateChange}
-              onLoadOlderTurns={handleLoadOlderTurns}
-              isHistoryComplete={turnPagination?.hasLoadedOldest ?? true}
-              isOlderHistoryLoading={isOlderHistoryLoading}
+              onLoadHistoryBoundary={handleLoadHistoryBoundary}
+              historyTurnItemsRefs={historyTurnItemsRefs}
+              onLoadHistoryTurnItems={handleLoadHistoryTurnItems}
+              onVisibleHistoryTurnIdsChange={handleVisibleHistoryTurnIdsChange}
               scrollElement={scrollElement}
               onApiChange={(api) => {
                 listApiRef.current = api;

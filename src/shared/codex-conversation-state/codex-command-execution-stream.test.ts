@@ -7,6 +7,8 @@ import {
 } from "./codex-conversation-state";
 import {
   groupCodexCommandOutputUpdatesByConversation,
+  CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT,
+  CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES,
   reduceCodexCommandOutputRawTurns,
   reduceCodexConversationCommandOutput,
   reduceCodexConversationTerminalCommands,
@@ -276,6 +278,40 @@ describe("canonical command-execution stream reduction", () => {
     });
     expect(empty.rawItem).toBe(appended.rawItem);
     expect(empty.stateChanged).toBe(false);
+  });
+
+  test("keeps terminal command actions to a bounded recent tail", () => {
+    const command = buildCommand("exec", {
+      commandActions: Array.from(
+        { length: CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT },
+        (_, index) => ({ type: "unknown" as const, command: `existing-${index}` }),
+      ),
+    });
+    const result = reduceCodexTerminalCommandsRawTurns([{ items: [command] }], {
+      conversationId: THREAD_ID,
+      turnId: TURN_ID,
+      itemId: "exec",
+      commands: Array.from(
+        { length: CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT * 4 },
+        (_, index) => `incoming-${index}`,
+      ),
+    });
+    const actions = result.rawItem?.commandActions ?? [];
+    const oversized = reduceCodexTerminalCommandsRawTurns([{ items: [command] }], {
+      conversationId: THREAD_ID,
+      turnId: TURN_ID,
+      itemId: "exec",
+      commands: ["x".repeat(CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES + 1)],
+    });
+
+    expect(actions.length).toBe(CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT);
+    expect(actions[0]?.command).toBe(
+      `incoming-${CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT * 4 - CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT}`,
+    );
+    expect(actions.at(-1)?.command).toBe(
+      `incoming-${CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT * 4 - 1}`,
+    );
+    expect(oversized.rawItem?.commandActions.length).toBe(CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT);
   });
 
   test("clones only the targeted canonical path without changing lifecycle sidecars", () => {

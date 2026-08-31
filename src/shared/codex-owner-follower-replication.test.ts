@@ -7,6 +7,7 @@ import {
   buildCodexThreadStreamCheckpoint,
   hashCodexConversationReplica,
   serializeCodexConversationReplica,
+  serializeCodexConversationReplicaDigest,
 } from "./codex-owner-follower-replication";
 import { buildCodexConversationStateUpdates } from "./codex-conversation-patches";
 
@@ -54,6 +55,33 @@ function conversation(
 }
 
 describe("owner/follower canonical checkpoints", () => {
+  test("domain-separates an absent pre-hydration canonical state", () => {
+    const hydratedNull = conversation({ canonicalState: null });
+    const preHydration = { ...hydratedNull } as Partial<CodexConversationSnapshot>;
+    delete preHydration.canonicalState;
+
+    expect(() =>
+      hashCodexConversationReplica(preHydration as CodexConversationSnapshot),
+    ).not.toThrow();
+    expect(hashCodexConversationReplica(preHydration as CodexConversationSnapshot)).not.toBe(
+      hashCodexConversationReplica(hydratedNull),
+    );
+  });
+
+  test("normalizes missing pre-hydration Turn and request sequences as empty", () => {
+    const empty = conversation();
+    const preHydration = { ...empty } as Partial<CodexConversationSnapshot>;
+    delete preHydration.turns;
+    delete preHydration.requests;
+
+    expect(() =>
+      hashCodexConversationReplica(preHydration as CodexConversationSnapshot),
+    ).not.toThrow();
+    expect(hashCodexConversationReplica(preHydration as CodexConversationSnapshot)).toBe(
+      hashCodexConversationReplica(empty),
+    );
+  });
+
   test("hashes protocol bigint fields deterministically without colliding with strings", () => {
     const bigintConversation = conversation({
       canonicalState: { value: 10n } as never,
@@ -70,7 +98,7 @@ describe("owner/follower canonical checkpoints", () => {
     );
   });
 
-  test("uses deterministic SHA-256 over stable object-key ordering", () => {
+  test("uses deterministic Merkle SHA-256 over stable object-key ordering", () => {
     const left = conversation({
       canonicalState: { protocol: { id: "thread-1", z: 2, a: 1 } } as never,
     });
@@ -82,8 +110,36 @@ describe("owner/follower canonical checkpoints", () => {
     expect(hash).toBe(hashCodexConversationReplica(right));
     expect(hash).toMatch(/^[a-f0-9]{64}$/u);
     expect(hash).toBe(
-      createHash("sha256").update(serializeCodexConversationReplica(left)).digest("hex"),
+      createHash("sha256").update(serializeCodexConversationReplicaDigest(left)).digest("hex"),
     );
+    expect(serializeCodexConversationReplica(left)).toContain('"canonicalState"');
+  });
+
+  test("reuses immutable resident Turn leaves while binding order and changed content", () => {
+    let stableItemReads = 0;
+    const firstTurn = { turnId: "turn-1" } as Record<string, unknown>;
+    Object.defineProperty(firstTurn, "items", {
+      enumerable: true,
+      get: () => {
+        stableItemReads += 1;
+        return [{ id: "item-1", text: "stable" }];
+      },
+    });
+    const secondTurn = { turnId: "turn-2", items: [{ id: "item-2", text: "old" }] } as never;
+    const base = conversation({ turns: [firstTurn as never, secondTurn] });
+    const baseHash = hashCodexConversationReplica(base);
+    const readsAfterBase = stableItemReads;
+    const changed = conversation({
+      turns: [
+        firstTurn as never,
+        { turnId: "turn-2", items: [{ id: "item-2", text: "new" }] } as never,
+      ],
+    });
+    const reordered = conversation({ turns: [secondTurn, firstTurn as never] });
+
+    expect(hashCodexConversationReplica(changed)).not.toBe(baseHash);
+    expect(stableItemReads).toBe(readsAfterBase);
+    expect(hashCodexConversationReplica(reordered)).not.toBe(baseHash);
   });
 
   test("includes canonical lifecycle state while excluding standalone read state", () => {

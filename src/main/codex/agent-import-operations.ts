@@ -40,7 +40,8 @@ import { CodexSidebarSyncRuntime } from "../codex-application/CodexSidebarSyncRu
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { getLogger } from "../logging/logger";
 import { buildCodexThreadConfigOverrides } from "./codex-thread-capabilities";
 
@@ -167,6 +168,7 @@ export interface AgentImportFileConfiguration {
 }
 
 interface AgentImportEffectServices {
+  readonly capabilities: CodexAppServerCapabilities["Service"];
   readonly events: CodexApplicationEventHub["Service"];
   readonly externalImport: CodexExternalAgentImportRuntime["Service"];
   readonly gateway: CodexGateway["Service"];
@@ -1101,7 +1103,7 @@ class AgentImportOperations {
           this.services.threadDirectory
             .resolve({
               threadId,
-              fidelity: "full",
+              fidelity: "metadata",
               hostId: this.services.gateway.localHostId,
             })
             .pipe(
@@ -1342,59 +1344,91 @@ class AgentImportOperations {
   }
 
   private importSession(session: NativeSessionCandidate) {
-    let createdThreadId: string | null = null;
-    const operation = Effect.gen({ self: this }, function* () {
-      const cwd = existsSync(session.cwd) ? session.cwd : homedir();
-      const response = (yield* this.services.gateway.requestLocal("thread/fork", {
-        cwd,
-        excludeTurns: false,
-        path: session.sourcePath,
-        threadId: session.sourceThreadId,
-        threadSource: "user",
-        config:
-          buildCodexThreadConfigOverrides() as ClientRequestParamsByMethod["thread/fork"]["config"],
-      })) as unknown as ThreadForkResponse;
-      const threadId = response.thread.id.trim();
-      if (!threadId)
-        return yield* Effect.fail(
-          operationError("apply", new Error("Imported rollout did not return a Thread id")),
-        );
-      createdThreadId = threadId;
-      const effectiveCwd =
-        resolveCodexCanonicalHydratedCwd({
-          fallbackCwd: cwd,
-          requestedCwd: cwd,
-          responseCwd: response.cwd,
-          threadCwd: response.thread.cwd,
-        }) ?? cwd;
-      yield* this.services.threadDirectory.acceptImportResult({
-        response: {
-          ...response,
-          thread: { ...response.thread, cwd: effectiveCwd },
-        },
-        executionHostId: this.services.gateway.localHostId,
-        fallbackCwd: effectiveCwd,
-      });
-      if (session.title && !response.thread.name?.trim()) {
-        yield* this.services.threadTitles.setRequired({
-          threadId,
-          name: session.title,
-          normalization: "trim",
-        });
-      }
-      return threadId;
-    });
-    return this.services.threadStarts
-      .materialize(this.services.gateway.localHostId, operation, (threadId) => threadId)
-      .pipe(
-        Effect.onError(() =>
-          createdThreadId
-            ? this.services.gateway
-                .requestLocal("thread/delete", { threadId: createdThreadId })
-                .pipe(Effect.ignore)
-            : Effect.void,
-        ),
+    return Effect.gen({ self: this }, function* () {
+      const capability = yield* this.services.capabilities.forHost(
+        this.services.gateway.localHostId,
       );
+      if (!capability.flags.paginatedHistory) {
+        return yield* Effect.fail(
+          operationError(
+            "apply",
+            new Error("Native session import requires bounded paginated history support"),
+          ),
+        );
+      }
+
+      let createdThreadId: string | null = null;
+      const cwd = existsSync(session.cwd) ? session.cwd : homedir();
+      const operation = Effect.gen({ self: this }, function* () {
+        const response = (yield* this.services.gateway.requestLocal(
+          "thread/fork",
+          {
+            cwd,
+            excludeTurns: true,
+            path: session.sourcePath,
+            threadId: session.sourceThreadId,
+            threadSource: "user",
+            config:
+              buildCodexThreadConfigOverrides() as ClientRequestParamsByMethod["thread/fork"]["config"],
+          },
+          codexGatewayGenerationFence(capability),
+        )) as unknown as ThreadForkResponse;
+        const threadId = response.thread.id.trim();
+        if (!threadId) {
+          return yield* Effect.fail(
+            operationError("apply", new Error("Imported rollout did not return a Thread id")),
+          );
+        }
+        createdThreadId = threadId;
+        if (response.thread.historyMode !== "paginated" || response.thread.turns.length !== 0) {
+          return yield* Effect.fail(
+            operationError(
+              "apply",
+              new Error("Imported rollout violated the metadata-only paginated history contract"),
+            ),
+          );
+        }
+        const effectiveCwd =
+          resolveCodexCanonicalHydratedCwd({
+            fallbackCwd: cwd,
+            requestedCwd: cwd,
+            responseCwd: response.cwd,
+            threadCwd: response.thread.cwd,
+          }) ?? cwd;
+        yield* this.services.threadDirectory.acceptImportResult({
+          response: {
+            ...response,
+            thread: { ...response.thread, cwd: effectiveCwd },
+          },
+          capability,
+          executionHostId: this.services.gateway.localHostId,
+          fallbackCwd: effectiveCwd,
+        });
+        if (session.title && !response.thread.name?.trim()) {
+          yield* this.services.threadTitles.setRequired({
+            threadId,
+            name: session.title,
+            normalization: "trim",
+          });
+        }
+        return threadId;
+      });
+      return yield* this.services.threadStarts
+        .materialize(capability.hostId, capability.generation, operation, (threadId) => threadId)
+        .pipe(
+          Effect.onError(() =>
+            createdThreadId
+              ? this.services.gateway
+                  .requestLocal(
+                    "thread/delete",
+                    { threadId: createdThreadId },
+                    codexGatewayGenerationFence(capability),
+                  )
+                  .pipe(Effect.ignore)
+              : Effect.void,
+          ),
+        );
+    });
   }
 
   private async importCopies(

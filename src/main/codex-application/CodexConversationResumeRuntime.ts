@@ -152,7 +152,9 @@ export const make: Effect.Effect<
     threadId: string,
   ) {
     yield* protocol.releaseResume(threadId);
-    yield* ownerNotificationDrain.awaitCurrent(threadId);
+    yield* ownerNotificationDrain
+      .awaitCurrent(threadId)
+      .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
     rendererCoordinator.reconcileOwnership(threadId);
     const revision = conversations.current(threadId)?.read().revision ?? 0;
     postResumeGoals.release(threadId, revision);
@@ -187,7 +189,7 @@ export const make: Effect.Effect<
       .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
     if (durable?.durable.archived) {
       const archived = yield* threadDirectory
-        .resolve({ threadId, fidelity: "full" })
+        .resolve({ threadId, fidelity: "tail" })
         .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
       const archivedAggregate = conversations.current(threadId);
       archivedAggregate?.setResumeState("needs_resume");

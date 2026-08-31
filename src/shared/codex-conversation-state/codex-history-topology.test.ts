@@ -194,6 +194,42 @@ describe("Codex sparse history topology", () => {
     expect(merged.topology.entitiesByKey["turn-2"]?.authority).toBe("live");
   });
 
+  test("aligns an overlapping search window around its resident anchor positions", () => {
+    const tail = expectTopology(
+      createCodexHistoryIslandTopology({
+        generation: 4,
+        islandId: "tail:4",
+        entries: [entry("turn-a"), entry("turn-b"), entry("turn-c")],
+        entities: [entity("turn-a"), entity("turn-b"), entity("turn-c")],
+        olderBoundary: available("older:tail"),
+        newerBoundary: exhaustedCodexHistoryBoundary("newer:tail"),
+      }),
+    );
+    const inserted = insertCodexHistoryIsland(tail, {
+      index: 0,
+      islandId: "search:4",
+      entries: [entry("turn-x"), entry("turn-b"), entry("turn-c"), entry("turn-d")],
+      entities: [entity("turn-x"), entity("turn-b"), entity("turn-c"), entity("turn-d")],
+      olderBoundary: available("older:search"),
+      newerBoundary: available("newer:search"),
+      positionsByEntityKey: {
+        "turn-a": 0,
+        "turn-x": 1,
+        "turn-b": 2,
+        "turn-c": 3,
+        "turn-d": 4,
+      },
+    });
+    if (!inserted.ok) throw new Error(inserted.error.message);
+    expect(inserted.topology.islands[0]?.entries.map((value) => value.entityKey)).toEqual([
+      "turn-a",
+      "turn-x",
+      "turn-b",
+      "turn-c",
+      "turn-d",
+    ]);
+  });
+
   test("keeps disjoint search and tail islands separated by one bidirectional gap", () => {
     const search = expectTopology(
       createCodexHistoryIslandTopology({

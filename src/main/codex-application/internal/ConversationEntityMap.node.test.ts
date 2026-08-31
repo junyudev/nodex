@@ -123,7 +123,7 @@ it.effect("fails closed when resume buffering exceeds its occurrence budget", ()
           occurrence: occurrence(token),
           bypassResume: false,
           startsThread: false,
-          deferThreadStart: false,
+          deferThreadStart: null,
         }),
         "buffered",
       );
@@ -133,11 +133,85 @@ it.effect("fails closed when resume buffering exceeds its occurrence budget", ()
         occurrence: occurrence(1_025),
         bypassResume: false,
         startsThread: false,
-        deferThreadStart: false,
+        deferThreadStart: null,
       }),
       "overflow",
     );
     assert.strictEqual(aggregate.takeResumeEventBuffer()?.length, 1_024);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects a giant sparse deferred occurrence without serializing its logical holes", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const conversations = yield* build(scope);
+    const aggregate = conversations.entity("thread-sparse-buffer");
+    assert.isTrue(aggregate.beginResumeEventBuffer());
+    const sparsePayload = new Array<unknown>(100_000_000);
+
+    assert.strictEqual(
+      aggregate.offerProtocolOccurrence({
+        occurrence: {
+          kind: "notification",
+          protocol: "generated",
+          hostId: "local",
+          generation: 1,
+          occurrenceId: "local:1:sparse",
+          occurrenceToken: 1,
+          method: "turn/diff/updated",
+          params: { threadId: "thread-sparse-buffer", diff: sparsePayload },
+        },
+        bypassResume: false,
+        startsThread: false,
+        deferThreadStart: null,
+      }),
+      "overflow",
+    );
+    assert.deepEqual(aggregate.takeResumeEventBuffer(), []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("never mixes deferred Thread starts across host generations", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const conversations = yield* build(scope);
+    const aggregate = conversations.entity("thread-generation-fence");
+    const occurrence = (generation: number): CodexApplicationNotificationOccurrence => ({
+      kind: "notification",
+      protocol: "generated",
+      hostId: "local",
+      generation,
+      occurrenceId: `local:${generation}:started`,
+      occurrenceToken: generation,
+      method: "thread/started",
+      params: { thread: { id: "thread-generation-fence", turns: [] } },
+    });
+
+    assert.strictEqual(
+      aggregate.offerProtocolOccurrence({
+        occurrence: occurrence(1),
+        bypassResume: false,
+        startsThread: true,
+        deferThreadStart: { hostId: "local", generation: 1 },
+      }),
+      "buffered",
+    );
+    assert.strictEqual(
+      aggregate.offerProtocolOccurrence({
+        occurrence: occurrence(2),
+        bypassResume: false,
+        startsThread: true,
+        deferThreadStart: { hostId: "local", generation: 2 },
+      }),
+      "generation-mismatch",
+    );
+    assert.deepEqual(aggregate.takeThreadStartEventBuffer({ hostId: "local", generation: 2 }), {
+      kind: "generation-mismatch",
+      events: [occurrence(1)],
+    });
+    assert.isNull(aggregate.takeThreadStartEventBuffer({ hostId: "local", generation: 1 }));
     yield* Scope.close(scope, Exit.void);
   }),
 );

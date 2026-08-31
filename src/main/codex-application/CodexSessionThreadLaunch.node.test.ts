@@ -5,6 +5,10 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import type { CodexConversationSnapshot } from "../../shared/types";
+import {
+  CodexAppServerCapabilities,
+  createCodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
@@ -56,10 +60,17 @@ const harness = (
 ) => {
   const events: string[] = [];
   const threadStartParams: Array<Record<string, unknown>> = [];
+  const requestScheduling: unknown[] = [];
   let attempt = 0;
+  const capability = createCodexAppServerCapabilitySnapshot({
+    hostId: "local",
+    generation: 19,
+    userAgent: "codex-app-server/0.145.0-alpha.15",
+  });
   const gateway = CodexGateway.of({
     localHostId: "local",
-    requestLocal: ((method: string, params: Record<string, unknown>) => {
+    requestLocal: ((method: string, params: Record<string, unknown>, scheduling: unknown) => {
+      requestScheduling.push(scheduling);
       if (method === "thread/delete") {
         events.push(`delete:${params.threadId}`);
         return Effect.succeed({});
@@ -122,8 +133,17 @@ const harness = (
   });
   return {
     events,
+    requestScheduling,
     threadStartParams,
     effect: make.pipe(
+      Effect.provideService(
+        CodexAppServerCapabilities,
+        CodexAppServerCapabilities.of({
+          forHost: () => Effect.succeed(capability),
+          forThread: () => Effect.succeed(capability),
+          isCurrent: () => Effect.succeed(true),
+        }),
+      ),
       Effect.provideService(
         CodexAttachments,
         CodexAttachments.of({
@@ -174,6 +194,7 @@ it.effect("commits the Session link before admitting its first Turn", () =>
       "turn:thread-1",
       "complete:thread-1",
     ]);
+    assert.deepEqual(test.requestScheduling, [{ expectedHostId: "local", expectedGeneration: 19 }]);
     yield* Scope.close(scope, Exit.void);
   }),
 );

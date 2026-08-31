@@ -14,10 +14,10 @@ import type {
   CodexSideChatStartResult,
   CodexThreadStreamStateChange,
   CodexThreadSummary,
+  CodexThreadHistoryEditResult,
 } from "../../lib/types";
 import type {
   ThreadGoal,
-  ThreadRollbackResponse,
   ThreadSettings,
   Turn,
   TurnStartResponse,
@@ -38,6 +38,17 @@ import {
 import { getCodexFileChangeList, getCodexFileChangePaths } from "../../../shared/codex-file-change";
 import { render, settleAsyncRender, textContent } from "../../test/dom";
 import type { CodexThreadStreamStateChangedEvent } from "./app-server-message-bus";
+import type { CodexPersistedHistoryOccurrenceHydrateResult } from "../../../shared/codex-persisted-history-search";
+import {
+  applyCodexConversationHistoryMutation,
+  buildCodexConversationHistoryMutation,
+  type CodexConversationHistoryPageRequest,
+  type CodexConversationHistoryPageResult,
+} from "../../../shared/codex-conversation-history-page";
+import type {
+  CodexHistoryBoundaryRef,
+  CodexHistoryRow,
+} from "../../../shared/codex-conversation-state/codex-history-topology";
 
 let invokeCalls: string[] = [];
 let invokeRecords: Array<{ channel: string; args: unknown[] }> = [];
@@ -56,12 +67,12 @@ let resumeThreadRole: "owner" | "follower" = "owner";
 let resumeThreadOwnerClientId = "renderer-owner";
 let resumeThreadRevision = 0;
 let resumeThreadGeneration = 1;
-let olderThreadTurnsResult:
-  | Promise<CodexConversationSnapshot | null>
-  | CodexConversationSnapshot
+let historyPageResult:
+  | Promise<CodexConversationHistoryPageResult>
+  | CodexConversationHistoryPageResult
   | null = null;
-let completeThreadTurnsResult: CodexConversationSnapshot | null = null;
-let ownerEditRollbackResult: ThreadRollbackResponse | null = null;
+let persistedHistoryHydrationResult: CodexPersistedHistoryOccurrenceHydrateResult | null = null;
+let ownerEditRollbackResult: CodexThreadHistoryEditResult | null = null;
 let ownerTurnStartResult: TurnStartResponse | null = null;
 let ownerTurnStartError: Error | null = null;
 let ownerTurnStartHandler: (() => void) | null = null;
@@ -205,12 +216,16 @@ vi.mock("./local-conversation-deps", () => ({
       return true;
     }
 
-    if (channel === "codex:thread:turns:load-older") {
-      return olderThreadTurnsResult;
+    if (channel === "codex:thread:history-page:load") {
+      if (!historyPageResult) throw new Error("History-page fixture is unavailable");
+      return await Promise.resolve(historyPageResult);
     }
 
-    if (channel === "codex:thread:turns:load-complete") {
-      return completeThreadTurnsResult;
+    if (channel === "codex:thread:history-search:hydrate") {
+      if (!persistedHistoryHydrationResult) {
+        throw new Error("Persisted-history hydration fixture is unavailable");
+      }
+      return persistedHistoryHydrationResult;
     }
 
     if (channel === "codex:thread-owner:app-server-request") {
@@ -222,7 +237,7 @@ vi.mock("./local-conversation-deps", () => ({
           };
         };
       };
-      if (input.request?.method === "thread/rollback") {
+      if (input.request?.method === "thread/revert") {
         return ownerEditRollbackResult;
       }
       if (
@@ -506,6 +521,8 @@ const testThreadStreamReplicas = new Map<string, TestThreadStreamReplica>();
 function resetLocalConversationStoreTestHarness(reset: () => void): void {
   testThreadStreamReplicas.clear();
   queuedFollowUpCommandHandler = null;
+  persistedHistoryHydrationResult = null;
+  historyPageResult = null;
   reset();
 }
 
@@ -551,8 +568,16 @@ function dispatchTestThreadStreamStateChanged(
   let nextConversation = baseConversation;
   let applied = false;
   try {
-    nextConversation = applyCodexConversationStateUpdates(baseConversation, event.change.patches);
-    applied = true;
+    if (event.change.type === "historyMutation") {
+      const result = applyCodexConversationHistoryMutation(baseConversation, event.change.mutation);
+      if (result.ok) {
+        nextConversation = result.conversation;
+        applied = true;
+      }
+    } else {
+      nextConversation = applyCodexConversationStateUpdates(baseConversation, event.change.patches);
+      applied = true;
+    }
   } catch {
     // Invalid-patch fixtures still need a well-formed envelope so production
     // reaches and rejects the patch application boundary under test.
@@ -610,7 +635,7 @@ function ConversationUserMessages({
 
 function buildRollbackResponseFromConversation(
   conversation: CodexConversationSnapshot,
-): ThreadRollbackResponse {
+): CodexThreadHistoryEditResult {
   return {
     thread: {
       id: conversation.threadId,
@@ -667,7 +692,17 @@ function buildRollbackResponseFromConversation(
         durationMs: turn.durationMs ?? null,
       })),
     },
-  } as unknown as ThreadRollbackResponse;
+    turnPagination: conversation.turnPagination ?? {
+      olderCursor: null,
+      backwardsCursor: null,
+      oldestLoadedTurnId: conversation.turns[0]?.turnId ?? null,
+      isLoadingOlder: false,
+      hasLoadedOldest: true,
+      loadedTurnCount: conversation.turns.length,
+      itemsView: "full",
+    },
+    turnItemsPaginationById: conversation.turnItemsPaginationById,
+  } as unknown as CodexThreadHistoryEditResult;
 }
 
 function withCanonicalState(conversation: CodexConversationSnapshot): CodexConversationSnapshot {
@@ -793,6 +828,137 @@ function ensureCanonicalResumeFixture(
     return candidate as CodexConversationSnapshot;
   }
   return withCanonicalState(candidate as CodexConversationSnapshot);
+}
+
+function buildExactOlderHistoryPageFixture(input: {
+  readonly partial: CodexConversationSnapshot;
+  readonly loaded: CodexConversationSnapshot;
+}): {
+  readonly request: CodexConversationHistoryPageRequest;
+  readonly before: CodexConversationSnapshot;
+  readonly after: CodexConversationSnapshot;
+  readonly page: CodexConversationHistoryPageResult;
+} {
+  const conversationGeneration = input.partial.conversationEntityGeneration ?? 1;
+  const topologyGeneration = input.partial.historyTopologyGeneration ?? 1;
+  const historyMutationRevision = input.partial.historyMutationRevision ?? 0;
+  const oldestLoadedTurnId =
+    input.partial.turns.find((turn) => turn.turnId !== null)?.turnId ?? null;
+  const boundary: CodexHistoryBoundaryRef = {
+    generation: topologyGeneration,
+    islandId: `tail:${topologyGeneration}`,
+    edge: "older",
+    boundaryId: `older:${topologyGeneration}`,
+    progressKey: JSON.stringify(["cursor:older", oldestLoadedTurnId]),
+  };
+  const contentRows = (conversation: CodexConversationSnapshot): readonly CodexHistoryRow[] =>
+    conversation.turns.flatMap((turn) =>
+      turn.turnId === null
+        ? []
+        : [
+            {
+              kind: "content" as const,
+              key: `history-content:${turn.turnId}`,
+              turnKey: turn.turnId,
+              entityKey: turn.turnId,
+            },
+          ],
+    );
+  const before = withCanonicalState({
+    ...input.partial,
+    conversationEntityGeneration: conversationGeneration,
+    historyTopologyGeneration: topologyGeneration,
+    historyMutationRevision,
+    historyRows: [
+      {
+        kind: "gap",
+        key: `history-gap:${boundary.boundaryId}:${boundary.progressKey}`,
+        olderBoundary: null,
+        newerBoundary: boundary,
+        estimatedHeightPx: 144,
+      },
+      ...contentRows(input.partial),
+    ],
+    turnPagination: {
+      olderCursor: "cursor:older",
+      backwardsCursor: null,
+      oldestLoadedTurnId,
+      isLoadingOlder: false,
+      hasLoadedOldest: false,
+      loadedTurnCount: input.partial.turns.length,
+      itemsView: "full",
+    },
+    turnItemsPaginationById: input.partial.turnItemsPaginationById ?? {},
+  });
+  const projectedAfter = withCanonicalState({
+    ...input.loaded,
+    conversationEntityGeneration: conversationGeneration,
+    historyTopologyGeneration: topologyGeneration,
+    historyMutationRevision: historyMutationRevision + 1,
+    historyRows: contentRows(input.loaded),
+    turnPagination: {
+      olderCursor: null,
+      backwardsCursor: null,
+      oldestLoadedTurnId: input.loaded.turns.find((turn) => turn.turnId !== null)?.turnId ?? null,
+      isLoadingOlder: false,
+      hasLoadedOldest: true,
+      loadedTurnCount: input.loaded.turns.length,
+      itemsView: "full",
+    },
+    turnItemsPaginationById: input.loaded.turnItemsPaginationById ?? {},
+  });
+  const unchangedTurnIds = new Set(
+    input.loaded.turns.flatMap((turn) => {
+      if (turn.turnId === null) return [];
+      const previous = input.partial.turns.find((candidate) => candidate.turnId === turn.turnId);
+      return previous === turn ? [turn.turnId] : [];
+    }),
+  );
+  const beforeTurnsById = new Map(
+    before.turns.flatMap((turn) => (turn.turnId === null ? [] : ([[turn.turnId, turn]] as const))),
+  );
+  const beforeCanonicalTurnsById = new Map(
+    before.canonicalState?.turns.flatMap((turn) =>
+      turn.protocol.id === null ? [] : ([[turn.protocol.id, turn]] as const),
+    ) ?? [],
+  );
+  const after: CodexConversationSnapshot = {
+    ...projectedAfter,
+    turns: projectedAfter.turns.map((turn) =>
+      turn.turnId !== null && unchangedTurnIds.has(turn.turnId)
+        ? (beforeTurnsById.get(turn.turnId) ?? turn)
+        : turn,
+    ),
+    canonicalState: projectedAfter.canonicalState
+      ? {
+          ...projectedAfter.canonicalState,
+          turns: projectedAfter.canonicalState.turns.map((turn) =>
+            turn.protocol.id !== null && unchangedTurnIds.has(turn.protocol.id)
+              ? (beforeCanonicalTurnsById.get(turn.protocol.id) ?? turn)
+              : turn,
+          ),
+        }
+      : projectedAfter.canonicalState,
+  };
+  const request: CodexConversationHistoryPageRequest = {
+    threadId: before.threadId,
+    expectedConversationGeneration: conversationGeneration,
+    expectedHistoryMutationRevision: historyMutationRevision,
+    target: { kind: "turnBoundary", boundary },
+  };
+  return {
+    request,
+    before,
+    after,
+    page: {
+      status: "applied",
+      mutation: buildCodexConversationHistoryMutation({
+        before,
+        after,
+        origin: { kind: "page", request },
+      }),
+    },
+  };
 }
 
 function buildAssistantMessage(
@@ -1033,47 +1199,194 @@ async function dispatchQueueOwnerProjection(
 }
 
 describe("local-conversation-store", () => {
-  test("dedupes older-turn loads and applies the returned paged snapshot", async () => {
+  test("dedupes one exact history-page target and applies its bounded mutation", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
     threadListByProject = {};
-    let resolveOlderTurns: (conversation: CodexConversationSnapshot | null) => void = () => {};
-    olderThreadTurnsResult = new Promise<CodexConversationSnapshot | null>((resolve) => {
-      resolveOlderTurns = resolve;
-    });
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
 
     const manager = new CodexAppServerManager("default");
-    const firstLoad = manager.requestThreadOlderTurns("thread-older");
-    const secondLoad = manager.requestThreadOlderTurns("thread-older");
-
-    expect(
-      String(invokeCalls.filter((call) => call === "codex:thread:turns:load-older").length),
-    ).toBe("1");
-
-    resolveOlderTurns({
+    const partial = {
       ...buildConversation("thread-older", "project-1"),
-      turnPagination: {
-        olderCursor: "cursor-older",
-        backwardsCursor: "cursor-newer",
-        oldestLoadedTurnId: "turn-oldest",
-        isLoadingOlder: false,
-        hasLoadedOldest: false,
-        loadedTurnCount: 50,
-        itemsView: "full",
+      turns: [
+        {
+          threadId: "thread-older",
+          turnId: "turn-latest",
+          status: "completed" as const,
+          itemIds: [],
+          items: [],
+        },
+      ],
+    };
+    const fixture = buildExactOlderHistoryPageFixture({
+      partial,
+      loaded: {
+        ...partial,
+        turns: [
+          {
+            threadId: "thread-older",
+            turnId: "turn-older",
+            status: "completed",
+            itemIds: [],
+            items: [],
+          },
+          ...partial.turns,
+        ],
       },
     });
+    resumeThreadResult = fixture.before;
+    await manager.requestThreadStreamResume("thread-older");
+    let resolvePage: (page: CodexConversationHistoryPageResult) => void = () => {};
+    historyPageResult = new Promise<CodexConversationHistoryPageResult>((resolve) => {
+      resolvePage = resolve;
+    });
+    invokeRecords = [];
+
+    const firstLoad = manager.requestHistoryPage(fixture.request);
+    const secondLoad = manager.requestHistoryPage(fixture.request);
+    await flushAsyncWork();
+
+    expect(
+      String(invokeCalls.filter((call) => call === "codex:thread:history-page:load").length),
+    ).toBe("1");
+
+    resolvePage(fixture.page);
     await firstLoad;
     await secondLoad;
 
     const conversation = manager.readConversation("thread-older");
-    expect(conversation?.turnPagination?.olderCursor ?? null).toBe("cursor-older");
-    expect(conversation?.turnPagination?.hasLoadedOldest ?? true).toBe(false);
+    expect(conversation?.turns.map((turn) => turn.turnId)).toEqual(["turn-older", "turn-latest"]);
+    expect(conversation?.historyMutationRevision).toBe(1);
     manager.destroy();
-    olderThreadTurnsResult = null;
+    resumeThreadResult = null;
+    historyPageResult = null;
+  });
+
+  test("fails closed before ACK when one owner frame exceeds the distinct-key budget", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    threadListByProject = {};
+    ownerNotificationAckHandler = null;
+    ownerStreamPublishHandler = null;
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const manager = new CodexAppServerManager("default");
+    let ackCount = 0;
+    let publishCount = 0;
+    try {
+      resumeThreadResult = buildConversation("thread-frame-pressure", "project-1");
+      await manager.requestThreadStreamResume("thread-frame-pressure");
+      invokeRecords = [];
+      ownerNotificationAckHandler = () => {
+        ackCount += 1;
+        return true;
+      };
+      ownerStreamPublishHandler = () => {
+        publishCount += 1;
+        return true;
+      };
+
+      for (let index = 0; index < 1_025; index += 1) {
+        dispatchCodexAppServerMessage("thread-owner-notification", {
+          hostId: "default",
+          sequence: index + 1,
+          notification: {
+            method: "item/agentMessage/delta",
+            params: {
+              threadId: "thread-frame-pressure",
+              turnId: "turn-pressure",
+              itemId: `assistant-pressure-${index}`,
+              delta: "x",
+            },
+          },
+        });
+      }
+
+      expect(manager.readConversationStreamRole("thread-frame-pressure")).toBeNull();
+      expect(manager.readConversation("thread-frame-pressure")?.resumeState).toBe("needs_resume");
+      expect(ackCount).toBe(0);
+      expect(publishCount).toBe(0);
+
+      // The overflow clears both queue and sequence ownership. A previously queued sequence must
+      // not become ACK-eligible when the abandoned frame callback/timer eventually runs.
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await flushAsyncWork(3);
+      expect(ackCount).toBe(0);
+      expect(publishCount).toBe(0);
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread-owner:notification:ack"),
+      ).toHaveLength(0);
+      expect(
+        invokeRecords.filter(
+          (record) => record.channel === "codex:thread-owner:stream-state:publish",
+        ),
+      ).toHaveLength(0);
+    } finally {
+      ownerNotificationAckHandler = null;
+      ownerStreamPublishHandler = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("fails closed when a stalled owner ACK reaches the sequence high-water mark", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    threadListByProject = {};
+    ownerStreamPublishHandler = null;
+    ownerNotificationAckHandler = () => new Promise<boolean>(() => {});
+    const {
+      CodexAppServerManager,
+      CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES_PER_CONVERSATION,
+      __resetLocalConversationStoreForTests,
+    } = await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      resumeThreadResult = buildConversation("thread-ack-pressure", "project-1");
+      await manager.requestThreadStreamResume("thread-ack-pressure");
+      invokeRecords = [];
+
+      for (
+        let sequence = 1;
+        sequence <= CODEX_OWNER_NOTIFICATION_MAX_PENDING_SEQUENCES_PER_CONVERSATION + 1;
+        sequence += 1
+      ) {
+        dispatchCodexAppServerMessage("thread-owner-notification", {
+          hostId: "default",
+          sequence,
+          notification: {
+            method: "item/reasoning/summaryPartAdded",
+            params: {
+              threadId: "thread-ack-pressure",
+              turnId: "turn-pressure",
+              itemId: `reasoning-${sequence}`,
+              summaryIndex: 0,
+            },
+          },
+        });
+      }
+
+      expect(manager.readConversationStreamRole("thread-ack-pressure")).toBeNull();
+      expect(manager.readConversation("thread-ack-pressure")?.resumeState).toBe("needs_resume");
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread-owner:notification:ack"),
+      ).toHaveLength(1);
+    } finally {
+      ownerNotificationAckHandler = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
   });
 
   test("leaves session-start auto-title generation to main", async () => {
@@ -1307,10 +1620,20 @@ describe("local-conversation-store", () => {
           change: CodexThreadStreamStateChange;
         };
         expect(publication.baseCheckpoint).toEqual(acceptedCheckpoint);
-        const nextReplica =
-          publication.change.type === "snapshot"
-            ? publication.change.conversationState
-            : applyCodexConversationStateUpdates(acceptedReplica, publication.change.patches);
+        const nextReplica = (() => {
+          if (publication.change.type === "snapshot") {
+            return publication.change.conversationState;
+          }
+          if (publication.change.type === "historyMutation") {
+            const applied = applyCodexConversationHistoryMutation(
+              acceptedReplica,
+              publication.change.mutation,
+            );
+            if (!applied.ok) throw new Error(`History mutation failed: ${applied.reason}`);
+            return applied.conversation;
+          }
+          return applyCodexConversationStateUpdates(acceptedReplica, publication.change.patches);
+        })();
         expect(publication.checkpoint.revision).toBe(acceptedCheckpoint.revision + 1);
         expect(publication.checkpoint.canonicalHash).toBe(
           hashCodexConversationReplica(nextReplica),
@@ -2165,7 +2488,6 @@ describe("local-conversation-store", () => {
     threadListByProject = {};
     snapshotByThread = {};
     resumeThreadResult = null;
-    completeThreadTurnsResult = null;
     ownerEditRollbackResult = null;
     ownerTurnStartResult = null;
     followerActionResult = null;
@@ -2285,7 +2607,6 @@ describe("local-conversation-store", () => {
         ...initialConversation,
         turns: [initialConversation.turns[0]!],
       };
-      completeThreadTurnsResult = initialConversation;
       ownerEditRollbackResult = buildRollbackResponseFromConversation(rollbackConversation);
       ownerTurnStartResult = {
         turn: {
@@ -2585,7 +2906,6 @@ describe("local-conversation-store", () => {
       followerActionResult = null;
       followerActionError = null;
       resumeThreadResult = null;
-      completeThreadTurnsResult = null;
       ownerEditRollbackResult = null;
       ownerTurnStartResult = null;
       queuedFollowUpCommandHandler = null;
@@ -2751,7 +3071,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("drops patches when no stream snapshot established follower ownership from bundle 40608-40613", async () => {
+  test("drops a foreign stream patch after the local renderer established owner authority", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
@@ -2785,8 +3105,9 @@ describe("local-conversation-store", () => {
         ],
       };
 
-      olderThreadTurnsResult = baseConversation;
-      await manager.requestThreadOlderTurns("thread-1");
+      resumeThreadResult = baseConversation;
+      resumeThreadRole = "owner";
+      await manager.requestThreadStreamResume("thread-1");
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
         hostId: "default",
         conversationId: "thread-1",
@@ -2809,7 +3130,7 @@ describe("local-conversation-store", () => {
         ),
       ).toBe(false);
     } finally {
-      olderThreadTurnsResult = null;
+      resumeThreadResult = null;
       manager.destroy();
     }
   });
@@ -8430,13 +8751,13 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner snapshot transactions wait for in-flight prose patch revisions from bundle 40424-40555", async () => {
+  test("owner history mutations wait for in-flight prose patch revisions", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
-    completeThreadTurnsResult = null;
+    historyPageResult = null;
     ownerStreamPublishHandler = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
@@ -8498,19 +8819,15 @@ describe("local-conversation-store", () => {
             itemIds: [],
             items: [],
           },
-          {
-            ...latestTurn,
-            items: [
-              {
-                ...latestTurn.items[0]!,
-                markdownText: "hello",
-              },
-            ],
-          },
+          latestTurn,
         ],
       };
-      resumeThreadResult = baseConversation;
-      completeThreadTurnsResult = completeConversation;
+      const historyFixture = buildExactOlderHistoryPageFixture({
+        partial: baseConversation,
+        loaded: completeConversation,
+      });
+      resumeThreadResult = historyFixture.before;
+      historyPageResult = historyFixture.page;
       await manager.requestThreadStreamResume("thread-1");
       invokeRecords = [];
       ownerStreamPublishHandler = (input) => {
@@ -8539,23 +8856,23 @@ describe("local-conversation-store", () => {
       animationFrameCallbacks.shift()?.(16);
       expect(String(publishInputs.length)).toBe("1");
 
-      let completeResolved = false;
-      const completePromise = manager
+      let historyPageResolved = false;
+      const historyPagePromise = manager
         .handleThreadOwnerActionRequest({
-          type: "loadCompleteHistory",
-          threadId: "thread-1",
+          type: "loadHistoryPage",
+          request: historyFixture.request,
         })
         .then((result) => {
-          completeResolved = true;
+          historyPageResolved = true;
           return result as { revision?: number };
         });
       await flushAsyncWork(3);
 
-      expect(completeResolved).toBe(false);
+      expect(historyPageResolved).toBe(false);
       expect(String(publishInputs.length)).toBe("1");
 
       publishResolvers.shift()?.(true);
-      const result = await completePromise;
+      const result = await historyPagePromise;
       await flushAsyncWork(2);
 
       const prosePatch = publishInputs[0] as
@@ -8563,12 +8880,14 @@ describe("local-conversation-store", () => {
             change?: { type?: string; baseRevision?: number; revision?: number };
           }
         | undefined;
-      const historySnapshot = publishInputs[1] as
+      const historyPublication = publishInputs[1] as
         | {
             change?: {
               type?: string;
               revision?: number;
-              conversationState?: CodexConversationSnapshot;
+              mutation?: {
+                upsertTurns?: readonly { turnId?: string | null }[];
+              };
             };
           }
         | undefined;
@@ -8576,13 +8895,16 @@ describe("local-conversation-store", () => {
       expect(prosePatch?.change?.type).toBe("patches");
       expect(prosePatch?.change?.baseRevision).toBe(1);
       expect(prosePatch?.change?.revision).toBe(2);
-      expect(historySnapshot?.change?.type).toBe("snapshot");
-      expect(historySnapshot?.change?.revision).toBe(3);
-      expect(String(historySnapshot?.change?.conversationState?.turns.length ?? -1)).toBe("2");
+      expect(historyPublication?.change?.type).toBe("historyMutation");
+      expect(historyPublication?.change?.revision).toBe(3);
+      expect(historyPublication?.change?.mutation?.upsertTurns?.map((turn) => turn.turnId)).toEqual(
+        ["turn-older"],
+      );
+      expect(manager.readConversation("thread-1")?.turns).toHaveLength(2);
     } finally {
       ownerStreamPublishHandler = null;
       resumeThreadResult = null;
-      completeThreadTurnsResult = null;
+      historyPageResult = null;
       if (browserWindow) {
         if (previousRequestAnimationFrame) {
           browserWindow.requestAnimationFrame = previousRequestAnimationFrame;
@@ -8602,7 +8924,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner patch publish rejection repairs with current snapshot without source-null resync", async () => {
+  test("owner patch rejection adopts Main recovery before publishing a repair snapshot", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
@@ -8711,10 +9033,8 @@ describe("local-conversation-store", () => {
       expect(String(publishInputs.length)).toBe("2");
       expect(repairPublish?.ownerNotificationSequence).toBe(1);
       expect(repairPublish?.change?.type).toBe("snapshot");
-      expect(repairPublish?.change?.conversationState?.turns[0]?.items[0]?.markdownText).toBe(
-        "hello",
-      );
-      expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe("hello");
+      expect(repairPublish?.change?.conversationState?.turns[0]?.items[0]?.markdownText).toBe("");
+      expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe("");
       expect(manager.readConversation("thread-1")?.resumeState).toBe("resumed");
     } finally {
       ownerStreamPublishHandler = null;
@@ -8726,7 +9046,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner repair snapshot failure keeps partial text and marks conversation needs resume", async () => {
+  test("owner repair failure keeps Main recovery state and marks conversation needs resume", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
@@ -8823,7 +9143,7 @@ describe("local-conversation-store", () => {
 
       expect(invokeCalls.includes("codex:thread:snapshot:request")).toBe(false);
       expect(String(publishInputs.length)).toBe("2");
-      expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe("hello");
+      expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe("");
       expect(manager.readConversation("thread-1")?.resumeState).toBe("needs_resume");
     } finally {
       ownerStreamPublishHandler = null;
@@ -15771,14 +16091,14 @@ describe("local-conversation-store", () => {
     resumeThreadResult = null;
   });
 
-  test("owner complete-history action publishes snapshot revision from bundle 49659-49675", async () => {
+  test("owner history-page action publishes one bounded mutation revision", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
     rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
-    completeThreadTurnsResult = null;
+    historyPageResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
@@ -15810,14 +16130,18 @@ describe("local-conversation-store", () => {
           partialConversation.turns[0]!,
         ],
       };
-      resumeThreadResult = partialConversation;
-      completeThreadTurnsResult = completeConversation;
+      const historyFixture = buildExactOlderHistoryPageFixture({
+        partial: partialConversation,
+        loaded: completeConversation,
+      });
+      resumeThreadResult = historyFixture.before;
+      historyPageResult = historyFixture.page;
       await manager.requestThreadStreamResume("thread-1");
       invokeRecords = [];
 
       const result = (await manager.handleThreadOwnerActionRequest({
-        type: "loadCompleteHistory",
-        threadId: "thread-1",
+        type: "loadHistoryPage",
+        request: historyFixture.request,
       })) as { revision?: number };
       const publishRecord = invokeRecords.find(
         (record) => record.channel === "codex:thread-owner:stream-state:publish",
@@ -15828,29 +16152,218 @@ describe("local-conversation-store", () => {
             change?: {
               type?: string;
               revision?: number;
-              conversationState?: CodexConversationSnapshot;
+              mutation?: { upsertTurns?: readonly { turnId?: string | null }[] };
             };
           }
         | undefined;
 
       expect(result.revision).toBe(2);
       expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:turns:load-complete"),
+        invokeRecords.some((record) => record.channel === "codex:thread:history-page:load"),
       ).toBe(true);
       expect(Boolean(publishRecord)).toBe(true);
       expect(publishPayload?.conversationId).toBe("thread-1");
-      expect(publishPayload?.change?.type).toBe("snapshot");
+      expect(publishPayload?.change?.type).toBe("historyMutation");
       expect(publishPayload?.change?.revision).toBe(2);
-      expect(publishPayload?.change?.conversationState?.turns[0]?.turnId).toBe("turn-older");
+      expect(publishPayload?.change?.mutation?.upsertTurns?.[0]?.turnId).toBe("turn-older");
       expect(manager.readConversation("thread-1")?.turns[0]?.turnId).toBe("turn-older");
     } finally {
       resumeThreadResult = null;
-      completeThreadTurnsResult = null;
+      historyPageResult = null;
       manager.destroy();
     }
   });
 
-  test("complete-history requests reread the owner snapshot after publication", async () => {
+  test("owner exact-boundary action loads and publishes exactly one physical page", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      const partial = {
+        ...buildConversation("thread-page", "project-1"),
+        turns: [
+          {
+            threadId: "thread-page",
+            turnId: "turn-latest",
+            status: "completed" as const,
+            itemIds: [],
+            items: [],
+          },
+        ],
+      };
+      const loaded: CodexConversationSnapshot = {
+        ...partial,
+        turns: [
+          {
+            threadId: "thread-page",
+            turnId: "turn-one-page-older",
+            status: "completed" as const,
+            itemIds: [],
+            items: [],
+          },
+          ...partial.turns,
+        ],
+      };
+      const historyFixture = buildExactOlderHistoryPageFixture({ partial, loaded });
+      resumeThreadResult = historyFixture.before;
+      historyPageResult = historyFixture.page;
+      await manager.requestThreadStreamResume("thread-page");
+      invokeRecords = [];
+
+      const result = (await manager.handleThreadOwnerActionRequest({
+        type: "loadHistoryPage",
+        request: historyFixture.request,
+      })) as { revision?: number };
+
+      expect(result.revision).toBe(2);
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread:history-page:load"),
+      ).toHaveLength(1);
+      expect(
+        invokeRecords.filter(
+          (record) => record.channel === "codex:thread-owner:stream-state:publish",
+        ),
+      ).toHaveLength(1);
+      expect(manager.readConversation("thread-page")?.turns[0]?.turnId).toBe("turn-one-page-older");
+    } finally {
+      resumeThreadResult = null;
+      historyPageResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("owner persisted-history hydration publishes one bounded island mutation", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      const partial = withCanonicalState({
+        ...buildConversation("thread-search", "project-1"),
+        conversationEntityGeneration: 1,
+        historyTopologyGeneration: 11,
+        historyMutationRevision: 0,
+        historyRows: [],
+        turnPagination: {
+          olderCursor: "cursor:tail",
+          backwardsCursor: null,
+          oldestLoadedTurnId: null,
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+          loadedTurnCount: 0,
+          itemsView: "full",
+        },
+        turnItemsPaginationById: {},
+      });
+      const hydrated = withCanonicalState({
+        ...partial,
+        historyMutationRevision: 1,
+        historyRows: [
+          {
+            kind: "content",
+            key: "history-content:turn-older",
+            turnKey: "turn-older",
+            entityKey: "turn-older",
+          },
+        ],
+        turns: [
+          {
+            threadId: "thread-search",
+            turnId: "turn-older",
+            status: "completed",
+            itemIds: [],
+            items: [],
+          },
+        ],
+        turnPagination: {
+          ...partial.turnPagination!,
+          oldestLoadedTurnId: "turn-older",
+          loadedTurnCount: 1,
+        },
+      });
+      const mutation = buildCodexConversationHistoryMutation({
+        before: partial,
+        after: hydrated,
+        origin: {
+          kind: "island",
+          threadId: "thread-search",
+          mutationId: "search:request-1",
+          expectedConversationGeneration: 1,
+          expectedTopologyGeneration: 11,
+        },
+      });
+      resumeThreadResult = partial;
+      persistedHistoryHydrationResult = {
+        status: "found",
+        threadId: "thread-search",
+        turnId: "turn-older",
+        itemId: "item-selected",
+        topologyGeneration: 11,
+        mutation,
+      };
+      await manager.requestThreadStreamResume("thread-search");
+      invokeRecords = [];
+
+      const result = (await manager.handleThreadOwnerActionRequest({
+        type: "hydratePersistedHistoryOccurrence",
+        input: {
+          requestId: "search:request-1",
+          threadId: "thread-search",
+          hostId: "host-a",
+          hostGeneration: 3,
+          topologyGeneration: 11,
+          occurrence: {
+            turnId: "turn-older",
+            itemId: "item-selected",
+            snippet: "needle",
+            snippetMatchRange: { start: 0, end: 6 },
+            turnCursor: "cursor-turn-older",
+          },
+        },
+      })) as { revision?: number; hydration?: { topologyGeneration?: number } };
+
+      expect(result).toMatchObject({ revision: 2, hydration: { topologyGeneration: 11 } });
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread:history-search:hydrate"),
+      ).toHaveLength(1);
+      const publishes = invokeRecords.filter(
+        (record) => record.channel === "codex:thread-owner:stream-state:publish",
+      );
+      expect(publishes).toHaveLength(1);
+      const publication = publishes[0]?.args[0] as
+        | {
+            change?: {
+              type?: string;
+              mutation?: { upsertTurns?: readonly { turnId?: string | null }[] };
+            };
+          }
+        | undefined;
+      expect(publication?.change?.type).toBe("historyMutation");
+      expect(publication?.change?.mutation?.upsertTurns?.[0]?.turnId).toBe("turn-older");
+      expect(
+        invokeRecords.some((record) => record.channel === "codex:thread:history-page:load"),
+      ).toBe(false);
+    } finally {
+      resumeThreadResult = null;
+      persistedHistoryHydrationResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("exact history-page requests return the page result after local mutation publication", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
@@ -15870,34 +16383,36 @@ describe("local-conversation-store", () => {
         itemIds: [],
         items: [],
       };
-      resumeThreadResult = partial;
-      completeThreadTurnsResult = {
+      const loaded = {
         ...partial,
         turns: [olderTurn, ...partial.turns],
       };
+      const historyFixture = buildExactOlderHistoryPageFixture({ partial, loaded });
+      resumeThreadResult = historyFixture.before;
+      historyPageResult = historyFixture.page;
       await manager.requestThreadStreamResume("thread-copy");
 
-      const result = await manager.requestThreadCompleteHistory("thread-copy");
+      const result = await manager.requestHistoryPage(historyFixture.request);
 
-      expect(result?.turns[0]?.turnId).toBe("turn-older");
+      expect(result.status).toBe("applied");
       expect(manager.readConversation("thread-copy")?.turns[0]?.turnId).toBe("turn-older");
       expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:turns:load-complete"),
+        invokeRecords.some((record) => record.channel === "codex:thread:history-page:load"),
       ).toBe(true);
     } finally {
       resumeThreadResult = null;
-      completeThreadTurnsResult = null;
+      historyPageResult = null;
       manager.destroy();
     }
   });
 
-  test("follower older-turn loads wait for owner complete-history revision", async () => {
+  test("follower history loads route one exact target and wait for its published revision", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
     rendererClientRequestListener = null;
     threadListByProject = {};
-    followerActionResult = { revision: 2 };
+    followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
@@ -15917,7 +16432,7 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      const completeConversation: CodexConversationSnapshot = {
+      const nextPageConversation: CodexConversationSnapshot = {
         ...partialConversation,
         turns: [
           {
@@ -15930,6 +16445,11 @@ describe("local-conversation-store", () => {
           partialConversation.turns[0]!,
         ],
       };
+      const historyFixture = buildExactOlderHistoryPageFixture({
+        partial: partialConversation,
+        loaded: nextPageConversation,
+      });
+      followerActionResult = { revision: 2, page: historyFixture.page };
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
         hostId: "default",
         conversationId: "thread-1",
@@ -15937,29 +16457,29 @@ describe("local-conversation-store", () => {
         change: {
           type: "snapshot",
           revision: 1,
-          conversationState: partialConversation,
+          conversationState: historyFixture.before,
         },
         sourceClientId: "owner-a",
       });
 
-      const loadPromise = manager.requestThreadOlderTurns("thread-1");
+      const loadPromise = manager.requestHistoryPage(historyFixture.request);
       await flushAsyncWork();
       const followerRecord = invokeRecords.find(
         (record) => record.channel === "codex:thread-follower:action",
       );
       const followerPayload = followerRecord?.args[0] as
         | {
-            action?: { type?: string; threadId?: string };
+            action?: {
+              type?: string;
+              request?: CodexConversationHistoryPageRequest;
+            };
           }
         | undefined;
       expect(Boolean(followerRecord)).toBe(true);
-      expect(followerPayload?.action?.type).toBe("loadCompleteHistory");
-      expect(followerPayload?.action?.threadId).toBe("thread-1");
+      expect(followerPayload?.action?.type).toBe("loadHistoryPage");
+      expect(followerPayload?.action?.request).toEqual(historyFixture.request);
       expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:turns:load-older"),
-      ).toBe(false);
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:turns:load-complete"),
+        invokeRecords.some((record) => record.channel === "codex:thread:history-page:load"),
       ).toBe(false);
 
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
@@ -15967,29 +16487,122 @@ describe("local-conversation-store", () => {
         conversationId: "thread-1",
         version: 2,
         change: {
-          type: "snapshot",
+          type: "historyMutation",
+          baseRevision: 1,
           revision: 2,
-          conversationState: completeConversation,
+          mutation: historyFixture.page.mutation,
         },
         sourceClientId: "owner-a",
       });
 
       const loaded = await loadPromise;
-      expect(String(loaded?.turns.length ?? -1)).toBe("2");
-      expect(loaded?.turns[0]?.turnId).toBe("turn-older");
+      expect(loaded.status).toBe("applied");
+      expect(manager.readConversation("thread-1")?.turns[0]?.turnId).toBe("turn-older");
     } finally {
       followerActionResult = null;
       manager.destroy();
     }
   });
 
-  test("follower edit waits for owner complete-history before edit action from bundle 47940-47975", async () => {
+  test("follower persisted-history hydration routes to its owner and waits for one revision", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
     rendererClientRequestListener = null;
     threadListByProject = {};
-    followerActionResult = { revision: 2 };
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    followerActionResult = {
+      revision: 2,
+      hydration: {
+        status: "bounded-incomplete",
+        threadId: "thread-search",
+        turnId: "turn-older",
+        itemId: "item-selected",
+        topologyGeneration: 12,
+        reason: "next-item-page-required",
+      },
+    };
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      const partial = buildConversation("thread-search", "project-1");
+      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
+        hostId: "default",
+        conversationId: "thread-search",
+        version: 1,
+        change: { type: "snapshot", revision: 1, conversationState: partial },
+        sourceClientId: "owner-a",
+      });
+      const input = {
+        threadId: "thread-search",
+        hostId: "host-a",
+        hostGeneration: 3,
+        topologyGeneration: 11,
+        occurrence: {
+          turnId: "turn-older",
+          itemId: "item-selected",
+          snippet: "needle",
+          snippetMatchRange: { start: 0, end: 6 },
+          turnCursor: "cursor-turn-older",
+        },
+      } as const;
+
+      const hydration = manager.hydratePersistedHistoryOccurrence(input);
+      await flushAsyncWork();
+      const followerRecord = invokeRecords.find(
+        (record) => record.channel === "codex:thread-follower:action",
+      );
+      expect(followerRecord?.args[0]).toMatchObject({
+        conversationId: "thread-search",
+        action: { type: "hydratePersistedHistoryOccurrence", input },
+      });
+      expect(
+        invokeRecords.some((record) => record.channel === "codex:thread:history-search:hydrate"),
+      ).toBe(false);
+
+      const hydrated: CodexConversationSnapshot = {
+        ...partial,
+        historyTopologyGeneration: 12,
+        turns: [
+          {
+            threadId: "thread-search",
+            turnId: "turn-older",
+            status: "completed",
+            itemIds: [],
+            items: [],
+          },
+        ],
+      };
+      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
+        hostId: "default",
+        conversationId: "thread-search",
+        version: 2,
+        change: { type: "snapshot", revision: 2, conversationState: hydrated },
+        sourceClientId: "owner-a",
+      });
+
+      await expect(hydration).resolves.toMatchObject({
+        status: "bounded-incomplete",
+        topologyGeneration: 12,
+        reason: "next-item-page-required",
+      });
+      expect(manager.readConversation("thread-search")?.turns[0]?.turnId).toBe("turn-older");
+    } finally {
+      followerActionResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("follower edit targets the stable turn identity without loading complete history", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    followerActionResult = { streamRevision: 1 };
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
@@ -16007,19 +16620,6 @@ describe("local-conversation-store", () => {
             itemIds: [],
             items: [],
           },
-        ],
-      };
-      const completeConversation: CodexConversationSnapshot = {
-        ...partialConversation,
-        turns: [
-          {
-            threadId: "thread-1",
-            turnId: "turn-older",
-            status: "completed",
-            itemIds: [],
-            items: [],
-          },
-          partialConversation.turns[0]!,
         ],
       };
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
@@ -16041,44 +16641,20 @@ describe("local-conversation-store", () => {
       );
       await flushAsyncWork();
 
-      let followerRecords = invokeRecords.filter(
+      const followerRecords = invokeRecords.filter(
         (record) => record.channel === "codex:thread-follower:action",
       );
-      const firstPayload = followerRecords[0]?.args[0] as
-        | { action?: { type?: string } }
-        | undefined;
-      expect(String(followerRecords.length)).toBe("1");
-      expect(firstPayload?.action?.type).toBe("loadCompleteHistory");
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:edit-last-user-turn"),
-      ).toBe(false);
-
-      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "default",
-        conversationId: "thread-1",
-        version: 2,
-        change: {
-          type: "snapshot",
-          revision: 2,
-          conversationState: completeConversation,
-        },
-        sourceClientId: "owner-a",
-      });
-
-      await editPromise;
-      followerRecords = invokeRecords.filter(
-        (record) => record.channel === "codex:thread-follower:action",
-      );
-      const editPayload = followerRecords[1]?.args[0] as
+      const editPayload = followerRecords[0]?.args[0] as
         | {
             action?: { type?: string; threadId?: string; turnId?: string; message?: string };
           }
         | undefined;
-      expect(String(followerRecords.length)).toBe("2");
+      expect(String(followerRecords.length)).toBe("1");
       expect(editPayload?.action?.type).toBe("editLastUserTurn");
       expect(editPayload?.action?.threadId).toBe("thread-1");
       expect(editPayload?.action?.turnId).toBe("turn-older");
       expect(editPayload?.action?.message).toBe("Rewrite older prompt");
+      await editPromise;
       expect(
         invokeRecords.some((record) => record.channel === "codex:thread:edit-last-user-turn"),
       ).toBe(false);
@@ -16195,7 +16771,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("follower fork waits for owner complete-history before fork action from bundle 48049-48055", async () => {
+  test("follower fork targets the stable turn identity without loading complete history", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
@@ -16221,19 +16797,6 @@ describe("local-conversation-store", () => {
           },
         ],
       };
-      const completeConversation: CodexConversationSnapshot = {
-        ...partialConversation,
-        turns: [
-          {
-            threadId: "thread-1",
-            turnId: "turn-older",
-            status: "completed",
-            itemIds: [],
-            items: [],
-          },
-          partialConversation.turns[0]!,
-        ],
-      };
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
         hostId: "default",
         conversationId: "thread-1",
@@ -16253,40 +16816,16 @@ describe("local-conversation-store", () => {
       );
       await flushAsyncWork();
 
-      let followerRecords = invokeRecords.filter(
+      const followerRecords = invokeRecords.filter(
         (record) => record.channel === "codex:thread-follower:action",
       );
-      const firstPayload = followerRecords[0]?.args[0] as
-        | { action?: { type?: string } }
-        | undefined;
-      expect(String(followerRecords.length)).toBe("1");
-      expect(firstPayload?.action?.type).toBe("loadCompleteHistory");
-      expect(invokeRecords.some((record) => record.channel === "codex:thread:fork-from-turn")).toBe(
-        false,
-      );
-
-      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "default",
-        conversationId: "thread-1",
-        version: 2,
-        change: {
-          type: "snapshot",
-          revision: 2,
-          conversationState: completeConversation,
-        },
-        sourceClientId: "owner-a",
-      });
-
-      await forkPromise;
-      followerRecords = invokeRecords.filter(
-        (record) => record.channel === "codex:thread-follower:action",
-      );
-      const forkPayload = followerRecords[1]?.args[0] as
+      const forkPayload = followerRecords[0]?.args[0] as
         | {
             action?: { type?: string; threadId?: string; turnId?: string; message?: string };
           }
         | undefined;
-      expect(String(followerRecords.length)).toBe("2");
+      expect(String(followerRecords.length)).toBe("1");
+      await forkPromise;
       expect(forkPayload?.action?.type).toBe("forkConversationFromTurn");
       expect(forkPayload?.action?.threadId).toBe("thread-1");
       expect(forkPayload?.action?.turnId).toBe("turn-older");
@@ -17171,78 +17710,6 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner complete-history action publishes a target revision snapshot", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    rendererClientRequestListener = null;
-    threadListByProject = {};
-    resumeThreadResult = null;
-    completeThreadTurnsResult = null;
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = new CodexAppServerManager("default");
-    try {
-      const partialConversation: CodexConversationSnapshot = {
-        ...buildConversation("thread-1", "project-1"),
-        turns: [
-          {
-            threadId: "thread-1",
-            turnId: "turn-latest",
-            status: "completed",
-            itemIds: [],
-            items: [],
-          },
-        ],
-      };
-      const completeConversation: CodexConversationSnapshot = {
-        ...partialConversation,
-        turns: [
-          {
-            threadId: "thread-1",
-            turnId: "turn-older",
-            status: "completed",
-            itemIds: [],
-            items: [],
-          },
-          partialConversation.turns[0]!,
-        ],
-      };
-      resumeThreadResult = partialConversation;
-      completeThreadTurnsResult = completeConversation;
-      await manager.requestThreadStreamResume("thread-1");
-      invokeRecords = [];
-
-      const result = (await manager.handleThreadOwnerActionRequest({
-        type: "loadCompleteHistory",
-        threadId: "thread-1",
-      })) as { revision?: number };
-
-      const publishRecord = invokeRecords.find(
-        (record) => record.channel === "codex:thread-owner:stream-state:publish",
-      );
-      const publishInput = publishRecord?.args[0] as
-        | {
-            change?: {
-              type?: string;
-              revision?: number;
-              conversationState?: CodexConversationSnapshot;
-            };
-          }
-        | undefined;
-      expect(result.revision).toBe(2);
-      expect(publishInput?.change?.type).toBe("snapshot");
-      expect(publishInput?.change?.revision).toBe(2);
-      expect(String(publishInput?.change?.conversationState?.turns.length ?? -1)).toBe("2");
-    } finally {
-      resumeThreadResult = null;
-      completeThreadTurnsResult = null;
-      manager.destroy();
-    }
-  });
-
   test("local edit without a stream role resumes owner before using the owner app-server facade", async () => {
     invokeCalls = [];
     invokeRecords = [];
@@ -17365,8 +17832,7 @@ describe("local-conversation-store", () => {
       const rollbackIndex = invokeRecords.findIndex(
         (record) =>
           record.channel === "codex:thread-owner:app-server-request" &&
-          (record.args[0] as { request?: { method?: string } }).request?.method ===
-            "thread/rollback",
+          (record.args[0] as { request?: { method?: string } }).request?.method === "thread/revert",
       );
       const startIndex = invokeRecords.findIndex(
         (record) =>
@@ -17493,8 +17959,7 @@ describe("local-conversation-store", () => {
       const rollbackIndex = invokeRecords.findIndex(
         (record) =>
           record.channel === "codex:thread-owner:app-server-request" &&
-          (record.args[0] as { request?: { method?: string } }).request?.method ===
-            "thread/rollback",
+          (record.args[0] as { request?: { method?: string } }).request?.method === "thread/revert",
       );
       const startIndex = invokeRecords.findIndex(
         (record) =>
@@ -17586,8 +18051,7 @@ describe("local-conversation-store", () => {
       const rollbackIndex = invokeRecords.findIndex(
         (record) =>
           record.channel === "codex:thread-owner:app-server-request" &&
-          (record.args[0] as { request?: { method?: string } }).request?.method ===
-            "thread/rollback",
+          (record.args[0] as { request?: { method?: string } }).request?.method === "thread/revert",
       );
       const publishIndex = invokeRecords.findIndex(
         (record) => record.channel === "codex:thread-owner:stream-state:publish",
@@ -17827,7 +18291,7 @@ describe("local-conversation-store", () => {
           (record) =>
             record.channel === "codex:owner-app-server:request" &&
             (record.args[0] as { request?: { method?: string } })?.request?.method ===
-              "thread/rollback",
+              "thread/revert",
         ),
       ).toBe(false);
     } finally {

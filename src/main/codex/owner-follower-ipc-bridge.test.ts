@@ -112,7 +112,7 @@ it.effect("routes a follower action through current-owner proof and one request 
   }),
 );
 
-it.effect("normalizes an unavailable complete-history owner", () =>
+it.effect("normalizes an unavailable older-history page owner", () =>
   Effect.gen(function* () {
     const { runtime, scope } = yield* makeRuntime();
     const service = new FakeOwnerFollowerService();
@@ -129,7 +129,24 @@ it.effect("normalizes an unavailable complete-history owner", () =>
       followerRegistration.clientId,
       {
         conversationId: "thread-1",
-        action: { type: "loadCompleteHistory", threadId: "thread-1" },
+        action: {
+          type: "loadHistoryPage",
+          request: {
+            threadId: "thread-1",
+            expectedConversationGeneration: 1,
+            expectedHistoryMutationRevision: 0,
+            target: {
+              kind: "turnBoundary",
+              boundary: {
+                generation: 1,
+                islandId: "tail:1",
+                edge: "older",
+                boundaryId: "older:1",
+                progressKey: "cursor:1",
+              },
+            },
+          },
+        },
       },
     ).pipe(Effect.asVoid, Effect.flip);
     assert.match(error.message, /no-client-found/);

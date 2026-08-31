@@ -32,7 +32,10 @@ import {
 } from "../codex/owner-follower-ipc-bridge";
 import { CODEX_THREAD_STREAM_FOLLOWER_RECONNECT_GRACE_MS } from "../codex/codex-thread-stream-subscription-state";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
+import {
+  CodexOwnerNotificationDrainRuntime,
+  type CodexOwnerNotificationDrainTimeout,
+} from "./CodexOwnerNotificationDrainRuntime";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
 import { CodexRendererOwnerRetention } from "./CodexRendererOwnerRetention";
@@ -117,7 +120,9 @@ export interface CodexRendererConversationCoordinatorService {
   readonly reconcileOwnership: (conversationId: string) => void;
   /** Invalidates renderer stream roles after the physical app-server generation is lost. */
   readonly resetTransport: (conversationIds: readonly string[]) => void;
-  readonly awaitOwnerNotificationDrain: (conversationId: string) => Effect.Effect<void>;
+  readonly awaitOwnerNotificationDrain: (
+    conversationId: string,
+  ) => Effect.Effect<void, CodexOwnerNotificationDrainTimeout>;
   readonly clearConversation: (conversationId: string) => Effect.Effect<void>;
 }
 
@@ -444,6 +449,9 @@ export const make: Effect.Effect<
         yield* Effect.forEach(result.viewConversationIds, autoResolution.reevaluatePresentation, {
           discard: true,
         });
+        for (const conversationId of result.viewConversationIds) {
+          aggregate(conversationId)?.clearHistoryResidencyPins(clientId);
+        }
         for (const conversationId of result.ownerConversationIds) {
           ownerNotificationDrain.release(conversationId);
           pendingRequests.rejectDispatchedDynamicForThread(
@@ -528,6 +536,12 @@ export const make: Effect.Effect<
       if (!ownerClientId || ownerClientId !== sourceClientId) return reject("not-owner");
       const ownerEpoch = registry.getOwnerEpoch(input.conversationId);
       if (ownerEpoch === null) return reject("owner-epoch-mismatch");
+      if (
+        input.ownerNotificationSequence !== undefined &&
+        !ownerNotificationDrain.canAck(input.conversationId, input.ownerNotificationSequence)
+      ) {
+        return reject("owner-notification-sequence-mismatch");
+      }
       const result = applyCodexThreadOwnerPublication({
         current,
         expectedOwnerEpoch: ownerEpoch,
@@ -553,6 +567,12 @@ export const make: Effect.Effect<
       }).checkpoint;
       if (!checkpoint || !areCodexThreadStreamCheckpointsEqual(checkpoint, input.checkpoint)) {
         return reject("checkpoint-mismatch");
+      }
+      if (
+        input.ownerNotificationSequence !== undefined &&
+        !ownerNotificationDrain.ack(input.conversationId, input.ownerNotificationSequence)
+      ) {
+        return reject("owner-notification-sequence-mismatch");
       }
       registry.invalidateSnapshotBarriers(input.conversationId);
       events.publish({
@@ -580,9 +600,6 @@ export const make: Effect.Effect<
         });
       }
       flushSnapshots(input.conversationId);
-      if (typeof input.ownerNotificationSequence === "number") {
-        ownerNotificationDrain.ack(input.conversationId, input.ownerNotificationSequence);
-      }
       return { accepted: true, checkpoint };
     },
     acknowledgeOwnerNotification: (sourceClientId, input) =>
@@ -592,10 +609,10 @@ export const make: Effect.Effect<
         if (current?.conversation.archived) return false;
         const ownerClientId = registry.getOwnerClientId(input.conversationId);
         if (ownerClientId && ownerClientId !== sourceClientId) return false;
+        if (!ownerNotificationDrain.canAck(input.conversationId, input.sequence)) return false;
         if (!ownerClientId && !(yield* setOwner(input.conversationId, sourceClientId)))
           return false;
-        ownerNotificationDrain.ack(input.conversationId, input.sequence);
-        return true;
+        return ownerNotificationDrain.ack(input.conversationId, input.sequence);
       }),
     replayPendingOwnerRequests: (conversationId, rendererClientId) => {
       if (!rendererClientId || registry.getOwnerClientId(conversationId) !== rendererClientId)

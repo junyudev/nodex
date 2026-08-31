@@ -25,6 +25,7 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 it.effect("drains frame text before terminal turn consequences", () =>
   Effect.gen(function* () {
     const trace: string[] = [];
+    const forwarded: CodexServerNotification[] = [];
     const service = yield* make.pipe(
       Effect.provideService(
         CodexActiveGoalContinuation,
@@ -88,7 +89,13 @@ it.effect("drains frame text before terminal turn consequences", () =>
       Effect.provideService(
         CodexRendererConversationCoordinator,
         CodexRendererConversationCoordinator.of({
-          forwardNotificationForConversation: () => false,
+          forwardNotificationForConversation: (
+            _threadId: string,
+            notification: CodexServerNotification,
+          ) => {
+            forwarded.push(notification);
+            return true;
+          },
         } as unknown as CodexRendererConversationCoordinator["Service"]),
       ),
       Effect.provideService(
@@ -185,5 +192,46 @@ it.effect("drains frame text before terminal turn consequences", () =>
       "queue-terminal:true:0",
       "durable:remote-a:7",
     ]);
+
+    yield* service.apply({
+      hostId: "remote-a",
+      generation: 7,
+      notification: {
+        method: "item/started",
+        params: {
+          threadId: "thread-a",
+          turnId: "turn-a",
+          startedAtMs: 3,
+          item: {
+            type: "agentMessage",
+            id: "giant-item",
+            text: "x".repeat(2 * 1_024 * 1_024 + 1),
+            phase: null,
+            memoryCitation: null,
+          },
+        },
+      } as unknown as CodexServerNotification,
+      occurrenceId: "remote-a:7:inbox-a:93",
+      occurrenceToken: 93,
+    });
+
+    const forwardedItem = forwarded.findLast(
+      (notification) => notification.method === "item/started",
+    );
+    if (!forwardedItem || forwardedItem.method !== "item/started") {
+      throw new Error("Expected item lifecycle notification to be forwarded");
+    }
+    assert.strictEqual(forwardedItem.params.threadId, "thread-a");
+    assert.strictEqual(forwardedItem.params.turnId, "turn-a");
+    assert.strictEqual(forwardedItem.params.startedAtMs, 3);
+    assert.strictEqual(forwardedItem.params.item.id, "giant-item");
+    assert.strictEqual(forwardedItem.params.item.type, "agentMessage");
+    if (forwardedItem.params.item.type !== "agentMessage") {
+      throw new Error("Expected overflowing lifecycle item to become an agent message");
+    }
+    assert.strictEqual(
+      forwardedItem.params.item.text,
+      "Live output exceeded the resident Turn limit. Additional output was omitted from memory; the persisted transcript remains authoritative.",
+    );
   }),
 );

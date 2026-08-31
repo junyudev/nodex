@@ -7,6 +7,7 @@ import {
   isCodexReasoningSummaryPartAddedNotification,
   reduceCodexConversationFrameTextDeltas,
   toCodexFrameTextDelta,
+  toCodexReasoningSummaryPartAddedDelta,
 } from "./codex-frame-text-delta";
 import {
   isCodexCommandOutputNotification,
@@ -831,7 +832,14 @@ export function reduceCodexConversationEventWithEffects(
   }
 
   if (isCodexReasoningSummaryPartAddedNotification(event.notification)) {
-    return { state, effects };
+    return {
+      state: reduceCodexConversationFrameTextDeltas(
+        state,
+        [toCodexReasoningSummaryPartAddedDelta(event.notification)],
+        context,
+      ).state,
+      effects,
+    };
   }
 
   if (isCodexCommandOutputNotification(event.notification)) {

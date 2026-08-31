@@ -15,6 +15,7 @@ import type {
   CodexThreadDetail,
   CodexTranscriptEntry,
 } from "../../shared/types";
+import type { CodexHistoryTurnItemsPagination } from "../../shared/codex-conversation-state/codex-history-topology";
 import { EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION } from "../../shared/codex-queued-follow-up-state";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
 
@@ -101,6 +102,7 @@ export function buildCodexConversationSnapshot(input: {
   backgroundTerminalRows?: CodexBackgroundTerminalRow[];
   capabilityFlags: CodexConversationCapabilityFlags;
   turnPagination?: CodexConversationTurnPagination;
+  turnItemsPaginationById?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
   threadGoal?: ThreadGoal | null;
   completedThreadGoal?: ThreadGoal | null;
   threadGoalResumeConfirmation?: ThreadGoal | null;
@@ -127,6 +129,9 @@ export function buildCodexConversationSnapshot(input: {
       loadedTurnCount: input.detail.turns.length,
       itemsView: "full",
     },
+    ...(input.turnItemsPaginationById
+      ? { turnItemsPaginationById: { ...input.turnItemsPaginationById } }
+      : {}),
     turns: input.detail.turns.map((turn) => buildCodexConversationTurn(input.detail, turn)),
     canonicalState: input.canonicalState ?? null,
     canonicalRequests: [...(input.canonicalRequests ?? [])],

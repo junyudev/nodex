@@ -22,6 +22,7 @@ import type {
   Project,
   ProjectSession,
 } from "../../shared/types";
+import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
@@ -48,6 +49,14 @@ export const DEFAULT_CODEX_SIDEBAR_SYNC_STALE_AFTER = "1 minute";
 export const DEFAULT_CODEX_SIDEBAR_SYNC_BACKOFF_INITIAL = "2 seconds";
 export const DEFAULT_CODEX_SIDEBAR_SYNC_BACKOFF_MAX = "1 minute";
 export const DEFAULT_CODEX_SIDEBAR_NOTIFICATION_SYNC_DEBOUNCE = "300 millis";
+export const CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE = 100;
+export const CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE = 200;
+export const CODEX_SIDEBAR_SYNC_MAX_SWEEP_PAGES = 10;
+export const CODEX_SIDEBAR_SYNC_MAX_SWEEP_RESULTS = 1_000;
+export const CODEX_SIDEBAR_SYNC_MAX_PAGE_BYTES = 2 * 1024 * 1024;
+export const CODEX_SIDEBAR_SYNC_MAX_SWEEP_BYTES = 8 * 1024 * 1024;
+export const CODEX_SIDEBAR_SYNC_PAGE_DEADLINE = "5 seconds";
+export const CODEX_SIDEBAR_SYNC_SWEEP_DEADLINE = "30 seconds";
 
 export interface CodexSidebarSyncMetadata {
   readonly changedProjectIds: readonly string[];
@@ -88,6 +97,13 @@ export interface CodexSidebarSyncRuntimeOptions {
   readonly notificationDebounce?: Duration.Input;
   readonly sweepRetryInitial?: Duration.Input;
   readonly sweepRetryMax?: Duration.Input;
+  /** Test and pressure-fixture seam; production uses the exported bounded defaults. */
+  readonly sweepMaxPages?: number;
+  readonly sweepMaxResults?: number;
+  readonly sweepMaxPageBytes?: number;
+  readonly sweepMaxBytes?: number;
+  readonly sweepPageDeadline?: Duration.Input;
+  readonly sweepDeadline?: Duration.Input;
 }
 
 export class CodexSidebarSyncRuntime extends Context.Service<
@@ -136,6 +152,12 @@ interface SweepState {
   readonly projects: readonly Project[];
   readonly reason: CodexSidebarRefreshReason;
   readonly metadata: MutableSyncMetadata;
+  readonly pages: number;
+  readonly results: number;
+  readonly processedBytes: number;
+  readonly seenCursors: ReadonlySet<string>;
+  readonly reconcilePages: number;
+  readonly reconciledResults: number;
 }
 
 const emptyMetadata = (): MutableSyncMetadata => ({
@@ -189,6 +211,11 @@ const shouldEmit = (result: CodexSidebarSyncResult): boolean =>
   result.materializedSessionIds.length > 0 ||
   result.failedThreadIds.length > 0;
 
+const boundedPositiveInteger = (value: number | undefined, fallback: number): number =>
+  Number.isFinite(value) && value !== undefined
+    ? Math.min(fallback, Math.max(1, Math.floor(value)))
+    : fallback;
+
 export const make = (
   options: CodexSidebarSyncRuntimeOptions = {},
 ): Effect.Effect<
@@ -239,6 +266,25 @@ export const make = (
       Schedule.exponential(options.sweepRetryInitial ?? DEFAULT_CODEX_SIDEBAR_SYNC_BACKOFF_INITIAL),
       Schedule.spaced(options.sweepRetryMax ?? DEFAULT_CODEX_SIDEBAR_SYNC_BACKOFF_MAX),
     ]).pipe(Schedule.jittered);
+    const sweepMaxPages = boundedPositiveInteger(
+      options.sweepMaxPages,
+      CODEX_SIDEBAR_SYNC_MAX_SWEEP_PAGES,
+    );
+    const sweepMaxResults = boundedPositiveInteger(
+      options.sweepMaxResults,
+      CODEX_SIDEBAR_SYNC_MAX_SWEEP_RESULTS,
+    );
+    const sweepMaxPageBytes = boundedPositiveInteger(
+      options.sweepMaxPageBytes,
+      CODEX_SIDEBAR_SYNC_MAX_PAGE_BYTES,
+    );
+    const sweepMaxBytes = boundedPositiveInteger(
+      options.sweepMaxBytes,
+      CODEX_SIDEBAR_SYNC_MAX_SWEEP_BYTES,
+    );
+    const sweepPageDeadline = options.sweepPageDeadline ?? CODEX_SIDEBAR_SYNC_PAGE_DEADLINE;
+    const sweepDeadline = options.sweepDeadline ?? CODEX_SIDEBAR_SYNC_SWEEP_DEADLINE;
+    const sweepPageDeadlineMs = Duration.toMillis(sweepPageDeadline);
     let invalidationRevision = 0;
     let generation = 0;
     let useStateDbOnly = true;
@@ -270,16 +316,31 @@ export const make = (
     };
 
     const readProjects = Effect.fn("CodexSidebarSync.readProjects")(function* () {
-      const response = yield* core.workspace.read({
-        kind: "project_window",
-        include_archived: false,
-        window: { after: null, first: 200 },
-      });
+      const loaded = yield* core.workspace
+        .read({
+          kind: "project_window",
+          include_archived: false,
+          window: { after: null, first: CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE },
+        })
+        .pipe(Effect.timeoutOption(sweepPageDeadline));
+      if (Option.isNone(loaded)) {
+        return yield* fail(new Error("Available Project read exceeded its bounded deadline"));
+      }
+      const response = loaded.value;
       if (response.value.kind !== "project_window") {
         return yield* fail(new Error("Core returned a non-project-window read variant"));
       }
       if (response.value.projects.next_cursor) {
         return yield* fail(new Error("Available Project collection exceeded its Core bound"));
+      }
+      if (
+        response.value.projects.items.length > CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE ||
+        cappedApproximateValueBytes(response.value.projects.items, sweepMaxPageBytes) >
+          sweepMaxPageBytes
+      ) {
+        return yield* fail(
+          new Error("Available Project collection exceeded its bounded admission budget"),
+        );
       }
       return response.value.projects.items.map(projectCoreWorkspaceProject);
     });
@@ -456,24 +517,50 @@ export const make = (
       const tasks = [] as Array<ReturnType<typeof projectCoreWorkspaceTask>>;
       let projectionRevision = 0;
       let after: string | null = null;
-      do {
-        const response: import("../core-client/types").ProjectWorkspaceReadSnapshot =
-          yield* core.workspace.read({
+      const seenCursors = new Set<string>();
+      let retainedBytes = 0;
+      for (let page = 0; page < sweepMaxPages; page += 1) {
+        const loaded = yield* core.workspace
+          .read({
             kind: "sidebar_overview",
             include_archived: includeArchived,
-            pinned_window: { after, first: 200 },
-          });
+            pinned_window: { after, first: CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE },
+          })
+          .pipe(Effect.timeoutOption(sweepPageDeadline));
+        if (Option.isNone(loaded)) {
+          return yield* fail(new Error("Pinned sidebar read exceeded its bounded deadline"));
+        }
+        const response: import("../core-client/types").ProjectWorkspaceReadSnapshot = loaded.value;
         if (response.value.kind !== "sidebar_overview") {
           return yield* fail(new Error("Core returned a non-sidebar-overview read variant"));
+        }
+        const pageTasks = response.value.pinned_tasks.items;
+        const pageBytes = cappedApproximateValueBytes(pageTasks, sweepMaxPageBytes);
+        if (
+          pageTasks.length > CODEX_SIDEBAR_SYNC_PINNED_PAGE_SIZE ||
+          pageBytes > sweepMaxPageBytes ||
+          tasks.length > sweepMaxResults - pageTasks.length ||
+          retainedBytes > sweepMaxBytes - pageBytes
+        ) {
+          return yield* fail(
+            new Error("Pinned sidebar read exceeded its bounded admission budget"),
+          );
         }
         projectionRevision = Math.max(
           projectionRevision,
           response.value.pinned_tasks.authority.projection_revision,
         );
-        tasks.push(...response.value.pinned_tasks.items.map(projectCoreWorkspaceTask));
-        after = response.value.pinned_tasks.next_cursor ?? null;
-      } while (after);
-      return { tasks, projectionRevision };
+        for (const task of pageTasks) tasks.push(projectCoreWorkspaceTask(task));
+        retainedBytes += pageBytes;
+        const next = response.value.pinned_tasks.next_cursor ?? null;
+        if (next === null) return { tasks, projectionRevision };
+        if (seenCursors.has(next)) {
+          return yield* fail(new Error("Pinned sidebar cursor did not advance"));
+        }
+        seenCursors.add(next);
+        after = next;
+      }
+      return yield* fail(new Error("Pinned sidebar read exceeded its bounded page budget"));
     });
 
     const buildSnapshot = Effect.fn("CodexSidebarSync.buildSnapshot")(function* (
@@ -594,7 +681,7 @@ export const make = (
     }) {
       const params = (stateDbOnly: boolean) => ({
         cursor: input.cursor,
-        limit: 100,
+        limit: CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE,
         sortKey: "updated_at" as const,
         sortDirection: "desc" as const,
         modelProviders: null,
@@ -602,14 +689,25 @@ export const make = (
         archived: input.archived,
         ...(stateDbOnly ? { useStateDbOnly: true } : {}),
       });
-      const first = yield* gateway
-        .requestLocal("thread/list", params(useStateDbOnly))
-        .pipe(Effect.result);
-      if (first._tag === "Success") return first.success;
+      const request = (stateDbOnly: boolean) =>
+        gateway
+          .requestLocal("thread/list", params(stateDbOnly), {
+            priority: "background",
+            source: "thread_list",
+            timeoutMs: sweepPageDeadlineMs,
+          })
+          .pipe(Effect.timeoutOption(sweepPageDeadline));
+      const first = yield* request(useStateDbOnly).pipe(Effect.result);
+      if (first._tag === "Success") {
+        if (Option.isSome(first.success)) return first.success.value;
+        return yield* fail(new Error("App-server Thread list page exceeded its bounded deadline"));
+      }
       if (!useStateDbOnly || !isUnsupportedStateDbOnly(first.failure)) return yield* first.failure;
       useStateDbOnly = false;
       yield* Effect.logWarning("App server does not support state-DB thread listing");
-      return yield* gateway.requestLocal("thread/list", params(false));
+      const fallback = yield* request(false);
+      if (Option.isSome(fallback)) return fallback.value;
+      return yield* fail(new Error("App-server Thread list page exceeded its bounded deadline"));
     });
 
     const archiveExisting = Effect.fn("CodexSidebarSync.archiveExisting")(function* (
@@ -704,44 +802,138 @@ export const make = (
             })
             .pipe(Effect.asVoid);
 
+    const scanPageAdmissionFailure = (
+      state: SweepState,
+      response: ClientRequestResponsesByMethod["thread/list"],
+    ): string | null => {
+      if (state.pages >= sweepMaxPages) return "page budget exhausted";
+      const pageValue = { data: response.data, nextCursor: response.nextCursor ?? null };
+      const pageBytes = cappedApproximateValueBytes(pageValue, sweepMaxPageBytes);
+      if (response.data.length > CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE) {
+        return "result count exceeded page limit";
+      }
+      if (pageBytes > sweepMaxPageBytes) return "page bytes exceeded admission limit";
+      if (state.results > sweepMaxResults - response.data.length) {
+        return "result budget exhausted";
+      }
+      if (state.processedBytes > sweepMaxBytes - pageBytes) return "byte budget exhausted";
+      const next = response.nextCursor?.trim() || null;
+      const cursorKey = next === null ? null : `${state.archived ? "archived" : "active"}:${next}`;
+      if (cursorKey !== null && state.seenCursors.has(cursorKey)) return "cursor did not advance";
+      return null;
+    };
+
+    const advanceScanState = (
+      state: SweepState,
+      response: ClientRequestResponsesByMethod["thread/list"],
+    ): SweepState => {
+      const pageBytes = cappedApproximateValueBytes(
+        { data: response.data, nextCursor: response.nextCursor ?? null },
+        sweepMaxPageBytes,
+      );
+      const next = response.nextCursor?.trim() || null;
+      const seenCursors = new Set(state.seenCursors);
+      if (next !== null) seenCursors.add(`${state.archived ? "archived" : "active"}:${next}`);
+      return {
+        ...state,
+        cursor: next,
+        pages: state.pages + 1,
+        results: state.results + response.data.length,
+        processedBytes: state.processedBytes + pageBytes,
+        seenCursors,
+      };
+    };
+
+    const stopSweep = (state: SweepState, reason: string): Effect.Effect<null> =>
+      Effect.logWarning("Stopped bounded background sidebar reconciliation").pipe(
+        Effect.annotateLogs({
+          reason,
+          phase: state.phase,
+          archived: state.archived,
+          pages: state.pages,
+          results: state.results,
+          processedBytes: state.processedBytes,
+          reconcilePages: state.reconcilePages,
+          reconciledResults: state.reconciledResults,
+        }),
+        Effect.as(null),
+      );
+
     const advanceSweep = (
       state: SweepState,
     ): Effect.Effect<SweepState | null, CodexSidebarSyncError> =>
       Effect.gen(function* () {
         if (state.phase === "reconcile") {
-          const result = yield* core.workspace.apply({
-            operationId: createOperationId("sidebar.sweep-reconcile"),
-            intent: {
-              kind: "reconcile_app_server_thread_sweep",
-              sweep_id: state.sweepId,
-              limit: 100,
-            },
-          });
+          if (state.reconcilePages >= sweepMaxPages) {
+            return yield* stopSweep(state, "reconcile page budget exhausted");
+          }
+          const loaded = yield* core.workspace
+            .apply({
+              operationId: createOperationId("sidebar.sweep-reconcile"),
+              intent: {
+                kind: "reconcile_app_server_thread_sweep",
+                sweep_id: state.sweepId,
+                limit: CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE,
+              },
+            })
+            .pipe(Effect.timeoutOption(sweepPageDeadline));
+          if (Option.isNone(loaded)) {
+            return yield* stopSweep(state, "reconcile page exceeded its bounded deadline");
+          }
+          const result = loaded.value;
+          const affectedThreadIds = result.outcome.affected_thread_ids;
+          const affectedProjectIds = result.outcome.affected_project_ids;
+          const outcomeBytes = cappedApproximateValueBytes(result.outcome, sweepMaxPageBytes);
+          const outcomeResults = affectedThreadIds.length + affectedProjectIds.length;
+          if (
+            affectedThreadIds.length > CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE ||
+            affectedProjectIds.length > CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE ||
+            outcomeBytes > sweepMaxPageBytes ||
+            state.reconciledResults > sweepMaxResults - outcomeResults ||
+            state.processedBytes > sweepMaxBytes - outcomeBytes
+          ) {
+            return yield* stopSweep(
+              state,
+              "reconcile result exceeded its bounded admission budget",
+            );
+          }
           for (const projectId of result.outcome.affected_project_ids) {
             state.metadata.changedProjectIds.add(projectId);
           }
-          if (result.outcome.affected_thread_ids.length > 0) {
+          if (affectedThreadIds.length > 0) {
             state.metadata.projectlessChanged = true;
           }
-          if (result.outcome.affected_thread_ids.length === 100) return state;
+          const reconciled = {
+            ...state,
+            reconcilePages: state.reconcilePages + 1,
+            reconciledResults: state.reconciledResults + outcomeResults,
+            processedBytes: state.processedBytes + outcomeBytes,
+          };
+          if (affectedThreadIds.length === CODEX_SIDEBAR_SYNC_THREAD_PAGE_SIZE) return reconciled;
           const refreshedAt = yield* Clock.currentTimeMillis;
           yield* project({
-            includeArchived: state.includeArchived,
+            includeArchived: reconciled.includeArchived,
             source: "app-server",
             refreshed: true,
             refreshedAt,
-            metadata: projectMetadata(state.metadata),
-            reason: state.reason,
+            metadata: projectMetadata(reconciled.metadata),
+            reason: reconciled.reason,
           });
           return null;
         }
 
+        if (state.pages >= sweepMaxPages) {
+          return yield* stopSweep(state, "page budget exhausted");
+        }
         const response = yield* requestPage({ cursor: state.cursor, archived: state.archived });
-        const observed = yield* materializePage(response, state);
-        yield* observeSweepWindow(state.sweepId, observed);
-        if (response.nextCursor) return { ...state, cursor: response.nextCursor };
-        if (!state.archived) return { ...state, cursor: null, archived: true };
-        return { ...state, phase: "reconcile" as const, cursor: null };
+        const violation = scanPageAdmissionFailure(state, response);
+        if (violation) return yield* stopSweep(state, violation);
+        const scanned = advanceScanState(state, response);
+        const observed = yield* materializePage(response, scanned);
+        yield* observeSweepWindow(scanned.sweepId, observed);
+        if (scanned.cursor !== null) return scanned;
+        if (!scanned.archived) return { ...scanned, cursor: null, archived: true };
+        return { ...scanned, phase: "reconcile" as const, cursor: null };
       }).pipe(Effect.mapError(fail));
 
     const continueSweep = (initial: SweepState): Effect.Effect<void> => {
@@ -772,23 +964,47 @@ export const make = (
       const metadata = emptyMetadata();
       const sweepId = randomUUID();
       const response = yield* requestPage({ cursor: null, archived: false });
-      const observed = yield* materializePage(response, {
-        projects,
+      const initial: SweepState = {
+        phase: "scan",
+        sweepId,
+        cursor: null,
+        archived: false,
         includeArchived: input.includeArchived,
+        projects,
+        reason: input.reason,
         metadata,
-      });
+        pages: 0,
+        results: 0,
+        processedBytes: 0,
+        seenCursors: new Set(),
+        reconcilePages: 0,
+        reconciledResults: 0,
+      };
+      const violation = scanPageAdmissionFailure(initial, response);
+      if (violation) {
+        return yield* fail(new Error(`Initial sidebar Thread page ${violation}`));
+      }
+      const scanned = advanceScanState(initial, response);
+      const observed = yield* materializePage(response, scanned);
       yield* observeSweepWindow(sweepId, observed);
+      const following = scanned.cursor === null ? { ...scanned, archived: true } : scanned;
       runSweep(
-        continueSweep({
-          phase: "scan",
-          sweepId,
-          cursor: response.nextCursor ?? null,
-          archived: response.nextCursor == null,
-          includeArchived: input.includeArchived,
-          projects,
-          reason: input.reason,
-          metadata,
-        }),
+        continueSweep(following).pipe(
+          Effect.timeoutOption(sweepDeadline),
+          Effect.flatMap((result) =>
+            Option.isSome(result)
+              ? Effect.void
+              : Effect.logWarning(
+                  "Sidebar background reconciliation exceeded its bounded deadline",
+                ).pipe(
+                  Effect.annotateLogs({
+                    pages: following.pages,
+                    results: following.results,
+                    processedBytes: following.processedBytes,
+                  }),
+                ),
+          ),
+        ),
       );
       return projectMetadata(metadata);
     });

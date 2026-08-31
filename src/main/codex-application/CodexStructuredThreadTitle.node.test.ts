@@ -16,13 +16,19 @@ import type { CodexEndpointEvent } from "../codex-runtime/CodexEventHub";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
-import { make, type CodexStructuredThreadTitleOptions } from "./CodexStructuredThreadTitle";
+import {
+  CODEX_STRUCTURED_THREAD_TITLE_NOTIFICATION_QUEUE_CAPACITY,
+  make,
+  type CodexStructuredThreadTitleOptions,
+} from "./CodexStructuredThreadTitle";
 
 type ThreadStartResponse = ClientRequestResponsesByMethod["thread/start"];
 type TurnStartResponse = ClientRequestResponsesByMethod["turn/start"];
 
 const threadStarted = (threadId: string): ThreadStartResponse =>
-  ({ thread: { id: threadId } }) as ThreadStartResponse;
+  ({
+    thread: { id: threadId, historyMode: "paginated", turns: [] },
+  }) as unknown as ThreadStartResponse;
 
 const turnStarted = (turnId: string): TurnStartResponse =>
   ({ turn: { id: turnId } }) as TurnStartResponse;
@@ -46,6 +52,7 @@ const makeOptions = (
   const lifecycle: string[] = [];
   const options: CodexStructuredThreadTitleOptions = {
     hostId: "local",
+    generation: Effect.succeed(1),
     events: Stream.fromPubSub(events),
     startThread: () => Effect.succeed(threadStarted("thread-title")),
     startTurn: () => Effect.succeed(turnStarted("turn-title")),
@@ -76,6 +83,36 @@ const makeRuntime = (options: CodexStructuredThreadTitleOptions, lifecycle: stri
       }),
     ),
   );
+
+it.effect("rejects and releases a title helper start that returns inline history", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    let turnStarted = false;
+    const { lifecycle, options } = makeOptions(events, {
+      startThread: () =>
+        Effect.succeed({
+          thread: {
+            id: "thread-title-inline",
+            historyMode: "paginated",
+            turns: [{ id: "turn-inline", items: [], status: "completed" }],
+          },
+        } as never),
+      startTurn: () => {
+        turnStarted = true;
+        return Effect.die("inline history must fail before title generation");
+      },
+    });
+    const runtime = yield* makeRuntime(options, lifecycle);
+
+    const failure = yield* runtime
+      .generate({ prompt: "Metadata only", cwd: null })
+      .pipe(Effect.flip);
+
+    assert.strictEqual(failure.reason, "request-failed");
+    assert.isFalse(turnStarted);
+    assert.deepEqual(lifecycle, ["unsubscribe:thread-title-inline"]);
+  }),
+);
 
 it.effect("buffers an exact-host title completion that arrives before turn/start responds", () =>
   Effect.gen(function* () {
@@ -146,6 +183,157 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
       "register:thread-title-1",
       "unsubscribe:thread-title-1",
       "release:thread-title-1",
+    ]);
+  }),
+);
+
+it.effect("filters foreign-thread payloads before title inbox byte admission", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    const giantForeignDelta = "x".repeat(128 * 1024);
+    const { lifecycle, options } = makeOptions(events, {
+      startTurn: () =>
+        Effect.forEach(
+          Array.from({ length: 40 }),
+          () =>
+            PubSub.publish(
+              events,
+              notification("item/agentMessage/delta", {
+                threadId: "unrelated-thread",
+                turnId: "unrelated-turn",
+                itemId: "unrelated-item",
+                delta: giantForeignDelta,
+              }),
+            ),
+          { discard: true },
+        ).pipe(
+          Effect.andThen(
+            PubSub.publish(
+              events,
+              notification("item/agentMessage/delta", {
+                threadId: "thread-title",
+                turnId: "turn-title",
+                itemId: "message-1",
+                delta: '{"title":"Bounded title"}',
+              }),
+            ),
+          ),
+          Effect.andThen(
+            PubSub.publish(
+              events,
+              notification("turn/completed", {
+                threadId: "thread-title",
+                turn: { id: "turn-title", status: "completed" },
+              }),
+            ),
+          ),
+          Effect.as(turnStarted("turn-title")),
+        ),
+    });
+    const runtime = yield* makeRuntime(options, lifecycle);
+
+    assert.strictEqual(
+      yield* runtime.generate({ prompt: "Bounded title", cwd: null }),
+      "Bounded title",
+    );
+    assert.notInclude(lifecycle, "interrupt:turn-title");
+  }),
+);
+
+it.effect("fails and interrupts when a title notification exceeds byte admission", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    const { lifecycle, options } = makeOptions(events, {
+      startTurn: () =>
+        PubSub.publish(
+          events,
+          notification("item/agentMessage/delta", {
+            threadId: "thread-title",
+            turnId: "turn-oversized-notification",
+            itemId: "message-1",
+            delta: "x".repeat(128 * 1024),
+          }),
+        ).pipe(Effect.as(turnStarted("turn-oversized-notification"))),
+    });
+    const runtime = yield* makeRuntime(options, lifecycle);
+    const error = yield* runtime
+      .generate({ prompt: "Bounded notification", cwd: null })
+      .pipe(Effect.flip);
+
+    assert.strictEqual(error.reason, "notification-overflow");
+    assert.deepEqual(lifecycle, [
+      "register:thread-title",
+      "interrupt:turn-oversized-notification",
+      "unsubscribe:thread-title",
+      "release:thread-title",
+    ]);
+  }),
+);
+
+it.effect("fails and interrupts when the pre-response title inbox reaches its count cap", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    const { lifecycle, options } = makeOptions(events, {
+      startTurn: () =>
+        Effect.forEach(
+          Array.from({ length: CODEX_STRUCTURED_THREAD_TITLE_NOTIFICATION_QUEUE_CAPACITY + 1 }),
+          (_, index) =>
+            PubSub.publish(
+              events,
+              notification("item/agentMessage/delta", {
+                threadId: "thread-title",
+                turnId: "turn-count-overflow",
+                itemId: `message-${index}`,
+                delta: "x",
+              }),
+            ),
+          { discard: true },
+        ).pipe(Effect.as(turnStarted("turn-count-overflow"))),
+    });
+    const runtime = yield* makeRuntime(options, lifecycle);
+    const error = yield* runtime.generate({ prompt: "Bounded count", cwd: null }).pipe(Effect.flip);
+
+    assert.strictEqual(error.reason, "notification-overflow");
+    assert.deepEqual(lifecycle, [
+      "register:thread-title",
+      "interrupt:turn-count-overflow",
+      "unsubscribe:thread-title",
+      "release:thread-title",
+    ]);
+  }),
+);
+
+it.effect("fails and interrupts when accumulated title output exceeds 16 KiB", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    const { lifecycle, options } = makeOptions(events, {
+      startTurn: () =>
+        Effect.forEach(
+          Array.from({ length: 17 }),
+          (_, index) =>
+            PubSub.publish(
+              events,
+              notification("item/agentMessage/delta", {
+                threadId: "thread-title",
+                turnId: "turn-output-overflow",
+                itemId: `message-${index}`,
+                delta: "x".repeat(1024),
+              }),
+            ),
+          { discard: true },
+        ).pipe(Effect.as(turnStarted("turn-output-overflow"))),
+    });
+    const runtime = yield* makeRuntime(options, lifecycle);
+    const error = yield* runtime
+      .generate({ prompt: "Bounded output", cwd: null })
+      .pipe(Effect.flip);
+
+    assert.strictEqual(error.reason, "output-overflow");
+    assert.deepEqual(lifecycle, [
+      "register:thread-title",
+      "interrupt:turn-output-overflow",
+      "unsubscribe:thread-title",
+      "release:thread-title",
     ]);
   }),
 );

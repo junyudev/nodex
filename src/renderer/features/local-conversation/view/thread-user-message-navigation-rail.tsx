@@ -17,6 +17,7 @@ import {
   type MarkerNavigationRevealMode,
   resolveMarkerNavigationCurrentRangeIds,
 } from "@/components/shared/marker-navigation-rail";
+import { MARKER_NAVIGATION_VIRTUALIZE_AFTER } from "@/components/shared/marker-navigation-window";
 import { logTelemetryEvent } from "@/lib/statsig-telemetry";
 import type {
   ThreadUserMessageNavigationItem,
@@ -45,6 +46,7 @@ export interface ThreadUserMessageNavigationRailProps {
     item: ThreadUserMessageNavigationItem,
     mode: ThreadUserMessageNavigationRevealMode,
   ) => HTMLElement | null | Promise<HTMLElement | null>;
+  onPreviewItem?: (item: ThreadUserMessageNavigationItem) => void;
 }
 
 function findUserMessageTarget(
@@ -171,6 +173,7 @@ function NavigationTooltipContent({ item }: { item: ThreadUserMessageNavigationI
 export function ThreadUserMessageNavigationRail({
   items,
   onRevealItem,
+  onPreviewItem,
 }: ThreadUserMessageNavigationRailProps) {
   const { scrollElement, scrollElementIntoView, setScrollMode } =
     useLocalConversationThreadScrollController();
@@ -226,6 +229,7 @@ export function ThreadUserMessageNavigationRail({
       renderTooltipContent={(item) => <NavigationTooltipContent item={item} />}
       highlightTarget={highlightTarget}
       onRevealMissingItem={onRevealItem}
+      onItemPreviewIntent={onPreviewItem}
       onClickItem={(item) => {
         logTelemetryEvent("thread_user_message_navigation", undefined, {
           ordinal: item.ordinal,
@@ -240,6 +244,7 @@ export function ThreadUserMessageNavigationRail({
         "data-thread-user-message-navigation-item-id": item.id,
       })}
       markerClassName="thread-user-message-navigation-marker"
+      virtualizeAfter={MARKER_NAVIGATION_VIRTUALIZE_AFTER}
     />
   );
 }

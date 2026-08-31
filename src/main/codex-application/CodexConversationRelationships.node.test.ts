@@ -7,7 +7,11 @@ import type { CodexConversationSnapshot } from "../../shared/types";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
-import { make } from "./CodexConversationRelationships";
+import {
+  CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS,
+  CODEX_CONVERSATION_RELATIONSHIP_MAX_ACTIVE_REPAIRS,
+  make,
+} from "./CodexConversationRelationships";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -91,6 +95,11 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
   readonly scope: Scope.Scope;
   readonly published: CodexApplicationEvent[];
   readonly children: (parentThreadId: string) => readonly CoreThread[];
+  readonly childWindow?: (input: {
+    readonly parentThreadId: string;
+    readonly after: string | null;
+    readonly first: number;
+  }) => { readonly items: readonly CoreThread[]; readonly nextCursor: string | null };
   readonly directory: CodexThreadDirectory["Service"];
 }) {
   const workspace: CoreModuleClients["workspace"] = {
@@ -101,10 +110,18 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
         } as never);
       }
       if (read.kind === "child_thread_window") {
+        const page = input.childWindow?.({
+          parentThreadId: read.parent_thread_id,
+          after: read.window.after ?? null,
+          first: read.window.first ?? 200,
+        }) ?? {
+          items: input.children(read.parent_thread_id),
+          nextCursor: null,
+        };
         return Effect.succeed({
           value: {
             kind: "child_thread_window",
-            threads: { items: input.children(read.parent_thread_id), next_cursor: null },
+            threads: { items: page.items, next_cursor: page.nextCursor },
           },
         } as never);
       }
@@ -184,6 +201,40 @@ it.effect("shares one metadata repair per child and interrupts it with the owner
   }),
 );
 
+it.effect("caps concurrent metadata repairs across parents", () =>
+  Effect.gen(function* () {
+    const ownerScope = yield* Scope.make();
+    let repairStarts = 0;
+    let repairInterrupts = 0;
+    const directory = CodexThreadDirectory.of({
+      resolve: () =>
+        Effect.sync(() => {
+          repairStarts += 1;
+        }).pipe(
+          Effect.andThen(Effect.never),
+          Effect.onInterrupt(() => Effect.sync(() => (repairInterrupts += 1))),
+        ),
+    } as unknown as CodexThreadDirectory["Service"]);
+    const relationships = yield* buildRelationships({
+      scope: ownerScope,
+      published: [],
+      children: (parentThreadId) =>
+        Array.from({ length: CODEX_CONVERSATION_RELATIONSHIP_MAX_ACTIVE_REPAIRS + 1 }, (_, index) =>
+          coreThread(`${parentThreadId}-child-${index}`, parentThreadId),
+        ),
+      directory,
+    });
+
+    yield* relationships.refresh("parent-a");
+    yield* relationships.refresh("parent-b");
+    yield* Effect.yieldNow;
+
+    assert.strictEqual(repairStarts, CODEX_CONVERSATION_RELATIONSHIP_MAX_ACTIVE_REPAIRS);
+    yield* Scope.close(ownerScope, Exit.void);
+    assert.strictEqual(repairInterrupts, CODEX_CONVERSATION_RELATIONSHIP_MAX_ACTIVE_REPAIRS);
+  }),
+);
+
 it.effect("hands metadata repair to the child's current parent generation", () =>
   Effect.gen(function* () {
     const ownerScope = yield* Scope.make();
@@ -232,5 +283,68 @@ it.effect("hands metadata repair to the child's current parent generation", () =
     assert.strictEqual(repairStarts, 2);
     yield* Scope.close(ownerScope, Exit.void);
     assert.strictEqual(repairInterrupts, 1);
+  }),
+);
+
+it.effect("fails closed without publishing a partial projection when a child cursor repeats", () =>
+  Effect.gen(function* () {
+    const ownerScope = yield* Scope.make();
+    const published: CodexApplicationEvent[] = [];
+    let childReads = 0;
+    const relationships = yield* buildRelationships({
+      scope: ownerScope,
+      published,
+      children: () => [],
+      childWindow: () => {
+        childReads += 1;
+        return {
+          items: [coreThread(`child-${childReads}`, "parent")],
+          nextCursor: "stalled",
+        };
+      },
+      directory: CodexThreadDirectory.of({ resolve: () => Effect.die("unused") } as never),
+    });
+
+    const result = yield* Effect.exit(relationships.refresh("parent"));
+
+    assert.isTrue(Exit.isFailure(result));
+    assert.strictEqual(childReads, 2);
+    assert.deepEqual(published, []);
+    yield* Scope.close(ownerScope, Exit.void);
+  }),
+);
+
+it.effect("bounds a 10k-child relationship scan before it can retain every child", () =>
+  Effect.gen(function* () {
+    const ownerScope = yield* Scope.make();
+    const published: CodexApplicationEvent[] = [];
+    let childReads = 0;
+    const totalChildren = 10_000;
+    const relationships = yield* buildRelationships({
+      scope: ownerScope,
+      published,
+      children: () => [],
+      childWindow: ({ after, first }) => {
+        childReads += 1;
+        const page = after === null ? 0 : Number(after);
+        const start = page * first;
+        const count = Math.min(first, totalChildren - start);
+        return {
+          items: Array.from({ length: Math.max(0, count) }, (_, index) =>
+            coreThread(`child-${start + index}`, "parent"),
+          ),
+          nextCursor: start + count < totalChildren ? String(page + 1) : null,
+        };
+      },
+      directory: CodexThreadDirectory.of({ resolve: () => Effect.die("unused") } as never),
+    });
+
+    const result = yield* Effect.exit(relationships.refresh("parent"));
+
+    assert.isTrue(Exit.isFailure(result));
+    assert.strictEqual(childReads, 2);
+    assert.isTrue(childReads * 200 <= CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS + 200);
+    assert.deepEqual(published, []);
+    yield* Scope.close(ownerScope, Exit.void);
   }),
 );

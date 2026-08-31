@@ -11,6 +11,8 @@ import type {
   CodexConversationTurnPagination,
   CodexThreadSummary,
 } from "../../shared/types";
+import type { CodexHistoryTurnItemsPagination } from "../../shared/codex-conversation-state/codex-history-topology";
+import type { CodexHistoryRow } from "../../shared/codex-conversation-state/codex-history-topology";
 import { resolveCodexThreadMaterializationOwner } from "../codex/codex-thread-materialization-owner";
 import { reconcileCodexThreadTimestamps } from "../codex/codex-thread-timestamps";
 import { projectCodexConversationSnapshot } from "./CodexConversationSnapshotProjection";
@@ -208,8 +210,13 @@ export const projectCodexThreadDirectorySnapshot = (input: {
   readonly before: CodexCanonicalConversationState | null;
   readonly after: CodexCanonicalConversationState;
   readonly pagination: CodexConversationTurnPagination;
+  readonly itemsPaginationByTurnId?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+  readonly historyRows?: readonly CodexHistoryRow[];
+  readonly historyTopologyGeneration?: number;
   readonly observedAtMs: number;
+  readonly resumeState?: CodexConversationSnapshot["resumeState"];
 }): CodexConversationSnapshot => {
+  const resumeState = input.resumeState ?? "resumed";
   const base: CodexConversationSnapshot = input.current
     ? {
         ...input.current,
@@ -218,8 +225,11 @@ export const projectCodexThreadDirectorySnapshot = (input: {
       }
     : {
         ...input.summary,
-        resumeState: "resumed",
+        resumeState,
         turnPagination: input.pagination,
+        turnItemsPaginationById: input.itemsPaginationByTurnId,
+        historyRows: input.historyRows,
+        historyTopologyGeneration: input.historyTopologyGeneration,
         turns: [],
         canonicalState: input.before,
         canonicalRequests: [...(input.before?.requests ?? [])],
@@ -252,8 +262,11 @@ export const projectCodexThreadDirectorySnapshot = (input: {
   return {
     ...projected,
     ...input.summary,
-    resumeState: "resumed",
+    resumeState,
     turnPagination: input.pagination,
+    turnItemsPaginationById: input.itemsPaginationByTurnId,
+    historyRows: input.historyRows,
+    historyTopologyGeneration: input.historyTopologyGeneration,
     capabilityFlags: {
       ...projected.capabilityFlags,
       canForkFromTurn: input.after.turns.length > 0,

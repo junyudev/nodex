@@ -1,12 +1,29 @@
+import { cappedApproximateValueBytes } from "./codex-bounded-value-size";
+
 export const RENDERER_DELIVERY_WIRE_VERSION = 1 as const;
+export const RENDERER_DELIVERY_DATA_CHANNEL = "codex:renderer-delivery:data";
+export const RENDERER_DELIVERY_ACK_CHANNEL = "codex:renderer-delivery:ack";
 export const RENDERER_DELIVERY_INLINE_MAX_BYTES = 4 * 1024 * 1024;
 export const RENDERER_DELIVERY_CHUNK_BYTES = 2 * 1024 * 1024;
-export const RENDERER_DELIVERY_MAX_ENCODED_BYTES = 16 * 1024 * 1024;
+/**
+ * Recovery snapshots may contain the bounded canonical history, its renderer projection, and the
+ * segment recovery index at the same time. The active canonical budget is 16 MiB, so the wire
+ * ceiling reserves a fixed 4x envelope without making ordinary publication unbounded.
+ */
+export const RENDERER_DELIVERY_MAX_ENCODED_BYTES = 64 * 1024 * 1024;
+/**
+ * Admission runs before JSON validation/stringification. UTF-16 resident strings can use roughly
+ * twice their eventual UTF-8 wire size, so this fixed envelope prevents an unbudgeted producer
+ * from making serialization allocate an unbounded second copy while preserving the encoded cap as
+ * the exact wire contract.
+ */
+export const RENDERER_DELIVERY_MAX_APPROXIMATE_PAYLOAD_BYTES =
+  RENDERER_DELIVERY_MAX_ENCODED_BYTES * 2;
 export const RENDERER_DELIVERY_MAX_CHUNKS = Math.ceil(
   RENDERER_DELIVERY_MAX_ENCODED_BYTES / RENDERER_DELIVERY_CHUNK_BYTES,
 );
 export const RENDERER_DELIVERY_MAX_ACTIVE_TRANSFERS = 8;
-export const RENDERER_DELIVERY_MAX_REASSEMBLY_BYTES = 16 * 1024 * 1024;
+export const RENDERER_DELIVERY_MAX_REASSEMBLY_BYTES = RENDERER_DELIVERY_MAX_ENCODED_BYTES;
 export const RENDERER_DELIVERY_MAX_JSON_DEPTH = 64;
 export const RENDERER_DELIVERY_MAX_JSON_NODES = 1_000_000;
 
@@ -22,6 +39,16 @@ export type RendererDeliveryJsonValue =
   | string
   | readonly RendererDeliveryJsonValue[]
   | { readonly [key: string]: RendererDeliveryJsonValue };
+
+/**
+ * Payload reconstructed by the preload before it replays the original IPC
+ * event. Keeping routing inside the bounded transfer makes the existing
+ * renderer subscription API agnostic to inline versus chunked delivery.
+ */
+export type RendererDeliveryRoutedPayload = {
+  readonly channel: string;
+  readonly args: readonly RendererDeliveryJsonValue[];
+};
 
 interface RendererDeliveryEnvelopeBase {
   readonly version: typeof RENDERER_DELIVERY_WIRE_VERSION;
@@ -180,6 +207,7 @@ export class RendererDeliveryTransportError extends Error {
 interface JsonInspectionState {
   readonly ancestors: WeakSet<object>;
   nodes: number;
+  encodedBytes: number;
 }
 
 function fail(
@@ -190,17 +218,84 @@ function fail(
   throw new RendererDeliveryTransportError(code, message, options);
 }
 
+function addEncodedBytes(state: JsonInspectionState, bytes: number): void {
+  if (
+    !Number.isSafeInteger(bytes) ||
+    bytes < 0 ||
+    bytes > RENDERER_DELIVERY_MAX_ENCODED_BYTES - state.encodedBytes
+  ) {
+    fail(
+      "payloadTooLarge",
+      `Renderer delivery payload exceeds ${RENDERER_DELIVERY_MAX_ENCODED_BYTES} encoded bytes`,
+    );
+  }
+  state.encodedBytes += bytes;
+}
+
+/** Counts the well-formed JSON.stringify UTF-8 representation without allocating that string. */
+function addJsonStringBytes(value: string, state: JsonInspectionState): void {
+  addEncodedBytes(state, 2);
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit === 0x22 || codeUnit === 0x5c) {
+      addEncodedBytes(state, 2);
+      continue;
+    }
+    if (codeUnit < 0x20) {
+      addEncodedBytes(
+        state,
+        codeUnit === 0x08 ||
+          codeUnit === 0x09 ||
+          codeUnit === 0x0a ||
+          codeUnit === 0x0c ||
+          codeUnit === 0x0d
+          ? 2
+          : 6,
+      );
+      continue;
+    }
+    if (codeUnit < 0x80) {
+      addEncodedBytes(state, 1);
+      continue;
+    }
+    if (codeUnit < 0x800) {
+      addEncodedBytes(state, 2);
+      continue;
+    }
+    if (codeUnit < 0xd800 || codeUnit > 0xdfff) {
+      addEncodedBytes(state, 3);
+      continue;
+    }
+    const next = value.charCodeAt(index + 1);
+    if (codeUnit <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) {
+      addEncodedBytes(state, 4);
+      index += 1;
+      continue;
+    }
+    // Well-formed JSON.stringify escapes lone UTF-16 surrogates as `\\udxxx`.
+    addEncodedBytes(state, 6);
+  }
+}
+
 function inspectJsonValue(value: unknown, depth: number, state: JsonInspectionState): void {
   state.nodes += 1;
   if (state.nodes > RENDERER_DELIVERY_MAX_JSON_NODES) {
     fail("invalidPayload", "Renderer delivery payload exceeds the JSON node limit");
   }
-  if (
-    value === null ||
-    typeof value === "boolean" ||
-    typeof value === "string" ||
-    (typeof value === "number" && Number.isFinite(value))
-  ) {
+  if (value === null) {
+    addEncodedBytes(state, 4);
+    return;
+  }
+  if (typeof value === "boolean") {
+    addEncodedBytes(state, value ? 4 : 5);
+    return;
+  }
+  if (typeof value === "string") {
+    addJsonStringBytes(value, state);
+    return;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    addEncodedBytes(state, Object.is(value, -0) ? 1 : String(value).length);
     return;
   }
   if (typeof value !== "object") {
@@ -227,6 +322,7 @@ function inspectJsonValue(value: unknown, depth: number, state: JsonInspectionSt
   state.ancestors.add(value);
   try {
     if (isArray) {
+      addEncodedBytes(state, 2 + Math.max(0, value.length - 1));
       for (let index = 0; index < value.length; index += 1) {
         const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
         if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
@@ -240,14 +336,18 @@ function inspectJsonValue(value: unknown, depth: number, state: JsonInspectionSt
       return;
     }
 
-    for (const key of Object.keys(value)) {
+    const keys = Object.keys(value);
+    addEncodedBytes(state, 2 + Math.max(0, keys.length - 1));
+    for (const key of keys) {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
         fail("invalidPayload", "Renderer delivery payload must not contain accessors");
       }
+      addJsonStringBytes(key, state);
+      addEncodedBytes(state, 1);
       inspectJsonValue(descriptor.value, depth + 1, state);
     }
-    if (Object.getOwnPropertyNames(value).length !== Object.keys(value).length) {
+    if (Object.getOwnPropertyNames(value).length !== keys.length) {
       fail("invalidPayload", "Renderer delivery payload must not contain hidden properties");
     }
   } finally {
@@ -255,8 +355,14 @@ function inspectJsonValue(value: unknown, depth: number, state: JsonInspectionSt
   }
 }
 
+function encodedJsonBytes(value: unknown): number {
+  const state: JsonInspectionState = { ancestors: new WeakSet(), nodes: 0, encodedBytes: 0 };
+  inspectJsonValue(value, 0, state);
+  return state.encodedBytes;
+}
+
 function assertJsonPayload(value: unknown): asserts value is RendererDeliveryJsonValue {
-  inspectJsonValue(value, 0, { ancestors: new WeakSet(), nodes: 0 });
+  encodedJsonBytes(value);
 }
 
 function readRecord(value: unknown, label: string): Readonly<Record<string, unknown>> {
@@ -507,7 +613,16 @@ export function encodeRendererDelivery(input: {
 }): RendererDeliveryDispatch {
   validateTarget(input.target);
   const transferId = readId(input.transferId, "Renderer delivery transferId");
-  assertJsonPayload(input.payload);
+  if (
+    cappedApproximateValueBytes(input.payload, RENDERER_DELIVERY_MAX_APPROXIMATE_PAYLOAD_BYTES) >
+    RENDERER_DELIVERY_MAX_APPROXIMATE_PAYLOAD_BYTES
+  ) {
+    fail(
+      "payloadTooLarge",
+      `Renderer delivery payload exceeds ${RENDERER_DELIVERY_MAX_APPROXIMATE_PAYLOAD_BYTES} approximate resident bytes`,
+    );
+  }
+  const inspectedEncodedBytes = encodedJsonBytes(input.payload);
 
   let json: string;
   try {
@@ -516,6 +631,9 @@ export function encodeRendererDelivery(input: {
     fail("invalidPayload", "Renderer delivery payload could not be serialized", { cause });
   }
   const encoded = UTF8_ENCODER.encode(json);
+  if (encoded.byteLength !== inspectedEncodedBytes) {
+    fail("invalidPayload", "Renderer delivery payload changed while it was being serialized");
+  }
   if (encoded.byteLength > RENDERER_DELIVERY_MAX_ENCODED_BYTES) {
     fail(
       "payloadTooLarge",

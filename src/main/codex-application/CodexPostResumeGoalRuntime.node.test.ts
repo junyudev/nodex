@@ -80,7 +80,6 @@ const makeRuntime = (input: {
       CodexConversationHistoryRuntime,
       CodexConversationHistoryRuntime.of({
         loadPage: () => Effect.die("unused"),
-        loadComplete: () => Effect.die("unused"),
         clear: (id) => input.onHistoryClear?.(id),
       }),
     ),

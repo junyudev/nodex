@@ -32,7 +32,9 @@ import {
   toCodexFrameTextDelta,
 } from "../../shared/codex-conversation-state/codex-frame-text-delta";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
-import { parseTerminalInteractionInput } from "../../shared/codex-terminal-interaction";
+import { sanitizeCodexLiveLifecycleNotification } from "../../shared/codex-conversation-state/codex-live-turn-residency";
+import { CodexTerminalInteractionAccumulator } from "../../shared/codex-terminal-interaction";
+import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import {
   getCodexThreadOwnerNotificationThreadId,
   isCodexThreadOwnerNotification,
@@ -157,7 +159,7 @@ export const make: Effect.Effect<
   const autoResolution = yield* CodexUserInputAutoResolution;
   const conversations = yield* ConversationEntityMap;
   const browserUse = yield* BrowserUseRuntime;
-  const terminalInputBuffers = new Map<string, Map<string, string>>();
+  const terminalInputBuffers = new CodexTerminalInteractionAccumulator();
 
   const logFailure = (method: string, threadId: string, cause: unknown): Effect.Effect<void> =>
     Effect.logWarning("Codex notification consequence failed").pipe(
@@ -269,23 +271,27 @@ export const make: Effect.Effect<
     },
   );
 
-  const applyTerminalInteraction = (
+  const applyTerminalInteraction = Effect.fn(
+    "CodexProtocolNotificationEffects.applyTerminalInteraction",
+  )(function* (
     notification: Extract<
       CodexServerNotification,
       { method: "item/commandExecution/terminalInteraction" }
     >,
     observedAtMs: number,
     projectReplica: boolean,
-  ): void => {
+  ) {
     const { threadId, turnId, itemId, stdin } = notification.params;
-    const threadBuffers = terminalInputBuffers.get(threadId) ?? new Map<string, string>();
-    const parsed = parseTerminalInteractionInput(threadBuffers.get(itemId) ?? "", stdin);
-    if (parsed.inputBuffer) {
-      threadBuffers.set(itemId, parsed.inputBuffer);
-      terminalInputBuffers.set(threadId, threadBuffers);
-    } else {
-      threadBuffers.delete(itemId);
-      if (threadBuffers.size === 0) terminalInputBuffers.delete(threadId);
+    const parsed = terminalInputBuffers.accept(
+      { conversationId: threadId, turnId, itemId },
+      stdin,
+      observedAtMs,
+    );
+    if (parsed.disposition === "overflow") {
+      yield* Effect.logWarning("Discarding overflowing terminal interaction input").pipe(
+        Effect.annotateLogs({ threadId, turnId, itemId, reason: parsed.reason }),
+      );
+      return;
     }
     if (parsed.commands.length === 0) return;
     conversations.current(threadId)?.commitTerminalCommands({
@@ -298,7 +304,7 @@ export const make: Effect.Effect<
       observedAtMs,
       projectReplica,
     });
-  };
+  });
 
   const settleResolvedRequest = Effect.fn("CodexProtocolNotificationEffects.settleResolvedRequest")(
     function* (threadId: string, requestId: RequestId) {
@@ -353,13 +359,13 @@ export const make: Effect.Effect<
             effect.receiverThreadIds,
             (receiverThreadId) =>
               threadDirectory
-                .resolve({ threadId: receiverThreadId, fidelity: "full" })
+                .resolve({ threadId: receiverThreadId, fidelity: "metadata" })
                 .pipe(
                   Effect.catchCause((cause) =>
                     logFailure("hydrate-collaboration-thread", receiverThreadId, cause),
                   ),
                 ),
-            { concurrency: "unbounded", discard: true },
+            { concurrency: 2, discard: true },
           );
           events.publish({
             kind: "conversationRelationshipsInvalidated",
@@ -383,7 +389,10 @@ export const make: Effect.Effect<
   const apply = Effect.fn("CodexProtocolNotificationEffects.apply")(function* (
     input: CodexProtocolNotificationInput,
   ) {
-    const notification = input.notification;
+    // Direct callers must retain the same no-history invariant as the ingress lane.
+    const notification = sanitizeCodexLiveLifecycleNotification(
+      toCodexThreadStartedMetadataNotification(input.notification),
+    );
     if (yield* globalProjection.observe(notification)) return;
     const threadId = codexProtocolNotificationThreadId(notification);
     if (!threadId) return;
@@ -408,8 +417,18 @@ export const make: Effect.Effect<
     }
     if (notification.method === "item/commandExecution/terminalInteraction") {
       const observedAtMs = yield* Clock.currentTimeMillis;
-      applyTerminalInteraction(notification, observedAtMs, !ownerRouted);
+      yield* applyTerminalInteraction(notification, observedAtMs, !ownerRouted);
       return;
+    }
+    if (notification.method === "item/started" || notification.method === "item/completed") {
+      terminalInputBuffers.clearItem({
+        conversationId: threadId,
+        turnId: notification.params.turnId,
+        itemId: notification.params.item.id,
+      });
+    }
+    if (notification.method === "turn/completed") {
+      terminalInputBuffers.clearTurn(threadId, notification.params.turn.id);
     }
     if (notification.method === "item/completed" || notification.method === "turn/completed") {
       const observedAtMs = yield* Clock.currentTimeMillis;
@@ -531,7 +550,7 @@ export const make: Effect.Effect<
       const reason = new Error(
         `Codex Thread '${threadId}' was ${notification.method.slice("thread/".length)}`,
       );
-      terminalInputBuffers.delete(threadId);
+      terminalInputBuffers.clearConversation(threadId);
       yield* durable.pipe(Effect.ensuring(lifecycle.close(threadId, reason)));
     }
   });

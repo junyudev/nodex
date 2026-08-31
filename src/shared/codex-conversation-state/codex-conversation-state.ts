@@ -27,6 +27,8 @@ import type { ThreadTokenUsage } from "@nodex/codex-app-server-protocol/v2/Threa
 import { isCodexProtocolThreadItem } from "../codex-protocol-thread-item";
 import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import type { CodexItemStatus } from "../types";
+import type { CodexHistoryTurnItemsPagination } from "./codex-history-topology";
+import { boundCodexReasoningParts } from "./codex-reasoning-parts";
 
 export type CodexProtocolRequestId = RequestId;
 export type CodexProtocolThreadItem = ThreadItem;
@@ -670,6 +672,8 @@ export interface CreateCodexCanonicalHydratedConversationStateOptions {
   readonly runtimeWorkspaceRoots: NonNullable<TurnStartParams["runtimeWorkspaceRoots"]>;
   readonly pendingRequests?: readonly CodexCanonicalServerRequest[];
   readonly hasUnreadTurn?: boolean;
+  /** Required for every partial Turn so params can retain its opening user input. */
+  readonly turnItemsPaginationById?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
 }
 
 export interface ResolveCodexCanonicalHydratedPermissionContextInput {
@@ -857,6 +861,13 @@ export function materializeCodexCanonicalProtocolItem(
   item: ThreadItem,
   resolveCollabReceiverThread?: (threadId: string) => Thread | null,
 ): CodexCanonicalItem {
+  if (item.type === "reasoning") {
+    const summary = boundCodexReasoningParts(item.summary);
+    const content = boundCodexReasoningParts(item.content);
+    if (summary === item.summary && content === item.content) return item;
+    return { ...item, summary, content };
+  }
+
   if (item.type === "imageGeneration") {
     const savedSource =
       typeof item.savedPath === "string" ? normalizeCodexImageSource(item.savedPath) : null;
@@ -1555,10 +1566,12 @@ export function createCodexCanonicalHydratedConversationState(
   options: CreateCodexCanonicalHydratedConversationStateOptions,
 ): CodexCanonicalConversationState {
   assertCompleteCodexCanonicalHydrationOptions(options);
-  const partialTurn = thread.turns.find((turn) => turn.itemsView !== "full");
-  if (partialTurn) {
+  const partialTurnWithoutPagination = thread.turns.find(
+    (turn) => turn.itemsView !== "full" && options.turnItemsPaginationById?.[turn.id] === undefined,
+  );
+  if (partialTurnWithoutPagination) {
     throw new Error(
-      `Cannot hydrate partial turn '${partialTurn.id}' with itemsView '${partialTurn.itemsView}'`,
+      `Cannot hydrate partial turn '${partialTurnWithoutPagination.id}' without item pagination`,
     );
   }
   const { turns, ...protocol } = thread;
@@ -1571,7 +1584,10 @@ export function createCodexCanonicalHydratedConversationState(
   } satisfies CodexCanonicalHydratedPermissionContext;
   const hydratedTurns = turns.map((turn) => {
     const firstItem = turn.items[0];
-    const input = firstItem?.type === "userMessage" ? firstItem.content : [];
+    const input: UserInput[] =
+      firstItem?.type === "userMessage"
+        ? firstItem.content
+        : [...(options.turnItemsPaginationById?.[turn.id]?.oldestUserInput ?? [])];
     const common = {
       threadId: thread.id,
       input,

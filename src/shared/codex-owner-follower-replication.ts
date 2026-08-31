@@ -5,6 +5,7 @@ import type {
   CodexThreadStreamCheckpoint,
 } from "./types";
 import { applyCodexConversationStateUpdates } from "./codex-conversation-patches";
+import { applyCodexConversationHistoryMutation } from "./codex-conversation-history-page";
 
 const SHA_256_INITIAL_STATE = [
   0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
@@ -125,10 +126,214 @@ function stableStringify(value: unknown, seen: Set<object>): string {
   return `{${serialized}}`;
 }
 
+const replicaLeafDigestByIdentity = new WeakMap<object, string>();
+
+/**
+ * Conversation projections are immutable value graphs. Cache their content digest by identity so
+ * a page mutation pays for the changed Turn instead of re-serializing every resident item. A
+ * recovery snapshot naturally has new identities and therefore performs one full verification.
+ */
+function digestReplicaLeaf(value: unknown): string {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+    return sha256(stableStringify(value, new Set()));
+  }
+  const cached = replicaLeafDigestByIdentity.get(value);
+  if (cached) return cached;
+  const digest = sha256(stableStringify(value, new Set()));
+  replicaLeafDigestByIdentity.set(value, digest);
+  return digest;
+}
+
+function digestReplicaSequence(values: readonly unknown[]): string {
+  return sha256(
+    stableStringify(
+      {
+        kind: "sequence",
+        entries: values.map(digestReplicaLeaf),
+      },
+      new Set(),
+    ),
+  );
+}
+
+function digestReplicaRecord(
+  value: Readonly<Record<string, unknown>>,
+  excludedKeys: ReadonlySet<string>,
+): string {
+  const fields = Object.keys(value)
+    .filter((key) => !excludedKeys.has(key) && value[key] !== undefined)
+    .sort()
+    .map((key) => {
+      const field = value[key];
+      return [key, Array.isArray(field) ? digestReplicaSequence(field) : digestReplicaLeaf(field)];
+    });
+  return sha256(stableStringify({ kind: "record", fields }, new Set()));
+}
+
+function digestHistoryItemWindow(value: Readonly<Record<string, unknown>>): string {
+  const segments = Array.isArray(value.segments) ? value.segments : [];
+  return sha256(
+    stableStringify(
+      {
+        fields: digestReplicaRecord(value, new Set(["segments"])),
+        segments: digestReplicaSequence(segments),
+      },
+      new Set(),
+    ),
+  );
+}
+
+function digestCanonicalTurnWithHistoryWindow(
+  value: unknown,
+  itemWindows: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): string {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return digestReplicaLeaf(value);
+  }
+  const record = value as Readonly<Record<string, unknown>>;
+  const protocol = record.protocol;
+  const turnId =
+    typeof protocol === "object" && protocol !== null && !Array.isArray(protocol)
+      ? (protocol as Readonly<Record<string, unknown>>).id
+      : null;
+  const window = typeof turnId === "string" ? itemWindows[turnId] : undefined;
+  if (!window) return digestReplicaLeaf(value);
+  return sha256(
+    stableStringify(
+      {
+        fields: digestReplicaRecord(record, new Set(["items"])),
+        itemWindow: digestHistoryItemWindow(window),
+      },
+      new Set(),
+    ),
+  );
+}
+
+function digestRendererTurnWithHistoryWindow(
+  value: unknown,
+  itemWindows: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+): string {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return digestReplicaLeaf(value);
+  }
+  const record = value as Readonly<Record<string, unknown>>;
+  const turnId = record.turnId;
+  const window = typeof turnId === "string" ? itemWindows[turnId] : undefined;
+  if (!window) return digestReplicaLeaf(value);
+  return sha256(
+    stableStringify(
+      {
+        fields: digestReplicaRecord(record, new Set(["itemIds", "items"])),
+        itemWindow: digestHistoryItemWindow(window),
+      },
+      new Set(),
+    ),
+  );
+}
+
+function digestHistoryTurnSequence(
+  values: readonly unknown[],
+  itemWindows: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  digestTurn: (
+    value: unknown,
+    windows: Readonly<Record<string, Readonly<Record<string, unknown>>>>,
+  ) => string,
+): string {
+  return sha256(
+    stableStringify(
+      {
+        kind: "history-turn-sequence",
+        entries: values.map((value) => digestTurn(value, itemWindows)),
+      },
+      new Set(),
+    ),
+  );
+}
+
+/**
+ * Domain-separated Merkle material for the replication checkpoint. The root still binds every
+ * shared field and ordered Turn, while unchanged immutable subtrees are reused across revisions.
+ */
+export function serializeCodexConversationReplicaDigest(
+  conversation: CodexConversationSnapshot,
+): string {
+  const document = conversation as unknown as Readonly<Record<string, unknown>>;
+  const itemWindows = Object.fromEntries(
+    Object.entries(conversation.historyItemWindowsByTurnId ?? {}).map(([turnId, window]) => [
+      turnId,
+      window as unknown as Readonly<Record<string, unknown>>,
+    ]),
+  );
+  const canonical = conversation.canonicalState;
+  let canonicalDigest: string;
+  if (canonical && typeof canonical === "object" && !Array.isArray(canonical)) {
+    const canonicalRecord = canonical as unknown as Readonly<Record<string, unknown>>;
+    const canonicalTurns = Array.isArray(canonicalRecord.turns) ? canonicalRecord.turns : [];
+    canonicalDigest = sha256(
+      stableStringify(
+        {
+          fields: digestReplicaRecord(canonicalRecord, new Set(["turns"])),
+          turns: digestHistoryTurnSequence(
+            canonicalTurns,
+            itemWindows,
+            digestCanonicalTurnWithHistoryWindow,
+          ),
+        },
+        new Set(),
+      ),
+    );
+  } else {
+    // `canonicalState` is optional on snapshots produced before the app-server has hydrated a
+    // thread. Keep absence in the Merkle domain without asking the strict value serializer to
+    // encode JavaScript `undefined`.
+    canonicalDigest =
+      canonical === undefined
+        ? sha256('{"kind":"absent-canonical-state"}')
+        : digestReplicaLeaf(canonical);
+  }
+
+  const sharedRequests = (conversation.requests ?? []).filter(
+    (request) => request.type !== "nodexAgentAuthorization",
+  );
+  const rendererTurns = conversation.turns ?? [];
+  return stableStringify(
+    {
+      algorithm: "nodex-conversation-merkle-v1",
+      fields: digestReplicaRecord(
+        document,
+        new Set([
+          "canonicalState",
+          "historyItemWindowsByTurnId",
+          "hasUnreadTurn",
+          "requests",
+          "turns",
+          "unreadMessageCount",
+        ]),
+      ),
+      canonical: canonicalDigest,
+      itemWindows: sha256(
+        stableStringify(
+          Object.entries(itemWindows)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([turnId, window]) => [turnId, digestHistoryItemWindow(window)]),
+          new Set(),
+        ),
+      ),
+      requests: digestReplicaSequence(sharedRequests),
+      turns: digestHistoryTurnSequence(
+        rendererTurns,
+        itemWindows,
+        digestRendererTurnWithHistoryWindow,
+      ),
+    },
+    new Set(),
+  );
+}
+
 function buildSharedReplicationDocument(
   conversation: CodexConversationSnapshot,
 ): CodexConversationSnapshot {
-  const requests = conversation.requests.filter(
+  const requests = (conversation.requests ?? []).filter(
     (request) => request.type !== "nodexAgentAuthorization",
   );
   const {
@@ -145,7 +350,7 @@ function buildSharedReplicationDocument(
 }
 
 export function hashCodexConversationReplica(conversation: CodexConversationSnapshot): string {
-  return sha256(serializeCodexConversationReplica(conversation));
+  return sha256(serializeCodexConversationReplicaDigest(conversation));
 }
 
 export function serializeCodexConversationReplica(conversation: CodexConversationSnapshot): string {
@@ -272,7 +477,7 @@ export function applyCodexThreadOwnerPublication(input: {
     if (publication.checkpoint.revision !== current.checkpoint.revision + 1) {
       return rejectedReplicaPublication("revision-gap", current);
     }
-    if (publication.change.type === "patches") {
+    if (publication.change.type === "patches" || publication.change.type === "historyMutation") {
       if (
         publication.change.baseRevision !== current.checkpoint.revision ||
         publication.change.revision !== publication.checkpoint.revision
@@ -287,7 +492,7 @@ export function applyCodexThreadOwnerPublication(input: {
   let nextConversation: CodexConversationSnapshot;
   if (publication.change.type === "snapshot") {
     nextConversation = publication.change.conversationState;
-  } else {
+  } else if (publication.change.type === "patches") {
     if (!current) return rejectedReplicaPublication("missing-base", current);
     try {
       nextConversation = applyCodexConversationStateUpdates(
@@ -297,6 +502,14 @@ export function applyCodexThreadOwnerPublication(input: {
     } catch {
       return rejectedReplicaPublication("patch-apply-failed", current);
     }
+  } else {
+    if (!current) return rejectedReplicaPublication("missing-base", current);
+    const applied = applyCodexConversationHistoryMutation(
+      current.conversation,
+      publication.change.mutation,
+    );
+    if (!applied.ok) return rejectedReplicaPublication("patch-apply-failed", current);
+    nextConversation = applied.conversation;
   }
 
   if (hashCodexConversationReplica(nextConversation) !== publication.checkpoint.canonicalHash) {

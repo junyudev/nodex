@@ -193,8 +193,10 @@ const catalogHarness = (input: {
 const sidebarHarness = (input: {
   readonly requestList: (params: {
     readonly archived: boolean;
+    readonly cursor?: string | null;
   }) => Effect.Effect<unknown, CodexSidebarSyncError>;
   readonly directory?: CodexThreadDirectory["Service"];
+  readonly runtimeOptions?: Parameters<typeof makeSidebarSync>[0];
 }) => {
   const applied: Array<{ readonly intent: { readonly kind: string } }> = [];
   let snapshotReads = 0;
@@ -250,7 +252,7 @@ const sidebarHarness = (input: {
   return {
     applied,
     snapshotReads: () => snapshotReads,
-    runtime: makeSidebarSync().pipe(
+    runtime: makeSidebarSync(input.runtimeOptions).pipe(
       Effect.provideService(
         CodexApplicationEventHub,
         CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
@@ -317,6 +319,37 @@ it.effect("coalesces physical refreshes and crosses the Core invalidation fence"
       yield* runtime.sync({ policy: "stale" });
       assert.strictEqual(activeRequests, 2);
       assert.isAtLeast(harness.snapshotReads(), 2);
+    }),
+  ),
+);
+
+it.effect("stops a capped background sweep before it can reconcile unseen Threads", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const requests: Array<{ readonly archived: boolean; readonly cursor: string | null }> = [];
+      const harness = sidebarHarness({
+        runtimeOptions: { sweepMaxPages: 1 },
+        requestList: ({ archived, cursor = null }) =>
+          Effect.sync(() => {
+            requests.push({ archived, cursor });
+            return { data: [], nextCursor: "unseen-page" };
+          }),
+      });
+      const internalThreads = yield* makeInternalThreadRegistry;
+      const runtime = yield* harness.runtime.pipe(
+        Effect.provideService(CodexInternalThreadRegistry, internalThreads),
+      );
+
+      yield* runtime.sync({ policy: "force" });
+      for (let attempt = 0; attempt < 8; attempt += 1) yield* Effect.yieldNow;
+
+      assert.deepEqual(requests, [{ archived: false, cursor: null }]);
+      assert.strictEqual(
+        harness.applied.filter(
+          (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
+        ).length,
+        0,
+      );
     }),
   ),
 );

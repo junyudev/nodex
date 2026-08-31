@@ -5,6 +5,10 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AgentImportProgress } from "../../shared/agent-import";
+import {
+  CodexAppServerCapabilities,
+  createCodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { make } from "./AgentImportRuntime";
 import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
@@ -20,6 +24,7 @@ const TARGET_THREAD_ID = "019c0000-0000-7000-8000-000000000004";
 
 interface ImportHarnessOptions {
   readonly onAcceptImport?: CodexThreadDirectory["Service"]["acceptImportResult"];
+  readonly returnsTranscript?: boolean;
 }
 
 const temporaryRoot = Effect.acquireRelease(
@@ -49,19 +54,34 @@ const prepareSession = (root: string) => {
 };
 
 const makeHarness = (runtimeStateHome: string, cwd: string, options: ImportHarnessOptions = {}) => {
-  const requests: Array<{ readonly method: string; readonly params: unknown }> = [];
+  const requests: Array<{
+    readonly method: string;
+    readonly params: unknown;
+    readonly scheduling: unknown;
+  }> = [];
   const acceptedImports: unknown[] = [];
   const titles: unknown[] = [];
   const events: CodexApplicationEvent[] = [];
   let sidebarSyncs = 0;
 
-  const requestLocal = ((method: string, params: unknown) =>
+  const capability = createCodexAppServerCapabilitySnapshot({
+    hostId: "local",
+    generation: 13,
+    userAgent: "codex-app-server/0.145.0-alpha.15",
+  });
+  const requestLocal = ((method: string, params: unknown, scheduling: unknown) =>
     Effect.sync(() => {
-      requests.push({ method, params });
+      requests.push({ method, params, scheduling });
       if (method === "thread/fork") {
         return {
           cwd,
-          thread: { cwd, id: TARGET_THREAD_ID, name: null },
+          thread: {
+            cwd,
+            historyMode: "paginated",
+            id: TARGET_THREAD_ID,
+            name: null,
+            turns: options.returnsTranscript ? [{ id: "poison-turn", items: [] }] : [],
+          },
         };
       }
       if (method === "thread/delete") return {};
@@ -104,6 +124,14 @@ const makeHarness = (runtimeStateHome: string, cwd: string, options: ImportHarne
     titles,
     runtime: make({ runtimeStateHome }).pipe(
       Effect.provideService(
+        CodexAppServerCapabilities,
+        CodexAppServerCapabilities.of({
+          forHost: () => Effect.succeed(capability),
+          forThread: () => Effect.succeed(capability),
+          isCurrent: () => Effect.succeed(true),
+        }),
+      ),
+      Effect.provideService(
         CodexApplicationEventHub,
         CodexApplicationEventHub.of({
           events: Stream.empty,
@@ -141,6 +169,10 @@ it.effect("imports a native rollout through the canonical services and records i
         harness.requests.map(({ method }) => method),
         ["thread/fork"],
       );
+      assert.deepEqual(harness.requests[0]?.scheduling, {
+        expectedHostId: "local",
+        expectedGeneration: 13,
+      });
       assert.strictEqual(harness.acceptedImports.length, 1);
       assert.deepEqual(harness.titles, [
         { name: "Imported conversation", normalization: "trim", threadId: TARGET_THREAD_ID },
@@ -203,6 +235,32 @@ it.effect("deletes a fork when canonical materialization fails", () =>
       assert.strictEqual(result.outcomes[0]?.failureCount, 1);
       assert.match(result.outcomes[0]?.messages[0] ?? "", /projection failed/u);
       assert.strictEqual(harness.sidebarSyncs(), 0);
+    }),
+  ),
+);
+
+it.effect("rejects and deletes an import response that carries transcript history", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const source = prepareSession(root);
+      const harness = makeHarness(source.runtimeStateHome, source.cwd, {
+        returnsTranscript: true,
+      });
+      const runtime = yield* harness.runtime;
+      const scan = yield* runtime.scan("open-interpreter", source.sourceHome);
+      const sessionItem = scan.items.find((item) => item.kind === "sessions");
+      assert.isDefined(sessionItem);
+
+      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [sessionItem.id] });
+
+      assert.deepEqual(
+        harness.requests.map(({ method }) => method),
+        ["thread/fork", "thread/delete"],
+      );
+      assert.strictEqual(harness.acceptedImports.length, 0);
+      assert.deepEqual(result.importedThreadIds, []);
+      assert.match(result.outcomes[0]?.messages[0] ?? "", /metadata-only paginated history/u);
     }),
   ),
 );

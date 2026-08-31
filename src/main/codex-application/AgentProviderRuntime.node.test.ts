@@ -9,7 +9,11 @@ import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { ProviderCredentials } from "../platform/electron/ProviderCredentials";
-import { AgentProviderRuntime, live as agentProviderRuntimeLive } from "./AgentProviderRuntime";
+import {
+  AgentProviderRuntime,
+  CODEX_IDLE_CHECK_MAX_THREAD_PAGES,
+  live as agentProviderRuntimeLive,
+} from "./AgentProviderRuntime";
 
 const unsupported = () => Effect.die(new Error("Unsupported test operation"));
 
@@ -136,6 +140,61 @@ it.effect("owns provider discovery, profile resolution, and deferred credential 
     yield* runtime.ensureRuntimeReady;
     assert.strictEqual(restarts, 1);
 
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("keeps runtime restart pending when the bounded idle scan is incomplete", () =>
+  Effect.gen(function* () {
+    let idlePageCount = 0;
+    let restarts = 0;
+    const gateway = CodexGateway.of({
+      localHostId: "local",
+      requestRawOnHost: unsupported,
+      requestRawForThread: unsupported,
+      events: Stream.empty,
+      requestLocal: ((method: string) => {
+        if (method !== "thread/list") return unsupported();
+        idlePageCount += 1;
+        return Effect.succeed({
+          data: [],
+          nextCursor: `cursor-${idlePageCount}`,
+        });
+      }) as CodexGateway["Service"]["requestLocal"],
+      requestOnHost: unsupported,
+      requestForThread: unsupported,
+      notifyLocal: unsupported,
+      connection: unsupported,
+      connectionChanges: () => Stream.empty,
+      awaitReady: () => Effect.void,
+      reconcileHost: unsupported,
+      removeHost: unsupported,
+      restartHost: () => Effect.sync(() => void (restarts += 1)),
+    });
+    const credentials = ProviderCredentials.of({
+      status: () => Effect.succeed("ready"),
+      set: () => Effect.void,
+      remove: () => Effect.void,
+    });
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      agentProviderRuntimeLive.pipe(
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(CodexGateway, gateway),
+            Layer.succeed(ProviderCredentials, credentials),
+          ),
+        ),
+      ),
+      scope,
+    );
+    const runtime = Context.get(context, AgentProviderRuntime);
+
+    const result = yield* runtime.setCredential({ providerId: "openai", apiKey: "key" });
+
+    assert.strictEqual(result.runtimeRestartPending, true);
+    assert.strictEqual(idlePageCount, CODEX_IDLE_CHECK_MAX_THREAD_PAGES);
+    assert.strictEqual(restarts, 0);
     yield* Scope.close(scope, Exit.void);
   }),
 );

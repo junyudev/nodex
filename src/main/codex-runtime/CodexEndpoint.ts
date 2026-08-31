@@ -10,6 +10,9 @@ import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import type { ServerNotification } from "@nodex/codex-app-server-protocol";
+import { sanitizeCodexLiveLifecycleNotification } from "../../shared/codex-conversation-state/codex-live-turn-residency";
+import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import type { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
 import {
   CodexApplicationRequestInbox,
@@ -39,6 +42,39 @@ interface ActiveSession {
   readonly session: CodexAppServerSessionService;
   readonly termination: Effect.Effect<never, CodexRuntimeError>;
 }
+
+export const sanitizeCodexEndpointNotification = <
+  T extends {
+    readonly protocol: string;
+    readonly method: string;
+    readonly params: unknown;
+  },
+>(
+  notification: T,
+): T => {
+  if (
+    notification.method === "thread/started" &&
+    typeof notification.params === "object" &&
+    notification.params !== null &&
+    "thread" in notification.params &&
+    typeof notification.params.thread === "object" &&
+    notification.params.thread !== null
+  ) {
+    return {
+      ...notification,
+      params: {
+        ...notification.params,
+        thread: { ...notification.params.thread, turns: [] },
+      },
+    } as T;
+  }
+  if (notification.protocol !== "generated") return notification;
+  const sanitized = sanitizeCodexLiveLifecycleNotification(
+    toCodexThreadStartedMetadataNotification(notification as unknown as ServerNotification),
+  );
+  if (sanitized === notification) return notification;
+  return { ...notification, method: sanitized.method, params: sanitized.params } as T;
+};
 
 export class CodexEndpoint extends Context.Service<
   CodexEndpoint,
@@ -199,14 +235,15 @@ export const live = (
                   ),
                 );
                 const notificationIngress = session.client.notifications.pipe(
-                  Stream.runForEach((notification) =>
-                    requestInbox
+                  Stream.runForEach((notification) => {
+                    const sanitized = sanitizeCodexEndpointNotification(notification);
+                    return requestInbox
                       .publishNotification({
                         hostId,
                         generation: currentGeneration,
-                        protocol: notification.protocol,
-                        method: notification.method,
-                        params: notification.params,
+                        protocol: sanitized.protocol,
+                        method: sanitized.method,
+                        params: sanitized.params,
                       })
                       .pipe(
                         Effect.andThen(
@@ -214,11 +251,11 @@ export const live = (
                             kind: "notification",
                             hostId,
                             generation: currentGeneration,
-                            value: notification,
+                            value: sanitized,
                           }),
                         ),
-                      ),
-                  ),
+                      );
+                  }),
                   Effect.mapError((cause) =>
                     classifyIngressError("endpoint.notification-ingress", cause),
                   ),

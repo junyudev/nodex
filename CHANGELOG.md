@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Long chats now open from a bounded recent tail, load older turns and persisted search results on demand, keep active history within count-and-memory budgets, and fork, edit, create Side chats, or export without first loading the complete transcript.
 - Nodex now upgrades supported Profiles through Store v147 with a verified backup, current-only Block Document schemas and projections, durable File ownership history, bounded operational history, Core-owned Sidebar organization, coherent single-layout Database Views with typed query rules, and Source-owned Page Property layouts.
 - Permission selection now keeps custom config details out of the Composer menu and confirms the capabilities granted before enabling Full access.
 

@@ -10,7 +10,6 @@ export type ThreadLatestTurnFollowMode =
 export const DEFAULT_VIRTUALIZED_TURN_HEIGHT_PX = 280;
 export const THREAD_NEAR_BOTTOM_THRESHOLD_PX = 24;
 export const LATEST_TURN_SUBMIT_PLACEMENT_THRESHOLD_PX = 300;
-export const THREAD_OLDER_HISTORY_LOAD_THRESHOLD_PX = 320;
 
 export interface VirtualizedTurnLayoutEntry {
   turnKey: string;
@@ -822,32 +821,4 @@ export function shouldShowThreadScrollToBottomControl({
   return !isScrollToTopEnabled || responseSpacerHeightPx == null
     ? isScrolledFromBottom
     : scrollDistanceFromBottomPx > responseSpacerHeightPx + THREAD_NEAR_BOTTOM_THRESHOLD_PX;
-}
-
-export function shouldLoadOlderThreadTurns({
-  hasLoadedOldest,
-  isLoading,
-  scrollDistanceFromBottomPx,
-  thresholdPx = THREAD_OLDER_HISTORY_LOAD_THRESHOLD_PX,
-  totalHeightPx,
-  turnsBottomInsetPx,
-  viewportHeightPx,
-}: {
-  hasLoadedOldest: boolean;
-  isLoading: boolean;
-  scrollDistanceFromBottomPx: number;
-  thresholdPx?: number;
-  totalHeightPx: number;
-  turnsBottomInsetPx: number;
-  viewportHeightPx: number;
-}): boolean {
-  if (hasLoadedOldest || isLoading) return false;
-  if (totalHeightPx <= 0 || viewportHeightPx <= 0) return false;
-
-  const listViewportBottomDistanceFromBottomPx = Math.max(
-    0,
-    scrollDistanceFromBottomPx - turnsBottomInsetPx,
-  );
-  const viewportTopDistanceFromBottomPx = listViewportBottomDistanceFromBottomPx + viewportHeightPx;
-  return viewportTopDistanceFromBottomPx >= totalHeightPx - thresholdPx;
 }

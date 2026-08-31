@@ -12,8 +12,30 @@ it.effect("tracks monotonic sent and acknowledged owner notification sequences",
     const runtime = yield* make({ timeout: "1 second" });
     assert.strictEqual(runtime.next("thread-1"), 1);
     assert.strictEqual(runtime.next("thread-1"), 2);
-    runtime.ack("thread-1", 2);
+    assert.isTrue(runtime.canAck("thread-1", 2));
+    assert.isTrue(runtime.ack("thread-1", 2));
     yield* runtime.awaitCurrent("thread-1");
+  }),
+);
+
+it.effect("rejects malformed, duplicate, and future ACKs without crossing the drain barrier", () =>
+  Effect.gen(function* () {
+    const runtime = yield* make({ timeout: "1 hour" });
+    runtime.next("thread-1");
+    const waiting = yield* Effect.forkChild(runtime.awaitCurrent("thread-1"), {
+      startImmediately: true,
+    });
+
+    assert.isFalse(runtime.canAck("thread-1", Number.NaN));
+    assert.isFalse(runtime.ack("thread-1", Number.NaN));
+    assert.isFalse(runtime.ack("thread-1", 2));
+    assert.isFalse(runtime.ack("thread-1", Number.MAX_SAFE_INTEGER + 1));
+    yield* Effect.yieldNow;
+    assert.isUndefined(waiting.pollUnsafe());
+
+    assert.isTrue(runtime.ack("thread-1", 1));
+    yield* Fiber.join(waiting);
+    assert.isFalse(runtime.ack("thread-1", 1));
   }),
 );
 
@@ -38,7 +60,7 @@ it.effect("shares the first barrier while new notifications extend the ack requi
   }),
 );
 
-it.effect("times out the frozen first barrier and admits a later outstanding barrier", () =>
+it.effect("fails a frozen barrier without forging an ACK and admits a later real ACK", () =>
   Effect.gen(function* () {
     const runtime = yield* make({ timeout: "1 second" });
     runtime.next("thread-1");
@@ -47,13 +69,13 @@ it.effect("times out the frozen first barrier and admits a later outstanding bar
     });
     runtime.next("thread-1");
     yield* TestClock.adjust("1 second");
-    yield* Fiber.join(first);
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(first)));
     const second = yield* Effect.forkChild(runtime.awaitCurrent("thread-1"), {
       startImmediately: true,
     });
     yield* Effect.yieldNow;
     assert.isUndefined(second.pollUnsafe());
-    yield* TestClock.adjust("1 second");
+    assert.isTrue(runtime.ack("thread-1", 2));
     yield* Fiber.join(second);
   }),
 );

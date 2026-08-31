@@ -9,6 +9,7 @@ import * as Stream from "effect/Stream";
 
 export interface ThreadCreationRelease {
   readonly hostId: string;
+  readonly generation: number;
   readonly threadId: string;
 }
 
@@ -19,11 +20,12 @@ export interface ThreadCreationRuntimeService {
    */
   readonly materialize: <A, E, R>(
     hostId: string,
+    generation: number,
     operation: Effect.Effect<A, E, R>,
     threadId: (value: A) => string | null,
   ) => Effect.Effect<A, E, R>;
-  /** Claims an arriving `thread/started` for an open materialization on the same host. */
-  readonly defer: (hostId: string, threadId: string) => boolean;
+  /** Claims an arriving `thread/started` for an open materialization on the same Endpoint. */
+  readonly defer: (hostId: string, generation: number, threadId: string) => boolean;
   /** Internal protocol-consumer stream. */
   readonly releases: Stream.Stream<ThreadCreationRelease>;
   /** Fails if release admission can no longer preserve canonical notification delivery. */
@@ -41,6 +43,7 @@ export class ThreadCreationOverflow extends Schema.TaggedError<ThreadCreationOve
   {
     capacity: Schema.Int,
     hostId: Schema.String,
+    generation: Schema.Int,
     threadId: Schema.String,
   },
 ) {}
@@ -49,8 +52,8 @@ export class ThreadCreationOverflow extends Schema.TaggedError<ThreadCreationOve
  * Application-scoped owner of physical Thread creation. Each admitted operation receives a local
  * launch intent and continues in this runtime's Scope if its renderer waiter disappears. The
  * app-server does not echo a client launch id in `thread/started`, so notifications that beat the
- * response are held in a host cohort; the response's exact Thread id is the commit correlation.
- * Release is one-way: a local commit never waits on the protocol actor.
+ * response are held in a host-generation cohort; the response's exact Thread id is the commit
+ * correlation. Release is one-way: a local commit never waits on the protocol actor.
  */
 export const makeWithCapacity = (
   capacity: number,
@@ -62,9 +65,11 @@ export const makeWithCapacity = (
     const ownerScope = yield* Effect.scope;
     let nextLaunchId = 0;
     const intents = new Map<number, string>();
-    const hosts = new Map<
+    const cohorts = new Map<
       string,
       {
+        readonly hostId: string;
+        readonly generation: number;
         readonly launchIds: Set<number>;
         readonly deferredThreadIds: Set<string>;
         readonly readyThreadIds: Set<string>;
@@ -74,20 +79,29 @@ export const makeWithCapacity = (
     yield* Effect.addFinalizer(() => Queue.shutdown(releases).pipe(Effect.asVoid));
 
     const normalizeHostId = (hostId: string): string => hostId.trim();
-    const hostState = (hostId: string) => {
-      const existing = hosts.get(hostId);
+    const cohortKey = (hostId: string, generation: number): string =>
+      `${hostId}\u0000${generation}`;
+    const cohortState = (hostId: string, generation: number) => {
+      const key = cohortKey(hostId, generation);
+      const existing = cohorts.get(key);
       if (existing) return existing;
       const created = {
+        hostId,
+        generation,
         launchIds: new Set<number>(),
         deferredThreadIds: new Set<string>(),
         readyThreadIds: new Set<string>(),
       };
-      hosts.set(hostId, created);
+      cohorts.set(key, created);
       return created;
     };
 
-    const offerRelease = (hostId: string, threadId: string): Effect.Effect<void> =>
-      Queue.offer(releases, { hostId, threadId }).pipe(
+    const offerRelease = (
+      hostId: string,
+      generation: number,
+      threadId: string,
+    ): Effect.Effect<void> =>
+      Queue.offer(releases, { hostId, generation, threadId }).pipe(
         Effect.flatMap((accepted) =>
           accepted
             ? Effect.void
@@ -96,56 +110,62 @@ export const makeWithCapacity = (
                 new ThreadCreationOverflow({
                   capacity: normalizedCapacity,
                   hostId,
+                  generation,
                   threadId,
                 }),
               ).pipe(Effect.asVoid),
         ),
       );
 
-    const release = (hostId: string, threadId: string): Effect.Effect<void> =>
+    const release = (hostId: string, generation: number, threadId: string): Effect.Effect<void> =>
       Effect.suspend(() => {
         const normalizedHostId = normalizeHostId(hostId);
         const normalizedThreadId = threadId.trim();
         if (!normalizedHostId || !normalizedThreadId) return Effect.void;
-        const state = hostState(normalizedHostId);
+        const state = cohortState(normalizedHostId, generation);
         state.readyThreadIds.add(normalizedThreadId);
         if (!state.deferredThreadIds.delete(normalizedThreadId)) return Effect.void;
-        return offerRelease(normalizedHostId, normalizedThreadId);
+        return offerRelease(normalizedHostId, generation, normalizedThreadId);
       });
 
-    const begin = (hostId: string): number => {
+    const begin = (hostId: string, generation: number): number => {
       nextLaunchId += 1;
-      intents.set(nextLaunchId, hostId);
-      hostState(hostId).launchIds.add(nextLaunchId);
+      const key = cohortKey(hostId, generation);
+      intents.set(nextLaunchId, key);
+      cohortState(hostId, generation).launchIds.add(nextLaunchId);
       return nextLaunchId;
     };
 
     const end = (launchId: number): Effect.Effect<void> =>
       Effect.suspend(() => {
-        const hostId = intents.get(launchId);
-        if (!hostId) return Effect.void;
+        const key = intents.get(launchId);
+        if (!key) return Effect.void;
         intents.delete(launchId);
-        const state = hosts.get(hostId);
+        const state = cohorts.get(key);
         if (!state) return Effect.void;
         state.launchIds.delete(launchId);
         if (state.launchIds.size > 0) return Effect.void;
         const pending = [...state.deferredThreadIds];
-        hosts.delete(hostId);
-        return Effect.forEach(pending, (threadId) => offerRelease(hostId, threadId), {
-          discard: true,
-        });
+        cohorts.delete(key);
+        return Effect.forEach(
+          pending,
+          (threadId) => offerRelease(state.hostId, state.generation, threadId),
+          { discard: true },
+        );
       });
 
     return ThreadCreationRuntime.of({
-      materialize: (hostId, operation, threadId) =>
+      materialize: (hostId, generation, operation, threadId) =>
         Effect.uninterruptibleMask((restore) => {
           const normalizedHostId = normalizeHostId(hostId);
           if (!normalizedHostId) return restore(operation);
-          const launchId = begin(normalizedHostId);
+          const launchId = begin(normalizedHostId, generation);
           const physical = operation.pipe(
             Effect.tap((value) => {
               const identified = threadId(value);
-              return identified === null ? Effect.void : release(normalizedHostId, identified);
+              return identified === null
+                ? Effect.void
+                : release(normalizedHostId, generation, identified);
             }),
             Effect.ensuring(end(launchId)),
           );
@@ -154,10 +174,10 @@ export const makeWithCapacity = (
             Effect.flatMap((fiber) => restore(Fiber.join(fiber))),
           );
         }),
-      defer: (hostId, threadId) => {
+      defer: (hostId, generation, threadId) => {
         const normalizedHostId = normalizeHostId(hostId);
         const normalizedThreadId = threadId.trim();
-        const state = hosts.get(normalizedHostId);
+        const state = cohorts.get(cohortKey(normalizedHostId, generation));
         if (
           !normalizedHostId ||
           !normalizedThreadId ||
@@ -175,7 +195,7 @@ export const makeWithCapacity = (
       clear: (threadId) => {
         const normalized = threadId.trim();
         if (!normalized) return;
-        for (const state of hosts.values()) {
+        for (const state of cohorts.values()) {
           state.deferredThreadIds.delete(normalized);
           state.readyThreadIds.delete(normalized);
         }

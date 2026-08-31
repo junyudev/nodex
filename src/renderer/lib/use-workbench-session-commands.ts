@@ -721,7 +721,7 @@ export function useWorkbenchSessionCommands({
           const hydrated = await workbenchCodexControl.hydrateSubagentPanel({
             rootThreadId: normalizedRootThreadId,
             threadIds: [selectedThreadId],
-            includeTurns: true,
+            includeTail: true,
           });
           if (!hydrated.some((summary) => summary.threadId === selectedThreadId)) return false;
         }

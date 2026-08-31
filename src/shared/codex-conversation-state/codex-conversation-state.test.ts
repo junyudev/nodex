@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { ServerRequest } from "@nodex/codex-app-server-protocol";
-import type { HookRunSummary, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  HookRunSummary,
+  ThreadItem,
+  Turn,
+  UserInput,
+} from "@nodex/codex-app-server-protocol/v2";
 import { projectCodexCanonicalTurnItemViews } from "../codex-canonical-item-projector";
 import {
   appendCodexCanonicalForkedFromConversationItem,
@@ -159,7 +164,12 @@ function buildCompleteFixtureTurnParams(
   };
 }
 
-function hydrateCanonicalFixtureTurns(turns: Turn[]) {
+function hydrateCanonicalFixtureTurns(
+  turns: Turn[],
+  turnItemsPaginationById?: Parameters<
+    typeof createCodexCanonicalHydratedConversationState
+  >[1]["turnItemsPaginationById"],
+) {
   const fixtureThread = buildAgentActivityV2CorpusThread([]);
   return createCodexCanonicalHydratedConversationState(
     {
@@ -178,6 +188,7 @@ function hydrateCanonicalFixtureTurns(turns: Turn[]) {
       },
       activePermissionProfile: null,
       runtimeWorkspaceRoots: ["/workspace/project"],
+      turnItemsPaginationById,
     },
   );
 }
@@ -215,8 +226,36 @@ describe("protocol-backed canonical conversation state", () => {
     };
 
     expect(() => hydrateCanonicalFixtureTurns([turn])).toThrow(
-      "Cannot hydrate partial turn 'turn-partial-history' with itemsView 'summary'",
+      "Cannot hydrate partial turn 'turn-partial-history' without item pagination",
     );
+  });
+
+  test("hydrates partial turns from their stable opening user input", () => {
+    const turn: Turn = {
+      id: "turn-partial-history",
+      items: [],
+      itemsView: "summary",
+      status: "completed",
+      error: null,
+      startedAt: null,
+      completedAt: null,
+      durationMs: null,
+    };
+    const openingInput: UserInput[] = [{ type: "text", text: "oldest prompt", text_elements: [] }];
+
+    const state = hydrateCanonicalFixtureTurns([turn], {
+      [turn.id]: {
+        olderCursor: "items:older",
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        oldestUserInput: openingInput,
+        openingUserMessageId: "opening-user",
+        itemsView: "summary",
+      },
+    });
+
+    expect(state.turns[0]?.sidecar.params.input).toEqual(openingInput);
+    expect(state.turns[0]?.protocol.itemsView).toBe("summary");
   });
 
   test("hydrates only caller-supplied pending requests and preserves private exact extensions", () => {

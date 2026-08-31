@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -12,7 +13,7 @@ export const DEFAULT_CODEX_OWNER_NOTIFICATION_DRAIN_TIMEOUT =
 interface DrainBarrier {
   readonly sentSequence: number;
   readonly ackSequence: number;
-  readonly completion: Deferred.Deferred<void>;
+  readonly completion: Deferred.Deferred<void, CodexOwnerNotificationDrainTimeout>;
 }
 
 interface DrainState {
@@ -25,12 +26,23 @@ export interface CodexOwnerNotificationDrainRuntimeOptions {
   readonly timeout?: Duration.Input;
 }
 
+export class CodexOwnerNotificationDrainTimeout extends Data.TaggedError(
+  "CodexOwnerNotificationDrainTimeout",
+)<{
+  readonly conversationId: string;
+  readonly sentSequence: number;
+  readonly ackSequence: number;
+}> {}
+
 export class CodexOwnerNotificationDrainRuntime extends Context.Service<
   CodexOwnerNotificationDrainRuntime,
   {
     readonly next: (conversationId: string) => number;
-    readonly ack: (conversationId: string, sequence: number) => void;
-    readonly awaitCurrent: (conversationId: string) => Effect.Effect<void>;
+    readonly canAck: (conversationId: string, sequence: number) => boolean;
+    readonly ack: (conversationId: string, sequence: number) => boolean;
+    readonly awaitCurrent: (
+      conversationId: string,
+    ) => Effect.Effect<void, CodexOwnerNotificationDrainTimeout>;
     readonly resetOwner: (conversationId: string) => void;
     readonly release: (conversationId: string) => void;
     readonly clear: (conversationId: string) => void;
@@ -68,13 +80,15 @@ export const make = (
       runDeadline(conversationId, completion.pipe(Effect.asVoid));
     };
 
-    const awaitCurrent = (conversationId: string): Effect.Effect<void> =>
+    const awaitCurrent = (
+      conversationId: string,
+    ): Effect.Effect<void, CodexOwnerNotificationDrainTimeout> =>
       Effect.suspend(() => {
         const state = stateFor(conversationId);
         if (state.ackSequence >= state.sentSequence) return Effect.void;
         if (state.barrier) return Deferred.await(state.barrier.completion);
 
-        return Deferred.make<void>().pipe(
+        return Deferred.make<void, CodexOwnerNotificationDrainTimeout>().pipe(
           Effect.tap((completion) =>
             Effect.sync(() => {
               const barrier: DrainBarrier = {
@@ -91,8 +105,12 @@ export const make = (
                   Effect.andThen(
                     Effect.suspend(() => {
                       if (state.barrier !== barrier) return Effect.void;
-                      state.ackSequence = Math.max(state.ackSequence, barrier.sentSequence);
                       state.barrier = null;
+                      const timeout = new CodexOwnerNotificationDrainTimeout({
+                        conversationId,
+                        sentSequence: barrier.sentSequence,
+                        ackSequence: barrier.ackSequence,
+                      });
                       return Effect.logWarning(
                         "Timed out waiting for renderer owner text-delta ack before terminal lifecycle",
                       ).pipe(
@@ -101,7 +119,7 @@ export const make = (
                           sentSequence: barrier.sentSequence,
                           ackSequence: barrier.ackSequence,
                         }),
-                        Effect.andThen(Deferred.succeed(completion, undefined)),
+                        Effect.andThen(Deferred.fail(completion, timeout)),
                         Effect.asVoid,
                       );
                     }),
@@ -149,13 +167,30 @@ export const make = (
         state.sentSequence += 1;
         return state.sentSequence;
       },
+      canAck: (conversationId, sequence) => {
+        const state = states.get(conversationId);
+        if (!state) return false;
+        return (
+          Number.isSafeInteger(sequence) &&
+          sequence > state.ackSequence &&
+          sequence <= state.sentSequence
+        );
+      },
       ack: (conversationId, sequence) => {
-        const state = stateFor(conversationId);
-        if (sequence <= state.ackSequence) return;
+        const state = states.get(conversationId);
+        if (!state) return false;
+        if (
+          !Number.isSafeInteger(sequence) ||
+          sequence <= state.ackSequence ||
+          sequence > state.sentSequence
+        ) {
+          return false;
+        }
         state.ackSequence = sequence;
         const barrier = state.barrier;
-        if (!barrier || state.ackSequence < state.sentSequence) return;
+        if (!barrier || state.ackSequence < state.sentSequence) return true;
         finishBarrier(conversationId, state, Deferred.succeed(barrier.completion, undefined));
+        return true;
       },
       awaitCurrent,
       resetOwner: (conversationId) => {

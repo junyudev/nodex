@@ -2877,8 +2877,8 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toHaveLength(1);
     expect(textContent(screen.container).includes("Thread:thread-child-2")).toBe(true);
     expect(hydrateSubagentPanelCalls).toEqual([
-      { rootThreadId: "thread-alpha", threadIds: ["thread-child"], includeTurns: true },
-      { rootThreadId: "thread-alpha", threadIds: ["thread-child-2"], includeTurns: true },
+      { rootThreadId: "thread-alpha", threadIds: ["thread-child"], includeTail: true },
+      { rootThreadId: "thread-alpha", threadIds: ["thread-child-2"], includeTail: true },
     ]);
 
     await act(async () => {

@@ -65,7 +65,7 @@ export const projectCodexConversationMetadataSnapshot = (input: {
   };
 };
 
-const projectTurn = (input: {
+export const projectCodexConversationTurn = (input: {
   readonly threadId: string;
   readonly turnIndex: number;
   readonly beforeTurn: CodexCanonicalTurnState | null;
@@ -161,7 +161,7 @@ export const projectCodexConversationSnapshot = (input: {
           ? currentAtIndex
           : (conversation.turns.find((turn) => turn.turnId === turnId) ?? null);
       if (beforeTurn === afterTurn && current) return current;
-      return projectTurn({
+      return projectCodexConversationTurn({
         threadId: conversation.threadId,
         turnIndex,
         beforeTurn,

@@ -288,6 +288,112 @@ it.effect("fails closed when canonical occurrence capacity is exhausted", () =>
   }),
 );
 
+it.effect(
+  "fails a giant occurrence before queue retention and recovers on a fresh generation",
+  () =>
+    Effect.gen(function* () {
+      const rootScope = yield* Scope.make();
+      const failedScope = yield* Scope.make();
+      const inbox = yield* makeWithCapacities({
+        occurrences: 4,
+        settlements: 1,
+        occurrenceBytes: 16_384,
+        singleOccurrenceBytes: 4_096,
+      }).pipe(Effect.provideService(Scope.Scope, rootScope));
+      const failed = yield* inbox
+        .openGeneration("local", 7)
+        .pipe(Effect.provideService(Scope.Scope, failedScope));
+      const termination = yield* failed.termination.pipe(Effect.flip, Effect.forkChild);
+
+      yield* inbox.publishNotification({
+        hostId: "local",
+        generation: 7,
+        protocol: "extension",
+        method: "test/giant",
+        params: { text: "x".repeat(8_192) },
+      });
+      const failure = yield* Fiber.join(termination);
+      assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(failure.cause));
+      if (Schema.is(CodexApplicationIngressOverflow)(failure.cause)) {
+        assert.strictEqual(failure.cause.channel, "occurrence-bytes");
+        assert.strictEqual(failure.cause.maximumOccurrenceBytes, 4_096);
+      }
+
+      yield* Scope.close(failedScope, Exit.void);
+      const recoveredScope = yield* Scope.make();
+      const recovered = yield* inbox
+        .openGeneration("local", 8)
+        .pipe(Effect.provideService(Scope.Scope, recoveredScope));
+      yield* inbox.publishNotification({
+        hostId: "local",
+        generation: 8,
+        protocol: "extension",
+        method: "test/recovered",
+        params: { text: "small" },
+      });
+      const delivered = yield* inbox.occurrences.pipe(Stream.take(1), Stream.runCollect);
+      assert.strictEqual([...delivered][0]?.method, "test/recovered");
+      assert.strictEqual(recovered.generation, 8);
+
+      yield* Scope.close(recoveredScope, Exit.void);
+      yield* Scope.close(rootScope, Exit.void);
+    }),
+);
+
+it.effect(
+  "releases all 4096 FIFO byte reservations after consumption before enforcing the next overflow",
+  () =>
+    Effect.gen(function* () {
+      const rootScope = yield* Scope.make();
+      const generationScope = yield* Scope.make();
+      const inbox = yield* makeWithCapacities({
+        occurrences: 4_096,
+        settlements: 1,
+        occurrenceBytes: 8 * 1024 * 1024,
+        singleOccurrenceBytes: 8 * 1024,
+      }).pipe(Effect.provideService(Scope.Scope, rootScope));
+      const generation = yield* inbox
+        .openGeneration("local", 9)
+        .pipe(Effect.provideService(Scope.Scope, generationScope));
+
+      const publishSmall = (index: number) =>
+        inbox.publishNotification({
+          hostId: "local",
+          generation: 9,
+          protocol: "extension",
+          method: `test/small/${index}`,
+          params: { index },
+        });
+      const indexes = Array.from({ length: 4_096 }, (_, index) => index);
+      yield* Effect.forEach(indexes, publishSmall, { discard: true });
+      const consumed = yield* inbox.occurrences.pipe(Stream.take(4_096), Stream.runCollect);
+      assert.strictEqual([...consumed].length, 4_096);
+
+      yield* publishSmall(4_096);
+      const recovered = yield* inbox.occurrences.pipe(Stream.take(1), Stream.runCollect);
+      assert.strictEqual([...recovered][0]?.method, "test/small/4096");
+
+      const termination = yield* generation.termination.pipe(Effect.flip, Effect.forkChild);
+      yield* Effect.forEach(indexes, publishSmall, { discard: true });
+      yield* inbox.publishNotification({
+        hostId: "local",
+        generation: 9,
+        protocol: "extension",
+        method: "test/overflow-after-recovery",
+        params: {},
+      });
+      const failure = yield* Fiber.join(termination);
+      assert.isTrue(Schema.is(CodexApplicationIngressOverflow)(failure.cause));
+      if (Schema.is(CodexApplicationIngressOverflow)(failure.cause)) {
+        assert.strictEqual(failure.cause.channel, "occurrences");
+        assert.strictEqual(failure.cause.capacity, 4_096);
+      }
+
+      yield* Scope.close(generationScope, Exit.void);
+      yield* Scope.close(rootScope, Exit.void);
+    }),
+);
+
 it.effect("fails the exact generation instead of dropping a request settlement", () =>
   Effect.gen(function* () {
     const rootScope = yield* Scope.make();

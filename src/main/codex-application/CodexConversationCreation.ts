@@ -17,7 +17,11 @@ import type { CodexCanonicalWorktreeInitItem, CodexPreparedPrompt } from "../../
 import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
 import { rewriteExecutionWorkspaceRoots } from "../codex/codex-execution-workspace-roots";
 import { projectCodexPendingWorktreeLaunchLocation } from "../codex/codex-pending-worktree-request";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
@@ -90,6 +94,7 @@ export const make: Effect.Effect<
   | CodexClientThreadIdentity
   | CodexConversationFork
   | CodexForkSidePanelTransfer
+  | CodexAppServerCapabilities
   | CodexGateway
   | CodexThreadDirectory
   | CodexThreadGoalRuntime
@@ -105,6 +110,7 @@ export const make: Effect.Effect<
   const clientIdentity = yield* CodexClientThreadIdentity;
   const conversationFork = yield* CodexConversationFork;
   const forkTransfers = yield* CodexForkSidePanelTransfer;
+  const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
   const directory = yield* CodexThreadDirectory;
   const goals = yield* CodexThreadGoalRuntime;
@@ -217,6 +223,7 @@ export const make: Effect.Effect<
     workspaceRoot: string,
     worktreeInit: CodexCanonicalWorktreeInitItem | undefined,
     includeWorktreeInit: boolean,
+    capability: CodexAppServerCapabilitySnapshot,
   ) {
     const params = entry.startConversationParamsInput;
     const location = projectCodexPendingWorktreeLaunchLocation({
@@ -252,6 +259,7 @@ export const make: Effect.Effect<
       const response = (yield* gateway.requestLocal(
         "thread/start",
         request as GatewayThreadStartParams,
+        codexGatewayGenerationFence(capability),
       )) as unknown as ThreadStartResponse;
       startedThreadId = response.thread.id;
       const projectId = location.projectAssignment?.projectId ?? null;
@@ -378,7 +386,11 @@ export const make: Effect.Effect<
                   : Effect.void,
                 startedThreadId
                   ? gateway
-                      .requestLocal("thread/delete", { threadId: startedThreadId })
+                      .requestLocal(
+                        "thread/delete",
+                        { threadId: startedThreadId },
+                        codexGatewayGenerationFence(capability),
+                      )
                       .pipe(Effect.ignore)
                   : Effect.void,
                 startedThreadId && entry.clientThreadId
@@ -400,11 +412,17 @@ export const make: Effect.Effect<
     worktreeInit: CodexCanonicalWorktreeInitItem | undefined,
     includeWorktreeInit: boolean,
   ) =>
-    threadStarts.materialize(
-      gateway.localHostId,
-      launchStartPhysical(entry, workspaceRoot, worktreeInit, includeWorktreeInit),
-      (result) => result.threadId,
-    );
+    Effect.gen(function* () {
+      const capability = yield* capabilities
+        .forHost(gateway.localHostId)
+        .pipe(Effect.mapError((cause) => fail("start", entry, cause)));
+      return yield* threadStarts.materialize(
+        capability.hostId,
+        capability.generation,
+        launchStartPhysical(entry, workspaceRoot, worktreeInit, includeWorktreeInit, capability),
+        (result) => result.threadId,
+      );
+    });
 
   return CodexConversationCreation.of({
     launchPending: (entry, workspaceRoot, includeWorktreeInit) => {

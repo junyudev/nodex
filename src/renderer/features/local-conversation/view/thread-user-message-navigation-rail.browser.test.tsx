@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -182,11 +182,13 @@ function buildItem(
 function RailHarness({
   items,
   onRevealItem,
+  onPreviewItem,
   missingTargetId,
 }: {
   items: ThreadUserMessageNavigationItem[];
   missingTargetId?: string;
   onRevealItem?: Parameters<typeof ThreadUserMessageNavigationRail>[0]["onRevealItem"];
+  onPreviewItem?: Parameters<typeof ThreadUserMessageNavigationRail>[0]["onPreviewItem"];
 }) {
   return (
     <TooltipProvider>
@@ -207,7 +209,11 @@ function RailHarness({
               ),
             )}
           </div>
-          <ThreadUserMessageNavigationRail items={items} onRevealItem={onRevealItem} />
+          <ThreadUserMessageNavigationRail
+            items={items}
+            onRevealItem={onRevealItem}
+            onPreviewItem={onPreviewItem}
+          />
         </LocalConversationThreadScrollLayout>
       </EnsureLocalConversationThreadScrollController>
     </TooltipProvider>
@@ -259,6 +265,31 @@ describe("ThreadUserMessageNavigationRail", () => {
     expect(targets[1]?.itemId).toBe("turn_same:user:1");
     expect(targets[2]?.element.getAttribute("data-content-search-turn-key")).toBe("turn_next");
     expect(targets[2]?.itemId).toBe("turn_next:user:0");
+  });
+
+  test("windows a 1,000-marker rail and preserves positional keyboard semantics", async () => {
+    const onPreviewItem = vi.fn();
+    const items = Array.from({ length: 1_000 }, (_, index) => buildItem(index + 1));
+    const { getAllByRole, getByRole } = render(
+      <RailHarness items={items} onPreviewItem={onPreviewItem} />,
+    );
+    await settleAsyncRender();
+
+    const mountedMarkers = getAllByRole("button", { name: /Jump to user message/u });
+    expect(mountedMarkers.length).toBeLessThan(100);
+    const last = getByRole("button", { name: "Jump to user message 1000" });
+    expect(last.getAttribute("aria-setsize")).toBe("1000");
+    expect(last.getAttribute("aria-posinset")).toBe("1000");
+
+    await act(async () => {
+      fireEvent.focus(last);
+      fireEvent.keyDown(last, { key: "ArrowUp" });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(document.activeElement).toBe(getByRole("button", { name: "Jump to user message 999" }));
+    expect(onPreviewItem).toHaveBeenCalledWith(items[999]);
+    expect(onPreviewItem).toHaveBeenCalledWith(items[998]);
   });
 
   test("resolves current range from first visible rail item through last visible rail item", () => {
@@ -495,18 +526,23 @@ describe("ThreadUserMessageNavigationRail", () => {
     expect(scrollIntoViewCalls[scrollIntoViewCalls.length - 1]?.block).toBe("start");
   });
 
-  test("reveals a virtualized missing target before scrolling to it", async () => {
+  test("scrolls and highlights the real marker returned for a virtualized shell", async () => {
     const revealed: string[] = [];
-    const scrollIntoViewCalls: ScrollIntoViewOptions[] = [];
+    const scrollIntoViewCalls: Array<{
+      element: HTMLElement;
+      options: ScrollIntoViewOptions;
+    }> = [];
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       writable: true,
-      value(options: ScrollIntoViewOptions) {
-        scrollIntoViewCalls.push(options);
+      value(this: HTMLElement, options: ScrollIntoViewOptions) {
+        scrollIntoViewCalls.push({ element: this, options });
       },
     });
 
     const items = [1, 2, 3, 4].map((index) => buildItem(index));
+    const animate = vi.fn();
+    const installedTargets: HTMLElement[] = [];
     const { container, getByRole } = render(
       <RailHarness
         items={items}
@@ -517,9 +553,14 @@ describe("ThreadUserMessageNavigationRail", () => {
           const turn = document.createElement("div");
           turn.setAttribute("data-turn-key", item.turnKey);
           const target = document.createElement("div");
-          target.setAttribute("data-content-search-unit-key", item.id);
+          target.setAttribute("data-content-search-unit-key", "turn_2:item_real_user_message");
+          const bubble = document.createElement("div");
+          bubble.setAttribute("data-user-message-bubble", "true");
+          bubble.animate = animate;
+          target.append(bubble);
           turn.append(target);
           root?.append(turn);
+          installedTargets.push(target);
           return target;
         }}
       />,
@@ -530,8 +571,14 @@ describe("ThreadUserMessageNavigationRail", () => {
     await settleAsyncRender();
 
     expect(revealed.join(",")).toBe("turn_2:user:0:smooth");
-    expect(scrollIntoViewCalls[scrollIntoViewCalls.length - 1]?.behavior).toBe("smooth");
-    expect(scrollIntoViewCalls[scrollIntoViewCalls.length - 1]?.block).toBe("start");
+    const realTarget = installedTargets[0];
+    expect(realTarget?.getAttribute("data-content-search-unit-key")).toBe(
+      "turn_2:item_real_user_message",
+    );
+    expect(scrollIntoViewCalls[scrollIntoViewCalls.length - 1]?.element).toBe(realTarget);
+    expect(scrollIntoViewCalls[scrollIntoViewCalls.length - 1]?.options.behavior).toBe("smooth");
+    expect(scrollIntoViewCalls[scrollIntoViewCalls.length - 1]?.options.block).toBe("start");
+    expect(animate).toHaveBeenCalledOnce();
   });
 
   test("pointer drag scrubs to the row under the rail midpoint instantly", async () => {

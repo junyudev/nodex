@@ -15,9 +15,11 @@ const LazyThreadUserMessageNavigationRail = lazy(() =>
 export function ThreadUserMessageNavigationRailLazy({
   items,
   onRevealItem,
+  onPreviewItem,
 }: {
   items: ThreadUserMessageNavigationItem[];
   onRevealItem?: ThreadUserMessageNavigationRailProps["onRevealItem"];
+  onPreviewItem?: ThreadUserMessageNavigationRailProps["onPreviewItem"];
 }) {
   const idleReady = useMarkerNavigationIdleReady(
     items.length,
@@ -29,7 +31,11 @@ export function ThreadUserMessageNavigationRailLazy({
 
   return (
     <Suspense fallback={null}>
-      <LazyThreadUserMessageNavigationRail items={items} onRevealItem={onRevealItem} />
+      <LazyThreadUserMessageNavigationRail
+        items={items}
+        onRevealItem={onRevealItem}
+        onPreviewItem={onPreviewItem}
+      />
     </Suspense>
   );
 }

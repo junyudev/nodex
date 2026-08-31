@@ -47,6 +47,12 @@ import {
 } from "../shared/git-worker-protocol";
 import type { McpAppSandboxHostMessageChannel } from "../shared/mcp-app/mcp-app-sandbox-contract";
 import type { DictationStreamingPortHandshake } from "../shared/dictation-streaming";
+import {
+  RENDERER_DELIVERY_ACK_CHANNEL,
+  RENDERER_DELIVERY_DATA_CHANNEL,
+} from "../shared/renderer-delivery-transport";
+import { createRendererDeliveryPreloadBridge } from "../shared/renderer-delivery-preload-bridge";
+import type { IpcApi } from "../shared/ipc-api";
 
 // Sandboxed Electron preloads must stay single-file bundles. Keep this tiny wire
 // guard local and type-checked so sharing it cannot create an emitted preload chunk.
@@ -107,14 +113,31 @@ function resolveManagedBlobPath(contentHash: string): string | null {
 // board-changed via useBoard, easily exceeding the default limit of 10.
 ipcRenderer.setMaxListeners(50);
 
+const rendererDelivery = createRendererDeliveryPreloadBridge({
+  acknowledge: (acknowledgment) => ipcRenderer.send(RENDERER_DELIVERY_ACK_CHANNEL, acknowledgment),
+  reportError: (message, cause) => console.error(message, cause),
+});
+
+ipcRenderer.on(RENDERER_DELIVERY_DATA_CHANNEL, (_event, input: unknown) => {
+  rendererDelivery.receive(input);
+});
+
+const invokeIpc = <Channel extends keyof IpcApi>(
+  channel: Channel,
+  ...args: IpcApi[Channel]["args"]
+): Promise<IpcApi[Channel]["result"]> =>
+  ipcRenderer.invoke(channel, ...args) as Promise<IpcApi[Channel]["result"]>;
+
 contextBridge.exposeInMainWorld("api", {
-  invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
+  invoke: invokeIpc,
 
   on: (event: string, callback: (...args: unknown[]) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => callback(...args);
+    const unsubscribeDelivery = rendererDelivery.subscribe(event, callback);
     ipcRenderer.on(event, listener);
     return () => {
       ipcRenderer.removeListener(event, listener);
+      unsubscribeDelivery();
     };
   },
   awaitInitialization: () => ipcRenderer.invoke("app:await-initialization"),

@@ -285,7 +285,7 @@ export function SubagentsPanelOverview({
       void hydrateSubagentPanel({
         rootThreadId,
         threadIds,
-        includeTurns: true,
+        includeTail: true,
       }).catch(() => {
         for (const threadId of threadIds) requestedPreviewIds.current.delete(threadId);
         onError("Unable to load subagent previews");

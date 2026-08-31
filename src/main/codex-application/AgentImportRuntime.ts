@@ -17,6 +17,7 @@ import {
   type AgentImportFileConfiguration,
   type PendingImportScan,
 } from "../codex/agent-import-operations";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "./CodexExternalAgentImportRuntime";
@@ -77,6 +78,7 @@ export const make = (
 ): Effect.Effect<
   AgentImportRuntime["Service"],
   never,
+  | CodexAppServerCapabilities
   | CodexApplicationEventHub
   | CodexExternalAgentImportRuntime
   | CodexGateway
@@ -88,6 +90,7 @@ export const make = (
 > =>
   Effect.gen(function* () {
     const operations = makeAgentImportOperations(options, {
+      capabilities: yield* CodexAppServerCapabilities,
       events: yield* CodexApplicationEventHub,
       externalImport: yield* CodexExternalAgentImportRuntime,
       gateway: yield* CodexGateway,

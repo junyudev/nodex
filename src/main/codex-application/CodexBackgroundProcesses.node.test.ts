@@ -70,6 +70,7 @@ const directoryEntry = (input: {
   readonly terminalItems?: readonly TerminalItem[];
 }): CodexThreadDirectoryEntry => ({
   fidelity: "durable",
+  historyMode: null,
   durable: {
     threadId: input.threadId,
     projectId: input.projectId,

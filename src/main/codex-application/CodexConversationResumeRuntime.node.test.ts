@@ -152,8 +152,7 @@ const build = Effect.fn("CodexConversationResumeRuntimeTest.build")(function* (
     Effect.provideService(
       CodexConversationHistoryRuntime,
       CodexConversationHistoryRuntime.of({
-        loadPage: () => Effect.succeed(null),
-        loadComplete: () => Effect.succeed(null),
+        loadPage: () => Effect.die("unused"),
         clear: () => undefined,
       }),
     ),
@@ -173,7 +172,8 @@ const build = Effect.fn("CodexConversationResumeRuntimeTest.build")(function* (
       CodexOwnerNotificationDrainRuntime,
       CodexOwnerNotificationDrainRuntime.of({
         next: () => 1,
-        ack: () => undefined,
+        canAck: () => true,
+        ack: () => true,
         awaitCurrent: () => Effect.void,
         resetOwner: () => undefined,
         release: () => undefined,

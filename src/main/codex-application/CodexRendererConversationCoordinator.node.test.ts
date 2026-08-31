@@ -80,10 +80,11 @@ it.effect("adopts a canonical snapshot as the first accepted renderer replica", 
 
     assert.strictEqual(result.ownerClientId, "renderer-fresh");
     assert.isNotNull(result.checkpoint);
-    assert.deepEqual(
-      coordinator.readRendererState(snapshot.threadId).acceptedConversation,
-      snapshot,
-    );
+    assert.deepEqual(coordinator.readRendererState(snapshot.threadId).acceptedConversation, {
+      ...snapshot,
+      conversationEntityGeneration: 1,
+      historyMutationRevision: 0,
+    });
     coordinator.resetTransport([snapshot.threadId, snapshot.threadId]);
     assert.deepEqual(published.at(-1), {
       kind: "rendererThreadStreamControlRelay",

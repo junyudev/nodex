@@ -340,7 +340,7 @@ execution-metadata authority, and one private Main Conversation Entity plus caus
 live Thread generation. Protocol occurrences are generation-fenced before they enter that lane. Endpoint
 replacement, failed hydration, or Thread removal settles the old generation's pending requests and
 interrupts its buffers and command fibers; recovery seeds durable Core facts, performs a fresh
-full-fidelity app-server read, and publishes one complete replacement generation. Sidebar summaries
+bounded-tail app-server read, and publishes one complete resident replacement generation. Sidebar summaries
 and persisted renderer artifacts are never treated as a second transcript.
 
 Endpoint loss also invalidates every loaded renderer stream role immediately: Main marks the exact
@@ -357,11 +357,53 @@ consumer. Generated protocol payloads are decoded once at the connection boundar
 extensions remain explicitly tagged and cannot weaken generated-message validation.
 
 The physical JSONL transport limits incoming and outgoing retained message counts, retained bytes,
-and single-frame bytes independently. Exceeding any reliable transport budget terminates that exact
+and single-frame bytes independently. An incoming encoded frame is rejected before JSON decode at
+16 MiB; decoded history projection then applies its narrower 8 MiB resident-page budget without
+advancing a rejected cursor. Because the protocol has no per-page byte parameter, a compliant page
+may transiently occupy the difference between those two bounds, but it cannot grow without limit.
+Exceeding any reliable transport budget terminates that exact
 endpoint generation so replacement can hydrate from canonical state; it never blocks forever or
 continues after silently dropping a command. Main observation hubs use bounded sliding publication
 only where subscribers can reread the canonical owner. Variable terminal output is truncated before
 publication, while reliable command queues use bounded backpressure and surface admission failure.
+Before semantic routing, the application Inbox also applies process-wide admission of 4,096
+occurrences / 16 MiB and rejects any single occurrence above 2 MiB. Queue and pending-request
+references share one reservation ledger, so settlement releases bytes exactly once.
+Main's no-renderer fallback coalesces prose/reasoning and command-output deltas in two process-wide
+queues with key, update, per-key, and aggregate byte/code-unit budgets. Pressure synchronously
+commits the already bounded batch before admitting more work. A live Turn has its own byte budget;
+an oversized lifecycle payload is replaced at the first typed Endpoint seam by an explicit overflow
+marker instead of entering either the Inbox or observation hub. A terminal event drains only its Thread, and Thread teardown
+discards only that Thread's queued entries.
+
+History fan-out passes through one host scheduler with global, priority, background-lane,
+per-conversation, count, byte, expiry, and exact-request coalescing budgets. Tail and search pages
+are generation-fenced and make cursor progress or fail closed. The resident Entity enforces active
+Turn-count and byte budgets across every object graph; passive owner cleanup retires the complete
+Entity generation. Complete export has its own bounded one-Turn working set, progress,
+cancellation, and idle-job retention, and never mutates the resident snapshot.
+Scheduler admission applies a capped object-graph estimate before canonical request-key encoding,
+so an oversized request cannot force a second payload-sized allocation merely to be rejected.
+
+Thread and child-Thread catalogs are metadata projections with independent page, result, byte,
+cursor-progress, and total-deadline budgets. Sidebar refresh, relationship repair, fork-title
+selection, and subagent discovery publish only a complete admitted result; truncation, cursor
+cycles, generation replacement, or timeout fail closed instead of persisting a partial view or
+falling back to transcript hydration.
+
+Persisted-history search separately bounds the query, occurrence page, each occurrence's ids,
+cursor, snippet, and retained index. A renderer-supplied oversized occurrence is rejected before
+host dispatch, and the per-Thread hydration tracker is a bounded last-write-wins registry rather
+than a lifetime request map. Structured-title helper Threads likewise require a metadata-only
+start response; a transcript-bearing helper is unsubscribed without starting a Turn.
+
+Main-to-renderer delivery rejects count-saturated destinations before JSON encoding, applies a
+capped resident-graph preflight, and computes the exact JSON UTF-8 size while validating the graph
+before allocating the serialized copy. It serializes the remaining encoding admission and then
+applies per-target and process byte budgets. Large payloads use one-frame-at-a-time transfer with
+exact generation/sequence acknowledgements, deadlines, bounded retry, and target release. A slow
+or destroyed renderer therefore cannot create an unbounded queue or keep multiple encoded
+transfers in flight.
 
 One renderer owner is the sole visible conversation writer. Main validates and retains its accepted
 document as a relay/recovery replica; followers first acknowledge an exact snapshot barrier and then
@@ -371,12 +413,15 @@ competing renderer documents or advances a follower past an unacknowledged check
 
 Conversation Relationships are rebuilt projections rather than recoverable state of their own. A
 parent refresh joins child identities observed in its canonical collaboration items with Core's
-durable child-Thread relationships, then enriches them from any loaded full-fidelity child
+durable child-Thread relationships, then enriches them from any loaded metadata or bounded-tail child
 generation. Archived and reparented children are excluded, canonical collaboration order precedes
 durable creation order, and missing friendly identity schedules a keyed directory repair. A failed
 refresh publishes no partial membership; later invalidation or repair recomputes the complete parent
-projection. Restart, resume, reparenting, and late child materialization therefore converge without
-a relationship journal or parallel parent map.
+projection. Repair concurrency and deletion tombstones are bounded; tombstone saturation disables
+metadata enrichment and falls back to durable-only membership until a fresh scoped runtime replaces
+the projection, rather than risking resurrection or retaining an unbounded exclusion set. Restart,
+resume, reparenting, and late child materialization therefore converge without a relationship
+journal or parallel parent map.
 
 Core Workspace remains the cold-restart authority for a managed Thread's execution host, cwd,
 worktree path, and writable roots. Resume projects that location into the new app-server generation
@@ -389,6 +434,9 @@ Restore recreates only the authorized durable path and retains the snapshot on f
 Execution-location handoff journals every external boundary and reconciles against Core after
 interruption, preserving at least one complete usable source or destination. Settings, archive,
 retention, automation, fork, and host-to-host movement use the same execution-location authority.
+The durable execution-host commit shares the Thread causal lane with persistent fork dispatch, so a
+fork either completes against the captured current host or observes the committed handoff and fails
+closed; it cannot race through the read-to-dispatch interval on an obsolete host.
 
 Detailed behavior lives in
 [Codex Owner/Follower Streaming](product-specs/codex-thread-owner-follower-streaming.md),

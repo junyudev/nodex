@@ -7,7 +7,8 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import {
   isExecutionWorkspacePathWithinRoot,
   rewriteExecutionWorkspaceRoots,
@@ -94,6 +95,7 @@ export const live: Layer.Layer<
   ManagedWorktreeHandoff,
   never,
   | CodexGateway
+  | CodexAppServerCapabilities
   | CoreModules
   | CrossHostThreadHandoff
   | ExecutionHostRuntime
@@ -103,6 +105,7 @@ export const live: Layer.Layer<
   ManagedWorktreeHandoff,
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
+    const capabilities = yield* CodexAppServerCapabilities;
     const core = yield* CoreModules;
     const crossHost = yield* CrossHostThreadHandoff;
     const executionHosts = yield* ExecutionHostRuntime;
@@ -190,12 +193,40 @@ export const live: Layer.Layer<
           entry.source.workspaceRoots[0] ?? entry.source.managedWorktreePath ?? entry.source.cwd;
 
         if (destinationHostId !== entry.source.hostId) {
-          const metadata = yield* gateway
-            .requestOnHost(entry.source.hostId, "thread/read", {
-              threadId: entry.threadId,
-              includeTurns: false,
-            })
+          const capability = yield* capabilities
+            .forHost(entry.source.hostId)
             .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
+          const currentBeforeRead = yield* capabilities
+            .isCurrent(capability)
+            .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
+          if (!capability.flags.paginatedHistory || !currentBeforeRead) {
+            return yield* error(
+              "read-source-rollout",
+              entry.threadId,
+              new Error("Cross-host handoff requires a current bounded-history source host"),
+            );
+          }
+          const metadata = yield* gateway
+            .requestOnHost(
+              entry.source.hostId,
+              "thread/read",
+              {
+                threadId: entry.threadId,
+                includeTurns: false,
+              },
+              codexGatewayGenerationFence(capability),
+            )
+            .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
+          const currentAfterRead = yield* capabilities
+            .isCurrent(capability)
+            .pipe(Effect.mapError((cause) => error("read-source-rollout", entry.threadId, cause)));
+          if (!currentAfterRead) {
+            return yield* error(
+              "read-source-rollout",
+              entry.threadId,
+              new Error("Source host generation changed while reading the rollout path"),
+            );
+          }
           const sourceRolloutPath = metadata.thread.path?.trim() ?? "";
           if (!sourceRolloutPath || !path.isAbsolute(sourceRolloutPath)) {
             return yield* error(

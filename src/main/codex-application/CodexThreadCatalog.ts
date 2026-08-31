@@ -4,6 +4,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import {
@@ -12,6 +13,7 @@ import {
   type CodexSidebarThreadMoveInput,
   type CodexSidebarThreadMoveResult,
 } from "../../shared/codex-sidebar-thread-move";
+import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import type {
   CodexSidebarSnapshot,
   CodexThreadSummary,
@@ -26,7 +28,7 @@ import type {
 } from "../../shared/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { applyResultCursor } from "../core-client/types";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
@@ -108,6 +110,16 @@ export class CodexThreadCatalog extends Context.Service<
 const CODEX_SIDEBAR_THREAD_SOURCE_KINDS = [] as const satisfies readonly ThreadSourceKind[];
 const COMMAND_PALETTE_THREAD_SEARCH_DEFAULT_LIMIT = 50;
 const COMMAND_PALETTE_THREAD_SEARCH_MAX_LIMIT = 60;
+export const CODEX_PINNED_THREAD_LIST_PAGE_SIZE = 200;
+export const CODEX_PINNED_THREAD_LIST_MAX_PAGES = 5;
+export const CODEX_PINNED_THREAD_LIST_MAX_RESULTS = 1_000;
+export const CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES = 2 * 1024 * 1024;
+export const CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES = 256 * 1024;
+export const CODEX_PINNED_THREAD_LIST_PAGE_DEADLINE = "3 seconds";
+export const CODEX_THREAD_PALETTE_SEARCH_MAX_PAGES = 5;
+export const CODEX_THREAD_PALETTE_SEARCH_MAX_PAGE_BYTES = 2 * 1024 * 1024;
+export const CODEX_THREAD_PALETTE_SEARCH_MAX_RESULT_BYTES = 256 * 1024;
+export const CODEX_THREAD_PALETTE_SEARCH_PAGE_DEADLINE = "3 seconds";
 type CoreTaskWindow = Extract<
   import("../core-client/types").ProjectWorkspaceReadSnapshot["value"],
   { readonly kind: "task_window" }
@@ -538,20 +550,72 @@ export const make = (
       listPinned: runOwned(
         Effect.gen(function* () {
           const ids: string[] = [];
+          const seenThreadIds = new Set<string>();
+          const seenCursors = new Set<string>();
           let after: string | null = null;
-          do {
-            const tasks: CoreTaskWindow = yield* readTaskWindow({
+          let retainedBytes = 0;
+          for (let page = 0; page < CODEX_PINNED_THREAD_LIST_MAX_PAGES; page += 1) {
+            const loaded = yield* readTaskWindow({
               projectId: null,
               pinned: true,
               after,
-              first: 200,
-            });
-            ids.push(
-              ...tasks.items.flatMap((task) => (task.thread ? [task.thread.thread_id] : [])),
-            );
-            after = tasks.next_cursor ?? null;
-          } while (after);
-          return ids;
+              first: CODEX_PINNED_THREAD_LIST_PAGE_SIZE,
+            }).pipe(Effect.timeoutOption(CODEX_PINNED_THREAD_LIST_PAGE_DEADLINE));
+            if (Option.isNone(loaded)) {
+              return yield* error(
+                "list-pinned",
+                new Error("Pinned Thread list page exceeded its bounded deadline"),
+              );
+            }
+            const tasks: CoreTaskWindow = loaded.value;
+            if (
+              tasks.items.length > CODEX_PINNED_THREAD_LIST_PAGE_SIZE ||
+              cappedApproximateValueBytes(tasks.items, CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES) >
+                CODEX_PINNED_THREAD_LIST_MAX_PAGE_BYTES
+            ) {
+              return yield* error(
+                "list-pinned",
+                new Error("Pinned Thread list page exceeded its bounded admission budget"),
+              );
+            }
+            for (const task of tasks.items) {
+              const threadId = task.thread?.thread_id;
+              if (!threadId || seenThreadIds.has(threadId)) continue;
+              if (ids.length >= CODEX_PINNED_THREAD_LIST_MAX_RESULTS) {
+                return yield* error(
+                  "list-pinned",
+                  new Error("Pinned Thread list exceeded its bounded result budget"),
+                );
+              }
+              const threadIdBytes = cappedApproximateValueBytes(
+                threadId,
+                CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES - retainedBytes,
+              );
+              if (threadIdBytes > CODEX_PINNED_THREAD_LIST_MAX_RESULT_BYTES - retainedBytes) {
+                return yield* error(
+                  "list-pinned",
+                  new Error("Pinned Thread ids exceeded their bounded retention budget"),
+                );
+              }
+              seenThreadIds.add(threadId);
+              ids.push(threadId);
+              retainedBytes += threadIdBytes;
+            }
+            const next = tasks.next_cursor ?? null;
+            if (next === null) return ids;
+            if (seenCursors.has(next)) {
+              return yield* error(
+                "list-pinned",
+                new Error("Pinned Thread list cursor did not advance"),
+              );
+            }
+            seenCursors.add(next);
+            after = next;
+          }
+          return yield* error(
+            "list-pinned",
+            new Error("Pinned Thread list exceeded its bounded page budget"),
+          );
         }).pipe(Effect.mapError((cause) => error("list-pinned", cause))),
       ),
       listProject: (projectId, input = {}) => {
@@ -598,22 +662,66 @@ export const make = (
             const seen = new Set<string>();
             const seenCursors = new Set<string>();
             let cursor: string | null = null;
+            let retainedBytes = 0;
             const limit = normalizeSearchLimit(input.limit);
-            do {
+            const connection = yield* gateway.connection(gateway.localHostId);
+            if (connection.kind !== "ready") {
+              return yield* error(
+                "search-palette",
+                new Error("Codex app-server is unavailable for Thread search"),
+              );
+            }
+            const generationFence = codexGatewayGenerationFence(connection);
+            for (let page = 0; page < CODEX_THREAD_PALETTE_SEARCH_MAX_PAGES; page += 1) {
               if (cursor) {
-                if (seenCursors.has(cursor)) break;
+                if (seenCursors.has(cursor)) {
+                  return yield* error(
+                    "search-palette",
+                    new Error("Thread search cursor did not advance"),
+                  );
+                }
                 seenCursors.add(cursor);
               }
-              const response: ClientRequestResponsesByMethod["thread/search"] =
-                yield* gateway.requestLocal("thread/search", {
-                  cursor,
-                  limit: limit - results.length,
-                  sortKey: "updated_at",
-                  sortDirection: "desc",
-                  sourceKinds: [...CODEX_SIDEBAR_THREAD_SOURCE_KINDS],
-                  archived: false,
-                  searchTerm: query,
-                });
+              const requestedLimit = limit - results.length;
+              const loaded = yield* gateway
+                .requestLocal(
+                  "thread/search",
+                  {
+                    cursor,
+                    limit: requestedLimit,
+                    sortKey: "updated_at",
+                    sortDirection: "desc",
+                    sourceKinds: [...CODEX_SIDEBAR_THREAD_SOURCE_KINDS],
+                    archived: false,
+                    searchTerm: query,
+                  },
+                  {
+                    ...generationFence,
+                    priority: "interactive",
+                    source: "thread_catalog",
+                    timeoutMs: 3_000,
+                  },
+                )
+                .pipe(Effect.timeoutOption(CODEX_THREAD_PALETTE_SEARCH_PAGE_DEADLINE));
+              if (Option.isNone(loaded)) {
+                return yield* error(
+                  "search-palette",
+                  new Error("Thread search page exceeded its bounded deadline"),
+                );
+              }
+              const response: ClientRequestResponsesByMethod["thread/search"] = loaded.value;
+              if (
+                response.data.length > requestedLimit ||
+                cappedApproximateValueBytes(
+                  response.data,
+                  CODEX_THREAD_PALETTE_SEARCH_MAX_PAGE_BYTES,
+                ) > CODEX_THREAD_PALETTE_SEARCH_MAX_PAGE_BYTES
+              ) {
+                return yield* error(
+                  "search-palette",
+                  new Error("Thread search page exceeded its bounded admission budget"),
+                );
+              }
               for (const item of response.data) {
                 const thread = item.thread;
                 if (
@@ -634,7 +742,7 @@ export const make = (
                 );
                 const projectId = persisted?.projectId ?? inferred;
                 const status = parseThreadStatus(thread.status);
-                results.push({
+                const result: CommandPaletteThreadSearchResult = {
                   thread: {
                     threadId: thread.id,
                     sessionId: persisted?.sessionId ?? null,
@@ -658,12 +766,28 @@ export const make = (
                     updatedAt: Number(thread.recencyAt ?? thread.updatedAt) * 1_000,
                   },
                   snippet: item.snippet,
-                });
+                };
+                const resultBytes = cappedApproximateValueBytes(
+                  result,
+                  CODEX_THREAD_PALETTE_SEARCH_MAX_RESULT_BYTES - retainedBytes,
+                );
+                if (resultBytes > CODEX_THREAD_PALETTE_SEARCH_MAX_RESULT_BYTES - retainedBytes) {
+                  return yield* error(
+                    "search-palette",
+                    new Error("Thread search results exceeded their bounded retention budget"),
+                  );
+                }
+                results.push(result);
+                retainedBytes += resultBytes;
                 if (results.length >= limit) break;
               }
               cursor = response.nextCursor ?? null;
-            } while (cursor && results.length < limit);
-            return results;
+              if (cursor === null || results.length >= limit) return results;
+            }
+            return yield* error(
+              "search-palette",
+              new Error("Thread search exceeded its bounded page budget"),
+            );
           }).pipe(Effect.mapError((cause) => error("search-palette", cause))),
         );
       },

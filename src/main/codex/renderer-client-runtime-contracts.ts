@@ -5,11 +5,13 @@ import type {
   CodexRendererClientResponseMessage,
   CodexRendererThreadRole,
 } from "../../shared/types";
+import type { RendererDeliveryTransferAckEnvelope } from "../../shared/renderer-delivery-transport";
 import type { SafeSendWebContentsLike } from "../ipc-safe-send";
 import type { BackendLogger } from "../logging/logger";
 
 export const DEFAULT_RENDERER_CLIENT_REQUEST_TIMEOUT_MS = 5_000;
-export const COMPLETE_HISTORY_RENDERER_CLIENT_REQUEST_TIMEOUT_MS = 300_000;
+export const DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS = 256;
+export const DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS_PER_TARGET = 64;
 export const RENDERER_CLIENT_REQUEST_CHANNEL = "codex:renderer-client:request";
 export const THREAD_ROLE_RENDERER_CLIENT_REQUEST_METHOD = "thread-role";
 
@@ -59,6 +61,8 @@ export interface RendererClientRuntimeOptions {
   readonly clientIdFactory?: () => string;
   readonly requestIdFactory?: () => string;
   readonly defaultRequestTimeoutMs?: number;
+  readonly maxPendingRequests?: number;
+  readonly maxPendingRequestsPerTarget?: number;
   readonly logger?: Pick<BackendLogger, "debug" | "warn">;
   readonly send?: (
     target: RendererClientWebContents,
@@ -70,6 +74,7 @@ export interface RendererClientRuntimeOptions {
 export const RendererClientFailureReason = Schema.Literals([
   "unavailable",
   "timeout",
+  "pressure",
   "request-failed",
   "not-owner",
   "closing",
@@ -89,9 +94,9 @@ export class RendererClientRuntimeError extends Schema.TaggedError<RendererClien
 ) {}
 
 /**
- * Main-owned renderer coordination. Electron registration and delivery are
- * synchronous ingress operations; every waiting operation is an Effect owned
- * by the caller fiber and the Main Scope.
+ * Main-owned renderer coordination. Electron registration and legacy Boolean
+ * admission stay synchronous at their external seam; admitted delivery,
+ * acknowledgments, requests, and release are fibers owned by the Main Scope.
  */
 export interface RendererClientRuntimeService {
   readonly register: (webContents: RendererClientWebContents) => RendererClientRegistration;
@@ -131,6 +136,10 @@ export interface RendererClientRuntimeService {
   readonly handleResponse: (
     webContents: RendererClientWebContents,
     response: CodexRendererClientResponseMessage,
+  ) => Effect.Effect<boolean>;
+  readonly handleDeliveryAcknowledgment: (
+    webContents: RendererClientWebContents,
+    acknowledgment: RendererDeliveryTransferAckEnvelope,
   ) => Effect.Effect<boolean>;
   readonly disposeClient: (clientId: string, reason?: string) => Effect.Effect<void>;
   readonly events: Stream.Stream<RendererClientEvent>;

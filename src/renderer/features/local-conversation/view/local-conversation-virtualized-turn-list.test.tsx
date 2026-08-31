@@ -4,6 +4,7 @@ import { NodexTooltipProvider } from "../../../components/ui/tooltip";
 import { createMaitaiStore, MaitaiProvider } from "../../../lib/maitai";
 import { render } from "../../../test/dom";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";
+import type { CodexHistoryRow } from "../../../../shared/codex-conversation-state/codex-history-topology";
 import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import {
   LocalConversationVirtualizedTurnList,
@@ -207,6 +208,7 @@ function buildTurnEntries(texts: readonly string[]): LocalConversationVirtualize
 
 function renderVirtualizedTurnList(input: {
   entries: LocalConversationVirtualizedTurnListEntry[];
+  historyRows?: readonly CodexHistoryRow[];
   initialLatestTurnRestoreState?: VirtualizedLatestTurnRestoreState;
   onLatestTurnRestoreStateChange?: (
     state: VirtualizedLatestTurnRestoreState | null,
@@ -219,6 +221,7 @@ function renderVirtualizedTurnList(input: {
       <EnsureLocalConversationThreadScrollController>
         <LocalConversationVirtualizedTurnList
           entries={input.entries}
+          historyRows={input.historyRows}
           conversationId="thread_1"
           threadCwd="/tmp/project"
           editableTurnId={null}
@@ -269,6 +272,50 @@ describe("LocalConversationVirtualizedTurnList", () => {
     );
 
     expect(hasFixedHeightClippingAncestor(tallContent)).toBe(false);
+    view.unmount();
+  });
+
+  test("renders an inert 144px history row ahead of loaded turns", () => {
+    installQueuedRequestAnimationFrame();
+    installTurnBlockSizes({});
+    const entries = buildTurnEntries(["Older loaded answer.", "Latest loaded answer."]);
+    const gap: CodexHistoryRow = {
+      kind: "gap",
+      key: "history-gap:older",
+      olderBoundary: null,
+      newerBoundary: null,
+      estimatedHeightPx: 144,
+    };
+    const view = renderVirtualizedTurnList({
+      entries,
+      historyRows: [
+        gap,
+        {
+          kind: "content",
+          key: "history-content:turn_1",
+          turnKey: "turn_1",
+          entityKey: "turn_1",
+        },
+        {
+          kind: "content",
+          key: "history-content:turn_2",
+          turnKey: "turn_2",
+          entityKey: "turn_2",
+        },
+      ],
+    });
+
+    const gapElement = [
+      ...view.container.querySelectorAll<HTMLElement>("[aria-hidden='true']"),
+    ].find((element) => element.style.height === "144px");
+    const firstTurn = view.container.querySelector<HTMLElement>("[data-turn-key='turn_1']");
+
+    expect(gapElement).toBeTruthy();
+    expect(
+      gapElement && firstTurn
+        ? gapElement.compareDocumentPosition(firstTurn) & Node.DOCUMENT_POSITION_FOLLOWING
+        : 0,
+    ).not.toBe(0);
     view.unmount();
   });
 

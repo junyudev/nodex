@@ -7,7 +7,9 @@ import type {
 import {
   CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX,
   createLocalConversationHistoryGapLoadControllerState,
+  createLocalConversationHistoryGapRequestCoordinator,
   LocalConversationHistoryGap,
+  projectLocalConversationLegacyHistoryRows,
   selectLocalConversationHistoryGapBoundary,
   type LocalConversationHistoryGapLayout,
 } from "./local-conversation-history-gap";
@@ -176,6 +178,141 @@ describe("local conversation history gap controller", () => {
       activeProgressKeys: new Set(),
     });
     expect(next.boundary).toBe(secondBoundary);
+  });
+
+  test("requests one nearby page, deduplicates active progress, and waits for a later revision", async () => {
+    const coordinator = createLocalConversationHistoryGapRequestCoordinator();
+    const progress = boundary("older", "progress:page-1");
+    const layout = gapLayout(1_000, gapRow({ newerBoundary: progress }));
+    const pending = { release: () => {} };
+    const requests: CodexHistoryBoundaryRef[] = [];
+    const request = (requestedBoundary: CodexHistoryBoundaryRef) => {
+      requests.push(requestedBoundary);
+      return new Promise<void>((resolve) => {
+        pending.release = resolve;
+      });
+    };
+
+    coordinator.observeViewport(
+      { viewportRevision: 1, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
+      request,
+    );
+    coordinator.observeViewport(
+      { viewportRevision: 1, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
+      request,
+    );
+    await Promise.resolve();
+
+    expect(requests).toEqual([progress]);
+    expect(coordinator.activeProgressKeys()).toEqual(new Set([progress.progressKey]));
+
+    coordinator.observeViewport(
+      { viewportRevision: 2, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
+      request,
+    );
+    expect(requests).toEqual([progress]);
+
+    pending.release();
+    await Promise.resolve();
+    await Promise.resolve();
+    coordinator.observeViewport(
+      { viewportRevision: 2, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
+      request,
+    );
+    await Promise.resolve();
+
+    expect(requests).toEqual([progress, progress]);
+  });
+
+  test("releases a failed progress key for retry without retrying the consumed revision", async () => {
+    const coordinator = createLocalConversationHistoryGapRequestCoordinator();
+    const progress = boundary("older", "progress:retry");
+    const layout = gapLayout(1_000, gapRow({ newerBoundary: progress }));
+    let requests = 0;
+    const request = async () => {
+      requests += 1;
+      throw new Error("page failed");
+    };
+
+    coordinator.observeViewport(
+      { viewportRevision: 4, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
+      request,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    coordinator.observeViewport(
+      { viewportRevision: 4, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
+      request,
+    );
+    coordinator.observeViewport(
+      { viewportRevision: 5, viewportStartPx: 900, viewportEndPx: 1_200, gaps: [layout] },
+      request,
+    );
+    await Promise.resolve();
+
+    expect(requests).toBe(2);
+  });
+
+  test("does not request after the history gap is exhausted", async () => {
+    const coordinator = createLocalConversationHistoryGapRequestCoordinator();
+    let requests = 0;
+    coordinator.observeViewport(
+      { viewportRevision: 1, viewportStartPx: 0, viewportEndPx: 800, gaps: [] },
+      async () => {
+        requests += 1;
+      },
+    );
+    await Promise.resolve();
+    expect(requests).toBe(0);
+  });
+});
+
+describe("legacy local conversation history row projection", () => {
+  const pagination = {
+    olderCursor: "cursor:older",
+    backwardsCursor: "cursor:older",
+    oldestLoadedTurnId: "turn-2",
+    isLoadingOlder: false,
+    hasLoadedOldest: false,
+    loadedTurnCount: 2,
+    itemsView: "full" as const,
+  };
+
+  test("keeps the 144px legacy gap inert without inventing a Main cursor", () => {
+    const rows = projectLocalConversationLegacyHistoryRows({
+      conversationId: "thread-1",
+      pagination,
+      turnKeys: ["turn-2", "turn-3"],
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual(["gap", "content", "content"]);
+    expect(rows[0]).toMatchObject({
+      kind: "gap",
+      estimatedHeightPx: 144,
+      olderBoundary: null,
+      newerBoundary: null,
+    });
+  });
+
+  test("removes the gap after exhaustion and leaves an invalid cursor inert", () => {
+    const complete = projectLocalConversationLegacyHistoryRows({
+      conversationId: "thread-1",
+      pagination: { ...pagination, olderCursor: null, hasLoadedOldest: true },
+      turnKeys: ["turn-1"],
+    });
+    const inert = projectLocalConversationLegacyHistoryRows({
+      conversationId: "thread-1",
+      pagination: { ...pagination, olderCursor: null },
+      turnKeys: ["turn-2"],
+    });
+
+    expect(complete.map((row) => row.kind)).toEqual(["content"]);
+    expect(inert[0]).toMatchObject({
+      kind: "gap",
+      olderBoundary: null,
+      newerBoundary: null,
+    });
   });
 });
 

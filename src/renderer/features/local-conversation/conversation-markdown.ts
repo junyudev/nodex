@@ -513,14 +513,26 @@ function normalizeTitle(value: string | null | undefined): string {
   return (normalized || "Nodex conversation").replaceAll("#", "\\#");
 }
 
+export function renderConversationMarkdownHeader(title?: string | null): string {
+  return `# ${normalizeTitle(title)}`;
+}
+
+/** Renders one complete Turn so explicit history export can keep a one-Turn working set. */
+export function renderConversationTurnMarkdown(
+  entry: VisibleConversationTurnEntry,
+  cwd: string | null = null,
+): string | null {
+  return renderTurn(entry, entry.turn.items.find((item) => item.cwd)?.cwd ?? cwd);
+}
+
 export function renderConversationMarkdown({
   cwd = null,
   title,
   turns,
 }: ConversationMarkdownInput): string {
-  const sections = [`# ${normalizeTitle(title)}`];
+  const sections = [renderConversationMarkdownHeader(title)];
   for (const entry of turns) {
-    const rendered = renderTurn(entry, entry.turn.items.find((item) => item.cwd)?.cwd ?? cwd);
+    const rendered = renderConversationTurnMarkdown(entry, cwd);
     if (rendered) sections.push(rendered);
   }
   return `${sections.join("\n\n").trimEnd()}\n`;

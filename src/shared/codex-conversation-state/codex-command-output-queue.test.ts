@@ -183,6 +183,84 @@ describe("CodexCommandOutputQueue", () => {
     expect(flushed.join(",")).toBe("34567");
   });
 
+  test("cuts a batch before a new key can exceed the manager-global key budget", () => {
+    const scheduler = new ManualCommandOutputScheduler();
+    const flushes: string[][] = [];
+    const queue = new CodexCommandOutputQueue<SequencedOutput>({
+      scheduler,
+      maxBufferedKeys: 2,
+      onFlush: (updates) => flushes.push(updates.map((update) => update.itemId)),
+    });
+
+    expect(queue.enqueue(output("a", { itemId: "item-a" }))).toEqual({
+      forcedFlush: false,
+      deliveredInline: false,
+    });
+    queue.enqueue(output("b", { itemId: "item-b" }));
+    expect(queue.enqueue(output("c", { itemId: "item-c" }))).toEqual({
+      forcedFlush: true,
+      deliveredInline: false,
+    });
+
+    expect(flushes).toEqual([["item-a", "item-b"]]);
+    expect(scheduler.timeoutCount).toBe(1);
+    scheduler.runNextTimeout();
+    expect(flushes).toEqual([["item-a", "item-b"], ["item-c"]]);
+  });
+
+  test("cuts a coalesced batch before sequence metadata can exceed the update budget", () => {
+    const scheduler = new ManualCommandOutputScheduler();
+    const flushes: SequencedOutput[][] = [];
+    const queue = new CodexCommandOutputQueue<SequencedOutput>({
+      scheduler,
+      maxBufferedUpdates: 2,
+      mergeUpdate: (existing, incoming, mergedDelta) => ({
+        ...incoming,
+        delta: mergedDelta,
+        sequences: [...(existing?.sequences ?? []), incoming.sequence],
+      }),
+      onFlush: (updates) => flushes.push([...updates]),
+    });
+
+    queue.enqueue(output("a", { sequence: 1 }));
+    queue.enqueue(output("b", { sequence: 2 }));
+    const result = queue.enqueue(output("c", { sequence: 3 }));
+
+    expect(result.forcedFlush).toBe(true);
+    expect(flushes[0]?.[0]?.delta).toBe("ab");
+    expect(flushes[0]?.[0]?.sequences).toEqual([1, 2]);
+    scheduler.runNextTimeout();
+    expect(flushes[1]?.[0]?.delta).toBe("c");
+    expect(flushes[1]?.[0]?.sequences).toEqual([3]);
+  });
+
+  test("accounts UTF-8 bytes and never retains an individually over-budget update", () => {
+    const scheduler = new ManualCommandOutputScheduler();
+    const flushes: string[][] = [];
+    const queue = new CodexCommandOutputQueue<SequencedOutput>({
+      scheduler,
+      maxBufferedUtf8Bytes: 4,
+      onFlush: (updates) => flushes.push(updates.map((update) => update.delta)),
+    });
+
+    queue.enqueue(output("é"));
+    expect(queue.enqueue(output("é"))).toEqual({
+      forcedFlush: false,
+      deliveredInline: false,
+    });
+    expect(queue.enqueue(output("x"))).toEqual({
+      forcedFlush: true,
+      deliveredInline: false,
+    });
+    expect(flushes).toEqual([["éé"]]);
+
+    const inline = queue.enqueue(
+      output("😀😀", { conversationId: "conversation-b", itemId: "item-b" }),
+    );
+    expect(inline).toEqual({ forcedFlush: true, deliveredInline: true });
+    expect(flushes).toEqual([["éé"], ["x"], ["😀😀"]]);
+  });
+
   test("treats an empty delta as queued work", () => {
     const scheduler = new ManualCommandOutputScheduler();
     const flushed: string[] = [];

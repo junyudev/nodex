@@ -207,11 +207,11 @@ export const make: Effect.Effect<
       Effect.flatMap((threadId): Effect.Effect<unknown, object> => {
         const request = input.request;
         switch (request.method) {
-          case "thread/rollback":
-            return threadRollback.rollbackLatestForEdit({
+          case "thread/revert":
+            return threadRollback.revertLatestForEdit({
               threadId,
-              turnId: request.params.turnId,
-              numTurns: request.params.numTurns,
+              turnId: request.params.beforeTurnId,
+              numTurns: 1,
             });
           case "thread/fork":
             return forkFromTurn({

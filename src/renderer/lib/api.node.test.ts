@@ -124,4 +124,53 @@ describe("renderer api transport", () => {
       restoreWindow(originalWindowDescriptor);
     }
   });
+
+  test("routes prompt-rail aborts through the request-scoped cancel channel", async () => {
+    const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+    let resolveIndex!: (value: unknown) => void;
+    const indexResult = new Promise<unknown>((resolve) => {
+      resolveIndex = resolve;
+    });
+    const invokeCalls: unknown[][] = [];
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      writable: true,
+      value: {
+        api: {
+          invoke: async (channel: string, ...args: unknown[]) => {
+            invokeCalls.push([channel, ...args]);
+            if (channel === "codex:thread:prompt-rail:index") return await indexResult;
+            if (channel === "codex:thread:prompt-rail:cancel") {
+              resolveIndex({ status: "cancelled", requestId: args[0] });
+              return true;
+            }
+            throw new Error(`Unexpected channel ${channel}`);
+          },
+        },
+      },
+    });
+
+    try {
+      const { loadCodexPromptRailIndex } = await import("./api");
+      const controller = new AbortController();
+      const request = {
+        requestId: "prompt-index-1",
+        threadId: "thread-a",
+        expectedTopologyGeneration: 7,
+      };
+      const loading = loadCodexPromptRailIndex(request, { signal: controller.signal });
+      controller.abort();
+
+      await expect(loading).resolves.toEqual({
+        status: "cancelled",
+        requestId: request.requestId,
+      });
+      expect(invokeCalls).toEqual([
+        ["codex:thread:prompt-rail:index", request],
+        ["codex:thread:prompt-rail:cancel", request.requestId],
+      ]);
+    } finally {
+      restoreWindow(originalWindowDescriptor);
+    }
+  });
 });

@@ -156,7 +156,8 @@ export const make: Effect.Effect<
       >;
     },
   ) {
-    const thread = input.notification.params.thread;
+    const observedThread = input.notification.params.thread;
+    const thread = { ...observedThread, turns: [] };
     const id = thread.id;
     const existing = yield* read(id);
     const parentId = extractCodexThreadSubagentMetadata(thread).parentThreadId;
@@ -183,6 +184,10 @@ export const make: Effect.Effect<
       return yield* error("materialize", id, new Error("Core omitted the observed Thread"));
     }
     publishSummary(persisted);
+
+    // thread/started is an identity and metadata notification, never a history transport.
+    // A duplicate notification must not replace an already bounded canonical projection.
+    if (conversations.current(id)?.readCanonicalState()) return;
 
     const permissions = createCodexCanonicalWorkspacePermissionContext(persisted.writable_roots);
     const canonical = yield* Effect.try({

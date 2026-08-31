@@ -44,6 +44,7 @@ interface FakeEndpoint {
   readonly config: CodexExecutionHostConfig;
   readonly attempts: FakeAttempt[];
   readonly releases: number[];
+  readonly requests: unknown[];
 }
 
 const encoder = new TextEncoder();
@@ -87,6 +88,7 @@ const fakeEndpoint = (input: {
 }): FakeEndpoint => {
   const attempts: FakeAttempt[] = [];
   const releases: number[] = [];
+  const requests: unknown[] = [];
   const sessionLayer: CodexEndpointConfig["sessionLayer"] = (generation) =>
     Layer.effect(
       CodexAppServerSession,
@@ -121,6 +123,7 @@ const fakeEndpoint = (input: {
             Queue.take(io.output).pipe(
               Effect.flatMap((line) => {
                 const request = JSON.parse(line.trim()) as { readonly id?: string | number };
+                requests.push(request);
                 if (request.id === undefined) return Effect.void;
                 return Queue.offer(
                   io.input,
@@ -161,6 +164,7 @@ const fakeEndpoint = (input: {
   return {
     attempts,
     releases,
+    requests,
     config: {
       kind: input.kind ?? "local",
       hostId: input.hostId,
@@ -406,6 +410,22 @@ it.effect("routes typed requests explicitly across local and thread execution ho
       "remote@example.com",
     );
 
+    const remoteRequestCount = remote.requests.length;
+    const rerouted = yield* gateway
+      .requestForThread(
+        "thread-a",
+        "account/read",
+        {},
+        {
+          expectedHostId: "local",
+          expectedGeneration: 1,
+        },
+      )
+      .pipe(Effect.result);
+    assert.isTrue(Result.isFailure(rerouted));
+    if (Result.isFailure(rerouted)) assert.strictEqual(rerouted.failure.reason, "session-lost");
+    assert.strictEqual(remote.requests.length, remoteRequestCount);
+
     const localRemoval = yield* Effect.result(endpoints.unregister("local"));
     assert.isTrue(Result.isFailure(localRemoval));
     yield* gateway.removeHost("remote-a");
@@ -462,6 +482,16 @@ it.effect(
         replacement.attempts.map(({ generation }) => generation),
         [2],
       );
+
+      const staleRequest = yield* gateway
+        .requestLocal("account/read", {}, { expectedHostId: "local", expectedGeneration: 1 })
+        .pipe(Effect.result);
+      assert.isTrue(Result.isFailure(staleRequest));
+      if (Result.isFailure(staleRequest)) {
+        assert.strictEqual(staleRequest.failure.reason, "session-lost");
+        assert.strictEqual(staleRequest.failure.generation, 1);
+      }
+      assert.strictEqual(replacement.requests.length, 0);
 
       const account = yield* gateway.requestLocal("account/read", {});
       assert.strictEqual(account.account?.type, "chatgpt");

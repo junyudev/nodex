@@ -11,6 +11,11 @@ import {
   stripCodexCommandOutputTruncationPrefix,
   type CodexCommandOutputUpdate,
 } from "./codex-command-output-queue";
+import { codexUtf8ByteLength } from "../codex-terminal-interaction";
+
+export const CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT = 128;
+export const CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES = 256 * 1_024;
+const CODEX_TERMINAL_COMMAND_ACTION_MAX_CANDIDATE_SCAN = 256;
 
 export type CodexCommandOutputNotification = Extract<
   ServerNotification,
@@ -112,11 +117,85 @@ function appendRawTerminalCommands(
   commands: readonly string[],
 ): CodexRawCommandExecution {
   if (commands.length === 0) return item;
-  const commandActions = [
-    ...item.commandActions,
-    ...commands.map((command) => ({ type: "unknown" as const, command })),
-  ];
+  const commandActions = boundedTerminalCommandActions(item.commandActions, commands);
+  if (
+    commandActions.length === item.commandActions.length &&
+    commandActions.every((action, index) => action === item.commandActions[index])
+  ) {
+    return item;
+  }
   return { ...item, commandActions };
+}
+
+type CodexCommandAction = CodexRawCommandExecution["commandActions"][number];
+
+function optionalUtf8ByteLength(value: string | null): number {
+  return value === null ? 0 : codexUtf8ByteLength(value);
+}
+
+function codexCommandActionUtf8Bytes(action: CodexCommandAction): number {
+  if (action.type === "read") {
+    return (
+      codexUtf8ByteLength(action.command) +
+      codexUtf8ByteLength(action.name) +
+      codexUtf8ByteLength(action.path) +
+      32
+    );
+  }
+  if (action.type === "listFiles") {
+    return codexUtf8ByteLength(action.command) + optionalUtf8ByteLength(action.path) + 24;
+  }
+  if (action.type === "search") {
+    return (
+      codexUtf8ByteLength(action.command) +
+      optionalUtf8ByteLength(action.query) +
+      optionalUtf8ByteLength(action.path) +
+      32
+    );
+  }
+  return codexUtf8ByteLength(action.command) + 16;
+}
+
+/** Keeps a terminal command-action tail bounded even when the input stream contains many lines. */
+function boundedTerminalCommandActions(
+  existing: readonly CodexCommandAction[],
+  commands: readonly string[],
+): CodexCommandAction[] {
+  const newestFirst: CodexCommandAction[] = [];
+  let bytes = 0;
+  const appendIfWithinBudget = (action: CodexCommandAction): boolean => {
+    const actionBytes = codexCommandActionUtf8Bytes(action);
+    if (
+      newestFirst.length >= CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT ||
+      actionBytes > CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES - bytes
+    ) {
+      return false;
+    }
+    newestFirst.push(action);
+    bytes += actionBytes;
+    return newestFirst.length < CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT;
+  };
+  const scanTail = <T>(
+    values: readonly T[],
+    toAction: (value: T) => CodexCommandAction,
+  ): boolean => {
+    const firstIndex = Math.max(
+      0,
+      values.length - CODEX_TERMINAL_COMMAND_ACTION_MAX_CANDIDATE_SCAN,
+    );
+    for (let index = values.length - 1; index >= firstIndex; index -= 1) {
+      const value = values[index];
+      if (value === undefined) continue;
+      if (!appendIfWithinBudget(toAction(value))) {
+        if (newestFirst.length >= CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT) return false;
+      }
+    }
+    return newestFirst.length < CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT;
+  };
+
+  const hasRoomAfterIncoming = scanTail(commands, (command) => ({ type: "unknown", command }));
+  if (hasRoomAfterIncoming) scanTail(existing, (action) => action);
+  return newestFirst.reverse();
 }
 
 function reduceRawCommandExecution(

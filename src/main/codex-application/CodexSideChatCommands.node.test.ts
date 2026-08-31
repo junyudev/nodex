@@ -15,6 +15,10 @@ import type { CodexConversationSnapshot } from "../../shared/types";
 import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import {
+  CodexAppServerCapabilities,
+  createCodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
+import {
   CodexEphemeralThreadRouting,
   live as codexEphemeralThreadRoutingLive,
 } from "../codex-runtime/CodexEphemeralThreadRouting";
@@ -104,12 +108,16 @@ interface SideChatHarnessOptions {
   readonly unsubscribe?: Effect.Effect<unknown, CodexRuntimeError>;
   readonly parentProjection?: "materialized" | "released";
   readonly parentSideConversation?: boolean;
+  readonly capabilityCurrent?: boolean;
+  readonly capabilityVersion?: string;
+  readonly forkResponse?: ThreadForkResponse;
 }
 
 interface PhysicalRequest {
   readonly hostId: string;
   readonly method: string;
   readonly params: Readonly<Record<string, unknown>>;
+  readonly scheduling?: unknown;
 }
 
 const PARENT_HISTORY_METHODS = new Set([
@@ -132,15 +140,21 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
     const gateway = CodexGateway.of({
       localHostId: "local",
       requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
-      requestOnHost: ((hostId: string, method: string, params: { threadId?: string }) =>
+      requestOnHost: ((
+        hostId: string,
+        method: string,
+        params: { threadId?: string },
+        scheduling?: unknown,
+      ) =>
         Effect.suspend(() => {
           requests.push({
             hostId,
             method,
             params: params as Readonly<Record<string, unknown>>,
+            scheduling,
           });
           events.push(`request:${hostId}:${method}:${params.threadId ?? parentThreadId}`);
-          if (method === "thread/fork") return Effect.succeed(forkResponse);
+          if (method === "thread/fork") return Effect.succeed(options.forkResponse ?? forkResponse);
           if (method === "thread/inject_items") {
             const boundaryText = (
               params as {
@@ -244,6 +258,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
       snapshot: parentIsMaterialized ? parentSnapshot : null,
     } as never;
     const directory = CodexThreadDirectory.of({
+      materializeInCurrentLane: () => Effect.die("unused"),
       // The canonical directory serializes remote materialization in the Thread lane.
       // Side-chat admission must therefore never hold that same non-reentrant lane.
       resolve: (input) => {
@@ -287,6 +302,21 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
     } as unknown as CodexConversationProjection["Service"]);
     const commands = yield* makeCommands.pipe(
       Effect.provideService(CodexConversationProjection, projection),
+      Effect.provideService(
+        CodexAppServerCapabilities,
+        CodexAppServerCapabilities.of({
+          forHost: () =>
+            Effect.succeed(
+              createCodexAppServerCapabilitySnapshot({
+                hostId: remoteHostId,
+                generation: 1,
+                userAgent: options.capabilityVersion ?? "codex-app-server/0.147.0",
+              }),
+            ),
+          forThread: () => Effect.die("unused"),
+          isCurrent: () => Effect.succeed(options.capabilityCurrent ?? true),
+        }),
+      ),
       Effect.provideService(CodexGateway, gateway),
       Effect.provideService(CodexThreadHostResolver, hostResolver),
       Effect.provideService(CodexEphemeralThreadRouting, routing),
@@ -354,6 +384,13 @@ it.effect("forks from durable parent context without requesting parent history",
       harness.requests.map((request) => request.method),
       ["thread/fork", "thread/inject_items"],
     );
+    assert.deepEqual(
+      harness.requests.map((request) => request.scheduling),
+      [
+        { expectedHostId: remoteHostId, expectedGeneration: 1 },
+        { expectedHostId: remoteHostId, expectedGeneration: 1 },
+      ],
+    );
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -375,6 +412,58 @@ it.effect("uses durable execution metadata when the bounded parent projection wa
     assert.isUndefined(params.runtimeWorkspaceRoots);
     assert.isUndefined(params.permissions);
     yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("fails closed before forking when the host cannot prove bounded side-chat support", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope, { capabilityVersion: "codex-app-server/0.144.0" });
+
+    const exit = yield* Effect.exit(harness.commands.start({ parentThreadId }));
+
+    assert.isTrue(Exit.isFailure(exit));
+    assert.deepEqual(harness.requests, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects stale generations and fork responses containing inline history", () =>
+  Effect.gen(function* () {
+    const staleScope = yield* Scope.make();
+    const stale = yield* makeHarness(staleScope, { capabilityCurrent: false });
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(stale.commands.start({ parentThreadId }))));
+    assert.deepEqual(stale.requests, []);
+    yield* Scope.close(staleScope, Exit.void);
+
+    const inlineScope = yield* Scope.make();
+    const inline = yield* makeHarness(inlineScope, {
+      forkResponse: {
+        ...forkResponse,
+        thread: {
+          ...forkResponse.thread,
+          turns: [
+            {
+              id: "turn-inline",
+              items: [],
+              itemsView: "full",
+              status: "completed",
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              durationMs: null,
+            },
+          ],
+        },
+      },
+    });
+    assert.isTrue(Exit.isFailure(yield* Effect.exit(inline.commands.start({ parentThreadId }))));
+    assert.deepEqual(
+      inline.requests.map((request) => request.method),
+      ["thread/fork"],
+    );
+    assert.isNull(yield* inline.routing.resolve(sideThreadId));
+    yield* Scope.close(inlineScope, Exit.void);
   }),
 );
 
@@ -446,6 +535,10 @@ it.effect("compensates the fork when the initial Turn is rejected", () =>
       `turn:${sideThreadId}:${remoteHostId}`,
       `request:${remoteHostId}:thread/unsubscribe:${sideThreadId}`,
     ]);
+    assert.deepEqual(harness.requests.at(-1)?.scheduling, {
+      expectedHostId: remoteHostId,
+      expectedGeneration: 1,
+    });
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -469,6 +562,10 @@ it.effect("discards local ownership even when the remote unsubscribe fails", () 
     assert.deepEqual(harness.events, [
       `request:${remoteHostId}:thread/unsubscribe:${sideThreadId}`,
     ]);
+    assert.deepEqual(harness.requests[0]?.scheduling, {
+      expectedHostId: remoteHostId,
+      expectedGeneration: 1,
+    });
     yield* Scope.close(scope, Exit.void);
   }),
 );

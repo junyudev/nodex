@@ -1,10 +1,13 @@
 import * as Context from "effect/Context";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
+import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
 import type {
   CodexConversationChildMembership,
   CodexConversationSnapshot,
@@ -19,11 +22,37 @@ import {
   type CodexConversationRelationshipChild,
   type CodexConversationRelationshipThread,
 } from "./CodexConversationRelationshipsProjection";
-import { CodexThreadDirectory } from "./CodexThreadDirectory";
+import {
+  CODEX_SUBAGENT_DISCOVERY_MAX_PAGE_BYTES,
+  CODEX_SUBAGENT_DISCOVERY_MAX_PAGES,
+  CODEX_SUBAGENT_DISCOVERY_MAX_RESULT_BYTES,
+  CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS,
+  CODEX_SUBAGENT_DISCOVERY_PAGE_TIMEOUT_MS,
+  CodexThreadDirectory,
+} from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 const REPAIR_RETRY = "30 seconds";
 const PAGE_SIZE = 200;
+
+/**
+ * Relationship projection is metadata fan-out, never a complete child-thread export. Reuse the
+ * directory's bounded discovery envelope so a wide parent cannot make a refresh retain all of
+ * its descendants before one membership projection is published.
+ */
+export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGES = CODEX_SUBAGENT_DISCOVERY_MAX_PAGES;
+export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS =
+  CODEX_SUBAGENT_DISCOVERY_MAX_RESULTS;
+export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGE_BYTES =
+  CODEX_SUBAGENT_DISCOVERY_MAX_PAGE_BYTES;
+export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULT_BYTES =
+  CODEX_SUBAGENT_DISCOVERY_MAX_RESULT_BYTES;
+export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_PAGE_TIMEOUT_MS =
+  CODEX_SUBAGENT_DISCOVERY_PAGE_TIMEOUT_MS;
+export const CODEX_CONVERSATION_RELATIONSHIP_CHILD_SCAN_DEADLINE_MS = 30_000;
+export const CODEX_CONVERSATION_RELATIONSHIP_MAX_ACTIVE_REPAIRS = 32;
+export const CODEX_CONVERSATION_RELATIONSHIP_MAX_REMOVED_TOMBSTONES =
+  CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS;
 
 type CoreChildThread = Extract<
   ProjectWorkspaceReadSnapshot["value"],
@@ -121,6 +150,8 @@ export const make: Effect.Effect<
   const refreshes = yield* FiberMap.make<string, void>();
   const runRefresh = yield* FiberMap.runtime(refreshes)();
   const removedThreadIds = new Set<string>();
+  let removedThreadIdsSaturated = false;
+  let activeRepairCount = 0;
 
   const error = (threadId: string, cause: unknown): CodexConversationRelationshipsError =>
     new CodexConversationRelationshipsError({ threadId, cause });
@@ -129,26 +160,113 @@ export const make: Effect.Effect<
     parentThreadId: string,
   ): Effect.fn.Return<readonly CoreChildThread[], CodexConversationRelationshipsError> {
     const children: CoreChildThread[] = [];
+    const seenChildThreadIds = new Set<string>();
+    const seenCursors = new Set<string | null>();
     let after: string | null = null;
-    do {
-      const response: ProjectWorkspaceReadSnapshot = yield* core.workspace
+    let resultBytes = 0;
+    const startedAtMs = yield* Clock.currentTimeMillis;
+
+    for (let page = 0; page < CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGES; page += 1) {
+      const remainingDeadlineMs =
+        CODEX_CONVERSATION_RELATIONSHIP_CHILD_SCAN_DEADLINE_MS -
+        ((yield* Clock.currentTimeMillis) - startedAtMs);
+      if (remainingDeadlineMs <= 0) {
+        return yield* error(
+          parentThreadId,
+          new Error("Child Thread relationship scan exceeded its total deadline"),
+        );
+      }
+      if (seenCursors.has(after)) {
+        return yield* error(
+          parentThreadId,
+          new Error("Child Thread relationship cursor did not advance"),
+        );
+      }
+      seenCursors.add(after);
+      const response = yield* core.workspace
         .read({
           kind: "child_thread_window",
           parent_thread_id: parentThreadId,
           include_archived: false,
           window: { after, first: PAGE_SIZE },
         })
-        .pipe(Effect.mapError((cause) => error(parentThreadId, cause)));
-      if (response.value.kind !== "child_thread_window") {
+        .pipe(
+          Effect.timeoutOption(
+            Math.min(CODEX_CONVERSATION_RELATIONSHIP_CHILD_PAGE_TIMEOUT_MS, remainingDeadlineMs),
+          ),
+          Effect.mapError((cause) => error(parentThreadId, cause)),
+        );
+      if (Option.isNone(response)) {
+        return yield* error(
+          parentThreadId,
+          new Error("Child Thread relationship page exceeded its deadline"),
+        );
+      }
+      const snapshot: ProjectWorkspaceReadSnapshot = response.value;
+      if (snapshot.value.kind !== "child_thread_window") {
         return yield* error(
           parentThreadId,
           new Error("Core returned the wrong child Thread read variant"),
         );
       }
-      children.push(...response.value.threads.items);
-      after = response.value.threads.next_cursor ?? null;
-    } while (after);
-    return children;
+      const pageItems = snapshot.value.threads.items;
+      if (pageItems.length > PAGE_SIZE) {
+        return yield* error(
+          parentThreadId,
+          new Error(`Child Thread relationship page exceeded its ${PAGE_SIZE}-result limit`),
+        );
+      }
+      if (
+        cappedApproximateValueBytes(
+          pageItems,
+          CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGE_BYTES,
+        ) > CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGE_BYTES
+      ) {
+        return yield* error(
+          parentThreadId,
+          new Error("Child Thread relationship page is too large"),
+        );
+      }
+      for (const child of pageItems) {
+        if (seenChildThreadIds.has(child.thread_id)) continue;
+        if (children.length >= CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS) {
+          return yield* error(
+            parentThreadId,
+            new Error("Child Thread relationship scan exceeded its result budget"),
+          );
+        }
+        const remainingBytes = CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULT_BYTES - resultBytes;
+        const childBytes = cappedApproximateValueBytes(child, remainingBytes);
+        if (childBytes > remainingBytes) {
+          return yield* error(
+            parentThreadId,
+            new Error("Child Thread relationship scan exceeded its byte budget"),
+          );
+        }
+        children.push(child);
+        seenChildThreadIds.add(child.thread_id);
+        resultBytes += childBytes;
+      }
+      const nextCursor = snapshot.value.threads.next_cursor ?? null;
+      if (nextCursor === null) return children;
+      if (seenCursors.has(nextCursor)) {
+        return yield* error(
+          parentThreadId,
+          new Error("Child Thread relationship response repeated its continuation cursor"),
+        );
+      }
+      if (page + 1 >= CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGES) {
+        return yield* error(
+          parentThreadId,
+          new Error("Child Thread relationship scan exceeded its page budget"),
+        );
+      }
+      after = nextCursor;
+    }
+    return yield* error(
+      parentThreadId,
+      new Error("Child Thread relationship scan exhausted its page budget"),
+    );
   });
 
   const publish = (
@@ -182,7 +300,7 @@ export const make: Effect.Effect<
     hostId: string,
   ): Effect.fn.Return<boolean> {
     const entry = yield* directory
-      .resolve({ threadId: childThreadId, fidelity: "full", hostId })
+      .resolve({ threadId: childThreadId, fidelity: "metadata", hostId })
       .pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("Could not refresh Codex child Thread metadata").pipe(
@@ -263,6 +381,9 @@ export const make: Effect.Effect<
         ]);
         const children: CodexConversationRelationshipChild[] = [];
         for (const childThreadId of childThreadIds) {
+          // Once deletion pressure exceeds the tombstone envelope, trust only Core's bounded
+          // durable child window. This fails closed instead of resurrecting a deleted canonical id.
+          if (removedThreadIdsSaturated && !childrenById.has(childThreadId)) continue;
           if (removedThreadIds.has(childThreadId)) continue;
           const childConversation = conversations.current(childThreadId)?.readSnapshot() ?? null;
           const thread =
@@ -274,6 +395,8 @@ export const make: Effect.Effect<
           if (!hasFriendlyCodexConversationRelationshipIdentity(thread)) {
             const key = JSON.stringify([parentThreadId, childThreadId]);
             if (FiberMap.hasUnsafe(repairs, key)) continue;
+            if (activeRepairCount >= CODEX_CONVERSATION_RELATIONSHIP_MAX_ACTIVE_REPAIRS) continue;
+            activeRepairCount += 1;
             let keys = repairKeysByChild.get(childThreadId);
             if (!keys) {
               keys = new Set();
@@ -289,6 +412,7 @@ export const make: Effect.Effect<
               ).pipe(
                 Effect.ensuring(
                   Effect.sync(() => {
+                    activeRepairCount -= 1;
                     const current = repairKeysByChild.get(childThreadId);
                     current?.delete(key);
                     if (current?.size === 0) repairKeysByChild.delete(childThreadId);
@@ -314,10 +438,22 @@ export const make: Effect.Effect<
     Stream.runForEach((event) => {
       if (event.kind !== "conversationRelationshipsInvalidated") return Effect.void;
       return Effect.gen(function* () {
+        let saturatedNow = false;
         for (const threadId of event.value.removedThreadIds ?? []) {
           const normalized = threadId.trim();
           if (!normalized) continue;
-          removedThreadIds.add(normalized);
+          if (!removedThreadIdsSaturated) {
+            if (
+              !removedThreadIds.has(normalized) &&
+              removedThreadIds.size >= CODEX_CONVERSATION_RELATIONSHIP_MAX_REMOVED_TOMBSTONES
+            ) {
+              removedThreadIdsSaturated = true;
+              removedThreadIds.clear();
+              saturatedNow = true;
+            } else {
+              removedThreadIds.add(normalized);
+            }
+          }
           for (const key of repairKeysByChild.get(normalized) ?? []) {
             yield* FiberMap.remove(repairs, key);
           }
@@ -325,6 +461,11 @@ export const make: Effect.Effect<
         }
         for (const threadId of event.value.restoredThreadIds ?? []) {
           removedThreadIds.delete(threadId.trim());
+        }
+        if (saturatedNow) {
+          yield* Effect.logWarning(
+            "Codex relationship deletion pressure exceeded its tombstone budget; canonical-only children are suppressed until restart",
+          );
         }
         for (const rawParentThreadId of event.value.parentThreadIds) {
           const parentThreadId = rawParentThreadId.trim();
