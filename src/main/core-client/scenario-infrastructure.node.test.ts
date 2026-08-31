@@ -13,7 +13,7 @@ describe("authoritative isolated scenarios over CoreClient", () => {
     await withCoreScenario({ scenarioId: BOARD_DENSE_SCENARIO_ID }, async (context) => {
       const facts = requireBoardDenseScenarioFacts(context.facts);
       expect(facts).toMatchObject({
-        totalRows: 10,
+        totalRows: Object.keys(context.manifest.pageIdsByKey).length,
         groups: { triage: 3, plan: 2, build: 3, review: 1, ship: 1 },
         primaryBuildPage: {
           title: "Unify Database View rendering",

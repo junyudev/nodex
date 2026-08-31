@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   DATABASE_SETTINGS_CONFIGURATION_SCENARIO_ID,
+  DATABASE_SETTINGS_CONFIGURATION_SCENARIO_REVISION,
   requireDatabaseSettingsConfigurationFacts,
 } from "../../scripts/scenarios/scenarios/database-settings-configuration";
 const focusSettingsDatabase = async (page: Page): Promise<void> => {
@@ -559,7 +560,7 @@ test("Filter and Sort authoring stays inline, typed, draggable, and personally s
         throw new Error("Inline rule bar geometry is unavailable");
       }
       const assertions = {
-        scenario: `${DATABASE_SETTINGS_CONFIGURATION_SCENARIO_ID}@2`,
+        scenario: `${DATABASE_SETTINGS_CONFIGURATION_SCENARIO_ID}@${DATABASE_SETTINGS_CONFIGURATION_SCENARIO_REVISION}`,
         darkMode: await page.evaluate(() => document.documentElement.classList.contains("dark")),
         toolbarBottom: toolbarBox.y + toolbarBox.height,
         ruleBarTop: barBox.y,
@@ -694,7 +695,7 @@ test("Filter and Sort authoring stays inline, typed, draggable, and personally s
         [
           "# Database inline Filter / Sort visual evidence",
           "",
-          `- Scenario: \`${DATABASE_SETTINGS_CONFIGURATION_SCENARIO_ID}@2\``,
+          `- Scenario: \`${DATABASE_SETTINGS_CONFIGURATION_SCENARIO_ID}@${DATABASE_SETTINGS_CONFIGURATION_SCENARIO_REVISION}\``,
           "- Theme: dark",
           "- Data: disposable public-operation scenario only",
           '- Command: `vp run test:e2e tests/e2e/database-settings.spec.ts -g "Filter and Sort authoring"`',

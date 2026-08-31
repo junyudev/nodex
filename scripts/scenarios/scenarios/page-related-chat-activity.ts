@@ -200,7 +200,9 @@ const inspectPageRelatedChatActivity = async (
     threadless?.threadId !== null ||
     threadless.unread !== false
   ) {
-    throw new Error("page/related-chat-activity materialized facts do not match revision 1");
+    throw new Error(
+      `page/related-chat-activity materialized facts do not match revision ${PAGE_RELATED_CHAT_ACTIVITY_SCENARIO_REVISION}`,
+    );
   }
   return {
     scenarioId: manifest.scenarioId,

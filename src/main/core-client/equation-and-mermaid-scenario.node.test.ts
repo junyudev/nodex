@@ -13,7 +13,7 @@ describe("nfm-equation-and-mermaid over the real Core transport", () => {
       async ({ facts, manifest }) => {
         const observed = requireNfmEquationAndMermaidScenarioFacts(facts);
         expect(observed).toMatchObject({
-          totalRows: 1,
+          totalRows: Object.keys(manifest.pageIdsByKey).length,
           page: {
             pageId: manifest.pageIdsByKey[NFM_EQUATION_AND_MERMAID_PAGE_KEY],
             title: "Exercise Equation and Mermaid",

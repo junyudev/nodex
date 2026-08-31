@@ -121,20 +121,33 @@ function typeString(editor: BlockNoteEditor<any, any, any>, text: string) {
   for (const character of text) simulateTextInput(editor, character);
 }
 
+interface ClipboardTestBlock {
+  readonly id: string;
+  readonly content?: unknown;
+  readonly children?: readonly ClipboardTestBlock[];
+}
+
+function flattenClipboardTestBlocks(
+  blocks: readonly ClipboardTestBlock[],
+): readonly ClipboardTestBlock[] {
+  return blocks.flatMap((block) => [block, ...flattenClipboardTestBlocks(block.children ?? [])]);
+}
+
 describe("NFM Equation surface in Chromium", () => {
   test.each([
-    ["a collapsed Block caret", "caret"],
+    ["a complete Block copied from a collapsed caret", "block"],
     ["a selected inline range", "range"],
   ] as const)("round-trips content after an Inline Equation from %s", async (_label, mode) => {
     const { editor } = await mountInlineMath("E = mc^2");
+    const sourceBlockId = editor.document[0]!.id;
     editor.insertBlocks(
       [{ id: "paste-target", type: "paragraph", content: "Paste target" }],
       editor.document[0]!,
       "after",
     );
     const view = editor.prosemirrorView!;
-    if (mode === "caret") {
-      editor.setTextCursorPosition(editor.document[0]!.id, "end");
+    if (mode === "block") {
+      editor.setTextCursorPosition(sourceBlockId, "end");
     } else {
       const position = getNodeById(editor.document[0]!.id, view.state.doc);
       const inlineContent = position?.node.firstChild;
@@ -168,8 +181,27 @@ describe("NFM Equation surface in Chromium", () => {
       await Promise.resolve();
     });
 
-    expect(clipboardData.getData("blocknote/html")).not.toContain("bn-source-block-popup");
-    expect(clipboardData.getData("blocknote/html")).toContain('data-inline-content-type="math"');
+    const clipboardHtml = clipboardData.getData("blocknote/html");
+    expect(clipboardHtml).not.toContain("bn-source-block-popup");
+    expect(clipboardHtml).toContain('data-inline-content-type="math"');
+    if (mode === "block") {
+      expect(clipboardHtml).toContain('data-pm-slice="0 0 []"');
+      expect(editor.getBlock("paste-target")?.content).toEqual([
+        { type: "text", text: "Paste target", styles: {} },
+      ]);
+      const pastedBlocks = flattenClipboardTestBlocks(editor.document).filter(
+        (block) => block.id !== sourceBlockId && block.id !== "paste-target",
+      );
+      expect(pastedBlocks).toHaveLength(1);
+      expect(pastedBlocks[0]?.content).toEqual([
+        { type: "text", text: "Inline energy is ", styles: {} },
+        { type: "math", props: {}, content: "E = mc^2" },
+        { type: "text", text: ".", styles: {} },
+      ]);
+      return;
+    }
+
+    expect(clipboardHtml).not.toContain('data-pm-slice="0 0 []"');
     expect(editor.getBlock("paste-target")?.content).toEqual([
       { type: "text", text: "Paste targetInline energy is ", styles: {} },
       { type: "math", props: {}, content: "E = mc^2" },

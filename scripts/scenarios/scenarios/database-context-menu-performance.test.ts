@@ -12,6 +12,7 @@ import {
   DATABASE_CONTEXT_MENU_PERFORMANCE_PAGE_COUNT,
   DATABASE_CONTEXT_MENU_PERFORMANCE_PROPERTY_COUNT,
   DATABASE_CONTEXT_MENU_PERFORMANCE_SCENARIO_ID,
+  DATABASE_CONTEXT_MENU_PERFORMANCE_SCENARIO_REVISION,
 } from "./database-context-menu-performance";
 
 class PerformanceSeedPort implements ScenarioSeedPort {
@@ -91,7 +92,7 @@ describe("database/context-menu-performance scenario", () => {
     expect(port.ensuredPropertyCount).toBe(DATABASE_CONTEXT_MENU_PERFORMANCE_PROPERTY_COUNT);
     await expect(inspectScenario(manifest, port)).resolves.toEqual({
       scenarioId: DATABASE_CONTEXT_MENU_PERFORMANCE_SCENARIO_ID,
-      scenarioRevision: 1,
+      scenarioRevision: DATABASE_CONTEXT_MENU_PERFORMANCE_SCENARIO_REVISION,
       totalRows: DATABASE_CONTEXT_MENU_PERFORMANCE_PAGE_COUNT,
       propertyCount: DATABASE_CONTEXT_MENU_PERFORMANCE_PROPERTY_COUNT,
     });

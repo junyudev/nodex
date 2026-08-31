@@ -15,6 +15,7 @@ import {
   BOARD_DENSE_PAGES,
   BOARD_DENSE_PRIMARY_PAGE_KEY,
   BOARD_DENSE_SCENARIO_ID,
+  BOARD_DENSE_SCENARIO_REVISION,
   requireBoardDenseScenarioFacts,
 } from "./board-dense";
 
@@ -76,7 +77,7 @@ class RecordingSeedPort implements ScenarioSeedPort {
 
   async readBoard(): Promise<ScenarioBoardObservation> {
     return {
-      totalRows: 10,
+      totalRows: BOARD_DENSE_PAGES.length,
       commitSeq: 12,
       groups: { triage: 3, plan: 2, build: 3, review: 1, ship: 1 },
     };
@@ -102,14 +103,14 @@ describe("board/dense authoritative scenario", () => {
     expect(port.pages.map(({ key, status }) => ({ key, status }))).toEqual(
       BOARD_DENSE_PAGES.map(({ key, status }) => ({ key, status })),
     );
-    expect(new Set(port.pages.map((page) => page.pageId)).size).toBe(10);
-    expect(new Set(port.pages.map((page) => page.operationId)).size).toBe(10);
+    expect(new Set(port.pages.map((page) => page.pageId)).size).toBe(BOARD_DENSE_PAGES.length);
+    expect(new Set(port.pages.map((page) => page.operationId)).size).toBe(BOARD_DENSE_PAGES.length);
     expect(port.replacements).toHaveLength(1);
     expect(port.replacements[0]?.pageId).toBe(manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY]);
     expect(manifest).toMatchObject({
       version: 1,
       scenarioId: BOARD_DENSE_SCENARIO_ID,
-      scenarioRevision: 2,
+      scenarioRevision: BOARD_DENSE_SCENARIO_REVISION,
       projectId: "project:board-dense",
       databaseViewId: "view:board-dense",
     });
@@ -120,8 +121,8 @@ describe("board/dense authoritative scenario", () => {
     const manifest = await materializeScenario(BOARD_DENSE_SCENARIO_ID, port, "/tmp/workspace");
     await expect(inspectScenario(manifest, port)).resolves.toEqual({
       scenarioId: BOARD_DENSE_SCENARIO_ID,
-      scenarioRevision: 2,
-      totalRows: 10,
+      scenarioRevision: BOARD_DENSE_SCENARIO_REVISION,
+      totalRows: BOARD_DENSE_PAGES.length,
       groups: { triage: 3, plan: 2, build: 3, review: 1, ship: 1 },
       primaryBuildPage: {
         pageId: manifest.pageIdsByKey[BOARD_DENSE_PRIMARY_PAGE_KEY],
@@ -142,7 +143,7 @@ describe("board/dense authoritative scenario", () => {
     expect(() =>
       requireBoardDenseScenarioFacts({
         scenarioId: "board/dense",
-        scenarioRevision: 2,
+        scenarioRevision: BOARD_DENSE_SCENARIO_REVISION,
         groups: {},
       }),
     ).toThrow(/facts/u);

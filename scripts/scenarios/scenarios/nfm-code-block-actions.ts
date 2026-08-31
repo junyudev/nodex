@@ -46,7 +46,8 @@ export const requireNfmCodeBlockActionsScenarioFacts = (
   if (
     envelope.scenarioId !== NFM_CODE_BLOCK_ACTIONS_SCENARIO_ID ||
     envelope.scenarioRevision !== NFM_CODE_BLOCK_ACTIONS_SCENARIO_REVISION ||
-    candidate.totalRows !== 1 ||
+    typeof candidate.totalRows !== "number" ||
+    candidate.totalRows < 0 ||
     !isRecord(page) ||
     typeof page.pageId !== "string" ||
     page.title !== "Exercise Code Block actions" ||
@@ -100,7 +101,7 @@ const inspect = async (
     port.readBoard(manifest.projectId, manifest.databaseViewId, manifest.minimumCommitSeq),
     port.readPage(manifest.projectId, pageId, manifest.minimumCommitSeq),
   ]);
-  return requireNfmCodeBlockActionsScenarioFacts({
+  const facts = requireNfmCodeBlockActionsScenarioFacts({
     scenarioId: manifest.scenarioId,
     scenarioRevision: manifest.scenarioRevision,
     totalRows: board.totalRows,
@@ -110,6 +111,12 @@ const inspect = async (
       documentReadiness: page.documentReadiness,
     },
   });
+  if (facts.totalRows !== Object.keys(manifest.pageIdsByKey).length) {
+    throw new Error(
+      `nfm-code-block-actions materialized facts do not match revision ${NFM_CODE_BLOCK_ACTIONS_SCENARIO_REVISION}`,
+    );
+  }
+  return facts;
 };
 
 export const nfmCodeBlockActionsScenario: ScenarioDomainRecipe = {

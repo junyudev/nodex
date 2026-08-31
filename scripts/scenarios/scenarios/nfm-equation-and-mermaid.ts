@@ -86,7 +86,8 @@ export const requireNfmEquationAndMermaidScenarioFacts = (
   if (
     envelope.scenarioId !== NFM_EQUATION_AND_MERMAID_SCENARIO_ID ||
     envelope.scenarioRevision !== NFM_EQUATION_AND_MERMAID_SCENARIO_REVISION ||
-    candidate.totalRows !== 2 ||
+    typeof candidate.totalRows !== "number" ||
+    candidate.totalRows < 0 ||
     !isRecord(page) ||
     typeof page.pageId !== "string" ||
     page.title !== "Exercise Equation and Mermaid" ||
@@ -160,7 +161,7 @@ const inspect = async (
     port.readPage(manifest.projectId, pageId, manifest.minimumCommitSeq),
     port.readPage(manifest.projectId, viewportPageId, manifest.minimumCommitSeq),
   ]);
-  return requireNfmEquationAndMermaidScenarioFacts({
+  const facts = requireNfmEquationAndMermaidScenarioFacts({
     scenarioId: manifest.scenarioId,
     scenarioRevision: manifest.scenarioRevision,
     totalRows: board.totalRows,
@@ -175,6 +176,12 @@ const inspect = async (
       documentReadiness: viewportPage.documentReadiness,
     },
   });
+  if (facts.totalRows !== Object.keys(manifest.pageIdsByKey).length) {
+    throw new Error(
+      `nfm-equation-and-mermaid materialized facts do not match revision ${NFM_EQUATION_AND_MERMAID_SCENARIO_REVISION}`,
+    );
+  }
+  return facts;
 };
 
 export const nfmEquationAndMermaidScenario: ScenarioDomainRecipe = {

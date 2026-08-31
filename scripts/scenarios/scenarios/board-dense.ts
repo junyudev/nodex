@@ -230,7 +230,9 @@ const inspectBoardDense = async (
     facts.primaryBuildPage.title !== "Unify Database View rendering" ||
     facts.primaryBuildPage.documentReadiness !== "ready"
   ) {
-    throw new Error("board/dense materialized facts do not match revision 1");
+    throw new Error(
+      `board/dense materialized facts do not match revision ${BOARD_DENSE_SCENARIO_REVISION}`,
+    );
   }
   return facts;
 };

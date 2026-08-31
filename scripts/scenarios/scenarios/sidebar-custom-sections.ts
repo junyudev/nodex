@@ -172,7 +172,9 @@ const inspect = async (
     itemWindow.hasMore ||
     itemWindow.items.length !== SEEDED_DRAFT_COUNT + 2
   ) {
-    throw new Error("sidebar/custom-sections materialized facts do not match revision 2");
+    throw new Error(
+      `sidebar/custom-sections materialized facts do not match revision ${SIDEBAR_CUSTOM_SECTIONS_SCENARIO_REVISION}`,
+    );
   }
   return {
     scenarioId: manifest.scenarioId,

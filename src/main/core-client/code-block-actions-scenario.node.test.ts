@@ -13,7 +13,7 @@ describe("nfm-code-block-actions over the real Core transport", () => {
       async ({ facts, manifest }) => {
         const observed = requireNfmCodeBlockActionsScenarioFacts(facts);
         expect(observed).toMatchObject({
-          totalRows: 1,
+          totalRows: Object.keys(manifest.pageIdsByKey).length,
           page: {
             pageId: manifest.pageIdsByKey[NFM_CODE_BLOCK_ACTIONS_PAGE_KEY],
             title: "Exercise Code Block actions",
