@@ -1,3 +1,10 @@
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { CodexEndpointMap } from "./CodexEndpointMap";
+import { CodexThreadHostResolver } from "./CodexGateway";
+import type { CodexRuntimeError } from "./CodexRuntimeError";
+
 const NUMERIC_IDENTIFIER = "(?:0|[1-9]\\d*)";
 const NON_NUMERIC_IDENTIFIER = "(?:\\d*[A-Za-z-][0-9A-Za-z-]*)";
 const PRERELEASE_IDENTIFIER = `(?:${NUMERIC_IDENTIFIER}|${NON_NUMERIC_IDENTIFIER})`;
@@ -65,6 +72,21 @@ export interface CodexAppServerCapabilitySnapshot {
   readonly version: string | null;
   readonly flags: CodexAppServerCapabilityFlags;
 }
+
+export class CodexAppServerCapabilities extends Context.Service<
+  CodexAppServerCapabilities,
+  {
+    readonly forHost: (
+      hostId: string,
+    ) => Effect.Effect<CodexAppServerCapabilitySnapshot, CodexRuntimeError>;
+    readonly forThread: (
+      threadId: string,
+    ) => Effect.Effect<CodexAppServerCapabilitySnapshot, CodexRuntimeError>;
+    readonly isCurrent: (
+      snapshot: CodexAppServerCapabilitySnapshot,
+    ) => Effect.Effect<boolean, CodexRuntimeError>;
+  }
+>()("nodex/main/codex-runtime/CodexAppServerCapabilities") {}
 
 const parseSemanticVersion = (value: string): ParsedSemanticVersion | null => {
   const match = EXACT_SEMANTIC_VERSION.exec(value);
@@ -185,3 +207,43 @@ export function createCodexAppServerCapabilitySnapshot(
     flags: capabilityFlagsForVersion(version),
   });
 }
+
+/** Projects capability policy from the exact physical session generation that owns the wire. */
+export const make: Effect.Effect<
+  CodexAppServerCapabilities["Service"],
+  never,
+  CodexEndpointMap | CodexThreadHostResolver
+> = Effect.gen(function* () {
+  const endpoints = yield* CodexEndpointMap;
+  const threadHosts = yield* CodexThreadHostResolver;
+
+  const forHost = Effect.fn("CodexAppServerCapabilities.forHost")(function* (hostId: string) {
+    const endpoint = yield* endpoints.endpoint(hostId);
+    const session = yield* endpoint.session;
+    return createCodexAppServerCapabilitySnapshot({
+      hostId: session.hostId,
+      generation: session.generation,
+      userAgent: session.initialize.userAgent,
+    });
+  });
+
+  const forThread = Effect.fn("CodexAppServerCapabilities.forThread")(function* (threadId: string) {
+    const hostId = yield* threadHosts.resolve(threadId);
+    return yield* forHost(hostId);
+  });
+
+  const isCurrent = Effect.fn("CodexAppServerCapabilities.isCurrent")(function* (
+    snapshot: CodexAppServerCapabilitySnapshot,
+  ) {
+    const current = yield* forHost(snapshot.hostId);
+    return current.generation === snapshot.generation && current.userAgent === snapshot.userAgent;
+  });
+
+  return CodexAppServerCapabilities.of({ forHost, forThread, isCurrent });
+});
+
+export const live: Layer.Layer<
+  CodexAppServerCapabilities,
+  never,
+  CodexEndpointMap | CodexThreadHostResolver
+> = Layer.effect(CodexAppServerCapabilities, make);

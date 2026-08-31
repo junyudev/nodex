@@ -2,6 +2,10 @@ import type * as Duration from "effect/Duration";
 import * as Layer from "effect/Layer";
 import type { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
 import type { CodexApplicationRequestInbox } from "./CodexApplicationRequestInbox";
+import {
+  CodexAppServerCapabilities,
+  live as appServerCapabilitiesLive,
+} from "./CodexAppServerCapabilities";
 import { live as sessionLive, type CodexAppServerSessionOptions } from "./CodexAppServerSession";
 import type { CodexEndpointConfig } from "./CodexEndpoint";
 import { CodexEndpointMap, live as endpointMapLive } from "./CodexEndpointMap";
@@ -28,7 +32,7 @@ export const localEndpointConfig = (options: CodexRuntimeOptions): CodexEndpoint
 export const live = (
   options: CodexRuntimeOptions,
 ): Layer.Layer<
-  CodexGateway | CodexEndpointMap | CodexEventHub,
+  CodexAppServerCapabilities | CodexGateway | CodexEndpointMap | CodexEventHub,
   never,
   CodexSessionTransport | CodexApplicationRequestInbox | CodexThreadHostResolver
 > => {
@@ -37,7 +41,9 @@ export const live = (
     ...localEndpointConfig(options),
     kind: "local",
   }).pipe(Layer.provideMerge(events));
-  return gatewayLive({ requestTimeout: options.requestTimeout }).pipe(
-    Layer.provideMerge(Layer.merge(endpoints, events)),
-  );
+  const transport = Layer.merge(endpoints, events);
+  return Layer.merge(
+    gatewayLive({ requestTimeout: options.requestTimeout }),
+    appServerCapabilitiesLive,
+  ).pipe(Layer.provideMerge(transport));
 };

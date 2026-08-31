@@ -1,10 +1,16 @@
 import { describe, expect, test } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
 import {
   CODEX_APP_SERVER_DEVELOPMENT_CAPABILITY_FLAGS,
   createCodexAppServerCapabilitySnapshot,
   extractCodexAppServerVersion,
+  make,
   type CodexAppServerCapability,
 } from "./CodexAppServerCapabilities";
+import { CodexEndpoint } from "./CodexEndpoint";
+import { CodexEndpointMap } from "./CodexEndpointMap";
+import { CodexThreadHostResolver } from "./CodexGateway";
 
 describe("Codex app-server capability policy", () => {
   test("extracts a strict SemVer from supported app-server user-agent forms", () => {
@@ -166,4 +172,53 @@ describe("Codex app-server capability policy", () => {
       }),
     ).toThrow(/generation/u);
   });
+
+  it.effect("projects and fences the exact physical session generation", () =>
+    Effect.gen(function* () {
+      let generation = 7;
+      let userAgent = "Codex Desktop/0.147.0 (test)";
+      const endpoint = CodexEndpoint.of({
+        hostId: "remote-a",
+        session: Effect.sync(
+          () =>
+            ({
+              hostId: "remote-a",
+              generation,
+              pid: 42,
+              client: null,
+              initialize: { userAgent },
+              termination: Effect.never,
+            }) as never,
+        ),
+      } as unknown as CodexEndpoint["Service"]);
+      const endpoints = CodexEndpointMap.of({
+        localHostId: "local",
+        endpoint: () => Effect.succeed(endpoint),
+      } as unknown as CodexEndpointMap["Service"]);
+      const threadHosts = CodexThreadHostResolver.of({
+        resolve: () => Effect.succeed("remote-a"),
+      });
+      const service = yield* make.pipe(
+        Effect.provideService(CodexEndpointMap, endpoints),
+        Effect.provideService(CodexThreadHostResolver, threadHosts),
+      );
+
+      const first = yield* service.forThread("thread-a");
+      expect(first).toMatchObject({
+        hostId: "remote-a",
+        generation: 7,
+        version: "0.147.0",
+        flags: { paginatedHistory: true, threadRevert: false },
+      });
+      expect(yield* service.isCurrent(first)).toBe(true);
+
+      generation = 8;
+      userAgent = "Codex Desktop/0.148.0-alpha.13 (test)";
+      expect(yield* service.isCurrent(first)).toBe(false);
+      expect(yield* service.forHost("remote-a")).toMatchObject({
+        generation: 8,
+        flags: { threadRevert: true },
+      });
+    }),
+  );
 });
