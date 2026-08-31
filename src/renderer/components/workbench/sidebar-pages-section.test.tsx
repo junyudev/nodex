@@ -1,7 +1,28 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { LibraryPageNavigationNode } from "../../../shared/library-module";
+import { renderWithMaitai } from "@/test/dom";
 import { SidebarPagesSection, type SidebarPagesDataSource } from "./sidebar-pages-section";
+
+vi.mock("@/lib/use-library-navigation", () => ({
+  useInfiniteLibraryStandaloneRoots: vi.fn(),
+  useApplyLibraryOperation: () => ({
+    mutation: { mutateAsync: vi.fn(), isPending: false },
+  }),
+  useUndoLibraryPageRelocation: () => vi.fn(),
+  useLibraryPageRelocationDestinations: () => ({
+    data: { items: [], hasMore: false },
+    isPending: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useLibraryPageRelocationChildren: () => [],
+}));
+
+vi.mock("@/lib/interactive-page-search", () => ({
+  configuredPageSearchProjectIds: () => [],
+  useInteractivePageSearch: () => ({ rows: [], enrichment: "idle", queryRevision: "" }),
+}));
 
 const makePage = (index: number): LibraryPageNavigationNode => ({
   kind: "page",
@@ -38,7 +59,7 @@ const dataSource = (items: readonly LibraryPageNavigationNode[]): SidebarPagesDa
 
 describe("SidebarPagesSection", () => {
   test("shows a complete small root set without a pager", () => {
-    render(
+    renderWithMaitai(
       <SidebarPagesSection
         collapsed={false}
         activeRoot={{ kind: "page", pageId: "page:2" }}
@@ -58,7 +79,7 @@ describe("SidebarPagesSection", () => {
   });
 
   test("uses the shared Show more and Show less paging behavior", () => {
-    render(
+    renderWithMaitai(
       <SidebarPagesSection
         collapsed={false}
         activeRoot={null}
@@ -73,5 +94,26 @@ describe("SidebarPagesSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
     expect(screen.getByText("Page 6")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Show less" })).not.toBeNull();
+  });
+
+  test("opens a Page's shared resource menu from the whole row context target", async () => {
+    const onOpenRoot = vi.fn();
+    renderWithMaitai(
+      <SidebarPagesSection
+        collapsed={false}
+        activeRoot={null}
+        onToggle={vi.fn()}
+        onOpenRoot={onOpenRoot}
+        dataSource={dataSource([makePage(1)])}
+        mutationsEnabled
+      />,
+    );
+
+    const row = screen.getByText("Page 1").closest<HTMLElement>("[role='listitem']");
+    if (!row) throw new Error("Expected Sidebar Page row");
+    fireEvent.contextMenu(row, { clientX: 120, clientY: 80 });
+
+    expect(await screen.findByRole("menuitem", { name: "Move to" })).not.toBeNull();
+    expect(onOpenRoot).not.toHaveBeenCalled();
   });
 });

@@ -48,7 +48,7 @@ import {
   NfmSideMenuCopyLinkIcon,
   NfmSideMenuDeleteIcon,
   NfmSideMenuDuplicateIcon,
-  NfmSideMenuMoveToIcon,
+  MoveToIcon,
   NfmSideMenuPageInIcon,
   NfmSideMenuPlayIcon,
   NfmSideMenuSuggestEditsIcon,
@@ -583,7 +583,7 @@ function getActionIcon(key: NfmSideMenuActionKey) {
   if (key === "color") return <NfmSideMenuColorIcon />;
   if (key === "copy-link-to-block") return <NfmSideMenuCopyLinkIcon />;
   if (key === "duplicate") return <NfmSideMenuDuplicateIcon />;
-  if (key === "move-to") return <NfmSideMenuMoveToIcon />;
+  if (key === "move-to") return <MoveToIcon />;
   if (key === "delete") return <NfmSideMenuDeleteIcon />;
   if (key === "comment") return <NfmSideMenuCommentIcon />;
   if (key === "suggest-edits") return <NfmSideMenuSuggestEditsIcon />;

@@ -23,8 +23,9 @@ not a Database; they are not copied into intrinsic Page state.
 ## Menu and picker
 
 The Board/List Page action order is `Open in`, `Copy`, `Move to`, optional
-`Reorder`, then the separated `Delete`. Sidebar Pages presents `Move to` in its
-compact resource menu. The label is exactly `Move to`, without an ellipsis.
+`Reorder`, then the separated `Delete`. Sidebar Pages opens the same compact
+resource menu from either the row's visible action button or a right-click
+anywhere on that Page row. The label is exactly `Move to`, without an ellipsis.
 `Reorder` means position inside the current View and is unrelated to parent
 relocation. It is shown only when the startup capability
 `database-page-reorder-menu` is enabled.

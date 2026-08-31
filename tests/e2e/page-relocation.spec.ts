@@ -87,10 +87,11 @@ test("moves a Sidebar Page into a Database and restores its Library position", a
       const relocation = requirePageRelocationScenarioFacts(facts);
       const sidebarPage = page.getByText("Sidebar Page to move", { exact: true });
       await expect(sidebarPage).toBeVisible();
-      await sidebarPage.hover();
-      await page
-        .getByRole("button", { name: "Actions for Sidebar Page to move", exact: true })
-        .click();
+      const sidebarRow = page
+        .getByRole("list", { name: "Pages" })
+        .getByRole("listitem")
+        .filter({ hasText: "Sidebar Page to move" });
+      await sidebarRow.click({ button: "right" });
       const moveTo = page.getByRole("menuitem", { name: "Move to", exact: true });
       await moveTo.hover();
       const search = page.getByRole("combobox", { name: "Move Sidebar Page to move to" });

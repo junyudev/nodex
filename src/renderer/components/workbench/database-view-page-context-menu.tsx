@@ -10,7 +10,7 @@ import {
 
 import {
   ChevronRightIcon,
-  NfmSideMenuMoveToIcon,
+  MoveToIcon,
   PageMenuCopyIcon,
   PageMenuCopyIdIcon,
   PageMenuCopyLinkIcon,
@@ -91,7 +91,7 @@ function DatabaseViewPageMenuActionIcon({
 }) {
   switch (actionId) {
     case "move-to":
-      return <NfmSideMenuMoveToIcon />;
+      return <MoveToIcon />;
     case "reorder":
       return <PageMenuMoveIcon />;
     case "reorder-top":

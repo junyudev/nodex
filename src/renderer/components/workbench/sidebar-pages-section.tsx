@@ -113,6 +113,7 @@ function SidebarPageRootRow({
     node.kind === "canvas" ? null : (target as ActionableLibraryResourceTarget);
   const expectedLocationRevision =
     node.kind === "page" ? node.parentRevision : node.locationRevision;
+  const [actionsOpen, setActionsOpen] = useState(false);
   const dnd = useSidebarLibraryResourceDnd({
     resource: actionableTarget
       ? {
@@ -152,6 +153,15 @@ function SidebarPageRootRow({
       active={active}
       className={cn(dnd.isOver && "ring-1 ring-token-border", dnd.isDragging && "opacity-40")}
       onClick={() => onOpen(target)}
+      onContextMenu={
+        actionableTarget && mutationsEnabled
+          ? (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setActionsOpen(true);
+            }
+          : undefined
+      }
     >
       <CodexSidebarRowLayout
         leadingSlotProps={{ className: "text-token-text-secondary" }}
@@ -169,6 +179,8 @@ function SidebarPageRootRow({
                 expectedMetadataRevision={node.metadataRevision}
                 projects={projects}
                 onOpenInProject={onOpenInProject}
+                open={actionsOpen}
+                onOpenChange={setActionsOpen}
                 triggerButton={
                   <button
                     type="button"

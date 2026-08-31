@@ -69,6 +69,8 @@ export function LibraryResourceActions({
   projects = EMPTY_LIBRARY_PROJECTS,
   triggerButton,
   onOpenInProject,
+  open: controlledMenuOpen,
+  onOpenChange,
 }: {
   readonly target: LibraryResourceTarget;
   readonly title: string;
@@ -78,13 +80,22 @@ export function LibraryResourceActions({
   readonly projects?: readonly LibraryProjectOption[];
   readonly triggerButton?: ReactElement;
   readonly onOpenInProject?: OpenLibraryResourceInProject;
+  readonly open?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
 }) {
   const appHandle = useScopeHandle(appScope);
   const pendingDialogRef = useRef<PendingDialog>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [uncontrolledMenuOpen, setUncontrolledMenuOpen] = useState(false);
   const [moveSubmenuOpen, setMoveSubmenuOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const { mutation } = useApplyLibraryOperation();
+  const menuOpen = controlledMenuOpen ?? uncontrolledMenuOpen;
+
+  const changeMenuOpen = (open: boolean): void => {
+    if (controlledMenuOpen === undefined) setUncontrolledMenuOpen(open);
+    if (!open) setMoveSubmenuOpen(false);
+    onOpenChange?.(open);
+  };
 
   const applyLifecycle = async () => {
     if (expectedMetadataRevision === undefined) return;
@@ -134,10 +145,7 @@ export function LibraryResourceActions({
         triggerButton={triggerButton ?? defaultTrigger}
         align="end"
         open={menuOpen}
-        onOpenChange={(open) => {
-          setMenuOpen(open);
-          if (!open) setMoveSubmenuOpen(false);
-        }}
+        onOpenChange={changeMenuOpen}
         finalFocus={() => {
           const pendingDialog = pendingDialogRef.current;
           if (!pendingDialog) return true;
@@ -174,7 +182,7 @@ export function LibraryResourceActions({
               title={title}
               onClose={() => {
                 setMoveSubmenuOpen(false);
-                setMenuOpen(false);
+                changeMenuOpen(false);
               }}
             />
           ) : (
@@ -184,11 +192,11 @@ export function LibraryResourceActions({
               expectedLocationRevision={expectedLocationRevision}
               onClose={() => {
                 setMoveSubmenuOpen(false);
-                setMenuOpen(false);
+                changeMenuOpen(false);
               }}
               onMoved={() => {
                 setMoveSubmenuOpen(false);
-                setMenuOpen(false);
+                changeMenuOpen(false);
               }}
             />
           )}
