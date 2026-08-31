@@ -28,6 +28,21 @@ const schema = new Schema({
   marks: {},
 });
 
+const atomicSchema = new Schema({
+  nodes: {
+    doc: { content: "blockGroup" },
+    blockGroup: { content: "blockContainer*" },
+    blockContainer: {
+      attrs: { id: {} },
+      content: "blockContent",
+      group: "bnBlock",
+    },
+    atomicBlock: { atom: true, group: "blockContent" },
+    text: { group: "inline" },
+  },
+  marks: {},
+});
+
 function makeBlock(id: string, text = id) {
   return schema.node("block", { id }, schema.text(text));
 }
@@ -196,6 +211,19 @@ describe("side-menu drop selection helpers", () => {
     const selection = createSideMenuDroppedBlockSelection(doc, ["b"]);
 
     expect(getSideMenuDroppedBlockIdsFromSlice(selection!.content()).join(",")).toBe("b");
+  });
+
+  test("extracts an atomic content selection through its owning Block", () => {
+    const doc = atomicSchema.node("doc", null, [
+      atomicSchema.node("blockGroup", null, [
+        atomicSchema.node("blockContainer", { id: "atomic" }, [atomicSchema.node("atomicBlock")]),
+      ]),
+    ]);
+    const block = doc.firstChild?.firstChild;
+    if (!block) throw new Error("Missing atomic fixture Block");
+    const selection = NodeSelection.create(doc, 2);
+
+    expect(getSideMenuDroppedBlockIdsFromSelection(selection)).toEqual(["atomic"]);
   });
 
   test("returns undefined when dropped ids are not in the new document", () => {

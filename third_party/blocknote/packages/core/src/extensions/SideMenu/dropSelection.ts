@@ -2,27 +2,37 @@ import type { Slice } from "@tiptap/pm/model";
 import type { Node } from "@tiptap/pm/model";
 import type { Selection } from "@tiptap/pm/state";
 
+import { getNearestBlockPos } from "../../api/getBlockInfoFromPos.js";
 import { getNodeById, isNodeBlock } from "../../api/nodeUtil.js";
 import { MultipleNodeSelection } from "./MultipleNodeSelection.js";
 
-interface SelectionNodeLike {
-  attrs?: {
-    id?: unknown;
-  };
-}
-
 interface BlockSelectionLike {
-  node?: SelectionNodeLike;
-  nodes?: SelectionNodeLike[];
+  node?: Node;
+  nodes?: readonly Node[];
 }
 
 function toUniqueBlockIds(blockIds: string[]): string[] {
   return Array.from(new Set(blockIds.filter((id) => id.length > 0)));
 }
 
-function getBlockIdFromNode(node: SelectionNodeLike | Node): string | null {
+function getBlockIdFromNode(node: Node): string | null {
   const id = node.attrs?.id;
   return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+function getSelectedBlockContentOwnerId(
+  selection: Selection,
+  node: Node | undefined,
+): string | null {
+  if (!node?.type.isInGroup("blockContent")) return null;
+
+  try {
+    return getBlockIdFromNode(
+      getNearestBlockPos(selection.$from.doc, selection.from).node,
+    );
+  } catch {
+    return null;
+  }
 }
 
 export function getSideMenuDroppedBlockIdsFromSelection(
@@ -40,7 +50,13 @@ export function getSideMenuDroppedBlockIdsFromSelection(
   const nodeId = blockSelection.node
     ? getBlockIdFromNode(blockSelection.node)
     : null;
-  return nodeId ? [nodeId] : [];
+  if (nodeId) return [nodeId];
+
+  const ownerId = getSelectedBlockContentOwnerId(
+    selection,
+    blockSelection.node,
+  );
+  return ownerId ? [ownerId] : [];
 }
 
 export function getSideMenuDroppedBlockIdsFromSlice(slice: Slice): string[] {

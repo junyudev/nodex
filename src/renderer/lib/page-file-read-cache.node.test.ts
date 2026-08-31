@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import type { LibraryPageFileSummary } from "../../shared/library-module";
 import type { PageFileBytes } from "../../shared/page-files";
 import { EMPTY_PAGE_FILE_READ_SNAPSHOT, PageFileReadCache } from "./page-file-read-cache";
+import type { PageFileAuthority } from "./page-file-resources";
 
 const authority = {
   contentAccessContext: { kind: "project", projectId: "project-1" } as const,
@@ -153,6 +154,77 @@ describe("PageFileReadCache", () => {
     await vi.waitFor(() => {
       expect(scope.snapshot("file-a").objectUrl).toBe("blob:etag-file-a-2");
     });
+    scope.release();
+  });
+
+  test("retries an in-flight authorization failure after exact authority advances", async () => {
+    const firstMetadata = deferred<LibraryPageFileSummary>();
+    const firstContent = deferred<PageFileBytes>();
+    const readMetadata = vi
+      .fn<(_scope: PageFileAuthority, fileId: string) => Promise<LibraryPageFileSummary>>()
+      .mockImplementationOnce(() => firstMetadata.promise)
+      .mockImplementation(async (_, fileId) => metadata(fileId, 2));
+    const readBytes = vi
+      .fn<(_scope: PageFileAuthority, fileId: string) => Promise<PageFileBytes>>()
+      .mockImplementationOnce(() => firstContent.promise)
+      .mockImplementation(async (_, fileId) => bytes(fileId, 2));
+    const cache = new PageFileReadCache({
+      readMetadata,
+      readBytes,
+      createObjectUrl: (file) => `blob:${file.etag}`,
+      revokeObjectUrl: vi.fn(),
+    });
+    const scope = cache.acquire(authority);
+    scope.subscribe("file-a", { metadata: true, content: true, objectUrl: true }, () => undefined);
+    const metadataRequest = scope.readMetadata("file-a");
+    const objectUrlRequest = scope.readObjectUrl("file-a");
+
+    scope.invalidate({
+      mode: "refresh",
+      fileIds: ["file-a"],
+      metadata: true,
+      content: true,
+    });
+    firstMetadata.reject(new Error("Page File is unavailable"));
+    firstContent.reject(new Error("Page File is unavailable"));
+
+    await expect(metadataRequest).resolves.toEqual(metadata("file-a", 2));
+    await expect(objectUrlRequest).resolves.toBe("blob:etag-file-a-2");
+    expect(readMetadata).toHaveBeenCalledTimes(2);
+    expect(readBytes).toHaveBeenCalledTimes(2);
+    expect(scope.snapshot("file-a")).toMatchObject({
+      metadata: metadata("file-a", 2),
+      bytes: bytes("file-a", 2),
+      objectUrl: "blob:etag-file-a-2",
+      metadataError: null,
+      contentError: null,
+    });
+    scope.release();
+  });
+
+  test("does not retry a stable authorization failure without a new generation", async () => {
+    const readMetadata = vi.fn(async () => {
+      throw new Error("Page File is unavailable");
+    });
+    const readBytes = vi.fn(async () => {
+      throw new Error("Page File is unavailable");
+    });
+    const cache = new PageFileReadCache({
+      readMetadata,
+      readBytes,
+      createObjectUrl: (file) => `blob:${file.etag}`,
+      revokeObjectUrl: vi.fn(),
+    });
+    const scope = cache.acquire(authority);
+    scope.subscribe("file-a", { metadata: true, content: true }, () => undefined);
+
+    await expect(scope.readMetadata("file-a")).rejects.toThrow("Page File is unavailable");
+    await expect(scope.readBytes("file-a")).rejects.toThrow("Page File is unavailable");
+    await expect(scope.readMetadata("file-a")).rejects.toThrow("Page File is unavailable");
+    await expect(scope.readBytes("file-a")).rejects.toThrow("Page File is unavailable");
+
+    expect(readMetadata).toHaveBeenCalledTimes(1);
+    expect(readBytes).toHaveBeenCalledTimes(1);
     scope.release();
   });
 

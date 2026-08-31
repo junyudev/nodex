@@ -196,7 +196,7 @@ describe("plain inline content", () => {
     const closedClipboardHTML = editor.blocksToClipboardHTML(editor.document, {
       slice: "closed",
     });
-    expect(closedClipboardHTML).toContain('data-pm-slice="0 0 []"');
+    expect(closedClipboardHTML).toContain('data-pm-slice="0 0 -1 []"');
 
     const normalized = document.createElement("div");
     normalized.innerHTML = clipboardHTML;

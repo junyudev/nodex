@@ -185,7 +185,7 @@ describe("NFM Equation surface in Chromium", () => {
     expect(clipboardHtml).not.toContain("bn-source-block-popup");
     expect(clipboardHtml).toContain('data-inline-content-type="math"');
     if (mode === "block") {
-      expect(clipboardHtml).toContain('data-pm-slice="0 0 []"');
+      expect(clipboardHtml).toContain('data-pm-slice="0 0 -1 []"');
       expect(editor.getBlock("paste-target")?.content).toEqual([
         { type: "text", text: "Paste target", styles: {} },
       ]);
@@ -201,7 +201,7 @@ describe("NFM Equation surface in Chromium", () => {
       return;
     }
 
-    expect(clipboardHtml).not.toContain('data-pm-slice="0 0 []"');
+    expect(clipboardHtml).not.toContain("data-pm-slice");
     expect(editor.getBlock("paste-target")?.content).toEqual([
       { type: "text", text: "Paste targetInline energy is ", styles: {} },
       { type: "math", props: {}, content: "E = mc^2" },

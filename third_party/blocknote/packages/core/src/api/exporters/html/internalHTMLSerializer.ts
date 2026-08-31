@@ -175,11 +175,13 @@ export const createInternalHTMLSerializer = <
     }
 
     // When the caller identifies this materialized Block forest as complete,
-    // ProseMirror must be told that it is a closed Slice. Otherwise its paste
-    // parser calls `Slice.maxOpen(...)`, which can lift descendants out of
-    // their parent when the selection ends in atomic Blocks such as Images.
+    // ProseMirror must be told that it is a closed Slice. The serialized
+    // blockGroup is an HTML-only wrapper, so `-1` makes the clipboard parser
+    // descend through it and expose the Block roots as the Slice content.
+    // Without the closed boundary descendants can be lifted; without the
+    // wrapper count the whole forest is pasted as children of the caret Block.
     if (options.slice === "closed") {
-      element.setAttribute("data-pm-slice", "0 0 []");
+      element.setAttribute("data-pm-slice", "0 0 -1 []");
     }
 
     return element.outerHTML;

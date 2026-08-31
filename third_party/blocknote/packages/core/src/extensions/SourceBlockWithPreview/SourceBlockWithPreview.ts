@@ -1,5 +1,6 @@
 import { TextSelection, type Selection } from "prosemirror-state";
 
+import { getNearestBlockPos } from "../../api/getBlockInfoFromPos.js";
 import type { BlockNoteEditor } from "../../editor/BlockNoteEditor";
 import {
   createExtension,
@@ -8,18 +9,28 @@ import {
 import { Block } from "../../blocks/index.js";
 
 interface BlockNodeSelectionLike {
-  readonly node?: { readonly attrs?: { readonly id?: unknown } };
+  readonly node?: {
+    readonly attrs?: { readonly id?: unknown };
+    readonly type?: { isInGroup(group: string): boolean };
+  };
   readonly nodes?: ReadonlyArray<{
     readonly attrs?: { readonly id?: unknown };
   }>;
 }
 
-function selectionIncludesBlock(selection: Selection, blockId: string): boolean {
+export function selectionIncludesBlock(selection: Selection, blockId: string): boolean {
   const blockSelection = selection as Selection & BlockNodeSelectionLike;
   if (Array.isArray(blockSelection.nodes)) {
     return blockSelection.nodes.some((node) => node.attrs?.id === blockId);
   }
-  return blockSelection.node?.attrs?.id === blockId;
+  if (blockSelection.node?.attrs?.id === blockId) return true;
+  if (!blockSelection.node?.type?.isInGroup("blockContent")) return false;
+
+  try {
+    return getNearestBlockPos(selection.$from.doc, selection.from).node.attrs.id === blockId;
+  } catch {
+    return false;
+  }
 }
 
 /** Moves selection into a preview block and selects its complete editable source. */

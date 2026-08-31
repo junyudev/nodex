@@ -1,14 +1,13 @@
+import type { Selection } from "@tiptap/pm/state";
+
+import { getNfmBlockSelectionIds } from "./nfm-block-selection";
+
 interface BlockLike {
   id: string;
 }
 
 interface EditorSelectionLike {
   blocks: BlockLike[];
-}
-
-interface EditorProseMirrorSelectionLike {
-  nodes?: Array<{ attrs?: { id?: string } }>;
-  node?: { attrs?: { id?: string } };
 }
 
 interface EditorForDragSourceResolver {
@@ -65,20 +64,10 @@ export function resolveDraggedBlockIds(
   editor: EditorForDragSourceResolver,
   container: HTMLElement,
 ): string[] {
-  const selection = editor.prosemirrorView?.state.selection as
-    | EditorProseMirrorSelectionLike
-    | undefined;
+  const selection = editor.prosemirrorView?.state.selection as Selection | undefined;
   if (selection) {
-    if (Array.isArray(selection.nodes)) {
-      const ids = selection.nodes
-        .map((node) => node.attrs?.id)
-        .filter((id): id is string => typeof id === "string");
-      if (ids.length > 0) return ids;
-    }
-
-    if (selection.node?.attrs?.id) {
-      return [selection.node.attrs.id];
-    }
+    const ids = getNfmBlockSelectionIds(selection);
+    if (ids.length > 0) return ids;
   }
 
   try {

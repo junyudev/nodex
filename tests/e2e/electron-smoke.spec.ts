@@ -4194,7 +4194,7 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
-  test("cuts and pastes an image subtree across Windows with stable File identity @page-file-placement", async () => {
+  test("cuts and pastes a clicked image Block across Windows at sibling depth with stable File identity @page-file-placement", async () => {
     test.setTimeout(120_000);
     const harness = await ElectronScenarioHarness.create({ label: "page-file-exclusive-move" });
     const workspace = harness.profile.initialProjectsDirectory;
@@ -4287,14 +4287,14 @@ test.describe("parallel functional Electron smoke", () => {
           .locator(".bn-block[data-id]")
           .filter({ hasText: "Source image owner" })
           .first();
-        await sourceSurface
+        const sourceSibling = sourceSurface
           .locator(".bn-block-content")
-          .filter({ hasText: /^Source image child$/u })
-          .click();
+          .filter({ hasText: /^Source sibling$/u });
+        await sourceSibling.click();
         await page.keyboard.press("End");
         await page.keyboard.press("Enter");
         await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
-        const sourceImage = sourceParent.locator(
+        const sourceImage = sourceSurface.locator(
           '[data-content-type="image"][data-url^="nodex://files/"]',
         );
         await expect(sourceImage.locator("img")).toHaveAttribute(
@@ -4358,13 +4358,14 @@ test.describe("parallel functional Electron smoke", () => {
           image.setAttribute("data-file-cache-marker", "stable");
         });
 
-        await sourceParent.locator(":scope > .bn-block-content").click();
+        await sourceImage.click();
         await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+x`);
         await targetWindowParent.locator(":scope > .bn-block-content").click();
         await targetPage.keyboard.press("End");
         await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
 
-        await expect(sourceParent).toHaveCount(0, { timeout: 15_000 });
+        await expect(sourceImage).toHaveCount(0, { timeout: 15_000 });
+        await expect(sourceParent).toHaveCount(1);
         await expect
           .poll(
             async () => ({
@@ -4406,6 +4407,19 @@ test.describe("parallel functional Electron smoke", () => {
           "Pasted source Block id",
         );
         expect(movedBlockId).toBe(sourceImageBlockId);
+        const targetParentBlockId = requireString(
+          await targetWindowParent.getAttribute("data-id"),
+          "Target sibling Block id",
+        );
+        expect(
+          await movedImages.evaluate((image, anchorBlockId) => {
+            const movedOuter = image.closest(".bn-block-outer");
+            const anchor = [...document.querySelectorAll<HTMLElement>(".bn-block[data-id]")].find(
+              (block) => block.dataset.id === anchorBlockId,
+            );
+            return movedOuter?.parentElement === anchor?.closest(".bn-block-outer")?.parentElement;
+          }, targetParentBlockId),
+        ).toBe(true);
         const moreTargetProperties = targetWindowPanel.getByRole("button", {
           name: /\d+ more propert(?:y|ies)/u,
         });
@@ -4415,11 +4429,7 @@ test.describe("parallel functional Electron smoke", () => {
         ).toBeVisible();
         await expect(targetPage.getByText("Image unavailable", { exact: true })).toHaveCount(0);
 
-        const movedParent = targetWindowSurface
-          .locator(".bn-block[data-id]")
-          .filter({ hasText: "Source image owner" })
-          .first();
-        await movedParent.locator(":scope > .bn-block-content").click();
+        await targetWindowParent.locator(":scope > .bn-block-content").click();
         await targetPage.keyboard.press("End");
         await targetPage.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+v`);
         await expect(movedImages).toHaveCount(2, { timeout: 15_000 });
@@ -4451,7 +4461,7 @@ test.describe("parallel functional Electron smoke", () => {
         await expect(movedImages).toHaveCount(0, { timeout: 15_000 });
         await page.getByRole("tab", { name: "Exclusive source Page" }).click();
         await expect(sourceParent).toHaveCount(1, { timeout: 15_000 });
-        const restoredImage = sourceParent.locator(
+        const restoredImage = sourceSurface.locator(
           `[data-content-type="image"][data-url="${sourceFileUrl}"]`,
         );
         await expect(restoredImage.locator("img")).toHaveAttribute(

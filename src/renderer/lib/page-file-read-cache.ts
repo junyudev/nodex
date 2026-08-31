@@ -271,6 +271,10 @@ export class PageFileReadCache {
         entry.metadataError = null;
         return metadata;
       } catch (error) {
+        if (!entry.disposed && generation !== entry.metadataGeneration) {
+          if (entry.metadataInFlight === request) entry.metadataInFlight = null;
+          return await this.#readMetadata(entry);
+        }
         if (!entry.disposed && generation === entry.metadataGeneration) {
           entry.metadataError = errorMessage(error);
           if (!entry.metadata) entry.metadataStale = false;
@@ -317,6 +321,10 @@ export class PageFileReadCache {
         }
         return bytes;
       } catch (error) {
+        if (!entry.disposed && generation !== entry.contentGeneration) {
+          if (entry.contentInFlight === request) entry.contentInFlight = null;
+          return await this.#readBytes(entry);
+        }
         if (!entry.disposed && generation === entry.contentGeneration) {
           entry.contentError = errorMessage(error);
           if (!entry.bytes && !entry.objectUrl) entry.contentStale = false;

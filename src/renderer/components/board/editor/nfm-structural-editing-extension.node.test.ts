@@ -1,4 +1,6 @@
 import type { BlockNoteEditor } from "@blocknote/core";
+import { Schema } from "@tiptap/pm/model";
+import { NodeSelection, type Selection } from "@tiptap/pm/state";
 import { describe, expect, test } from "vite-plus/test";
 import * as Y from "yjs";
 
@@ -27,6 +29,32 @@ const clipboard = {
 } as const;
 const writeClaim = (suffix: number) =>
   `0199134e-cbb0-7000-8000-${suffix.toString().padStart(12, "0")}`;
+
+const atomicSelectionSchema = new Schema({
+  nodes: {
+    doc: { content: "blockGroup" },
+    blockGroup: { content: "blockContainer*" },
+    blockContainer: {
+      attrs: { id: {} },
+      content: "blockContent",
+      group: "bnBlock",
+    },
+    atomicBlock: { atom: true, group: "blockContent" },
+    text: { group: "inline" },
+  },
+  marks: {},
+});
+
+const atomicContentSelection = (blockId: string): Selection => {
+  const doc = atomicSelectionSchema.node("doc", null, [
+    atomicSelectionSchema.node("blockGroup", null, [
+      atomicSelectionSchema.node("blockContainer", { id: blockId }, [
+        atomicSelectionSchema.node("atomicBlock"),
+      ]),
+    ]),
+  ]);
+  return NodeSelection.create(doc, 2);
+};
 
 const receipt = (structuralEdit: LibraryStructuralEditResult) =>
   ({
@@ -106,7 +134,7 @@ describe("NFM structural editing session", () => {
       ["toggle", { id: "toggle", type: "toggleListItem" }],
     ]);
     let selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
-    let selectedNodeIds: string[] = [];
+    let selectedPmSelection: Selection | null = null;
     const cursorPlacements: unknown[] = [];
     const portableReplacements: unknown[] = [];
     const clipboardSettlements: Array<{
@@ -133,9 +161,7 @@ describe("NFM structural editing session", () => {
       prosemirrorView: {
         get state() {
           return {
-            selection: {
-              nodes: selectedNodeIds.map((id) => ({ attrs: { id } })),
-            },
+            selection: selectedPmSelection ?? ({ nodes: [] } as unknown as Selection),
           };
         },
       },
@@ -305,7 +331,7 @@ describe("NFM structural editing session", () => {
       });
       events.length = 0;
       selectedBlocks = [];
-      selectedNodeIds = ["page"];
+      selectedPmSelection = atomicContentSelection("page");
       expect(session.hasTypedOwnerSelection()).toBe(true);
       expect(
         session.handleClipboard(
@@ -347,7 +373,7 @@ describe("NFM structural editing session", () => {
       });
 
       events.length = 0;
-      selectedNodeIds = [];
+      selectedPmSelection = null;
       selectedBlocks = [blocks.get("text")!, blocks.get("page")!];
       const cursorPlacementCountBeforeCut = cursorPlacements.length;
       expect(

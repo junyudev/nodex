@@ -9,7 +9,7 @@ import {
 import { createReactBlockSpec } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import type { Node } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { act, render } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -116,6 +116,56 @@ function renderClipboardEditor(editor: AnyBlockNoteEditor) {
 }
 
 describe("current Block clipboard behavior in Chromium", () => {
+  test("routes a clicked atomic image Block through structural cut", async () => {
+    const onStructuralClipboard = vi.fn(() => true);
+    const editor = BlockNoteEditor.create({
+      schema: nfmSchema,
+      initialContent: [
+        {
+          id: "image",
+          type: "image",
+          props: {
+            url: "nodex://files/01999999-9999-7999-8999-999999999999",
+            caption: "Selected image",
+            name: "selected.png",
+            showPreview: true,
+          },
+        },
+        { id: "outside", type: "paragraph", content: "Outside" },
+      ],
+      extensions: [NfmStructuredClipboardExtension({ onStructuralClipboard })],
+    });
+    const rendered = renderClipboardEditor(editor);
+
+    try {
+      await act(settleEditor);
+      const view = requireView(editor);
+      await act(async () => {
+        const image = getNodeById("image", view.state.doc);
+        if (!image) throw new Error("Missing image Block");
+        view.dispatch(
+          view.state.tr.setSelection(NodeSelection.create(view.state.doc, image.posBeforeNode + 1)),
+        );
+        editor.focus();
+        await settleEditor();
+      });
+
+      const cut = await dispatchClipboardEvent(view, "cut");
+
+      expect(cut.dispatched).toBe(false);
+      expect(cut.data.getData(NODEX_STRUCTURAL_CLIPBOARD_MIME)).not.toBe("");
+      expect(onStructuralClipboard).toHaveBeenCalledOnce();
+      expect(onStructuralClipboard).toHaveBeenCalledWith(
+        "cut",
+        expect.objectContaining({ rootBlockIds: ["image"] }),
+      );
+      expect(editor.getBlock("image")).toBeDefined();
+    } finally {
+      rendered.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
   test("preserves nested Blocks around consecutive Images through copy and cut", async () => {
     const editor = BlockNoteEditor.create({
       schema: nfmSchema,
@@ -183,7 +233,7 @@ describe("current Block clipboard behavior in Chromium", () => {
 
       const copied = await dispatchClipboardEvent(view, "copy");
       const clipboardHtml = copied.data.getData("blocknote/html");
-      expect(clipboardHtml).toContain('data-pm-slice="0 0 []"');
+      expect(clipboardHtml).toContain('data-pm-slice="0 0 -1 []"');
       const parsed = editor.tryParseHTMLToBlocks(clipboardHtml);
 
       expect(parsed.map((block) => block.id)).toEqual(["parent", "image-one", "image-two"]);
@@ -217,7 +267,7 @@ describe("current Block clipboard behavior in Chromium", () => {
         });
 
         const insertedRootParentId = target.getParentBlock("parent")?.id;
-        expect(insertedRootParentId).toBeDefined();
+        expect(insertedRootParentId).toBe("target-root");
         expect(target.getParentBlock("parent-child")?.id).toBe("parent");
         expect(target.getParentBlock("after-child")?.id).toBe("parent");
         expect(target.getParentBlock("image-one")?.id).toBe(insertedRootParentId);
@@ -309,7 +359,7 @@ describe("current Block clipboard behavior in Chromium", () => {
       expect(copied.data.getData("text/html")).not.toContain("Outside");
       expect(copied.data.getData("blocknote/html")).toContain("Current");
       expect(copied.data.getData("blocknote/html")).toContain("Child");
-      expect(copied.data.getData("blocknote/html")).toContain('data-pm-slice="0 0 []"');
+      expect(copied.data.getData("blocknote/html")).toContain('data-pm-slice="0 0 -1 []"');
       expect(editor.prosemirrorState.selection.empty).toBe(true);
       expect(editor.prosemirrorState.selection.from).toBe(selectionBefore.from);
       expect(editor.prosemirrorState.selection.to).toBe(selectionBefore.to);
@@ -343,7 +393,7 @@ describe("current Block clipboard behavior in Chromium", () => {
       expect(copied.dispatched).toBe(false);
       expect(copied.data.getData("text/plain")).toBe("urr");
       expect(copied.data.getData("text/html")).not.toContain("Child");
-      expect(copied.data.getData("blocknote/html")).not.toContain('data-pm-slice="0 0 []"');
+      expect(copied.data.getData("blocknote/html")).not.toContain("data-pm-slice");
       expect(editor.prosemirrorState.selection.empty).toBe(false);
     } finally {
       rendered.unmount();
