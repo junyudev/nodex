@@ -30,9 +30,17 @@ and direct mixed placement of Projects and Sessions. Placement is orthogonal to 
 - archive-all is a set-based Core mutation over every active effective Session, including inherited
   Project children.
 
-Core exposes keyset-bounded root, item, and host-link windows plus typed mutations. SQLite enforces
+Core exposes keyset-bounded root, item, and host-link windows plus typed mutations. A Session item
+in the mixed item window carries the same canonical bounded Task summary used by ordinary Chat
+lanes. This lets the renderer pass it to the shared Chat row without depending on an unrelated,
+partially loaded Project task window or introducing a Section-specific fallback row. SQLite enforces
 custom-only membership, one direct placement per identity, stable mixed ordering, and unique logical
 Section-to-host links. Renderer preferences retain disclosure state only.
+
+Renderer placement supplies the shared Chat row's grouping context independently from ownership.
+A directly placed Session is ungrouped and edge-aligned even when it remains Project-owned; only a
+Session presented beneath a Project is grouped and indented. Section composition must not infer row
+indentation from `project_id` or add its own padding wrapper.
 
 Renderer drag-and-drop treats each returned `placementId` as the gesture-local identity for one
 mixed Project-or-Session list. Row and empty-container targets carry the destination Section plus

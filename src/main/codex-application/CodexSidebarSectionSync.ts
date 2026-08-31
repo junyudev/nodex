@@ -389,7 +389,7 @@ export const make: Effect.Effect<
     for (const [sectionId, items] of itemsBySection) {
       for (const item of items) {
         if (item.value.kind === "session") {
-          directSectionBySession.set(item.value.session.session_id, sectionId);
+          directSectionBySession.set(item.value.task.session.id, sectionId);
         } else {
           projectSectionByProject.set(item.value.project.project_id, sectionId);
         }
@@ -442,7 +442,7 @@ export const make: Effect.Effect<
       const ordered: string[] = [];
       for (const item of items) {
         if (item.value.kind === "session") {
-          const sessionId = item.value.session.session_id;
+          const sessionId = item.value.task.session.id;
           const task = tasks.find((candidate) => candidate.sessionId === sessionId);
           if (task && !ordered.includes(task.threadId)) ordered.push(task.threadId);
           continue;

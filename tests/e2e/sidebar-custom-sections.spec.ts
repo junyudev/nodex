@@ -7,9 +7,9 @@ import {
 } from "../../scripts/scenarios/scenarios/sidebar-custom-sections";
 
 const workSection = (page: Page) =>
-  page.locator('[data-app-action-sidebar-section-heading="Work"]');
+  page.locator('[data-app-action-sidebar-section-heading="Work"]:visible');
 const projectsSection = (page: Page) =>
-  page.locator('[data-app-action-sidebar-section-heading="Projects"]');
+  page.locator('[data-app-action-sidebar-section-heading="Projects"]:visible');
 
 async function dragSidebarRow(
   source: import("@playwright/test").Locator,
@@ -134,12 +134,23 @@ test("moves Chats and Projects into a custom Section at mixed row boundaries", a
       const movedProjectChat = movedProjectGroup.locator(
         '[data-app-action-sidebar-thread-title="Inbox chat"]',
       );
-      await dragSidebarRow(movedProjectChat, sectionProject, work, 0.1);
+      await expect(movedProjectChat).toHaveAttribute(
+        "data-app-action-sidebar-thread-grouped",
+        "true",
+      );
+      const directSectionChat = work.locator(
+        '[data-app-action-sidebar-thread-title="Section draft 03"]',
+      );
+      await dragSidebarRow(movedProjectChat, directSectionChat, work, 0.1);
       const movedChat = work.locator('[data-app-action-sidebar-thread-title="Inbox chat"]');
       await expect(movedChat).toBeVisible();
+      await expect(movedChat).toHaveAttribute("data-app-action-sidebar-thread-grouped", "false");
       await expect(
         movedProjectGroup.locator('[data-app-action-sidebar-thread-title="Inbox chat"]'),
       ).toHaveCount(0);
+      await movedChat.hover();
+      await expect(movedChat.getByRole("button", { name: "Pin chat" })).toBeVisible();
+      await expect(movedChat.getByRole("button", { name: "Archive chat" })).toBeVisible();
     },
   );
 });
@@ -174,7 +185,10 @@ test("persists custom Section disclosure and safely restores an Undoable deletio
 
       const section = workSection(page);
       await expect(section).toBeVisible();
-      await expect(section.locator('[data-activity-spinner="true"]')).toBeVisible();
+      const sectionStatus = section.locator(
+        '[data-app-action-sidebar-section-toggle=""] [data-activity-spinner="true"]',
+      );
+      await expect(sectionStatus).toBeVisible();
       await expect(section.getByRole("button", { name: "Show more" })).toBeVisible();
       await section.getByRole("button", { name: "Show more" }).click();
       await expect(section.getByText("Section draft 51", { exact: true })).toBeVisible();
@@ -182,7 +196,7 @@ test("persists custom Section disclosure and safely restores an Undoable deletio
       const disclosure = section.locator('[data-app-action-sidebar-section-toggle=""]');
       await disclosure.click();
       await expect(disclosure).toHaveAttribute("aria-expanded", "false");
-      await expect(section.locator('[data-activity-spinner="true"]')).toBeVisible();
+      await expect(sectionStatus).toBeVisible();
       await page.waitForTimeout(350);
 
       const restartedPage = await harness.restart();

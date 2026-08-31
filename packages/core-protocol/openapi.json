@@ -32319,7 +32319,7 @@
           {
             "type": "object",
             "required": [
-              "session",
+              "task",
               "kind"
             ],
             "properties": {
@@ -32329,8 +32329,8 @@
                   "session"
                 ]
               },
-              "session": {
-                "$ref": "#/components/schemas/ProjectWorkspaceSidebarSessionItem"
+              "task": {
+                "$ref": "#/components/schemas/ProjectWorkspaceTaskSummary"
               }
             }
           }
@@ -32353,55 +32353,6 @@
           "deleted"
         ]
       },
-      "ProjectWorkspaceSidebarSessionItem": {
-        "type": "object",
-        "required": [
-          "session_id",
-          "display_title",
-          "pinned",
-          "archived",
-          "unread"
-        ],
-        "properties": {
-          "archived": {
-            "type": "boolean"
-          },
-          "display_title": {
-            "type": "string"
-          },
-          "pinned": {
-            "type": "boolean"
-          },
-          "project_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "session_id": {
-            "type": "string"
-          },
-          "status": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
-              }
-            ]
-          },
-          "thread_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "unread": {
-            "type": "boolean"
-          }
-        }
-      },
       "ProjectWorkspaceStarterPage": {
         "type": "object",
         "required": [
@@ -32422,6 +32373,27 @@
           },
           "title_markdown": {
             "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceTaskSummary": {
+        "type": "object",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+          },
+          "thread": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceTaskThreadSummary"
+              }
+            ]
           }
         }
       },

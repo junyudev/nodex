@@ -60,10 +60,10 @@ type CoreSidebarSectionItem = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { readonly kind: "sidebar_section_item_window" }
 >["items"]["items"][number];
-type CoreSidebarSession = Extract<
+type CoreSidebarTask = Extract<
   CoreSidebarSectionItem["value"],
   { readonly kind: "session" }
->["session"];
+>["task"];
 
 export type CodexCreateThreadServiceTierSelector =
   | { readonly type: "standard" }
@@ -820,7 +820,7 @@ export const make: Effect.Effect<
         const directSessionIds = new Set(
           [...customItems.values()].flatMap((items) =>
             items.flatMap((item) =>
-              item.value.kind === "session" ? [item.value.session.session_id] : [],
+              item.value.kind === "session" ? [item.value.task.session.id] : [],
             ),
           ),
         );
@@ -877,32 +877,33 @@ export const make: Effect.Effect<
             tasks: projectThreads.map(task),
           };
         };
-        const directSessionItem = (session: CoreSidebarSession) => {
-          const linked = session.thread_id
-            ? threadById.get(session.thread_id)
-            : threadBySessionId.get(session.session_id);
+        const directSessionItem = (sidebarTask: CoreSidebarTask) => {
+          const { session, thread } = sidebarTask;
+          const linked = thread
+            ? threadById.get(thread.thread_id)
+            : threadBySessionId.get(session.id);
           return linked
             ? task(linked)
             : {
                 type: "task" as const,
-                id: session.session_id,
-                threadId: null,
-                sessionId: session.session_id,
+                id: thread?.thread_id ?? session.id,
+                threadId: thread?.thread_id ?? null,
+                sessionId: session.id,
                 projectId: session.project_id ?? null,
                 title: session.display_title,
-                preview: "",
-                hostId: null,
-                status: session.status
+                preview: thread?.thread_preview ?? "",
+                hostId: thread?.execution_host_id ?? null,
+                status: thread
                   ? {
-                      type: session.status.status_type,
-                      ...(session.status.active_flags.length > 0
-                        ? { activeFlags: session.status.active_flags }
+                      type: thread.status.status_type,
+                      ...(thread.status.active_flags.length > 0
+                        ? { activeFlags: thread.status.active_flags }
                         : {}),
                     }
                   : { type: "notLoaded" as const },
-                cwd: null,
-                createdAt: null,
-                updatedAt: null,
+                cwd: thread?.cwd ?? null,
+                createdAt: thread?.created_at ?? null,
+                updatedAt: thread?.updated_at ?? null,
               };
         };
         const sections = sectionSummaries.map((section) => {
@@ -916,7 +917,7 @@ export const make: Effect.Effect<
                 if (projected) items.push(projected);
                 continue;
               }
-              items.push(directSessionItem(item.value.session));
+              items.push(directSessionItem(item.value.task));
             }
             return {
               id: section.section_id,

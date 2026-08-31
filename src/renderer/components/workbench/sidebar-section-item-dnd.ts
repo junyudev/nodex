@@ -7,7 +7,7 @@ import type {
 export function sidebarSectionItemRef(item: SidebarSectionItem): SidebarSectionItemRef {
   return item.kind === "project"
     ? { kind: "project", projectId: item.project.projectId }
-    : { kind: "session", sessionId: item.session.sessionId };
+    : { kind: "session", sessionId: item.session.id };
 }
 
 export function isSidebarSectionSessionDragDisabled({

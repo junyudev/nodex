@@ -4,7 +4,7 @@ use utoipa::ToSchema;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 18;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 19;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -268,25 +268,13 @@ pub struct ProjectWorkspaceSidebarProjectItem {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceSidebarSessionItem {
-    pub session_id: String,
-    pub project_id: Option<String>,
-    pub display_title: String,
-    pub pinned: bool,
-    pub archived: bool,
-    pub unread: bool,
-    pub thread_id: Option<String>,
-    pub status: Option<ProjectWorkspaceThreadStatus>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceSidebarSectionItemValue {
     Project {
         project: ProjectWorkspaceSidebarProjectItem,
     },
     Session {
-        session: ProjectWorkspaceSidebarSessionItem,
+        task: ProjectWorkspaceTaskSummary,
     },
 }
 

@@ -22,22 +22,32 @@ describe("sidebar/custom-sections over the real Core transport", () => {
         const items = await seed.listSidebarSectionItems(observed.sectionId);
         expect(items.items).toHaveLength(53);
         expect(items.items.some((item) => item.kind === "project")).toBe(true);
-        expect(
-          items.items.some(
-            (item) =>
-              item.kind === "session" &&
-              item.session.sessionId === observed.runningSessionId &&
-              item.session.status?.statusType === "active",
-          ),
-        ).toBe(true);
-        expect(
-          items.items.some(
-            (item) =>
-              item.kind === "session" &&
-              item.session.sessionId === observed.firstDraftSessionId &&
-              item.session.threadId === null,
-          ),
-        ).toBe(true);
+        const running = items.items.find(
+          (item) => item.kind === "session" && item.session.id === observed.runningSessionId,
+        );
+        expect(running).toMatchObject({
+          kind: "session",
+          session: {
+            displayTitle: "Running Section task",
+            unread: true,
+            thread: {
+              threadPreview: "Verifying aggregate Section activity",
+              statusType: "active",
+            },
+          },
+        });
+
+        const draft = items.items.find(
+          (item) => item.kind === "session" && item.session.id === observed.firstDraftSessionId,
+        );
+        expect(draft).toMatchObject({
+          kind: "session",
+          session: {
+            noThreadFallbackTitle: "Section draft 01",
+            displayTitle: "Section draft 01",
+            thread: null,
+          },
+        });
       },
     );
   });

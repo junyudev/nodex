@@ -130,7 +130,7 @@ import {
   type WorkbenchSessionCollection,
   type WorkbenchSessionCollectionState,
 } from "@/lib/use-workbench-session-catalog";
-import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
+import { projectSessionSummaryToDomain } from "@/lib/workbench-session-presentation";
 import type { SidebarCollapsibleSectionsState } from "@/lib/sidebar-section-prefs";
 import { SidebarPaginatedItems } from "./sidebar-paginated-items";
 import {
@@ -143,8 +143,7 @@ import {
   readSidebarSectionContainerId,
   sidebarSectionContainerId,
 } from "../../../shared/sidebar-sections";
-
-type ProjectSession = WorkbenchSessionRenderProjection;
+type ProjectSession = ProjectSessionDomain;
 const IDLE_SESSION_COLLECTION_STATE = { kind: "idle" } as const;
 
 function SidebarSessionCollectionFallback({
@@ -777,7 +776,10 @@ function SidebarThreadOrganizerSections({
     item: CodexSidebarThreadItem,
     event: ReactMouseEvent<HTMLElement>,
   ) => void;
-  onArchiveSidebarThread?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  onArchiveSidebarThread?: (
+    item: CodexSidebarThreadItem,
+    session?: ProjectSessionDomain,
+  ) => void | Promise<void>;
   onArchiveThreadItem?: (item: CodexSidebarThreadItem) => Promise<boolean>;
   onMarkThreadItemRead?: (item: CodexSidebarThreadItem) => Promise<void>;
   onThreadsChanged?: () => Promise<unknown> | void;
@@ -834,14 +836,26 @@ function SidebarThreadOrganizerSections({
       ),
     [sectionCatalog.directSessionIds, sectionSessionsByProject],
   );
+  const rootProjectlessSessions = useMemo(
+    () =>
+      projectlessSessionCollection.projections.filter((session) =>
+        isCodexSidebarRootThread(session.thread),
+      ),
+    [projectlessSessionCollection.projections],
+  );
   const projectlessSessions = useMemo(
     () =>
-      projectlessSessionCollection.projections.filter(
-        (session) =>
-          isCodexSidebarRootThread(session.thread) &&
-          !sectionCatalog.directSessionIds.has(session.id),
+      rootProjectlessSessions.filter((session) => !sectionCatalog.directSessionIds.has(session.id)),
+    [rootProjectlessSessions, sectionCatalog.directSessionIds],
+  );
+  const directSectionSessions = useMemo(
+    () =>
+      [...sectionCatalog.itemsBySectionId.values()].flatMap((items) =>
+        items.flatMap((item) =>
+          item.kind === "session" ? [projectSessionSummaryToDomain(item.session)] : [],
+        ),
       ),
-    [projectlessSessionCollection.projections, sectionCatalog.directSessionIds],
+    [sectionCatalog.itemsBySectionId],
   );
   const [pinnedProjectsExpanded, setPinnedProjectsExpanded] = useState(false);
   const [projectsExpanded, setProjectsExpanded] = useState(false);
@@ -866,15 +880,19 @@ function SidebarThreadOrganizerSections({
     [onHoverSurfaceOpenChange],
   );
   const pinnedDropTarget = useSidebarPinnedDropContainer();
-  const sessionsById = useMemo(() => {
-    const entries = [...Object.values(sessionsByProject).flat(), ...projectlessSessions].map(
-      (session) => [session.id, session] as const,
-    );
-    return new Map(entries);
-  }, [projectlessSessions, sessionsByProject]);
-  const knownSessions = useMemo(
-    () => [...Object.values(sessionsByProject).flat(), ...projectlessSessions],
-    [projectlessSessions, sessionsByProject],
+  const knownSessions = useMemo(() => {
+    const sessions = new Map(directSectionSessions.map((session) => [session.id, session]));
+    for (const session of [
+      ...Object.values(sectionSessionsByProject).flat(),
+      ...rootProjectlessSessions,
+    ]) {
+      sessions.set(session.id, session);
+    }
+    return [...sessions.values()];
+  }, [directSectionSessions, rootProjectlessSessions, sectionSessionsByProject]);
+  const sessionsById = useMemo(
+    () => new Map(knownSessions.map((session) => [session.id, session])),
+    [knownSessions],
   );
   const sessionsByThreadId = useMemo(() => {
     const entries = knownSessions
@@ -1335,6 +1353,7 @@ function SidebarThreadOrganizerSections({
       threadKey: string,
       options: {
         hoverCardProjectLabel?: string | null;
+        grouped?: boolean;
       } = {},
     ) => {
       const item = sidebarThreadItemsByKey.get(threadKey);
@@ -1349,6 +1368,7 @@ function SidebarThreadOrganizerSections({
         <CodexSidebarThreadRow
           key={item.key}
           item={item}
+          grouped={options.grouped}
           active={
             (item.clientThreadId ?? item.threadId) === activePendingClientThreadId ||
             Boolean(sessionId && activeSessionId === sessionId)
@@ -1359,6 +1379,10 @@ function SidebarThreadOrganizerSections({
             setSidebarHoverSurfaceOpen(`thread:${item.key}`, open);
           }}
           onSelect={() => {
+            if (session) {
+              onSelectSession(session);
+              return;
+            }
             void onSelectSidebarThread(item);
           }}
           onPreview={() => onPreviewSidebarThread?.(item)}
@@ -1375,7 +1399,11 @@ function SidebarThreadOrganizerSections({
                 : undefined
           }
           archivePending={sidebarArchivePendingKeys.has(item.key)}
-          onArchive={onArchiveSidebarThread}
+          onArchive={
+            onArchiveSidebarThread
+              ? (rowItem) => onArchiveSidebarThread(rowItem, session ?? undefined)
+              : undefined
+          }
           onTogglePinned={
             session && onToggleSessionPinned
               ? () => onToggleSessionPinned(session)
@@ -1390,6 +1418,7 @@ function SidebarThreadOrganizerSections({
       contextMenuSessionId,
       onOpenSessionContextMenu,
       onArchiveSidebarThread,
+      onSelectSession,
       onSelectSidebarThread,
       onPreviewSidebarThread,
       onSessionTitleDoubleClick,
@@ -1529,6 +1558,7 @@ function SidebarThreadOrganizerSections({
           renderThread={(threadKey) =>
             renderThreadRow(threadKey, {
               hoverCardProjectLabel: project.name,
+              grouped: true,
             })
           }
         />
@@ -1687,8 +1717,10 @@ function SidebarThreadOrganizerSections({
             sectionId,
           );
         }}
-        renderSession={(sessionId) => {
-          const threadKey = sidebarThreadKeyBySessionId.get(sessionId);
+        renderSession={(session) => {
+          // A Section owns placement only. Chat presentation and behavior must stay on the
+          // same shared row used by Projects, Pinned, and Chats.
+          const threadKey = sidebarThreadKeyBySessionId.get(session.id);
           return threadKey ? renderThreadRow(threadKey) : null;
         }}
         onSelectSession={onSelectSession}
@@ -1811,7 +1843,10 @@ export interface ProjectSessionSidebarProps {
     item: CodexSidebarThreadItem,
     event: ReactMouseEvent<HTMLElement>,
   ) => void;
-  onArchiveSidebarThread?: (item: CodexSidebarThreadItem) => void | Promise<void>;
+  onArchiveSidebarThread?: (
+    item: CodexSidebarThreadItem,
+    session?: ProjectSessionDomain,
+  ) => void | Promise<void>;
   onArchiveThreadItem?: (item: CodexSidebarThreadItem) => Promise<boolean>;
   onMarkThreadItemRead?: (item: CodexSidebarThreadItem) => Promise<void>;
   onThreadsChanged?: () => Promise<unknown> | void;
@@ -1943,16 +1978,28 @@ export function ProjectSessionSidebar({
 }: ProjectSessionSidebarProps) {
   const queryClient = useQueryClient();
   const sectionCatalog = useSidebarSectionsCatalog();
-  const knownSessionProjections = useMemo(
-    () =>
-      [
-        ...Object.values(sessionCollectionsByProject).flatMap(
-          (collection) => collection.projections,
-        ),
-        ...projectlessSessionCollection.projections,
-      ].filter((session) => isCodexSidebarRootThread(session.thread)),
-    [projectlessSessionCollection.projections, sessionCollectionsByProject],
-  );
+  const knownSidebarSessions = useMemo(() => {
+    const sessions = new Map<string, ProjectSessionDomain>();
+    for (const items of sectionCatalog.itemsBySectionId.values()) {
+      for (const item of items) {
+        if (item.kind !== "session") continue;
+        const session = projectSessionSummaryToDomain(item.session);
+        sessions.set(session.id, session);
+      }
+    }
+    for (const session of [
+      ...Object.values(sessionCollectionsByProject).flatMap((collection) => collection.projections),
+      ...projectlessSessionCollection.projections,
+    ]) {
+      if (!isCodexSidebarRootThread(session.thread)) continue;
+      sessions.set(session.id, session);
+    }
+    return [...sessions.values()];
+  }, [
+    projectlessSessionCollection.projections,
+    sectionCatalog.itemsBySectionId,
+    sessionCollectionsByProject,
+  ]);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [pendingLibraryGrantDrop, setPendingLibraryGrantDrop] = useState<{
     readonly resource: SidebarLibraryDragResource;
@@ -2065,12 +2112,12 @@ export function ProjectSessionSidebar({
       if (item.pendingWorktreeId) continue;
       entries.push([threadKey, item.threadId]);
     }
-    for (const session of knownSessionProjections) {
+    for (const session of knownSidebarSessions) {
       if (!session.thread) continue;
       entries.push([`local:session:${session.id}`, session.thread.threadId]);
     }
     return new Map(entries);
-  }, [knownSessionProjections, sidebarThreadModel.threadItemsByKey]);
+  }, [knownSidebarSessions, sidebarThreadModel.threadItemsByKey]);
   const knownSidebarProjectIds = useMemo(
     () => new Set(sidebarThreadModel.projectGroups.map((group) => group.project.id)),
     [sidebarThreadModel.projectGroups],
@@ -2088,7 +2135,7 @@ export function ProjectSessionSidebar({
       });
       if (containerId) entries.push([item.threadId, containerId]);
     }
-    for (const session of knownSessionProjections) {
+    for (const session of knownSidebarSessions) {
       if (!session.thread) continue;
       const containerId = resolveCodexSidebarThreadHomeContainerId({
         kind: "local",
@@ -2103,12 +2150,12 @@ export function ProjectSessionSidebar({
     for (const section of sectionCatalog.sections) {
       const items = sectionCatalog.itemsBySectionId.get(section.sectionId) ?? [];
       const directSessionIds = new Set(
-        items.flatMap((item) => (item.kind === "session" ? [item.session.sessionId] : [])),
+        items.flatMap((item) => (item.kind === "session" ? [item.session.id] : [])),
       );
       const directProjectIds = new Set(
         items.flatMap((item) => (item.kind === "project" ? [item.project.projectId] : [])),
       );
-      for (const session of knownSessionProjections) {
+      for (const session of knownSidebarSessions) {
         if (!session.thread) continue;
         const isDirect = directSessionIds.has(session.id);
         const isInherited =
@@ -2122,7 +2169,7 @@ export function ProjectSessionSidebar({
     return new Map(entries);
   }, [
     knownSidebarProjectIds,
-    knownSessionProjections,
+    knownSidebarSessions,
     sectionCatalog.directSessionIds,
     sectionCatalog.itemsBySectionId,
     sectionCatalog.sections,
@@ -2136,7 +2183,7 @@ export function ProjectSessionSidebar({
     async (drop: SidebarThreadDropRequest): Promise<SidebarThreadDropCommit | null> => {
       const targetSectionId = readSidebarSectionContainerId(drop.targetContainerId);
       const sourceSectionId = readSidebarSectionContainerId(drop.sourceContainerId);
-      const session = knownSessionProjections.find(
+      const session = knownSidebarSessions.find(
         (candidate) => candidate.thread?.threadId === drop.threadId,
       );
       if (!session || (!targetSectionId && !sourceSectionId)) {
@@ -2158,7 +2205,7 @@ export function ProjectSessionSidebar({
 
       const sourceItems = sectionCatalog.itemsBySectionId.get(sourceSectionId as string) ?? [];
       const directPlacement = sourceItems.some(
-        (item) => item.kind === "session" && item.session.sessionId === session.id,
+        (item) => item.kind === "session" && item.session.id === session.id,
       );
       if (directPlacement) {
         await invokeCoreResult("sidebar-sections:item:move", {
@@ -2171,7 +2218,7 @@ export function ProjectSessionSidebar({
       return await onMoveSidebarThread(drop);
     },
     [
-      knownSessionProjections,
+      knownSidebarSessions,
       onMoveSidebarThread,
       onSetSidebarSectionCollapsed,
       onThreadsChanged,

@@ -1567,6 +1567,7 @@ function CodexSidebarThreadRunLocationGlyph({
 export function CodexSidebarThreadRow({
   item,
   active,
+  grouped = false,
   contextMenuOpen = false,
   archivePending = false,
   hoverCardProjectLabel,
@@ -1582,6 +1583,8 @@ export function CodexSidebarThreadRow({
 }: {
   item: CodexSidebarThreadItem;
   active: boolean;
+  /** Grouped rows are nested under a Project; root lanes and Sections stay edge-aligned. */
+  grouped?: boolean;
   contextMenuOpen?: boolean;
   archivePending?: boolean;
   hoverCardProjectLabel?: string | null;
@@ -1659,6 +1662,7 @@ export function CodexSidebarThreadRow({
   const row = (
     <div
       data-app-action-sidebar-thread-active={String(active)}
+      data-app-action-sidebar-thread-grouped={String(grouped)}
       data-app-action-sidebar-thread-host-id={item.hostId}
       data-app-action-sidebar-thread-id={item.threadId}
       data-app-action-sidebar-thread-kind={item.kind}
@@ -1699,18 +1703,20 @@ export function CodexSidebarThreadRow({
     >
       <div className="contents">
         <div className="flex h-full w-full items-center px-row-x text-sm leading-4">
-          <div className="w-4 shrink-0">
-            <div className="relative flex items-center justify-center">
-              {item.unread || item.needsAttention ? (
-                <span
-                  className="size-1.5 rounded-full bg-token-charts-blue"
-                  aria-label={item.needsAttention ? "Needs attention" : "Unread"}
-                />
-              ) : null}
+          {grouped ? (
+            <div className="w-4 shrink-0">
+              <div className="relative flex items-center justify-center">
+                {item.unread || item.needsAttention ? (
+                  <span
+                    className="size-1.5 rounded-full bg-token-charts-blue"
+                    aria-label={item.needsAttention ? "Needs attention" : "Unread"}
+                  />
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : null}
           <div
-            className="ml-1.5 flex min-w-0 flex-1 items-center pl-0.5"
+            className={cn("flex min-w-0 flex-1 items-center", grouped && "ml-1.5 pl-0.5")}
             data-app-action-sidebar-thread-main=""
           >
             <div
@@ -1736,6 +1742,20 @@ export function CodexSidebarThreadRow({
                 contextMenuOpen && "min-w-12",
               )}
             >
+              {!grouped && (item.unread || item.needsAttention) ? (
+                <span
+                  className={cn(
+                    "relative flex size-5 shrink-0 items-center justify-center",
+                    showActionRail &&
+                      "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
+                    contextMenuOpen && "hidden",
+                  )}
+                  aria-label={item.needsAttention ? "Needs attention" : "Unread"}
+                  data-app-action-sidebar-thread-unread-indicator=""
+                >
+                  <span className="size-1.5 rounded-full bg-token-charts-blue" />
+                </span>
+              ) : null}
               {showRestingPinnedButton ? (
                 <button
                   type="button"
@@ -1856,6 +1876,7 @@ export function CodexSidebarThreadRow({
 export function CodexThreadRow({
   session,
   active,
+  grouped = false,
   contextMenuOpen = false,
   hoverCardProjectLabel,
   hoverCardBranchName,
@@ -1868,6 +1889,7 @@ export function CodexThreadRow({
 }: {
   session: ProjectSession;
   active: boolean;
+  grouped?: boolean;
   contextMenuOpen?: boolean;
   hoverCardProjectLabel?: string | null;
   hoverCardBranchName?: string | null;
@@ -1919,6 +1941,7 @@ export function CodexThreadRow({
     <CodexSidebarThreadRow
       item={item}
       active={active}
+      grouped={grouped}
       contextMenuOpen={contextMenuOpen}
       hoverCardProjectLabel={hoverCardProjectLabel}
       hoverCardBranchName={hoverCardBranchName}

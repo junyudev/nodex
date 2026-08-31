@@ -217,58 +217,62 @@ fn read_task_window_in_scope(
     )
 }
 
-fn task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ProjectWorkspaceTaskSummary, i64, i64)> {
-    let thread_id = row.get::<_, Option<String>>(11)?;
+pub(super) fn task_summary_from_row(
+    row: &rusqlite::Row<'_>,
+    offset: usize,
+) -> rusqlite::Result<ProjectWorkspaceTaskSummary> {
+    let thread_id = row.get::<_, Option<String>>(offset + 11)?;
     let thread = thread_id
         .map(
             |thread_id| -> rusqlite::Result<ProjectWorkspaceTaskThreadSummary> {
-                let status_type = match row.get::<_, String>(32)?.as_str() {
+                let status_type = match row.get::<_, String>(offset + 32)?.as_str() {
                     "notLoaded" => Ok(CodexThreadStatusType::NotLoaded),
                     "idle" => Ok(CodexThreadStatusType::Idle),
                     "systemError" => Ok(CodexThreadStatusType::SystemError),
                     "active" => Ok(CodexThreadStatusType::Active),
                     _ => Err(rusqlite::Error::InvalidQuery),
                 }?;
-                let active_flags =
-                    serde_json::from_str::<Vec<CodexThreadActiveFlag>>(&row.get::<_, String>(33)?)
-                        .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                let active_flags = serde_json::from_str::<Vec<CodexThreadActiveFlag>>(
+                    &row.get::<_, String>(offset + 33)?,
+                )
+                .map_err(|_| rusqlite::Error::InvalidQuery)?;
                 Ok(ProjectWorkspaceTaskThreadSummary {
                     thread_id,
-                    project_id: row.get(12)?,
-                    session_id: row.get(0)?,
-                    forked_from_id: row.get(13)?,
-                    parent_thread_id: row.get(14)?,
-                    thread_name: row.get(15)?,
-                    thread_source: row.get(16)?,
-                    service_name: row.get(17)?,
-                    agent_nickname: row.get(18)?,
-                    agent_role: row.get(19)?,
-                    agent_path: row.get(20)?,
-                    thread_preview: bounded_preview(&row.get::<_, String>(21)?),
-                    model_provider: row.get(22)?,
-                    model_id: row.get(23)?,
-                    harness_id: row.get(24)?,
-                    reasoning_effort: row.get(25)?,
-                    service_tier: row.get(26)?,
-                    execution_host_id: row.get(27)?,
-                    cwd: row.get(28)?,
-                    managed_worktree_path: row.get(29)?,
-                    projectless_output_directory: row.get(30)?,
-                    projectless_workspace_browser_root: row.get(31)?,
+                    project_id: row.get(offset + 12)?,
+                    session_id: row.get(offset)?,
+                    forked_from_id: row.get(offset + 13)?,
+                    parent_thread_id: row.get(offset + 14)?,
+                    thread_name: row.get(offset + 15)?,
+                    thread_source: row.get(offset + 16)?,
+                    service_name: row.get(offset + 17)?,
+                    agent_nickname: row.get(offset + 18)?,
+                    agent_role: row.get(offset + 19)?,
+                    agent_path: row.get(offset + 20)?,
+                    thread_preview: bounded_preview(&row.get::<_, String>(offset + 21)?),
+                    model_provider: row.get(offset + 22)?,
+                    model_id: row.get(offset + 23)?,
+                    harness_id: row.get(offset + 24)?,
+                    reasoning_effort: row.get(offset + 25)?,
+                    service_tier: row.get(offset + 26)?,
+                    execution_host_id: row.get(offset + 27)?,
+                    cwd: row.get(offset + 28)?,
+                    managed_worktree_path: row.get(offset + 29)?,
+                    projectless_output_directory: row.get(offset + 30)?,
+                    projectless_workspace_browser_root: row.get(offset + 31)?,
                     status: ProjectWorkspaceThreadStatus {
                         status_type,
                         active_flags,
                     },
-                    archived: row.get::<_, i64>(34)? == 1,
-                    created_at: row.get(35)?,
-                    updated_at: row.get(36)?,
-                    recency_at: row.get(37)?,
-                    linked_at: row.get(38)?,
+                    archived: row.get::<_, i64>(offset + 34)? == 1,
+                    created_at: row.get(offset + 35)?,
+                    updated_at: row.get(offset + 36)?,
+                    recency_at: row.get(offset + 37)?,
+                    linked_at: row.get(offset + 38)?,
                 })
             },
         )
         .transpose()?;
-    let fallback_title = row.get::<_, String>(2)?;
+    let fallback_title = row.get::<_, String>(offset + 2)?;
     let display_title = super::read::project_session_display_title(
         thread
             .as_ref()
@@ -278,23 +282,27 @@ fn task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ProjectWorkspaceTaskSu
     );
     let task = ProjectWorkspaceTaskSummary {
         session: ProjectWorkspaceSessionSummary {
-            id: row.get(0)?,
-            project_id: row.get(1)?,
+            id: row.get(offset)?,
+            project_id: row.get(offset + 1)?,
             no_thread_fallback_title: fallback_title,
             display_title,
-            order: row.get(3)?,
-            pinned: row.get::<_, i64>(4)? == 1,
-            pinned_order: row.get(5)?,
-            archived: row.get::<_, i64>(6)? == 1,
-            archived_at: row.get(7)?,
-            unread: row.get::<_, i64>(8)? == 1,
-            thread_id: row.get(11)?,
-            created_at: row.get(9)?,
-            updated_at: row.get(10)?,
+            order: row.get(offset + 3)?,
+            pinned: row.get::<_, i64>(offset + 4)? == 1,
+            pinned_order: row.get(offset + 5)?,
+            archived: row.get::<_, i64>(offset + 6)? == 1,
+            archived_at: row.get(offset + 7)?,
+            unread: row.get::<_, i64>(offset + 8)? == 1,
+            thread_id: row.get(offset + 11)?,
+            created_at: row.get(offset + 9)?,
+            updated_at: row.get(offset + 10)?,
         },
         thread,
     };
-    Ok((task, row.get(39)?, row.get(40)?))
+    Ok(task)
+}
+
+fn task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ProjectWorkspaceTaskSummary, i64, i64)> {
+    Ok((task_summary_from_row(row, 0)?, row.get(39)?, row.get(40)?))
 }
 
 pub(crate) fn bounded_preview(value: &str) -> String {

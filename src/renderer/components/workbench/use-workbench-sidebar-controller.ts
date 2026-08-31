@@ -381,7 +381,7 @@ export function useWorkbenchSidebarController({
   }, [activeProject?.id, activeSessions, pendingSessionOpen, projectlessSessions, selectSession]);
 
   const toggleSessionPin = useCallback(
-    async (session: ProjectSession) => {
+    async (session: ProjectSessionDomain) => {
       const nextPinned = !session.pinned;
       if (session.thread) {
         try {
@@ -477,7 +477,7 @@ export function useWorkbenchSidebarController({
   );
 
   const openRenameSessionDialog = useCallback(
-    (session: ProjectSession) => {
+    (session: ProjectSessionDomain) => {
       openModal(appHandle, RenameChatDialog, {
         initialValue: session.displayTitle,
         onSave: (title) => {
@@ -491,7 +491,7 @@ export function useWorkbenchSidebarController({
   );
 
   const handleSessionTitleDoubleClick = useCallback(
-    (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => {
+    (session: ProjectSessionDomain, event: ReactMouseEvent<HTMLElement>) => {
       if (event.defaultPrevented) return;
       if (activeSessionId !== session.id) return;
       if (!(event.target instanceof Element)) return;
@@ -530,7 +530,7 @@ export function useWorkbenchSidebarController({
   );
 
   const archiveSession = useCallback(
-    async (session: ProjectSession, options: { showToast?: boolean } = {}) => {
+    async (session: ProjectSessionDomain, options: { showToast?: boolean } = {}) => {
       try {
         const refreshedPresentations = await catalog.archive(session);
         try {
@@ -569,7 +569,7 @@ export function useWorkbenchSidebarController({
   );
 
   const resolveSidebarArchivePendingKeyForSession = useCallback(
-    (session: ProjectSession) => {
+    (session: ProjectSessionDomain) => {
       for (const [key, item] of sidebarThreadModel.threadItemsByKey) {
         if (item.sessionId === session.id) return key;
         if (session.thread && item.threadId === session.thread.threadId) return key;
@@ -580,7 +580,7 @@ export function useWorkbenchSidebarController({
   );
 
   const archiveSessionWithSidebarPendingState = useCallback(
-    async (session: ProjectSession) => {
+    async (session: ProjectSessionDomain) => {
       const pendingKey = resolveSidebarArchivePendingKeyForSession(session);
       if (!beginArchive(pendingKey)) return;
 
@@ -595,7 +595,7 @@ export function useWorkbenchSidebarController({
   );
 
   const archiveSidebarThreadItem = useCallback(
-    async (item: CodexSidebarThreadItem) => {
+    async (item: CodexSidebarThreadItem, sessionOverride?: ProjectSessionDomain) => {
       if (item.disabled || !beginArchive(item.key)) return;
 
       try {
@@ -608,10 +608,12 @@ export function useWorkbenchSidebarController({
           return;
         }
 
-        const session = item.sessionId
-          ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
-          : (knownSessions.find((candidate) => candidate.thread?.threadId === item.threadId) ??
-            null);
+        const session =
+          sessionOverride ??
+          (item.sessionId
+            ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
+            : (knownSessions.find((candidate) => candidate.thread?.threadId === item.threadId) ??
+              null));
         if (session) {
           const archived = await archiveSession(session, { showToast: false });
           if (!archived) toast.danger("Failed to archive chat");
@@ -687,7 +689,7 @@ export function useWorkbenchSidebarController({
   );
 
   const toggleSessionUnread = useCallback(
-    async (session: ProjectSession) => {
+    async (session: ProjectSessionDomain) => {
       const hasUnreadTurn = !session.unread;
       try {
         if (session.thread?.threadId) {
@@ -721,7 +723,7 @@ export function useWorkbenchSidebarController({
   );
 
   const handleSessionContextMenuAction = useCallback(
-    async (session: ProjectSession, actionId: string) => {
+    async (session: ProjectSessionDomain, actionId: string) => {
       const moveTargetSectionId = readSessionMoveToSectionActionId(actionId);
       if (moveTargetSectionId) {
         await invokeCoreResult("sidebar-sections:item:move", {
@@ -820,12 +822,17 @@ export function useWorkbenchSidebarController({
         return;
       }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.openInNewWindow) {
-        await onOpenProjectSessionInNewWindow?.(session);
+        const presentation = catalog.findById(session.id);
+        const projectedSession = presentation
+          ? presentWorkbenchSession(presentation)
+          : presentWorkbenchSessionDomainWithScene(session, catalog.resolveScene(session));
+        await onOpenProjectSessionInNewWindow?.(projectedSession);
       }
     },
     [
       archiveSessionWithSidebarPendingState,
       appHandle,
+      catalog,
       copySessionText,
       moveSidebarThreadInputForSidebar,
       onOpenProjectSessionInNewWindow,
@@ -837,7 +844,7 @@ export function useWorkbenchSidebarController({
   );
 
   const openSessionContextMenu = useCallback(
-    async (session: ProjectSession, event: ReactMouseEvent<HTMLElement>) => {
+    async (session: ProjectSessionDomain, event: ReactMouseEvent<HTMLElement>) => {
       event.preventDefault();
       event.stopPropagation();
       const [sections, directSectionId, availableOpeners] = await Promise.all([

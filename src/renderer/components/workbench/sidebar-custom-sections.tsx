@@ -19,7 +19,6 @@ import {
   ProjectActionsIcon,
   ProjectFolderIcon,
   SettingsGeneralIcon,
-  ThreadIcon,
 } from "@/components/shared/icons";
 import {
   NodexDialog,
@@ -49,6 +48,7 @@ import {
 import { listAllSidebarSectionItems, listAllSidebarSections } from "@/lib/sidebar-sections-api";
 import { cn } from "@/lib/utils";
 import type { ProjectSession } from "@/lib/types";
+import type { ProjectSessionSummary } from "../../../shared/types";
 import {
   sidebarSectionContainerId,
   type SidebarSectionItem,
@@ -56,12 +56,9 @@ import {
 } from "../../../shared/sidebar-sections";
 import {
   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
-  CODEX_SIDEBAR_ROW_LABEL_CLASS,
   CodexSidebarActionButton,
   CodexSidebarPagerButton,
-  CodexSidebarRowLayout,
   CodexSidebarSection,
-  CodexSidebarTreeRow,
 } from "./codex-sidebar";
 import type { SidebarGroupDndController } from "./sidebar-project-group-dnd";
 import {
@@ -239,7 +236,7 @@ export function useSidebarSectionsCatalog() {
   );
   const directSessionIds = new Set(
     [...itemsBySectionId.values()].flatMap((items) =>
-      items.flatMap((item) => (item.kind === "session" ? [item.session.sessionId] : [])),
+      items.flatMap((item) => (item.kind === "session" ? [item.session.id] : [])),
     ),
   );
   const directProjectIds = new Set(
@@ -287,7 +284,7 @@ function SectionDirectItems({
   readonly loading: boolean;
   readonly onThreadsChanged?: () => Promise<unknown> | void;
   readonly renderProject: (input: SidebarSectionProjectRowRenderInput) => ReactNode;
-  readonly renderSession: (sessionId: string) => ReactNode;
+  readonly renderSession: (session: ProjectSessionSummary) => ReactNode;
   readonly section: SidebarSectionSummary;
 }) {
   const [visibleItemCount, setVisibleItemCount] = useState(50);
@@ -347,24 +344,10 @@ function SectionDirectItems({
                     itemIds={allItemIds}
                     nextItemId={nextItemId}
                     sectionId={section.sectionId}
-                    threadId={item.session.threadId}
-                    threadKey={getThreadKey(item.session.sessionId)}
+                    threadId={item.session.thread?.threadId ?? null}
+                    threadKey={getThreadKey(item.session.id)}
                   >
-                    {renderSession(item.session.sessionId) ?? (
-                      <CodexSidebarTreeRow
-                        aria-label={item.session.displayTitle}
-                        data-app-action-sidebar-thread-id={item.session.threadId ?? ""}
-                        data-app-action-sidebar-thread-row=""
-                        data-app-action-sidebar-thread-title={item.session.displayTitle}
-                        role="listitem"
-                      >
-                        <CodexSidebarRowLayout leadingSlot={<ThreadIcon className="icon-xs" />}>
-                          <span className={cn(CODEX_SIDEBAR_ROW_LABEL_CLASS, "truncate")}>
-                            {item.session.displayTitle}
-                          </span>
-                        </CodexSidebarRowLayout>
-                      </CodexSidebarTreeRow>
-                    )}
+                    {renderSession(item.session)}
                   </SectionSessionDraggable>
                 )}
               </Fragment>
@@ -460,7 +443,7 @@ export function SidebarCustomSections({
 }: {
   readonly sessionsByProject: Readonly<Record<string, readonly ProjectSession[]>>;
   readonly renderProject: (input: SidebarSectionProjectRowRenderInput) => ReactNode;
-  readonly renderSession: (sessionId: string) => ReactNode;
+  readonly renderSession: (session: ProjectSessionSummary) => ReactNode;
   readonly onThreadsChanged?: () => Promise<unknown> | void;
   readonly catalog: SidebarSectionsCatalog;
   readonly getThreadKey: (sessionId: string) => string;
@@ -645,9 +628,7 @@ export function SidebarCustomSections({
                 event.preventDefault();
                 const items = catalog.itemsBySectionId.get(archiveSection.sectionId) ?? [];
                 const directSessionIds = new Set(
-                  items.flatMap((item) =>
-                    item.kind === "session" ? [item.session.sessionId] : [],
-                  ),
+                  items.flatMap((item) => (item.kind === "session" ? [item.session.id] : [])),
                 );
                 const projectIds = new Set(
                   items.flatMap((item) =>

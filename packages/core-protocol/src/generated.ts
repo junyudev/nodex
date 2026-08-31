@@ -7864,27 +7864,21 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "session";
-            readonly session: components["schemas"]["ProjectWorkspaceSidebarSessionItem"];
+            readonly task: components["schemas"]["ProjectWorkspaceTaskSummary"];
         };
         /** @enum {string} */
         readonly ProjectWorkspaceSidebarSectionKind: "pinned" | "pages" | "projects" | "chats" | "custom";
         /** @enum {string} */
         readonly ProjectWorkspaceSidebarSectionLifecycle: "active" | "deleted";
-        readonly ProjectWorkspaceSidebarSessionItem: {
-            readonly archived: boolean;
-            readonly display_title: string;
-            readonly pinned: boolean;
-            readonly project_id?: string | null;
-            readonly session_id: string;
-            readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
-            readonly thread_id?: string | null;
-            readonly unread: boolean;
-        };
         readonly ProjectWorkspaceStarterPage: {
             readonly document_id: string;
             readonly nfm: string;
             readonly page_id: string;
             readonly title_markdown: string;
+        };
+        readonly ProjectWorkspaceTaskSummary: {
+            readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+            readonly thread?: null | components["schemas"]["ProjectWorkspaceTaskThreadSummary"];
         };
         readonly ProjectWorkspaceTaskThreadSummary: {
             readonly agent_nickname?: string | null;

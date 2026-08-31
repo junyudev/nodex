@@ -5,14 +5,12 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::workspace::{
-    CodexThreadActiveFlag, CodexThreadStatusType, ProjectLifecycle,
-    ProjectSessionInvalidationScope, ProjectWorkspaceSidebarProjectItem,
+    ProjectLifecycle, ProjectSessionInvalidationScope, ProjectWorkspaceSidebarProjectItem,
     ProjectWorkspaceSidebarSectionHostLink, ProjectWorkspaceSidebarSectionHostSyncState,
     ProjectWorkspaceSidebarSectionItem, ProjectWorkspaceSidebarSectionItemPlacement,
     ProjectWorkspaceSidebarSectionItemRef, ProjectWorkspaceSidebarSectionItemValue,
     ProjectWorkspaceSidebarSectionKind, ProjectWorkspaceSidebarSectionLifecycle,
-    ProjectWorkspaceSidebarSectionSummary, ProjectWorkspaceSidebarSessionItem,
-    ProjectWorkspaceThreadStatus,
+    ProjectWorkspaceSidebarSectionSummary,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -177,7 +175,7 @@ pub(super) fn read_section_item_window(
     require_custom_section(connection, library_id, section_id, true)?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_sidebar_section_items_v1",
+        "workspace_sidebar_section_items_v2",
         section_id,
         include_archived,
     ))?;
@@ -222,9 +220,17 @@ pub(super) fn read_section_item_window(
            project.appearance_marker_kind, project.appearance_marker_value, \
            pinned_project.project_id, \
            session.id, session.project_id, session.no_thread_fallback_title, \
-           session.pinned, session.archived, session.unread, \
-           thread.thread_id, thread.thread_name, thread.thread_preview, \
-           thread.status_type, thread.status_active_flags_json \
+           session.\"order\", session.pinned, session.pinned_order, session.archived, \
+           session.archived_at, session.unread, session.created_at, session.updated_at, \
+           thread.thread_id, thread.project_id, thread.forked_from_id, \
+           thread.parent_thread_id, thread.thread_name, thread.thread_source, \
+           thread.service_name, thread.agent_nickname, thread.agent_role, thread.agent_path, \
+           substr(thread.thread_preview, 1, 1024), thread.model_provider, thread.model_id, \
+           thread.harness_id, thread.reasoning_effort, thread.service_tier, \
+           thread.execution_host_id, thread.cwd, thread.managed_worktree_path, \
+           thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
+           thread.status_type, thread.status_active_flags_json, thread.archived, \
+           thread.created_at, thread.updated_at, thread.recency_at, thread.linked_at \
          FROM workspace_sidebar_section_items item \
          JOIN workspace_sidebar_sections section \
            ON section.library_id = item.library_id AND section.section_id = item.section_id \
@@ -236,6 +242,7 @@ pub(super) fn read_section_item_window(
          WHERE item.section_id = ?1 AND item.library_id = ?2 AND section.lifecycle = 'active' \
            AND ((project.id IS NOT NULL AND (?3 = 1 OR project.lifecycle <> 'archived')) \
              OR (session.id IS NOT NULL AND (?3 = 1 OR session.archived = 0))) \
+           AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
            {cursor_predicate} \
          ORDER BY item.rank_key, item.placement_id LIMIT ?{limit_parameter}"
     );
@@ -1062,37 +1069,8 @@ fn section_item_row(
             },
         }
     } else {
-        let fallback_title = row.get::<_, String>(12)?;
-        let thread_name = row.get::<_, Option<String>>(17)?;
-        let thread_preview = row.get::<_, Option<String>>(18)?;
-        let display_title = super::read::project_session_display_title(
-            thread_name.as_deref(),
-            thread_preview.as_deref(),
-            &fallback_title,
-        );
-        let status = row
-            .get::<_, Option<String>>(19)?
-            .map(|status| {
-                Ok::<ProjectWorkspaceThreadStatus, rusqlite::Error>(ProjectWorkspaceThreadStatus {
-                    status_type: parse_status_type(&status)?,
-                    active_flags: serde_json::from_str::<Vec<CodexThreadActiveFlag>>(
-                        &row.get::<_, String>(20)?,
-                    )
-                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
-                })
-            })
-            .transpose()?;
         ProjectWorkspaceSidebarSectionItemValue::Session {
-            session: ProjectWorkspaceSidebarSessionItem {
-                session_id: row.get(10)?,
-                project_id: row.get(11)?,
-                display_title,
-                pinned: row.get::<_, i64>(13)? == 1,
-                archived: row.get::<_, i64>(14)? == 1,
-                unread: row.get::<_, i64>(15)? == 1,
-                thread_id: row.get(16)?,
-                status,
-            },
+            task: super::task_window::task_summary_from_row(row, 10)?,
         }
     };
     Ok(ProjectWorkspaceSidebarSectionItem {
@@ -1432,16 +1410,6 @@ fn parse_project_lifecycle(value: &str) -> rusqlite::Result<ProjectLifecycle> {
         "active" => Ok(ProjectLifecycle::Active),
         "inactive" => Ok(ProjectLifecycle::Inactive),
         "archived" => Ok(ProjectLifecycle::Archived),
-        _ => Err(rusqlite::Error::InvalidQuery),
-    }
-}
-
-fn parse_status_type(value: &str) -> rusqlite::Result<CodexThreadStatusType> {
-    match value {
-        "notLoaded" => Ok(CodexThreadStatusType::NotLoaded),
-        "idle" => Ok(CodexThreadStatusType::Idle),
-        "systemError" => Ok(CodexThreadStatusType::SystemError),
-        "active" => Ok(CodexThreadStatusType::Active),
         _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
@@ -1806,11 +1774,11 @@ mod tests {
         };
         assert_eq!(items.items.len(), 1);
         let nodex_core_contracts::workspace::ProjectWorkspaceSidebarSectionItemValue::Session {
-            session,
+            task,
         } = &items.items[0].value
         else {
             panic!("replacement Session item");
         };
-        assert_eq!(session.session_id, "session:replacement");
+        assert_eq!(task.session.id, "session:replacement");
     }
 }

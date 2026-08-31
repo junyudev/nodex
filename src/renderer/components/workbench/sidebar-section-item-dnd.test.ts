@@ -26,14 +26,19 @@ const sessionItem = {
   revision: 1,
   kind: "session",
   session: {
-    sessionId: "session-alpha",
+    id: "session-alpha",
     projectId: null,
+    noThreadFallbackTitle: "Alpha chat",
     displayTitle: "Alpha chat",
+    order: 1,
     pinned: false,
+    pinnedOrder: null,
     archived: false,
+    archivedAt: null,
     unread: false,
-    threadId: "thread-alpha",
-    status: null,
+    thread: null,
+    createdAt: "2026-08-31T00:00:00.000Z",
+    updatedAt: "2026-08-31T00:00:00.000Z",
   },
 } satisfies SidebarSectionItem;
 

@@ -1,5 +1,5 @@
 import type { ProjectAppearance } from "./project-appearance";
-import type { CodexThreadActiveFlag, Project } from "./types";
+import type { Project, ProjectSessionSummary } from "./types";
 
 export type SidebarSectionKind = "pinned" | "pages" | "projects" | "chats" | "custom";
 export type SidebarSectionLifecycle = "active" | "deleted";
@@ -63,19 +63,7 @@ export type SidebarSectionItem =
       readonly rankKey: number;
       readonly revision: number;
       readonly kind: "session";
-      readonly session: {
-        readonly sessionId: string;
-        readonly projectId: string | null;
-        readonly displayTitle: string;
-        readonly pinned: boolean;
-        readonly archived: boolean;
-        readonly unread: boolean;
-        readonly threadId: string | null;
-        readonly status: {
-          readonly statusType: "notLoaded" | "idle" | "systemError" | "active";
-          readonly activeFlags: readonly CodexThreadActiveFlag[];
-        } | null;
-      };
+      readonly session: ProjectSessionSummary;
     };
 
 export interface SidebarSectionItemWindow {

@@ -94,21 +94,7 @@ export const projectWorkspaceSidebarSectionItemFromCore = (
         rankKey: item.rank_key,
         revision: item.revision,
         kind: "session",
-        session: {
-          sessionId: item.value.session.session_id,
-          projectId: item.value.session.project_id ?? null,
-          displayTitle: item.value.session.display_title,
-          pinned: item.value.session.pinned,
-          archived: item.value.session.archived,
-          unread: item.value.session.unread,
-          threadId: item.value.session.thread_id ?? null,
-          status: item.value.session.status
-            ? {
-                statusType: item.value.session.status.status_type,
-                activeFlags: [...item.value.session.status.active_flags],
-              }
-            : null,
-        },
+        session: projectWorkspaceTaskFromCore(item.value.task),
       };
 
 export const projectWorkspaceSidebarSectionItemRefToCore = (item: SidebarSectionItemRef) =>
