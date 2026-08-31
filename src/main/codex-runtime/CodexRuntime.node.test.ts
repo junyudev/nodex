@@ -29,6 +29,7 @@ import {
 } from "./CodexEndpointMap";
 import { CodexEventHub, live as eventHubLive } from "./CodexEventHub";
 import { CodexGateway, CodexThreadHostResolver, live as gatewayLive } from "./CodexGateway";
+import { live as requestSchedulerLive } from "./CodexRequestScheduler";
 import { codexRuntimeError, type CodexRuntimeError } from "./CodexRuntimeError";
 import { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
 
@@ -191,6 +192,7 @@ const endpointDependencies = Layer.mergeAll(
   eventHubLive,
   applicationRequestInboxLive,
   fakeTransport,
+  requestSchedulerLive,
 );
 
 it.effect("retries one owned session at a time and interrupts backoff on scope close", () =>
@@ -365,15 +367,18 @@ it.effect("routes typed requests explicitly across local and thread execution ho
       accountEmail: "remote@example.com",
     });
     const hub = eventHubLive;
+    const scheduler = requestSchedulerLive;
     const endpointMap = endpointMapLive(local.config).pipe(
-      Layer.provideMerge(Layer.mergeAll(hub, applicationRequestInboxLive, fakeTransport)),
+      Layer.provideMerge(
+        Layer.mergeAll(hub, applicationRequestInboxLive, fakeTransport, scheduler),
+      ),
     );
     const resolver = Layer.succeed(
       CodexThreadHostResolver,
       CodexThreadHostResolver.of({ resolve: () => Effect.succeed("remote-a") }),
     );
     const runtime = gatewayLive({ requestTimeout: "5 seconds" }).pipe(
-      Layer.provideMerge(Layer.mergeAll(endpointMap, hub, resolver)),
+      Layer.provideMerge(Layer.mergeAll(endpointMap, hub, resolver, scheduler)),
     );
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(runtime, scope);
@@ -419,8 +424,11 @@ it.effect(
         accountEmail: "replacement@example.com",
       });
       const hub = eventHubLive;
+      const scheduler = requestSchedulerLive;
       const endpointMap = endpointMapLive(first.config).pipe(
-        Layer.provideMerge(Layer.mergeAll(hub, applicationRequestInboxLive, fakeTransport)),
+        Layer.provideMerge(
+          Layer.mergeAll(hub, applicationRequestInboxLive, fakeTransport, scheduler),
+        ),
       );
       const resolver = Layer.succeed(
         CodexThreadHostResolver,
@@ -429,7 +437,7 @@ it.effect(
       const scope = yield* Scope.make();
       const context = yield* Layer.buildWithScope(
         gatewayLive({ requestTimeout: "5 seconds" }).pipe(
-          Layer.provideMerge(Layer.mergeAll(endpointMap, hub, resolver)),
+          Layer.provideMerge(Layer.mergeAll(endpointMap, hub, resolver, scheduler)),
         ),
         scope,
       );
@@ -464,12 +472,15 @@ it.effect(
     }),
 );
 
-it.effect("applies the only ordinary request deadline in the gateway", () =>
+it.effect("applies the ordinary request deadline through the gateway scheduler", () =>
   Effect.gen(function* () {
     const local = fakeEndpoint({ hostId: "local", respond: false });
     const hub = eventHubLive;
+    const scheduler = requestSchedulerLive;
     const endpointMap = endpointMapLive(local.config).pipe(
-      Layer.provideMerge(Layer.mergeAll(hub, applicationRequestInboxLive, fakeTransport)),
+      Layer.provideMerge(
+        Layer.mergeAll(hub, applicationRequestInboxLive, fakeTransport, scheduler),
+      ),
     );
     const resolver = Layer.succeed(
       CodexThreadHostResolver,
@@ -478,7 +489,7 @@ it.effect("applies the only ordinary request deadline in the gateway", () =>
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
       gatewayLive({ requestTimeout: "1 second" }).pipe(
-        Layer.provideMerge(Layer.mergeAll(endpointMap, hub, resolver)),
+        Layer.provideMerge(Layer.mergeAll(endpointMap, hub, resolver, scheduler)),
       ),
       scope,
     );

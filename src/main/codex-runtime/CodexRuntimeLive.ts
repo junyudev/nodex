@@ -11,6 +11,7 @@ import type { CodexEndpointConfig } from "./CodexEndpoint";
 import { CodexEndpointMap, live as endpointMapLive } from "./CodexEndpointMap";
 import { CodexEventHub, live as eventHubLive } from "./CodexEventHub";
 import { CodexGateway, CodexThreadHostResolver, live as gatewayLive } from "./CodexGateway";
+import { CodexRequestScheduler, live as requestSchedulerLive } from "./CodexRequestScheduler";
 
 export interface CodexRuntimeOptions {
   readonly local: Omit<CodexAppServerSessionOptions, "generation">;
@@ -32,16 +33,21 @@ export const localEndpointConfig = (options: CodexRuntimeOptions): CodexEndpoint
 export const live = (
   options: CodexRuntimeOptions,
 ): Layer.Layer<
-  CodexAppServerCapabilities | CodexGateway | CodexEndpointMap | CodexEventHub,
+  | CodexAppServerCapabilities
+  | CodexGateway
+  | CodexEndpointMap
+  | CodexEventHub
+  | CodexRequestScheduler,
   never,
   CodexSessionTransport | CodexApplicationRequestInbox | CodexThreadHostResolver
 > => {
   const events = eventHubLive;
+  const scheduler = requestSchedulerLive;
   const endpoints = endpointMapLive({
     ...localEndpointConfig(options),
     kind: "local",
-  }).pipe(Layer.provideMerge(events));
-  const transport = Layer.merge(endpoints, events);
+  }).pipe(Layer.provide(Layer.merge(events, scheduler)));
+  const transport = Layer.mergeAll(endpoints, events, scheduler);
   return Layer.merge(
     gatewayLive({ requestTimeout: options.requestTimeout }),
     appServerCapabilitiesLive,

@@ -4,6 +4,8 @@ import { CodexAppServerError } from "@nodex/effect-codex-app-server/errors";
 export const CodexRuntimeFailureReason = Schema.Literals([
   "spawn",
   "initialize",
+  "outcome-unknown",
+  "pressure",
   "timeout",
   "protocol",
   "session-lost",

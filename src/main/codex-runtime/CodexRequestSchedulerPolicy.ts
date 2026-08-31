@@ -205,7 +205,12 @@ export const codexRequestQueueExpiryMs = (input: {
     if (input.expiresAtMs !== undefined && input.expiresAtMs !== null) {
       return Math.max(0, input.expiresAtMs - input.nowMs);
     }
-    if (input.timeoutMs !== undefined && input.timeoutMs !== null && input.timeoutMs > 0) {
+    if (
+      input.timeoutMs !== undefined &&
+      input.timeoutMs !== null &&
+      Number.isFinite(input.timeoutMs) &&
+      input.timeoutMs >= 0
+    ) {
       return input.timeoutMs;
     }
     return null;

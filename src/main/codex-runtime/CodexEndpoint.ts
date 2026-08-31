@@ -17,6 +17,7 @@ import {
 } from "./CodexApplicationRequestInbox";
 import { CodexAppServerSession, type CodexAppServerSessionService } from "./CodexAppServerSession";
 import { CodexEventHub, type CodexEndpointConnection } from "./CodexEventHub";
+import { CodexRequestScheduler } from "./CodexRequestScheduler";
 import {
   classifyCodexClientError,
   codexRuntimeError,
@@ -65,7 +66,7 @@ export const live = (
 ): Layer.Layer<
   CodexEndpoint,
   never,
-  CodexSessionTransport | CodexEventHub | CodexApplicationRequestInbox
+  CodexSessionTransport | CodexEventHub | CodexApplicationRequestInbox | CodexRequestScheduler
 > =>
   Layer.effect(
     CodexEndpoint,
@@ -74,6 +75,7 @@ export const live = (
       const configRef = yield* Ref.make<CodexEndpointConfig>({ ...config, hostId });
       const eventHub = yield* CodexEventHub;
       const requestInbox = yield* CodexApplicationRequestInbox;
+      const requestScheduler = yield* CodexRequestScheduler;
       const state = yield* SubscriptionRef.make<CodexEndpointConnection>({
         kind: "connecting",
         hostId,
@@ -130,6 +132,9 @@ export const live = (
                       }),
                     ),
                   );
+                yield* requestScheduler
+                  .openGeneration(hostId, currentGeneration)
+                  .pipe(Effect.provideService(Scope.Scope, attemptScope));
 
                 const classifyIngressError = (operation: string, cause: unknown) =>
                   classifyCodexClientError({

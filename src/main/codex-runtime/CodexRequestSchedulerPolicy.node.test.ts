@@ -117,6 +117,14 @@ describe("Codex request scheduler method policy", () => {
       codexRequestQueueExpiryMs({
         priority: "interactive",
         source: null,
+        timeoutMs: 0,
+        nowMs: 1_000,
+      }),
+    ).toBe(0);
+    expect(
+      codexRequestQueueExpiryMs({
+        priority: "interactive",
+        source: null,
         nowMs: 1_000,
       }),
     ).toBeNull();

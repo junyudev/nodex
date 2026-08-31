@@ -9,6 +9,7 @@ import type { CodexSessionTransport } from "../platform/node/CodexSessionTranspo
 import type { CodexApplicationRequestInbox } from "./CodexApplicationRequestInbox";
 import { CodexEndpoint, live as endpointLive, type CodexEndpointConfig } from "./CodexEndpoint";
 import type { CodexEventHub } from "./CodexEventHub";
+import type { CodexRequestScheduler } from "./CodexRequestScheduler";
 import { codexRuntimeError, type CodexRuntimeError } from "./CodexRuntimeError";
 
 export interface CodexExecutionHostConfig extends CodexEndpointConfig {
@@ -46,7 +47,7 @@ export const live = (
 ): Layer.Layer<
   CodexEndpointMap,
   never,
-  CodexSessionTransport | CodexEventHub | CodexApplicationRequestInbox
+  CodexSessionTransport | CodexEventHub | CodexApplicationRequestInbox | CodexRequestScheduler
 > =>
   Layer.effect(
     CodexEndpointMap,
@@ -61,7 +62,7 @@ export const live = (
       ): Layer.Layer<
         CodexEndpoint,
         CodexRuntimeError,
-        CodexSessionTransport | CodexEventHub | CodexApplicationRequestInbox
+        CodexSessionTransport | CodexEventHub | CodexApplicationRequestInbox | CodexRequestScheduler
       > =>
         Layer.unwrap(
           Ref.get(configs).pipe(
@@ -71,7 +72,10 @@ export const live = (
               ): Layer.Layer<
                 CodexEndpoint,
                 CodexRuntimeError,
-                CodexSessionTransport | CodexEventHub | CodexApplicationRequestInbox
+                | CodexSessionTransport
+                | CodexEventHub
+                | CodexApplicationRequestInbox
+                | CodexRequestScheduler
               > => {
                 const config = current.get(hostId);
                 return config === undefined
