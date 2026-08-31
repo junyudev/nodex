@@ -6,7 +6,12 @@ import type {
   CodexConversationSnapshot,
 } from "../../shared/types";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
+import {
+  CodexAppServerCapabilities,
+  createCodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { make } from "./CodexConversationFork";
@@ -53,18 +58,28 @@ const snapshot = (threadId: string): CodexConversationSnapshot =>
     },
   }) as unknown as CodexConversationSnapshot;
 
-const makeHarness = (responseTurnId = "turn-a") => {
+interface HarnessOptions {
+  readonly appServerVersion?: string;
+  readonly capabilityIsCurrent?: boolean;
+  readonly gatewayFailure?: ReturnType<typeof codexRuntimeError>;
+  readonly responseTurns?: readonly { readonly id: string; readonly status: "completed" }[];
+  readonly sourceCanonicalLoaded?: boolean;
+}
+
+const makeHarness = (options: HarnessOptions = {}) => {
   const order: string[] = [];
   const requests: Array<{
     readonly hostId: string;
     readonly method: string;
     readonly params: unknown;
+    readonly scheduling: unknown;
   }> = [];
+  const resolutions: Array<{ readonly threadId: string; readonly fidelity: string }> = [];
   const sourceCanonical = canonical(sourceThreadId);
-  const childCanonical = canonical(childThreadId);
   const sourceSnapshot = snapshot(sourceThreadId);
   const childSnapshot = snapshot(childThreadId);
-  let projectedChild = childCanonical;
+  let projectedChild: CodexCanonicalConversationState | null = null;
+  let projectedChildSnapshot: CodexConversationSnapshot | null = null;
 
   const core = CoreModules.of({
     workspace: {
@@ -105,15 +120,16 @@ const makeHarness = (responseTurnId = "turn-a") => {
   const gateway = CodexGateway.of({
     localHostId: "host-a",
     events: Stream.empty,
-    requestOnHost: ((hostId: string, method: string, params: unknown) =>
-      Effect.sync(() => {
+    requestOnHost: ((hostId: string, method: string, params: unknown, scheduling: unknown) =>
+      Effect.gen(function* () {
         order.push("gateway:fork");
-        requests.push({ hostId, method, params });
+        requests.push({ hostId, method, params, scheduling });
+        if (options.gatewayFailure) return yield* options.gatewayFailure;
         return {
           thread: {
             id: childThreadId,
             forkedFromId: sourceThreadId,
-            turns: [{ id: responseTurnId, status: "completed" }],
+            turns: [...(options.responseTurns ?? [])],
           },
           model: "gpt-test",
           modelProvider: "openai",
@@ -131,26 +147,29 @@ const makeHarness = (responseTurnId = "turn-a") => {
       })) as CodexGateway["Service"]["requestOnHost"],
   } as unknown as CodexGateway["Service"]);
   const directory = CodexThreadDirectory.of({
-    resolve: () =>
-      Effect.succeed({
-        fidelity: "durable",
-        durable: {
-          threadId: sourceThreadId,
-          projectId: "project-a",
-          executionHostId: "host-a",
-          cwd: "/workspace",
-          executionProfile: {
-            providerId: "openai",
-            modelId: "gpt-test",
-            harnessId: null,
-            reasoningEffort: "high",
-            serviceTier: null,
+    resolve: (input) =>
+      Effect.sync(() => {
+        resolutions.push({ threadId: input.threadId, fidelity: input.fidelity });
+        return {
+          fidelity: "durable",
+          durable: {
+            threadId: sourceThreadId,
+            projectId: "project-a",
+            executionHostId: "host-a",
+            cwd: "/workspace",
+            executionProfile: {
+              providerId: "openai",
+              modelId: "gpt-test",
+              harnessId: null,
+              reasoningEffort: "high",
+              serviceTier: null,
+            },
           },
-        },
-        summary: { ...sourceSnapshot, forkedFromId: null },
-        canonical: sourceCanonical,
-        snapshot: sourceSnapshot,
-      } as never),
+          summary: { ...sourceSnapshot, forkedFromId: null },
+          canonical: options.sourceCanonicalLoaded === false ? null : sourceCanonical,
+          snapshot: options.sourceCanonicalLoaded === false ? null : sourceSnapshot,
+        } as never;
+      }),
     descendants: () => Effect.die("unused"),
     acceptRollbackResult: () => Effect.die("unused"),
     acceptImportResult: () => Effect.die("unused"),
@@ -159,12 +178,13 @@ const makeHarness = (responseTurnId = "turn-a") => {
         order.push("directory:accept");
         assert.strictEqual(acceptedSource, sourceThreadId);
         assert.strictEqual(response.thread.id, childThreadId);
+        assert.deepEqual(response.thread.turns, []);
         return {
-          fidelity: "live",
+          fidelity: "metadata",
           durable: { threadId: childThreadId },
           summary: { ...childSnapshot, threadId: childThreadId },
-          canonical: childCanonical,
-          snapshot: childSnapshot,
+          canonical: null,
+          snapshot: null,
         } as never;
       }),
     observeMetadata: () => Effect.die("unused"),
@@ -173,21 +193,39 @@ const makeHarness = (responseTurnId = "turn-a") => {
     acceptSessionStart: () => Effect.die("unused"),
   });
   const projection = CodexConversationProjection.of({
-    read: (threadId: string) =>
-      Effect.succeed(
-        threadId === sourceThreadId
-          ? { canonical: sourceCanonical, snapshot: sourceSnapshot }
-          : { canonical: projectedChild, snapshot: childSnapshot },
-      ),
+    read: (threadId: string) => {
+      if (threadId === sourceThreadId) return Effect.die("source projection must not be read");
+      if (!projectedChild || !projectedChildSnapshot) {
+        return Effect.die("child projection was not hydrated");
+      }
+      return Effect.succeed({ canonical: projectedChild, snapshot: projectedChildSnapshot });
+    },
     hydrate: (input: Parameters<CodexConversationProjection["Service"]["hydrate"]>[0]) =>
       Effect.sync(() => {
         order.push("projection:hydrate");
         projectedChild = input.canonical;
-        return childSnapshot;
+        projectedChildSnapshot = {
+          ...childSnapshot,
+          turnPagination: input.pagination,
+        };
+        return projectedChildSnapshot;
       }),
   } as never);
+  const capabilitySnapshot = createCodexAppServerCapabilitySnapshot({
+    hostId: "host-a",
+    generation: 7,
+    userAgent: `Codex Desktop/${options.appServerVersion ?? "0.147.0"}`,
+  });
   const capability = make.pipe(
     Effect.provideService(CoreModules, core),
+    Effect.provideService(
+      CodexAppServerCapabilities,
+      CodexAppServerCapabilities.of({
+        forHost: () => Effect.succeed(capabilitySnapshot),
+        forThread: () => Effect.succeed(capabilitySnapshot),
+        isCurrent: () => Effect.succeed(options.capabilityIsCurrent ?? true),
+      }),
+    ),
     Effect.provideService(CodexGateway, gateway),
     Effect.provideService(CodexConversationProjection, projection),
     Effect.provideService(
@@ -257,12 +295,12 @@ const makeHarness = (responseTurnId = "turn-a") => {
       } as never),
     ),
   );
-  return { capability, order, projectedChild: () => projectedChild, requests };
+  return { capability, order, projectedChild: () => projectedChild, requests, resolutions };
 };
 
 it.effect("commits an exact persistent fork through canonical Session ownership", () =>
   Effect.gen(function* () {
-    const { capability, order, projectedChild, requests } = makeHarness();
+    const { capability, order, projectedChild, requests, resolutions } = makeHarness();
     const forks = yield* capability;
     const result = yield* forks.fork({
       sourceThreadId,
@@ -288,6 +326,7 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
           cwd: "/workspace",
           runtimeWorkspaceRoots: ["/workspace", "/shared"],
           threadSource: "user",
+          excludeTurns: true,
           config: {
             model_reasoning_effort: "high",
             "features.apply_patch_streaming_events": true,
@@ -295,9 +334,33 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
             "features.thread_tools": true,
           },
         },
+        scheduling: {
+          conversationId: sourceThreadId,
+          priority: "interactive",
+          source: "thread_fork",
+        },
       },
     ]);
-    assert.strictEqual(projectedChild().turns.at(-1)?.items.at(-1)?.type, "forkedFromConversation");
+    assert.deepEqual(resolutions, [
+      { threadId: sourceThreadId, fidelity: "durable" },
+      { threadId: sourceThreadId, fidelity: "durable" },
+    ]);
+    assert.deepEqual(
+      requests.map((request) => request.method),
+      ["thread/fork"],
+    );
+    const projected = projectedChild();
+    assert.ok(projected);
+    assert.strictEqual(projected.turns.at(-1)?.items.at(-1)?.type, "forkedFromConversation");
+    assert.deepEqual(result.conversation.turnPagination, {
+      olderCursor: null,
+      backwardsCursor: null,
+      oldestLoadedTurnId: null,
+      isLoadingOlder: false,
+      hasLoadedOldest: false,
+      loadedTurnCount: 0,
+      itemsView: "notLoaded",
+    });
     assert.deepEqual(order, [
       "lane:open",
       "owner:drain",
@@ -312,9 +375,74 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
   }),
 );
 
-it.effect("rejects a protocol response that does not honor the requested fork cut", () =>
+it.effect("forks through an unloaded stable Turn identity without reading source history", () =>
   Effect.gen(function* () {
-    const { capability, order } = makeHarness("turn-other");
+    const { capability, order, requests, resolutions } = makeHarness({
+      sourceCanonicalLoaded: false,
+    });
+    const forks = yield* capability;
+    const result = yield* forks.fork({
+      sourceThreadId,
+      lastTurnId: "turn-not-resident",
+      threadSource: "user",
+    });
+
+    assert.strictEqual(result.threadId, childThreadId);
+    assert.strictEqual(
+      (requests[0]?.params as { readonly lastTurnId?: string }).lastTurnId,
+      "turn-not-resident",
+    );
+    assert.deepEqual(
+      requests.map((request) => request.method),
+      ["thread/fork"],
+    );
+    assert.deepEqual(resolutions, [
+      { threadId: sourceThreadId, fidelity: "durable" },
+      { threadId: sourceThreadId, fidelity: "durable" },
+    ]);
+    assert.ok(!order.some((entry) => entry.startsWith("title:set:")));
+  }),
+);
+
+it.effect("discards noncompliant inline history while preserving the accepted child identity", () =>
+  Effect.gen(function* () {
+    const { capability, order, projectedChild, requests } = makeHarness({
+      responseTurns: [{ id: "turn-inline", status: "completed" }],
+    });
+    const forks = yield* capability;
+    const result = yield* forks.fork({
+      sourceThreadId,
+      lastTurnId: "turn-a",
+      threadSource: "user",
+    });
+
+    assert.strictEqual(result.threadId, childThreadId);
+    assert.deepEqual(
+      requests.map((request) => request.method),
+      ["thread/fork"],
+    );
+    const projected = projectedChild();
+    assert.ok(projected);
+    assert.ok(projected.turns.every((turn) => turn.protocol.id !== "turn-inline"));
+    assert.strictEqual(projected.turns.at(-1)?.items.at(-1)?.type, "forkedFromConversation");
+    assert.deepEqual(order, [
+      "lane:open",
+      "owner:drain",
+      "gateway:fork",
+      "directory:accept",
+      "projection:hydrate",
+      "title:set:Source title (3)",
+      "session:ensure",
+      "side-panel:stage",
+    ]);
+  }),
+);
+
+it.effect("fails closed before dispatch when bounded fork capabilities are unavailable", () =>
+  Effect.gen(function* () {
+    const { capability, order, requests, resolutions } = makeHarness({
+      appServerVersion: "0.143.0-alpha.32",
+    });
     const forks = yield* capability;
     const exit = yield* Effect.exit(
       forks.fork({
@@ -325,6 +453,60 @@ it.effect("rejects a protocol response that does not honor the requested fork cu
     );
 
     assert.strictEqual(exit._tag, "Failure");
-    assert.deepEqual(order, ["lane:open", "owner:drain", "gateway:fork"]);
+    assert.deepEqual(requests, []);
+    assert.deepEqual(resolutions, [
+      { threadId: sourceThreadId, fidelity: "durable" },
+      { threadId: sourceThreadId, fidelity: "durable" },
+    ]);
+    assert.deepEqual(order, ["lane:open", "owner:drain"]);
+  }),
+);
+
+it.effect("fences a stale app-server generation before the fork mutation", () =>
+  Effect.gen(function* () {
+    const { capability, order, requests } = makeHarness({ capabilityIsCurrent: false });
+    const forks = yield* capability;
+    const exit = yield* Effect.exit(
+      forks.fork({ sourceThreadId, lastTurnId: "turn-a", threadSource: "user" }),
+    );
+
+    assert.strictEqual(exit._tag, "Failure");
+    assert.deepEqual(requests, []);
+    assert.deepEqual(order, ["lane:open", "owner:drain"]);
+  }),
+);
+
+it.effect("preserves mutation outcome-unknown failures without retrying the fork", () =>
+  Effect.gen(function* () {
+    const unknown = codexRuntimeError({
+      operation: "scheduler.execution",
+      reason: "outcome-unknown",
+      retryable: false,
+      hostId: "host-a",
+      generation: 7,
+      method: "thread/fork",
+    });
+    const { capability, requests } = makeHarness({ gatewayFailure: unknown });
+    const forks = yield* capability;
+    const failure = yield* Effect.flip(
+      forks.fork({ sourceThreadId, lastTurnId: "turn-a", threadSource: "user" }),
+    );
+
+    assert.strictEqual(requests.length, 1);
+    assert.strictEqual(failure.operation, "fork");
+    assert.strictEqual(failure.cause, unknown);
+  }),
+);
+
+it.effect("rejects an explicitly blank stable Turn identity instead of widening the fork", () =>
+  Effect.gen(function* () {
+    const { capability, requests } = makeHarness();
+    const forks = yield* capability;
+    const exit = yield* Effect.exit(
+      forks.fork({ sourceThreadId, lastTurnId: "   ", threadSource: "user" }),
+    );
+
+    assert.strictEqual(exit._tag, "Failure");
+    assert.deepEqual(requests, []);
   }),
 );

@@ -9,6 +9,7 @@ import * as Effect from "effect/Effect";
 import {
   appendCodexCanonicalForkedFromConversationItem,
   appendCodexCanonicalWorktreeInitItem,
+  createCodexCanonicalHydratedConversationState,
   type CodexCanonicalWorktreeInitItem,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexForkBrowserSceneContext } from "../../shared/codex-fork-browser-transfer";
@@ -18,6 +19,7 @@ import type {
   ProjectSession,
 } from "../../shared/types";
 import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
+import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CodexConversationProjection } from "./CodexConversationProjection";
@@ -85,6 +87,7 @@ export const make: Effect.Effect<
   CodexConversationFork["Service"],
   never,
   | CodexConversationProjection
+  | CodexAppServerCapabilities
   | CodexForkSidePanelTransfer
   | CodexForkTitlePolicy
   | CodexGateway
@@ -98,6 +101,7 @@ export const make: Effect.Effect<
   | CoreModules
 > = Effect.gen(function* () {
   const core = yield* CoreModules;
+  const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
   const projection = yield* CodexConversationProjection;
   const notificationDrain = yield* CodexOwnerNotificationDrainRuntime;
@@ -120,9 +124,13 @@ export const make: Effect.Effect<
     input: CodexConversationForkInput,
   ): Effect.fn.Return<CodexConversationForkResult, CodexConversationForkError> {
     const sourceThreadId = input.sourceThreadId.trim();
-    const lastTurnId = input.lastTurnId?.trim() || null;
+    const requestedLastTurnId = input.lastTurnId;
+    const lastTurnId = requestedLastTurnId == null ? null : requestedLastTurnId.trim();
     if (!sourceThreadId) {
       return yield* error("admit", input.sourceThreadId, new Error("Fork source is required"));
+    }
+    if (requestedLastTurnId != null && !lastTurnId) {
+      return yield* error("admit", sourceThreadId, new Error("Fork turn is required"));
     }
     yield* notificationDrain.awaitCurrent(sourceThreadId);
     const source = yield* directory
@@ -135,38 +143,38 @@ export const make: Effect.Effect<
         new Error(`Thread '${sourceThreadId}' was not found`),
       );
     }
-    const current = yield* projection
-      .read(sourceThreadId)
+    const capability = yield* capabilities
+      .forHost(source.durable.executionHostId)
       .pipe(Effect.mapError((cause) => error("admit", sourceThreadId, cause)));
-    if (lastTurnId) {
-      const turn = current.canonical.turns.find(
-        (candidate) => candidate.protocol.id === lastTurnId,
+    if (!capability.flags.paginatedHistory) {
+      return yield* error(
+        "admit",
+        sourceThreadId,
+        new Error("This Codex host cannot return a bounded persistent fork"),
       );
-      if (!turn) {
-        return yield* error(
-          "admit",
-          sourceThreadId,
-          new Error(`Turn '${lastTurnId}' was not found in Thread '${sourceThreadId}'`),
-        );
-      }
-      if (turn.protocol.status === "inProgress") {
-        return yield* error(
-          "admit",
-          sourceThreadId,
-          new Error(`Turn '${lastTurnId}' is still in progress`),
-        );
-      }
+    }
+    if (lastTurnId && !capability.flags.forkLastTurnId) {
+      return yield* error(
+        "admit",
+        sourceThreadId,
+        new Error("This Codex host cannot fork through a stable Turn identity"),
+      );
     }
 
-    const derivedTitles = yield* forkTitles
-      .derive({
-        threadId: sourceThreadId,
-        projectId: source.durable.projectId,
-        forkedFromId: source.summary.forkedFromId ?? null,
-        threadName: source.summary.threadName,
-        canonical: current.canonical,
-      })
-      .pipe(Effect.mapError((cause) => error("project", sourceThreadId, cause)));
+    const derivedTitles = source.canonical
+      ? yield* forkTitles
+          .derive({
+            threadId: sourceThreadId,
+            projectId: source.durable.projectId,
+            forkedFromId: source.summary.forkedFromId ?? null,
+            threadName: source.summary.threadName,
+            canonical: source.canonical,
+          })
+          .pipe(Effect.mapError((cause) => error("project", sourceThreadId, cause)))
+      : {
+          sourceTitle: source.summary.threadName,
+          childTitle: null,
+        };
     const childTitle = input.titleOverride?.childTitle ?? derivedTitles.childTitle;
     const sourceTitle = input.titleOverride?.sourceTitle ?? derivedTitles.sourceTitle;
     const execution = yield* core.workspace
@@ -192,27 +200,46 @@ export const make: Effect.Effect<
         ...(input.target?.runtimeWorkspaceRoots ?? execution.value.context.thread.writable_roots),
       ],
       threadSource: input.threadSource,
+      excludeTurns: true,
       config: {
         ...(profile?.harnessId ? { harness: profile.harnessId } : {}),
         ...(profile?.reasoningEffort ? { model_reasoning_effort: profile.reasoningEffort } : {}),
         ...buildCodexThreadConfigOverrides(),
       },
     } satisfies ThreadForkParams;
-    const response = (yield* gateway
+    if (!(yield* capabilities.isCurrent(capability).pipe(Effect.orElseSucceed(() => false)))) {
+      return yield* error(
+        "fork",
+        sourceThreadId,
+        new Error("Codex app-server generation changed before persistent fork dispatch"),
+      );
+    }
+    let response = (yield* gateway
       .requestOnHost(
         source.durable.executionHostId,
         "thread/fork",
         request as GatewayThreadForkParams,
+        {
+          conversationId: sourceThreadId,
+          priority: "interactive",
+          source: "thread_fork",
+        },
       )
       .pipe(
         Effect.mapError((cause) => error("fork", sourceThreadId, cause)),
       )) as unknown as ThreadForkResponse;
-    if (lastTurnId && response.thread.turns.at(-1)?.id !== lastTurnId) {
-      return yield* error(
-        "fork",
-        sourceThreadId,
-        new Error(`Thread fork did not return the requested exact cut through '${lastTurnId}'`),
+    if (response.thread.turns.length !== 0) {
+      yield* Effect.logWarning("Bounded Thread fork returned inline history; discarding it").pipe(
+        Effect.annotateLogs({
+          sourceThreadId,
+          childThreadId: response.thread.id,
+          inlineTurnCount: response.thread.turns.length,
+        }),
       );
+      response = {
+        ...response,
+        thread: { ...response.thread, turns: [] },
+      };
     }
     const child = yield* directory
       .acceptForkResult({
@@ -221,14 +248,23 @@ export const make: Effect.Effect<
         ...(input.target ? { target: input.target } : {}),
       })
       .pipe(Effect.mapError((cause) => error("materialize", sourceThreadId, cause)));
-    if (!child.canonical || !child.snapshot?.turnPagination) {
-      return yield* error(
-        "materialize",
-        sourceThreadId,
-        new Error(`Forked Thread '${child.summary.threadId}' was not fully hydrated`),
-      );
-    }
-    const withForkMarker = appendCodexCanonicalForkedFromConversationItem(child.canonical, {
+    const boundedCanonical = yield* Effect.try({
+      try: () =>
+        createCodexCanonicalHydratedConversationState(response.thread, {
+          model: response.model,
+          reasoningEffort: response.reasoningEffort,
+          cwd: response.cwd || input.target?.cwd || source.durable.cwd || "/",
+          approvalPolicy: response.approvalPolicy,
+          approvalsReviewer: response.approvalsReviewer,
+          sandboxPolicy: response.sandbox,
+          activePermissionProfile: response.activePermissionProfile,
+          runtimeWorkspaceRoots: [...response.runtimeWorkspaceRoots],
+          pendingRequests: [],
+          hasUnreadTurn: false,
+        }),
+      catch: (cause) => error("materialize", sourceThreadId, cause),
+    });
+    const withForkMarker = appendCodexCanonicalForkedFromConversationItem(boundedCanonical, {
       id: randomUUID(),
       type: "forkedFromConversation",
       sourceConversationId: sourceThreadId,
@@ -243,7 +279,15 @@ export const make: Effect.Effect<
         threadId: child.summary.threadId,
         summary: child.summary,
         canonical,
-        pagination: child.snapshot.turnPagination,
+        pagination: {
+          olderCursor: null,
+          backwardsCursor: null,
+          oldestLoadedTurnId: null,
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+          loadedTurnCount: 0,
+          itemsView: "notLoaded",
+        },
         observedAtMs,
       })
       .pipe(Effect.mapError((cause) => error("project", sourceThreadId, cause)));
@@ -340,34 +384,6 @@ export const make: Effect.Effect<
             new Error(`Thread '${sourceThreadId}' was not found`),
           );
         }
-        yield* projection.read(sourceThreadId).pipe(
-          Effect.catch(() =>
-            directory
-              .resolve({
-                threadId: sourceThreadId,
-                fidelity: "full",
-                hostId: durable.durable.executionHostId,
-              })
-              .pipe(
-                Effect.flatMap((entry) =>
-                  entry?.canonical
-                    ? Effect.void
-                    : Effect.fail(
-                        error(
-                          "admit",
-                          sourceThreadId,
-                          new Error(`Thread '${sourceThreadId}' has no canonical projection`),
-                        ),
-                      ),
-                ),
-                Effect.mapError((cause) =>
-                  cause instanceof CodexConversationForkError
-                    ? cause
-                    : error("admit", sourceThreadId, cause),
-                ),
-              ),
-          ),
-        );
         return yield* threadStarts.materialize(
           durable.durable.executionHostId,
           conversations.runCommand(sourceThreadId, forkPhysical(input)),
