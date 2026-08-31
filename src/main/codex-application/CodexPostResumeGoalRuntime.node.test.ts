@@ -60,7 +60,6 @@ const makeRuntime = (input: {
   readonly load: (threadId: string) => Effect.Effect<CodexThreadGoalLoadResult>;
   readonly onContinuation?: (threadId: string) => void;
   readonly onContinuationClear?: (threadId: string) => void;
-  readonly onHistoryRequest?: (threadId: string) => void;
   readonly onHistoryClear?: (threadId: string) => void;
 }) =>
   make.pipe(
@@ -82,7 +81,6 @@ const makeRuntime = (input: {
       CodexConversationHistoryRuntime.of({
         loadPage: () => Effect.die("unused"),
         loadComplete: () => Effect.die("unused"),
-        requestRemaining: (id) => input.onHistoryRequest?.(id),
         clear: (id) => input.onHistoryClear?.(id),
       }),
     ),
@@ -143,22 +141,18 @@ it.effect("shares one load while the aggregate enforces each caller's revision f
   }),
 );
 
-it.effect("coalesces background demand to the latest revision and schedules the history tail", () =>
+it.effect("coalesces background demand to the latest revision without draining history", () =>
   Effect.gen(function* () {
     const started = yield* Deferred.make<void>();
     const release = yield* Deferred.make<CodexThreadGoalLoadResult>();
     const conversations = makeConversations();
     let continuations = 0;
-    let historyRequests = 0;
     const runtime = yield* makeRuntime({
       conversations: conversations.service,
       load: () =>
         Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release))),
       onContinuation: () => {
         continuations += 1;
-      },
-      onHistoryRequest: () => {
-        historyRequests += 1;
       },
     });
 
@@ -171,7 +165,7 @@ it.effect("coalesces background demand to the latest revision and schedules the 
     });
     runtime.request(threadId, 2);
     yield* Deferred.succeed(release, { ok: true, goal });
-    yield* waitUntil("background flow", () => historyRequests === 1);
+    yield* waitUntil("background flow", () => continuations === 2);
 
     assert.strictEqual(conversations.aggregate.readSnapshot()?.threadGoal, goal);
     assert.strictEqual(conversations.aggregate.read().revision, 2);

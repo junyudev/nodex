@@ -3,7 +3,6 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FiberMap from "effect/FiberMap";
-import * as FiberSet from "effect/FiberSet";
 import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import type { Turn } from "@nodex/codex-app-server-protocol/v2";
@@ -36,7 +35,6 @@ export class CodexConversationHistoryRuntime extends Context.Service<
       threadId: string,
       broadcastResult: boolean,
     ) => Effect.Effect<CodexConversationSnapshot | null, CodexConversationHistoryError>;
-    readonly requestRemaining: (threadId: string) => void;
     readonly clear: (threadId: string) => void;
   }
 >()("nodex/main/codex-application/CodexConversationHistoryRuntime") {}
@@ -67,7 +65,6 @@ export const make: Effect.Effect<
   const conversations = yield* ConversationEntityMap;
   const loads = yield* FiberMap.make<string, void, CodexConversationHistoryError>();
   const runLoad = yield* FiberMap.runtime(loads)();
-  const runBackground = yield* FiberSet.makeRuntime<never, void, never>();
   const active = new Map<
     string,
     { readonly token: object; readonly loadCompleteHistory: boolean }
@@ -188,20 +185,6 @@ export const make: Effect.Effect<
   const snapshot = (threadId: string): CodexConversationSnapshot | null =>
     conversations.current(threadId)?.readSnapshot() ?? null;
 
-  const requestRemaining = (threadId: string): void => {
-    const pagination = conversations.current(threadId)?.readTurnPagination();
-    if (!pagination || pagination.hasLoadedOldest || pagination.olderCursor === null) return;
-    runBackground(
-      load({ threadId, loadCompleteHistory: true, broadcastResult: true }).pipe(
-        Effect.catch((error) =>
-          Effect.logWarning("Could not load remaining Thread history after resume").pipe(
-            Effect.annotateLogs({ threadId, error: String(error.cause) }),
-          ),
-        ),
-      ),
-    );
-  };
-
   const clear = (threadId: string): void => {
     active.delete(threadId);
     runLoad(threadId, Effect.void);
@@ -222,7 +205,6 @@ export const make: Effect.Effect<
       load({ threadId, loadCompleteHistory: true, broadcastResult }).pipe(
         Effect.andThen(Effect.sync(() => snapshot(threadId))),
       ),
-    requestRemaining,
     clear,
   });
 });

@@ -77,7 +77,6 @@ export const make: Effect.Effect<
         if (commit(threadId, requested.expectedRevision, result)) {
           yield* activeGoalContinuation.request(threadId);
         }
-        conversationHistory.requestRemaining(threadId);
         if (latestRequest.get(threadId)?.generation !== requested.generation) continue;
         latestRequest.delete(threadId);
         return;

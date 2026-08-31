@@ -154,7 +154,6 @@ const build = Effect.fn("CodexConversationResumeRuntimeTest.build")(function* (
       CodexConversationHistoryRuntime.of({
         loadPage: () => Effect.succeed(null),
         loadComplete: () => Effect.succeed(null),
-        requestRemaining: () => undefined,
         clear: () => undefined,
       }),
     ),

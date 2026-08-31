@@ -15,7 +15,6 @@ import type {
   CodexThreadStreamCheckpoint,
 } from "../../shared/types";
 import { CodexApplicationProtocol } from "./CodexApplicationProtocol";
-import { CodexConversationHistoryRuntime } from "./CodexConversationHistoryRuntime";
 import { CodexConversationRelationships } from "./CodexConversationRelationships";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
 import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
@@ -106,7 +105,6 @@ export const make: Effect.Effect<
   CodexConversationResumeRuntime["Service"],
   never,
   | CodexApplicationProtocol
-  | CodexConversationHistoryRuntime
   | CodexConversationRelationships
   | CodexFreshThreadLaunchRuntime
   | CodexOwnerNotificationDrainRuntime
@@ -119,7 +117,6 @@ export const make: Effect.Effect<
   | Scope.Scope
 > = Effect.gen(function* () {
   const protocol = yield* CodexApplicationProtocol;
-  const conversationHistory = yield* CodexConversationHistoryRuntime;
   const relationships = yield* CodexConversationRelationships;
   const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
   const ownerNotificationDrain = yield* CodexOwnerNotificationDrainRuntime;
@@ -158,9 +155,7 @@ export const make: Effect.Effect<
     yield* ownerNotificationDrain.awaitCurrent(threadId);
     rendererCoordinator.reconcileOwnership(threadId);
     const revision = conversations.current(threadId)?.read().revision ?? 0;
-    if (!postResumeGoals.release(threadId, revision)) {
-      conversationHistory.requestRemaining(threadId);
-    }
+    postResumeGoals.release(threadId, revision);
     return true;
   });
 
