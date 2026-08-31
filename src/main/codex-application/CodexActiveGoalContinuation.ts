@@ -2,11 +2,14 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 import type * as Scope from "effect/Scope";
 import { resolveCodexReasoningSummary } from "../../shared/codex-reasoning-summary-policy";
 import type { ConversationEntityState } from "./internal/ConversationEntityState";
+import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -45,26 +48,43 @@ export const make: Effect.Effect<
   never,
   | CodexThreadGoalRuntime
   | CodexThreadSettingsRuntime
+  | CodexSubagentDirectory
+  | CodexApplicationEventHub
   | CodexTurnCommands
   | ConversationEntityMap
   | Scope.Scope
 > = Effect.gen(function* () {
   const conversations = yield* ConversationEntityMap;
+  const events = yield* CodexApplicationEventHub;
   const threadGoals = yield* CodexThreadGoalRuntime;
   const threadSettings = yield* CodexThreadSettingsRuntime;
+  const subagents = yield* CodexSubagentDirectory;
   const turnCommands = yield* CodexTurnCommands;
   const continuations = yield* FiberMap.make<string, void, never>();
   const admission = yield* Semaphore.make(1);
+  const pendingReruns = new Set<string>();
 
   const isEligible = (conversationId: string): boolean =>
     isCodexActiveGoalContinuationEligible(conversations.current(conversationId));
 
+  const isSubagentTreeSettled = Effect.fn("CodexActiveGoalContinuation.isSubagentTreeSettled")(
+    function* (conversationId: string) {
+      const overview = yield* subagents.readOverview({
+        rootThreadId: conversationId,
+        mode: "initial",
+      });
+      return overview.completeness === "complete" && overview.active.knownCount === 0;
+    },
+  );
+
   const continueGoal = Effect.fn("CodexActiveGoalContinuation.continueGoal")(function* (
     conversationId: string,
   ) {
-    if (!isEligible(conversationId)) return;
+    if (!isEligible(conversationId)) return true;
     yield* threadSettings.awaitCurrent(conversationId);
-    if (!isEligible(conversationId)) return;
+    if (!isEligible(conversationId)) return true;
+    if (!(yield* isSubagentTreeSettled(conversationId))) return false;
+    if (!isEligible(conversationId)) return true;
 
     const snapshot = conversations.current(conversationId)?.readSnapshot();
     const summary = resolveCodexReasoningSummary({
@@ -73,21 +93,25 @@ export const make: Effect.Effect<
     if (snapshot?.latestThreadSettings?.summary !== summary) {
       yield* threadSettings.update({ threadId: conversationId, patch: { summary } });
     }
-    if (!isEligible(conversationId)) return;
+    if (!isEligible(conversationId)) return true;
     if (threadSettings.remoteUpdateSupport() === "unsupported") {
       yield* turnCommands.continueGoal(conversationId);
-      return;
+      return true;
     }
     yield* threadGoals.set({ threadId: conversationId, status: "active" });
+    return true;
   });
 
   const runContinuation = (conversationId: string) =>
-    Effect.sleep(DEFAULT_ACTIVE_GOAL_CONTINUATION_DELAY).pipe(
-      Effect.andThen(
-        Effect.suspend(() =>
-          isEligible(conversationId) ? continueGoal(conversationId) : Effect.void,
-        ),
-      ),
+    Effect.gen(function* () {
+      while (isEligible(conversationId)) {
+        pendingReruns.delete(conversationId);
+        yield* Effect.sleep(DEFAULT_ACTIVE_GOAL_CONTINUATION_DELAY);
+        if (!isEligible(conversationId)) return;
+        const finished = yield* continueGoal(conversationId);
+        if (finished || !pendingReruns.has(conversationId)) return;
+      }
+    }).pipe(
       Effect.catchCause((cause) =>
         Effect.logError("Failed to continue active Codex thread goal").pipe(
           Effect.annotateLogs({
@@ -109,8 +133,25 @@ export const make: Effect.Effect<
       }),
     );
 
+  yield* events.events.pipe(
+    Stream.runForEach((event) => {
+      if (event.kind !== "codex" || event.value.type !== "subagentOverviewInvalidated") {
+        return Effect.void;
+      }
+      const conversationId = event.value.rootThreadId;
+      pendingReruns.add(conversationId);
+      return FiberMap.has(continuations, conversationId).pipe(
+        Effect.flatMap((running) => (running ? Effect.void : request(conversationId))),
+      );
+    }),
+    Effect.forkScoped,
+  );
+
   return CodexActiveGoalContinuation.of({
     request,
-    clear: (conversationId) => FiberMap.remove(continuations, conversationId),
+    clear: (conversationId) =>
+      Effect.sync(() => pendingReruns.delete(conversationId)).pipe(
+        Effect.andThen(FiberMap.remove(continuations, conversationId)),
+      ),
   });
 });

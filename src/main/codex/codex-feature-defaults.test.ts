@@ -26,13 +26,70 @@ describe("Codex feature defaults", () => {
     const home = await createTemporaryHome();
 
     const result = await materializeCodexFeatureDefaults(home);
-    const parsed = parseToml(await readFile(result.configPath, "utf8"));
+    const contents = await readFile(result.configPath, "utf8");
+    const parsed = parseToml(contents, { integersAsBigInt: true });
 
     expect(result).toMatchObject({
       added: Object.keys(CODEX_FEATURE_DEFAULTS),
       changed: true,
     });
     expect(parsed).toEqual({ features: CODEX_FEATURE_DEFAULTS });
+    expect(contents).not.toMatch(
+      /(?:max_concurrent_threads_per_session|wait_timeout_ms) = \d+\.0/u,
+    );
+  });
+
+  test("repairs integer-only multi-agent defaults written as TOML floats", async () => {
+    const home = await createTemporaryHome();
+    const configPath = join(home, "config.toml");
+    await writeFile(
+      configPath,
+      [
+        "unrelated_float = 1.5",
+        "",
+        "[features]",
+        "unified_exec = true",
+        "shell_snapshot = true",
+        "multi_agent = true",
+        "prevent_idle_sleep = true",
+        "respect_system_proxy = true",
+        "",
+        "[features.multi_agent_v2]",
+        "enabled = true",
+        "max_concurrent_threads_per_session = 4.0",
+        "min_wait_timeout_ms = 10000.0",
+        "default_wait_timeout_ms = 30000.0",
+        "max_wait_timeout_ms = 3600000.0",
+        'tool_namespace = "collaboration"',
+        "hide_spawn_agent_metadata = false",
+        "expose_spawn_agent_model_overrides = true",
+        "wait_agent_enabled = true",
+        "non_code_mode_only = false",
+        "",
+      ].join("\n"),
+    );
+
+    const firstResult = await materializeCodexFeatureDefaults(home);
+    const contents = await readFile(configPath, "utf8");
+    const parsed = parseToml(contents, { integersAsBigInt: true });
+    const secondResult = await materializeCodexFeatureDefaults(home);
+
+    expect(firstResult).toMatchObject({ added: [], changed: true });
+    expect(parsed).toMatchObject({
+      unrelated_float: 1.5,
+      features: {
+        multi_agent_v2: {
+          max_concurrent_threads_per_session: 4n,
+          min_wait_timeout_ms: 10_000n,
+          default_wait_timeout_ms: 30_000n,
+          max_wait_timeout_ms: 3_600_000n,
+        },
+      },
+    });
+    expect(contents).not.toMatch(
+      /(?:max_concurrent_threads_per_session|wait_timeout_ms) = \d+\.0/u,
+    );
+    expect(secondResult).toMatchObject({ added: [], changed: false });
   });
 
   test("preserves explicit feature values and unrelated config", async () => {
@@ -47,6 +104,7 @@ describe("Codex feature defaults", () => {
         "",
         "[features]",
         "unified_exec = false",
+        "multi_agent_v2 = false",
         "prevent_idle_sleep = false",
         "custom_feature = false",
         "",
@@ -67,6 +125,7 @@ describe("Codex feature defaults", () => {
         unified_exec: false,
         shell_snapshot: true,
         multi_agent: true,
+        multi_agent_v2: false,
         prevent_idle_sleep: false,
         respect_system_proxy: true,
         custom_feature: false,

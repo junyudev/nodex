@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { readIsolatedRunLeaseOwner } from "../../../src/main/core-client/isolated-run-ownership";
+import { installPrivateFile, resolveRegularPrivateFileSource } from "../../private-file";
 
 import {
   ISOLATED_PROFILE_MANIFEST_FILE,
@@ -14,7 +15,7 @@ import {
   writeIsolatedProfileManifest,
 } from "./isolated-profile-manifest";
 
-export type IsolatedCodexPolicy = "empty" | "copy-config" | "copy-auth-and-config";
+export type IsolatedCodexPolicy = "empty" | "copy-auth" | "copy-config" | "copy-auth-and-config";
 export type IsolatedProfileRetention = "dispose" | "keep";
 
 export interface IsolatedProfileOptions {
@@ -141,7 +142,7 @@ export const createIsolatedProfile = async (
     ]);
 
     const policy = options.codex ?? "empty";
-    if (policy !== "empty") {
+    if (policy === "copy-config" || policy === "copy-auth-and-config") {
       const source = resolveSourceCodexHome(options.sourceCodexHome);
       const sourceConfig = path.join(source, "config.toml");
       if (await existsOrSymlink(sourceConfig)) {
@@ -154,10 +155,16 @@ export const createIsolatedProfile = async (
         ]);
         await chmod(path.join(profile.codexHome, "config.toml"), 0o600);
       }
-      if (policy === "copy-auth-and-config") {
-        await copyFile(path.join(source, "auth.json"), path.join(profile.codexHome, "auth.json"));
-        await chmod(path.join(profile.codexHome, "auth.json"), 0o600);
-      }
+    }
+    if (policy === "copy-auth" || policy === "copy-auth-and-config") {
+      const source = resolveSourceCodexHome(options.sourceCodexHome);
+      const sourceAuth = await resolveRegularPrivateFileSource(
+        path.join(source, "auth.json"),
+        "Isolated Profile credential source",
+      );
+      await installPrivateFile(path.join(profile.codexHome, "auth.json"), (target) =>
+        copyFile(sourceAuth, target),
+      );
     }
     return profile;
   } catch (error) {

@@ -92,6 +92,7 @@ import {
 import {
   buildCodexSidebarPinnedReorderMutation,
   isCodexSidebarRootThread,
+  isCodexSidebarThreadItemReorderable,
   listReorderableCodexSidebarChatKeys,
   replaceVisibleCodexSidebarThreadKeyOrder,
   resolveCodexSidebarThreadHomeContainerId,
@@ -123,6 +124,7 @@ import type {
   ProjectSession as ProjectSessionDomain,
   ProjectUpdateInput,
 } from "@/lib/types";
+import { CODEX_AGENT_BACKEND_BINDING } from "../../../shared/agent-backend";
 import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
@@ -312,7 +314,10 @@ function SidebarPinnedThreadRowsContent({
           containerId={containerId}
           getThreadId={getThreadId}
           visibleThreadKeys={optimisticThreadKeys}
-          sortableThreadKeys={optimisticThreadKeys}
+          sortableThreadKeys={optimisticThreadKeys.filter((threadKey) => {
+            const item = itemsByKey.get(threadKey);
+            return item ? isCodexSidebarThreadItemReorderable(item) : false;
+          })}
           onVisibleThreadOrderChange={onVisibleThreadOrderChange}
           renderThread={renderThread}
           renderDragOverlay={(threadKey) => {
@@ -376,9 +381,15 @@ function SidebarThreadContainerRowsContent({
     threadKeysInDisplayOrder: threadKeys,
     getThreadId,
   });
-  const sortableThreadKeys = optimisticThreadKeys.filter(
-    (threadKey) => getSessionId(threadKey) !== null && !suppressedKeys.has(threadKey),
-  );
+  const sortableThreadKeys = optimisticThreadKeys.filter((threadKey) => {
+    const item = itemsByKey.get(threadKey);
+    return (
+      getSessionId(threadKey) !== null &&
+      !suppressedKeys.has(threadKey) &&
+      item !== undefined &&
+      isCodexSidebarThreadItemReorderable(item)
+    );
+  });
   const reorder = useSidebarThreadReorderController({
     visibleThreadKeys: sortableThreadKeys,
     onVisibleThreadOrderChange: async ({ nextVisibleThreadKeys }) => {
@@ -532,20 +543,31 @@ function SidebarProjectThreadRowsContent({
   );
   const optimisticSortablePinnedThreadKeys = useMemo(
     () =>
-      optimisticPinnedThreadKeys.filter(
-        (threadKey) => sortablePinnedThreadKeySet.has(threadKey) && !suppressedKeys.has(threadKey),
-      ),
-    [optimisticPinnedThreadKeys, sortablePinnedThreadKeySet, suppressedKeys],
+      optimisticPinnedThreadKeys.filter((threadKey) => {
+        const item = itemsByKey.get(threadKey);
+        return (
+          sortablePinnedThreadKeySet.has(threadKey) &&
+          !suppressedKeys.has(threadKey) &&
+          item !== undefined &&
+          isCodexSidebarThreadItemReorderable(item)
+        );
+      }),
+    [itemsByKey, optimisticPinnedThreadKeys, sortablePinnedThreadKeySet, suppressedKeys],
   );
   const sortableRegularThreadKeys = useMemo(
     () =>
       listReorderableCodexSidebarChatKeys({
-        visibleThreadKeys: optimisticRegularThreadKeys.filter(
-          (threadKey) => !suppressedKeys.has(threadKey),
-        ),
+        visibleThreadKeys: optimisticRegularThreadKeys.filter((threadKey) => {
+          const item = itemsByKey.get(threadKey);
+          return (
+            !suppressedKeys.has(threadKey) &&
+            item !== undefined &&
+            isCodexSidebarThreadItemReorderable(item)
+          );
+        }),
         getSessionId,
       }),
-    [getSessionId, optimisticRegularThreadKeys, suppressedKeys],
+    [getSessionId, itemsByKey, optimisticRegularThreadKeys, suppressedKeys],
   );
   const pinnedReorder = useSidebarThreadReorderController({
     visibleThreadKeys: optimisticSortablePinnedThreadKeys,
@@ -923,6 +945,7 @@ function SidebarThreadOrganizerSections({
         return {
           key: `${local ? "local" : "remote"}:session:${session.id}`,
           kind: local ? "local" : "remote",
+          backendBinding: session.thread?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
           runLocation: managedWorktreePath
             ? local
               ? { kind: "local-worktree", path: managedWorktreePath, phase: "ready" }

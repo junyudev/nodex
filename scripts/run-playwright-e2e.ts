@@ -12,12 +12,6 @@ const modes = {
     fixedArguments: [],
     environment: {},
   },
-  subscription: {
-    scriptName: "test:e2e:subscription",
-    config: "playwright.subscription.e2e.config.ts",
-    fixedArguments: [],
-    environment: {},
-  },
   performance: {
     scriptName: "test:e2e:performance",
     config: "playwright.e2e.config.ts",

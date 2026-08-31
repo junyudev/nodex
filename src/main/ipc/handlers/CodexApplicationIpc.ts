@@ -27,10 +27,8 @@ import type { FeedbackUploadParams } from "@nodex/codex-app-server-protocol/v2/F
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import type { ReviewStartParams } from "@nodex/codex-app-server-protocol/v2/ReviewStartParams";
-import type {
-  AgentProviderCredentialDeleteInput,
-  AgentProviderCredentialMutationInput,
-} from "../../../shared/agent-runtime";
+import type { ReviewStartResponse } from "@nodex/codex-app-server-protocol/v2/ReviewStartResponse";
+import type { TurnError } from "@nodex/codex-app-server-protocol/v2/TurnError";
 import type { IpcEvents } from "../../../shared/ipc-api";
 import type { CodexHooksListInput, CodexHooksStateUpdateInput } from "../../../shared/codex-hooks";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
@@ -39,6 +37,10 @@ import { parseCodexProtocolThreadItem } from "../../../shared/codex-protocol-thr
 type ReviewStartCodexErrorInfo = NonNullable<
   NonNullable<ClientRequestResponsesByMethod["review/start"]["turn"]["error"]>["codexErrorInfo"]
 >;
+type ReviewStartTurnError = NonNullable<
+  ClientRequestResponsesByMethod["review/start"]["turn"]["error"]
+>;
+type ReviewStartMisalignment = NonNullable<ReviewStartTurnError["misalignment"]>;
 
 function normalizeReviewCodexErrorInfo(
   value: ReviewStartCodexErrorInfo | null | undefined,
@@ -75,8 +77,54 @@ function normalizeReviewCodexErrorInfo(
   }
   return value;
 }
+
+function normalizeReviewMisalignment(
+  value: ReviewStartMisalignment | null | undefined,
+): TurnError["misalignment"] {
+  if (value === null || value === undefined) return null;
+  return {
+    errorType: value.errorType ?? null,
+    detailedExplanation: value.detailedExplanation ?? null,
+    steer: value.steer ?? null,
+  };
+}
+
+function normalizeReviewTurnError(
+  value: ReviewStartTurnError | null | undefined,
+): TurnError | null {
+  if (value === null || value === undefined) return null;
+  return {
+    message: value.message,
+    codexErrorInfo: normalizeReviewCodexErrorInfo(value.codexErrorInfo),
+    additionalDetails: value.additionalDetails ?? null,
+    misalignment: normalizeReviewMisalignment(value.misalignment),
+  };
+}
+
+function normalizeReviewStartResponse(
+  response: ClientRequestResponsesByMethod["review/start"],
+): ReviewStartResponse {
+  return {
+    reviewThreadId: response.reviewThreadId,
+    turn: {
+      id: response.turn.id,
+      itemsView: response.turn.itemsView ?? "full",
+      status: response.turn.status,
+      error: normalizeReviewTurnError(response.turn.error),
+      startedAt: response.turn.startedAt ?? null,
+      completedAt: response.turn.completedAt ?? null,
+      durationMs: response.turn.durationMs ?? null,
+      items: response.turn.items.map((item) => {
+        const normalized =
+          item.type === "userMessage" ? { ...item, clientId: item.clientId ?? null } : item;
+        const parsed = parseCodexProtocolThreadItem(normalized);
+        if (!parsed) throw new Error(`Invalid review item '${item.type}'`);
+        return parsed;
+      }),
+    },
+  };
+}
 import { CodexAccount, type CodexAccountLoginInput } from "../../codex-application/CodexAccount";
-import { AgentProviderRuntime } from "../../codex-application/AgentProviderRuntime";
 import { CodexConnection } from "../../codex-application/CodexConnection";
 import { CodexMedia } from "../../codex-application/CodexMedia";
 import { CodexToolRuntime } from "../../codex-application/CodexToolRuntime";
@@ -140,32 +188,6 @@ const parseComposerPluginActivation = (
   return { id: input.id.trim(), cwds: parseComposerInventoryCwds(input) };
 };
 
-const parseProviderCredential = (input: unknown): AgentProviderCredentialMutationInput => {
-  if (
-    typeof input !== "object" ||
-    input === null ||
-    !("providerId" in input) ||
-    typeof input.providerId !== "string" ||
-    !("apiKey" in input) ||
-    typeof input.apiKey !== "string"
-  ) {
-    throw new Error("Invalid provider credential input");
-  }
-  return { providerId: input.providerId, apiKey: input.apiKey };
-};
-
-const parseProviderCredentialDelete = (input: unknown): AgentProviderCredentialDeleteInput => {
-  if (
-    typeof input !== "object" ||
-    input === null ||
-    !("providerId" in input) ||
-    typeof input.providerId !== "string"
-  ) {
-    throw new Error("Invalid provider credential delete input");
-  }
-  return { providerId: input.providerId };
-};
-
 const parseFeedbackUpload = (input: FeedbackUploadParams) => ({
   classification: input.classification,
   ...(input.reason === undefined ? {} : { reason: input.reason }),
@@ -192,7 +214,6 @@ export const live: Layer.Layer<
   | ElectronIpc
   | ElectronWindowHost
   | MainConfig
-  | AgentProviderRuntime
   | CodexAccount
   | CodexConnection
   | CodexMedia
@@ -207,7 +228,6 @@ export const live: Layer.Layer<
     const ipc = yield* ElectronIpc;
     const windows = yield* ElectronWindowHost;
     const config = yield* MainConfig;
-    const agentProviders = yield* AgentProviderRuntime;
     const account = yield* CodexAccount;
     const connection = yield* CodexConnection;
     const media = yield* CodexMedia;
@@ -309,34 +329,7 @@ export const live: Layer.Layer<
       conversations.startReview(params).pipe(
         Effect.flatMap((response) =>
           Effect.try({
-            try: () => ({
-              ...response,
-              turn: {
-                ...response.turn,
-                itemsView: response.turn.itemsView ?? "full",
-                error: response.turn.error
-                  ? {
-                      ...response.turn.error,
-                      codexErrorInfo: normalizeReviewCodexErrorInfo(
-                        response.turn.error.codexErrorInfo,
-                      ),
-                      additionalDetails: response.turn.error.additionalDetails ?? null,
-                    }
-                  : null,
-                startedAt: response.turn.startedAt ?? null,
-                completedAt: response.turn.completedAt ?? null,
-                durationMs: response.turn.durationMs ?? null,
-                items: response.turn.items.map((item) => {
-                  const normalized =
-                    item.type === "userMessage"
-                      ? { ...item, clientId: item.clientId ?? null }
-                      : item;
-                  const parsed = parseCodexProtocolThreadItem(normalized);
-                  if (!parsed) throw new Error(`Invalid review item '${item.type}'`);
-                  return parsed;
-                }),
-              },
-            }),
+            try: () => normalizeReviewStartResponse(response),
             catch: (cause) =>
               new CodexApplicationIpcError({ operation: "normalize-review-response", cause }),
           }),
@@ -396,19 +389,6 @@ export const live: Layer.Layer<
           ? conversations.terminateBackgroundTerminal(threadId, processId)
           : Effect.succeed(false);
       },
-    );
-    yield* ipc.handleQuery("agent-runtime:catalog:get", (_event, options?: { refresh?: boolean }) =>
-      agentProviders.list({ refresh: options?.refresh === true }),
-    );
-    yield* ipc.handlePlainCommand("agent-runtime:credential:set", (_event, input: unknown) =>
-      validate("agent-provider-credential-set", () => parseProviderCredential(input)).pipe(
-        Effect.flatMap(agentProviders.setCredential),
-      ),
-    );
-    yield* ipc.handlePlainCommand("agent-runtime:credential:delete", (_event, input: unknown) =>
-      validate("agent-provider-credential-delete", () => parseProviderCredentialDelete(input)).pipe(
-        Effect.flatMap(agentProviders.deleteCredential),
-      ),
     );
     yield* ipc.handleQuery(
       "codex:conversation-image-asset:resolve",
@@ -489,8 +469,10 @@ export const live: Layer.Layer<
     yield* ipc.handleQuery("codex:mcp-apps:list", (event) =>
       trusted(event, "MCP app access").pipe(Effect.andThen(tools.listApps)),
     );
-    yield* ipc.handleQuery("codex:mcp-server-statuses:list", (event) =>
-      trusted(event, "MCP server status access").pipe(Effect.andThen(tools.listServerStatuses)),
+    yield* ipc.handleQuery("codex:mcp-server-statuses:list", (event, threadId?: string) =>
+      trusted(event, "MCP server status access").pipe(
+        Effect.andThen(tools.listServerStatuses(threadId?.trim() || undefined)),
+      ),
     );
   }),
 );

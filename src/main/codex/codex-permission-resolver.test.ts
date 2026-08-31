@@ -42,6 +42,9 @@ function buildConfig(
 
 function buildRequirements(overrides?: Partial<ConfigRequirements>): ConfigRequirements {
   return {
+    cliAuthCredentialsStore: null,
+    chatgptBaseUrl: null,
+    additionalDeveloperInstructions: null,
     autoReview: null,
     allowedApprovalPolicies: null,
     allowedApprovalsReviewers: null,
@@ -52,8 +55,10 @@ function buildRequirements(overrides?: Partial<ConfigRequirements>): ConfigRequi
     allowRemoteControl: null,
     allowedWebSearchModes: null,
     allowManagedHooksOnly: null,
+    allowBrowserAndComputerUse: null,
     allowAppshots: null,
     browserUse: null,
+    inAppBrowser: null,
     checkForUpdateOnStartup: null,
     computerUse: null,
     feedback: null,
@@ -105,7 +110,28 @@ function buildPermissionOrigins(): ConfigReadResponse["origins"] {
   } as ConfigReadResponse["origins"];
 }
 
+function buildReviewerOrigin(): ConfigReadResponse["origins"] {
+  return {
+    approvals_reviewer: {
+      name: {
+        type: "user",
+        file: "/Users/test/.codex/config.toml",
+        profile: null,
+      },
+      version: "test",
+    },
+  } as ConfigReadResponse["origins"];
+}
+
 describe("codex-permission-resolver", () => {
+  test("defaults an implicit workspace permission config to Auto-review", () => {
+    const state = resolveState({});
+
+    expect(state.mode).toBe("guardian-approvals");
+    expect(state.effectivePreset).toBe("guardian-approvals");
+    expect(state.approvalsReviewer).toBe("auto_review");
+  });
+
   test("writes the canonical auto_review reviewer for Auto-review", () => {
     const edits = buildPermissionModeConfigEdits("guardian-approvals");
     const reviewerEdit = edits.find((edit) => edit.keyPath === "approvals_reviewer");
@@ -276,6 +302,20 @@ describe("codex-permission-resolver", () => {
     expect(state.mode).toBe("custom");
     expect(state.effectivePreset).toBe("custom");
     expect(state.availableModes.includes("custom")).toBe(true);
+  });
+
+  test("treats an explicit reviewer-only config as Custom", () => {
+    const state = resolveCodexPermissionState({
+      config: buildConfig(),
+      origins: buildReviewerOrigin(),
+      requirements: null,
+      defaultUserConfigPath: "/Users/test/.codex/config.toml",
+      workspaceRoots: ["/Users/test/project"],
+    });
+
+    expect(state.mode).toBe("custom");
+    expect(state.effectivePreset).toBe("custom");
+    expect(state.approvalsReviewer).toBe("user");
   });
 
   test("does not expose Custom when permission profiles constrain the mode space", () => {

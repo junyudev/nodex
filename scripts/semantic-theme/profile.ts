@@ -380,14 +380,6 @@ export const MIGRATED_SURFACE_POLICIES = [
     path: "src/renderer/components/workbench/pending-worktree-route.tsx",
     forbiddenClassNames: ["text-token-description-foreground"],
   },
-  {
-    path: "src/renderer/features/local-conversation/view/composer/provider-credential-dialog.tsx",
-    forbiddenClassNames: [
-      "text-token-text-secondary",
-      "text-token-description-foreground",
-      "text-token-error-foreground",
-    ],
-  },
 ] as const;
 
 export const SEMANTIC_THEME_PROFILE = {

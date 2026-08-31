@@ -41,7 +41,7 @@ export interface SparkleArchitectureUpdateManifest {
   readonly target: {
     readonly buildVersion: string;
     readonly bundleId: "app.jyu.nodex";
-    readonly packageProvenanceSchema: 4;
+    readonly packageProvenanceSchema: 5;
     readonly teamIdentifier: string;
     readonly version: string;
   };
@@ -209,7 +209,7 @@ export function parseSparkleArchitectureUpdateManifest(
   if (
     value.tag !== tag ||
     value.target.bundleId !== "app.jyu.nodex" ||
-    value.target.packageProvenanceSchema !== 4 ||
+    value.target.packageProvenanceSchema !== 5 ||
     value.target.teamIdentifier !== NODEX_MACOS_TEAM_IDENTIFIER
   ) {
     throw new Error("Sparkle update target identity is invalid.");
@@ -257,7 +257,7 @@ export function parseSparkleArchitectureUpdateManifest(
     target: {
       buildVersion: targetBuildVersion,
       bundleId: "app.jyu.nodex",
-      packageProvenanceSchema: 4,
+      packageProvenanceSchema: 5,
       teamIdentifier: value.target.teamIdentifier,
       version,
     },

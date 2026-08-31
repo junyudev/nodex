@@ -15,6 +15,7 @@ export const CODEX_HOOK_EVENT_ORDER: readonly HookEventName[] = [
   "subagentStart",
   "subagentStop",
   "stop",
+  "interrupt",
 ];
 
 export const CODEX_HOOK_SOURCE_ORDER: readonly CodexHooksSettingsSource[] = [

@@ -25,6 +25,7 @@ function buildState() {
       ephemeral: false,
       section: null,
       sectionEnteredAt: null,
+      projectId: null,
       historyMode: "paginated",
       modelProvider: "openai",
       createdAt: 1,
@@ -146,6 +147,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
           text: "must arrive through lifecycle",
           phase: "final_answer",
           memoryCitation: null,
+          delivery: null,
         },
       ],
       itemsView: "full",
@@ -154,6 +156,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
         message: "response-only error",
         codexErrorInfo: null,
         additionalDetails: null,
+        misalignment: null,
       },
       startedAt: 10,
       completedAt: 12,
@@ -237,6 +240,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
       text: "partial",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     };
     const echo = {
       type: "userMessage" as const,

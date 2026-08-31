@@ -127,8 +127,9 @@ function mapThreadStatusToAgentStatus(
     case "active":
       return "running";
     case "idle":
-    case "notLoaded":
       return "completed";
+    case "notLoaded":
+      return "pendingInit";
     case "systemError":
       return "errored";
   }

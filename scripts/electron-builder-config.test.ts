@@ -24,6 +24,7 @@ interface ElectronBuilderConfig {
     readonly entitlementsInherit?: string;
     readonly extendInfo?: Record<string, unknown>;
     readonly hardenedRuntime?: boolean;
+    readonly minimumSystemVersion?: string;
     readonly sign?: string;
     readonly target?: readonly string[];
   };
@@ -46,6 +47,16 @@ function readBooleanPlist(filePath: string): Readonly<Record<string, boolean>> {
     result[key] = value === "true";
   }
   return result;
+}
+
+function readStringPlistValue(filePath: string, key: string): string {
+  const source = fs.readFileSync(filePath, "utf8");
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const match = source.match(
+    new RegExp(`<key>\\s*${escapedKey}\\s*</key>\\s*<string>\\s*([^<]+?)\\s*</string>`, "u"),
+  );
+  if (!match?.[1]) throw new Error(`Missing string plist key ${key} in ${filePath}`);
+  return match[1];
 }
 
 describe("electron-builder runtime resources", () => {
@@ -81,12 +92,17 @@ describe("electron-builder runtime resources", () => {
       to: "Frameworks/Sparkle.framework",
       filter: ["**/*"],
     });
-    expect(config.mac?.binaries).toContain("Contents/Resources/codex-path/rg");
+    expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex-app-server");
+    expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex-code-mode-host");
+    expect(config.mac?.binaries).not.toContain("Contents/Resources/codex-path/rg");
+    expect(config.mac?.binaries).not.toContain("Contents/Resources/codex-resources/zsh/bin/zsh");
+    expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/interpreter");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/rg");
     expect(
       config.mac?.binaries?.some((entry) => entry.startsWith("Contents/Resources/agent-runtime/")),
     ).toBe(false);
     expect(config.mac?.target).toEqual(["dmg"]);
+    expect(config.mac?.minimumSystemVersion).toBe("15.0.0");
     expect(config.mac?.extendInfo).toMatchObject({
       SUPublicEDKey: "YNySLZ74gjVAOpEdMo9OOEPvuTEMZf8fMnI+oQD7Ifs=",
       SURequireSignedFeed: true,
@@ -122,5 +138,14 @@ describe("electron-builder runtime resources", () => {
     expect(inheritedEntitlements).not.toHaveProperty("com.apple.security.device.audio-input");
     expect(mainEntitlements).not.toHaveProperty("com.apple.security.device.microphone");
     expect(inheritedEntitlements).not.toHaveProperty("com.apple.security.device.microphone");
+  });
+
+  test("keeps the nested background service on the product macOS baseline", () => {
+    expect(
+      readStringPlistValue(
+        path.resolve("resources/macos/nodex-service-Info.plist"),
+        "LSMinimumSystemVersion",
+      ),
+    ).toBe("15.0");
   });
 });

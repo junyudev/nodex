@@ -14,10 +14,13 @@ import {
   isTransientPanelTab,
   makeImageEditorPanelTabId,
   makeProcessOutputPanelTabId,
+  routeDeletedSelectedSubagentsToOverview,
+  settlePendingSubagentsPanelTab,
   updateImageEditorPanelTabTitle,
   type ImageEditorPanelTab,
   type ProjectSessionRenderableTab,
   type SideChatPanelTab,
+  type SubagentsPanelTab,
 } from "./workbench-panel-tab-model";
 import {
   makeTestWorkbenchSession,
@@ -184,5 +187,104 @@ describe("workbench panel tab model", () => {
       tooltip: "Generated image 2",
     });
     expect(next[1]).toBe(sibling);
+  });
+
+  test("settles only the still-owned pending Subagents route", () => {
+    const pending = {
+      subagentsPanel: true,
+      id: "subagents:root",
+      sessionId: "session-1",
+      projectId: "project-1",
+      panelId: "right",
+      rootThreadId: "root",
+      selectedThreadId: "child",
+      selectedDisplayName: "Child",
+      selectedCanInteract: false,
+      selectedHydration: { status: "pending", requestId: 7 },
+      title: "Subagents",
+      stateKey: 10,
+    } satisfies SubagentsPanelTab;
+    const ready = {
+      ...pending,
+      selectedCanInteract: true,
+      selectedHydration: {
+        status: "ready",
+        revision: 2,
+        fidelity: "attachedSparse",
+        checkpoint: "checkpoint",
+      },
+    } satisfies SubagentsPanelTab;
+    const current = { "session-1": [pending] };
+
+    const settled = settlePendingSubagentsPanelTab(current, {
+      sessionId: "session-1",
+      tabId: pending.id,
+      requestId: 7,
+      tab: ready,
+    });
+    expect(settled["session-1"]?.[0]).toMatchObject({
+      selectedHydration: { status: "ready" },
+      stateKey: 11,
+    });
+
+    const closedOrPruned = {};
+    expect(
+      settlePendingSubagentsPanelTab(closedOrPruned, {
+        sessionId: "session-1",
+        tabId: pending.id,
+        requestId: 7,
+        tab: ready,
+      }),
+    ).toBe(closedOrPruned);
+    expect(
+      settlePendingSubagentsPanelTab(
+        { "session-1": [{ ...pending, selectedHydration: { status: "pending", requestId: 8 } }] },
+        {
+          sessionId: "session-1",
+          tabId: pending.id,
+          requestId: 7,
+          tab: ready,
+        },
+      )["session-1"]?.[0],
+    ).toMatchObject({ selectedHydration: { status: "pending", requestId: 8 } });
+  });
+
+  test("routes deleted selected Subagents to overview across hidden and pending tabs", () => {
+    const selected = {
+      subagentsPanel: true,
+      id: "subagents:root-1",
+      sessionId: "session-1",
+      projectId: "project-1",
+      panelId: "right",
+      rootThreadId: "root-1",
+      selectedThreadId: "child-deleted",
+      selectedDisplayName: "Deleted child",
+      selectedCanInteract: true,
+      selectedHydration: { status: "pending", requestId: 9 },
+      title: "Subagents",
+      stateKey: 12,
+    } satisfies SubagentsPanelTab;
+    const unrelated = {
+      ...selected,
+      id: "subagents:root-2",
+      rootThreadId: "root-2",
+      selectedThreadId: "child-kept",
+    } satisfies SubagentsPanelTab;
+    const current = {
+      "session-1": [selected],
+      "session-2": [unrelated],
+    };
+
+    const routed = routeDeletedSelectedSubagentsToOverview(current, "child-deleted");
+
+    expect(routed["session-1"]?.[0]).toMatchObject({
+      selectedThreadId: null,
+      selectedDisplayName: null,
+      selectedCanInteract: false,
+      selectedHydration: null,
+      stateKey: 13,
+    });
+    expect(routed["session-2"]?.[0]).toBe(unrelated);
+    expect(routeDeletedSelectedSubagentsToOverview(current, "missing-child")).toBe(current);
   });
 });

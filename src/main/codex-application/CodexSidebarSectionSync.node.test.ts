@@ -63,7 +63,10 @@ const task = {
   updatedAt: 2,
 };
 
-const harness = (mode: "unsupported" | "supported" | "persistent-failure") => {
+const harness = (
+  mode: "unsupported" | "supported" | "persistent-failure",
+  backendKind: "codex" | "acp" = "codex",
+) => {
   let links: Array<{
     section_id: string;
     host_id: string;
@@ -107,15 +110,23 @@ const harness = (mode: "unsupported" | "supported" | "persistent-failure") => {
                           revision: 1,
                           value: {
                             kind: "session",
-                            session: {
-                              session_id: "session:work",
-                              project_id: null,
-                              display_title: "Work task",
-                              pinned: false,
-                              archived: false,
-                              unread: false,
-                              thread_id: "thread:work",
-                              status: null,
+                            task: {
+                              session: {
+                                id: "session:work",
+                                project_id: null,
+                                display_title: "Work task",
+                                no_thread_fallback_title: "Work task",
+                                pinned: false,
+                                pinned_order: null,
+                                archived: false,
+                                archived_at: null,
+                                unread: false,
+                                thread_id: "thread:work",
+                                order: 0,
+                                created_at: "2026-01-01T00:00:00.000Z",
+                                updated_at: "2026-01-01T00:00:01.000Z",
+                              },
+                              thread: null,
                             },
                           },
                         },
@@ -238,7 +249,17 @@ const harness = (mode: "unsupported" | "supported" | "persistent-failure") => {
   const directory = CodexThreadDirectory.of({
     resolve: () =>
       Effect.succeed({
-        durable: { executionHostId: "local" },
+        durable: {
+          executionHostId: "local",
+          backendBinding:
+            backendKind === "codex"
+              ? { kind: "codex" }
+              : {
+                  kind: "acp",
+                  agentDefinitionId: "claude-agent-acp",
+                  instanceConfigId: "claude-main",
+                },
+        },
       } as never),
   } as unknown as CodexThreadDirectory["Service"]);
   const catalog = CodexThreadCatalog.of({
@@ -320,6 +341,19 @@ it.effect("lazily creates one remote Section and projects its first attached tas
           useStateDbOnly: true,
         },
       );
+    }),
+  ),
+);
+
+it.effect("never projects an ACP Thread into Codex-owned remote Sections", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const test = harness("supported", "acp");
+      const service = yield* test.runtime;
+
+      yield* service.syncHost("local", "manual");
+
+      assert.isFalse(test.requests.some(({ method }) => method === "thread/section/move"));
     }),
   ),
 );

@@ -1,5 +1,18 @@
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
 import type {
+  AcpBackendAuthenticateInput,
+  AcpBackendAuthenticateResult,
+  AcpBackendConfigOptionInput,
+  AcpBackendConfigOptionResult,
+  AcpBackendModeInput,
+  AcpBackendPromptInput,
+  AcpBackendPromptResult,
+  AcpBackendSessionOpenInput,
+  AcpBackendThreadStartInput,
+  AcpBackendThreadStartResult,
+} from "./agent-backend-api";
+import type { AcpBackendSessionPresentation, AcpConversationSnapshot } from "./acp-conversation";
+import type {
   CodexPersistedHistoryOccurrenceHydrateRequest,
   CodexPersistedHistoryOccurrenceHydrateResult,
   CodexPersistedHistorySearchPage,
@@ -159,12 +172,6 @@ import type {
   CodexHooksStateUpdateInput,
 } from "./codex-hooks";
 import type {
-  AgentProviderCatalog,
-  AgentProviderCredentialDeleteInput,
-  AgentProviderCredentialMutationInput,
-  AgentProviderCredentialMutationResult,
-} from "./agent-runtime";
-import type {
   AgentImportApplyInput,
   AgentImportProgress,
   AgentImportResult,
@@ -206,6 +213,7 @@ import type {
 } from "./dictation-history";
 
 import type {
+  AcpAgentSettings,
   BackupRecord,
   BackupCapacity,
   SnapshotStorageOptimization,
@@ -223,8 +231,10 @@ import type {
   CodexCanonicalSetupCodexStepResponse,
   CodexBackgroundProcessRow,
   CodexBackgroundProcessRunActionInput,
-  CodexBackgroundSubagentThreadsHydrateInput,
-  CodexSubagentPanelHydrateInput,
+  CodexSubagentOverviewReadInput,
+  CodexSubagentOverviewWindow,
+  CodexSelectedSubagentHydrateInput,
+  CodexSelectedSubagentHydrateResult,
   CodexConversationSnapshot,
   CodexConnectionState,
   CodexDeveloperInstructionSettings,
@@ -409,6 +419,7 @@ import type {
   TerminalViewLeaseRevokedEvent,
   TerminalViewLeaseResult,
   ThreadNotificationSettings,
+  UpdateAcpAgentSettingsInput,
   UpdateDiagnosticsSettingsInput,
   UpdateTelemetrySettingsInput,
   UpdateBackupSettingsInput,
@@ -1190,6 +1201,55 @@ export interface IpcApi {
     args: [input: UpdateBackupSettingsInput];
     result: BackupSettings;
   };
+  "settings:acp-agents:get": { args: []; result: AcpAgentSettings };
+  "settings:acp-agents:update": {
+    args: [input: UpdateAcpAgentSettingsInput];
+    result: AcpAgentSettings;
+  };
+  "agent-backend:acp:session:open": {
+    args: [input: AcpBackendSessionOpenInput];
+    result: AcpBackendSessionPresentation;
+  };
+  "agent-backend:acp:thread:start": {
+    args: [input: AcpBackendThreadStartInput];
+    result: AcpBackendThreadStartResult;
+  };
+  "agent-backend:acp:session:read": {
+    args: [threadId: string];
+    result: AcpBackendSessionPresentation | null;
+  };
+  "agent-backend:acp:session:observe": {
+    args: [threadId: string];
+    result: void;
+  };
+  "agent-backend:acp:session:unobserve": {
+    args: [threadId: string];
+    result: void;
+  };
+  "agent-backend:acp:session:prompt": {
+    args: [input: AcpBackendPromptInput];
+    result: AcpBackendPromptResult;
+  };
+  "agent-backend:acp:session:cancel": {
+    args: [threadId: string];
+    result: AcpConversationSnapshot;
+  };
+  "agent-backend:acp:session:set-mode": {
+    args: [input: AcpBackendModeInput];
+    result: AcpConversationSnapshot;
+  };
+  "agent-backend:acp:session:set-config-option": {
+    args: [input: AcpBackendConfigOptionInput];
+    result: AcpBackendConfigOptionResult;
+  };
+  "agent-backend:acp:session:authenticate": {
+    args: [input: AcpBackendAuthenticateInput];
+    result: AcpBackendAuthenticateResult;
+  };
+  "agent-backend:acp:session:close": {
+    args: [threadId: string];
+    result: void;
+  };
   "settings:history:get": { args: []; result: HistorySettings };
   "settings:history:update": {
     args: [input: UpdateHistorySettingsInput];
@@ -1908,18 +1968,6 @@ export interface IpcApi {
     args: [input: CodexComposerAppshotCaptureInput];
     result: CodexComposerAppshotContext;
   };
-  "agent-runtime:catalog:get": {
-    args: [options?: { refresh?: boolean }];
-    result: AgentProviderCatalog;
-  };
-  "agent-runtime:credential:set": {
-    args: [input: AgentProviderCredentialMutationInput];
-    result: AgentProviderCredentialMutationResult;
-  };
-  "agent-runtime:credential:delete": {
-    args: [input: AgentProviderCredentialDeleteInput];
-    result: AgentProviderCredentialMutationResult;
-  };
   "agent-import:scan": {
     args: [input: AgentImportScanInput];
     result: AgentImportScan;
@@ -2126,17 +2174,13 @@ export interface IpcApi {
     args: [threadId: string, launchId: string];
     result: Extract<CodexRendererConversationResumeResult, { role: "owner" }>;
   };
-  "codex:thread:background-subagents:hydrate": {
-    args: [input: CodexBackgroundSubagentThreadsHydrateInput];
-    result: CodexThreadSummary[];
+  "codex:subagents:overview:read": {
+    args: [input: CodexSubagentOverviewReadInput];
+    result: CodexSubagentOverviewWindow;
   };
-  "codex:thread:subagents-panel:hydrate": {
-    args: [input: CodexSubagentPanelHydrateInput];
-    result: CodexThreadSummary[];
-  };
-  "codex:subagent-thread:opened": {
-    args: [threadId: string];
-    result: boolean;
+  "codex:subagents:selected:hydrate": {
+    args: [input: CodexSelectedSubagentHydrateInput];
+    result: CodexSelectedSubagentHydrateResult;
   };
   "codex:thread:view-active:set": {
     args: [input: { threadId: string; active: boolean }];
@@ -2215,6 +2259,7 @@ export interface IpcApi {
     result: { title: string | null };
   };
   "codex:thread:archive": { args: [threadId: string]; result: boolean };
+  "codex:thread:delete-archived": { args: [threadId: string]; result: boolean };
   "codex:thread:unarchive": {
     args: [threadId: string];
     result: CodexThreadSummary | null;
@@ -2381,7 +2426,7 @@ export interface IpcApi {
     result: ProtocolExperimentalFeature[];
   };
   "codex:mcp-server-statuses:list": {
-    args: [];
+    args: [threadId?: string];
     result: ProtocolListMcpServerStatusResponse;
   };
   "codex:approval:respond": {
@@ -2465,6 +2510,7 @@ export interface IpcApi {
 export interface IpcEvents {
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
   "agent-import:progress": AgentImportProgress;
+  "agent-backend:acp:session-changed": import("./agent-backend-api").AcpBackendSessionChangedEvent;
   "workspace-file:changed": import("./types").WorkspaceFileChangedEvent;
   "document-sync:event": DocumentSyncRealtimeEvent;
   "persisted-atom:updated": PersistedAtomEvent;

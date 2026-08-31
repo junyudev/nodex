@@ -17,9 +17,19 @@ interface ThreadCommandShellBlockProps {
   output: string;
   cwd?: string;
   isInProgress?: boolean;
+  autoScrollToBottom?: boolean;
+  shellLabel?: string;
+}
+
+interface ThreadExecShellContainerProps {
+  command: string;
+  output: string;
+  cwd?: string;
+  isInProgress?: boolean;
   footer?: ReactNode;
   autoScrollToBottom?: boolean;
   shellLabel?: string;
+  surface?: "default" | "plain";
 }
 
 interface ScrollFadeState {
@@ -178,7 +188,6 @@ export function ThreadCommandShellBlock({
   output,
   cwd,
   isInProgress = false,
-  footer,
   autoScrollToBottom = false,
   shellLabel = "Shell",
 }: ThreadCommandShellBlockProps) {
@@ -323,21 +332,13 @@ export function ThreadCommandShellBlock({
 
   if (variant === "embedded") {
     return (
-      <div
-        className={cn(
-          "group flex flex-col overflow-hidden rounded-lg",
-          isPlainEmbedded
-            ? "border-[0.5px] border-default bg-token-main-surface-primary"
-            : "border border-token-input-background bg-token-text-code-block-background",
-        )}
-      >
+      <div className="flex flex-col overflow-clip rounded-none border-none">
         {isPlainEmbedded ? null : (
           <div className="flex items-center justify-between gap-2 px-2 py-1 font-sans text-sm text-token-description-foreground select-none">
             <span>{shellLabel}</span>
           </div>
         )}
-        <div className="flex flex-col overflow-clip rounded-none border-none">{shellBody}</div>
-        {footer}
+        {shellBody}
       </div>
     );
   }
@@ -385,12 +386,45 @@ export function ThreadCommandShellBlock({
             className="relative overflow-hidden"
           >
             {shellBody}
-            {footer ?? (
-              <ShellOutputFooter command={command} isInProgress={isInProgress} output={output} />
-            )}
+            <ShellOutputFooter command={command} isInProgress={isInProgress} output={output} />
           </motion.div>
         ) : null}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/** Owns the transcript-card chrome around an otherwise unframed embedded shell. */
+export function ThreadExecShellContainer({
+  command,
+  output,
+  cwd,
+  isInProgress = false,
+  footer,
+  autoScrollToBottom = false,
+  shellLabel = "Shell",
+  surface = "default",
+}: ThreadExecShellContainerProps) {
+  return (
+    <div
+      className={cn(
+        "group flex flex-col overflow-hidden rounded-lg border border-strong",
+        surface === "plain"
+          ? "bg-token-main-surface-primary"
+          : "bg-token-text-code-block-background",
+      )}
+    >
+      <ThreadCommandShellBlock
+        variant="embedded"
+        embeddedAppearance={surface}
+        command={command}
+        output={output}
+        cwd={cwd}
+        isInProgress={isInProgress}
+        autoScrollToBottom={autoScrollToBottom}
+        shellLabel={shellLabel}
+      />
+      {footer}
     </div>
   );
 }

@@ -22,6 +22,7 @@ import type {
 } from "./browser-use-native-pipe-server";
 
 const MAX_DEBUG_EVENTS = 200;
+const SESSION_ACTIVITY_PERMITS = Number.MAX_SAFE_INTEGER;
 
 export interface BrowserUseRouteCapture extends BrowserUseRoute {
   readonly disposeAfterSessionActivity?: boolean;
@@ -200,11 +201,15 @@ const sessionLayer = (
       };
       const api = yield* platform.createApi(key.route, asyncRuntime);
 
-      const commandLock = yield* Semaphore.make(1);
+      // Browser commands are a concurrent protocol: Page.navigate can wait for a response that a
+      // simultaneous Fetch.continueResponse command must release. Commands therefore take shared
+      // activity leases, while turn teardown takes the whole semaphore and waits for the session
+      // to become quiescent before releasing tabs and debugger state.
+      const sessionActivity = yield* Semaphore.make(SESSION_ACTIVITY_PERMITS);
       const server = yield* platform
         .createServer((request) =>
           runPromise(
-            commandLock.withPermits(1)(
+            sessionActivity.withPermit(
               Effect.tryPromise({
                 try: () => api.dispatch(request.method, request.params),
                 catch: (cause) => runtimeError("dispatch", sessionId, cause),
@@ -244,7 +249,7 @@ const sessionLayer = (
                 });
                 return false;
               }
-              yield* commandLock.withPermits(1)(
+              yield* sessionActivity.withPermits(SESSION_ACTIVITY_PERMITS)(
                 Effect.tryPromise({
                   try: () =>
                     api.turnEnded({
@@ -375,10 +380,13 @@ export const makeBrowserUseSessionRuntime = (
         ),
     );
 
-    const useSession = <A>(
+    const useSessionWithKey = <A>(
       sessionId: string,
       use: (session: BrowserUseSessionService) => Effect.Effect<A, BrowserUseSessionRuntimeError>,
-    ): Effect.Effect<A | null, BrowserUseSessionRuntimeError> =>
+    ): Effect.Effect<
+      { readonly key: SessionKey; readonly value: A } | null,
+      BrowserUseSessionRuntimeError
+    > =>
       Effect.scoped(
         mutationLock
           .withPermits(1)(
@@ -386,14 +394,29 @@ export const makeBrowserUseSessionRuntime = (
               Effect.flatMap((current) => {
                 const key = current.active.get(sessionId);
                 return key === undefined
-                  ? Effect.succeed<BrowserUseSessionService | null>(null)
-                  : contextFor(key);
+                  ? Effect.succeed<{
+                      readonly key: SessionKey;
+                      readonly session: BrowserUseSessionService;
+                    } | null>(null)
+                  : contextFor(key).pipe(Effect.map((session) => ({ key, session })));
               }),
             ),
           )
           .pipe(
-            Effect.flatMap((session) => (session === null ? Effect.succeed(null) : use(session))),
+            Effect.flatMap((entry) =>
+              entry === null
+                ? Effect.succeed(null)
+                : use(entry.session).pipe(Effect.map((value) => ({ key: entry.key, value }))),
+            ),
           ),
+      );
+
+    const useSession = <A>(
+      sessionId: string,
+      use: (session: BrowserUseSessionService) => Effect.Effect<A, BrowserUseSessionRuntimeError>,
+    ): Effect.Effect<A | null, BrowserUseSessionRuntimeError> =>
+      useSessionWithKey(sessionId, use).pipe(
+        Effect.map((entry) => (entry === null ? null : entry.value)),
       );
 
     const useExactSession = <A>(
@@ -501,10 +524,20 @@ export const makeBrowserUseSessionRuntime = (
 
     const turnEnded = Effect.fn("BrowserUseSessionRuntime.turnEnded")(
       (input: BrowserUseTurnLifecycleInput) =>
-        useSession(input.sessionId, (session) => session.turnEnded(input)).pipe(
-          Effect.flatMap((dispose) =>
-            dispose === true ? releaseSession(input.sessionId) : Effect.void,
-          ),
+        useSessionWithKey(input.sessionId, (session) => session.turnEnded(input)).pipe(
+          Effect.flatMap((entry) => {
+            if (entry?.value !== true) return Effect.void;
+            return mutationLock.withPermits(1)(
+              Ref.get(state).pipe(
+                Effect.flatMap((current) => {
+                  if (current.active.get(input.sessionId) !== entry.key) return Effect.void;
+                  return removeKey(entry.key).pipe(
+                    Effect.andThen(record("session-released", input.sessionId)),
+                  );
+                }),
+              ),
+            );
+          }),
         ),
     );
 

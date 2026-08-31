@@ -80,6 +80,7 @@ describe("MCP App resource contract", () => {
             text: "<main>Calendar</main>",
           },
         ],
+        originCallId: null,
       },
       {
         "openai/widgetHeightHint": 420,
@@ -109,6 +110,7 @@ describe("MCP App resource contract", () => {
             _meta: { ui: { permissions: { camera: true } } },
           },
         ],
+        originCallId: null,
       },
       {
         ui: { permissions: { microphone: true } },

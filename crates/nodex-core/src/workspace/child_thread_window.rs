@@ -1,3 +1,4 @@
+use crate::domain::agent_backend::binding_from_storage;
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
@@ -13,6 +14,21 @@ use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
+
+pub(super) const THREAD_SUMMARY_COLUMNS: &str = "
+  thread.thread_id, thread.project_id, link.session_id,
+  thread.forked_from_id, thread.parent_thread_id, thread.thread_name,
+  thread.thread_source, thread.service_name, thread.agent_nickname,
+  thread.agent_role, thread.agent_path, thread.thread_preview,
+  thread.model_id,
+  thread.reasoning_effort, thread.service_tier, thread.agent_backend_kind,
+  thread.agent_backend_definition_id, thread.agent_backend_instance_config_id,
+  thread.execution_host_id, thread.cwd,
+  thread.managed_worktree_path, thread.projectless_output_directory,
+  thread.projectless_workspace_browser_root, thread.status_type,
+  thread.status_active_flags_json, thread.archived, thread.created_at,
+  thread.updated_at, thread.recency_at, thread.linked_at
+";
 
 pub(super) fn read_child_thread_window(
     connection: &Connection,
@@ -82,16 +98,7 @@ pub(super) fn read_child_thread_window(
     ));
     let limit_parameter = parameters.len();
     let sql = format!(
-        "SELECT thread.thread_id, thread.project_id, link.session_id, \
-           thread.forked_from_id, thread.parent_thread_id, thread.thread_name, \
-           thread.thread_source, thread.service_name, thread.agent_nickname, \
-           thread.agent_role, thread.agent_path, thread.thread_preview, \
-           thread.model_provider, thread.model_id, thread.harness_id, \
-           thread.reasoning_effort, thread.service_tier, thread.execution_host_id, thread.cwd, \
-           thread.managed_worktree_path, thread.projectless_output_directory, \
-           thread.projectless_workspace_browser_root, thread.status_type, \
-           thread.status_active_flags_json, thread.archived, thread.created_at, \
-           thread.updated_at, thread.recency_at, thread.linked_at \
+        "SELECT {THREAD_SUMMARY_COLUMNS} \
          FROM codex_threads thread \
          LEFT JOIN project_session_threads link ON link.thread_id = thread.thread_id \
          LEFT JOIN projects project ON project.id = thread.project_id \
@@ -103,7 +110,7 @@ pub(super) fn read_child_thread_window(
     );
     let rows = connection
         .prepare(&sql)?
-        .query_map(params_from_iter(parameters.iter()), thread_row)?
+        .query_map(params_from_iter(parameters.iter()), thread_summary_row)?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let candidates = rows
         .into_iter()
@@ -138,8 +145,10 @@ pub(super) fn read_child_thread_window(
     )
 }
 
-fn thread_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectWorkspaceThreadSummary> {
-    let status_type = match row.get::<_, String>(22)?.as_str() {
+pub(super) fn thread_summary_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ProjectWorkspaceThreadSummary> {
+    let status_type = match row.get::<_, String>(23)?.as_str() {
         "notLoaded" => Ok(CodexThreadStatusType::NotLoaded),
         "idle" => Ok(CodexThreadStatusType::Idle),
         "systemError" => Ok(CodexThreadStatusType::SystemError),
@@ -147,7 +156,7 @@ fn thread_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectWorkspaceThrea
         _ => Err(rusqlite::Error::InvalidQuery),
     }?;
     let active_flags =
-        serde_json::from_str::<Vec<CodexThreadActiveFlag>>(&row.get::<_, String>(23)?)
+        serde_json::from_str::<Vec<CodexThreadActiveFlag>>(&row.get::<_, String>(24)?)
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
     Ok(ProjectWorkspaceThreadSummary {
         thread_id: row.get(0)?,
@@ -162,25 +171,29 @@ fn thread_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectWorkspaceThrea
         agent_role: row.get(9)?,
         agent_path: row.get(10)?,
         thread_preview: super::task_window::bounded_preview(&row.get::<_, String>(11)?),
-        model_provider: row.get(12)?,
-        model_id: row.get(13)?,
-        harness_id: row.get(14)?,
-        reasoning_effort: row.get(15)?,
-        service_tier: row.get(16)?,
-        execution_host_id: row.get(17)?,
-        cwd: row.get(18)?,
-        managed_worktree_path: row.get(19)?,
-        projectless_output_directory: row.get(20)?,
-        projectless_workspace_browser_root: row.get(21)?,
+        model_id: row.get(12)?,
+        reasoning_effort: row.get(13)?,
+        service_tier: row.get(14)?,
+        backend_binding: binding_from_storage(
+            row.get::<_, String>(15)?.as_str(),
+            row.get(16)?,
+            row.get(17)?,
+        )
+        .map_err(|_| rusqlite::Error::InvalidQuery)?,
+        execution_host_id: row.get(18)?,
+        cwd: row.get(19)?,
+        managed_worktree_path: row.get(20)?,
+        projectless_output_directory: row.get(21)?,
+        projectless_workspace_browser_root: row.get(22)?,
         status: ProjectWorkspaceThreadStatus {
             status_type,
             active_flags,
         },
-        archived: row.get::<_, i64>(24)? == 1,
-        created_at: row.get(25)?,
-        updated_at: row.get(26)?,
-        recency_at: row.get(27)?,
-        linked_at: row.get(28)?,
+        archived: row.get::<_, i64>(25)? == 1,
+        created_at: row.get(26)?,
+        updated_at: row.get(27)?,
+        recency_at: row.get(28)?,
+        linked_at: row.get(29)?,
     })
 }
 

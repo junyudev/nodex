@@ -59,6 +59,7 @@ const MULTI_ROOT_PROJECT: Project = {
 const ARCHIVEABLE_THREADS: CodexSidebarThreadItem[] = [0, 1, 2].map((index) => ({
   key: `local:thread-${index}`,
   kind: "local",
+  backendBinding: { kind: "codex" },
   runLocation: { kind: "local-checkout" },
   hostId: "local",
   threadId: `thread-${index}`,

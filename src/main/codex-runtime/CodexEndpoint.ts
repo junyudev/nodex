@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -80,6 +81,8 @@ export class CodexEndpoint extends Context.Service<
   CodexEndpoint,
   {
     readonly hostId: string;
+    /** Unique to this Endpoint instance, including across unregister/register and Main restart. */
+    readonly sourceEpoch: string;
     readonly state: SubscriptionRef.SubscriptionRef<CodexEndpointConnection>;
     readonly session: Effect.Effect<CodexAppServerSessionService, CodexRuntimeError>;
     /** Rotates the physical generation without replacing the stable host state cell. */
@@ -108,6 +111,7 @@ export const live = (
     CodexEndpoint,
     Effect.gen(function* () {
       const hostId = config.hostId.trim();
+      const sourceEpoch = randomUUID();
       const configRef = yield* Ref.make<CodexEndpointConfig>({ ...config, hostId });
       const eventHub = yield* CodexEventHub;
       const requestInbox = yield* CodexApplicationRequestInbox;
@@ -455,6 +459,6 @@ export const live = (
         }
         return Ref.set(configRef, { ...next, hostId }).pipe(Effect.andThen(restart));
       };
-      return CodexEndpoint.of({ hostId, state, session, restart, reconcile });
+      return CodexEndpoint.of({ hostId, sourceEpoch, state, session, restart, reconcile });
     }),
   );

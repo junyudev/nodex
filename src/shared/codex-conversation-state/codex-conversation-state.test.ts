@@ -878,6 +878,40 @@ describe("protocol-backed canonical conversation state", () => {
     });
   });
 
+  test("preserves async agent-message delivery while reconciling a shorter hydrated turn", () => {
+    const template = buildAgentActivityV2CorpusThread([]).turns[0];
+    if (!template) throw new Error("Canonical turn fixture is missing");
+    const base = hydrateCanonicalFixtureTurns([template]).turns[0];
+    if (!base) throw new Error("Canonical turn fixture is missing");
+    const existingMessage = {
+      type: "agentMessage",
+      id: "live-final",
+      text: "Delivered asynchronously",
+      phase: "final_answer",
+      memoryCitation: null,
+      delivery: "async",
+    } satisfies ThreadItem;
+    const hydratedMessage = {
+      ...existingMessage,
+      id: "hydrated-final",
+      delivery: null,
+    } satisfies ThreadItem;
+
+    const merged = mergeCodexCanonicalTurnState(
+      {
+        ...base,
+        items: [existingMessage, { type: "plan", id: "live-plan", text: "Done" }],
+      },
+      { ...base, items: [hydratedMessage] },
+    );
+
+    expect(merged.items[0]).toMatchObject({
+      id: "live-final",
+      type: "agentMessage",
+      delivery: "async",
+    });
+  });
+
   test("rejects hydration when exact app-side turn context is unavailable", () => {
     const thread = buildAgentActivityV2CorpusThread([]);
     let error: unknown = null;

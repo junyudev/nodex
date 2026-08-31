@@ -1,3 +1,4 @@
+pub(crate) mod agent_backend;
 pub mod block_children;
 pub mod block_materialization;
 pub mod block_to_page;

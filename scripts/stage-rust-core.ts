@@ -206,8 +206,8 @@ const stage = ({ targetArch, outputRoot, signIdentity }: Arguments): void => {
       const loadCommands = execFileSync("otool", ["-l", source], {
         encoding: "utf8",
       });
-      if (!/LC_BUILD_VERSION[\s\S]*?minos 12\.0\b/.test(loadCommands)) {
-        throw new Error(`${name} does not declare macOS 12.0 compatibility`);
+      if (!/LC_BUILD_VERSION[\s\S]*?minos 15\.0\b/.test(loadCommands)) {
+        throw new Error(`${name} does not declare macOS 15.0 compatibility`);
       }
 
       const destination = path.join(binDirectory, name);
@@ -242,7 +242,7 @@ const stage = ({ targetArch, outputRoot, signIdentity }: Arguments): void => {
       targetPlatform: "darwin",
       targetArch,
       rustTarget: target,
-      minimumMacOS: "12.0",
+      minimumMacOS: "15.0",
       productVersion: readProductVersion(repositoryRoot),
       binaries: entries,
     };

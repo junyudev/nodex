@@ -83,6 +83,7 @@ const projectedTurn = (turnId: string, onItemsRead?: () => void): CodexConversat
         text: `${ITEM_TEXT}:${index}`,
         phase: "final_answer",
         memoryCitation: null,
+        delivery: null,
       }));
     },
   });
@@ -113,6 +114,7 @@ const canonicalTurn = (turnId: string, onItemsRead?: () => void): CodexCanonical
           text: `${ITEM_TEXT}:${index}`,
           phase: "final_answer",
           memoryCitation: null,
+          delivery: null,
         },
         sidecar: {},
       }));

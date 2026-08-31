@@ -12,7 +12,7 @@ export interface CodexConversationRelationshipThread {
   readonly parentThreadId: string | null;
   readonly threadName: string | null;
   readonly threadPreview: string;
-  readonly modelProvider: string;
+  readonly model: string | null;
   readonly agentNickname: string | null;
   readonly agentRole: string | null;
   readonly agentPath: string | null;
@@ -78,7 +78,7 @@ const threadMetadata = (
   const nickname =
     nonBlank(child.conversation?.agentNickname) ?? nonBlank(child.thread.agentNickname);
   const agentRole = nonBlank(child.conversation?.agentRole) ?? nonBlank(child.thread.agentRole);
-  const model = nonBlank(child.conversation?.modelProvider) ?? nonBlank(child.thread.modelProvider);
+  const model = nonBlank(child.conversation?.executionProfile?.modelId) ?? child.thread.model;
   if (!displayName && !nickname && !agentRole) return null;
   return {
     ...(displayName ? { displayName, name: displayName } : {}),

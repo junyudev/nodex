@@ -15,8 +15,8 @@ const COMPUTER_USE_INSTRUCTIONS = "Control desktop apps on macOS through Compute
 
 // The native Browser and Computer Use peers validate the code-signing identity
 // of node_repl and its two nearest ancestors. Keep this launcher alive so the
-// process tree is node_repl -> codex -> vendor-signed node even though Nodex's
-// primary app-server intentionally remains the Open Interpreter build.
+// process tree is node_repl -> codex -> vendor-signed node. Browser peer
+// identity remains independent from the primary app-server's locked release identity.
 export const SIGNED_NODE_REPL_LAUNCHER_SOURCE = `
 const { spawn } = require("node:child_process");
 const child = spawn(process.argv[1], process.argv.slice(2), { stdio: "inherit" });

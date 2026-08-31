@@ -401,7 +401,9 @@ export const make: Effect.Effect<
       (task) =>
         directory.resolve({ threadId: task.threadId, fidelity: "durable" }).pipe(
           Effect.map((entry): HostedTask | null =>
-            entry?.durable.executionHostId === hostId && task.sessionId
+            entry?.durable.executionHostId === hostId &&
+            entry.durable.backendBinding.kind === "codex" &&
+            task.sessionId
               ? {
                   threadId: task.threadId,
                   sessionId: task.sessionId,

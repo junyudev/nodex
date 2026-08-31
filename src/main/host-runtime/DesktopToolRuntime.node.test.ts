@@ -55,6 +55,8 @@ it.effect("owns desktop plugin readiness and derives one coherent snapshot", () 
       scope,
     );
     const runtime = Context.get(context, DesktopToolRuntime);
+    // Thread config must not rely on some earlier Settings read having initialized plugins.
+    assert.isNull(yield* runtime.threadConfig);
     const ready = yield* runtime.ensureReady;
 
     assert.deepEqual(requestedBackends, ["iab"]);

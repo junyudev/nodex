@@ -192,6 +192,7 @@ describe("codex conversation replay", () => {
               text: "authoritative fixture text",
               phase: "final_answer",
               memoryCitation: null,
+              delivery: null,
             },
           },
         },

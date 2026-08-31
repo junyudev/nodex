@@ -152,6 +152,19 @@ CI` push run. The privileged release `workflow_run` additionally validates the
 
 ### Application and runtime controls
 
+- ACP Agent definitions are compatibility allowlists, not supply-chain attestations. The current
+  Claude Agent integration launches only an explicitly enabled, user-managed absolute package root
+  and Node executable after canonical path, entry containment, package/version, executable-version,
+  and Node-version checks. The Settings UI states that these checks do not verify package or
+  dependency bytes. The selected credential and proxy policies bound environment inheritance, and
+  unowned ACP client capabilities remain unadvertised. Advertised filesystem callbacks reject
+  paths outside the canonical Project workspace and symlink traversal; advertised terminals share
+  the supervised Main runtime, bounded output, workspace cwd, and session lifetime. Whoever can
+  replace the configured package
+  or executable is inside this local-code trust boundary. A future managed ACP distribution must
+  use a separate locked archive, verified dependency closure, private immutable staging, and release
+  provenance path; npm registry integrity metadata alone cannot attest a mutable installed tree.
+
 - Boundary validation for typed Core Module and IPC requests.
 - Managed-worktree workers accept only operation-discriminated requests and
   events whose host id, managed root, worktree path, and cwd form one contained
@@ -311,8 +324,8 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   and rolls back a failed post-swap verification. Unsupported targets never
   install or configure its plugin.
 - Desktop Tool `node_repl` runs through a persistent vendor-signed Node process
-  and the signed Desktop Tool Codex CLI while Nodex retains its pinned Open
-  Interpreter app-server. The resulting `node_repl -> codex -> node` ancestry
+  and the signed Desktop Tool Codex CLI while Nodex runs its separately pinned
+  native Codex app-server. The resulting `node_repl -> codex -> node` ancestry
   satisfies Browser's three-generation peer check, while Codex remains the
   immediate parent required by Computer Use sender authentication. The private
   host-services UDS accepts only `ensureService` for `computer-use`, uses the
@@ -369,7 +382,7 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   stop outcome. It never contains the bearer capability, socket path, request
   payload, SQL, Document bytes, or user content; a symlink, unsafe mode, or
   malformed prior file disables only the breadcrumb.
-- Optional background registration uses a signed nested application and its bundled macOS 13+ `SMAppService` LaunchAgent; it never installs a root helper or writes a launchd plist outside the signed bundle. The selected absolute Profile path is the only persisted input, stored as a private regular file below the current user's Application Support directory. The controller rejects symlinked configuration and executable entries, bounds configuration and control output, and executes the fixed sibling Core without a shell.
+- Optional background registration uses a signed nested application and its bundled `SMAppService` LaunchAgent; it never installs a root helper or writes a launchd plist outside the signed bundle. The selected absolute Profile path is the only persisted input, stored as a private regular file below the current user's Application Support directory. The controller rejects symlinked configuration and executable entries, bounds configuration and control output, and executes the fixed sibling Core without a shell.
 - Every native-Core HTTP request is authenticated by a fresh per-start
   capability and same-UID Unix peer credentials. Handshake registers the
   logical connection against peer PID/UID, client build, protocol, Adapter
@@ -440,9 +453,8 @@ CI` push run. The privileged release `workflow_run` additionally validates the
 - Stable asset URI scheme avoids embedding brittle absolute local URLs.
 - Codex approvals are explicit protocol responses (`accept`/`decline`/etc) and are gated by the per-project Threads permission mode.
 - Codex user-input auto-resolution never infers or selects an answer. Main may end an inactive ordinary request with the protocol’s empty answer object after the bounded foreground/background timeout; any request-card interaction snoozes that timeout, and explicit renderer submission remains the only path that can send answer content. App-server disconnect clears renderer-memory request drafts and rejects the old inbound generation, so a reused JSON-RPC scalar id cannot recover secret freeform content or receive a late response from the previous process.
-- Provider credentials are main-process-only secrets. Anthropic, Kimi For Coding, Moonshot, and OpenRouter API keys are encrypted synchronously with Electron `safeStorage` and atomically stored in `${NODEX_HOME}/secrets/provider-credentials.v1.json` under a 0700 directory and 0600 regular file; unsafe permissions, symlinks, malformed ciphertext, or unavailable platform encryption fail closed. Renderer code can set, delete, and read readiness status but cannot retrieve plaintext. Decryption occurs only while constructing the Open Interpreter child-process environment, never in SQLite/Core execution profiles, IPC responses, argv, logs, rollouts, or Nodex backup manifests. Inherited environment keys remain process input and are reported separately from saved credentials.
-- Nodex does not import Claude.ai or Claude Code subscription tokens and does not offer third-party Claude OAuth. Claude support uses an Anthropic API key or an explicitly configured OpenRouter key; OpenAI authentication remains runtime-managed. Provider/model/harness/reasoning metadata is non-secret and durable, but an existing task cannot change provider or harness in place.
-- External-agent import is an explicit trusted-renderer workflow backed by expiring opaque scan ids. Source homes are canonicalized and read-only; the writable Agent home cannot be selected as its own source. Session content is hashed before and immediately before import, then app-server `thread/fork(path)` creates the target Thread. Native file copies never replace a target, reject symlinks, stage directory trees before rename, and do not copy SQLite/WAL/SHM files. Config translation allowlists passive settings, removes literal MCP environment/header/token material, and omits provider, authentication, approval, and sandbox state. Imported provider and connection credentials must be reauthorized through Nodex's main-owned credential boundary.
+- Codex authentication is owned by the isolated Codex runtime state and its app-server auth protocol. Renderer and Core never receive plaintext authentication material, and Nodex does not maintain a parallel application credential store. External-agent imports intentionally omit authentication and connection state; each backend must establish those secrets through its own authority boundary.
+- External-agent import is an explicit trusted-renderer workflow backed by expiring opaque scan ids. Source homes are canonicalized and read-only; the writable Agent home cannot be selected as its own source. Session content is hashed before and immediately before import, then app-server `thread/fork(path)` creates the target Thread. Native file copies never replace a target, reject symlinks, stage directory trees before rename, and do not copy SQLite/WAL/SHM files. Config translation allowlists passive settings, removes literal MCP environment/header/token material, and omits authentication, approval, sandbox, and connection state.
 - `nodex_app` reads and writes derive an exact-Turn authority snapshot from the verified launched task; model arguments and renderer responses cannot select another Project, Library, store epoch, Turn, or catalog revision. Ordinary snapshots use Project binding/grants. Main persists the selected Nodex preset separately from raw Codex config and requires both to agree before the built-in Full access preset records `:danger-full-access` provenance and receives temporary same-Library scope; Custom settings with equivalent raw sandbox values do not upgrade a Turn. Missing historical provenance falls back to Project scope, while stale or inconsistent recorded provenance fails closed.
 - Every `nodex_app@6` write performs mutation-free canonical preflight before any required consent, then re-resolves the exact `(thread, turn, root thread, actor Project, Library, Profile, store epoch)` authority. Execution proceeds only when the fresh effect class, target resources, deletions, and ownership transformations equal the approved footprint. Primary-Database and `read_write`-grant operations, including destructive writes, execute without a renderer card. Full-access Library scope also auto-approves. Neither path bypasses ETag/CAS guards, schema revisions, lifecycle checks, footprint equality, or transaction validation.
 - Native Core prepared operations expose no additional private route: prepare

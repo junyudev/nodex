@@ -164,6 +164,11 @@ export const live: Layer.Layer<
             );
           }
           const thread = snapshot.value.thread;
+          if (thread.backend_binding.kind !== "codex") {
+            return Effect.fail(
+              error("read", threadId, new Error("Task handoff requires a native Codex Thread")),
+            );
+          }
           const cwd = thread.cwd?.trim() ?? "";
           const primary = thread.writable_roots[0]?.trim() ?? "";
           if (!cwd || !path.isAbsolute(cwd)) {

@@ -405,12 +405,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "decode or reject files",
   ],
   [
-    "src/main/platform/electron/ProviderCredentialStore.ts:CREDENTIAL_FILE_VERSION",
-    "durableFormat",
-    "provider credential store",
-    "decode or reject files",
-  ],
-  [
     "src/main/core-client/core-client.ts:MODULE_CONTRACT_VERSIONS",
     "runtimeCompatibility",
     "generated Core requirements",

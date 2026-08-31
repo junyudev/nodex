@@ -30,6 +30,8 @@ export const CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS = Object.freeze({
   ephemeralFork: "0.146.0-alpha.7",
   sideConversation: "0.146.0-alpha.8",
   threadRevert: "0.148.0-alpha.13",
+  subagentAncestorFilter: "0.150.0-alpha.12.2",
+  multiAgentV2Protocol: "0.150.0-alpha.12.2",
 } as const);
 
 export type CodexAppServerCapability = keyof typeof CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS;
@@ -48,6 +50,8 @@ export const CODEX_APP_SERVER_DEVELOPMENT_CAPABILITY_FLAGS = Object.freeze({
   ephemeralFork: false,
   sideConversation: false,
   threadRevert: true,
+  subagentAncestorFilter: false,
+  multiAgentV2Protocol: false,
 }) satisfies CodexAppServerCapabilityFlags;
 
 const FAIL_CLOSED_CAPABILITY_FLAGS = Object.freeze({
@@ -57,17 +61,23 @@ const FAIL_CLOSED_CAPABILITY_FLAGS = Object.freeze({
   ephemeralFork: false,
   sideConversation: false,
   threadRevert: false,
+  subagentAncestorFilter: false,
+  multiAgentV2Protocol: false,
 }) satisfies CodexAppServerCapabilityFlags;
 
 export interface CodexAppServerCapabilitySnapshotInput {
   readonly hostId: string;
   readonly generation: number;
+  /** Physical Endpoint incarnation. Production snapshots always provide this value. */
+  readonly sourceEpoch?: string;
   readonly userAgent: string;
 }
 
 export interface CodexAppServerCapabilitySnapshot {
   readonly hostId: string;
   readonly generation: number;
+  /** Absent only on synthetic compatibility fixtures created outside `CodexEndpointMap`. */
+  readonly sourceEpoch?: string;
   readonly userAgent: string;
   readonly version: string | null;
   readonly flags: CodexAppServerCapabilityFlags;
@@ -182,6 +192,12 @@ const capabilityFlagsForVersion = (version: string | null): CodexAppServerCapabi
     ephemeralFork: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.ephemeralFork),
     sideConversation: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.sideConversation),
     threadRevert: supports(CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.threadRevert),
+    subagentAncestorFilter: supports(
+      CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.subagentAncestorFilter,
+    ),
+    multiAgentV2Protocol: supports(
+      CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS.multiAgentV2Protocol,
+    ),
   });
 };
 
@@ -197,11 +213,16 @@ export function createCodexAppServerCapabilitySnapshot(
   if (!Number.isSafeInteger(input.generation) || input.generation < 0) {
     throw new TypeError("Codex app-server capability generation must be a non-negative integer");
   }
+  const sourceEpoch = input.sourceEpoch?.trim();
+  if (input.sourceEpoch !== undefined && !sourceEpoch) {
+    throw new TypeError("Codex app-server capability sourceEpoch must not be empty");
+  }
 
   const version = extractCodexAppServerVersion(input.userAgent);
   return Object.freeze({
     hostId,
     generation: input.generation,
+    ...(sourceEpoch === undefined ? {} : { sourceEpoch }),
     userAgent: input.userAgent,
     version,
     flags: capabilityFlagsForVersion(version),
@@ -223,6 +244,7 @@ export const make: Effect.Effect<
     return createCodexAppServerCapabilitySnapshot({
       hostId: session.hostId,
       generation: session.generation,
+      sourceEpoch: endpoint.sourceEpoch,
       userAgent: session.initialize.userAgent,
     });
   });
@@ -236,7 +258,11 @@ export const make: Effect.Effect<
     snapshot: CodexAppServerCapabilitySnapshot,
   ) {
     const current = yield* forHost(snapshot.hostId);
-    return current.generation === snapshot.generation && current.userAgent === snapshot.userAgent;
+    return (
+      current.generation === snapshot.generation &&
+      current.userAgent === snapshot.userAgent &&
+      current.sourceEpoch === snapshot.sourceEpoch
+    );
   });
 
   return CodexAppServerCapabilities.of({ forHost, forThread, isCurrent });

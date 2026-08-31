@@ -192,7 +192,7 @@ async function readCombinedLegalFiles(paths: string[]): Promise<string | null> {
 async function collectBundledRuntimeEntries(
   repositoryRoot: string,
 ): Promise<ThirdPartyLegalEntry[]> {
-  const openInterpreterRoot = join(repositoryRoot, "resources", "third-party", "open-interpreter");
+  const codexRoot = join(repositoryRoot, "resources", "third-party", "codex");
 
   return [
     {
@@ -204,11 +204,11 @@ async function collectBundledRuntimeEntries(
       license: "MIT and bundled third-party notices",
     },
     {
-      homepage: "https://github.com/openinterpreter/open-interpreter",
-      identity: "Open Interpreter agent runtime",
+      homepage: "https://github.com/openai/codex",
+      identity: "Codex app-server runtime",
       legalText: await readCombinedLegalFiles([
-        join(openInterpreterRoot, "LICENSE"),
-        join(openInterpreterRoot, "NOTICE"),
+        join(codexRoot, "LICENSE"),
+        join(codexRoot, "NOTICE"),
       ]),
       license: "Apache-2.0",
     },

@@ -59,6 +59,7 @@ const state = (turns: readonly Turn[]) => {
     ephemeral: false,
     section: null,
     sectionEnteredAt: null,
+    projectId: null,
     historyMode: "paginated",
     modelProvider: "openai",
     createdAt: 1,

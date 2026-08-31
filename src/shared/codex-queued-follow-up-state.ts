@@ -2,6 +2,7 @@ import type { ModeKind, ReasoningSummary } from "@nodex/codex-app-server-protoco
 import type { ThreadSettings } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexPromptInput } from "./types";
 import type { CodexCanonicalSteeringUserMessageItem } from "./codex-conversation-state/codex-conversation-state";
+import { normalizeCodexServiceTier } from "./codex-service-tier";
 
 export const CODEX_INTERRUPTED_STEER_REASON = "Interrupted before the steer was accepted." as const;
 export const CODEX_ENDED_STEER_REASON = "Run ended before the steer was accepted." as const;
@@ -65,7 +66,7 @@ export function createCodexQueuedFollowUp(
     promptInput: input.promptInput ?? { text: input.prompt },
     createdAtMs: input.createdAtMs,
     collaborationMode: input.collaborationMode ?? null,
-    serviceTier: input.serviceTier ?? null,
+    serviceTier: normalizeCodexServiceTier(input.serviceTier),
     summary: input.summary ?? null,
     pause: input.pause ?? null,
     payloadRef: input.payloadRef ?? null,

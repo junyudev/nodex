@@ -21,6 +21,7 @@ export type SettingsPageKey =
   | "worktrees"
   | "local-environments"
   | "hooks"
+  | "data-controls"
   | "backups";
 
 export interface SettingsSectionPageProps {

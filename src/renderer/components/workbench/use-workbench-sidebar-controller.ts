@@ -70,7 +70,12 @@ import { copyConversationMarkdown } from "@/features/local-conversation/copy-con
 import { readFileLinkOpener } from "@/lib/file-link-opener-settings";
 import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
 import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
-import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
+import {
+  workspaceSessionCommands,
+  workspaceSidebarCommands,
+} from "@/lib/workspace-catalog-commands";
+import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
+import { resolveSidebarThreadMutationAuthority } from "./sidebar-thread-backend-routing";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SidebarState = Pick<
@@ -238,6 +243,12 @@ export function useWorkbenchSidebarController({
       ) {
         throw new Error("Invalid sidebar thread move container");
       }
+      const sidebarItem = [...sidebarThreadModel.threadItemsByKey.values()].find(
+        (candidate) => candidate.threadId === drop.threadId,
+      );
+      if (!sidebarItem || resolveSidebarThreadMutationAuthority(sidebarItem).kind !== "codex") {
+        return null;
+      }
 
       const placement: CodexSidebarThreadMovePlacement = drop.useDefaultOrder
         ? { beforeThreadId: null, useDefaultOrder: true }
@@ -262,7 +273,7 @@ export function useWorkbenchSidebarController({
             projectionRevision: result.projectionRevision,
           };
     },
-    [moveSidebarThreadInputForSidebar],
+    [moveSidebarThreadInputForSidebar, sidebarThreadModel.threadItemsByKey],
   );
 
   const mergeSessionInState = useCallback(
@@ -350,9 +361,9 @@ export function useWorkbenchSidebarController({
       }
 
       if (!targetSession.unread) return;
-      const threadId = targetSession.thread?.threadId ?? null;
-      if (threadId) {
-        void codexControl.markConversationAsRead(threadId).catch(() => undefined);
+      const thread = targetSession.thread;
+      if (thread && isCodexAgentBackendBinding(thread.backendBinding)) {
+        void codexControl.markConversationAsRead(thread.threadId).catch(() => undefined);
         return;
       }
       void catalog
@@ -393,7 +404,7 @@ export function useWorkbenchSidebarController({
   const toggleSessionPin = useCallback(
     async (session: ProjectSessionDomain) => {
       const nextPinned = !session.pinned;
-      if (session.thread) {
+      if (session.thread && isCodexAgentBackendBinding(session.thread.backendBinding)) {
         try {
           await setSidebarThreadPinned(session.thread.threadId, nextPinned);
           const updatedSessions = await refreshProjectSessions(session.projectId);
@@ -424,10 +435,21 @@ export function useWorkbenchSidebarController({
           await setPendingWorktreePinned(item.hostId, item.pendingWorktreeId, nextPinned);
           return;
         }
-        await setSidebarThreadPinned(item.threadId, nextPinned);
         const session = item.sessionId
           ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
           : null;
+        const authority = resolveSidebarThreadMutationAuthority(item);
+        if (authority.kind === "unavailable") return;
+        if (authority.kind === "workspace") {
+          if (session) {
+            const updated = await catalog.setPinned(session, nextPinned);
+            if (updated) mergeSessionInState(updated);
+            return;
+          }
+          await workspaceSessionCommands.setPinned(authority.sessionId, { pinned: nextPinned });
+          return;
+        }
+        await setSidebarThreadPinned(item.threadId, nextPinned);
         if (!session) return;
         const refreshed = await refreshProjectSessions(session.projectId);
         const updatedSession = refreshed.find((candidate) => candidate.id === session.id);
@@ -436,7 +458,7 @@ export function useWorkbenchSidebarController({
         toast.danger(nextPinned ? "Failed to pin chat" : "Failed to unpin chat");
       }
     },
-    [knownSessions, mergeSessionInState, refreshProjectSessions, setSidebarThreadPinned],
+    [catalog, knownSessions, mergeSessionInState, refreshProjectSessions, setSidebarThreadPinned],
   );
 
   const selectSidebarThread = useCallback(
@@ -620,6 +642,13 @@ export function useWorkbenchSidebarController({
           return;
         }
 
+        const authority = resolveSidebarThreadMutationAuthority(item);
+        if (authority.kind === "unavailable") return;
+        if (authority.kind === "workspace") {
+          await workspaceSessionCommands.archive(authority.sessionId);
+          return;
+        }
+
         await archiveWorkbenchThread(item.threadId);
         await refreshSidebarThreadSnapshot();
       } catch {
@@ -657,6 +686,13 @@ export function useWorkbenchSidebarController({
           return await archiveSession(session, { showToast: false });
         }
 
+        const authority = resolveSidebarThreadMutationAuthority(item);
+        if (authority.kind === "unavailable") return false;
+        if (authority.kind === "workspace") {
+          await workspaceSessionCommands.archive(authority.sessionId);
+          return true;
+        }
+
         await archiveWorkbenchThread(item.threadId);
         return true;
       } catch {
@@ -673,7 +709,7 @@ export function useWorkbenchSidebarController({
       const session = item.sessionId
         ? (knownSessions.find((candidate) => candidate.id === item.sessionId) ?? null)
         : (knownSessions.find((candidate) => candidate.thread?.threadId === item.threadId) ?? null);
-      if (session?.thread?.threadId) {
+      if (session?.thread && isCodexAgentBackendBinding(session.thread.backendBinding)) {
         await codexControl.markConversationAsRead(session.thread.threadId);
         mergeSessionInState({ ...session, unread: false });
         return;
@@ -681,6 +717,12 @@ export function useWorkbenchSidebarController({
       if (session) {
         const updated = await catalog.markUnread(session, false);
         if (updated) mergeSessionInState(updated);
+        return;
+      }
+      const authority = resolveSidebarThreadMutationAuthority(item);
+      if (authority.kind === "unavailable") return;
+      if (authority.kind === "workspace") {
+        await workspaceSessionCommands.markUnread(authority.sessionId, { unread: false });
         return;
       }
       await codexControl.markConversationAsRead(item.threadId);
@@ -692,7 +734,7 @@ export function useWorkbenchSidebarController({
     async (session: ProjectSessionDomain) => {
       const hasUnreadTurn = !session.unread;
       try {
-        if (session.thread?.threadId) {
+        if (session.thread && isCodexAgentBackendBinding(session.thread.backendBinding)) {
           if (hasUnreadTurn) {
             await codexControl.markConversationAsUnread(session.thread.threadId);
           } else {
@@ -760,6 +802,7 @@ export function useWorkbenchSidebarController({
       }
       const moveTargetProjectId = readSessionMoveToProjectActionId(actionId);
       if (moveTargetProjectId || actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject) {
+        if (!session.thread || !isCodexAgentBackendBinding(session.thread.backendBinding)) return;
         const threadId = session.thread?.threadId;
         if (!threadId) return;
         const containers = resolveSessionProjectMoveContainers(session, moveTargetProjectId);
@@ -804,6 +847,7 @@ export function useWorkbenchSidebarController({
         return;
       }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown) {
+        if (!session.thread || !isCodexAgentBackendBinding(session.thread.backendBinding)) return;
         const conversationId = session.thread?.threadId;
         if (!conversationId) return;
         await copyConversationMarkdown({

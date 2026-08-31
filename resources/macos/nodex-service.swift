@@ -93,15 +93,6 @@ private func parseControlArguments() throws -> (AdapterCommand, URL) {
 }
 
 private func control(command: AdapterCommand, selectedHome: URL) -> AdapterResponse {
-    guard #available(macOS 13.0, *) else {
-        return AdapterResponse(
-            supported: false,
-            status: "unsupported",
-            configuredHome: configuredHomeIfReadable(),
-            message: "background registration requires macOS 13 or newer"
-        )
-    }
-
     let service = SMAppService.agent(plistName: agentPlistName)
     do {
         switch command {
@@ -142,7 +133,6 @@ private func control(command: AdapterCommand, selectedHome: URL) -> AdapterRespo
     }
 }
 
-@available(macOS 13.0, *)
 private func response(
     for service: SMAppService,
     selectedHome: URL,

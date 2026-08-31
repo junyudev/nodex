@@ -6,6 +6,7 @@ import {
 import type { Project, ProjectSession } from "@/lib/types";
 import type { SidebarSectionSummary } from "../../../shared/sidebar-sections";
 import type { FileLinkOpenerId } from "../../../shared/file-link-openers";
+import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
 
 export const SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX = "session.moveToProject:";
 export const SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX = "session.moveToSection:";
@@ -99,8 +100,11 @@ export function buildSessionContextMenuItems(
   input: SessionContextMenuInput,
 ): NativeContextMenuItem[] {
   const { session } = input;
+  const hasCodexThread =
+    session.thread !== null && isCodexAgentBackendBinding(session.thread.backendBinding);
+  const supportsCodexConversationActions = session.thread?.backendBinding.kind !== "acp";
   const currentProject = input.projects?.find((project) => project.id === session.projectId);
-  const projectMoveItems: NativeContextMenuItem[] = session.thread
+  const projectMoveItems: NativeContextMenuItem[] = hasCodexThread
     ? (input.projects ?? [])
         .filter((project) => project.lifecycle === "active" && project.id !== session.projectId)
         .map((project) => ({
@@ -112,7 +116,7 @@ export function buildSessionContextMenuItems(
     : [];
   const projectSubmenuItems: NativeContextMenuItem[] = [
     ...projectMoveItems,
-    ...(session.thread && session.projectId
+    ...(hasCodexThread && session.projectId
       ? [
           ...(projectMoveItems.length > 0 ? [{ type: "separator" as const }] : []),
           {
@@ -174,12 +178,16 @@ export function buildSessionContextMenuItems(
       enabled: true,
       iconKey: "copy",
     },
-    {
-      id: SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown,
-      label: "Copy as Markdown",
-      enabled: Boolean(session.thread?.threadId),
-      iconKey: "copy",
-    },
+    ...(supportsCodexConversationActions
+      ? [
+          {
+            id: SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown,
+            label: "Copy as Markdown",
+            enabled: hasCodexThread,
+            iconKey: "copy" as const,
+          },
+        ]
+      : []),
   ];
 
   const windowItems: NativeContextMenuItem[] = [

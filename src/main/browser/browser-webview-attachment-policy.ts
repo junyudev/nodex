@@ -1,6 +1,6 @@
 import {
   parseBrowserSidebarHostRoutePartition,
-  type BrowserSidebarHostRouteIdentity,
+  type BrowserSidebarPhysicalHostIdentity,
   type BrowserSidebarTabIdentity,
 } from "../../shared/browser-sidebar";
 import { isAllowedBrowserNavigationUrl } from "../../shared/browser-url";
@@ -29,12 +29,12 @@ export type BrowserWebviewAttachmentDecision =
   | {
       ok: false;
       reason: BrowserWebviewAttachmentRejectionReason;
-      route: BrowserSidebarHostRouteIdentity | null;
+      route: BrowserSidebarPhysicalHostIdentity | null;
     };
 
 interface BrowserWebviewAttachmentPolicyInput {
   authorizeAttachment: (
-    route: BrowserSidebarHostRouteIdentity,
+    route: BrowserSidebarPhysicalHostIdentity,
   ) => BrowserAttachmentAuthorizationResult;
   isRegisteredBrowserStorage: (
     identity: BrowserSidebarTabIdentity,

@@ -258,6 +258,14 @@ export const make: Effect.Effect<
       catch: (cause) => error(operation, cause, projectId),
     });
 
+  const projectDefinition = (operation: string, definition: CoreAutomationDefinition) =>
+    evaluate(operation, () => projectAutomationDefinition(definition));
+
+  const prepareCoreDefinitionInput = (
+    operation: string,
+    input: CodexScheduledAutomationCreateInput,
+  ) => evaluate(operation, () => toCoreAutomationDefinitionInput(input));
+
   const read = (
     operation: string,
     input: Parameters<typeof core.automation.read>[0],
@@ -418,22 +426,25 @@ export const make: Effect.Effect<
         new Error("Active Scheduled Automation collection exceeded its fixed Core bound"),
       );
     }
-    return snapshot.value.window.items.map(projectAutomationDefinition);
+    const definitions = snapshot.value.window.items;
+    return yield* evaluate("definitions.list", () => definitions.map(projectAutomationDefinition));
   });
 
   const createDefinition = Effect.fn("AutomationApplication.definitions.create")(function* (
     input: CodexScheduledAutomationCreateInput,
   ) {
+    const definition = yield* prepareCoreDefinitionInput("definitions.create", input);
     const automationId = yield* allocateDefinitionId(input.name);
     const committed = yield* apply("definitions.create", {
       operationId: operationId(`create:${automationId}`),
       intent: {
         kind: "create_definition",
         automation_id: automationId,
-        definition: toCoreAutomationDefinitionInput(input),
+        definition,
       },
     });
-    return projectAutomationDefinition(
+    return yield* projectDefinition(
+      "definitions.create",
       yield* requireDefinition("definitions.create", committed, automationId),
     );
   });
@@ -443,6 +454,11 @@ export const make: Effect.Effect<
   ) {
     const current = yield* readDefinition(input.id);
     if (!current) return null;
+    const projectedCurrent = yield* projectDefinition("definitions.update", current);
+    const definition = yield* prepareCoreDefinitionInput("definitions.update", {
+      ...input,
+      backendBinding: input.backendBinding ?? projectedCurrent.backendBinding,
+    });
     const committed = yield* apply(
       "definitions.update",
       {
@@ -459,14 +475,15 @@ export const make: Effect.Effect<
                 automation_id: input.id,
                 expected_revision: current.definition_revision,
                 status: input.status,
-                definition: toCoreAutomationDefinitionInput(input),
+                definition,
               },
       },
       undefined,
       undefined,
       input.status === "DELETED" ? { definitionIds: [input.id] } : undefined,
     );
-    return projectAutomationDefinition(
+    return yield* projectDefinition(
+      "definitions.update",
       yield* requireDefinition("definitions.update", committed, input.id),
     );
   });
@@ -483,6 +500,7 @@ export const make: Effect.Effect<
         deletedRunCount: 0,
       };
     }
+    const projectedCurrent = yield* projectDefinition("definitions.delete", current);
     const committed = yield* apply(
       "definitions.delete",
       {
@@ -498,7 +516,7 @@ export const make: Effect.Effect<
       { definitionIds: [automationId] },
     );
     return {
-      item: projectAutomationDefinition(current),
+      item: projectedCurrent,
       success: true,
       status: "deleted" as const,
       deletedRunCount: committed.outcome.deleted_run_ids.length,
@@ -507,12 +525,15 @@ export const make: Effect.Effect<
 
   const dispatchDefinitionNow = Effect.fn("AutomationApplication.definitions.dispatchNow")(
     function* (automationId: string) {
-      if ((yield* readDefinition(automationId)) === null) return null;
+      const current = yield* readDefinition(automationId);
+      if (current === null) return null;
+      yield* projectDefinition("definitions.dispatchNow", current);
       const committed = yield* apply("definitions.dispatchNow", {
         operationId: operationId(`dispatch-now:${automationId}`),
         intent: { kind: "dispatch_now", automation_id: automationId },
       });
-      return projectAutomationDefinition(
+      return yield* projectDefinition(
+        "definitions.dispatchNow",
         yield* requireDefinition("definitions.dispatchNow", committed, automationId),
       );
     },
@@ -537,7 +558,8 @@ export const make: Effect.Effect<
       },
       BACKGROUND_CORE_REQUEST,
     );
-    return projectAutomationDefinition(
+    return yield* projectDefinition(
+      "definitions.reschedule",
       yield* requireDefinition("definitions.reschedule", committed, automationId),
     );
   });
@@ -573,13 +595,15 @@ export const make: Effect.Effect<
           error("definitions.claimDue", new Error("Core Automation claim omitted its Definition")),
         );
       }
-      return Effect.succeed({
-        leaseId: lease.lease_id,
-        scheduledFor: lease.scheduled_for_ms,
-        attempt: lease.attempt,
-        expiresAt: lease.expires_at_ms,
-        definition: projectAutomationDefinition(definition),
-      });
+      return projectDefinition("definitions.claimDue", definition).pipe(
+        Effect.map((projectedDefinition) => ({
+          leaseId: lease.lease_id,
+          scheduledFor: lease.scheduled_for_ms,
+          attempt: lease.attempt,
+          expiresAt: lease.expires_at_ms,
+          definition: projectedDefinition,
+        })),
+      );
     });
   });
 
@@ -836,7 +860,9 @@ export const make: Effect.Effect<
       list: listDefinitions,
       get: (automationId) =>
         readDefinition(automationId).pipe(
-          Effect.map((item) => (item ? projectAutomationDefinition(item) : null)),
+          Effect.flatMap((item) =>
+            item ? projectDefinition("definitions.get", item) : Effect.succeed(null),
+          ),
         ),
       create: createDefinition,
       update: updateDefinition,

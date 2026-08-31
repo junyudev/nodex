@@ -247,7 +247,21 @@ Renderer ownership adoption is part of that resume transaction. Main resolves th
 
 Buffer release can advance Main's accepted canonical checkpoint after the initial resume handshake. Owner activation therefore treats a rejected checkpoint with recovery data as a convergence boundary: it adopts the recovered checkpoint, preserves Main-owned standalone unread state, and retries the activation snapshot within the same bounded transaction. A stale handshake checkpoint must not require navigation or a second user action to become usable.
 
-Background child-agent summaries are not active child-thread streams. Parent thread surfaces may show child memberships and multi-agent-derived row state, but a child thread receives a bounded tail only when a background-agent detail tab opens it. Multi-agent visible rows are derived from receiver thread display metadata and agent state keys; sparse receiver id lists remain available to membership/reference projection but do not create clickable visible row targets on their own. Receiver display metadata is lightweight catalog data, so friendly agent names and seed-based identicons must not depend on parent-driven child snapshot hydration. The background-agent opener hydrates only the selected child thread id and opens the tab; the detail tab content materializes/resumes the child body and then marks the child thread opened for routed deltas without requiring local parent metadata.
+Background child-agent summaries are not active child-thread streams. Parent
+thread surfaces consume one revisioned root Subagent overview containing only
+positive graph facts, lightweight metadata, causal status, and bounded windows;
+they do not subscribe to child conversations or scan child turns. Receiver
+display metadata is sufficient for friendly names and seed-based identicons.
+Sparse receiver id lists may preserve reference state, but an unrelated or
+unverified id cannot create an openable row.
+
+The background-agent opener verifies the selected child against the root,
+reuses resident sparse history when available, and otherwise hydrates only that
+child through the normal bounded Thread history boundary. The detail surface
+then attaches to the resulting child conversation role. No parent mount,
+overview refresh, status notification, or sibling row marks a child opened or
+hydrates its transcript. The complete product contract is
+[Codex Subagent Behavior](codex-subagent-behavior.md).
 
 When the owner client disappears, followers reject revision waiters, clear the owner role, mark the conversation `needs_resume`, and recover through explicit resume. The last accepted document remains available for owner adoption or a new follower snapshot while that recovery lease is active.
 

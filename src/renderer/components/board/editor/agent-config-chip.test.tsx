@@ -24,6 +24,10 @@ const MODELS: CodexModelOption[] = [
       { reasoningEffort: "high", description: "Deep" },
     ],
     defaultReasoningEffort: "high",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: true,
   },
   {
@@ -34,6 +38,10 @@ const MODELS: CodexModelOption[] = [
     hidden: true,
     supportedReasoningEfforts: [],
     defaultReasoningEffort: "medium",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: false,
   },
 ];

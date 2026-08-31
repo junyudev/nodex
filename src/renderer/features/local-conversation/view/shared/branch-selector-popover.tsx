@@ -234,6 +234,7 @@ export function BranchSelectorPopover({
         align={align}
         sideOffset={sideOffset}
         triggerButton={triggerButton}
+        triggerNativeButton={!renderTrigger}
         triggerTooltipContent={renderTrigger ? undefined : triggerTitle}
         contentWidth={contentWidth}
         contentClassName={contentClassName}

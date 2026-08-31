@@ -13,6 +13,10 @@ history remains available through its bounded Core window. Renderer mutations
 use the same Core revision fence and committed update event as agent-driven
 `automation_update` mutations.
 
+Scheduled tasks currently execute only with the Codex Agent Backend. Creation,
+editing, loading, and execution reject every other backend binding; Nodex never
+routes an unsupported scheduled task through Codex as an implicit fallback.
+
 ## Entry points and route state
 
 Sidebar `Scheduled`, command palette `Manage automations`, and Thread Summary
@@ -66,7 +70,7 @@ The detail rail edits one coherent draft with these fields:
 - Chat or Project target;
 - optional local Environment;
 - repeat/interval schedule;
-- provider, model, and reasoning effort;
+- Codex model, reasoning effort, and service tier;
 - Previous runs for cron tasks.
 
 Cron tasks require title, prompt, Project, schedule, and model. Heartbeat tasks
@@ -77,11 +81,11 @@ selected Project source. It offers `No environment`, identifies the preferred
 `environment.toml` definition, and can open Settings → Environments with the
 selected Project/config context.
 
-When the Agent provider catalog is available, the model control uses its
-provider-scoped models and preserves the exact provider, model, recommended
-harness, reasoning, and service-tier tuple. Unavailable credentials disable the
-provider for creation. The legacy Codex model list is a compatibility fallback,
-not a parallel selection authority.
+Scheduled tasks currently execute only on the native Codex backend. The model
+control uses the runtime-owned Codex model catalog and preserves its exact model,
+reasoning, and service-tier tuple. ACP-backed scheduled tasks are rejected at
+creation and execution boundaries until the automation runtime has a real ACP
+execution path; they are never redirected to Codex.
 
 ## Previous runs
 

@@ -104,6 +104,7 @@ export function NewChatStartInSelector({
       open={open}
       onOpenChange={onOpenChange}
       triggerButton={triggerButton}
+      triggerNativeButton={!renderTrigger}
     >
       <NodexDropdownTitle>{menuTitle}</NodexDropdownTitle>
 

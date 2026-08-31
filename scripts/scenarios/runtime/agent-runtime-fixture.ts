@@ -13,24 +13,26 @@ export interface AgentRuntimeFixture {
   readonly metadataPath: string;
 }
 
+const defaultScenarioAppServerPath = path.resolve("tests/e2e/fixtures/codex-queue-app-server.mjs");
+
 const writeScenarioAgentRuntime = (
   repositoryRoot: string,
   executableBody: string,
   version: string,
 ): AgentRuntimeFixture => {
   const runtimeRoot = path.join(repositoryRoot, ".generated/codex-runtime/agent-runtime");
-  const executable = path.join(runtimeRoot, "bin/interpreter");
+  const executable = path.join(runtimeRoot, "bin/codex-app-server");
   const packagePath = path.join(runtimeRoot, "codex-package.json");
   fs.mkdirSync(path.dirname(executable), { recursive: true });
   fs.mkdirSync(path.join(runtimeRoot, "codex-path"), { recursive: true });
   fs.mkdirSync(path.join(runtimeRoot, "codex-resources"), { recursive: true });
   const packageBody = JSON.stringify({
-    entrypoint: "bin/interpreter",
+    entrypoint: "bin/codex-app-server",
     layoutVersion: 1,
     pathDir: "codex-path",
     resourcesDir: "codex-resources",
     target: `${process.arch}-${process.platform}`,
-    variant: "open-interpreter",
+    variant: "codex-app-server",
     version,
   });
   fs.writeFileSync(executable, executableBody, { mode: 0o755 });
@@ -38,15 +40,17 @@ const writeScenarioAgentRuntime = (
   fs.chmodSync(executable, 0o755);
 
   const artifacts = [
-    ["bin/interpreter", executableBody, true],
+    ["bin/codex-app-server", executableBody, true],
     ["codex-package.json", packageBody, false],
   ] as const;
   const metadata = {
-    artifactRelease: {
+    releaseAsset: {
       archiveSha256: "0".repeat(64),
-      assetName: "nodex-scenario-fixture.tar.gz",
-      repository: "junyudev/nodex",
-      tag: "agent-runtime-v0.0.0-scenario",
+      archiveSize: 1,
+      assetName: "codex-app-server-package-scenario.tar.gz",
+      entrypointSha256: createHash("sha256").update(executableBody).digest("hex"),
+      repository: "openai/codex",
+      tag: `rust-v${version}`,
     },
     artifacts: artifacts.map(([artifactPath, body, isExecutable]) => ({
       executable: isExecutable,
@@ -54,17 +58,17 @@ const writeScenarioAgentRuntime = (
       sha256: createHash("sha256").update(body).digest("hex"),
       size: Buffer.byteLength(body),
     })),
-    codexCompatibilityVersion: version,
-    entrypoint: "bin/interpreter",
+    appServerRuntimeVersion: version,
+    entrypoint: "bin/codex-app-server",
     layoutVersion: AGENT_RUNTIME_LAYOUT_VERSION,
     packageManifest: JSON.parse(packageBody) as object,
-    runtimeFamily: "open-interpreter",
-    runtimeVersion: version,
+    protocolSchemaFingerprint: "0".repeat(64),
+    runtimeFamily: "codex-app-server",
     searchPaths: ["codex-path"],
     sourceRevision: {
       commit: "0".repeat(40),
-      patches: [],
-      repository: "openinterpreter/openinterpreter",
+      repository: "openai/codex",
+      tag: `rust-v${version}`,
     },
     targetArch: process.arch,
     targetPlatform: process.platform,
@@ -78,18 +82,15 @@ const writeScenarioAgentRuntime = (
   return { root: runtimeRoot, executable, metadataPath };
 };
 
-export const prepareScenarioAgentRuntimeSync = (repositoryRoot: string): AgentRuntimeFixture =>
-  writeScenarioAgentRuntime(repositoryRoot, "#!/bin/sh\nexit 0\n", "0.0.0-scenario");
-
 export const prepareScenarioCodexAppServerRuntimeSync = (
   repositoryRoot: string,
   mockPeerPath: string,
+  version = "0.145.0-alpha.15",
 ): AgentRuntimeFixture =>
-  writeScenarioAgentRuntime(
-    repositoryRoot,
-    fs.readFileSync(mockPeerPath, "utf8"),
-    "0.0.0-queue-parity-scenario",
-  );
+  writeScenarioAgentRuntime(repositoryRoot, fs.readFileSync(mockPeerPath, "utf8"), version);
+
+export const prepareScenarioAgentRuntimeSync = (repositoryRoot: string): AgentRuntimeFixture =>
+  prepareScenarioCodexAppServerRuntimeSync(repositoryRoot, defaultScenarioAppServerPath);
 
 export const prepareScenarioAgentRuntime = async (
   repositoryRoot: string,

@@ -18,6 +18,36 @@ Profile home resolves in this order:
 3. `server.home` in `~/.nodex/config.toml`;
 4. the default `~/.nodex` home.
 
+## ACP Agent instances
+
+ACP Agent instances are Profile-local, explicit local-code authorizations. The current Claude
+Agent integration uses a user-managed package root and Node executable; both paths must be absolute.
+Before enabling an instance, the same compatibility and protocol path can be checked without a model
+request:
+
+```bash
+vp run agent:smoke:acp --package-root /absolute/path/to/claude-agent-acp
+```
+
+Adding `--prompt 'Reply with ACP_OK' --expect-text ACP_OK` is an explicit paid smoke and may consume
+the configured Agent account's quota. The command inherits the host credential profile and system
+proxy, reports only capabilities/event kinds plus whether the expected marker was observed, and
+never prints transcript content. Tool compatibility can be checked with `--workspace-tools
+--approve-permissions`; this exposes the same workspace-scoped filesystem and supervised terminal
+callbacks as the product and selects only an Agent-offered allow-once option. Cancellation can be
+checked with `--cancel-after-ms <milliseconds> --expect-stop-reason cancelled`. Both permission and
+cancellation flags are explicit; the probe defaults to deny and never retries a failed prompt.
+Nodex canonicalizes them at launch and checks the supported package identity, package version,
+entrypoint containment, Node version, and executable-reported Agent version. This is a compatibility
+probe, not a package-integrity or dependency-provenance check. Enabling an instance means that the
+configured local code is trusted to run as the current user.
+
+Each instance separately chooses whether to inherit the host Claude credential profile or use an
+existing isolated home, and whether to inherit standard proxy environment variables. Credential
+secrets are never copied into Profile settings. Disabling or deleting an instance prevents new
+launches; durable Threads retain their explicit backend binding and report the unavailable instance
+instead of silently falling back to another backend.
+
 A Dock-launched app has no repository cwd and therefore uses environment/user
 configuration. Malformed, oversized, or non-UTF-8 configuration fails closed
 instead of selecting another Profile silently.

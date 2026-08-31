@@ -26,14 +26,17 @@ This spec does not cover:
 - announcement, upsell, home, or banner CTAs
 - rollout-estimate calculation or metrics IPC
 - per-thread Fast-mode state
-- protocol-level tiers other than `fast`
+- provider-specific service-tier availability, pricing, or rollout policy
 
 ## Canonical Model
 
-- Nodex supports one user-visible service-tier preference: `serviceTier: null | "fast"`.
+- The global Fast preference is `serviceTier: null | "fast"`.
+- Agent execution profiles may additionally hold named tier identifiers advertised by their model
+  catalog.
 - `null` means Standard/default behavior.
 - `"fast"` means requests should send `serviceTier: "fast"`.
-- Nodex does not expose protocol-level `flex`.
+- App-server `"default"` and legacy/UI `"standard"` are boundary aliases for domain `null`; neither
+  may be persisted as a named tier.
 - Fast mode is global, not per-thread and not per-project.
 
 ## Source Of Truth
@@ -92,8 +95,11 @@ This spec does not cover:
 - Resolution order is:
   1. If the request explicitly provides `serviceTier`, use that value.
   2. If the request omits `serviceTier`, fall back to the persisted global default.
-  3. If the effective value is `null`, omit `serviceTier` from the outgoing app-server payload.
-  4. If the effective value is `"fast"`, include `serviceTier: "fast"` in the outgoing payload.
+  3. If no tier override exists, omit `serviceTier` so the current thread configuration remains in
+     force.
+  4. If an explicit selection resolves to `null`, send `serviceTier: null`; this resets inherited
+     or configured acceleration to Standard.
+  5. If the effective value is a named tier, include that tier identifier.
 - `null` is treated as an explicit Standard override even when the global default is `"fast"`.
 
 ## Covered Request Paths
@@ -117,13 +123,15 @@ Internal helper flows that are not user-facing request starts, such as ephemeral
 - Main process forwards an optional `serviceTier` that renderer already resolved.
 - Main process does not read the persisted default and does not own fallback resolution.
 - For `thread/start` and `turn/start`:
-  - forward `serviceTier: "fast"` when explicitly provided
-  - omit the field when the effective value is `null`
+  - forward named tiers when explicitly selected
+  - forward `serviceTier: null` when an authoritative execution profile or request explicitly
+    selects Standard
+  - omit the field only when there is no tier override
 - The same forwarding rule applies to replacement turns started by edit-last-user-turn.
 
 ## Reporting And Normalization
 
-- Missing or `null` service tier is reported as `standard`.
+- Missing, `null`, `"standard"`, or app-server `"default"` service tier is reported as `standard`.
 - `"fast"` is reported as `fast`.
 - Logs, RPC summaries, and UI reporting should not expose raw `null` as a user-facing tier label.
 
@@ -132,7 +140,8 @@ Internal helper flows that are not user-facing request starts, such as ephemeral
 - If the user selects `Fast` in Settings or the composer menu, Nodex persists the global preference as `"fast"`.
 - Subsequent new requests inherit and send `serviceTier: "fast"` unless a caller explicitly overrides it.
 - If the user selects `Standard`, Nodex persists `null`.
-- Subsequent new requests fall back to Standard behavior and omit `serviceTier` from outgoing payloads.
+- Subsequent new requests resolve to Standard. Compound execution profiles preserve that explicit
+  selection through Main so configured acceleration cannot leak into the new thread.
 
 ## Non-Goals And Guardrails
 

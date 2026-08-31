@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
 import { resolveBrowserRuntimeBundle } from "./browser-runtime-bundle";
-import { writeBrowserRuntimeFixture } from "./browser-runtime-test-fixture";
+import {
+  makeTestedBrowserAppServerPair,
+  writeBrowserRuntimeFixture,
+} from "./browser-runtime-test-fixture";
 import {
   BrowserUseThreadConfigBuilder,
   SIGNED_NODE_REPL_LAUNCHER_SOURCE,
@@ -16,12 +19,14 @@ function makeVerifiedRuntime() {
   const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-config-"));
   temporaryRoots.push(runtimeRoot);
   const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
-  writeBrowserRuntimeFixture(bundleRoot);
+  const manifest = writeBrowserRuntimeFixture(bundleRoot);
+  const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
   const browserRuntime = resolveBrowserRuntimeBundle({
-    expectedCodexCompatibilityVersion: "0.144.6",
+    appServerIdentity: testedPair.appServer,
     runtimeRoot,
     targetArch: "arm64",
     targetPlatform: "darwin",
+    testedPairs: [testedPair],
   });
   if (browserRuntime.status !== "available") {
     throw new Error(browserRuntime.message);

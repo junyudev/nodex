@@ -1,21 +1,18 @@
 import type { CollaborationMode as CodexAppServerCollaborationMode } from "@nodex/codex-app-server-protocol";
 import type { ThreadSettingsUpdateParams } from "@nodex/codex-app-server-protocol/v2/ThreadSettingsUpdateParams";
-import type { AgentExecutionProfile, AgentModelOption } from "../../shared/agent-runtime";
+import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import type {
   CodexCollaborationModeKind,
   CodexCollaborationModeState,
   CodexConversationThreadSettings,
   CodexConversationThreadSettingsPatch,
   CodexPersonality,
+  CodexModelOption,
   CodexReasoningEffort,
-  CodexServiceTier,
 } from "../../shared/types";
 
-export const normalizeCodexServiceTier = (value: unknown): CodexServiceTier => {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized && normalized !== "standard" ? normalized : null;
-};
+export { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 
 export const normalizeThreadSettingsModel = (value: unknown): string | null => {
   if (typeof value !== "string") return null;
@@ -26,7 +23,7 @@ export const normalizeThreadSettingsModel = (value: unknown): string | null => {
 const hasOwnValue = (record: object, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(record, key);
 
-const preserveSupportedAgentProfileValue = (
+const preserveSupportedCodexSetting = (
   current: string | null,
   requestedFallback: string | null,
   supported: readonly { readonly value: string | null }[],
@@ -35,26 +32,24 @@ const preserveSupportedAgentProfileValue = (
   return supported.some((option) => option.value === current) ? current : requestedFallback;
 };
 
-export const mergeAgentModelChange = (
-  current: AgentExecutionProfile,
-  requested: AgentExecutionProfile,
-  model: AgentModelOption | null,
-): AgentExecutionProfile => {
-  if (!model) {
-    return { ...requested, providerId: current.providerId, harnessId: current.harnessId };
-  }
+export const mergeCodexModelChange = (
+  current: CodexExecutionProfile,
+  requested: CodexExecutionProfile,
+  model: CodexModelOption | null,
+): CodexExecutionProfile => {
+  if (!model) return requested;
   return {
     ...current,
-    modelId: requested.modelId,
-    reasoningEffort: preserveSupportedAgentProfileValue(
+    modelId: model.model,
+    reasoningEffort: preserveSupportedCodexSetting(
       current.reasoningEffort,
       requested.reasoningEffort,
-      model.supportedReasoningEfforts,
+      model.supportedReasoningEfforts.map((option) => ({ value: option.reasoningEffort })),
     ),
-    serviceTier: preserveSupportedAgentProfileValue(
+    serviceTier: preserveSupportedCodexSetting(
       current.serviceTier,
       requested.serviceTier,
-      model.supportedServiceTiers,
+      model.serviceTiers.map((option) => ({ value: option.id })),
     ),
   };
 };
@@ -145,7 +140,6 @@ export const mergeThreadSettingsPatch = (input: {
     model:
       executionProfile?.modelId ??
       (hasOwnValue(input.patch, "model") ? (input.patch.model ?? null) : undefined),
-    modelProvider: executionProfile?.providerId,
     serviceTier: executionProfile
       ? executionProfile.serviceTier
       : hasOwnValue(input.patch, "serviceTier")
@@ -197,7 +191,9 @@ export const buildThreadSettingsUpdateParams = (input: {
     params.model = executionProfile?.modelId ?? input.patch.model ?? null;
   }
   if (executionProfile || hasOwnValue(input.patch, "serviceTier")) {
-    params.serviceTier = executionProfile?.serviceTier ?? input.patch.serviceTier ?? null;
+    params.serviceTier = executionProfile
+      ? executionProfile.serviceTier
+      : (input.patch.serviceTier ?? null);
   }
   if (executionProfile || hasOwnValue(input.patch, "reasoningEffort")) {
     params.effort = executionProfile?.reasoningEffort ?? input.patch.reasoningEffort ?? null;

@@ -17,6 +17,7 @@ import { CodexUserInputAutoResolution } from "../../codex-application/CodexUserI
 import { ConversationEntityMap } from "../../codex-application/internal/ConversationEntityMap";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live, routeRendererDeliveryAcknowledgment } from "./CodexRendererIpc";
 
@@ -32,10 +33,10 @@ it.effect("registers ACK ingress and routes only validated renderer delivery env
         }),
         () => Effect.sync(() => onHandlers.delete(channel)),
       );
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string) => register(channel),
       on: (channel: string, handler: OnHandler) => register(channel, handler),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const handled: RendererDeliveryTransferAckEnvelope[] = [];
     const rendererClients = RendererClientRuntime.of(
       {} as unknown as RendererClientRuntime["Service"],

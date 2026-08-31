@@ -64,6 +64,7 @@ describe("projectCodexConversationOlderTurns", () => {
       text: id,
       phase: "final_answer",
       memoryCitation: null,
+      delivery: null,
     }));
     const hydratedTurn: Turn = { ...turn("turn-cursors"), items, itemsView: "summary" };
     const itemsPagination = {

@@ -288,6 +288,8 @@ function resolveDropdownMaxHeightClass(
 
 export interface NodexDropdownMenuProps {
   triggerButton: ReactElement;
+  /** Matches Base UI's button mode to the concrete element rendered by triggerButton. */
+  triggerNativeButton?: boolean;
   triggerTooltipContent?: ReactNode;
   triggerTooltipShortcutLabel?: string;
   children: ReactNode;
@@ -310,6 +312,7 @@ export interface NodexDropdownMenuProps {
 
 export function NodexDropdownMenu({
   triggerButton,
+  triggerNativeButton = true,
   triggerTooltipContent,
   triggerTooltipShortcutLabel,
   children,
@@ -330,7 +333,7 @@ export function NodexDropdownMenu({
   motion = "default",
 }: NodexDropdownMenuProps) {
   const trigger = (
-    <NodexDropdownTrigger disabled={disabled} nativeButton>
+    <NodexDropdownTrigger disabled={disabled} nativeButton={triggerNativeButton}>
       {triggerButton}
     </NodexDropdownTrigger>
   );

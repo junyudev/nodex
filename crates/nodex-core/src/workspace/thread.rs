@@ -2,14 +2,16 @@ use std::collections::BTreeSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use nodex_core_contracts::BoundModuleContext;
+use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::workspace::{
     CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType,
     ProjectWorkspaceDynamicToolCatalog, ProjectWorkspaceThread,
-    ProjectWorkspaceThreadExecutionLocation, ProjectWorkspaceThreadPatch,
-    ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
+    ProjectWorkspaceThreadBackendSession, ProjectWorkspaceThreadExecutionLocation,
+    ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::domain::agent_backend::{binding_from_storage, binding_storage};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
@@ -44,11 +46,12 @@ const THREAD_COLUMNS: &str = "
   thread.agent_role,
   thread.agent_path,
   thread.thread_preview,
-  thread.model_provider,
   thread.model_id,
-  thread.harness_id,
   thread.reasoning_effort,
   thread.service_tier,
+  thread.agent_backend_kind,
+  thread.agent_backend_definition_id,
+  thread.agent_backend_instance_config_id,
   thread.execution_host_id,
   thread.cwd,
   thread.managed_worktree_path,
@@ -78,11 +81,10 @@ struct ThreadRow {
     agent_role: Option<String>,
     agent_path: Option<String>,
     thread_preview: String,
-    model_provider: String,
     model_id: Option<String>,
-    harness_id: Option<String>,
     reasoning_effort: Option<String>,
     service_tier: Option<String>,
+    backend_binding: AgentBackendBinding,
     execution_host_id: String,
     cwd: Option<String>,
     managed_worktree_path: Option<String>,
@@ -120,6 +122,158 @@ pub(super) fn read_thread(
         .optional()?
         .map(|row| project_workspace_thread(connection, library_id, row))
         .transpose()
+}
+
+pub(super) fn read_thread_backend_session(
+    connection: &Connection,
+    library_id: &str,
+    thread_id: &str,
+) -> Result<Option<ProjectWorkspaceThreadBackendSession>, StoreError> {
+    let thread = require_thread(connection, library_id, thread_id)?;
+    let stored = connection
+        .query_row(
+            "SELECT backend_kind, agent_definition_id, instance_config_id, \
+                    backend_session_id, updated_at \
+             FROM thread_backend_sessions WHERE thread_id = ?1",
+            [thread_id],
+            |row| {
+                let kind = row.get::<_, String>(0)?;
+                let binding = binding_from_storage(&kind, row.get(1)?, row.get(2)?)
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?;
+                Ok(ProjectWorkspaceThreadBackendSession {
+                    thread_id: thread_id.to_owned(),
+                    backend_binding: binding,
+                    backend_session_id: row.get(3)?,
+                    updated_at: row.get(4)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|_| corrupt("Stored Thread backend session is invalid"))?;
+    if stored
+        .as_ref()
+        .is_some_and(|session| session.backend_binding != thread.backend_binding)
+    {
+        return Err(corrupt(
+            "Stored Thread backend session does not match its backend binding",
+        ));
+    }
+    Ok(stored)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn bind_thread_backend_session(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    thread_id: &str,
+    backend_binding: &AgentBackendBinding,
+    backend_session_id: &str,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    validate_id("thread_id", thread_id)?;
+    validate_id("backend_session_id", backend_session_id)?;
+    let thread = require_thread(connection, library_id, thread_id)?;
+    if &thread.backend_binding != backend_binding {
+        return Err(conflict(
+            "Thread backend binding changed before its session could be persisted",
+        ));
+    }
+    let storage = binding_storage(backend_binding).map_err(invalid)?;
+    if storage.kind != "acp" {
+        return Err(invalid(
+            "Native Codex Threads do not persist a backend protocol session",
+        ));
+    }
+    let now = unix_time_millis()?;
+    connection.execute(
+        "INSERT INTO thread_backend_sessions(\
+           thread_id, backend_kind, agent_definition_id, instance_config_id, \
+           backend_session_id, updated_at\
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+         ON CONFLICT(thread_id) DO UPDATE SET \
+           backend_kind = excluded.backend_kind, \
+           agent_definition_id = excluded.agent_definition_id, \
+           instance_config_id = excluded.instance_config_id, \
+           backend_session_id = excluded.backend_session_id, \
+           updated_at = excluded.updated_at",
+        params![
+            thread_id,
+            storage.kind,
+            storage.agent_definition_id,
+            storage.instance_config_id,
+            backend_session_id,
+            now,
+        ],
+    )?;
+    let session_ids = linked_session_ids(
+        connection,
+        library_id,
+        thread_id,
+        thread.project_id.as_deref(),
+    )?;
+    let project_ids = thread.project_id.into_iter().collect::<Vec<_>>();
+    let scopes = project_session_scopes(&project_ids, &session_ids);
+    finish_thread_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "bind_thread_backend_session",
+        scopes,
+        project_ids,
+        session_ids,
+        vec![thread_id.to_owned()],
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn clear_thread_backend_session(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    thread_id: &str,
+    backend_binding: &AgentBackendBinding,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    validate_id("thread_id", thread_id)?;
+    let thread = require_thread(connection, library_id, thread_id)?;
+    if &thread.backend_binding != backend_binding {
+        return Err(conflict(
+            "Thread backend binding changed before its session could be cleared",
+        ));
+    }
+    connection.execute(
+        "DELETE FROM thread_backend_sessions WHERE thread_id = ?1",
+        [thread_id],
+    )?;
+    let session_ids = linked_session_ids(
+        connection,
+        library_id,
+        thread_id,
+        thread.project_id.as_deref(),
+    )?;
+    let project_ids = thread.project_id.into_iter().collect::<Vec<_>>();
+    let scopes = project_session_scopes(&project_ids, &session_ids);
+    finish_thread_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "clear_thread_backend_session",
+        scopes,
+        project_ids,
+        session_ids,
+        vec![thread_id.to_owned()],
+    )
 }
 
 #[cfg(test)]
@@ -508,24 +662,10 @@ pub(super) fn upsert_thread_records(
         MAX_PREVIEW_BYTES,
         false,
     )?;
-    let model_provider = merge_required_text(
-        existing.as_ref().map(|row| row.model_provider.as_str()),
-        patch.model_provider.as_deref(),
-        "model_provider",
-        MAX_SHORT_TEXT_BYTES,
-        true,
-    )?;
     let model_id = merge_nullable_text(
         existing.as_ref().and_then(|row| row.model_id.clone()),
         &patch.model_id,
         "model_id",
-        MAX_SHORT_TEXT_BYTES,
-        true,
-    )?;
-    let harness_id = merge_nullable_text(
-        existing.as_ref().and_then(|row| row.harness_id.clone()),
-        &patch.harness_id,
-        "harness_id",
         MAX_SHORT_TEXT_BYTES,
         true,
     )?;
@@ -545,6 +685,15 @@ pub(super) fn upsert_thread_records(
         MAX_REASONING_EFFORT_BYTES,
         true,
     )?;
+    let backend_binding = patch
+        .backend_binding
+        .clone()
+        .or_else(|| existing.as_ref().map(|row| row.backend_binding.clone()))
+        .unwrap_or_default();
+    let backend_storage = binding_storage(&backend_binding).map_err(invalid)?;
+    let backend_changed = existing
+        .as_ref()
+        .is_some_and(|row| row.backend_binding != backend_binding);
     let execution_host_id = match patch.execution_host_id.as_deref() {
         Some(host_id) => {
             validate_id("execution_host_id", host_id)?;
@@ -625,23 +774,26 @@ pub(super) fn upsert_thread_records(
     connection.execute(
         "INSERT INTO codex_threads (\
            thread_id, project_id, parent_thread_id, thread_name, thread_source, service_name, \
-           agent_nickname, agent_role, agent_path, thread_preview, model_provider, model_id, \
-           harness_id, reasoning_effort, service_tier, execution_host_id, cwd, \
+           agent_nickname, agent_role, agent_path, thread_preview, model_id, \
+           reasoning_effort, service_tier, agent_backend_kind, agent_backend_definition_id, \
+           agent_backend_instance_config_id, execution_host_id, cwd, \
            managed_worktree_path, projectless_output_directory, \
            projectless_workspace_browser_root, status_type, status_active_flags_json, archived, \
            created_at, updated_at, recency_at, linked_at, forked_from_id\
          ) VALUES (\
-           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-           ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28\
+           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
+           ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29\
          ) ON CONFLICT(thread_id) DO UPDATE SET \
            project_id = excluded.project_id, parent_thread_id = excluded.parent_thread_id, \
            thread_name = excluded.thread_name, thread_source = excluded.thread_source, \
            service_name = excluded.service_name, agent_nickname = excluded.agent_nickname, \
            agent_role = excluded.agent_role, agent_path = excluded.agent_path, \
            thread_preview = excluded.thread_preview, \
-           model_provider = excluded.model_provider, model_id = excluded.model_id, \
-           harness_id = excluded.harness_id, reasoning_effort = excluded.reasoning_effort, \
+           model_id = excluded.model_id, reasoning_effort = excluded.reasoning_effort, \
            service_tier = excluded.service_tier, \
+           agent_backend_kind = excluded.agent_backend_kind, \
+           agent_backend_definition_id = excluded.agent_backend_definition_id, \
+           agent_backend_instance_config_id = excluded.agent_backend_instance_config_id, \
            execution_host_id = excluded.execution_host_id, cwd = excluded.cwd, \
            managed_worktree_path = excluded.managed_worktree_path, \
            projectless_output_directory = excluded.projectless_output_directory, \
@@ -662,11 +814,12 @@ pub(super) fn upsert_thread_records(
             agent_role,
             agent_path,
             thread_preview,
-            model_provider,
             model_id,
-            harness_id,
             reasoning_effort,
             service_tier,
+            backend_storage.kind,
+            backend_storage.agent_definition_id,
+            backend_storage.instance_config_id,
             execution_host_id,
             cwd,
             managed_worktree_path,
@@ -682,6 +835,12 @@ pub(super) fn upsert_thread_records(
             forked_from_id,
         ],
     )?;
+    if backend_changed {
+        connection.execute(
+            "DELETE FROM thread_backend_sessions WHERE thread_id = ?1",
+            [thread_id],
+        )?;
+    }
     if archived {
         connection.execute(
             "DELETE FROM codex_unread_threads WHERE thread_id = ?1",
@@ -1486,11 +1645,10 @@ fn project_workspace_thread(
         agent_role: row.agent_role,
         agent_path: row.agent_path,
         thread_preview: row.thread_preview,
-        model_provider: row.model_provider,
         model_id: row.model_id,
-        harness_id: row.harness_id,
         reasoning_effort: row.reasoning_effort,
         service_tier: row.service_tier,
+        backend_binding: row.backend_binding,
         execution_host_id: row.execution_host_id,
         cwd: row.cwd,
         managed_worktree_path: row.managed_worktree_path,
@@ -1522,25 +1680,29 @@ fn thread_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRow> {
         agent_role: row.get(8)?,
         agent_path: row.get(9)?,
         thread_preview: row.get(10)?,
-        model_provider: row.get(11)?,
-        model_id: row.get(12)?,
-        harness_id: row.get(13)?,
-        reasoning_effort: row.get(14)?,
-        service_tier: row.get(15)?,
-        execution_host_id: row.get(16)?,
-        cwd: row.get(17)?,
-        managed_worktree_path: row.get(18)?,
-        projectless_output_directory: row.get(19)?,
-        projectless_workspace_browser_root: row.get(20)?,
-        status_type: row.get(21)?,
-        status_active_flags_json: row.get(22)?,
-        archived: row.get(23)?,
-        pinned_order: row.get(24)?,
-        has_unread_turn: row.get(25)?,
-        created_at: row.get(26)?,
-        updated_at: row.get(27)?,
-        recency_at: row.get(28)?,
-        linked_at: row.get(29)?,
+        model_id: row.get(11)?,
+        reasoning_effort: row.get(12)?,
+        service_tier: row.get(13)?,
+        backend_binding: binding_from_storage(
+            row.get::<_, String>(14)?.as_str(),
+            row.get(15)?,
+            row.get(16)?,
+        )
+        .map_err(|_| rusqlite::Error::InvalidQuery)?,
+        execution_host_id: row.get(17)?,
+        cwd: row.get(18)?,
+        managed_worktree_path: row.get(19)?,
+        projectless_output_directory: row.get(20)?,
+        projectless_workspace_browser_root: row.get(21)?,
+        status_type: row.get(22)?,
+        status_active_flags_json: row.get(23)?,
+        archived: row.get(24)?,
+        pinned_order: row.get(25)?,
+        has_unread_turn: row.get(26)?,
+        created_at: row.get(27)?,
+        updated_at: row.get(28)?,
+        recency_at: row.get(29)?,
+        linked_at: row.get(30)?,
     })
 }
 
@@ -1802,11 +1964,6 @@ fn validate_stored_thread(row: &ThreadRow) -> Result<(), StoreError> {
         ("agent_path", row.agent_path.as_deref(), MAX_PATH_BYTES),
         ("model_id", row.model_id.as_deref(), MAX_SHORT_TEXT_BYTES),
         (
-            "harness_id",
-            row.harness_id.as_deref(),
-            MAX_SHORT_TEXT_BYTES,
-        ),
-        (
             "reasoning_effort",
             row.reasoning_effort.as_deref(),
             MAX_REASONING_EFFORT_BYTES,
@@ -1843,7 +2000,6 @@ fn validate_stored_thread(row: &ThreadRow) -> Result<(), StoreError> {
         }
     }
     validate_stored_text("thread_preview", &row.thread_preview, MAX_PREVIEW_BYTES)?;
-    validate_stored_text("model_provider", &row.model_provider, MAX_SHORT_TEXT_BYTES)?;
     if row
         .thread_name
         .as_deref()
@@ -2319,6 +2475,7 @@ fn internal(message: impl Into<String>) -> StoreError {
 mod tests {
     use std::fs;
 
+    use nodex_core_contracts::agent::AgentBackendBinding;
     use nodex_core_contracts::collection::CollectionWindowRequest;
     use nodex_core_contracts::workspace::{
         CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType, ProjectSessionIntent,
@@ -2457,6 +2614,103 @@ mod tests {
                 ),
             )
             .expect("create Session");
+    }
+
+    #[test]
+    fn persists_backend_binding_and_acp_session_identity_across_restart() {
+        let (directory, kernel, module) = seeded_module();
+        create_thread(
+            &module,
+            "thread-backend-create",
+            "thread-backend",
+            Some("project:default"),
+            None,
+        );
+        let ProjectWorkspaceReadValue::Thread { thread } = read(
+            &module,
+            ProjectWorkspaceRead::Thread {
+                thread_id: "thread-backend".to_owned(),
+            },
+        ) else {
+            panic!("Thread read");
+        };
+        assert_eq!(thread.backend_binding, AgentBackendBinding::Codex);
+
+        let acp_binding = AgentBackendBinding::Acp {
+            agent_definition_id: "claude-agent-acp".to_owned(),
+            instance_config_id: Some("claude-work".to_owned()),
+        };
+        module
+            .apply(
+                &context(),
+                request(
+                    "thread-backend-select-acp",
+                    ProjectWorkspaceIntent::UpdateThread {
+                        thread_id: "thread-backend".to_owned(),
+                        patch: Box::new(ProjectWorkspaceThreadPatch {
+                            backend_binding: Some(acp_binding.clone()),
+                            ..ProjectWorkspaceThreadPatch::default()
+                        }),
+                    },
+                ),
+            )
+            .expect("select ACP backend");
+        module
+            .apply(
+                &context(),
+                request(
+                    "thread-backend-bind-session",
+                    ProjectWorkspaceIntent::BindThreadBackendSession {
+                        thread_id: "thread-backend".to_owned(),
+                        backend_binding: acp_binding.clone(),
+                        backend_session_id: "acp-session-1".to_owned(),
+                    },
+                ),
+            )
+            .expect("bind ACP session");
+
+        drop(module);
+        drop(kernel);
+        let reopened_kernel =
+            SqliteStoreKernel::open_test(directory.path()).expect("reopen Profile store");
+        let reopened = ProjectWorkspaceModule::new("profile-1", "library-1", &reopened_kernel)
+            .expect("reopened Workspace module");
+        let ProjectWorkspaceReadValue::ThreadBackendSession { session } = read(
+            &reopened,
+            ProjectWorkspaceRead::ThreadBackendSession {
+                thread_id: "thread-backend".to_owned(),
+            },
+        ) else {
+            panic!("backend session read");
+        };
+        let session = session.expect("persisted ACP session");
+        assert_eq!(session.backend_binding, acp_binding);
+        assert_eq!(session.backend_session_id, "acp-session-1");
+
+        reopened
+            .apply(
+                &context(),
+                request(
+                    "thread-backend-select-codex",
+                    ProjectWorkspaceIntent::UpdateThread {
+                        thread_id: "thread-backend".to_owned(),
+                        patch: Box::new(ProjectWorkspaceThreadPatch {
+                            backend_binding: Some(AgentBackendBinding::Codex),
+                            ..ProjectWorkspaceThreadPatch::default()
+                        }),
+                    },
+                ),
+            )
+            .expect("return to native Codex backend");
+        let ProjectWorkspaceReadValue::ThreadBackendSession { session } = read(
+            &reopened,
+            ProjectWorkspaceRead::ThreadBackendSession {
+                thread_id: "thread-backend".to_owned(),
+            },
+        ) else {
+            panic!("cleared backend session read");
+        };
+        assert_eq!(session, None);
     }
 
     #[test]
@@ -2832,9 +3086,7 @@ mod tests {
                     agent_role: Some(Some("worker".to_owned())),
                     agent_path: Some(Some("agents/nash".to_owned())),
                     thread_preview: Some("Persisted execution context".to_owned()),
-                    model_provider: Some("anthropic".to_owned()),
                     model_id: Some(Some("claude-opus-4-1".to_owned())),
-                    harness_id: Some(Some("fable".to_owned())),
                     reasoning_effort: Some(Some("Thinking".to_owned())),
                     service_tier: Some(Some("priority".to_owned())),
                     cwd: Some(Some("/workspace/root".to_owned())),
@@ -3047,14 +3299,9 @@ mod tests {
             execution_context.thread.agent_path.as_deref(),
             Some("agents/nash")
         );
-        assert_eq!(execution_context.thread.model_provider, "anthropic");
         assert_eq!(
             execution_context.thread.model_id.as_deref(),
             Some("claude-opus-4-1")
-        );
-        assert_eq!(
-            execution_context.thread.harness_id.as_deref(),
-            Some("fable")
         );
         assert_eq!(
             execution_context.thread.reasoning_effort.as_deref(),

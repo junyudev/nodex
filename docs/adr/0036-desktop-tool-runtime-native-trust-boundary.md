@@ -44,15 +44,16 @@ does not replace nested Desktop Tool signing identities with Nodex's team.
 
 ### A three-process signed REPL ancestry is part of Desktop Tool capability
 
-The primary app-server remains Nodex's pinned Open Interpreter runtime. The
-shared `node_repl` command is launched through a persistent vendor-signed Node
-process and the signed Codex CLI by using `codex sandbox`, producing
+The primary app-server is Nodex's separately locked native Codex app-server.
+The shared `node_repl` command is launched through a persistent vendor-signed
+Node process and the signed Codex CLI by using `codex sandbox`, producing
 `node_repl -> codex -> node` as the three nearest processes. This is a trust
 requirement, not a binary preference: Browser authenticates the peer, parent,
 and grandparent, while Computer Use authenticates its sender ancestry. A
 differently signed process at either checked depth invalidates an otherwise
-correct request. Retaining the primary app-server preserves Nodex's protocol
-compatibility and provider/model extensions.
+correct request. The app-server and Desktop Tool have independent release
+identities; their exact artifact pair is accepted only after the Browser and
+Computer Use conformance contract passes.
 
 Main atomically materializes the helper at the canonical Codex-home path after
 deep strict signature, bundle-ID, team-ID, and executable checks. A private
@@ -117,12 +118,12 @@ authentication and makes a structurally valid package fail at runtime.
 The unsigned app-server becomes a checked REPL ancestor. Signing only the
 helper and `sky.node` cannot repair Browser or Computer Use authentication.
 
-### Replace Nodex's primary app-server with the bundled signed Codex CLI
+### Launch the primary app-server through the bundled signed Codex CLI
 
-This satisfies native ancestry but changes the app-server protocol version and
-removes Nodex's provider/model and host extensions. Keeping the signed Node and
-Codex processes only in the REPL launch chain satisfies both boundaries without
-forking either runtime.
+This would couple app-server lifecycle and protocol identity to a binary whose
+role is native Browser/Computer Use ancestry. Keeping the signed Node and Codex
+processes only in the REPL launch chain preserves independent upgrades while
+still satisfying native sender authentication.
 
 ### Derive PiP from renderer Browser-tab state
 

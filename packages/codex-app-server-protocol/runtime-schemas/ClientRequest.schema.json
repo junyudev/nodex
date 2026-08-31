@@ -377,6 +377,61 @@
         }
       ]
     },
+    "definitions__v2__BedrockDiscoverParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "BedrockDiscoverParams",
+      "type": "object"
+    },
+    "definitions__v2__BedrockSetupParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "oneOf": [
+        {
+          "properties": {
+            "profile": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "profile"
+              ],
+              "title": "Profilev2::BedrockSetupParamsType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile",
+            "region",
+            "type"
+          ],
+          "title": "Profilev2::BedrockSetupParams",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "region": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "environment"
+              ],
+              "title": "Environmentv2::BedrockSetupParamsType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "region",
+            "type"
+          ],
+          "title": "Environmentv2::BedrockSetupParams",
+          "type": "object"
+        }
+      ],
+      "title": "BedrockSetupParams"
+    },
     "definitions__v2__ByteRange": {
       "properties": {
         "end": {
@@ -898,6 +953,15 @@
         "user",
         "developer",
         "assistant"
+      ],
+      "type": "string"
+    },
+    "definitions__v2__CyberAccessProgram": {
+      "description": "Requested cyber treatment for a ChatGPT-authenticated Codex turn. Authorization and model-tier restrictions remain server-owned.",
+      "enum": [
+        "standard",
+        "daybreakBlue",
+        "daybreakRed"
       ],
       "type": "string"
     },
@@ -2034,6 +2098,41 @@
           ],
           "title": "AmazonBedrockv2::LoginAccountParams",
           "type": "object"
+        },
+        {
+          "description": "[UNSTABLE] Managed Amazon Bedrock AWS access key login is experimental.",
+          "properties": {
+            "accessKeyId": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "secretAccessKey": {
+              "type": "string"
+            },
+            "sessionToken": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "enum": [
+                "amazonBedrockAccessKeys"
+              ],
+              "title": "AmazonBedrockAccessKeysv2::LoginAccountParamsType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "accessKeyId",
+            "region",
+            "secretAccessKey",
+            "type"
+          ],
+          "title": "AmazonBedrockAccessKeysv2::LoginAccountParams",
+          "type": "object"
         }
       ],
       "title": "LoginAccountParams"
@@ -2102,6 +2201,19 @@
     "definitions__v2__McpResourceReadParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "connectorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "originCallId": {
+          "description": "Originating MCP tool call used to select the resource's app.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "server": {
           "type": "string"
         },
@@ -2120,6 +2232,47 @@
         "uri"
       ],
       "title": "McpResourceReadParams",
+      "type": "object"
+    },
+    "definitions__v2__McpServerEventStreamStartParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "_meta": true,
+        "arguments": true,
+        "name": {
+          "type": "string"
+        },
+        "server": {
+          "type": "string"
+        },
+        "subscriptionId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "arguments",
+        "name",
+        "server",
+        "subscriptionId",
+        "threadId"
+      ],
+      "title": "McpServerEventStreamStartParams",
+      "type": "object"
+    },
+    "definitions__v2__McpServerEventStreamStopParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "subscriptionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "subscriptionId"
+      ],
+      "title": "McpServerEventStreamStopParams",
       "type": "object"
     },
     "definitions__v2__McpServerMigration": {
@@ -2984,6 +3137,224 @@
       "title": "ProcessWriteStdinParams",
       "type": "object"
     },
+    "definitions__v2__ProjectCreateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "roots": {
+          "items": {
+            "$ref": "#/definitions/definitions__v2__ProjectRoot"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "name",
+        "roots"
+      ],
+      "title": "ProjectCreateParams",
+      "type": "object"
+    },
+    "definitions__v2__ProjectDeleteParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "title": "ProjectDeleteParams",
+      "type": "object"
+    },
+    "definitions__v2__ProjectImportParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "roots": {
+          "items": {
+            "$ref": "#/definitions/definitions__v2__ProjectRoot"
+          },
+          "type": "array"
+        },
+        "threads": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "name",
+        "roots"
+      ],
+      "title": "ProjectImportParams",
+      "type": "object"
+    },
+    "definitions__v2__ProjectListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sortDirection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__SortDirection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Requires sortKey. Defaults to asc for position and desc for recencyAt."
+        },
+        "sortKey": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__ProjectSortKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Defaults to position. Recency sorting always places empty projects last."
+        }
+      },
+      "title": "ProjectListParams",
+      "type": "object"
+    },
+    "definitions__v2__ProjectMoveParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "beforeProjectId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "title": "ProjectMoveParams",
+      "type": "object"
+    },
+    "definitions__v2__ProjectReadParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "title": "ProjectReadParams",
+      "type": "object"
+    },
+    "definitions__v2__ProjectRoot": {
+      "properties": {
+        "path": {
+          "$ref": "#/definitions/definitions__v2__AbsolutePathBuf"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "definitions__v2__ProjectSortKey": {
+      "enum": [
+        "position",
+        "recencyAt"
+      ],
+      "type": "string"
+    },
+    "definitions__v2__ProjectUpdateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "roots": {
+          "items": {
+            "$ref": "#/definitions/definitions__v2__ProjectRoot"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "title": "ProjectUpdateParams",
+      "type": "object"
+    },
     "definitions__v2__RealtimeConversationVersion": {
       "enum": [
         "v1",
@@ -3550,7 +3921,10 @@
         {
           "properties": {
             "call_id": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "id": {
               "type": [
@@ -3568,6 +3942,18 @@
                 }
               ]
             },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "namespace": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "output": {
               "$ref": "#/definitions/definitions__v2__FunctionCallOutputBody"
             },
@@ -3580,7 +3966,6 @@
             }
           },
           "required": [
-            "call_id",
             "output",
             "type"
           ],
@@ -4678,7 +5063,7 @@
           "type": "boolean"
         },
         "excludeTurns": {
-          "description": "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking.",
+          "description": "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
           "type": "boolean"
         },
         "lastTurnId": {
@@ -4998,6 +5383,13 @@
             "null"
           ]
         },
+        "projectId": {
+          "description": "Omit to include every project, set to null for unassigned threads, or provide a project ID to return only threads in that project.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "searchTerm": {
           "description": "Optional substring filter for the extracted thread title.",
           "type": [
@@ -5138,6 +5530,13 @@
             }
           ],
           "description": "Patch the stored Git metadata for this thread. Omit a field to leave it unchanged, set it to `null` to clear it, or provide a string to replace the stored value."
+        },
+        "projectId": {
+          "description": "Omit to leave the project unchanged, use an empty string to clear it, or provide an existing project ID to assign it.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "threadId": {
           "type": "string"
@@ -5286,7 +5685,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "includeTurns": {
-          "description": "When true, include turns and their items from rollout history.",
+          "description": "When true, include turns and their items from rollout history. Full-history hydration is deprecated for paginated threads; prefer a metadata-only read and page with `thread/turns/list` and `thread/items/list`.",
           "type": "boolean"
         },
         "threadId": {
@@ -5623,6 +6022,27 @@
           ],
           "title": "WebrtcThreadRealtimeStartTransport",
           "type": "object"
+        },
+        {
+          "properties": {
+            "callId": {
+              "description": "Identifier of a realtime call already created and negotiated by the client.",
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "existingCall"
+              ],
+              "title": "ExistingCallThreadRealtimeStartTransportType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "callId",
+            "type"
+          ],
+          "title": "ExistingCallThreadRealtimeStartTransport",
+          "type": "object"
         }
       ]
     },
@@ -5727,7 +6147,7 @@
           ]
         },
         "excludeTurns": {
-          "description": "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming.",
+          "description": "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
           "type": "boolean"
         },
         "history": {
@@ -6276,6 +6696,14 @@
         },
         "threadId": {
           "type": "string"
+        },
+        "timeoutMs": {
+          "description": "Maximum execution time in milliseconds. Defaults to one hour when omitted or null. Must be non-negative; zero requests an immediate timeout, not unlimited execution. Does not affect the immediate RPC acknowledgement.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       },
       "required": [
@@ -6453,6 +6881,13 @@
             }
           ]
         },
+        "projectId": {
+          "description": "Optional project identity for this new thread. Durable threads persist the assignment; ephemeral threads expose it only in live responses.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "runtimeWorkspaceRoots": {
           "description": "Replace the thread's runtime workspace roots. Paths must be absolute.",
           "items": {
@@ -6526,6 +6961,34 @@
         "clear"
       ],
       "type": "string"
+    },
+    "definitions__v2__ThreadTimelineListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "EXPERIMENTAL - list ordinary and realtime thread history in rollout order.",
+      "properties": {
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadTimelineListParams",
+      "type": "object"
     },
     "definitions__v2__ThreadTurnsListParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -6671,6 +7134,61 @@
         }
       ]
     },
+    "definitions__v2__TurnSettingsUpdateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "description": "Experimental settings changes for one running turn, not future turns. Unsupported fields are rejected rather than silently ignored. Any live task kind may accept publication. Child sessions and consumers of frozen initial settings are unchanged.",
+      "properties": {
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Omission or `null` leaves the effort unchanged."
+        },
+        "model": {
+          "description": "Omission or `null` leaves the model unchanged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceTier": {
+          "description": "`null` clears the requested tier; omission leaves it unchanged.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__ReasoningSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Omission or `null` leaves the summary preference unchanged."
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId",
+        "turnId"
+      ],
+      "title": "TurnSettingsUpdateParams",
+      "type": "object"
+    },
     "definitions__v2__TurnStartParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -6729,6 +7247,17 @@
             "string",
             "null"
           ]
+        },
+        "cyberAccessProgram": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__CyberAccessProgram"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "EXPERIMENTAL - Request a workspace-authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access."
         },
         "effort": {
           "anyOf": [
@@ -6834,6 +7363,13 @@
             "null"
           ]
         },
+        "serviceTierForTurn": {
+          "description": "Override the service tier only when this request starts a new turn. Use \"default\" for standard speed. Omitted or null inherits the thread's tier. Does not change the thread's tier or a turn being steered.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "summary": {
           "anyOf": [
             {
@@ -6847,6 +7383,23 @@
         },
         "threadId": {
           "type": "string"
+        },
+        "toolOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__v2__TurnToolOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turnTrigger": {
+          "description": "Optional source classification for the caller that starts this turn. Ignored when this request steers an already-active turn.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -6905,6 +7458,27 @@
         "threadId"
       ],
       "title": "TurnSteerParams",
+      "type": "object"
+    },
+    "definitions__v2__TurnToolOutput": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "output": {
+          "$ref": "#/definitions/definitions__v2__FunctionCallOutputBody"
+        }
+      },
+      "required": [
+        "name",
+        "output"
+      ],
       "type": "object"
     },
     "definitions__v2__UserInput": {
@@ -7972,6 +8546,174 @@
         },
         "method": {
           "enum": [
+            "project/list"
+          ],
+          "title": "Project/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ProjectListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Project/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "project/read"
+          ],
+          "title": "Project/readRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ProjectReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Project/readRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "project/create"
+          ],
+          "title": "Project/createRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ProjectCreateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Project/createRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "project/import"
+          ],
+          "title": "Project/importRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ProjectImportParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Project/importRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "project/update"
+          ],
+          "title": "Project/updateRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ProjectUpdateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Project/updateRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "project/move"
+          ],
+          "title": "Project/moveRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ProjectMoveParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Project/moveRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "project/delete"
+          ],
+          "title": "Project/deleteRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ProjectDeleteParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Project/deleteRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
             "threadSection/list"
           ],
           "title": "ThreadSection/listRequestMethod",
@@ -9005,6 +9747,30 @@
         },
         "method": {
           "enum": [
+            "turn/settings/update"
+          ],
+          "title": "Turn/settings/updateRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__TurnSettingsUpdateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Turn/settings/updateRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
             "turn/steer"
           ],
           "title": "Turn/steerRequestMethod",
@@ -9164,6 +9930,30 @@
         "params"
       ],
       "title": "Thread/realtime/stopRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/timeline/list"
+          ],
+          "title": "Thread/timeline/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__ThreadTimelineListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/timeline/listRequest",
       "type": "object"
     },
     {
@@ -9740,6 +10530,54 @@
         },
         "method": {
           "enum": [
+            "mcpServer/event/stream/start"
+          ],
+          "title": "McpServer/event/stream/startRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__McpServerEventStreamStartParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "McpServer/event/stream/startRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "mcpServer/event/stream/stop"
+          ],
+          "title": "McpServer/event/stream/stopRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__McpServerEventStreamStopParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "McpServer/event/stream/stopRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
             "mcpServer/tool/call"
           ],
           "title": "McpServer/tool/callRequestMethod",
@@ -9826,6 +10664,54 @@
         "params"
       ],
       "title": "Account/login/startRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "account/bedrock/discover"
+          ],
+          "title": "Account/bedrock/discoverRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__BedrockDiscoverParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Account/bedrock/discoverRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/definitions__v2__RequestId"
+        },
+        "method": {
+          "enum": [
+            "account/bedrock/setup"
+          ],
+          "title": "Account/bedrock/setupRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/definitions__v2__BedrockSetupParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Account/bedrock/setupRequest",
       "type": "object"
     },
     {

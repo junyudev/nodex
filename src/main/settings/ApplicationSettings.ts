@@ -12,6 +12,7 @@ import {
   type CommandKeymapState,
 } from "../../shared/command-keybindings";
 import type {
+  AcpAgentSettings,
   AppUpdateSettings,
   BackupSettings,
   CodexDeveloperInstructionSettings,
@@ -23,6 +24,7 @@ import type {
   TelemetrySettings,
   ThreadNotificationSettings,
   UpdateAppUpdateSettingsInput,
+  UpdateAcpAgentSettingsInput,
   UpdateBackupSettingsInput,
   UpdateCodexDeveloperInstructionSettingsInput,
   UpdateCodexExecutionHostSettingsInput,
@@ -37,6 +39,7 @@ import type {
 } from "../../shared/types";
 import { MainConfig } from "../app/MainConfig";
 import {
+  getAcpAgentSettings,
   getAppUpdateSettings,
   getBackupSettings,
   getCodexDeveloperInstructionSettings,
@@ -51,6 +54,7 @@ import {
   getWindowRestoreSettings,
   resetCommandKeybindings,
   updateAppUpdateSettings,
+  updateAcpAgentSettings,
   updateBackupSettings,
   updateCodexDeveloperInstructionSettings,
   updateCodexExecutionHostSettings,
@@ -77,6 +81,7 @@ export interface ApplicationSettingsSnapshot {
   readonly git: CodexGitSettings;
   readonly managedWorktrees: ManagedWorktreeSettings;
   readonly executionHosts: CodexExecutionHostSettings;
+  readonly acpAgents: AcpAgentSettings;
   readonly commandKeymap: CommandKeymapState;
   readonly appUpdate: AppUpdateSettings;
   readonly windowRestore: WindowRestoreSettings;
@@ -104,6 +109,7 @@ export type ApplicationSettingsCommand =
       readonly type: "update-execution-hosts";
       readonly input: UpdateCodexExecutionHostSettingsInput;
     }
+  | { readonly type: "update-acp-agents"; readonly input: UpdateAcpAgentSettingsInput }
   | {
       readonly type: "update-command-keybinding";
       readonly commandId: string;
@@ -203,6 +209,7 @@ function makeSnapshot(
     git: getCodexGitSettings(snapshotSource),
     managedWorktrees: getManagedWorktreeSettings(snapshotSource),
     executionHosts: getCodexExecutionHostSettings(snapshotSource),
+    acpAgents: getAcpAgentSettings(snapshotSource),
     commandKeymap: getCommandKeymapState(snapshotSource),
     appUpdate: getAppUpdateSettings(snapshotSource, buildDefaultChannel),
     windowRestore: getWindowRestoreSettings(snapshotSource),
@@ -241,6 +248,9 @@ function applyCommand(
       return;
     case "update-execution-hosts":
       updateCodexExecutionHostSettings(command.input, source);
+      return;
+    case "update-acp-agents":
+      updateAcpAgentSettings(command.input, source);
       return;
     case "update-command-keybinding":
       updateCommandKeybinding(command.commandId, command.input, source);

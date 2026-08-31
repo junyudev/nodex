@@ -13,6 +13,7 @@ import * as ComputerUseSettingsIpc from "../ipc/handlers/ComputerUseSettingsIpc"
 import * as CoreAuthorityIpc from "../ipc/handlers/CoreAuthorityIpc";
 import * as ApplicationLocalStateIpc from "../ipc/handlers/ApplicationLocalStateIpc";
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
+import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
 import * as CodexPendingWorktreeIpc from "../ipc/handlers/CodexPendingWorktreeIpc";
 import * as CodexPromptRailIpc from "../ipc/handlers/CodexPromptRailIpc";
@@ -67,6 +68,7 @@ export const live = Layer.mergeAll(
   ExecutionHostIpc.live,
   ApplicationLocalStateIpc.live,
   ApplicationSettingsIpc.live,
+  AgentBackendIpc.live,
   AutomationIpc.live,
   CodexPendingWorktreeIpc.live,
   CodexPromptRailIpc.live(),

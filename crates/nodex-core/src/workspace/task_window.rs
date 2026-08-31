@@ -8,6 +8,7 @@ use nodex_core_contracts::workspace::{
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params, params_from_iter};
 
+use crate::domain::agent_backend::binding_from_storage;
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
 use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
@@ -142,8 +143,10 @@ fn read_task_window_in_scope(
              thread.thread_id, thread.project_id, thread.forked_from_id, \
              thread.parent_thread_id, thread.thread_name, thread.thread_source, \
              thread.service_name, thread.agent_nickname, thread.agent_role, thread.agent_path, \
-             substr(thread.thread_preview, 1, 1024), thread.model_provider, thread.model_id, \
-             thread.harness_id, thread.reasoning_effort, thread.service_tier, \
+             substr(thread.thread_preview, 1, 1024), thread.model_id, \
+             thread.reasoning_effort, thread.service_tier, \
+             thread.agent_backend_kind, thread.agent_backend_definition_id, \
+             thread.agent_backend_instance_config_id, \
              thread.execution_host_id, thread.cwd, thread.managed_worktree_path, \
              thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
              thread.status_type, \
@@ -225,7 +228,7 @@ pub(super) fn task_summary_from_row(
     let thread = thread_id
         .map(
             |thread_id| -> rusqlite::Result<ProjectWorkspaceTaskThreadSummary> {
-                let status_type = match row.get::<_, String>(offset + 32)?.as_str() {
+                let status_type = match row.get::<_, String>(offset + 33)?.as_str() {
                     "notLoaded" => Ok(CodexThreadStatusType::NotLoaded),
                     "idle" => Ok(CodexThreadStatusType::Idle),
                     "systemError" => Ok(CodexThreadStatusType::SystemError),
@@ -233,7 +236,7 @@ pub(super) fn task_summary_from_row(
                     _ => Err(rusqlite::Error::InvalidQuery),
                 }?;
                 let active_flags = serde_json::from_str::<Vec<CodexThreadActiveFlag>>(
-                    &row.get::<_, String>(offset + 33)?,
+                    &row.get::<_, String>(offset + 34)?,
                 )
                 .map_err(|_| rusqlite::Error::InvalidQuery)?;
                 Ok(ProjectWorkspaceTaskThreadSummary {
@@ -249,25 +252,29 @@ pub(super) fn task_summary_from_row(
                     agent_role: row.get(offset + 19)?,
                     agent_path: row.get(offset + 20)?,
                     thread_preview: bounded_preview(&row.get::<_, String>(offset + 21)?),
-                    model_provider: row.get(offset + 22)?,
-                    model_id: row.get(offset + 23)?,
-                    harness_id: row.get(offset + 24)?,
-                    reasoning_effort: row.get(offset + 25)?,
-                    service_tier: row.get(offset + 26)?,
-                    execution_host_id: row.get(offset + 27)?,
-                    cwd: row.get(offset + 28)?,
-                    managed_worktree_path: row.get(offset + 29)?,
-                    projectless_output_directory: row.get(offset + 30)?,
-                    projectless_workspace_browser_root: row.get(offset + 31)?,
+                    model_id: row.get(offset + 22)?,
+                    reasoning_effort: row.get(offset + 23)?,
+                    service_tier: row.get(offset + 24)?,
+                    backend_binding: binding_from_storage(
+                        row.get::<_, String>(offset + 25)?.as_str(),
+                        row.get(offset + 26)?,
+                        row.get(offset + 27)?,
+                    )
+                    .map_err(|_| rusqlite::Error::InvalidQuery)?,
+                    execution_host_id: row.get(offset + 28)?,
+                    cwd: row.get(offset + 29)?,
+                    managed_worktree_path: row.get(offset + 30)?,
+                    projectless_output_directory: row.get(offset + 31)?,
+                    projectless_workspace_browser_root: row.get(offset + 32)?,
                     status: ProjectWorkspaceThreadStatus {
                         status_type,
                         active_flags,
                     },
-                    archived: row.get::<_, i64>(offset + 34)? == 1,
-                    created_at: row.get(offset + 35)?,
-                    updated_at: row.get(offset + 36)?,
-                    recency_at: row.get(offset + 37)?,
-                    linked_at: row.get(offset + 38)?,
+                    archived: row.get::<_, i64>(offset + 35)? == 1,
+                    created_at: row.get(offset + 36)?,
+                    updated_at: row.get(offset + 37)?,
+                    recency_at: row.get(offset + 38)?,
+                    linked_at: row.get(offset + 39)?,
                 })
             },
         )
@@ -302,7 +309,11 @@ pub(super) fn task_summary_from_row(
 }
 
 fn task_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<(ProjectWorkspaceTaskSummary, i64, i64)> {
-    Ok((task_summary_from_row(row, 0)?, row.get(39)?, row.get(40)?))
+    Ok((
+        task_summary_from_row(row, 0)?,
+        row.get("pin_bucket")?,
+        row.get("lane_order")?,
+    ))
 }
 
 pub(crate) fn bounded_preview(value: &str) -> String {
@@ -437,7 +448,6 @@ mod tests {
                     project_id: Some(Some("project:default".to_owned())),
                     thread_name: Some(Some("New chat".to_owned())),
                     thread_preview: Some("first prompt".to_owned()),
-                    model_provider: Some("openai".to_owned()),
                     created_at: Some(400),
                     updated_at: Some(400),
                     ..ProjectWorkspaceThreadPatch::default()

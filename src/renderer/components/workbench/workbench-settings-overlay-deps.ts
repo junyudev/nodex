@@ -1,5 +1,6 @@
 export {
   applyAgentImport,
+  readAcpAgentSettings,
   deleteBackup,
   readBackupSettings,
   readCodexPermissionState,
@@ -13,6 +14,7 @@ export {
   scanAgentImport,
   scanPickedAgentImportHome,
   updateBackupSettings,
+  updateAcpAgentSettings,
   updateCodexPermissionConfigValue,
   updateCodexPermissionMode,
   updateDiagnosticsSettings,

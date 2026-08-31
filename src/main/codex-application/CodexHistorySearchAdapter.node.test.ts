@@ -40,6 +40,7 @@ const agentItem = (id: string, text = id): ThreadItem => ({
   text,
   phase: null,
   memoryCitation: null,
+  delivery: null,
 });
 
 const userItem = (id: string, text = id): ThreadItem => ({
@@ -62,7 +63,9 @@ const capabilitySnapshot = (
     paginatedHistory: true,
     searchOccurrences,
     ephemeralFork: true,
+    multiAgentV2Protocol: false,
     sideConversation: true,
+    subagentAncestorFilter: false,
     threadRevert: false,
   },
 });

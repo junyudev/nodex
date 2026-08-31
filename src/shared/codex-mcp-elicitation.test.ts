@@ -4,12 +4,20 @@ import {
   buildCodexMcpServerElicitationResponse,
   createInitialCodexMcpElicitationFormValues,
   isRenderableMcpServerElicitationRequest,
+  normalizeCodexMcpServerElicitationMode,
   normalizeCodexMcpServerElicitationResponse,
   validateCodexMcpElicitationFormValues,
 } from "./codex-mcp-elicitation";
 import type { CodexMcpServerElicitationRequest } from "./types";
 
 describe("isRenderableMcpServerElicitationRequest", () => {
+  test("canonicalizes the legacy OpenAI form spelling at state boundaries", () => {
+    expect(normalizeCodexMcpServerElicitationMode("openaiForm")).toBe("openai/form");
+    expect(normalizeCodexMcpServerElicitationMode("openai/form")).toBe("openai/form");
+    expect(normalizeCodexMcpServerElicitationMode("form")).toBe("form");
+    expect(normalizeCodexMcpServerElicitationMode("url")).toBe("url");
+  });
+
   test("declines invalid url-mode elicitations before they enter the request plane", () => {
     expect(
       isRenderableMcpServerElicitationRequest({

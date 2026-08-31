@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -5,11 +6,24 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import {
   BROWSER_RUNTIME_BUNDLE_DIRECTORY,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
+  parseBrowserRuntimeManifest,
 } from "../../shared/browser-runtime-metadata";
+import type {
+  AppServerRuntimeIdentity,
+  TestedBrowserAppServerPair,
+} from "../../shared/browser-app-server-compatibility";
 import { resolveBrowserRuntimeBundle } from "./browser-runtime-bundle";
 import { writeBrowserRuntimeFixture } from "./browser-runtime-test-fixture";
 
 const temporaryRoots: string[] = [];
+const APP_SERVER_IDENTITY: AppServerRuntimeIdentity = {
+  entrypointSha256: "a".repeat(64),
+  protocolSchemaFingerprint: "b".repeat(64),
+  runtimeVersion: "0.152.0-test",
+  sourceCommit: "c".repeat(40),
+  targetArch: "arm64",
+  targetPlatform: "darwin",
+};
 
 function makeRuntimeRoot(): string {
   const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-runtime-"));
@@ -17,12 +31,40 @@ function makeRuntimeRoot(): string {
   return runtimeRoot;
 }
 
-function resolveFixture(runtimeRoot: string) {
+function testedPairFor(runtimeRoot: string): readonly TestedBrowserAppServerPair[] {
+  const manifestPath = path.join(
+    runtimeRoot,
+    BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+    BROWSER_RUNTIME_MANIFEST_FILENAME,
+  );
+  if (!fs.existsSync(manifestPath)) return [];
+  const bytes = fs.readFileSync(manifestPath);
+  const manifest = parseBrowserRuntimeManifest(JSON.parse(bytes.toString("utf8")));
+  if (!manifest) return [];
+  return [
+    {
+      appServer: APP_SERVER_IDENTITY,
+      browser: {
+        browserPluginVersion: manifest.browserPlugin.version,
+        manifestSha256: createHash("sha256").update(bytes).digest("hex"),
+        peerCliVersion: manifest.runtimeVersions.codexCli,
+        targetArch: manifest.targetArch,
+        targetPlatform: manifest.targetPlatform,
+      },
+    },
+  ];
+}
+
+function resolveFixture(
+  runtimeRoot: string,
+  testedPairs: readonly TestedBrowserAppServerPair[] = testedPairFor(runtimeRoot),
+) {
   return resolveBrowserRuntimeBundle({
-    expectedCodexCompatibilityVersion: "0.144.6",
+    appServerIdentity: APP_SERVER_IDENTITY,
     runtimeRoot,
     targetArch: "arm64",
     targetPlatform: "darwin",
+    testedPairs,
   });
 }
 
@@ -112,19 +154,17 @@ describe("resolveBrowserRuntimeBundle", () => {
     });
   });
 
-  test("rejects a bundle for a different Codex compatibility version", () => {
+  test("rejects a valid bundle without an exact conformance record", () => {
     const runtimeRoot = makeRuntimeRoot();
-    writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY), {
-      codexCompatibilityVersion: "0.145.0",
-    });
+    writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY));
 
-    expect(resolveFixture(runtimeRoot)).toMatchObject({
-      reason: "incompatible-codex",
+    expect(resolveFixture(runtimeRoot, [])).toMatchObject({
+      reason: "untested-runtime-pair",
       status: "unavailable",
     });
   });
 
-  test("accepts a stable Codex version inside the closure's sealed protocol window", () => {
+  test("accepts only the exact app-server and Browser artifact identities", () => {
     const runtimeRoot = makeRuntimeRoot();
     writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY), {
       codexCliVersion: "0.146.0-alpha.9",
@@ -132,17 +172,15 @@ describe("resolveBrowserRuntimeBundle", () => {
     });
 
     expect(resolveFixture(runtimeRoot).status).toBe("available");
-  });
+    const pair = testedPairFor(runtimeRoot)[0];
+    if (!pair) throw new Error("Expected a tested fixture pair");
+    const wrongAppServerPair: TestedBrowserAppServerPair = {
+      ...pair,
+      appServer: { ...pair.appServer, entrypointSha256: "d".repeat(64) },
+    };
 
-  test("rejects the stable release at a prerelease upper boundary", () => {
-    const runtimeRoot = makeRuntimeRoot();
-    writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY), {
-      codexCliVersion: "0.144.6-alpha.9",
-      codexCompatibilityVersion: "0.144.5",
-    });
-
-    expect(resolveFixture(runtimeRoot)).toMatchObject({
-      reason: "incompatible-codex",
+    expect(resolveFixture(runtimeRoot, [wrongAppServerPair])).toMatchObject({
+      reason: "untested-runtime-pair",
       status: "unavailable",
     });
   });
@@ -152,7 +190,7 @@ describe("resolveBrowserRuntimeBundle", () => {
     writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY));
 
     const result = resolveBrowserRuntimeBundle({
-      expectedCodexCompatibilityVersion: "0.144.6",
+      appServerIdentity: APP_SERVER_IDENTITY,
       platformArtifactVerifier: ({ artifact, manifest }) =>
         artifact.kind === "native-addon" && manifest.peerAuthorization.signingTeamId !== "REALTEAM"
           ? "unexpected signing team"
@@ -160,6 +198,7 @@ describe("resolveBrowserRuntimeBundle", () => {
       runtimeRoot,
       targetArch: "arm64",
       targetPlatform: "darwin",
+      testedPairs: testedPairFor(runtimeRoot),
     });
 
     expect(result).toMatchObject({

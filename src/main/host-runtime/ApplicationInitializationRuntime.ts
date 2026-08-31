@@ -15,6 +15,7 @@ import { safeBroadcastToWindows } from "../ipc-safe-send";
 import { getLogger } from "../logging/logger";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
+import { MainShutdown } from "../app/MainShutdown";
 
 export class ApplicationInitializationRuntime extends Context.Service<
   ApplicationInitializationRuntime,
@@ -36,10 +37,11 @@ export class ApplicationInitializationRuntime extends Context.Service<
 
 export const live = (
   windows: WindowRuntimeService,
-): Layer.Layer<ApplicationInitializationRuntime> =>
+): Layer.Layer<ApplicationInitializationRuntime, never, MainShutdown> =>
   Layer.effect(
     ApplicationInitializationRuntime,
     Effect.gen(function* () {
+      const shutdown = yield* MainShutdown;
       const state = yield* SubscriptionRef.make<AppInitializationStep>({ phase: "opening" });
       const done = yield* Deferred.make<void>();
       const rendererLoaded = yield* PubSub.sliding<number>(MAIN_OBSERVATION_EVENT_CAPACITY);
@@ -88,14 +90,24 @@ export const live = (
         ),
         markFailed: setStep({ phase: "failed" }),
         observeAuthorityExit: (event) =>
-          Effect.sync(() => {
-            logger.error("Native Core authority process exited", {
-              code: event.code,
-              processId: event.processId,
-              signal: event.signal,
-              stderr: event.stderr || undefined,
-            });
-          }),
+          shutdown.isRequested.pipe(
+            Effect.tap((shutdownRequested) =>
+              Effect.sync(() => {
+                const details = {
+                  code: event.code,
+                  processId: event.processId,
+                  signal: event.signal,
+                  stderr: event.stderr || undefined,
+                };
+                if (shutdownRequested) {
+                  logger.info("Native Core authority process stopped", details);
+                  return;
+                }
+                logger.error("Native Core authority process exited", details);
+              }),
+            ),
+            Effect.asVoid,
+          ),
         observeCoreStartup: (event) => {
           if (event.kind === "migration_started") {
             return Effect.sync(() => {

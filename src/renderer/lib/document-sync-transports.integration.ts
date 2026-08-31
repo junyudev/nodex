@@ -13,6 +13,7 @@ import type {
   DocumentSyncSubscriptionAck,
   DocumentSyncUnsubscribeAck,
 } from "../../shared/block-documents/document-sync";
+import { documentSyncApplyCommandResult } from "../../shared/block-documents/document-sync";
 import type {
   CanvasSceneMutationCommandResult,
   CanvasSceneMutationRequest,
@@ -276,7 +277,13 @@ class FakeElectronTarget extends EventEmitter implements DocumentSyncClientTarge
       return this.realtime.sync(scope, this, request);
     }
     if (channel === "document-sync:apply") {
-      return this.realtime.applyUpdate(scope, this, request as unknown as DocumentSyncApplyRequest);
+      return documentSyncApplyCommandResult(
+        await this.realtime.applyUpdate(
+          scope,
+          this,
+          request as unknown as DocumentSyncApplyRequest,
+        ),
+      );
     }
     if (channel === "document-sync:awareness:publish") {
       return this.realtime.publishAwareness(scope, this, request as never);

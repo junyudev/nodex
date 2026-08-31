@@ -175,9 +175,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
             executionHostId: "host-a",
             cwd: "/workspace",
             executionProfile: {
-              providerId: "openai",
               modelId: "gpt-test",
-              harnessId: null,
               reasoningEffort: "high",
               serviceTier: null,
             },
@@ -187,7 +185,6 @@ const makeHarness = (options: HarnessOptions = {}) => {
           snapshot: options.sourceCanonicalLoaded === false ? null : sourceSnapshot,
         } as never;
       }),
-    descendants: () => Effect.die("unused"),
     acceptRollbackResult: () => Effect.die("unused"),
     acceptImportResult: () => Effect.die("unused"),
     acceptForkResult: ({ sourceThreadId: acceptedSource, response }) =>
@@ -339,7 +336,6 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
           lastTurnId: "turn-a",
           path: null,
           model: "gpt-test",
-          modelProvider: "openai",
           serviceTier: null,
           cwd: "/workspace",
           runtimeWorkspaceRoots: ["/workspace", "/shared"],

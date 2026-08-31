@@ -1,5 +1,4 @@
 import {
-  useDeferredValue,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -47,7 +46,6 @@ import {
   NodexDropdownItem,
   NodexDropdownMenu,
   NodexDropdownMessage,
-  NodexDropdownSearchInput,
   NodexDropdownSeparator,
   NodexDropdownSelectedIcon,
   NodexDropdownTitle,
@@ -90,16 +88,8 @@ import {
   formatCodexScheduledAutomationNextRunLabel,
   sortCodexScheduledAutomationsForDisplay,
 } from "@/lib/codex-scheduled-automation-display";
-import { agentProviderCatalogQueryOptions, codexModelsListQueryOptions } from "@/lib/query-options";
+import { codexModelsListQueryOptions } from "@/lib/query-options";
 import { queryKeys } from "@/lib/query-keys";
-import {
-  findAgentModel,
-  findAgentProvider,
-  isAgentProviderCredentialReady,
-  selectAgentModel,
-  selectAgentProvider,
-  selectAgentReasoningEffort,
-} from "@/lib/agent-execution-profile";
 import { useCodexAutomationRunsInbox } from "@/lib/use-codex-automation-runs-inbox";
 import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automations";
 import { useLocalEnvironmentOptions } from "@/lib/use-local-environment-queries";
@@ -112,7 +102,6 @@ import type {
   Project,
   WorktreeEnvironmentOption,
 } from "@/lib/types";
-import type { AgentExecutionProfile, AgentProviderCatalog } from "../../../shared/agent-runtime";
 import { cn } from "@/lib/utils";
 import {
   buildCodexScheduledAutomationCreateInput,
@@ -989,23 +978,23 @@ function resolveAutomationReasoningForModelChange(input: {
   return "medium";
 }
 
-function LegacyAutomationModelReasoningDropdown({
+function AutomationModelReasoningDropdown({
+  draft,
   models,
   modelsLoading,
   modelsError,
-  selectedModel,
-  selectedReasoningEffort,
   disabled,
   onSelect,
 }: {
+  draft: WorkbenchAutomationDraft;
   models: readonly CodexModelOption[];
   modelsLoading: boolean;
   modelsError: boolean;
-  selectedModel: string;
-  selectedReasoningEffort: WorkbenchAutomationDraft["reasoningEffort"];
   disabled: boolean;
   onSelect: (model: string, reasoningEffort: CodexScheduledAutomationReasoningEffort) => void;
 }) {
+  const selectedModel = draft.model;
+  const selectedReasoningEffort = draft.reasoningEffort;
   const visibleModels = useMemo(() => getVisibleCodexModels(models), [models]);
   const effectiveReasoningEffort =
     resolveAutomationSelectorReasoningEffort(selectedReasoningEffort);
@@ -1110,207 +1099,6 @@ function LegacyAutomationModelReasoningDropdown({
         )}
       </div>
     </NodexDropdownMenu>
-  );
-}
-
-function automationDraftExecutionProfile(
-  draft: WorkbenchAutomationDraft,
-): AgentExecutionProfile | null {
-  const providerId = draft.modelProvider.trim();
-  const modelId = draft.model.trim();
-  if (!providerId || !modelId) return null;
-  return {
-    providerId,
-    modelId,
-    harnessId: draft.harnessId.trim() || null,
-    reasoningEffort: draft.reasoningEffort || null,
-    serviceTier: draft.serviceTier.trim() || null,
-  };
-}
-
-function formatAutomationProviderStatus(
-  provider: NonNullable<AgentProviderCatalog["providers"][number]>,
-): string {
-  if (provider.credentialStatus === "runtimeManaged") return "Managed by ChatGPT sign-in";
-  if (provider.credentialStatus === "ready") return "API key saved";
-  if (provider.credentialStatus === "inherited") return "Using environment key";
-  if (provider.credentialStatus === "missing") return "API key required";
-  return "Unavailable";
-}
-
-function AgentAutomationModelReasoningDropdown({
-  catalog,
-  draft,
-  disabled,
-  onSelect,
-}: {
-  catalog: AgentProviderCatalog;
-  draft: WorkbenchAutomationDraft;
-  disabled: boolean;
-  onSelect: (profile: AgentExecutionProfile) => void;
-}) {
-  const profile = automationDraftExecutionProfile(draft);
-  const provider = profile ? findAgentProvider(catalog, profile.providerId) : null;
-  const selectedModel = profile ? findAgentModel(catalog, profile) : null;
-  const [query, setQuery] = useState("");
-  const deferredQuery = useDeferredValue(query);
-  if (!profile || !provider) return null;
-
-  const normalizedQuery = deferredQuery.trim().toLocaleLowerCase();
-  const matchingModels = provider.models.filter(
-    (candidate) =>
-      !candidate.hidden &&
-      (!normalizedQuery ||
-        `${candidate.displayName} ${candidate.modelId}`
-          .toLocaleLowerCase()
-          .includes(normalizedQuery)),
-  );
-  const visibleModels = [
-    ...matchingModels.filter((candidate) => candidate.modelId === profile.modelId),
-    ...matchingModels.filter((candidate) => candidate.modelId !== profile.modelId),
-  ].slice(0, 50);
-  const hiddenCount = matchingModels.length - visibleModels.length;
-  const reasoningOptions = selectedModel?.supportedReasoningEfforts ?? [];
-  const modelLabel = selectedModel?.displayName ?? profile.modelId;
-
-  return (
-    <NodexDropdownMenu
-      align="end"
-      side="bottom"
-      contentWidth="menu"
-      disabled={disabled}
-      triggerButton={
-        <button
-          type="button"
-          aria-label="Provider, model, and reasoning"
-          disabled={disabled}
-          className={cn(
-            AUTOMATION_FIELD_TRIGGER_CLASS,
-            "inline-flex w-auto max-w-full justify-end",
-            disabled && "cursor-default opacity-25 hover:bg-transparent",
-          )}
-        >
-          <span className="flex max-w-56 min-w-0 items-center gap-1.5 text-left">
-            <span className="min-w-0 truncate text-token-foreground">
-              {provider.displayName} · {modelLabel}
-            </span>
-            <span className="shrink-0 text-token-description-foreground">
-              {formatCodexReasoningEffortLabel(profile.reasoningEffort ?? undefined)}
-            </span>
-          </span>
-          <CompactChevronDownIcon className="icon-2xs shrink-0 text-token-text-tertiary" />
-        </button>
-      }
-    >
-      <NodexDropdownTitle>Provider</NodexDropdownTitle>
-      {catalog.providers.map((candidate) => {
-        const isCurrent = candidate.id === provider.id;
-        const credentialReady = isAgentProviderCredentialReady(candidate);
-        return (
-          <NodexDropdownItem
-            key={candidate.id}
-            disabled={
-              !isCurrent && (!credentialReady || candidate.models.every((model) => model.hidden))
-            }
-            rightSlot={isCurrent ? <NodexDropdownSelectedIcon /> : null}
-            subText={formatAutomationProviderStatus(candidate)}
-            onSelect={() => {
-              const next = selectAgentProvider(catalog, candidate.id, profile);
-              if (next) onSelect(next);
-            }}
-          >
-            {candidate.displayName}
-          </NodexDropdownItem>
-        );
-      })}
-      <NodexDropdownSeparator />
-      <NodexDropdownTitle>Reasoning</NodexDropdownTitle>
-      {reasoningOptions.length === 0 ? (
-        <NodexDropdownMessage compact>Runtime default</NodexDropdownMessage>
-      ) : (
-        reasoningOptions.map((option) => (
-          <NodexDropdownItem
-            key={option.value}
-            rightSlot={
-              option.value === profile.reasoningEffort ? <NodexDropdownSelectedIcon /> : null
-            }
-            subText={option.description ?? undefined}
-            onSelect={() => {
-              const next = selectAgentReasoningEffort(catalog, profile, option.value);
-              if (next) onSelect(next);
-            }}
-          >
-            {formatCodexReasoningEffortLabel(option.value)}
-          </NodexDropdownItem>
-        ))
-      )}
-      <NodexDropdownSeparator />
-      <NodexDropdownTitle>Model</NodexDropdownTitle>
-      {provider.models.filter((candidate) => !candidate.hidden).length > 8 ? (
-        <NodexDropdownSearchInput
-          value={query}
-          placeholder="Filter models…"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      ) : null}
-      <div className="vertical-scroll-fade-mask flex max-h-[250px] flex-col overflow-y-auto">
-        {visibleModels.length === 0 ? (
-          <NodexDropdownMessage compact>No matching models</NodexDropdownMessage>
-        ) : (
-          visibleModels.map((candidate) => (
-            <NodexDropdownItem
-              key={`${candidate.providerId}:${candidate.modelId}`}
-              rightSlot={
-                candidate.modelId === profile.modelId ? <NodexDropdownSelectedIcon /> : null
-              }
-              subText={candidate.description ?? undefined}
-              onSelect={() => onSelect(selectAgentModel(candidate, profile))}
-            >
-              {candidate.displayName}
-            </NodexDropdownItem>
-          ))
-        )}
-        {hiddenCount > 0 ? (
-          <NodexDropdownMessage compact centered>
-            Refine the search to see {hiddenCount} more models
-          </NodexDropdownMessage>
-        ) : null}
-      </div>
-    </NodexDropdownMenu>
-  );
-}
-
-function AutomationModelReasoningDropdown(props: {
-  catalog: AgentProviderCatalog | null;
-  draft: WorkbenchAutomationDraft;
-  models: readonly CodexModelOption[];
-  modelsLoading: boolean;
-  modelsError: boolean;
-  disabled: boolean;
-  onSelectLegacy: (model: string, reasoningEffort: CodexScheduledAutomationReasoningEffort) => void;
-  onSelectProfile: (profile: AgentExecutionProfile) => void;
-}) {
-  const profile = automationDraftExecutionProfile(props.draft);
-  if (props.catalog && profile && findAgentProvider(props.catalog, profile.providerId)) {
-    return (
-      <AgentAutomationModelReasoningDropdown
-        catalog={props.catalog}
-        draft={props.draft}
-        disabled={props.disabled}
-        onSelect={props.onSelectProfile}
-      />
-    );
-  }
-  return (
-    <LegacyAutomationModelReasoningDropdown
-      models={props.models}
-      modelsLoading={props.modelsLoading}
-      modelsError={props.modelsError}
-      selectedModel={props.draft.model}
-      selectedReasoningEffort={props.draft.reasoningEffort}
-      disabled={props.disabled}
-      onSelect={props.onSelectLegacy}
-    />
   );
 }
 
@@ -2523,7 +2311,6 @@ function AutomationDetailSurface({
   setDraft,
   validation,
   createDraftTemplate,
-  agentProviderCatalog,
   codexModels,
   codexModelsLoading,
   codexModelsError,
@@ -2552,7 +2339,6 @@ function AutomationDetailSurface({
   setDraft: Dispatch<SetStateAction<WorkbenchAutomationDraft>>;
   validation: WorkbenchAutomationDraftValidation;
   createDraftTemplate: WorkbenchAutomationTemplate | null;
-  agentProviderCatalog: AgentProviderCatalog | null;
   codexModels: readonly CodexModelOption[];
   codexModelsLoading: boolean;
   codexModelsError: boolean;
@@ -2631,7 +2417,6 @@ function AutomationDetailSurface({
       setDraft={setDraft}
       validation={validation}
       createDraftTemplate={createDraftTemplate}
-      agentProviderCatalog={agentProviderCatalog}
       codexModels={codexModels}
       codexModelsLoading={codexModelsLoading}
       codexModelsError={codexModelsError}
@@ -2661,7 +2446,6 @@ function AutomationDraftEditor({
   setDraft,
   validation,
   createDraftTemplate,
-  agentProviderCatalog,
   codexModels,
   codexModelsLoading,
   codexModelsError,
@@ -2690,7 +2474,6 @@ function AutomationDraftEditor({
   setDraft: Dispatch<SetStateAction<WorkbenchAutomationDraft>>;
   validation: WorkbenchAutomationDraftValidation;
   createDraftTemplate: WorkbenchAutomationTemplate | null;
-  agentProviderCatalog: AgentProviderCatalog | null;
   codexModels: readonly CodexModelOption[];
   codexModelsLoading: boolean;
   codexModelsError: boolean;
@@ -2976,28 +2759,16 @@ function AutomationDraftEditor({
           {draft.kind === "cron" ? (
             <AutomationDetailRow label="Model">
               <AutomationModelReasoningDropdown
-                catalog={agentProviderCatalog}
                 draft={draft}
                 models={codexModels}
                 modelsLoading={codexModelsLoading}
                 modelsError={codexModelsError}
                 disabled={isMutating}
-                onSelectLegacy={(model, reasoningEffort) =>
+                onSelect={(model, reasoningEffort) =>
                   updateDraft({
                     model,
-                    modelProvider: "openai",
-                    harnessId: "",
                     reasoningEffort,
                     serviceTier: "",
-                  })
-                }
-                onSelectProfile={(profile) =>
-                  updateDraft({
-                    model: profile.modelId,
-                    modelProvider: profile.providerId,
-                    harnessId: profile.harnessId ?? "",
-                    reasoningEffort: profile.reasoningEffort ?? "",
-                    serviceTier: profile.serviceTier ?? "",
                   })
                 }
               />
@@ -3056,7 +2827,6 @@ export function WorkbenchAutomationSidePanelTab({
   const queryClient = useQueryClient();
   const automationsQuery = useCodexScheduledAutomations();
   const modelsQuery = useQuery(codexModelsListQueryOptions());
-  const agentCatalogQuery = useQuery(agentProviderCatalogQueryOptions());
   const [savedAutomation, setSavedAutomation] = useState<CodexScheduledAutomation | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [mutating, setMutating] = useState(false);
@@ -3281,7 +3051,6 @@ export function WorkbenchAutomationSidePanelTab({
         setDraft={setDraft}
         validation={validation}
         createDraftTemplate={null}
-        agentProviderCatalog={agentCatalogQuery.data ?? null}
         codexModels={modelsQuery.data ?? []}
         codexModelsLoading={modelsQuery.isLoading}
         codexModelsError={modelsQuery.isError}
@@ -3369,7 +3138,6 @@ export function WorkbenchAutomationsRouteShell({
   const automationsQuery = useCodexScheduledAutomations();
   const automationRunsQuery = useCodexAutomationRunsInbox();
   const modelsQuery = useQuery(codexModelsListQueryOptions());
-  const agentCatalogQuery = useQuery(agentProviderCatalogQueryOptions());
   const [mutatingAutomationId, setMutatingAutomationId] = useState<string | null>(null);
   const [runNowPendingAutomationId, setRunNowPendingAutomationId] = useState<string | null>(null);
   const [runActionPending, setRunActionPending] = useState(false);
@@ -4160,7 +3928,6 @@ export function WorkbenchAutomationsRouteShell({
               setDraft={setDraft}
               validation={draftValidation}
               createDraftTemplate={detailMode === "create" ? createDraftTemplate : null}
-              agentProviderCatalog={agentCatalogQuery.data ?? null}
               codexModels={modelsQuery.data ?? []}
               codexModelsLoading={modelsQuery.isLoading}
               codexModelsError={modelsQuery.isError}

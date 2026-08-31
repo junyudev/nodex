@@ -146,7 +146,6 @@ export function buildComposerShellModel(
       source: null,
       threadName: null,
       threadPreview: "",
-      modelProvider: "",
       cwd: null,
       statusType: normalized.statusType ?? "notLoaded",
       statusActiveFlags: normalized.statusActiveFlags,

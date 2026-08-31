@@ -581,18 +581,30 @@ export const threadHostResolverLive: Layer.Layer<
                   cause,
                 }),
               ),
-              Effect.flatMap((snapshot) =>
-                snapshot.value.kind === "thread"
-                  ? Effect.succeed(snapshot.value.thread.execution_host_id)
-                  : Effect.fail(
-                      codexRuntimeError({
-                        operation: "thread-host.resolve-variant",
-                        reason: "protocol",
-                        retryable: false,
-                        cause: new Error("Core returned a non-thread Workspace read variant"),
-                      }),
-                    ),
-              ),
+              Effect.flatMap((snapshot) => {
+                if (snapshot.value.kind !== "thread") {
+                  return Effect.fail(
+                    codexRuntimeError({
+                      operation: "thread-host.resolve-variant",
+                      reason: "protocol",
+                      retryable: false,
+                      cause: new Error("Core returned a non-thread Workspace read variant"),
+                    }),
+                  );
+                }
+                if (snapshot.value.thread.backend_binding.kind !== "codex") {
+                  return Effect.fail(
+                    codexRuntimeError({
+                      operation: "thread-host.resolve-backend",
+                      reason: "request",
+                      retryable: false,
+                      method: "requestForThread",
+                      cause: new Error(`Thread '${threadId}' is not owned by the Codex backend`),
+                    }),
+                  );
+                }
+                return Effect.succeed(snapshot.value.thread.execution_host_id);
+              }),
             );
           }),
         ),

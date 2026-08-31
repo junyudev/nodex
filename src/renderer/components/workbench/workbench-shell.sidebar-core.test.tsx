@@ -720,6 +720,7 @@ describe("workbench session shell / sidebar-core", () => {
     const snapshotOnlyItem: CodexSidebarThreadItem = {
       key: "local:thread-snapshot-only",
       kind: "local",
+      backendBinding: { kind: "codex" },
       runLocation: { kind: "local-checkout" },
       hostId: "local",
       threadId: "thread-snapshot-only",
@@ -769,6 +770,7 @@ describe("workbench session shell / sidebar-core", () => {
     const snapshotOnlyItem: CodexSidebarThreadItem = {
       key: "local:thread-archive-failure",
       kind: "local",
+      backendBinding: { kind: "codex" },
       runLocation: { kind: "local-checkout" },
       hostId: "local",
       threadId: "thread-archive-failure",

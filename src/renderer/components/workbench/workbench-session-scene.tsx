@@ -126,6 +126,7 @@ export function WorkbenchSessionScene({
     "right",
     {
       kind: "session",
+      backendKind: session.thread?.backendBinding.kind ?? "codex",
       projectId: session.projectId,
       hasAttachedThread: Boolean(session.thread),
       cwd: session.thread?.cwd,
@@ -138,6 +139,7 @@ export function WorkbenchSessionScene({
     "bottom",
     {
       kind: "session",
+      backendKind: session.thread?.backendBinding.kind ?? "codex",
       projectId: session.projectId,
       hasAttachedThread: Boolean(session.thread),
       cwd: session.thread?.cwd,

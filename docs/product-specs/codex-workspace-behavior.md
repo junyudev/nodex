@@ -125,8 +125,10 @@ independent of the parent's resident history size. It may not recursively create
 Selected transcript text may prefill its composer without submitting.
 
 Inline child agents remain descendants of one root Chat and open through the
-single read-only Subagents surface rather than becoming root Sessions. Summary
-presentation is defined in [Thread Summary Panel Behavior](thread-summary-panel-behavior.md).
+single root-scoped Subagents surface rather than becoming root Sessions. Their
+discovery, status, selected detail, and root lifecycle are defined in
+[Codex Subagent Behavior](codex-subagent-behavior.md); summary presentation is
+defined in [Thread Summary Panel Behavior](thread-summary-panel-behavior.md).
 
 ## Sidebar availability
 
@@ -180,17 +182,28 @@ working directory; Stop acts on the exact live process or Terminal session.
 
 ## Intelligence and account state
 
-A new Chat selects a provider, model, harness, reasoning effort, service tier,
-collaboration mode, and personality from current host catalogs. Existing Chats
-retain immutable provider/harness identity while allowing only catalog-approved
-same-Thread changes to mutable intelligence settings. Forks and scheduled/child
-execution inherit the source's latest durable profile.
+A new Codex Chat selects a model, reasoning effort, service tier,
+collaboration mode, and personality from current app-server catalogs. Existing
+Chats allow only catalog-approved same-Thread changes to mutable intelligence
+settings. Forks and scheduled/child execution inherit the source's latest
+durable Codex profile.
+The composer exposes one catalog-driven intelligence selector with Model,
+Effort, and Speed submenus. It does not split model selection into simplified
+and advanced modes, so the same hierarchy remains valid as backend catalogs and
+capabilities vary.
+The selected execution profile is authoritative for both creation and the first
+Turn. Thread creation, durable metadata, and first-Turn preparation consume that
+same compound selection; scalar draft defaults are fallback only when no profile
+was selected. Main revalidates a selected profile against the live model
+catalog and rejects a mismatched Thread-start response before linking the Thread
+or admitting its first Turn.
 
 Fast Mode is a global preference with the focused contract in
-[Codex Fast Mode Core Enablement](codex-fast-mode-core-enablement.md). Provider
-credentials and authenticated account state remain Main-owned and never enter
-renderer persistence. Import of external-agent data is explicit, selective,
-and never imports credentials, approval policy, or another product database.
+[Codex Fast Mode Core Enablement](codex-fast-mode-core-enablement.md). Codex
+authentication remains runtime-owned and never enters renderer persistence.
+Import of external-agent data is explicit, selective, and never imports
+authentication or connection state, approval policy, or another product
+database.
 
 Within one Profile, Main owns one generation-fenced app-server lifecycle.
 Concurrent consumers join the same cold start; stop, failed initialization, and

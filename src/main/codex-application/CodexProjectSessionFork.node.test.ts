@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { CodexCanonicalConversationState } from "../../shared/types";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
@@ -31,7 +32,7 @@ const canonical = {
   protocol: { id: sourceThreadId },
 } as unknown as CodexCanonicalConversationState;
 
-const makeHarness = () => {
+const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) => {
   const order: string[] = [];
   const directForks: CodexConversationForkInput[] = [];
   const pendingRequests: unknown[] = [];
@@ -88,11 +89,10 @@ const makeHarness = () => {
       sessionId,
       projectId: "project-a",
       executionHostId: "local",
+      backendBinding,
       cwd: "/workspace",
       executionProfile: {
-        providerId: "openai",
         modelId: "gpt-test",
-        harnessId: null,
         reasoningEffort: "high",
         serviceTier: null,
       },
@@ -192,6 +192,23 @@ const makeHarness = () => {
   );
   return { capability, directForks, order, pendingRequests, scene, settings };
 };
+
+it.effect("rejects an ACP Project Session before any Codex fork side effect", () =>
+  Effect.gen(function* () {
+    const { capability, directForks, order, pendingRequests } = makeHarness({
+      kind: "acp",
+      agentDefinitionId: "claude-agent-acp",
+      instanceConfigId: "claude-local",
+    });
+    const forks = yield* capability;
+    yield* forks
+      .fork({ sessionId, input: { target: "local", turnId: "turn-a" } })
+      .pipe(Effect.flip);
+    assert.deepEqual(directForks, []);
+    assert.deepEqual(pendingRequests, []);
+    assert.deepEqual(order, []);
+  }),
+);
 
 it.effect("forks a local Project Session through the canonical direct capability", () =>
   Effect.gen(function* () {

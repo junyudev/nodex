@@ -72,6 +72,18 @@ describe("isolated scenario Profile", () => {
     expect((await stat(path.join(copied.codexHome, "auth.json"))).mode & 0o777).toBe(0o600);
     expect(await readFile(copied.manifestPath, "utf8")).not.toContain("top-secret");
 
+    const authOnly = await createIsolatedProfile({
+      label: "auth-only",
+      codex: "copy-auth",
+      sourceCodexHome: source,
+      retention: "keep",
+    });
+    retained.push(authOnly);
+    expect(await readFile(path.join(authOnly.codexHome, "auth.json"), "utf8")).toBe("top-secret");
+    await expect(
+      readFile(path.join(authOnly.codexHome, "config.toml"), "utf8"),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+
     const configOnly = await createIsolatedProfile({
       label: "config-only",
       codex: "copy-config",
@@ -110,6 +122,24 @@ describe("isolated scenario Profile", () => {
     } finally {
       await rm(source, { recursive: true, force: true });
     }
+  });
+
+  test("copies a symlinked credential source into an owned regular file", async () => {
+    const source = await mkdtemp(path.join(os.tmpdir(), "ndx-codex-symlink-"));
+    const credential = path.join(source, "credential.json");
+    await writeFile(credential, "top-secret");
+    await symlink(credential, path.join(source, "auth.json"));
+
+    const profile = await createIsolatedProfile({
+      label: "symlink-auth",
+      codex: "copy-auth",
+      sourceCodexHome: source,
+      retention: "keep",
+    });
+    retained.push(profile);
+    expect(await readFile(path.join(profile.codexHome, "auth.json"), "utf8")).toBe("top-secret");
+    expect((await stat(path.join(profile.codexHome, "auth.json"))).isFile()).toBe(true);
+    await rm(source, { recursive: true, force: true });
   });
 
   test("refuses mismatched manifests, runtime evidence, and symlink roots", async () => {

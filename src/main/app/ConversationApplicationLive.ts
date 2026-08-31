@@ -77,9 +77,9 @@ import {
   make as makeCodexPersistedHistorySearchRuntime,
 } from "../codex-application/CodexPersistedHistorySearchRuntime";
 import {
-  CodexSubagentCatalog,
-  make as makeCodexSubagentCatalog,
-} from "../codex-application/CodexSubagentCatalog";
+  CodexSubagentDirectory,
+  make as makeCodexSubagentDirectory,
+} from "../codex-application/CodexSubagentDirectory";
 import {
   CodexConversationMaterialization,
   make as makeCodexConversationMaterialization,
@@ -432,7 +432,7 @@ const persistedHistorySearch = Layer.effect(
   CodexPersistedHistorySearchRuntime,
   makeCodexPersistedHistorySearchRuntime,
 ).pipe(Layer.provideMerge(historyExport));
-const subagents = Layer.effect(CodexSubagentCatalog, makeCodexSubagentCatalog).pipe(
+const subagents = Layer.effect(CodexSubagentDirectory, makeCodexSubagentDirectory).pipe(
   Layer.provideMerge(persistedHistorySearch),
 );
 const materialization = Layer.effect(

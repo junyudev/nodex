@@ -434,6 +434,7 @@ export function useWorkbenchPanelCommandRouter({
         owner: activeSession
           ? {
               kind: "session",
+              backendKind: activeSession.thread?.backendBinding.kind ?? "codex",
               projectId: activeSession.projectId,
               hasAttachedThread: Boolean(activeSession.thread),
               cwd: activeSession.thread?.cwd,

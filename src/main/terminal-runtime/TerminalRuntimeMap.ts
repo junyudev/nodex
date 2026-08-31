@@ -51,6 +51,7 @@ export class TerminalRuntime extends Context.Service<
     ) => Effect.Effect<void>;
     readonly write: (data: string) => Effect.Effect<void, TerminalRuntimeError>;
     readonly resize: (size: TerminalSize) => Effect.Effect<void, TerminalRuntimeError>;
+    readonly kill: Effect.Effect<void, TerminalRuntimeError>;
   }
 >()("nodex/main/terminal-runtime/TerminalRuntime") {}
 
@@ -190,6 +191,18 @@ const runtimeLayer = (
             ),
           );
         },
+        kill: requireRunning().pipe(
+          Effect.andThen(handle.kill),
+          Effect.mapError((cause) =>
+            cause instanceof TerminalRuntimeError
+              ? cause
+              : new TerminalRuntimeError({
+                  operation: "kill",
+                  sessionId: config.sessionId,
+                  cause,
+                }),
+          ),
+        ),
       });
     }),
   );

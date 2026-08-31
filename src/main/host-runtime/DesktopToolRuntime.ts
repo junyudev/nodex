@@ -103,7 +103,9 @@ const make = (options: DesktopToolRuntimeLayerOptions) =>
           (cause) => new DesktopToolRuntimeError({ operation: "config-requirements", cause }),
         ),
       ),
-      threadConfig: snapshot.pipe(
+      // A Thread asking for desktop tools is itself the readiness boundary. Callers must not
+      // depend on a Settings screen (or another earlier request) having reconciled plugins.
+      threadConfig: ensureReady.pipe(
         Effect.flatMap((current) =>
           Effect.try({
             try: () => {

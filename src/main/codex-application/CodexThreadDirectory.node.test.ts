@@ -23,11 +23,7 @@ import { makeConversationEntityStateRegistry } from "./internal/ConversationEnti
 import { makeCodexRendererConversationRegistryState } from "./CodexRendererConversationRegistry";
 import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
-import {
-  CODEX_SUBAGENT_DISCOVERY_MAX_PAGES,
-  CODEX_SUBAGENT_DISCOVERY_MAX_RESULT_BYTES,
-  make as makeDirectory,
-} from "./CodexThreadDirectory";
+import { make as makeDirectory } from "./CodexThreadDirectory";
 import { CodexHistoryPageAdapter, make as makeHistoryPageAdapter } from "./CodexHistoryPageAdapter";
 
 type CoreThread = Extract<
@@ -51,9 +47,8 @@ const coreThread = (threadId: string, overrides: Partial<CoreThread> = {}): Core
     agent_path: null,
     thread_name: threadId,
     thread_preview: "",
-    model_provider: "openai",
+    backend_binding: { kind: "codex" },
     model_id: "gpt-test",
-    harness_id: null,
     reasoning_effort: "high",
     service_tier: null,
     execution_host_id: "remote-a",
@@ -66,12 +61,13 @@ const coreThread = (threadId: string, overrides: Partial<CoreThread> = {}): Core
     archived: false,
     pinned_order: null,
     has_unread_turn: false,
+    dynamic_tool_catalogs: [],
     created_at: 100_000,
     updated_at: 100_000,
     recency_at: 100_000,
     linked_at: "2026-08-23T00:00:00.000Z",
     ...overrides,
-  }) as CoreThread;
+  }) satisfies CoreThread;
 
 const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
   id: threadId,
@@ -83,6 +79,7 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 100,
@@ -307,6 +304,7 @@ it.effect("rejects inline history from a standalone start before it mutates dura
           text: "must not become resident",
           phase: null,
           memoryCitation: null,
+          delivery: null,
         })),
         status: "completed",
         error: null,
@@ -446,6 +444,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
                     text: "bounded tail",
                     phase: null,
                     memoryCitation: null,
+                    delivery: null,
                   },
                 },
               ],
@@ -648,7 +647,7 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
           },
           model: "gpt-fork",
           modelProvider: "openai",
-          serviceTier: "fast",
+          serviceTier: "default",
           cwd: "/repo",
           runtimeWorkspaceRoots: ["/repo", "/shared"],
           instructionSources: [],
@@ -670,8 +669,12 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
       assert.strictEqual(accepted.durable.forkedFromId, "thread-source");
       assert.strictEqual(accepted.durable.executionHostId, "remote-fork");
       assert.strictEqual(accepted.durable.managedWorktreePath, "/repo");
-      assert.strictEqual(accepted.durable.executionProfile?.providerId, "openai");
       assert.strictEqual(accepted.durable.executionProfile?.modelId, "gpt-fork");
+      assert.strictEqual(accepted.durable.executionProfile?.serviceTier, null);
+      assert.strictEqual(
+        accepted.canonical?.sidecar.hydrationContext?.latestThreadSettings?.serviceTier,
+        null,
+      );
       assert.deepEqual(persisted?.dynamic_tool_catalogs, [
         { namespace: "nodex", toolset_revision: 7 },
       ]);
@@ -814,6 +817,58 @@ it.effect("resolves remote metadata without reading or materializing the transcr
       assert.isNull(resolved?.canonical ?? null);
       assert.isNull(resolved?.snapshot ?? null);
       assert.isTrue(events.length > 0);
+    }),
+  ),
+);
+
+it.effect("never admits an ACP Thread to any Codex directory fidelity", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const threads = new Map([
+        [
+          "thread-acp",
+          coreThread("thread-acp", {
+            backend_binding: {
+              kind: "acp",
+              agent_definition_id: "claude-code",
+              instance_config_id: null,
+            },
+          }),
+        ],
+      ]);
+      const conversations = makeConversations();
+      let gatewayRequests = 0;
+      const gateway = makeGateway((() =>
+        Effect.sync(() => {
+          gatewayRequests += 1;
+          return { thread: appThread("thread-acp") };
+        })) as RequestOnHost);
+      const directory = yield* directoryFoundations.pipe(
+        Effect.provideService(
+          CodexApplicationEventHub,
+          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+        ),
+        Effect.provideService(
+          CodexConversationProjection,
+          CodexConversationProjection.of({ hydrate: () => Effect.die("unused") } as never),
+        ),
+        Effect.provideService(CodexGateway, gateway),
+        Effect.provideService(ConversationEntityMap, conversations),
+        Effect.provideService(CoreModules, makeCore(threads)),
+      );
+
+      const results = yield* Effect.forEach(
+        ["durable", "metadata", "tail", "live"] as const,
+        (fidelity) =>
+          directory.resolve({
+            threadId: "thread-acp",
+            fidelity,
+            hostId: "local",
+          }),
+      );
+
+      assert.deepEqual(results, [null, null, null, null]);
+      assert.strictEqual(gatewayRequests, 0);
     }),
   ),
 );
@@ -1135,258 +1190,6 @@ it.effect("resumes paginated Threads metadata-first and hydrates one bounded tai
         openingUserMessageId: "item-opening",
         itemsView: "summary",
       });
-    }),
-  ),
-);
-
-it.effect("fails closed when subagent discovery repeats a continuation cursor", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const threads = new Map([["root", coreThread("root", { created_at: 0 })]]);
-      const core = makeCore(threads);
-      const conversations = makeConversations();
-      const cursors: unknown[] = [];
-      const gateway = makeGateway(((hostId, method, params) => {
-        assert.strictEqual(hostId, "remote-a");
-        if (method === "thread/read") {
-          assert.deepEqual(params as unknown, {
-            threadId: "child-b",
-            includeTurns: false,
-          });
-          return Effect.succeed({
-            thread: {
-              ...appThread("child-b"),
-              parentThreadId: "child-a",
-              source: { subAgentThreadSpawn: { parentThreadId: "child-a" } },
-            },
-          }) as never;
-        }
-        assert.strictEqual(method, "thread/list");
-        const cursor = (params as { readonly cursor?: unknown }).cursor;
-        cursors.push(cursor);
-        return Effect.succeed(
-          cursor === null
-            ? {
-                data: [
-                  {
-                    ...appThread("child-a"),
-                    parentThreadId: "root",
-                    source: { subAgentThreadSpawn: { parentThreadId: "root" } },
-                  },
-                ],
-                nextCursor: "page-2",
-              }
-            : {
-                data: [
-                  {
-                    ...appThread("child-b"),
-                    parentThreadId: "child-a",
-                    source: { subAgentThreadSpawn: { parentThreadId: "child-a" } },
-                  },
-                ],
-                nextCursor: "page-2",
-              },
-        ) as never;
-      }) as RequestOnHost);
-      const directory = yield* directoryFoundations.pipe(
-        Effect.provideService(
-          CodexApplicationEventHub,
-          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
-        ),
-        Effect.provideService(
-          CodexConversationProjection,
-          CodexConversationProjection.of({ hydrate: () => Effect.die("unused") } as never),
-        ),
-        Effect.provideService(CodexGateway, gateway),
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CoreModules, core),
-      );
-
-      const discovered = yield* Effect.exit(
-        directory.descendants({
-          rootThreadId: "root",
-          threadIds: ["child-b"],
-          fidelity: "metadata",
-        }),
-      );
-
-      assert.deepEqual(cursors, [null, "page-2"]);
-      assert.isTrue(Exit.isFailure(discovered));
-      assert.deepEqual(
-        ["child-a", "child-b"].map((threadId) => {
-          const durable = threads.get(threadId);
-          return {
-            threadId,
-            parentThreadId: durable?.parent_thread_id,
-            projectId: durable?.project_id,
-            executionHostId: durable?.execution_host_id,
-          };
-        }),
-        [
-          {
-            threadId: "child-a",
-            parentThreadId: undefined,
-            projectId: undefined,
-            executionHostId: undefined,
-          },
-          {
-            threadId: "child-b",
-            parentThreadId: undefined,
-            projectId: undefined,
-            executionHostId: undefined,
-          },
-        ],
-      );
-    }),
-  ),
-);
-
-it.effect("generation-fences discovery and rejects inline history before retaining a child", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const threads = new Map([["root", coreThread("root", { created_at: 0 })]]);
-      const conversations = makeConversations();
-      const poisonTurn: Turn = {
-        id: "turn-inline",
-        items: [],
-        itemsView: "full",
-        status: "completed",
-        error: null,
-        startedAt: null,
-        completedAt: null,
-        durationMs: null,
-      };
-      const gateway = makeGateway(((hostId, method, _params, scheduling) => {
-        assert.strictEqual(hostId, "remote-a");
-        assert.strictEqual(method, "thread/list");
-        assert.deepInclude(scheduling as object, {
-          expectedHostId: "remote-a",
-          expectedGeneration: 1,
-        });
-        return Effect.succeed({
-          data: [
-            {
-              ...appThread("child-inline", [poisonTurn]),
-              parentThreadId: "root",
-              source: { subAgentThreadSpawn: { parentThreadId: "root" } },
-            },
-          ],
-          nextCursor: null,
-        }) as never;
-      }) as RequestOnHost);
-      const directory = yield* directoryFoundations.pipe(
-        Effect.provideService(
-          CodexApplicationEventHub,
-          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
-        ),
-        Effect.provideService(
-          CodexConversationProjection,
-          CodexConversationProjection.of({ hydrate: () => Effect.die("unused") } as never),
-        ),
-        Effect.provideService(CodexGateway, gateway),
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CoreModules, makeCore(threads)),
-      );
-
-      const discovered = yield* Effect.exit(
-        directory.descendants({ rootThreadId: "root", fidelity: "metadata" }),
-      );
-
-      assert.isTrue(Exit.isFailure(discovered));
-      assert.deepEqual([...threads.keys()], ["root"]);
-      assert.isNull(conversations.current("child-inline"));
-    }),
-  ),
-);
-
-it.effect("does not retain partial subagent results beyond the fixed discovery page budget", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const threads = new Map([["root", coreThread("root", { created_at: 0 })]]);
-      const core = makeCore(threads);
-      const conversations = makeConversations();
-      let pageCount = 0;
-      const gateway = makeGateway(((hostId, method) => {
-        assert.strictEqual(hostId, "remote-a");
-        assert.strictEqual(method, "thread/list");
-        pageCount += 1;
-        return Effect.succeed({
-          data: [
-            {
-              ...appThread(`child-${pageCount}`),
-              parentThreadId: "root",
-              source: { subAgentThreadSpawn: { parentThreadId: "root" } },
-            },
-          ],
-          nextCursor: `cursor-${pageCount}`,
-        }) as never;
-      }) as RequestOnHost);
-      const directory = yield* directoryFoundations.pipe(
-        Effect.provideService(
-          CodexApplicationEventHub,
-          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
-        ),
-        Effect.provideService(
-          CodexConversationProjection,
-          CodexConversationProjection.of({ hydrate: () => Effect.die("unused") } as never),
-        ),
-        Effect.provideService(CodexGateway, gateway),
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CoreModules, core),
-      );
-
-      const result = yield* Effect.exit(
-        directory.descendants({ rootThreadId: "root", fidelity: "metadata" }),
-      );
-
-      assert.isTrue(Exit.isFailure(result));
-      assert.strictEqual(pageCount, CODEX_SUBAGENT_DISCOVERY_MAX_PAGES);
-      assert.strictEqual(threads.size, 1);
-    }),
-  ),
-);
-
-it.effect("rejects a subagent discovery result that exceeds its retained byte budget", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const threads = new Map([["root", coreThread("root", { created_at: 0 })]]);
-      const core = makeCore(threads);
-      const conversations = makeConversations();
-      const gateway = makeGateway(((hostId, method) => {
-        assert.strictEqual(hostId, "remote-a");
-        assert.strictEqual(method, "thread/list");
-        return Effect.succeed({
-          data: [
-            {
-              ...appThread("child-large"),
-              preview: "x".repeat(Math.floor(CODEX_SUBAGENT_DISCOVERY_MAX_RESULT_BYTES / 2) + 1),
-              parentThreadId: "root",
-              source: { subAgentThreadSpawn: { parentThreadId: "root" } },
-            },
-          ],
-          nextCursor: null,
-        }) as never;
-      }) as RequestOnHost);
-      const directory = yield* directoryFoundations.pipe(
-        Effect.provideService(
-          CodexApplicationEventHub,
-          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
-        ),
-        Effect.provideService(
-          CodexConversationProjection,
-          CodexConversationProjection.of({ hydrate: () => Effect.die("unused") } as never),
-        ),
-        Effect.provideService(CodexGateway, gateway),
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CoreModules, core),
-      );
-
-      const result = yield* Effect.exit(
-        directory.descendants({ rootThreadId: "root", fidelity: "metadata" }),
-      );
-
-      assert.isTrue(Exit.isFailure(result));
-      assert.strictEqual(threads.size, 1);
     }),
   ),
 );

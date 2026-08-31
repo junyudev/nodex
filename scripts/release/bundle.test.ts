@@ -138,6 +138,7 @@ const makeUpdate = (
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><item>
   <sparkle:version>${BUILD_VERSION}</sparkle:version>
   <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+  <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
   <enclosure url="${fullUrl}" length="${readFileSync(fullPath).byteLength}" sparkle:edSignature="${SIGNATURE}" />${deltaXml}
 </item></channel></rss>
 `,
@@ -165,7 +166,7 @@ const makeUpdate = (
     target: {
       buildVersion: BUILD_VERSION,
       bundleId: "app.jyu.nodex",
-      packageProvenanceSchema: 4,
+      packageProvenanceSchema: 5,
       teamIdentifier: NODEX_MACOS_TEAM_IDENTIFIER,
       version: VERSION,
     },
@@ -376,6 +377,51 @@ test("rejects appcast enclosure metadata that diverges from the update manifest"
       x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow("full enclosure");
+});
+
+test("rejects a Sparkle appcast below the product macOS baseline", () => {
+  const arm64 = makeArchitecture("arm64");
+  const x64 = makeArchitecture("x64");
+  const armUpdate = makeUpdate("arm64", arm64);
+  const appcastPath = join(armUpdate, `Nodex-${VERSION}-appcast-arm64.xml`);
+  writeFileSync(
+    appcastPath,
+    readFileSync(appcastPath, "utf8").replace(
+      "<sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>",
+      "<sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>",
+    ),
+  );
+  const manifestPath = join(armUpdate, `Nodex-${VERSION}-update-arm64.json`);
+  const manifest = JSON.parse(
+    readFileSync(manifestPath, "utf8"),
+  ) as SparkleArchitectureUpdateManifest;
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify(
+      {
+        ...manifest,
+        appcast: {
+          ...manifest.appcast,
+          bytes: readFileSync(appcastPath).byteLength,
+          sha256: sha256File(appcastPath),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+
+  expect(() =>
+    assembleReleaseBundle({
+      arm64Directory: arm64,
+      arm64UpdateDirectory: armUpdate,
+      outputDirectory: join(fixture, "old-macos-appcast-output"),
+      sourceSha: SOURCE_SHA,
+      version: VERSION,
+      x64Directory: x64,
+      x64UpdateDirectory: makeUpdate("x64", x64),
+    }),
+  ).toThrow("require macOS 15.0");
 });
 
 test("rejects architecture and update manifests from different source commits", () => {

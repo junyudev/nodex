@@ -6,6 +6,7 @@ import type {
   ThreadTokenUsage,
 } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexCanonicalConversationState } from "./codex-conversation-state";
+import { normalizeCodexServiceTier } from "../codex-service-tier";
 
 export type CodexThreadMetadataEffect =
   | { readonly type: "clearCompletedGoal"; readonly threadId: string }
@@ -67,8 +68,12 @@ export function reduceCodexConversationThreadSettings(
   settings: ThreadSettings,
 ): CodexCanonicalConversationState {
   if (state.protocol.id !== conversationId) return state;
+  const canonicalSettings = {
+    ...settings,
+    serviceTier: normalizeCodexServiceTier(settings.serviceTier),
+  };
   const previousModel = readLatestCollaborationModel(state);
-  const nextModel = settings.collaborationMode.settings.model;
+  const nextModel = canonicalSettings.collaborationMode.settings.model;
   let previousTurnModel = state.sidecar.previousTurnModel ?? null;
   if (state.turns.length > 0 && previousModel && nextModel !== previousModel) {
     previousTurnModel =
@@ -83,15 +88,15 @@ export function reduceCodexConversationThreadSettings(
     ...state,
     protocol: {
       ...state.protocol,
-      cwd: settings.cwd,
-      modelProvider: settings.modelProvider,
+      cwd: canonicalSettings.cwd,
+      modelProvider: canonicalSettings.modelProvider,
     },
     sidecar: {
       ...state.sidecar,
-      latestThreadSettings: settings,
+      latestThreadSettings: canonicalSettings,
       previousTurnModel,
       hydrationContext: hydrationContext
-        ? { ...hydrationContext, latestThreadSettings: settings }
+        ? { ...hydrationContext, latestThreadSettings: canonicalSettings }
         : null,
     },
   };

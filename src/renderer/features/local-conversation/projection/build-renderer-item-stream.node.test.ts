@@ -183,6 +183,18 @@ describe("buildRendererItemStream", () => {
           markdownText: "Thinking through the dispatch.",
         }),
         buildEntry({
+          itemId: "function_output_1",
+          kind: "systemEvent",
+          semanticKind: "systemEvent",
+          rawItem: {
+            id: "function_output_1",
+            type: "functionCallOutput",
+            name: "external_lookup",
+            namespace: null,
+            output: "opaque model-context result",
+          },
+        }),
+        buildEntry({
           itemId: "exec_1",
           kind: "systemEvent",
           semanticKind: "systemEvent",

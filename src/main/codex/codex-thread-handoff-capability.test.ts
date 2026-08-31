@@ -28,7 +28,7 @@ describe("Codex thread handoff capability", () => {
   test("accepts the pinned runtime and later compatible versions", () => {
     expect(supportsCodexThreadHandoffRuntimeVersion("0.145.9")).toBe(false);
     expect(supportsCodexThreadHandoffRuntimeVersion("0.146.0")).toBe(true);
-    expect(supportsCodexThreadHandoffRuntimeVersion("interpreter 0.147.0")).toBe(true);
+    expect(supportsCodexThreadHandoffRuntimeVersion("codex-app-server 0.147.0")).toBe(true);
     expect(supportsCodexThreadHandoffRuntimeVersion(null)).toBe(false);
     expect(supportsCodexThreadHandoffRuntimeVersion("development")).toBe(false);
   });

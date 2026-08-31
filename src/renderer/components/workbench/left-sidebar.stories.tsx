@@ -793,7 +793,7 @@ function makeStorySession(input: {
           parentThreadId: undefined,
           threadName: input.title,
           threadPreview: "",
-          modelProvider: "openai",
+          backendBinding: { kind: "codex" },
           executionHostId: "local",
           cwd: "/Users/asc/repo/nodex",
           statusType: "notLoaded",
@@ -911,6 +911,7 @@ function makeSidebarThreadItem(input: {
   return {
     key: input.key,
     kind,
+    backendBinding: { kind: "codex" },
     runLocation:
       input.runLocation ??
       (kind === "pending-worktree"

@@ -3,6 +3,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import { normalizeCodexManualThreadTitle } from "../../shared/codex-thread-title";
 import type { ProjectSession } from "../../shared/types";
 import type {
@@ -11,6 +12,7 @@ import type {
   ProjectSessionPinnedCommandInput,
   ProjectSessionRenameCommandInput,
 } from "../../shared/workspace-catalog-commands";
+import { AcpBackendSessionManager } from "../agent-backend/acp/AcpBackendSessionManager";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { CodexSidebarSectionSync } from "../codex-application/CodexSidebarSectionSync";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
@@ -32,6 +34,7 @@ export class ProjectSessionCommandsError extends Schema.TaggedError<ProjectSessi
       "archive-session",
       "unarchive-conversation",
       "unarchive-session",
+      "close-backend-session",
       "set-pinned",
     ]),
     cause: Schema.Defect(),
@@ -66,11 +69,13 @@ export const live: Layer.Layer<
   | CodexSidebarSectionSync
   | CodexThreadTitlePersistence
   | ConversationCommands
+  | AcpBackendSessionManager
   | ProjectWorkspace
 > = Layer.effect(
   ProjectSessionCommands,
   Effect.gen(function* () {
     const browser = yield* BrowserApplication;
+    const acpSessions = yield* AcpBackendSessionManager;
     const conversation = yield* ConversationCommands;
     const sections = yield* CodexSidebarSectionSync;
     const threadTitles = yield* CodexThreadTitlePersistence;
@@ -110,7 +115,7 @@ export const live: Layer.Layer<
           cause: new TypeError("Project Session title is invalid"),
         });
       }
-      if (existing.thread) {
+      if (existing.thread && isCodexAgentBackendBinding(existing.thread.backendBinding)) {
         yield* attempt(
           "rename-title",
           threadTitles.set({
@@ -132,6 +137,10 @@ export const live: Layer.Layer<
     const deleteSession = Effect.fn("ProjectSessionCommands.delete")(function* (
       command: ProjectSessionDeleteCommandInput,
     ) {
+      const existing = yield* read(command.payload.sessionId);
+      if (existing?.thread && !isCodexAgentBackendBinding(existing.thread.backendBinding)) {
+        yield* attempt("close-backend-session", acpSessions.close(existing.thread.threadId));
+      }
       const result = yield* attempt("delete-session", workspace.deleteProjectSession(command));
       yield* closeBrowserConversation(command.payload.sessionId);
       return result;
@@ -143,13 +152,17 @@ export const live: Layer.Layer<
     ) {
       const existing = yield* read(command.payload.sessionId);
       if (existing?.thread) {
-        if (archived) {
-          yield* attempt("archive-conversation", conversation.archive(existing.thread.threadId));
-        } else {
-          yield* attempt(
-            "unarchive-conversation",
-            conversation.unarchive(existing.thread.threadId),
-          );
+        if (isCodexAgentBackendBinding(existing.thread.backendBinding)) {
+          if (archived) {
+            yield* attempt("archive-conversation", conversation.archive(existing.thread.threadId));
+          } else {
+            yield* attempt(
+              "unarchive-conversation",
+              conversation.unarchive(existing.thread.threadId),
+            );
+          }
+        } else if (archived) {
+          yield* attempt("close-backend-session", acpSessions.close(existing.thread.threadId));
         }
       }
       return yield* attempt(

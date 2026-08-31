@@ -1,4 +1,4 @@
-import type { AgentExecutionProfile } from "../../../../shared/agent-runtime";
+import type { CodexExecutionProfile } from "../../../../shared/codex-execution-profile";
 import type {
   CodexCollaborationModeKind,
   CodexCollaborationModeState,
@@ -48,7 +48,7 @@ export function resolveEffectiveThreadStageSettings({
   fallbackMode: CodexCollaborationModeKind;
   fallbackModel: string;
   fallbackReasoningEffort: ThreadStageRouteInput["selectedReasoningEffort"];
-  threadExecutionProfile?: AgentExecutionProfile | null;
+  threadExecutionProfile?: CodexExecutionProfile | null;
   availableModes: readonly ThreadStageRouteInput["collaborationModes"][number][];
 }): {
   selectedCollaborationMode: CodexCollaborationModeKind;

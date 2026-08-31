@@ -81,6 +81,17 @@ const targetOf = (client: RegisteredRendererClient): RendererDeliveryTarget => (
   generation: client.generation,
 });
 
+const rendererDeliveryPayloadType = (channel: string, args: readonly unknown[]): string | null => {
+  if (channel !== "codex:event") return null;
+  const value = args[0];
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const type = Reflect.get(value, "type");
+  return typeof type === "string" ? type : null;
+};
+
+const rendererDeliveryCauseMessage = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
+
 const makeError = (input: {
   readonly message: string;
   readonly operation: string;
@@ -341,9 +352,11 @@ export const live = (
             Effect.gen(function* () {
               logger.warn("Renderer delivery failed", {
                 channel,
+                payloadType: rendererDeliveryPayloadType(channel, args),
                 clientId: client.clientId,
                 generation: client.generation,
                 reason: error.reason,
+                cause: rendererDeliveryCauseMessage(error.cause),
               });
 
               // A failed latest revision is not recoverable by waiting for a later message: there

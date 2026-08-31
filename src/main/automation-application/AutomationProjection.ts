@@ -9,6 +9,12 @@ import type {
   PageRunInTarget,
   Priority,
 } from "../../shared/types";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
+import {
+  CODEX_AGENT_BACKEND_BINDING,
+  isCodexAgentBackendBinding,
+  type AgentBackendBinding,
+} from "../../shared/agent-backend";
 import { canonicalizePortableRichText } from "../../shared/block-documents/portable-rich-text";
 import { PRIORITY_VALUES } from "../../shared/priority";
 import { isWorkflowStatus } from "../../shared/workflow-status";
@@ -17,6 +23,10 @@ import type {
   AutomationIntent,
   AutomationReadSnapshot,
 } from "../core-client/types";
+import {
+  projectAgentBackendBindingFromCore,
+  projectAgentBackendBindingToCore,
+} from "../core-client/project-workspace-adapter";
 
 export type CoreAutomationDefinition = Extract<
   AutomationReadSnapshot["value"],
@@ -43,30 +53,41 @@ export type CorePageOccurrenceSchedulePatch = Extract<
   { readonly kind: "update_page_occurrence" }
 >["updates"];
 
+export const requireCodexAutomationBackendBinding = (
+  binding: AgentBackendBinding,
+): typeof CODEX_AGENT_BACKEND_BINDING => {
+  if (isCodexAgentBackendBinding(binding)) return CODEX_AGENT_BACKEND_BINDING;
+  throw new Error("Scheduled automations currently support only the Codex Agent Backend");
+};
+
 export const projectAutomationDefinition = (
   definition: CoreAutomationDefinition,
-): CodexScheduledAutomation => ({
-  id: definition.automation_id,
-  definitionRevision: definition.definition_revision,
-  kind: definition.kind,
-  status: definition.status,
-  targetThreadId: definition.target_thread_id ?? null,
-  name: definition.name,
-  prompt: definition.prompt,
-  rrule: definition.rrule || null,
-  model: definition.model ?? null,
-  modelProvider: definition.model_provider ?? null,
-  harnessId: definition.harness_id ?? null,
-  reasoningEffort: definition.reasoning_effort ?? null,
-  serviceTier: definition.service_tier ?? null,
-  cwds: [...definition.cwds],
-  executionEnvironment: definition.execution_environment,
-  localEnvironmentConfigPath: definition.local_environment_config_path ?? null,
-  nextRunAt: definition.next_run_at_ms ?? null,
-  lastRunAt: definition.last_run_at_ms ?? null,
-  createdAt: definition.created_at_ms,
-  updatedAt: definition.updated_at_ms,
-});
+): CodexScheduledAutomation => {
+  const backendBinding = requireCodexAutomationBackendBinding(
+    projectAgentBackendBindingFromCore(definition.backend_binding),
+  );
+  return {
+    id: definition.automation_id,
+    definitionRevision: definition.definition_revision,
+    kind: definition.kind,
+    status: definition.status,
+    targetThreadId: definition.target_thread_id ?? null,
+    name: definition.name,
+    prompt: definition.prompt,
+    rrule: definition.rrule || null,
+    model: definition.model ?? null,
+    reasoningEffort: definition.reasoning_effort ?? null,
+    serviceTier: normalizeCodexServiceTier(definition.service_tier),
+    backendBinding,
+    cwds: [...definition.cwds],
+    executionEnvironment: definition.execution_environment,
+    localEnvironmentConfigPath: definition.local_environment_config_path ?? null,
+    nextRunAt: definition.next_run_at_ms ?? null,
+    lastRunAt: definition.last_run_at_ms ?? null,
+    createdAt: definition.created_at_ms,
+    updatedAt: definition.updated_at_ms,
+  };
+};
 
 export const projectAutomationRun = (run: CoreAutomationRun): CodexAutomationRun => ({
   threadId: run.thread_id,
@@ -191,21 +212,25 @@ export const projectPageOccurrence = (occurrence: CoreScheduledPageOccurrence): 
   };
 };
 
-export const toCoreAutomationDefinitionInput = (input: CodexScheduledAutomationCreateInput) => ({
-  kind: input.kind,
-  target_thread_id: input.targetThreadId ?? null,
-  name: input.name,
-  prompt: input.prompt ?? null,
-  rrule: input.rrule ?? null,
-  model: input.model ?? null,
-  model_provider: input.modelProvider ?? null,
-  harness_id: input.harnessId ?? null,
-  reasoning_effort: input.reasoningEffort ?? null,
-  service_tier: input.serviceTier ?? null,
-  cwds: input.cwds ?? null,
-  execution_environment: input.executionEnvironment ?? null,
-  local_environment_config_path: input.localEnvironmentConfigPath ?? null,
-});
+export const toCoreAutomationDefinitionInput = (input: CodexScheduledAutomationCreateInput) => {
+  const backendBinding = requireCodexAutomationBackendBinding(
+    input.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
+  );
+  return {
+    kind: input.kind,
+    target_thread_id: input.targetThreadId ?? null,
+    name: input.name,
+    prompt: input.prompt ?? null,
+    rrule: input.rrule ?? null,
+    model: input.model ?? null,
+    reasoning_effort: input.reasoningEffort ?? null,
+    service_tier: normalizeCodexServiceTier(input.serviceTier),
+    backend_binding: projectAgentBackendBindingToCore(backendBinding),
+    cwds: input.cwds ?? null,
+    execution_environment: input.executionEnvironment ?? null,
+    local_environment_config_path: input.localEnvironmentConfigPath ?? null,
+  };
+};
 
 export function finiteDateMilliseconds(value: Date, label: string): number;
 export function finiteDateMilliseconds(

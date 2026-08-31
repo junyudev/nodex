@@ -1,10 +1,12 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import type {
   CodexConversationChildMembership,
   CodexConversationItem,
 } from "../../../../lib/types";
+import { semanticActivityStatusFromLifecycle } from "../../../../lib/semantic-activity-status";
 import { formatCodexModelLabel } from "../../../../lib/codex-thread-settings";
 import {
   normalizeMultiAgentActionPayload,
@@ -26,12 +28,13 @@ function getHeaderLabel(
   action: CodexMultiAgentActionName,
   status: CodexMultiAgentActionStatus,
 ): string {
+  if (status === "interrupted") return "Interrupted";
   if (action === "spawnAgent") {
     if (status === "inProgress") return "Creating";
     if (status === "completed") return "Created";
     return "Failed to create";
   }
-  if (action === "sendInput") {
+  if (action === "sendInput" || action === "sendMessage" || action === "followupTask") {
     if (status === "inProgress") return "Messaging";
     if (status === "completed") return "Messaged";
     return "Failed to message";
@@ -46,14 +49,27 @@ function getHeaderLabel(
     if (status === "completed") return "Closed";
     return "Failed to close";
   }
-  return "Waiting";
+  if (action === "interruptAgent") {
+    if (status === "inProgress") return "Interrupting";
+    if (status === "completed") return "Interrupted";
+    return "Failed to interrupt";
+  }
+  if (action === "listAgents") {
+    if (status === "inProgress") return "Listing";
+    if (status === "completed") return "Listed";
+    return "Failed to list";
+  }
+  if (status === "inProgress") return "Waiting";
+  if (status === "completed") return "Waited";
+  return "Failed to wait";
 }
 
 function getRowActionLabel(
   action: CodexMultiAgentActionName,
   status: CodexMultiAgentActionStatus,
 ): string {
-  if (action === "sendInput") {
+  if (status === "interrupted") return "Interrupted";
+  if (action === "sendInput" || action === "sendMessage" || action === "followupTask") {
     if (status === "inProgress") return "Messaging";
     if (status === "completed") return "Messaged";
     return "Failed messaging";
@@ -73,10 +89,23 @@ function getRowActionLabel(
     if (status === "completed") return "Closed";
     return "Failed closing";
   }
-  return "Waiting";
+  if (action === "interruptAgent") {
+    if (status === "inProgress") return "Interrupting";
+    if (status === "completed") return "Interrupted";
+    return "Failed interrupting";
+  }
+  if (action === "listAgents") {
+    if (status === "inProgress") return "Listing";
+    if (status === "completed") return "Listed";
+    return "Failed listing";
+  }
+  if (status === "inProgress") return "Waiting";
+  if (status === "completed") return "Waited";
+  return "Failed waiting";
 }
 
 function getPromptSendInputActionLabel(status: CodexMultiAgentActionStatus): string {
+  if (status === "interrupted") return "Interrupted";
   if (status === "inProgress") return "Messaging";
   if (status === "completed") return "Messaged";
   return "Failed to message";
@@ -170,6 +199,7 @@ function getCountLabel(count: number): string {
 function resolveGroupStatus(items: CodexMultiAgentActionPayload[]): CodexMultiAgentActionStatus {
   if (items.some((item) => item.status === "inProgress")) return "inProgress";
   if (items.some((item) => item.status === "failed")) return "failed";
+  if (items.some((item) => item.status === "interrupted")) return "interrupted";
   return "completed";
 }
 
@@ -227,6 +257,7 @@ function AgentLabel({
     >
       <button
         type="button"
+        aria-label={`Open subagent ${displayName}`}
         className="cursor-interaction bg-transparent p-0 align-baseline font-medium"
         data-testid="multi-agent-action-agent-button"
         onClick={() => {
@@ -348,7 +379,11 @@ function renderRows(
     const hasPrompt = rawPrompt.trim().length > 0;
     const isSpawnWithInstructions =
       item.action === "spawnAgent" && item.status === "completed" && hasPrompt;
-    const isSendInputWithPrompt = item.action === "sendInput" && hasPrompt;
+    const isSendInputWithPrompt =
+      (item.action === "sendInput" ||
+        item.action === "sendMessage" ||
+        item.action === "followupTask") &&
+      hasPrompt;
     const receiverThreads = getReceiverThreadMap(item);
 
     if (targetThreadIds.length === 0) {
@@ -445,6 +480,7 @@ export function MultiAgentActionSurface({
   onOpenThread?: OpenMultiAgentThread;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const reducedMotion = useResolvedReducedMotion();
   const { elementHeightPx, elementRef } = useMeasuredElementHeight();
   const normalizedItems = items
     .map((item) => normalizeMultiAgentActionPayload(item.rawItem))
@@ -459,7 +495,7 @@ export function MultiAgentActionSurface({
   const resolvedStatus = resolveGroupStatus(normalizedItems);
   const isInProgress = resolvedStatus === "inProgress";
   const rowModels = renderRows(normalizedItems, onOpenThread, childMemberships);
-  const targetCount = countTargets(normalizedItems);
+  const targetCount = primaryItem.action === "listAgents" ? 0 : countTargets(normalizedItems);
   const countLabel = getCountLabel(targetCount);
 
   const summary = (
@@ -480,7 +516,7 @@ export function MultiAgentActionSurface({
         height: expanded ? elementHeightPx : 0,
         opacity: expanded ? 1 : 0,
       }}
-      transition={CODEX_THREAD_ACCORDION_TRANSITION}
+      transition={reducedMotion ? { duration: 0 } : CODEX_THREAD_ACCORDION_TRANSITION}
       className={expanded ? "overflow-visible" : "overflow-hidden"}
       style={{
         pointerEvents: expanded ? "auto" : "none",
@@ -509,7 +545,7 @@ export function MultiAgentActionSurface({
       body={body}
       header={
         <ThreadRichActivityHeader
-          status={resolvedStatus === "inProgress" ? "running" : resolvedStatus}
+          status={semanticActivityStatusFromLifecycle(resolvedStatus, "completed")}
           disclosure={{
             expanded,
             onToggle: () => setExpanded((current) => !current),

@@ -216,3 +216,32 @@ it.effect("reports bounded request lifecycle metadata without request parameters
     }),
   ),
 );
+
+it.effect("surfaces the actionable cause of a wrapped Browser request failure", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      if (process.platform === "win32") return;
+      const server = yield* makeServer(true, () => {
+        throw Object.assign(new Error(), {
+          _tag: "BrowserUseSessionRuntimeError",
+          cause: new Error("Timed out executing Browser Use CDP command Page.navigate"),
+        });
+      });
+      const socket = yield* connectScoped(server.pipePath);
+      const response = readOne(socket);
+      socket.write(
+        encodeBrowserUseNativePipeFrame(
+          JSON.stringify({ jsonrpc: "2.0", id: 1, method: "executeCdp" }),
+        ),
+      );
+
+      expect(yield* Effect.promise(() => response)).toMatchObject({
+        error: {
+          code: 1,
+          message: "Timed out executing Browser Use CDP command Page.navigate",
+        },
+        id: 1,
+      });
+    }),
+  ),
+);

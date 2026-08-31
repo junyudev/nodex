@@ -36,7 +36,7 @@ const makeThread = (
   agentPath: null,
   threadName: "First",
   threadPreview: "First preview",
-  modelProvider: "openai",
+  backendBinding: { kind: "codex" },
   executionHostId: "local",
   cwd: "/managed/shared/repository/packages/app",
   managedWorktreePath: "/managed/shared/repository",

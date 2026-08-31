@@ -1,6 +1,7 @@
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexAppServerNoResponse } from "@nodex/effect-codex-app-server/protocol";
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -13,6 +14,8 @@ import type {
 } from "../../shared/types";
 import type { CodexNotificationConversationFacts } from "../../shared/codex-thread-notification";
 import { extractCodexThreadSpawnMetadata } from "../../shared/codex-subagent-metadata";
+import { normalizeCodexMcpServerElicitationMode } from "../../shared/codex-mcp-elicitation";
+import { readActionableErrorMessage } from "../actionable-error-message";
 import type { CodexCanonicalServerRequest } from "../../shared/codex-conversation-state/codex-conversation-state";
 import {
   reduceCodexConversationServerRequest,
@@ -296,7 +299,7 @@ const mcpPayload = (
   turnId: request.params.turnId ?? "",
   itemId: `mcp-server-elicitation-${String(request.id)}`,
   kind: request.params.mode === "url" ? "toolSuggestion" : "generic",
-  mode: request.params.mode,
+  mode: normalizeCodexMcpServerElicitationMode(request.params.mode),
   serverName: request.params.serverName,
   message: request.params.message,
   url: request.params.mode === "url" ? request.params.url : undefined,
@@ -574,7 +577,20 @@ export const make: Effect.Effect<
               })
               .pipe(
                 Effect.catch((error) =>
-                  inbox.failGeneration(occurrence, error).pipe(
+                  Effect.logError("Codex notification consequence failed").pipe(
+                    Effect.annotateLogs({
+                      hostId: occurrence.hostId,
+                      generation: occurrence.generation,
+                      method: notification.method,
+                      threadId: threadId ?? "unknown",
+                      error,
+                      errorCause: Cause.pretty(error.cause),
+                      errorDetail: readActionableErrorMessage(Cause.squash(error.cause), {
+                        fallback: "Codex notification consequence failed",
+                        maximumLength: 1_000,
+                      }),
+                    }),
+                    Effect.andThen(inbox.failGeneration(occurrence, error)),
                     Effect.flatMap((failed) =>
                       failed
                         ? Effect.void

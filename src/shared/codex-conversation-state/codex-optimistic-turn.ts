@@ -283,6 +283,7 @@ export function failCodexCanonicalOptimisticTurn(
         message,
         codexErrorInfo: null,
         additionalDetails: null,
+        misalignment: null,
       },
     },
   };

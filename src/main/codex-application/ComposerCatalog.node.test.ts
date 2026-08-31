@@ -6,29 +6,65 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import { ComposerCatalog, live as composerCatalogLive } from "./ComposerCatalog";
+import {
+  CODEX_MODEL_CATALOG_PAGE_SIZE,
+  ComposerCatalog,
+  live as composerCatalogLive,
+} from "./ComposerCatalog";
+
+const makeGateway = (
+  requestLocal: CodexGateway["Service"]["requestLocal"],
+): CodexGateway["Service"] => {
+  const unsupported = () => Effect.die(new Error("Unsupported test operation"));
+  return CodexGateway.of({
+    localHostId: "local",
+    requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
+    requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),
+    events: Stream.empty,
+    requestLocal,
+    requestOnHost: (_hostId, method, params) => requestLocal(method, params),
+    requestForThread: (_threadId, method, params) => requestLocal(method, params),
+    notifyLocal: unsupported,
+    connection: () => unsupported(),
+    connectionChanges: () => Stream.empty,
+    awaitReady: () => Effect.void,
+    reconcileHost: unsupported,
+    removeHost: unsupported,
+    restartHost: unsupported,
+  });
+};
 
 it.effect("projects models, plugins, and skills through one composer interface", () =>
   Effect.gen(function* () {
     const experimentalRequests: unknown[] = [];
     const hookWrites: unknown[] = [];
+    const modelRequests: unknown[] = [];
     const skillsRequests: unknown[] = [];
     const requestLocal = ((method: string, params: unknown) => {
       if (method === "model/list") {
+        modelRequests.push(params);
+        const cursor = (params as { readonly cursor?: string | null }).cursor ?? null;
         return Effect.succeed({
           data: [
             {
-              id: "model-a",
-              model: "model-a",
-              displayName: "Model A",
+              id: cursor === null ? "model-a" : "model-b",
+              model: cursor === null ? "model-a" : "model-b",
+              displayName: cursor === null ? "Model A" : "Model B",
               description: "Agent model",
               hidden: false,
               supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Balanced" }],
               defaultReasoningEffort: "medium",
-              isDefault: true,
+              inputModalities: cursor === null ? ["text", "image"] : ["text", "audio"],
+              multiAgentVersion: cursor === null ? "v2" : "disabled",
+              serviceTiers:
+                cursor === null
+                  ? [{ id: "fast", name: "Fast", description: "Low-latency execution" }]
+                  : [],
+              defaultServiceTier: cursor === null ? "fast" : null,
+              isDefault: cursor === null,
             },
           ],
-          nextCursor: null,
+          nextCursor: cursor === null ? "models:next" : null,
         });
       }
       if (method === "plugin/installed") {
@@ -128,23 +164,7 @@ it.effect("projects models, plugins, and skills through one composer interface",
       }
       throw new Error(`Unexpected request: ${method}`);
     }) as CodexGateway["Service"]["requestLocal"];
-    const unsupported = () => Effect.die(new Error("Unsupported test operation"));
-    const gateway = CodexGateway.of({
-      localHostId: "local",
-      requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
-      requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),
-      events: Stream.empty,
-      requestLocal,
-      requestOnHost: (_hostId, method, params) => requestLocal(method, params),
-      requestForThread: (_threadId, method, params) => requestLocal(method, params),
-      notifyLocal: unsupported,
-      connection: () => unsupported(),
-      connectionChanges: () => Stream.empty,
-      awaitReady: () => Effect.void,
-      reconcileHost: unsupported,
-      removeHost: unsupported,
-      restartHost: unsupported,
-    });
+    const gateway = makeGateway(requestLocal);
     const scope = yield* Scope.make();
     const context = yield* Layer.buildWithScope(
       composerCatalogLive.pipe(Layer.provide(Layer.succeed(CodexGateway, gateway))),
@@ -153,8 +173,25 @@ it.effect("projects models, plugins, and skills through one composer interface",
     const catalog = Context.get(context, ComposerCatalog);
 
     const models = yield* catalog.listModels;
-    assert.strictEqual(models[0]?.id, "model-a");
+    assert.deepEqual(
+      models.map((model) => model.id),
+      ["model-a", "model-b"],
+    );
     assert.strictEqual(models[0]?.defaultReasoningEffort, "medium");
+    assert.deepEqual(models[0]?.inputModalities, ["text", "image"]);
+    assert.strictEqual(models[0]?.multiAgentVersion, "v2");
+    assert.deepEqual(models[0]?.serviceTiers, [
+      { id: "fast", name: "Fast", description: "Low-latency execution" },
+    ]);
+    assert.strictEqual(models[0]?.defaultServiceTier, "fast");
+    assert.deepEqual(models[1]?.inputModalities, ["text", "audio"]);
+    assert.strictEqual(models[1]?.multiAgentVersion, "disabled");
+    assert.deepEqual(models[1]?.serviceTiers, []);
+    assert.strictEqual(models[1]?.defaultServiceTier, null);
+    assert.deepEqual(modelRequests, [
+      { cursor: null, limit: CODEX_MODEL_CATALOG_PAGE_SIZE },
+      { cursor: "models:next", limit: CODEX_MODEL_CATALOG_PAGE_SIZE },
+    ]);
     const features = yield* catalog.listExperimentalFeatures;
     assert.deepEqual(
       features.map((feature) => feature.name),
@@ -214,4 +251,47 @@ it.effect("projects models, plugins, and skills through one composer interface",
 
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect(
+  "fails instead of looping or returning a partial catalog when a model cursor repeats",
+  () =>
+    Effect.gen(function* () {
+      const requests: unknown[] = [];
+      const requestLocal = ((method: string, params: unknown) => {
+        if (method !== "model/list") return Effect.die(new Error(`Unexpected request: ${method}`));
+        requests.push(params);
+        return Effect.succeed({
+          data: [
+            {
+              id: `model-${requests.length}`,
+              model: `model-${requests.length}`,
+              displayName: `Model ${requests.length}`,
+              description: "Agent model",
+              hidden: false,
+              supportedReasoningEfforts: [{ reasoningEffort: "medium", description: "Balanced" }],
+              defaultReasoningEffort: "medium",
+              inputModalities: ["text"],
+              multiAgentVersion: "disabled",
+              serviceTiers: [],
+              defaultServiceTier: null,
+              isDefault: requests.length === 1,
+            },
+          ],
+          nextCursor: "models:repeated",
+        });
+      }) as CodexGateway["Service"]["requestLocal"];
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        composerCatalogLive.pipe(
+          Layer.provide(Layer.succeed(CodexGateway, makeGateway(requestLocal))),
+        ),
+        scope,
+      );
+      const result = yield* Context.get(context, ComposerCatalog).listModels.pipe(Effect.result);
+
+      assert.strictEqual(result._tag, "Failure");
+      assert.strictEqual(requests.length, 2);
+      yield* Scope.close(scope, Exit.void);
+    }),
 );

@@ -17,6 +17,8 @@ afterEach(() => {
   for (const manager of activeManagers) manager.disposeAll();
   activeManagers = [];
   document.body.innerHTML = "";
+  vi.useRealTimers();
+  Object.defineProperty(window, "api", { configurable: true, value: undefined });
 });
 
 function createManager() {
@@ -32,6 +34,39 @@ function installWebContentsId(webview: Element, webContentsId: number) {
 }
 
 const visibleBounds = { x: 10, y: 20, width: 320, height: 240 };
+
+const retainedClaim = {
+  browserConversationId: "session-1",
+  browserViewScopeId: "window-session-1",
+  browserTabId: "browser-use:runtime-page",
+  browserStorageId: "browser:use:browser-use:runtime-page",
+  projectId: "alpha",
+  hostKind: "retained" as const,
+  initialUrl: "https://example.com",
+  pagePersistence: "browser-use" as const,
+  tabRegistration: "ensure" as const,
+  presentation: {
+    bounds: { height: 720, width: 1_280, x: -10_000, y: 0 },
+    isVisible: false,
+    shouldPaint: true,
+  },
+  themeVariant: "dark" as const,
+};
+
+function installBrowserCommandHandler(
+  handler: (command: Record<string, unknown>) => Promise<unknown> | unknown,
+): void {
+  Object.defineProperty(window, "api", {
+    configurable: true,
+    value: {
+      invoke: async (_channel: string, command: Record<string, unknown>) => await handler(command),
+    },
+  });
+}
+
+async function settleHostReconciliation(): Promise<void> {
+  for (let index = 0; index < 32; index += 1) await Promise.resolve();
+}
 
 function getManagerRoot(
   browserTabId = "tab-browser",
@@ -52,6 +87,160 @@ function getManagerRoot(
 }
 
 describe("BrowserSidebarRendererWebviewManager", () => {
+  test("retries a rejected host registration without another lease update", async () => {
+    vi.useFakeTimers();
+    const commands: Record<string, unknown>[] = [];
+    let registrationAttempts = 0;
+    installBrowserCommandHandler((command) => {
+      commands.push(command);
+      if (command.type !== "register-host") return { ok: true };
+      registrationAttempts += 1;
+      return registrationAttempts === 1
+        ? { ok: false, message: "renderer session is settling" }
+        : { ok: true };
+    });
+    const manager = createManager();
+
+    manager.claimHost(retainedClaim);
+    await settleHostReconciliation();
+
+    expect(registrationAttempts).toBe(1);
+    expect(getManagerRoot(retainedClaim.browserTabId)).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(100);
+    await settleHostReconciliation();
+
+    expect(registrationAttempts).toBe(2);
+    expect(getManagerRoot(retainedClaim.browserTabId)).not.toBeNull();
+    expect(commands.filter((command) => command.type === "sync-host")).toHaveLength(1);
+  });
+
+  test("backs off after a transport rejection instead of spinning", async () => {
+    vi.useFakeTimers();
+    let registrationAttempts = 0;
+    installBrowserCommandHandler((command) => {
+      if (command.type !== "register-host") return { ok: true };
+      registrationAttempts += 1;
+      throw new Error("preload bridge is restarting");
+    });
+    const manager = createManager();
+
+    manager.claimHost(retainedClaim);
+    await settleHostReconciliation();
+    await vi.advanceTimersByTimeAsync(49);
+    await settleHostReconciliation();
+    expect(registrationAttempts).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await settleHostReconciliation();
+    expect(registrationAttempts).toBe(2);
+
+    await vi.advanceTimersByTimeAsync(99);
+    await settleHostReconciliation();
+    expect(registrationAttempts).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await settleHostReconciliation();
+    expect(registrationAttempts).toBe(3);
+  });
+
+  test("reasserts host ownership when Main rejects a presentation sync", async () => {
+    vi.useFakeTimers();
+    let registrationAttempts = 0;
+    let syncAttempts = 0;
+    installBrowserCommandHandler((command) => {
+      if (command.type === "register-host") registrationAttempts += 1;
+      if (command.type !== "sync-host") return { ok: true };
+      syncAttempts += 1;
+      return syncAttempts === 1 ? { ok: false, message: "host-missing" } : { ok: true };
+    });
+    const manager = createManager();
+
+    manager.claimHost(retainedClaim);
+    await settleHostReconciliation();
+    expect(registrationAttempts).toBe(1);
+    expect(syncAttempts).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(50);
+    await settleHostReconciliation();
+
+    expect(registrationAttempts).toBe(2);
+    expect(syncAttempts).toBe(2);
+  });
+
+  test("reasserts a preestablished panel host without registering its tab again", async () => {
+    vi.useFakeTimers();
+    const commands: Record<string, unknown>[] = [];
+    let hostRegistrationAttempts = 0;
+    installBrowserCommandHandler((command) => {
+      commands.push(command);
+      if (command.type !== "register-host") return { ok: true };
+      hostRegistrationAttempts += 1;
+      return hostRegistrationAttempts === 1
+        ? { ok: false, message: "renderer session is settling" }
+        : { ok: true };
+    });
+    const manager = createManager();
+
+    manager.claimHost({
+      ...retainedClaim,
+      hostKind: "panel",
+      tabRegistration: "preestablished",
+      presentation: {
+        bounds: visibleBounds,
+        isVisible: true,
+        shouldPaint: true,
+      },
+    });
+    await settleHostReconciliation();
+    await vi.advanceTimersByTimeAsync(50);
+    await settleHostReconciliation();
+
+    expect(commands.filter((command) => command.type === "register-renderer-session")).toHaveLength(
+      2,
+    );
+    expect(commands.filter((command) => command.type === "register-tab")).toEqual([]);
+    expect(commands.filter((command) => command.type === "register-host")).toHaveLength(2);
+    expect(commands.filter((command) => command.type === "sync-host")).toHaveLength(1);
+  });
+
+  test("re-registers a claimed host with fresh generations after Main destroys its guest", async () => {
+    const commands: Record<string, unknown>[] = [];
+    installBrowserCommandHandler((command) => {
+      commands.push(command);
+      return { ok: true };
+    });
+    const manager = createManager();
+    const lease = manager.claimHost(retainedClaim);
+    await settleHostReconciliation();
+    const originalWebview = getManagerRoot(retainedClaim.browserTabId)?.querySelector("webview");
+    const firstRegistration = commands.find((command) => command.type === "register-host");
+    if (!firstRegistration) throw new Error("Expected initial host registration");
+
+    manager.destroyWebviewAtHostRequest(
+      {
+        browserConversationId: retainedClaim.browserConversationId,
+        browserViewScopeId: retainedClaim.browserViewScopeId,
+        browserTabId: retainedClaim.browserTabId,
+        mountGeneration: firstRegistration.mountGeneration as number,
+        reason: "reset",
+        teardownId: "reset-1",
+      },
+      () => undefined,
+    );
+    expect(getManagerRoot(retainedClaim.browserTabId)).toBeNull();
+
+    lease.update({ ...retainedClaim, title: "Navigated again" });
+    await settleHostReconciliation();
+
+    const registrations = commands.filter((command) => command.type === "register-host");
+    expect(registrations).toHaveLength(2);
+    expect(registrations[1]?.hostGeneration).toBe(2);
+    expect(registrations[1]?.mountGeneration).toBe(2);
+    expect(getManagerRoot(retainedClaim.browserTabId)?.querySelector("webview")).not.toBe(
+      originalWebview,
+    );
+  });
+
   test("creates one managed webview host and reports a mount generation once", () => {
     const manager = createManager();
     const created: BrowserSidebarWebviewHostCreated[] = [];
@@ -88,7 +277,6 @@ describe("BrowserSidebarRendererWebviewManager", () => {
         browserViewScopeId: "window-session-1",
         browserTabId: "tab-browser",
         hostGeneration: 1,
-        mountGeneration: 1,
       },
     );
     expect(root?.style.left).toBe("10px");
@@ -378,7 +566,7 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     expect(root?.getAttribute("data-browser-sidebar-webview-visible")).toBe("true");
   });
 
-  test("keeps hidden retained guests on a transparent paint surface", () => {
+  test("keeps active hidden retained guests on a transparent paint surface", () => {
     const manager = createManager();
     const identity = {
       browserConversationId: "session-1",

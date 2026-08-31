@@ -38,6 +38,7 @@ export interface TerminalPtyHandle {
   readonly exit: Effect.Effect<TerminalPtyExit>;
   readonly write: (data: string) => Effect.Effect<void, TerminalPtyError>;
   readonly resize: (cols: number, rows: number) => Effect.Effect<void, TerminalPtyError>;
+  readonly kill: Effect.Effect<void, TerminalPtyError>;
 }
 
 export class TerminalPty extends Context.Service<
@@ -121,6 +122,10 @@ export const live: Layer.Layer<TerminalPty> = Layer.succeed(
               try: () => process.resize(cols, rows),
               catch: (cause) => ptyError("resize", cause),
             }),
+          kill: Effect.try({
+            try: () => process.kill(),
+            catch: (cause) => ptyError("kill", cause),
+          }),
         })),
       ),
   }),

@@ -55,10 +55,12 @@ bounded CI deadline, captures bounded process and Profile logs on failure, and
 terminates the complete Electron process group before releasing the lease.
 Runtime-probe teardown uses bounded filesystem retries because a stopped macOS
 Browser helper can briefly race recursive removal of its temporary Profile.
-On arm64 macOS 14.4 or later, that probe must also complete a real Computer Use
+On arm64 macOS 15 or later, that probe must also complete a real Computer Use
 tool call through the vendor-signed `Node -> Codex -> node_repl` ancestry, plus
 the materialized plugin, private host-services socket, `sky.node`, and canonical
-helper app. The primary app-server remains the pinned Open Interpreter runtime.
+helper app. The primary app-server is the digest-pinned, unmodified package from
+the locked official Codex release; Nodex neither rebuilds it nor publishes a
+second copy.
 The probe runner uses a temporary LaunchServices background app so helper stdio
 matches an ordinary desktop launch instead of inheriting CI pipe fd guards.
 The x64 probe must prove Computer Use is absent while Browser Use remains
@@ -434,8 +436,8 @@ A valid version transition runs this sequence:
     same version to `NodexApp/skills` with an annotated tag.
 11. Generate the Homebrew cask from the same bundle, audit it, push it, and
     smoke-install the published app. The generated DSL follows Homebrew's
-    canonical stanza grouping and order and expresses the Monterey minimum as
-    `depends_on macos: :monterey`.
+    canonical stanza grouping and order and expresses the macOS 15 Sequoia
+    minimum as `depends_on macos: :sequoia`.
 12. Deploy the landing site from the same source SHA after release verification,
     preserving existing feeds on ordinary site deploys and atomically projecting
     the two signed snapshots on release deploys. Public feed bytes and every
@@ -501,24 +503,33 @@ That Interface validates both archives, invokes `gh release create` with
 the runtime tag at an exact reviewed Nodex source commit first; do not use a
 bare `gh release create` for runtime releases.
 
-The primary Agent runtime is a separate immutable release. Its tag contains the
-runtime version and the first eight characters of the exact upstream source
-commit; the committed lock additionally binds the full commit and every
-reviewed patch. Publish its verified dual-architecture archives only through:
+The primary Agent runtime's canonical lock binds the official Codex tag and
+peeled source commit, official checksum manifest, dual-architecture
+`codex-app-server-package-*` bytes, legal evidence, stable upstream entrypoint
+identity, staged metadata, and generated protocol schema. Nodex does not rebuild,
+patch, republish, or re-sign Codex runtime assets: their exact bytes and OpenAI
+Developer ID signatures remain intact. The locked app-server entrypoint digest
+is the stable Browser compatibility identity; package signing and notarization
+seal the containing Nodex application independently.
+
+Generate upgrades from an explicit reviewed base lock and the two downloaded
+official archives:
 
 ```bash
-vp run agent-runtime:publish -- \
-  --repo junyudev/nodex \
-  --tag agent-runtime-v<version>-<8-char-source-commit> \
-  --source-commit <40-char-source-commit> \
-  --arm64 <arm64-archive> \
-  --x64 <x64-archive>
+vp run agent-runtime:relock -- \
+  --base-lock <base-lock.json> \
+  --arm64 <official-arm64-archive> \
+  --x64 <official-x64-archive> \
+  --out <candidate-lock.json>
 ```
 
-As with the Desktop Tool runtime, create and push the tag at an exact reviewed
-Nodex commit first. The publisher verifies that tag, opts out of app Latest, and
-asserts that the stable app Latest release does not move. After publication,
-restage from the release-lock URLs and rerun the macOS runtime gate.
+The candidate command verifies the official archive closure and derives the
+entrypoint and staged-metadata identities. It never builds source, overwrites the
+canonical lock, or publishes assets. Review and install the candidate
+deliberately, then stage from an empty cache and run schema plus conformance
+probes for both architectures. The complete lock, staging, and probe procedure is
+owned by
+[`resources/agent-runtime/README.md`](../resources/agent-runtime/README.md).
 
 ## Post-release acceptance
 

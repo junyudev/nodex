@@ -244,6 +244,7 @@ describe("CodexReadThreadHistory", () => {
           text: "abcdefghij",
           phase: null,
           memoryCitation: null,
+          delivery: null,
         },
         false,
         6,

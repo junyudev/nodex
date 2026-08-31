@@ -4,11 +4,7 @@ import * as Schema from "effect/Schema";
 import { app, type IpcMainInvokeEvent } from "electron";
 import { parseDevelopmentFeatureEnvironment } from "../../../shared/development-features";
 import type { AppRuntimeCapabilities } from "../../../shared/runtime-capabilities";
-import {
-  WindowSessionBoundsSchema,
-  WindowSessionNewWindowRequestSchema,
-  WindowSessionSaveLayoutInputSchema,
-} from "../../../shared/schemas/window-session";
+import { WindowSessionNewWindowRequestSchema } from "../../../shared/schemas/window-session";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { MainConfig } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -98,36 +94,6 @@ export const live = (
             Effect.sync(() => applicationWindows.openForRequest(event.sender.id, request)),
           ),
           Effect.as(true),
-        ),
-      );
-      yield* ipc.handleQuery("window-sessions:bootstrap", (event) =>
-        authorize(event, "Window Session bootstrap").pipe(
-          Effect.andThen(
-            parse("bootstrap-window-session", () => applicationWindows.bootstrap(event.sender.id)),
-          ),
-        ),
-      );
-      yield* ipc.handlePlainCommand("window-sessions:save-layout", (event, input: unknown) =>
-        authorize(event, "Window Session layout").pipe(
-          Effect.andThen(
-            parse("parse-window-layout", () => WindowSessionSaveLayoutInputSchema.parse(input)),
-          ),
-          Effect.flatMap((layout) =>
-            parse("save-window-layout", () =>
-              applicationWindows.saveLayout(event.sender.id, layout),
-            ),
-          ),
-        ),
-      );
-      yield* ipc.handlePlainCommand("window-sessions:update-bounds", (event, input: unknown) =>
-        authorize(event, "Window Session bounds").pipe(
-          Effect.andThen(
-            parse("parse-window-bounds", () => WindowSessionBoundsSchema.strict().parse(input)),
-          ),
-          Effect.tap((bounds) =>
-            Effect.sync(() => applicationWindows.updateBounds(event.sender.id, bounds)),
-          ),
-          Effect.asVoid,
         ),
       );
     }),

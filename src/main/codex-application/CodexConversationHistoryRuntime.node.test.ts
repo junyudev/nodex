@@ -53,6 +53,7 @@ const historyThread = (turns: Turn[]): Thread => ({
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 1,
@@ -216,6 +217,7 @@ it.effect("loads one exact partial-Turn page without advancing the Turn boundary
         text: "latest answer",
         phase: "final_answer",
         memoryCitation: null,
+        delivery: null,
       } satisfies ThreadItem;
       const openingItem = {
         type: "userMessage",

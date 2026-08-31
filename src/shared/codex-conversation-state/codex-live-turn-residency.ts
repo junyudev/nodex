@@ -80,6 +80,7 @@ const overflowLifecycleItem = (item: ThreadItem): ThreadItem => {
     text: CODEX_LIVE_TURN_OVERFLOW_MESSAGE,
     phase: null,
     memoryCitation: null,
+    delivery: null,
   };
   return status === null ? marker : ({ ...marker, status } as ThreadItem);
 };
@@ -93,6 +94,7 @@ const overflowLifecycleTurn = (turn: Turn): Turn => ({
       text: CODEX_LIVE_TURN_OVERFLOW_MESSAGE,
       phase: null,
       memoryCitation: null,
+      delivery: null,
     },
   ],
   itemsView: "summary",
@@ -160,6 +162,7 @@ const overflowTurn = (turn: CodexCanonicalTurnState): CodexCanonicalTurnState =>
       text: CODEX_LIVE_TURN_OVERFLOW_MESSAGE,
       phase: null,
       memoryCitation: null,
+      delivery: null,
     },
   ],
   sidecar: {

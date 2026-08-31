@@ -125,9 +125,8 @@ const coreThread = (): CoreThread =>
     agent_path: null,
     thread_name: "Long history performance fixture",
     thread_preview: "Virtual long history",
-    model_provider: "openai",
+    backend_binding: { kind: "codex" },
     model_id: "gpt-test",
-    harness_id: null,
     reasoning_effort: "high",
     service_tier: null,
     execution_host_id: HOST_ID,
@@ -140,11 +139,12 @@ const coreThread = (): CoreThread =>
     archived: false,
     pinned_order: null,
     has_unread_turn: false,
+    dynamic_tool_catalogs: [],
     created_at: 100_000,
     updated_at: 100_000,
     recency_at: 100_000,
     linked_at: "2026-08-31T00:00:00.000Z",
-  }) as unknown as CoreThread;
+  }) satisfies CoreThread;
 
 const appThread = (): Thread => ({
   id: THREAD_ID,
@@ -156,6 +156,7 @@ const appThread = (): Thread => ({
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 100,
@@ -192,6 +193,7 @@ const largeAgentItem = (turnId: string, index: number): ThreadItem => ({
   text: `${LARGE_ITEM_TEXT}:${turnId}:${index}`,
   phase: "final_answer",
   memoryCitation: null,
+  delivery: null,
 });
 
 const notFound = () =>
@@ -1016,6 +1018,7 @@ it.effect("rejects one oversized partial-Turn item page at its exact cursor boun
                   text: oversizedText,
                   phase: "final_answer",
                   memoryCitation: null,
+                  delivery: null,
                 },
               },
             ],

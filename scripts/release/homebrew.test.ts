@@ -13,9 +13,9 @@ test("generateHomebrewCask binds immutable version tags to canonical DMGs", () =
   expect(cask).toContain('homepage "https://nodex.jyu.app/"');
   expect(cask).toContain('url "https://github.com/junyudev/nodex"');
   expect(cask).toContain("  end\n  on_intel do");
-  expect(cask).toContain("  auto_updates true\n  depends_on macos: :monterey");
+  expect(cask).toContain("  auto_updates true\n  depends_on macos: :sequoia");
   expect(cask).not.toContain("Nodex-#{version}-arm64.dmg");
-  expect(cask).not.toContain('depends_on macos: ">= :monterey"');
+  expect(cask).not.toContain('depends_on macos: ">= :sequoia"');
 });
 
 test("generateHomebrewCask rejects malformed checksums", () => {

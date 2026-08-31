@@ -30,6 +30,7 @@ function buildState(): CodexCanonicalConversationState {
       ephemeral: false,
       section: null,
       sectionEnteredAt: null,
+      projectId: null,
       historyMode: "paginated",
       modelProvider: "openai",
       createdAt: 1,
@@ -219,6 +220,7 @@ describe("Codex 30751 turn metadata", () => {
             message: "Tool failed",
             codexErrorInfo: null,
             additionalDetails: "exit 1",
+            misalignment: null,
           },
           willRetry: false,
         },
@@ -303,5 +305,50 @@ describe("Codex 30751 turn metadata", () => {
     expect(event?.action?.source).toBe("unified_exec");
     expect(completed.effects[0]?.type).toBe("touchConversationUpdatedAt");
     expect(warned.state.turns[0]?.items[1]?.type).toBe("autoReviewInterruptionWarning");
+  });
+
+  test("preserves stdin approval identity in automatic-review metadata", () => {
+    const completed = reduceCodexConversationAutomaticApprovalReview(
+      buildState(),
+      {
+        method: "item/autoApprovalReview/completed",
+        params: {
+          threadId: THREAD_ID,
+          turnId: "turn-1",
+          startedAtMs: 1,
+          completedAtMs: 2,
+          reviewId: "review-stdin",
+          targetItemId: "command-1",
+          decisionSource: "agent",
+          review: {
+            status: "denied",
+            riskLevel: "high",
+            userAuthorization: "low",
+            rationale: "Interactive input requires approval",
+          },
+          action: {
+            type: "writeStdin",
+            approvalId: "approval-stdin",
+            processId: "process-1",
+            stdin: "yes\n",
+            cwd: "/workspace",
+          },
+        },
+      },
+      200,
+    );
+    const review = completed.state.turns[0]?.items[0];
+    const action =
+      review?.type === "automaticApprovalReview"
+        ? (review.event as { action?: Record<string, unknown> }).action
+        : null;
+
+    expect(action).toEqual({
+      type: "write_stdin",
+      approval_id: "approval-stdin",
+      process_id: "process-1",
+      stdin: "yes\n",
+      cwd: "/workspace",
+    });
   });
 });

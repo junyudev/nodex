@@ -631,6 +631,25 @@ const persistedCanonicalTurns = (
     (turn): turn is PersistedCanonicalTurn => turn.protocol.id !== null,
   );
 
+/** Owner publications can trail the transport-ordered Main reducer by one or more notifications. */
+const hasTerminalTurnRegression = (
+  authoritative: CodexCanonicalConversationState | null,
+  candidate: CodexCanonicalConversationState | null | undefined,
+): boolean => {
+  if (!authoritative || !candidate) return false;
+  const candidateStatusByTurnId = new Map(
+    candidate.turns.flatMap((turn) =>
+      turn.protocol.id === null ? [] : [[turn.protocol.id, turn.protocol.status] as const],
+    ),
+  );
+  return authoritative.turns.some(
+    (turn) =>
+      turn.protocol.id !== null &&
+      turn.protocol.status !== "inProgress" &&
+      candidateStatusByTurnId.get(turn.protocol.id) === "inProgress",
+  );
+};
+
 const defaultTurnItemsPagination = (
   turn: CodexCanonicalTurnState,
 ): CodexHistoryTurnItemsPagination => ({
@@ -1031,7 +1050,11 @@ export function makeConversationEntityStateRegistry(
       readonly revision: number;
       readonly ownerEpoch: number;
     }): CodexThreadStreamReplica => {
-      const conversation = {
+      const mustReconcileTerminalAuthority = hasTerminalTurnRegression(
+        aggregate.canonicalState,
+        input.conversation.canonicalState,
+      );
+      let conversation: CodexConversationSnapshot = {
         ...input.conversation,
         conversationEntityGeneration: aggregate.generation,
         historyMutationRevision: aggregate.historyMutationRevision,
@@ -1040,6 +1063,19 @@ export function makeConversationEntityStateRegistry(
           entries: [...aggregate.queuedFollowUps.entries],
         },
       };
+      if (mustReconcileTerminalAuthority && aggregate.canonicalState) {
+        // Main observes protocol notifications before the renderer can publish their reduced
+        // document. Rebase a lagging owner publication onto Main's terminal lifecycle authority.
+        // Its checkpoint then intentionally differs from the submitted one, causing the
+        // coordinator to return this reconciled replica as recovery instead of acknowledging a
+        // document that would put the renderer back into a permanently running state.
+        conversation = projectCodexConversationSnapshot({
+          conversation,
+          before: conversation.canonicalState ?? null,
+          after: aggregate.canonicalState,
+          observedAtMs: Date.now(),
+        });
+      }
       const checkpoint = buildCodexThreadStreamCheckpoint({
         ownerEpoch: input.ownerEpoch,
         revision: input.revision,

@@ -106,10 +106,10 @@ fn seed_identity_and_workspace(kernel: &SqliteStoreKernel) {
                 {
                     let mut insert_thread = transaction.prepare(
                         "INSERT INTO codex_threads(\
-                           thread_id, project_id, thread_name, thread_preview, model_provider, cwd, \
+                           thread_id, project_id, thread_name, thread_preview, cwd, \
                            status_type, status_active_flags_json, archived, created_at, updated_at, \
                            linked_at\
-                         ) VALUES (?1, ?2, ?3, ?4, 'openai', ?5, 'idle', '[]', 0, ?6, ?6, ?7)",
+                         ) VALUES (?1, ?2, ?3, ?4, ?5, 'idle', '[]', 0, ?6, ?6, ?7)",
                     )?;
                     for index in 0..THREAD_COUNT {
                         let project_id = format!("project:{:03}", index % PROJECT_COUNT);

@@ -65,6 +65,7 @@ function makeCommandContext(
     hasActiveSession: true,
     activeSessionPinned: false,
     hasAttachedThread: true,
+    canExportConversationMarkdown: true,
     panelActionAvailability: {
       db_view: true,
       page_stage: true,
@@ -257,6 +258,17 @@ describe("buildCommandPaletteCommands", () => {
 
     expect(commands.find((command) => command.id === "newThread")?.disabled).toBe(false);
     expect(commands.find((command) => command.id === "newThreadInProject")?.disabled).toBe(true);
+  });
+
+  test("keeps Codex transcript export unavailable for another attached backend", () => {
+    const commands = buildCommandPaletteCommands(
+      makeCommandContext({
+        hasAttachedThread: true,
+        canExportConversationMarkdown: false,
+      }),
+    );
+
+    expect(commands.find((command) => command.id === "copyConversationMarkdown")).toBeUndefined();
   });
 
   test("uses the shared panel eligibility for attached projectless chats", () => {

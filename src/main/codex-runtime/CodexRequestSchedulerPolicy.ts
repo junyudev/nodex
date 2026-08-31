@@ -261,16 +261,27 @@ const stableJson = (value: unknown): string | null => {
 
 const utf8Encoder = new TextEncoder();
 
+const encodeCodexRequestParams = (
+  params: unknown,
+): { readonly kind: "omitted" } | { readonly kind: "encoded"; readonly json: string } | null => {
+  if (params === undefined) return { kind: "omitted" };
+  const json = stableJson(params);
+  return json === null ? null : { kind: "encoded", json };
+};
+
 /** Returns the deterministic JSON bytes retained by the scheduler, or null for non-JSON input. */
 export const codexScheduledRequestBytes = (method: string, params: unknown): number | null => {
   const maximumBytes = CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request;
   if (cappedApproximateValueBytes({ method, params }, maximumBytes) > maximumBytes) {
     return maximumBytes + 1;
   }
-  const encodedParams = stableJson(params);
+  const encodedParams = encodeCodexRequestParams(params);
   if (encodedParams === null) return null;
-  return utf8Encoder.encode(`{"method":${JSON.stringify(method)},"params":${encodedParams}}`)
-    .byteLength;
+  const encodedRequest =
+    encodedParams.kind === "omitted"
+      ? `{"method":${JSON.stringify(method)}}`
+      : `{"method":${JSON.stringify(method)},"params":${encodedParams.json}}`;
+  return utf8Encoder.encode(encodedRequest).byteLength;
 };
 
 export const codexRequestCoalescingKey = (
@@ -297,13 +308,13 @@ export const codexRequestCoalescingKey = (
   ) {
     return null;
   }
-  const params = stableJson(request.params);
+  const params = encodeCodexRequestParams(request.params);
   if (params === null) return null;
   return JSON.stringify([
     request.hostId,
     request.generation,
     request.method,
-    params,
+    params.kind === "omitted" ? ["omitted"] : ["encoded", params.json],
     request.priority,
     request.source,
     request.conversationId,

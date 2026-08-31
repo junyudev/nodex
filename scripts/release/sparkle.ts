@@ -469,7 +469,7 @@ export async function finalizeSparkleArchitectureUpdate(
     if (
       identity.version !== version ||
       identity.bundleId !== PRODUCT_BUNDLE_ID ||
-      identity.packageProvenanceSchema !== 4 ||
+      identity.packageProvenanceSchema !== 5 ||
       identity.publicKey !== publicKey ||
       identity.runtimePublicKey !== publicKey
     ) {
@@ -539,7 +539,7 @@ export async function finalizeSparkleArchitectureUpdate(
       target: {
         buildVersion: identity.buildVersion,
         bundleId: PRODUCT_BUNDLE_ID,
-        packageProvenanceSchema: 4,
+        packageProvenanceSchema: 5,
         teamIdentifier: identity.teamIdentifier,
         version,
       },
@@ -761,7 +761,7 @@ export function fetchSparkleHistory(options: {
     const fullAsset = selected.find(({ role }) => role === "sparkle-full");
     const appcastAsset = selected.find(({ role }) => role === "sparkle-appcast");
     if (
-      update.target.packageProvenanceSchema !== 4 ||
+      update.target.packageProvenanceSchema !== 5 ||
       update.channel !== channel ||
       update.sourceSha !== bundle.sourceSha ||
       update.tag !== bundle.tag ||

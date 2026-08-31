@@ -362,9 +362,7 @@ function invokeCancellableCodexPromptRail<
   }
 
   const cancel = () => {
-    void invokeRendererControl("codex:thread:prompt-rail:cancel", requestId).catch(
-      () => undefined,
-    );
+    void invokeRendererControl("codex:thread:prompt-rail:cancel", requestId).catch(() => undefined);
   };
   signal?.addEventListener("abort", cancel, { once: true });
   const invocation = Reflect.apply(invokeRendererControl, undefined, [channel, request]) as Promise<

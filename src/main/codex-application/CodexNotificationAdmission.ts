@@ -8,7 +8,7 @@ import {
 } from "../../shared/codex-subagent-metadata";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
-import { CodexSubagentCatalog } from "./CodexSubagentCatalog";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -57,13 +57,13 @@ export const make: Effect.Effect<
   CodexNotificationAdmission["Service"],
   never,
   | CodexInternalThreadRegistry
-  | CodexSubagentCatalog
+  | CodexSubagentDirectory
   | CodexTurnAuthority
   | ConversationEntityMap
   | Scope.Scope
 > = Effect.gen(function* () {
   const internalThreads = yield* CodexInternalThreadRegistry;
-  const subagents = yield* CodexSubagentCatalog;
+  const subagents = yield* CodexSubagentDirectory;
   const authority = yield* CodexTurnAuthority;
   const conversations = yield* ConversationEntityMap;
   const inheritedBySubagentThreadId = new Map<string, FrozenNodexAgentTurnAuthority>();

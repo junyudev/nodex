@@ -30,7 +30,6 @@ import type {
 import {
   requestLocalConversationResume,
   markLocalConversationAsRead,
-  markLocalSubagentThreadOpened,
   setLocalConversationThreadViewActive,
   setLocalConversationThreadPresented,
   useComposerIntent,
@@ -76,7 +75,6 @@ import {
   ThreadSummaryPanelRenderBoundary,
   ThreadSummaryPanelRenderErrorFallback,
 } from "./summary-panel";
-import { resolveEffectiveAgentExecutionProfile } from "@/lib/agent-execution-profile";
 import {
   resolveChildConversationIds,
   resolveEffectiveThreadStageSettings,
@@ -148,6 +146,7 @@ interface ConnectedThreadStageProps extends ConnectedThreadStageInput {
   onForkFromTurnIntoWorktree?: (input: { threadId: string; targetTurnId: string }) => Promise<void>;
   initialUiState?: ThreadBodyUiStateOverrides;
   backgroundAgentDetail?: boolean;
+  backgroundAgentCanInteract?: boolean;
   rightPanelComposerOverlayEnabled?: boolean;
   rightPanelComposerOverlayCompact?: boolean;
   rightPanelComposerOverlayTarget?: HTMLElement | null;
@@ -557,31 +556,22 @@ export function ConnectedThreadStageFooter({
     () => [...turns].reverse().find((turn) => turn.status === "inProgress") ?? null,
     [turns],
   );
-  const executionProfile = useMemo(
-    () =>
-      resolveEffectiveAgentExecutionProfile({
-        catalog: input.agentProviderCatalog,
-        activeThreadId,
-        threadProfile: input.activeThreadSummary?.executionProfile,
-        threadModelProvider:
-          liveThreadSettings?.modelProvider ?? input.activeThreadSummary?.modelProvider,
-        liveModel: liveThreadSettings?.model,
-        liveReasoningEffort: liveThreadSettings?.reasoningEffort,
-        liveServiceTier: liveThreadSettings?.serviceTier,
-        draftProfile: input.selectedExecutionProfile,
-      }),
-    [
-      activeThreadId,
-      input.activeThreadSummary?.executionProfile,
-      input.activeThreadSummary?.modelProvider,
-      input.agentProviderCatalog,
-      input.selectedExecutionProfile,
-      liveThreadSettings?.model,
-      liveThreadSettings?.modelProvider,
-      liveThreadSettings?.reasoningEffort,
-      liveThreadSettings?.serviceTier,
-    ],
-  );
+  const executionProfile = useMemo(() => {
+    if (!activeThreadId) return input.selectedExecutionProfile ?? null;
+    if (!liveThreadSettings?.model) return input.activeThreadSummary?.executionProfile ?? null;
+    return {
+      modelId: liveThreadSettings.model,
+      reasoningEffort: liveThreadSettings.reasoningEffort,
+      serviceTier: liveThreadSettings.serviceTier ?? null,
+    };
+  }, [
+    activeThreadId,
+    input.activeThreadSummary?.executionProfile,
+    input.selectedExecutionProfile,
+    liveThreadSettings?.model,
+    liveThreadSettings?.reasoningEffort,
+    liveThreadSettings?.serviceTier,
+  ]);
   const effectiveSettings = resolveEffectiveThreadStageSettings({
     activeThreadId,
     liveThreadSettings,
@@ -634,7 +624,6 @@ export function ConnectedThreadStageFooter({
             source: conversationSnapshot?.source ?? null,
             threadName: input.activeThreadSummary?.threadName ?? null,
             threadPreview: input.activeThreadSummary?.threadPreview ?? "",
-            modelProvider: input.activeThreadSummary?.modelProvider ?? "",
             cwd,
             statusType: statusType ?? "notLoaded",
             statusActiveFlags,
@@ -693,8 +682,6 @@ export function ConnectedThreadStageFooter({
             }
           : input.modelPickerShortcut,
       availableModels: input.availableModels,
-      agentProviderCatalog: input.agentProviderCatalog ?? null,
-      agentProviderCatalogLoading: input.agentProviderCatalogLoading ?? false,
       executionProfile,
       executionIdentityLocked: Boolean(activeThreadId && executionProfile),
       selectedReasoningEffort,
@@ -749,8 +736,6 @@ export function ConnectedThreadStageFooter({
       composerShell,
       cwd,
       input.availableModels,
-      input.agentProviderCatalog,
-      input.agentProviderCatalogLoading,
       input.collaborationModes,
       input.composerEnterBehavior,
       input.activeThreadSummary,
@@ -926,6 +911,7 @@ export function ConnectedThreadStage({
   onForkFromTurnIntoWorktree,
   initialUiState,
   backgroundAgentDetail = false,
+  backgroundAgentCanInteract = false,
   rightPanelComposerOverlayEnabled = false,
   rightPanelComposerOverlayCompact = false,
   rightPanelComposerOverlayTarget = null,
@@ -1095,12 +1081,6 @@ export function ConnectedThreadStage({
   }, [activeThreadId, threadLifecycleActive]);
 
   useEffect(() => {
-    if (!backgroundAgentDetail || !activeThreadId) return;
-
-    void markLocalSubagentThreadOpened(activeThreadId).catch(() => {});
-  }, [activeThreadId, backgroundAgentDetail]);
-
-  useEffect(() => {
     void latestTurn?.status;
     void latestTurnKey;
     void newestCanonicalRequest;
@@ -1252,7 +1232,7 @@ export function ConnectedThreadStage({
             }
             contentShiftX={summaryPanelContentShift}
             footer={
-              backgroundAgentDetail ? null : (
+              backgroundAgentDetail && !backgroundAgentCanInteract ? null : (
                 <ConnectedThreadStageFooter
                   activeThreadId={activeThreadId}
                   input={input}

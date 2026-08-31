@@ -27,7 +27,6 @@ import {
 } from "@/features/browser-sidebar/browser-image-attachments";
 import { NodexModalHost } from "@/lib/modal-registry";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
-import type { AgentProviderCatalog } from "../../../../../shared/agent-runtime";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import {
   ThreadComposer,
@@ -38,142 +37,6 @@ import { TestComposerScopePath } from "@/test/maitai-scope-harness";
 const FAST_MODE_ICON_PATH =
   "M11.9125 21.4125C11.5292 21.8625 11.0292 22.0958 10.4125 22.1125C9.79586 22.1291 9.29586 21.9208 8.91252 21.4875C8.53752 21.0541 8.45836 20.4541 8.67503 19.6875L9.68752 16H4.57502C4.00836 16 3.56669 15.8375 3.25002 15.5125C2.93336 15.1791 2.77502 14.7791 2.77502 14.3125C2.77502 13.8375 2.92919 13.4125 3.23752 13.0375L12.1375 2.47497C12.5209 2.02497 13.0209 1.79164 13.6375 1.77497C14.2542 1.75831 14.75 1.96664 15.125 2.39997C15.5084 2.83331 15.5917 3.43331 15.375 4.19997L14.3125 7.99998H19.425C19.9917 7.99998 20.4334 8.16664 20.75 8.49997C21.075 8.83331 21.2375 9.23748 21.2375 9.71247C21.2375 10.1791 21.0792 10.5958 20.7625 10.9625L11.9125 21.4125Z";
 const IMAGE_EDIT_COMPOSER_CHANNEL_ID = "AppScope:app/ThreadScope:session:renderer-test::root";
-
-const TEST_AGENT_PROVIDER_CATALOG: AgentProviderCatalog = {
-  providers: [
-    {
-      id: "openai",
-      displayName: "OpenAI",
-      description: null,
-      wireApi: "responses",
-      credentialStatus: "runtimeManaged",
-      supportedByNodex: true,
-      isDefault: true,
-      credentialEnvKey: null,
-      recommendedHarnessId: null,
-      models: [
-        {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          displayName: "GPT-5.5",
-          description: "Default Codex coding model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: null,
-          supportedReasoningEfforts: [
-            { value: "high", displayName: "High", description: "Deep reasoning." },
-            { value: "xhigh", displayName: "Extra High", description: "Deeper reasoning." },
-          ],
-          defaultReasoningEffort: "high",
-          supportedServiceTiers: [
-            { value: null, displayName: "Standard", description: "Default speed, normal usage" },
-            {
-              value: "priority",
-              displayName: "Fast",
-              description: "Faster responses, higher usage",
-            },
-          ],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "same-thread",
-        },
-        {
-          providerId: "openai",
-          modelId: "gpt-5.4",
-          displayName: "GPT-5.4",
-          description: "Previous Codex coding model.",
-          hidden: false,
-          isDefault: false,
-          recommendedHarnessId: null,
-          supportedReasoningEfforts: [
-            { value: "medium", displayName: "Medium", description: "Balanced reasoning." },
-            { value: "high", displayName: "High", description: "Deep reasoning." },
-          ],
-          defaultReasoningEffort: "medium",
-          supportedServiceTiers: [
-            { value: null, displayName: "Standard", description: "Default speed, normal usage" },
-            {
-              value: "priority",
-              displayName: "Fast",
-              description: "Faster responses, higher usage",
-            },
-          ],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "same-thread",
-        },
-      ],
-    },
-    {
-      id: "anthropic",
-      displayName: "Anthropic",
-      description: null,
-      wireApi: "messages",
-      credentialStatus: "missing",
-      supportedByNodex: true,
-      isDefault: false,
-      credentialEnvKey: "ANTHROPIC_API_KEY",
-      recommendedHarnessId: "claude-code",
-      models: [
-        {
-          providerId: "anthropic",
-          modelId: "claude-sonnet-4-5",
-          displayName: "Claude Sonnet 4.5",
-          description: "Anthropic coding model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: "claude-code",
-          supportedReasoningEfforts: [
-            {
-              value: "high",
-              displayName: "High",
-              description: "Extended thinking.",
-            },
-          ],
-          defaultReasoningEffort: "high",
-          supportedServiceTiers: [],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "new-thread",
-        },
-      ],
-    },
-    {
-      id: "kimi-for-coding",
-      displayName: "Kimi For Coding",
-      description: null,
-      wireApi: "chat",
-      credentialStatus: "ready",
-      supportedByNodex: true,
-      isDefault: false,
-      credentialEnvKey: "KIMI_API_KEY",
-      recommendedHarnessId: "kimi-code",
-      models: [
-        {
-          providerId: "kimi-for-coding",
-          modelId: "kimi-k3",
-          displayName: "Kimi K3",
-          description: "Kimi coding model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: "kimi-code",
-          supportedReasoningEfforts: [
-            {
-              value: "Thinking",
-              displayName: "Thinking",
-              description: "Reason before responding.",
-            },
-          ],
-          defaultReasoningEffort: "Thinking",
-          supportedServiceTiers: [],
-          defaultServiceTier: null,
-          inputCapabilities: ["text"],
-          switchPolicy: "new-thread",
-        },
-      ],
-    },
-  ],
-};
 
 const storageMap = new Map<string, string>();
 const persistedAtomState = new Map<string, unknown>();
@@ -377,6 +240,10 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
         hidden: false,
         isDefault: true,
         defaultReasoningEffort: "high",
+        inputModalities: ["text", "image"],
+        multiAgentVersion: null,
+        serviceTiers: [],
+        defaultServiceTier: null,
         supportedReasoningEfforts: [
           { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
           { reasoningEffort: "medium", description: "Balance speed and deeper reasoning." },
@@ -390,6 +257,10 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
         hidden: false,
         isDefault: false,
         defaultReasoningEffort: "high",
+        inputModalities: ["text", "image"],
+        multiAgentVersion: null,
+        serviceTiers: [],
+        defaultServiceTier: null,
         supportedReasoningEfforts: [
           { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
         ],
@@ -529,21 +400,26 @@ async function renderControlledThreadIntelligenceComposer() {
     const [executionProfile, setExecutionProfile] = useState<
       NonNullable<ThreadFooterModel["executionProfile"]>
     >({
-      providerId: "openai",
       modelId: "gpt-5.5",
-      harnessId: null,
       reasoningEffort: "high",
       serviceTier: null,
     });
     return (
       <ThreadComposer
         model={buildModel({
-          agentProviderCatalog: TEST_AGENT_PROVIDER_CATALOG,
           executionProfile,
           executionIdentityLocked: true,
+          selectedModel: executionProfile.modelId,
+          selectedReasoningEffort: executionProfile.reasoningEffort ?? "high",
         })}
         actions={buildActions({
-          onExecutionProfileChange: setExecutionProfile,
+          onIntelligenceSelectionChange: async (selection) => {
+            setExecutionProfile({
+              modelId: selection.model,
+              reasoningEffort: selection.reasoningEffort,
+              serviceTier: selection.serviceTier,
+            });
+          },
         })}
         errorMessage={null}
         onErrorMessage={() => {}}
@@ -563,6 +439,69 @@ async function renderControlledThreadIntelligenceComposer() {
   });
   await settleComposerFrame();
   return view;
+}
+
+async function renderNewThreadComposerThatAttachesBeforeStartCompletes() {
+  installAsyncRequestAnimationFrame();
+  document.documentElement.dataset.codexWindowType = "electron";
+  installComposerWindowApi();
+
+  let completeStart!: () => void;
+  const startCompletion = new Promise<void>((resolve) => {
+    completeStart = resolve;
+  });
+
+  function TransitioningComposer() {
+    const [attached, setAttached] = useState(false);
+
+    return (
+      <ThreadComposer
+        model={
+          attached
+            ? buildModel({
+                composerIntent: null,
+              })
+            : buildModel({
+                threadId: null,
+                conversation: null,
+                isNewThreadTab: true,
+                newThreadTarget: {
+                  projectId: "project_1",
+                  projectName: "Nodex",
+                  sessionId: "session_1",
+                  threadTitle: "New thread",
+                  runInTarget: "localProject",
+                },
+                composerIntent: {
+                  prompt: "Start an atomic thread",
+                  focusNonce: 1,
+                },
+              })
+        }
+        actions={buildActions({
+          onStartThreadForSession: async () => {
+            setAttached(true);
+            await startCompletion;
+          },
+        })}
+        errorMessage={null}
+        onErrorMessage={() => {}}
+      />
+    );
+  }
+
+  let view!: ReturnType<typeof render>;
+  await act(async () => {
+    view = render(
+      <AppProviders>
+        <TestComposerScopePath>
+          <TransitioningComposer />
+        </TestComposerScopePath>
+      </AppProviders>,
+    );
+  });
+  await settleComposerFrame();
+  return { view, completeStart };
 }
 
 async function submitCurrentComposerDraft(view: ReturnType<typeof render>): Promise<void> {
@@ -1259,12 +1198,28 @@ describe("ThreadComposer speed menu", () => {
     const errors: string[] = [];
     const view = await renderComposer(
       {
-        agentProviderCatalog: TEST_AGENT_PROVIDER_CATALOG,
+        availableModels: [
+          {
+            id: "text-only",
+            model: "text-only",
+            displayName: "Text only",
+            description: "Text-only test model.",
+            hidden: false,
+            isDefault: true,
+            defaultReasoningEffort: "high",
+            inputModalities: ["text"],
+            multiAgentVersion: null,
+            serviceTiers: [],
+            defaultServiceTier: null,
+            supportedReasoningEfforts: [
+              { reasoningEffort: "high", description: "Deep reasoning." },
+            ],
+          },
+        ],
+        selectedModel: "text-only",
         executionProfile: {
-          providerId: "kimi-for-coding",
-          modelId: "kimi-k3",
-          harnessId: "kimi-code",
-          reasoningEffort: "Thinking",
+          modelId: "text-only",
+          reasoningEffort: "high",
           serviceTier: null,
         },
         composerIntent: {
@@ -1422,6 +1377,29 @@ describe("ThreadComposer speed menu", () => {
     });
     expect(queuedPrompts[0]).toBe("Follow up");
     expect(steeredPrompts.length).toBe(0);
+    await waitFor(() => expect(readComposerText(view)).toBe(""));
+  });
+
+  test("Enter clears a New Chat draft after its Session attaches to the new Thread", async () => {
+    resetStorage();
+    const { view, completeStart } = await renderNewThreadComposerThatAttachesBeforeStartCompletes();
+
+    await waitFor(() => expect(readComposerText(view)).toBe("Start an atomic thread"));
+    await keyDownComposer(view, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(
+          '[data-codex-composer="true"][aria-label="Ask for follow-up changes"]',
+        ),
+      ).not.toBeNull();
+    });
+
+    await act(async () => {
+      completeStart();
+      await Promise.resolve();
+    });
+
     await waitFor(() => expect(readComposerText(view)).toBe(""));
   });
 
@@ -4272,293 +4250,6 @@ describe("ThreadComposer speed menu", () => {
     });
   });
 
-  test("multi-provider model selector uses compact summary rows and keeps selections open", async () => {
-    resetStorage();
-    const selectedProfiles: Array<NonNullable<ThreadFooterModel["executionProfile"]>> = [];
-    const view = await renderComposer(
-      {
-        agentProviderCatalog: TEST_AGENT_PROVIDER_CATALOG,
-        executionProfile: {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          harnessId: null,
-          reasoningEffort: "high",
-          serviceTier: null,
-        },
-        executionIdentityLocked: false,
-      },
-      {
-        onExecutionProfileChange: (profile) => {
-          selectedProfiles.push(profile);
-        },
-      },
-    );
-
-    const trigger = view.getByLabelText("Select model");
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-
-    const providerSummary = view.getByLabelText("Provider OpenAI");
-    expect(view.getByLabelText("Model GPT-5.5")).toBeTruthy();
-    expect(view.getByLabelText("Effort High")).toBeTruthy();
-    expect(view.getByLabelText("Speed Standard")).toBeTruthy();
-    expect(
-      view.container.ownerDocument.body.textContent?.includes("Deep reasoning.") ?? false,
-    ).toBe(false);
-
-    await act(async () => {
-      fireEvent.click(providerSummary);
-      await Promise.resolve();
-    });
-    const kimi = within(view.container.ownerDocument.body).getByText("Kimi For Coding");
-    await act(async () => {
-      fireEvent.click(kimi);
-      await Promise.resolve();
-    });
-
-    expect(selectedProfiles[0]).toMatchObject({
-      providerId: "kimi-for-coding",
-      modelId: "kimi-k3",
-      reasoningEffort: "Thinking",
-      serviceTier: null,
-    });
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-  });
-
-  test("shows Fast for a model-advertised service tier with an opaque wire id", async () => {
-    resetStorage();
-    const view = await renderComposer(
-      {
-        agentProviderCatalog: TEST_AGENT_PROVIDER_CATALOG,
-        executionProfile: {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          harnessId: null,
-          reasoningEffort: "high",
-          serviceTier: "priority",
-        },
-        executionIdentityLocked: false,
-      },
-      {
-        onExecutionProfileChange: () => undefined,
-      },
-    );
-
-    const trigger = view.getByLabelText("Select model");
-    expect(trigger.querySelector('[data-fast-mode-indicator="true"]')).not.toBeNull();
-  });
-
-  test("keeps the new-task Fast indicator when catalog speed metadata is absent", async () => {
-    resetStorage();
-    localStorageRef.setItem("nodex-codex-default-service-tier-v1", "fast");
-    const catalog: AgentProviderCatalog = {
-      providers: TEST_AGENT_PROVIDER_CATALOG.providers.map((provider) => ({
-        ...provider,
-        models: provider.models.map((model) => ({
-          ...model,
-          supportedServiceTiers: [],
-          defaultServiceTier: null,
-        })),
-      })),
-    };
-    const view = await renderComposer(
-      {
-        threadId: null,
-        conversation: null,
-        isNewThreadTab: true,
-        newThreadTarget: {
-          projectId: "project_1",
-          projectName: "Nodex",
-          sessionId: "session_new",
-          threadTitle: "New task",
-          runInTarget: "localProject",
-        },
-        agentProviderCatalog: catalog,
-        executionProfile: {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          harnessId: null,
-          reasoningEffort: "high",
-          serviceTier: null,
-        },
-        executionIdentityLocked: false,
-      },
-      {
-        onExecutionProfileChange: () => undefined,
-      },
-    );
-
-    const trigger = view.getByLabelText("Select model");
-    expect(trigger.querySelector('[data-fast-mode-indicator="true"]')).not.toBeNull();
-  });
-
-  test("agent speed selection emits a compound execution-profile update", async () => {
-    resetStorage();
-    const selectedProfiles: Array<NonNullable<ThreadFooterModel["executionProfile"]>> = [];
-    const view = await renderComposer(
-      {
-        agentProviderCatalog: TEST_AGENT_PROVIDER_CATALOG,
-        executionProfile: {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          harnessId: null,
-          reasoningEffort: "high",
-          serviceTier: null,
-        },
-        executionIdentityLocked: false,
-      },
-      {
-        onExecutionProfileChange: (profile) => {
-          selectedProfiles.push(profile);
-        },
-      },
-    );
-
-    const trigger = view.getByLabelText("Select model");
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByLabelText("Speed Standard"));
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(within(view.container.ownerDocument.body).getByText("Fast"));
-      await Promise.resolve();
-    });
-
-    expect(selectedProfiles[0]?.serviceTier).toBe("priority");
-    expect(localStorage.getItem("nodex-codex-default-service-tier-v1")).toBe(null);
-  });
-
-  test("configures a missing provider in the modal layer before selecting it", async () => {
-    resetStorage();
-    const credentialWrites: Array<{ providerId: string; apiKey: string }> = [];
-    const selectedProfiles: Array<NonNullable<ThreadFooterModel["executionProfile"]>> = [];
-    const view = await renderComposer(
-      {
-        agentProviderCatalog: TEST_AGENT_PROVIDER_CATALOG,
-        executionProfile: {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          harnessId: null,
-          reasoningEffort: "high",
-          serviceTier: null,
-        },
-        executionIdentityLocked: false,
-      },
-      {
-        onExecutionProfileChange: (profile) => {
-          selectedProfiles.push(profile);
-        },
-        onProviderCredentialSet: async (providerId, apiKey) => {
-          credentialWrites.push({ providerId, apiKey });
-          return {
-            providerId,
-            status: "ready",
-            runtimeRestartPending: false,
-          };
-        },
-      },
-    );
-
-    const trigger = view.getByLabelText("Select model");
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(view.getByLabelText("Provider OpenAI"));
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(within(view.container.ownerDocument.body).getByText("Anthropic"));
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    const dialog = await view.findByRole("dialog");
-    const apiKeyInput = within(dialog).getByLabelText("API key");
-    await act(async () => {
-      fireEvent.change(apiKeyInput, { target: { value: "sk-ant-test" } });
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(credentialWrites).toEqual([
-        {
-          providerId: "anthropic",
-          apiKey: "sk-ant-test",
-        },
-      ]);
-      expect(selectedProfiles[0]).toMatchObject({
-        providerId: "anthropic",
-        modelId: "claude-sonnet-4-5",
-        harnessId: "claude-code",
-        reasoningEffort: "high",
-      });
-      expect(view.queryByRole("dialog")).toBe(null);
-    });
-  });
-
-  test("locks an existing task identity while keeping compatible intelligence editable", async () => {
-    resetStorage();
-    const selectedProfiles: Array<NonNullable<ThreadFooterModel["executionProfile"]>> = [];
-    const view = await renderComposer(
-      {
-        agentProviderCatalog: TEST_AGENT_PROVIDER_CATALOG,
-        executionProfile: {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          harnessId: null,
-          reasoningEffort: "high",
-          serviceTier: null,
-        },
-        executionIdentityLocked: true,
-      },
-      {
-        onExecutionProfileChange: (profile) => {
-          selectedProfiles.push(profile);
-        },
-      },
-    );
-
-    const trigger = view.getByLabelText("Select model");
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
-      fireEvent.click(trigger);
-      await Promise.resolve();
-    });
-
-    expect(view.getByText("Start a new task to change provider.")).toBeTruthy();
-    expect(view.getByLabelText("Provider OpenAI").getAttribute("data-disabled")).not.toBe(null);
-    await act(async () => {
-      fireEvent.click(view.getByLabelText("Model GPT-5.5"));
-      await Promise.resolve();
-    });
-    await act(async () => {
-      fireEvent.click(within(view.container.ownerDocument.body).getByText("GPT-5.4"));
-      await Promise.resolve();
-    });
-    expect(selectedProfiles[0]).toMatchObject({
-      providerId: "openai",
-      modelId: "gpt-5.4",
-      harnessId: null,
-      reasoningEffort: "high",
-    });
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-  });
-
   test("keeps the selector anchored while controlled thread intelligence updates", async () => {
     resetStorage();
     const view = await renderControlledThreadIntelligenceComposer();
@@ -4573,12 +4264,12 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      fireEvent.click(within(view.container.ownerDocument.body).getByText("GPT-5.4"));
+      fireEvent.click(within(view.container.ownerDocument.body).getByText("GPT-5.3 Codex"));
       await Promise.resolve();
     });
 
     await waitFor(() => {
-      expect(trigger.textContent?.includes("GPT-5.4")).toBe(true);
+      expect(trigger.textContent?.includes("5.3")).toBe(true);
       expect(trigger.getAttribute("aria-expanded")).toBe("true");
     });
     const visibleModelLabels = Array.from(
@@ -4587,8 +4278,8 @@ describe("ThreadComposer speed menu", () => {
       ),
     )
       .map((item) => item.textContent?.trim())
-      .filter((label) => label === "GPT-5.5" || label === "GPT-5.4");
-    expect(visibleModelLabels).toEqual(["GPT-5.5", "GPT-5.4"]);
+      .filter((label) => label === "GPT-5.5" || label === "GPT-5.3 Codex");
+    expect(visibleModelLabels).toEqual(["GPT-5.3 Codex", "GPT-5.5"]);
 
     await act(async () => {
       fireEvent.click(view.getByLabelText("Effort High"));
@@ -4689,6 +4380,62 @@ describe("ThreadComposer speed menu", () => {
     expect(selectedReasoning[0]).toBe("medium");
   });
 
+  test("uses one provider-neutral selector for heterogeneous model catalogs", async () => {
+    resetStorage();
+    const reasoningEfforts = ["low", "medium", "high", "xhigh", "ultra"] as const;
+    const view = await renderComposer({
+      selectedModel: "gpt-5.6-sol",
+      selectedReasoningEffort: "high",
+      availableModels: [
+        {
+          id: "gpt-5.6-terra",
+          model: "gpt-5.6-terra",
+          displayName: "GPT-5.6 Terra",
+          description: "Efficient reasoning for everyday work.",
+          hidden: false,
+          isDefault: false,
+          defaultReasoningEffort: "low",
+          inputModalities: ["text", "image"],
+          multiAgentVersion: "v2",
+          serviceTiers: [],
+          defaultServiceTier: null,
+          supportedReasoningEfforts: reasoningEfforts.slice(0, 4).map((reasoningEffort) => ({
+            reasoningEffort,
+            description: "",
+          })),
+        },
+        {
+          id: "gpt-5.6-sol",
+          model: "gpt-5.6-sol",
+          displayName: "GPT-5.6 Sol",
+          description: "Frontier reasoning for demanding work.",
+          hidden: false,
+          isDefault: true,
+          defaultReasoningEffort: "low",
+          inputModalities: ["text", "image"],
+          multiAgentVersion: "v2",
+          serviceTiers: [],
+          defaultServiceTier: null,
+          supportedReasoningEfforts: reasoningEfforts.map((reasoningEffort) => ({
+            reasoningEffort,
+            description: "",
+          })),
+        },
+      ],
+    });
+
+    const trigger = view.getByLabelText("Select model");
+    await act(async () => {
+      fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
+
+    expect(view.getByLabelText("Model GPT-5.6 Sol")).toBeTruthy();
+    expect(view.getByLabelText("Effort High")).toBeTruthy();
+    expect(view.getByLabelText("Speed Standard")).toBeTruthy();
+  });
+
   test("selecting a model coerces unsupported reasoning to that model's supported default", async () => {
     resetStorage();
     const selectedModels: string[] = [];
@@ -4756,6 +4503,10 @@ describe("ThreadComposer speed menu", () => {
           hidden: false,
           isDefault: false,
           defaultReasoningEffort: "high",
+          inputModalities: ["text", "image"],
+          multiAgentVersion: null,
+          serviceTiers: [],
+          defaultServiceTier: null,
           supportedReasoningEfforts: [
             { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
           ],
@@ -4763,11 +4514,15 @@ describe("ThreadComposer speed menu", () => {
         {
           id: "gpt-5.4",
           model: "gpt-5.4",
-          displayName: "GPT-5.4",
+          displayName: "GPT-5.3 Codex",
           description: "Previous stable Codex model.",
           hidden: false,
           isDefault: false,
           defaultReasoningEffort: "high",
+          inputModalities: ["text", "image"],
+          multiAgentVersion: null,
+          serviceTiers: [],
+          defaultServiceTier: null,
           supportedReasoningEfforts: [
             { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
           ],
@@ -4775,11 +4530,15 @@ describe("ThreadComposer speed menu", () => {
         {
           id: "gpt-5.4-mini",
           model: "gpt-5.4-mini",
-          displayName: "GPT-5.4-Mini",
+          displayName: "GPT-5.3 Codex-Mini",
           description: "Small fast Codex model.",
           hidden: false,
           isDefault: false,
           defaultReasoningEffort: "medium",
+          inputModalities: ["text", "image"],
+          multiAgentVersion: null,
+          serviceTiers: [],
+          defaultServiceTier: null,
           supportedReasoningEfforts: [
             { reasoningEffort: "medium", description: "Balance speed and deeper reasoning." },
           ],
@@ -4792,6 +4551,10 @@ describe("ThreadComposer speed menu", () => {
           hidden: false,
           isDefault: false,
           defaultReasoningEffort: "medium",
+          inputModalities: ["text", "image"],
+          multiAgentVersion: null,
+          serviceTiers: [],
+          defaultServiceTier: null,
           supportedReasoningEfforts: [
             { reasoningEffort: "medium", description: "Balance speed and deeper reasoning." },
           ],
@@ -4807,7 +4570,7 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
 
-    const modelTrigger = view.getByLabelText("Model GPT-5.4");
+    const modelTrigger = view.getByLabelText("Model GPT-5.3 Codex");
 
     await act(async () => {
       fireEvent.click(modelTrigger);
@@ -4818,10 +4581,10 @@ describe("ThreadComposer speed menu", () => {
       view.container.ownerDocument.body.querySelectorAll<HTMLElement>(
         '[data-slot="dropdown-submenu-content"]',
       ),
-    ).find((content) => content.textContent?.includes("GPT-5.4-Mini"));
+    ).find((content) => content.textContent?.includes("GPT-5.3 Codex-Mini"));
     if (!modelMenu) throw new Error("Expected the Model flyout content.");
     const modelMenuText = modelMenu.textContent ?? "";
-    expect(Boolean(modelMenuText.includes("GPT-5.4-Mini"))).toBe(true);
+    expect(Boolean(modelMenuText.includes("GPT-5.3 Codex-Mini"))).toBe(true);
     expect(Boolean(modelMenuText.includes("GPT-5.3-Codex-Spark"))).toBe(true);
     expect(Boolean(modelMenuText.includes("Other models"))).toBe(false);
     expect(Boolean(modelMenuText.includes("Latest Codex model"))).toBe(false);
@@ -4833,14 +4596,14 @@ describe("ThreadComposer speed menu", () => {
       .filter(
         (label) =>
           label === "GPT-5.5" ||
-          label === "GPT-5.4" ||
-          label === "GPT-5.4-Mini" ||
+          label === "GPT-5.3 Codex" ||
+          label === "GPT-5.3 Codex-Mini" ||
           label === "GPT-5.3-Codex-Spark",
       );
     expect(visibleModelLabels).toEqual([
       "GPT-5.5",
-      "GPT-5.4",
-      "GPT-5.4-Mini",
+      "GPT-5.3 Codex",
+      "GPT-5.3 Codex-Mini",
       "GPT-5.3-Codex-Spark",
     ]);
   });

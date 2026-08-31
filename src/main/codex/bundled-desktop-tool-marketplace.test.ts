@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
 import { resolveBrowserRuntimeBundle } from "./browser-runtime-bundle";
-import { writeBrowserRuntimeFixture } from "./browser-runtime-test-fixture";
+import {
+  makeTestedBrowserAppServerPair,
+  writeBrowserRuntimeFixture,
+} from "./browser-runtime-test-fixture";
 import { materializeBundledDesktopToolMarketplace } from "./bundled-desktop-tool-marketplace";
 
 const temporaryRoots: string[] = [];
@@ -13,14 +16,17 @@ function makeRuntime(targetArch: "arm64" | "x64" = "arm64") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-desktop-tools-"));
   temporaryRoots.push(root);
   const runtimeRoot = path.join(root, "runtime");
-  writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY), {
+  const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+  const manifest = writeBrowserRuntimeFixture(bundleRoot, {
     targetArch,
   });
+  const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
   const runtime = resolveBrowserRuntimeBundle({
-    expectedCodexCompatibilityVersion: "0.144.6",
+    appServerIdentity: testedPair.appServer,
     runtimeRoot,
     targetArch,
     targetPlatform: "darwin",
+    testedPairs: [testedPair],
   });
   if (runtime.status !== "available") throw new Error(runtime.message);
   return { bundle: runtime.bundle, runtimeStateHome: path.join(root, "state") };

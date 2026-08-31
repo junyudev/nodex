@@ -174,88 +174,6 @@ describe("createThreadStageActions settings routing", () => {
     expect(JSON.stringify(draftReasoning)).toBe(JSON.stringify(["medium"]));
   });
 
-  test("routes provider profiles and credentials through their dedicated boundaries", async () => {
-    const calls: unknown[] = [];
-    const profile = {
-      providerId: "kimi-for-coding",
-      modelId: "kimi-k3",
-      harnessId: "kimi-code",
-      reasoningEffort: "Thinking",
-      serviceTier: null,
-    };
-    const actions = createThreadStageActions(
-      buildInput({
-        activeThreadId: null,
-        codexControl: {
-          setExecutionProfile: (next: unknown) => calls.push({ profile: next }),
-          setDefaultServiceTier: (serviceTier: unknown) => calls.push({ serviceTier }),
-          setProviderCredential: async (input: unknown) => {
-            calls.push({ setCredential: input });
-            return { providerId: "kimi-for-coding", status: "ready", runtimeRestartPending: false };
-          },
-          deleteProviderCredential: async (input: unknown) => {
-            calls.push({ deleteCredential: input });
-            return {
-              providerId: "kimi-for-coding",
-              status: "missing",
-              runtimeRestartPending: false,
-            };
-          },
-        } as unknown as ThreadActionControllerInput["codexControl"],
-      }),
-    );
-
-    await actions.onExecutionProfileChange?.(profile);
-    await actions.onProviderCredentialSet?.("kimi-for-coding", "secret-key");
-    await actions.onProviderCredentialDelete?.("kimi-for-coding");
-
-    expect(calls).toEqual([
-      { profile },
-      { serviceTier: null },
-      { setCredential: { providerId: "kimi-for-coding", apiKey: "secret-key" } },
-      { deleteCredential: { providerId: "kimi-for-coding" } },
-    ]);
-  });
-
-  test("routes active profile intelligence through the thread-owned settings boundary", async () => {
-    const settingsUpdates: unknown[] = [];
-    const actions = createThreadStageActions(
-      buildInput({
-        codexControl: {
-          setConversationThreadSettings: async (threadId: string, patch: unknown) => {
-            settingsUpdates.push({ threadId, patch });
-            return null;
-          },
-          setExecutionProfile: () => {
-            throw new Error("active thread changes must not update the draft profile");
-          },
-          setDefaultServiceTier: () => {
-            throw new Error("active thread changes must not update the draft speed");
-          },
-        } as unknown as ThreadActionControllerInput["codexControl"],
-      }),
-    );
-    const profile = {
-      providerId: "anthropic",
-      modelId: "claude-opus-4-1",
-      harnessId: "claude-code",
-      reasoningEffort: "high",
-      serviceTier: null,
-    };
-
-    await actions.onExecutionProfileChange?.(profile, "model");
-
-    expect(settingsUpdates).toEqual([
-      {
-        threadId: "thread_1",
-        patch: {
-          executionProfile: profile,
-          executionProfileChange: "model",
-        },
-      },
-    ]);
-  });
-
   test("commits Codex intelligence and Default mode in one awaited settings patch", async () => {
     const settingsUpdates: unknown[] = [];
     const actions = createThreadStageActions(
@@ -879,15 +797,11 @@ describe("createThreadStageActions settings routing", () => {
     );
   });
 
-  test("passes subagent context to the shell opener without hydrating inline", async () => {
+  test("passes subagent context to the shell opener without reading child data", async () => {
     const calls: string[] = [];
     const input = buildInput({
       activeThreadId: "thread-parent",
       codexControl: {
-        hydrateBackgroundSubagentThreads: async (input: { threadIds: string[] }) => {
-          calls.push(`hydrate:${input.threadIds.join(",")}`);
-          return [];
-        },
         requestThreadStreamSnapshot: async (threadId: string) => {
           calls.push(`snapshot:${threadId}`);
           return null;
@@ -918,10 +832,6 @@ describe("createThreadStageActions settings routing", () => {
     const calls: string[] = [];
     const input = buildInput({
       codexControl: {
-        hydrateBackgroundSubagentThreads: async (input: { threadIds: string[] }) => {
-          calls.push(`hydrate:${input.threadIds.join(",")}`);
-          return [];
-        },
         requestThreadStreamSnapshot: async (threadId: string) => {
           calls.push(`snapshot:${threadId}`);
           return null;

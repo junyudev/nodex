@@ -692,6 +692,7 @@ describe("LocalConversationTurnEntry", () => {
 
     expect(requestedCollapsed).toBe(false);
     expect(workedForButton.getAttribute("aria-expanded")).toBe("true");
+    expect(view.getAllByText("Worked for 2m 5s")).toHaveLength(1);
     expect(view.queryByText("Steered conversation")).toBeNull();
     expect(view.container.textContent?.includes("src/app.ts") ?? false).toBe(true);
     expect(view.container.textContent?.includes("src/view.tsx") ?? false).toBe(true);

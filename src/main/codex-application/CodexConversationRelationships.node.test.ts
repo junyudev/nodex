@@ -8,6 +8,7 @@ import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
 import {
+  CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGES,
   CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS,
   CODEX_CONVERSATION_RELATIONSHIP_MAX_ACTIVE_REPAIRS,
   make,
@@ -70,9 +71,8 @@ const coreThread = (threadId: string, parentThreadId: string | null): CoreThread
     agent_path: null,
     thread_name: null,
     thread_preview: "",
-    model_provider: "openai",
+    backend_binding: { kind: "codex" },
     model_id: null,
-    harness_id: null,
     reasoning_effort: null,
     service_tier: null,
     execution_host_id: "local",
@@ -85,11 +85,12 @@ const coreThread = (threadId: string, parentThreadId: string | null): CoreThread
     archived: false,
     pinned_order: null,
     has_unread_turn: false,
+    dynamic_tool_catalogs: [],
     created_at: 1,
     updated_at: 2,
     recency_at: 2,
     linked_at: "2026-08-24T00:00:00.000Z",
-  }) as unknown as CoreThread;
+  }) satisfies CoreThread;
 
 const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")(function* (input: {
   readonly scope: Scope.Scope;
@@ -342,8 +343,8 @@ it.effect("bounds a 10k-child relationship scan before it can retain every child
     const result = yield* Effect.exit(relationships.refresh("parent"));
 
     assert.isTrue(Exit.isFailure(result));
-    assert.strictEqual(childReads, 2);
-    assert.isTrue(childReads * 200 <= CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS + 200);
+    assert.strictEqual(childReads, CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_PAGES);
+    assert.isTrue(childReads * 200 <= CODEX_CONVERSATION_RELATIONSHIP_CHILD_MAX_RESULTS);
     assert.deepEqual(published, []);
     yield* Scope.close(ownerScope, Exit.void);
   }),

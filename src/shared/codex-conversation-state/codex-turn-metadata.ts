@@ -338,6 +338,15 @@ function projectGuardianAction(action: GuardianApprovalReviewAction): unknown {
       tool_title: action.toolTitle,
     };
   }
+  if (action.type === "writeStdin") {
+    return {
+      type: "write_stdin",
+      approval_id: action.approvalId,
+      process_id: action.processId,
+      stdin: action.stdin,
+      cwd: action.cwd,
+    };
+  }
   return {
     type: "request_permissions",
     reason: action.reason,

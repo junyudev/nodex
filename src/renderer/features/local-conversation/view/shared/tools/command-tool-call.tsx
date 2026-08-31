@@ -37,7 +37,7 @@ import {
   ThreadRichActivityHeader,
   ToolErrorDetail,
 } from "./tool-primitives";
-import { ThreadCommandShellBlock } from "./thread-command-shell-block";
+import { ThreadExecShellContainer } from "./thread-command-shell-block";
 
 interface CommandToolCallProps {
   item: CodexTranscriptEntry;
@@ -696,8 +696,7 @@ export function CommandToolCall({
   ) : (
     <div className={cn("flex flex-col gap-2", automaticApprovalReviews.length === 0 && "pt-2")}>
       <AutomaticApprovalReviewRows items={automaticApprovalReviews} />
-      <ThreadCommandShellBlock
-        variant="embedded"
+      <ThreadExecShellContainer
         command={command}
         output={output}
         cwd={item.cwd ?? undefined}

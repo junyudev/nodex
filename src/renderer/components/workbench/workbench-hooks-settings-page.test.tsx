@@ -155,4 +155,21 @@ describe("Hooks settings", () => {
     expect(getByText("filesystem")).toBeTruthy();
     expect(getByText("read_file")).toBeTruthy();
   });
+
+  test("labels interrupt hooks with their turn lifecycle semantics", () => {
+    const { getByText } = renderView({
+      entries: [
+        {
+          cwd: "/workspace/nodex",
+          hooks: [hook({ key: "interrupt", source: "user", eventName: "interrupt" })],
+          warnings: [],
+          errors: [],
+        },
+      ],
+      path: "/settings/hooks-settings?hostId=default&source=user",
+    });
+
+    expect(getByText("Interrupt")).toBeTruthy();
+    expect(getByText("When a turn is interrupted")).toBeTruthy();
+  });
 });

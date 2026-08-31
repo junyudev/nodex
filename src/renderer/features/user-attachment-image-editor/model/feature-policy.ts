@@ -4,21 +4,18 @@ import type {
   NormalizedUserAttachmentImageEditorOptions,
   OpenUserAttachmentImagePreviewOptions,
 } from "./types";
-import type { AgentExecutionProfile, AgentProviderCatalog } from "../../../../shared/agent-runtime";
+import type { CodexModelOption } from "../../../../shared/types";
 
 /** Unknown catalogs stay permissive; a known model must advertise image input. */
 export function resolveImageInputSupport(args: {
-  catalog: AgentProviderCatalog | null;
-  executionProfile: AgentExecutionProfile | null;
+  models: readonly CodexModelOption[];
+  selectedModel: string | null;
 }): boolean {
-  if (!args.catalog || !args.executionProfile) return true;
-  const provider = args.catalog.providers.find(
-    (candidate) => candidate.id === args.executionProfile?.providerId,
+  if (!args.selectedModel) return true;
+  const model = args.models.find(
+    (candidate) => candidate.id === args.selectedModel || candidate.model === args.selectedModel,
   );
-  const model = provider?.models.find(
-    (candidate) => candidate.modelId === args.executionProfile?.modelId,
-  );
-  return model?.inputCapabilities.includes("image") ?? true;
+  return model?.inputModalities.includes("image") ?? true;
 }
 
 export type ImagePreviewRouteKind = "local-thread" | "other";

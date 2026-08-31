@@ -43,7 +43,7 @@ const manifest = () => ({
   target: {
     buildVersion: VERSION,
     bundleId: "app.jyu.nodex",
-    packageProvenanceSchema: 4,
+    packageProvenanceSchema: 5,
     teamIdentifier: NODEX_MACOS_TEAM_IDENTIFIER,
     version: VERSION,
   },

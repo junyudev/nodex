@@ -51,7 +51,6 @@ function buildModel(): ThreadFooterModel {
   return {
     selectedModel: AUTHORITATIVE_SELECTION.model,
     selectedReasoningEffort: AUTHORITATIVE_SELECTION.reasoningEffort,
-    agentProviderCatalog: null,
     executionProfile: null,
     conversation: {
       latestThreadSettings: { serviceTier: AUTHORITATIVE_SELECTION.serviceTier },
@@ -63,11 +62,8 @@ function buildNewThreadAgentModel(): ThreadFooterModel {
   return {
     ...buildModel(),
     isNewThreadTab: true,
-    agentProviderCatalog: { providers: [] },
     executionProfile: {
-      providerId: "openai",
       modelId: "gpt-5.6-sol",
-      harnessId: null,
       reasoningEffort: "high",
       serviceTier: null,
     },

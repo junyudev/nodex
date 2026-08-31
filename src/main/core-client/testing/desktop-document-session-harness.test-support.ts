@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import type { ContentAccessContext } from "../../../shared/content-access-context";
+import { documentSyncApplyCommandResult } from "../../../shared/block-documents/document-sync";
 import type { DocumentSyncClientTarget } from "../../document-sync-transport";
 import {
   createElectronDocumentSyncAdapter,
@@ -103,7 +104,9 @@ export const makeDesktopDocumentSessionHarness = Effect.fn("DesktopDocumentSessi
             return callbacks.runPromise(session.sync(scope, target, request as never));
           case "document-sync:apply":
           case "library-document-sync:apply":
-            return callbacks.runPromise(session.applyUpdate(scope, target, request as never));
+            return callbacks
+              .runPromise(session.applyUpdate(scope, target, request as never))
+              .then(documentSyncApplyCommandResult);
           case "document-sync:awareness:publish":
           case "library-document-sync:awareness:publish":
             return callbacks.runPromise(session.publishAwareness(scope, target, request as never));

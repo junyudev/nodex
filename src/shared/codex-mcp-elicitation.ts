@@ -3,6 +3,14 @@ import type { McpServerElicitationRequestResponse } from "@nodex/codex-app-serve
 import type { CodexMcpServerElicitationAction, CodexMcpServerElicitationRequest } from "./types";
 
 type CodexMcpElicitationJsonValue = McpServerElicitationRequestResponse["content"];
+type CodexMcpServerElicitationMode = CodexMcpServerElicitationRequest["mode"];
+
+/** Canonicalizes the legacy wire spelling before the request enters Nodex-owned state. */
+export function normalizeCodexMcpServerElicitationMode(
+  mode: McpServerElicitationRequestParams["mode"],
+): CodexMcpServerElicitationMode {
+  return mode === "openaiForm" ? "openai/form" : mode;
+}
 
 export type CodexMcpElicitationFieldValue = string | number | boolean | string[];
 

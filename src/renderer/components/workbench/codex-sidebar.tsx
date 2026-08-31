@@ -1915,6 +1915,7 @@ export function CodexThreadRow({
   const item: CodexSidebarThreadItem = {
     key: `${local ? "local" : "remote"}:${threadId}`,
     kind: local ? "local" : "remote",
+    backendBinding: session.thread?.backendBinding ?? { kind: "codex" },
     runLocation: managedWorktreePath
       ? local
         ? { kind: "local-worktree", path: managedWorktreePath, phase: "ready" }

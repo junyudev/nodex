@@ -44,6 +44,7 @@ export const sanitizedCommandLifecycleFixture = {
     ephemeral: false,
     section: null,
     sectionEnteredAt: null,
+    projectId: null,
     historyMode: "paginated",
     modelProvider: "openai",
     createdAt: 1,
@@ -119,6 +120,7 @@ export const sanitizedCommandLifecycleFixture = {
         id: REQUEST_ID,
         method: "item/commandExecution/requestApproval",
         params: {
+          kind: "command",
           threadId: THREAD_ID,
           turnId: TURN_ID,
           itemId: ITEM_ID,

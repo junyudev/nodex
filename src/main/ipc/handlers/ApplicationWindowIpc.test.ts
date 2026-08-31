@@ -59,9 +59,6 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     assert.deepEqual([...handlers.keys()].sort(), [
       "app:runtime-capabilities:get",
       "electron-window:focus:get",
-      "window-sessions:bootstrap",
-      "window-sessions:save-layout",
-      "window-sessions:update-bounds",
       "window:new",
       "window:show-emoji-panel",
     ]);

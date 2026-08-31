@@ -702,7 +702,6 @@ mod tests {
                     project_id: Some(Some("project:default".to_owned())),
                     thread_name: Some(Some("Working chat".to_owned())),
                     thread_preview: Some("Working preview".to_owned()),
-                    model_provider: Some("openai".to_owned()),
                     status: Some(ProjectWorkspaceThreadStatus {
                         status_type: CodexThreadStatusType::Active,
                         active_flags: Vec::new(),

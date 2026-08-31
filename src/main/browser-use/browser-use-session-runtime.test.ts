@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import * as TestClock from "effect/testing/TestClock";
 import { assert, it } from "@effect/vitest";
@@ -16,6 +17,10 @@ class FakeApi {
   disposed = false;
   readonly endedTurns: string[] = [];
   maxActiveDispatches = 0;
+  private releaseBlockedDispatch: (() => void) | null = null;
+  private releaseBlockedTurnEnd: (() => void) | null = null;
+  private resolveBlockedTurnEndStarted: (() => void) | null = null;
+  private blockedTurnEndStarted: Promise<void> | null = null;
 
   addCdpEventListener(listener: (event: BrowserUseCdpEvent) => void) {
     void listener;
@@ -25,9 +30,17 @@ class FakeApi {
   async dispatch(method: string): Promise<unknown> {
     this.activeDispatches += 1;
     this.maxActiveDispatches = Math.max(this.maxActiveDispatches, this.activeDispatches);
-    if (method === "slow") await new Promise((resolve) => setImmediate(resolve));
-    this.activeDispatches -= 1;
-    return method;
+    try {
+      if (method === "wait-for-release") {
+        await new Promise<void>((resolve) => {
+          this.releaseBlockedDispatch = resolve;
+        });
+      }
+      if (method === "release") this.releaseBlockedDispatch?.();
+      return method;
+    } finally {
+      this.activeDispatches -= 1;
+    }
   }
 
   getInfo(): Record<string, unknown> {
@@ -48,6 +61,26 @@ class FakeApi {
 
   async turnEnded(params: unknown): Promise<void> {
     this.endedTurns.push((params as { turn_id: string }).turn_id);
+    this.resolveBlockedTurnEndStarted?.();
+    if (this.blockedTurnEndStarted !== null) {
+      await new Promise<void>((resolve) => {
+        this.releaseBlockedTurnEnd = resolve;
+      });
+    }
+  }
+
+  blockTurnEnd(): Promise<void> {
+    this.blockedTurnEndStarted = new Promise<void>((resolve) => {
+      this.resolveBlockedTurnEndStarted = resolve;
+    });
+    return this.blockedTurnEndStarted;
+  }
+
+  releaseTurnEnd(): void {
+    this.releaseBlockedTurnEnd?.();
+    this.blockedTurnEndStarted = null;
+    this.resolveBlockedTurnEndStarted = null;
+    this.releaseBlockedTurnEnd = null;
   }
 }
 
@@ -135,16 +168,39 @@ it.effect("reuses one scoped backend for an exact route", () =>
   }),
 );
 
-it.effect("serializes native pipe commands inside each session", () =>
+it.effect("allows interdependent native pipe commands to make progress concurrently", () =>
   Effect.gen(function* () {
     const { apis, runtime, scope, servers } = yield* makeTestRuntime;
     yield* runtime.captureRoute(capture());
 
     yield* Effect.promise(() =>
-      Promise.all([servers[0]!.handle("slow"), servers[0]!.handle("slow")]),
+      Promise.all([servers[0]!.handle("wait-for-release"), servers[0]!.handle("release")]),
     );
 
-    assert.strictEqual(apis[0]!.maxActiveDispatches, 1);
+    assert.strictEqual(apis[0]!.maxActiveDispatches, 2);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("waits for in-flight commands before ending a Browser turn", () =>
+  Effect.gen(function* () {
+    const { apis, runtime, scope, servers } = yield* makeTestRuntime;
+    yield* runtime.captureRoute(capture());
+    yield* runtime.turnStarted({ sessionId: "thread-1", turnId: "turn-1" });
+
+    const blockedDispatch = servers[0]!.handle("wait-for-release");
+    yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+    const ending = yield* Effect.forkChild(
+      runtime.turnEnded({ sessionId: "thread-1", turnId: "turn-1" }),
+    );
+    yield* Effect.yieldNow;
+
+    assert.deepEqual(apis[0]!.endedTurns, []);
+    yield* Effect.promise(() => servers[0]!.handle("release"));
+    yield* Effect.promise(() => blockedDispatch);
+    yield* Fiber.join(ending);
+
+    assert.deepEqual(apis[0]!.endedTurns, ["turn-1"]);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -225,6 +281,32 @@ it.effect("serializes turn completion and ignores stale completion", () =>
         (event) => event.kind === "stale-turn-end-ignored",
       ),
     );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("does not release a replacement route when an old turn finishes", () =>
+  Effect.gen(function* () {
+    const { apis, runtime, scope } = yield* makeTestRuntime;
+    yield* runtime.captureRoute(capture({ disposeAfterSessionActivity: true }));
+    yield* runtime.turnStarted({ sessionId: "thread-1", turnId: "turn-1" });
+    const oldTurnEndStarted = apis[0]!.blockTurnEnd();
+    const ending = yield* Effect.forkChild(
+      runtime.turnEnded({ sessionId: "thread-1", turnId: "turn-1" }),
+    );
+    yield* Effect.promise(() => oldTurnEndStarted);
+
+    yield* runtime.captureRoute(
+      capture({ browserViewScopeId: "window-session-2", ownerWebContentsId: 202 }),
+    );
+    assert.lengthOf(apis, 2);
+    apis[0]!.releaseTurnEnd();
+    yield* Fiber.join(ending);
+
+    const snapshot = yield* runtime.debugSnapshot;
+    assert.lengthOf(snapshot.sessions, 1);
+    assert.strictEqual(snapshot.sessions[0]?.ownerWebContentsId, 202);
+    assert.isFalse(apis[1]!.disposed);
     yield* Scope.close(scope, Exit.void);
   }),
 );

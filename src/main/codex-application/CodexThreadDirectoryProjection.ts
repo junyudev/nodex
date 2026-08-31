@@ -1,10 +1,14 @@
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
-import type { DesktopProjectWorkspaceThread } from "../core-client/project-workspace-adapter";
+import {
+  projectAgentBackendBindingFromCore,
+  type DesktopProjectWorkspaceThread,
+} from "../core-client/project-workspace-adapter";
 import type {
   ProjectWorkspaceApplyInput,
   ProjectWorkspaceReadSnapshot,
 } from "../core-client/types";
 import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import type {
   CodexCanonicalConversationState,
   CodexConversationSnapshot,
@@ -50,16 +54,14 @@ export const projectCoreWorkspaceThread = (
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? null,
   threadPreview: thread.thread_preview,
-  modelProvider: thread.model_provider,
   executionProfile: thread.model_id
     ? {
-        providerId: thread.model_provider,
         modelId: thread.model_id,
-        harnessId: thread.harness_id ?? null,
         reasoningEffort: thread.reasoning_effort ?? null,
-        serviceTier: thread.service_tier ?? null,
+        serviceTier: normalizeCodexServiceTier(thread.service_tier),
       }
     : null,
+  backendBinding: projectAgentBackendBindingFromCore(thread.backend_binding),
   executionHostId: thread.execution_host_id,
   cwd: thread.cwd ?? null,
   managedWorktreePath: thread.managed_worktree_path ?? null,
@@ -156,15 +158,9 @@ export const projectCodexThreadDirectoryMaterialization = (input: {
       ...(metadata.hasAgentPath ? { agent_path: agentPath } : {}),
       ...(typeof candidate.name === "string" ? { thread_name: candidate.name } : {}),
       thread_preview: typeof candidate.preview === "string" ? candidate.preview : "",
-      model_provider:
-        input.executionProfile?.providerId ??
-        (typeof candidate.modelProvider === "string"
-          ? candidate.modelProvider
-          : (existing?.modelProvider ?? "")),
       ...(executionProfile
         ? {
             model_id: executionProfile.modelId,
-            harness_id: executionProfile.harnessId,
             reasoning_effort: executionProfile.reasoningEffort,
             service_tier: executionProfile.serviceTier,
           }

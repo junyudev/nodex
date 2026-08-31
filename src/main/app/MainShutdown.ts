@@ -3,6 +3,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { MainApplicationError } from "./MainExit";
 
@@ -26,6 +27,7 @@ export class MainShutdown extends Context.Service<
   MainShutdown,
   {
     readonly request: (reason: MainShutdownReason) => Effect.Effect<boolean>;
+    readonly isRequested: Effect.Effect<boolean>;
     readonly awaitRequest: Effect.Effect<MainShutdownReason>;
     readonly markRuntimeClosed: (exit: MainApplicationExit) => Effect.Effect<boolean>;
     readonly awaitRuntimeClosed: Effect.Effect<MainApplicationExit>;
@@ -42,6 +44,7 @@ export const layer: Layer.Layer<MainShutdown> = Layer.effect(
       request: Effect.fn("MainShutdown.request")((reason: MainShutdownReason) =>
         Deferred.succeed(request, reason),
       ),
+      isRequested: Deferred.poll(request).pipe(Effect.map(Option.isSome)),
       awaitRequest: Deferred.await(request),
       markRuntimeClosed: Effect.fn("MainShutdown.markRuntimeClosed")((exit: MainApplicationExit) =>
         Deferred.succeed(runtimeClosed, exit),

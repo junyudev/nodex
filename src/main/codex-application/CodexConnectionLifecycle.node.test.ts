@@ -9,6 +9,7 @@ import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRun
 import { CodexProtocolNotificationEffects } from "./CodexProtocolNotificationEffects";
 import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -55,6 +56,13 @@ it.effect("settles a lost generation and marks loaded conversations before recon
         } as unknown as CodexSidebarSyncRuntime["Service"]),
       ),
       Effect.provideService(
+        CodexSubagentDirectory,
+        CodexSubagentDirectory.of({
+          reconcileAfterReconnect: ({ loadedThreadIds }: { loadedThreadIds: readonly string[] }) =>
+            Effect.sync(() => trace.push(`subagents:${loadedThreadIds.join(",")}`)),
+        } as unknown as CodexSubagentDirectory["Service"]),
+      ),
+      Effect.provideService(
         CodexRendererConversationCoordinator,
         CodexRendererConversationCoordinator.of({
           resetTransport: (threadIds: readonly string[]) =>
@@ -89,6 +97,7 @@ it.effect("settles a lost generation and marks loaded conversations before recon
     });
     yield* runtime.observe({ status: "error", retries: 1, message: "lost" });
     yield* runtime.observe(connected(1));
+    yield* Effect.yieldNow;
 
     assert.deepEqual(trace, [
       "auto-resolution",
@@ -96,6 +105,7 @@ it.effect("settles a lost generation and marks loaded conversations before recon
       "mark-needs-resume",
       "renderer-reset:thread-1",
       "sidebar",
+      "subagents:thread-1",
     ]);
     assert.strictEqual(
       published.filter((event) => event.kind === "codex" && event.value.type === "connection")

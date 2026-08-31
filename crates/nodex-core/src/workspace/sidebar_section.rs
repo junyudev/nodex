@@ -225,8 +225,10 @@ pub(super) fn read_section_item_window(
            thread.thread_id, thread.project_id, thread.forked_from_id, \
            thread.parent_thread_id, thread.thread_name, thread.thread_source, \
            thread.service_name, thread.agent_nickname, thread.agent_role, thread.agent_path, \
-           substr(thread.thread_preview, 1, 1024), thread.model_provider, thread.model_id, \
-           thread.harness_id, thread.reasoning_effort, thread.service_tier, \
+           substr(thread.thread_preview, 1, 1024), thread.model_id, \
+           thread.reasoning_effort, thread.service_tier, \
+           thread.agent_backend_kind, thread.agent_backend_definition_id, \
+           thread.agent_backend_instance_config_id, \
            thread.execution_host_id, thread.cwd, thread.managed_worktree_path, \
            thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
            thread.status_type, thread.status_active_flags_json, thread.archived, \

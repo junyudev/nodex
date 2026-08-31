@@ -25,7 +25,7 @@ import { CodexSessionThreadLaunch } from "../../codex-application/CodexSessionTh
 import { CodexSidebarSyncRuntime } from "../../codex-application/CodexSidebarSyncRuntime";
 import { CodexSideChatCommands } from "../../codex-application/CodexSideChatCommands";
 import { CodexStructuredThreadTitle } from "../../codex-application/CodexStructuredThreadTitle";
-import { CodexSubagentCatalog } from "../../codex-application/CodexSubagentCatalog";
+import { CodexSubagentDirectory } from "../../codex-application/CodexSubagentDirectory";
 import { CodexThreadCatalog } from "../../codex-application/CodexThreadCatalog";
 import { CodexThreadGoalRuntime } from "../../codex-application/CodexThreadGoalRuntime";
 import { CodexThreadReadState } from "../../codex-application/CodexThreadReadState";
@@ -64,8 +64,6 @@ import type {
   PlainResultCommandChannel,
 } from "../../../shared/ipc-endpoint-policy";
 import type {
-  CodexBackgroundSubagentThreadsHydrateInput,
-  CodexSubagentPanelHydrateInput,
   CodexConversationThreadSettingsPatch,
   CodexSideChatStartInput,
   CodexThreadGoalSetActionInput,
@@ -140,7 +138,7 @@ export const live = Layer.effectDiscard(
     const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
     const structuredThreadTitle = yield* CodexStructuredThreadTitle;
     const backgroundProcesses = yield* CodexBackgroundProcesses;
-    const subagentCatalog = yield* CodexSubagentCatalog;
+    const subagentDirectory = yield* CodexSubagentDirectory;
     const serverRequestResponses = yield* CodexServerRequestResponses;
     const turnCommands = yield* CodexTurnCommands;
     const sideChatCommands = yield* CodexSideChatCommands;
@@ -399,7 +397,7 @@ export const live = Layer.effectDiscard(
     );
 
     const parseAgentImportSourceKind = (value: unknown): AgentImportSourceKind => {
-      if (value === "claude-code" || value === "codex" || value === "open-interpreter") {
+      if (value === "claude-code" || value === "codex") {
         return value;
       }
       throw new Error("Invalid agent import source");
@@ -435,7 +433,7 @@ export const live = Layer.effectDiscard(
                 buttonLabel: "Scan",
                 message: "The selected directory is read-only during import.",
                 properties: ["openDirectory"],
-                title: `Select ${sourceKind === "codex" ? "Codex" : "Open Interpreter"} home`,
+                title: `Select ${sourceKind === "codex" ? "Codex" : "Claude Code"} home`,
               }),
             catch: (cause) =>
               new CodexIpcError({ operation: "agent-import:scan-picked-home", cause }),
@@ -640,38 +638,18 @@ export const live = Layer.effectDiscard(
       ),
     );
 
-    registerEffectControl(
-      "codex:thread:background-subagents:hydrate",
-      (_, input: CodexBackgroundSubagentThreadsHydrateInput) =>
-        subagentCatalog.hydrateBackground(input).pipe(
-          Effect.map((summaries) => [...summaries]),
+    registerEffectQuery("codex:subagents:overview:read", (_, input) =>
+      subagentDirectory
+        .readOverview(input)
+        .pipe(
           Effect.mapError(
-            (cause) =>
-              new CodexIpcError({
-                operation: "codex:thread:background-subagents:hydrate",
-                cause,
-              }),
+            (cause) => new CodexIpcError({ operation: "codex:subagents:overview:read", cause }),
           ),
         ),
     );
 
-    registerEffectControl(
-      "codex:thread:subagents-panel:hydrate",
-      (_, input: CodexSubagentPanelHydrateInput) =>
-        subagentCatalog.hydratePanel(input).pipe(
-          Effect.map((summaries) => [...summaries]),
-          Effect.mapError(
-            (cause) =>
-              new CodexIpcError({
-                operation: "codex:thread:subagents-panel:hydrate",
-                cause,
-              }),
-          ),
-        ),
-    );
-
-    registerEffectControl("codex:subagent-thread:opened", (_, threadId: string) =>
-      subagentCatalog.open(threadId),
+    registerEffectControl("codex:subagents:selected:hydrate", (_, input) =>
+      subagentDirectory.hydrateSelected(input),
     );
 
     registerEffectControl("codex:thread:resume-buffer:release", (_, threadId: string) =>
@@ -779,6 +757,16 @@ export const live = Layer.effectDiscard(
         .pipe(
           Effect.mapError(
             (cause) => new CodexIpcError({ operation: "codex:thread:archive", cause }),
+          ),
+        ),
+    );
+
+    registerEffectPlainCommand("codex:thread:delete-archived", (_, threadId: string) =>
+      conversationCommands
+        .deleteArchived(threadId)
+        .pipe(
+          Effect.mapError(
+            (cause) => new CodexIpcError({ operation: "codex:thread:delete-archived", cause }),
           ),
         ),
     );

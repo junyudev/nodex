@@ -11,12 +11,45 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
-import { isBrowserRuntimeCompatibleWithCodex } from "../src/shared/browser-runtime-codex-compatibility.mjs";
+import {
+  isTestedBrowserAppServerPair,
+  projectBrowserPeerRuntimeIdentity,
+  projectBundledAppServerRuntimeIdentity,
+} from "../src/shared/browser-app-server-compatibility.mjs";
+import {
+  canonicalBundledAgentRuntimeMetadataJson,
+  parseBundledAgentRuntimeMetadata,
+} from "../src/shared/codex-runtime-metadata.mjs";
+import {
+  CODEX_APP_SERVER_REQUIRED_ARTIFACTS,
+  OFFICIAL_CODEX_MACOS_SIGNING_TEAM_ID,
+  parseCodexAppServerReleaseLock,
+} from "../src/shared/codex-app-server-release-lock.mjs";
 
-const PROVENANCE_SCHEMA_VERSION = 4;
+const PROVENANCE_SCHEMA_VERSION = 5;
 const PREPARED_SCHEMA_VERSION = 4;
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const canonicalAgentRuntimeLockPath = path.join(
+  projectRoot,
+  "resources",
+  "agent-runtime",
+  "codex-app-server.lock.json",
+);
+const packagedAgentRuntimeArtifacts = [
+  ...CODEX_APP_SERVER_REQUIRED_ARTIFACTS,
+  "third-party/codex/LICENSE",
+  "third-party/codex/NOTICE",
+];
+const resolveAgentRuntimeLockPath = (options) => {
+  if (!options.testOnlyAgentRuntimeLockPath) return canonicalAgentRuntimeLockPath;
+  if (process.env.VITEST !== "true") {
+    throw new Error("A custom Agent runtime lock is available only to the Vitest harness");
+  }
+  return path.resolve(options.testOnlyAgentRuntimeLockPath);
+};
 const resourcesRelativePath = "Contents/Resources";
 const provenanceRelativePath = `${resourcesRelativePath}/nodex-build-provenance.json`;
 const preparedRelativePath = `${resourcesRelativePath}/prepared-electron-build.json`;
@@ -100,6 +133,140 @@ const assertExactKeys = (value, expected, label) => {
   }
 };
 
+const readCanonicalAgentRuntimeLock = (lockPath, targetArch) => {
+  const value = parseCodexAppServerReleaseLock(
+    readJson(lockPath, "Canonical Codex app-server release lock"),
+  );
+  const build = value.builds[`darwin-${targetArch}`];
+  return {
+    build,
+    lockSha256: sha256File(lockPath),
+    packageManifest: value.packageManifest,
+    protocolSchemaFingerprint: value.protocolSchema.sha256,
+    runtimeVersion: value.appServerRuntimeVersion,
+    upstream: value.upstream,
+  };
+};
+
+const verifyAgentRuntimeArtifactClosure = (appPath, metadata) => {
+  const paths = metadata.artifacts.map(({ path: artifactPath }) => artifactPath);
+  if (
+    paths.length !== packagedAgentRuntimeArtifacts.length ||
+    packagedAgentRuntimeArtifacts.some((artifactPath) => !paths.includes(artifactPath))
+  ) {
+    throw new Error("Packaged Agent runtime artifact closure is incomplete");
+  }
+  const resourcesPath = path.join(appPath, resourcesRelativePath);
+  for (const artifact of metadata.artifacts) {
+    const artifactPath = path.join(resourcesPath, ...artifact.path.split("/"));
+    const stats = lstatSync(artifactPath);
+    const executable = (stats.mode & 0o111) !== 0;
+    if (
+      stats.isSymbolicLink() ||
+      !stats.isFile() ||
+      stats.size !== artifact.size ||
+      executable !== artifact.executable ||
+      sha256File(artifactPath) !== artifact.sha256
+    ) {
+      throw new Error(`Packaged Agent runtime artifact differs from metadata: ${artifact.path}`);
+    }
+  }
+};
+
+const inspectLockedAgentRuntime = (appPath, rawMetadata, targetArch, lockPath) => {
+  const metadata = parseBundledAgentRuntimeMetadata(rawMetadata);
+  if (!metadata) throw new Error("Packaged Agent runtime manifest is invalid or incomplete");
+  const locked = readCanonicalAgentRuntimeLock(lockPath, targetArch);
+  const metadataSha256 = sha256Bytes(canonicalBundledAgentRuntimeMetadataJson(metadata));
+  const expectedPackageManifest = {
+    ...locked.packageManifest,
+    target: locked.build.targetTriple,
+  };
+  if (
+    metadataSha256 !== locked.build.runtimeMetadataSha256 ||
+    metadata.appServerRuntimeVersion !== locked.runtimeVersion ||
+    metadata.runtimeFamily !== "codex-app-server" ||
+    metadata.targetPlatform !== "darwin" ||
+    metadata.targetArch !== targetArch ||
+    metadata.targetTriple !== locked.build.targetTriple ||
+    metadata.entrypoint !== locked.packageManifest.entrypoint ||
+    stableJson(metadata.packageManifest) !== stableJson(expectedPackageManifest) ||
+    JSON.stringify(metadata.searchPaths) !== JSON.stringify([locked.packageManifest.pathDir]) ||
+    metadata.protocolSchemaFingerprint !== locked.protocolSchemaFingerprint ||
+    metadata.releaseAsset.archiveSha256 !== locked.build.archiveSha256 ||
+    metadata.releaseAsset.archiveSize !== locked.build.archiveSize ||
+    metadata.releaseAsset.assetName !== locked.build.assetName ||
+    metadata.releaseAsset.entrypointSha256 !== locked.build.entrypointSha256 ||
+    metadata.releaseAsset.repository !== "openai/codex" ||
+    metadata.releaseAsset.tag !== locked.upstream.tag ||
+    metadata.sourceRevision.repository !== "openai/codex" ||
+    metadata.sourceRevision.tag !== locked.upstream.tag ||
+    metadata.sourceRevision.commit !== locked.upstream.commit
+  ) {
+    throw new Error("Packaged Agent runtime does not match the canonical release lock");
+  }
+  const entrypoint = metadata.artifacts.find(
+    ({ path: artifactPath }) => artifactPath === metadata.entrypoint,
+  );
+  if (entrypoint?.sha256 !== locked.build.entrypointSha256) {
+    throw new Error("Packaged Agent runtime entrypoint does not match the canonical release lock");
+  }
+  verifyAgentRuntimeArtifactClosure(appPath, metadata);
+  return {
+    identity: {
+      archiveSha256: locked.build.archiveSha256,
+      archiveSize: locked.build.archiveSize,
+      assetName: locked.build.assetName,
+      entrypointSha256: locked.build.entrypointSha256,
+      lockSha256: locked.lockSha256,
+      metadataSha256,
+      signingTeamId: locked.upstream.signingTeamId,
+      sourceCommit: locked.upstream.commit,
+      sourceTag: locked.upstream.tag,
+      targetTriple: locked.build.targetTriple,
+      version: locked.runtimeVersion,
+    },
+    metadata,
+  };
+};
+
+const parseAgentRuntimeIdentity = (value) => {
+  assertExactKeys(
+    value,
+    [
+      "archiveSha256",
+      "archiveSize",
+      "assetName",
+      "entrypointSha256",
+      "lockSha256",
+      "metadataSha256",
+      "signingTeamId",
+      "sourceCommit",
+      "sourceTag",
+      "targetTriple",
+      "version",
+    ],
+    "Packaged Agent runtime identity",
+  );
+  requireSha256(value.archiveSha256, "Packaged Agent runtime archive");
+  requirePositiveSize(value.archiveSize, "Packaged Agent runtime archive");
+  requireString(value.assetName, "Packaged Agent runtime asset name");
+  requireSha256(value.entrypointSha256, "Packaged Agent runtime entrypoint");
+  requireSha256(value.lockSha256, "Packaged Agent runtime lock");
+  requireSha256(value.metadataSha256, "Packaged Agent runtime metadata");
+  if (
+    value.signingTeamId !== OFFICIAL_CODEX_MACOS_SIGNING_TEAM_ID ||
+    typeof value.sourceCommit !== "string" ||
+    !/^[a-f0-9]{40}$/u.test(value.sourceCommit)
+  ) {
+    throw new Error("Packaged Agent runtime upstream identity is invalid");
+  }
+  requireString(value.sourceTag, "Packaged Agent runtime source tag");
+  requireString(value.targetTriple, "Packaged Agent runtime target triple");
+  requireString(value.version, "Packaged Agent runtime version");
+  return value;
+};
+
 const parsePreparedManifest = (value) => {
   if (!isObject(value) || value.schemaVersion !== PREPARED_SCHEMA_VERSION) {
     throw new Error("Packaged prepared Electron manifest is unsupported");
@@ -143,9 +310,23 @@ const optionalFileIdentity = (appPath, relativePath) =>
     ? fileIdentity(appPath, relativePath)
     : null;
 
-const isBrowserRuntimeCompatible = (browserManifest, agentManifest) =>
-  browserManifest === null ||
-  isBrowserRuntimeCompatibleWithCodex(browserManifest, agentManifest.codexCompatibilityVersion);
+const isBrowserRuntimeCompatible = (
+  browserManifest,
+  browserManifestSha256,
+  agentManifest,
+  testedPairs,
+) => {
+  if (browserManifest === null) return false;
+  try {
+    return isTestedBrowserAppServerPair(
+      projectBundledAppServerRuntimeIdentity(agentManifest),
+      projectBrowserPeerRuntimeIdentity(browserManifest, browserManifestSha256),
+      testedPairs,
+    );
+  } catch {
+    return false;
+  }
+};
 
 const contentsFileIdentity = (appPath, relativePath) => {
   const filePath = path.join(appPath, "Contents", ...relativePath.split("/"));
@@ -221,7 +402,7 @@ const parseSparkleRuntimeManifest = (value) => {
     typeof value.publicKey !== "string" ||
     !/^[A-Za-z0-9+/]{43}=$/u.test(value.publicKey) ||
     Buffer.from(value.publicKey, "base64").length !== 32 ||
-    value.minimumMacOS !== "12.0" ||
+    value.minimumMacOS !== "15.0" ||
     typeof value.sparkleVersion !== "string" ||
     !/^[a-f0-9]{64}$/u.test(value.sparkleArchiveSha256)
   ) {
@@ -233,7 +414,7 @@ const parseSparkleRuntimeManifest = (value) => {
   return value;
 };
 
-export const writePackagedBuildProvenance = (appPath) => {
+export const writePackagedBuildProvenance = (appPath, options = {}) => {
   const resolvedAppPath = path.resolve(appPath);
   const preparedPath = path.join(resolvedAppPath, ...preparedRelativePath.split("/"));
   const prepared = parsePreparedManifest(
@@ -243,7 +424,7 @@ export const writePackagedBuildProvenance = (appPath) => {
     path.join(resolvedAppPath, ...nativeManifestRelativePath.split("/")),
     "Packaged native runtime manifest",
   );
-  const agentManifest = readJson(
+  const rawAgentManifest = readJson(
     path.join(resolvedAppPath, ...agentManifestRelativePath.split("/")),
     "Packaged Agent runtime manifest",
   );
@@ -251,6 +432,9 @@ export const writePackagedBuildProvenance = (appPath) => {
   const browserManifest = existsSync(browserManifestPath)
     ? readJson(browserManifestPath, "Packaged Browser runtime manifest")
     : null;
+  if (browserManifest === null) {
+    throw new Error("Packaged Browser runtime manifest is required");
+  }
   const sparkleManifestPath = path.join(resolvedAppPath, ...sparkleManifestRelativePath.split("/"));
   const sparkleManifest = parseSparkleRuntimeManifest(
     readJson(sparkleManifestPath, "Packaged Sparkle runtime manifest"),
@@ -282,6 +466,16 @@ export const writePackagedBuildProvenance = (appPath) => {
     throw new Error("Packaged Agent Skills do not match the prepared Electron source");
   }
   const targetArch = nativeManifest.targetArch;
+  if (targetArch !== "arm64" && targetArch !== "x64") {
+    throw new Error("Packaged native runtime target architecture is invalid");
+  }
+  const agentRuntime = inspectLockedAgentRuntime(
+    resolvedAppPath,
+    rawAgentManifest,
+    targetArch,
+    resolveAgentRuntimeLockPath(options),
+  );
+  const agentManifest = agentRuntime.metadata;
   if (
     nativeManifest.targetPlatform !== "darwin" ||
     (targetArch !== "arm64" && targetArch !== "x64") ||
@@ -292,7 +486,12 @@ export const writePackagedBuildProvenance = (appPath) => {
     (browserManifest !== null &&
       (browserManifest.targetPlatform !== "darwin" ||
         browserManifest.targetArch !== targetArch ||
-        !isBrowserRuntimeCompatible(browserManifest, agentManifest)))
+        !isBrowserRuntimeCompatible(
+          browserManifest,
+          sha256File(browserManifestPath),
+          agentManifest,
+          options.testedPairs,
+        )))
   ) {
     throw new Error("Packaged runtime targets do not agree");
   }
@@ -315,6 +514,7 @@ export const writePackagedBuildProvenance = (appPath) => {
       manifestSha256: agentSkills.manifestSha256,
       treeSha256: agentSkills.treeSha256,
     },
+    agentRuntime: agentRuntime.identity,
     payload: {
       appAsar: fileIdentity(resolvedAppPath, appAsarRelativePath),
       nativeRuntimeManifest: fileIdentity(resolvedAppPath, nativeManifestRelativePath),
@@ -360,6 +560,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
       "target",
       "preparedElectron",
       "agentSkills",
+      "agentRuntime",
       "payload",
       "provenanceId",
     ],
@@ -401,6 +602,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
   requireSha256(value.agentSkills.manifestSha256, "Packaged Agent Skills manifestSha256");
   requireSha256(value.agentSkills.treeSha256, "Packaged Agent Skills treeSha256");
   requireSha256(value.preparedElectron.manifestSha256, "Packaged prepared Electron manifestSha256");
+  const agentRuntimeIdentity = parseAgentRuntimeIdentity(value.agentRuntime);
   assertExactKeys(
     value.payload,
     [
@@ -431,6 +633,9 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
           "browser-runtime/browser-runtime-manifest.json",
           "Packaged Browser runtime manifest",
         );
+  if (browserRuntimeManifest === null) {
+    throw new Error("Packaged Browser runtime manifest is required by provenance");
+  }
   assertExactKeys(
     value.payload.sparkle,
     ["artifacts", "buildChannel", "feedUrls", "publicKey", "runtimeManifest", "sparkleVersion"],
@@ -532,10 +737,20 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     path.join(resolvedAppPath, ...nativeManifestRelativePath.split("/")),
     "Packaged native runtime manifest",
   );
-  const agentManifest = readJson(
+  const rawAgentManifest = readJson(
     path.join(resolvedAppPath, ...agentManifestRelativePath.split("/")),
     "Packaged Agent runtime manifest",
   );
+  const lockedAgentRuntime = inspectLockedAgentRuntime(
+    resolvedAppPath,
+    rawAgentManifest,
+    value.target.arch,
+    resolveAgentRuntimeLockPath(options),
+  );
+  if (JSON.stringify(lockedAgentRuntime.identity) !== JSON.stringify(agentRuntimeIdentity)) {
+    throw new Error("Packaged Agent runtime identity does not match provenance");
+  }
+  const agentManifest = lockedAgentRuntime.metadata;
   const browserManifest = browserRuntimeManifest
     ? readJson(
         path.join(resolvedAppPath, ...browserManifestRelativePath.split("/")),
@@ -571,7 +786,12 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     (browserManifest !== null &&
       (browserManifest.targetPlatform !== value.target.platform ||
         browserManifest.targetArch !== value.target.arch ||
-        !isBrowserRuntimeCompatible(browserManifest, agentManifest)))
+        !isBrowserRuntimeCompatible(
+          browserManifest,
+          sha256File(path.join(resolvedAppPath, ...browserManifestRelativePath.split("/"))),
+          agentManifest,
+          options.testedPairs,
+        )))
   ) {
     throw new Error("Packaged runtime target does not match provenance");
   }

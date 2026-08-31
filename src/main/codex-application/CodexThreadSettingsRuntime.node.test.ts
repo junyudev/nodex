@@ -4,17 +4,17 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
-import type { AgentExecutionProfile, AgentProviderCatalog } from "../../shared/agent-runtime";
+import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
 import type {
   CodexCanonicalConversationState,
   CodexConversationSnapshot,
   CodexConversationThreadSettings,
+  CodexModelOption,
 } from "../../shared/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
-import { AgentProviderRuntime } from "./AgentProviderRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import {
   CodexConversationProjection,
@@ -25,6 +25,7 @@ import {
   type CodexSidebarSyncNotification,
 } from "./CodexSidebarSyncRuntime";
 import { CodexThreadSettingsOperationError, make } from "./CodexThreadSettingsRuntime";
+import { ComposerCatalog } from "./ComposerCatalog";
 
 type CoreThread = Extract<
   ProjectWorkspaceReadSnapshot["value"],
@@ -42,6 +43,25 @@ const settings = (model: string): CodexConversationThreadSettings => ({
     settings: { model, reasoning_effort: "high", developer_instructions: null },
   },
   personality: null,
+});
+
+const modelOption = (overrides: Partial<CodexModelOption> = {}): CodexModelOption => ({
+  id: "model-a",
+  model: "model-a",
+  displayName: "Model A",
+  description: "Agent model",
+  hidden: false,
+  supportedReasoningEfforts: [
+    { reasoningEffort: "medium", description: "Balanced" },
+    { reasoningEffort: "high", description: "Deep" },
+  ],
+  defaultReasoningEffort: "medium",
+  inputModalities: ["text", "image"],
+  multiAgentVersion: null,
+  serviceTiers: [],
+  defaultServiceTier: null,
+  isDefault: true,
+  ...overrides,
 });
 
 const canonical = (threadId: string): CodexCanonicalConversationState =>
@@ -89,9 +109,7 @@ const coreThread = (overrides: Partial<CoreThread> = {}): CoreThread =>
     agent_path: null,
     thread_name: "Thread",
     thread_preview: "",
-    model_provider: "openai",
     model_id: "model-a",
-    harness_id: "codex",
     reasoning_effort: "high",
     service_tier: null,
     execution_host_id: "local",
@@ -136,7 +154,7 @@ const harness = (input: {
   readonly configure?: (
     command: Parameters<CodexConversationProjectionService["configureTurn"]>[0],
   ) => Effect.Effect<void>;
-  readonly providers?: AgentProviderRuntime["Service"];
+  readonly models?: readonly CodexModelOption[];
   readonly workspace?: CoreModuleClients["workspace"];
 }) => {
   const current = new Map<string, CodexConversationThreadSettings>();
@@ -155,12 +173,6 @@ const harness = (input: {
         Effect.andThen(Effect.sync(() => void current.set(command.threadId, command.settings))),
       ),
   } as unknown as CodexConversationProjectionService);
-  const providers =
-    input.providers ??
-    AgentProviderRuntime.of({
-      list: () => Effect.die("Unexpected provider catalog read"),
-      resolveExecutionProfile: () => Effect.die("Unexpected profile resolution"),
-    } as unknown as AgentProviderRuntime["Service"]);
   const workspace =
     input.workspace ??
     ({
@@ -168,12 +180,17 @@ const harness = (input: {
       apply: () => Effect.die("Unexpected Core apply"),
     } as CoreModuleClients["workspace"]);
   return make.pipe(
-    Effect.provideService(AgentProviderRuntime, providers),
     Effect.provideService(
       CodexApplicationEventHub,
       CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
     ),
     Effect.provideService(CodexConversationProjection, projection),
+    Effect.provideService(
+      ComposerCatalog,
+      ComposerCatalog.of({
+        listModels: Effect.succeed(input.models ?? []),
+      } as unknown as ComposerCatalog["Service"]),
+    ),
     Effect.provideService(
       CodexGateway,
       gateway(
@@ -324,8 +341,6 @@ it.effect("persists a validated same-thread profile before canonical and remote 
           order.push("core");
           stored = {
             ...stored,
-            model_provider: operation.intent.patch.model_provider ?? stored.model_provider,
-            harness_id: operation.intent.patch.harness_id ?? stored.harness_id,
             model_id: operation.intent.patch.model_id ?? stored.model_id,
             reasoning_effort: operation.intent.patch.reasoning_effort ?? stored.reasoning_effort,
             service_tier: operation.intent.patch.service_tier ?? stored.service_tier,
@@ -333,27 +348,8 @@ it.effect("persists a validated same-thread profile before canonical and remote 
           return {} as never;
         }),
     };
-    const catalog = {
-      providers: [
-        {
-          id: "openai",
-          models: [
-            {
-              modelId: "model-b",
-              switchPolicy: "same-thread",
-              supportedReasoningEfforts: [{ value: "high" }],
-              supportedServiceTiers: [{ value: null }],
-            },
-          ],
-        },
-      ],
-    } as unknown as AgentProviderCatalog;
-    const providers = AgentProviderRuntime.of({
-      list: () => Effect.succeed(catalog),
-      resolveExecutionProfile: (requested: AgentExecutionProfile) => Effect.succeed(requested),
-    } as unknown as AgentProviderRuntime["Service"]);
     const service = yield* harness({
-      providers,
+      models: [modelOption({ id: "model-b", model: "model-b" })],
       workspace,
       configure: () => Effect.sync(() => void order.push("project")),
       request: ((_threadId, _method, params) =>
@@ -363,9 +359,7 @@ it.effect("persists a validated same-thread profile before canonical and remote 
           return {};
         })) as CodexGateway["Service"]["requestForThread"],
     });
-    const requested: AgentExecutionProfile = {
-      providerId: "openai",
-      harnessId: "codex",
+    const requested: CodexExecutionProfile = {
       modelId: "model-b",
       reasoningEffort: "high",
       serviceTier: null,
@@ -383,10 +377,13 @@ it.effect("persists a validated same-thread profile before canonical and remote 
     const failure = yield* service
       .update({
         threadId: "thread-1",
-        patch: { executionProfile: { ...requested, providerId: "other" } },
+        patch: {
+          executionProfile: { ...requested, modelId: "unavailable" },
+          executionProfileChange: "model",
+        },
       })
       .pipe(Effect.flip);
     assert.instanceOf(failure, CodexThreadSettingsOperationError);
-    assert.match(String(failure.cause), /change provider/u);
+    assert.match(String(failure.cause), /unavailable/u);
   }),
 );

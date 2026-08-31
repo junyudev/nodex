@@ -78,6 +78,7 @@ function auxiliaryTabs() {
       rootThreadId: "thread-1",
       selectedThreadId: null,
       selectedDisplayName: null,
+      selectedHydration: null,
       title: "Subagents",
     } satisfies AgentPanelTab,
     process: {

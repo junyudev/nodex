@@ -1,0 +1,80 @@
+{
+  "appServerRuntimeVersion": "0.152.0",
+  "builds": {
+    "darwin-arm64": {
+      "archiveSha256": "7aeda47701bf8dc146990506a881d43b6967de2ae8f89c621f74c59e504e1989",
+      "archiveSize": 91841787,
+      "assetName": "codex-app-server-package-aarch64-apple-darwin.tar.gz",
+      "entrypointSha256": "48563e2a0948dcc584b96ab52a98c117aa7216c0ffb653aaf62779871e48c677",
+      "runtimeMetadataSha256": "b967c10e8aba070986ab867dfafeb74f65987a6aef2241e78b0063d6cbd93df9",
+      "targetTriple": "aarch64-apple-darwin",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.152.0/codex-app-server-package-aarch64-apple-darwin.tar.gz"
+    },
+    "darwin-x64": {
+      "archiveSha256": "4e35944f9c5e78d97d0bd857e685581d3c3702919800ee1cbb98c9129dd2bf18",
+      "archiveSize": 99669636,
+      "assetName": "codex-app-server-package-x86_64-apple-darwin.tar.gz",
+      "entrypointSha256": "9d5bc18517f418c722d46ef1afb4b4ef10d0965ef4a288e5db8ad2bcc24588b2",
+      "runtimeMetadataSha256": "d6f5673e9dd26d208337c172f8126c5e813ff047cc1207b90eac540dc61f6bc3",
+      "targetTriple": "x86_64-apple-darwin",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.152.0/codex-app-server-package-x86_64-apple-darwin.tar.gz"
+    }
+  },
+  "notices": {
+    "licensePath": "resources/third-party/codex/LICENSE",
+    "licenseSha256": "d17f227e4df5da1600391338865ce0f3055211760a36688f816941d58232d8dc",
+    "noticePath": "resources/third-party/codex/NOTICE",
+    "noticeSha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
+  },
+  "packageManifest": {
+    "entrypoint": "bin/codex-app-server",
+    "layoutVersion": 1,
+    "pathDir": "codex-path",
+    "resourcesDir": "codex-resources",
+    "variant": "codex-app-server",
+    "version": "0.152.0"
+  },
+  "protocolSchema": {
+    "experimental": true,
+    "sha256": "e430c82b7ea1e6c8ddc2ba530318a9c01a4bb4be5ceaf6e2233e735905209f8f",
+    "tools": {
+      "darwin-arm64": {
+        "archiveSha256": "5c9ae406c6f73c35e921308c7f5a3fac70528ac1ad5c3523e7ab432a2238afc1",
+        "archiveSize": 86515872,
+        "assetName": "codex-aarch64-apple-darwin.tar.gz",
+        "entrypoint": "codex-aarch64-apple-darwin",
+        "targetTriple": "aarch64-apple-darwin",
+        "url": "https://github.com/openai/codex/releases/download/rust-v0.152.0/codex-aarch64-apple-darwin.tar.gz"
+      },
+      "darwin-x64": {
+        "archiveSha256": "ce8cc5c67459a09502fce94b80011db9fd3422d5fb23771be33c1aeaac633036",
+        "archiveSize": 94323279,
+        "assetName": "codex-x86_64-apple-darwin.tar.gz",
+        "entrypoint": "codex-x86_64-apple-darwin",
+        "targetTriple": "x86_64-apple-darwin",
+        "url": "https://github.com/openai/codex/releases/download/rust-v0.152.0/codex-x86_64-apple-darwin.tar.gz"
+      }
+    }
+  },
+  "requiredArtifacts": [
+    "codex-package.json",
+    "bin/codex-app-server",
+    "bin/codex-code-mode-host",
+    "codex-path/rg",
+    "codex-resources/zsh/bin/zsh"
+  ],
+  "runtimeFamily": "codex-app-server",
+  "schemaVersion": 1,
+  "upstream": {
+    "checksumManifest": {
+      "assetName": "codex-package_SHA256SUMS",
+      "sha256": "ca0de174246e507e9bedd26ddcd6cfd1635bf32fee39245a38562f52aa5be9c2",
+      "size": 1392,
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.152.0/codex-package_SHA256SUMS"
+    },
+    "commit": "316795b3cf2a45e90d121d9f46499d4658b2645c",
+    "repository": "openai/codex",
+    "signingTeamId": "2DC432GLL2",
+    "tag": "rust-v0.152.0"
+  }
+}

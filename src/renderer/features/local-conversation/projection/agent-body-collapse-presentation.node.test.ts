@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexConversationItem } from "../../../lib/types";
-import type { ThreadAgentRenderUnit, ThreadTranscriptBlockModel } from "../thread-stage-types";
+import type {
+  ThreadAgentRenderUnit,
+  ThreadTranscriptBlockModel,
+  ThreadWorkedForBlockModel,
+} from "../thread-stage-types";
 import {
   countAgentBodyUnits,
   projectAgentBodyCollapsePresentation,
@@ -52,6 +56,32 @@ describe("agent body collapse presentation", () => {
     expect(presentation.expandedUnits).toBe(units);
     expect(presentation.collapsibleUnits).toEqual([exec, ordinaryUserMessage]);
     expect(presentation.persistentUnits).toEqual([steeringMessage, hookFeedbackMessage]);
+    expect(presentation.workedForItem).toBeNull();
     expect(countAgentBodyUnits(presentation.collapsibleUnits)).toBe(2);
+  });
+
+  test("extracts worked time as the sole collapse label source", () => {
+    const workedFor: ThreadWorkedForBlockModel = {
+      id: "worked-for",
+      turnId: "turn-1",
+      createdAt: 2,
+      updatedAt: 3,
+      searchableText: "Worked for 1s",
+      type: "workedFor",
+      status: "worked",
+      startedAtMs: 2_000,
+      completedAtMs: 3_000,
+    };
+    const exec = buildEntryUnit("exec", "exec");
+    const units: ThreadAgentRenderUnit[] = [{ kind: "entry", block: workedFor }, exec];
+
+    const presentation = projectAgentBodyCollapsePresentation(units, {
+      extractWorkedFor: true,
+    });
+
+    expect(presentation.workedForItem).toBe(workedFor);
+    expect(presentation.expandedUnits).toEqual([exec]);
+    expect(presentation.collapsibleUnits).toEqual([exec]);
+    expect(presentation.persistentUnits).toEqual([]);
   });
 });

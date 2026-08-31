@@ -22,8 +22,10 @@ import {
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
+import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexAttachments } from "./CodexAttachments";
+import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
 import { CodexConversationFork } from "./CodexConversationFork";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
@@ -103,6 +105,7 @@ export const make: Effect.Effect<
   | CodexThreadTitlePersistence
   | CodexTurnCommands
   | BrowserUseRuntime
+  | DesktopToolRuntime
   | ManagedWorktreeRuntime
   | ProjectWorkspace
 > = Effect.gen(function* () {
@@ -112,6 +115,7 @@ export const make: Effect.Effect<
   const forkTransfers = yield* CodexForkSidePanelTransfer;
   const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
+  const desktopTools = yield* DesktopToolRuntime;
   const directory = yield* CodexThreadDirectory;
   const goals = yield* CodexThreadGoalRuntime;
   const completion = yield* CodexThreadLaunchCompletion;
@@ -232,19 +236,21 @@ export const make: Effect.Effect<
       worktreeWorkspaceRoot: workspaceRoot,
     });
     const executionProfile = params.executionProfile ?? null;
+    const desktopToolConfig = yield* desktopTools.threadConfig.pipe(
+      Effect.mapError((cause) => fail("desktop-tools", entry, cause)),
+    );
     const request: ThreadStartParams = {
       cwd: location.cwd,
       runtimeWorkspaceRoots: [...location.workspaceRoots],
       model: executionProfile?.modelId ?? params.collaborationMode?.settings.model ?? null,
-      modelProvider: executionProfile?.providerId ?? null,
-      serviceTier: executionProfile?.serviceTier ?? params.serviceTier,
+      serviceTier: executionProfile ? executionProfile.serviceTier : params.serviceTier,
       baseInstructions: params.baseInstructions ?? null,
       developerInstructions: params.additionalDeveloperInstructions ?? null,
       threadSource: params.threadSource,
       config: {
+        ...(desktopToolConfig ?? {}),
         ...buildCodexThreadConfigOverrides(),
         ...(params.configOverrides ?? {}),
-        ...(executionProfile?.harnessId ? { harness: executionProfile.harnessId } : {}),
         ...((executionProfile?.reasoningEffort ?? params.reasoningEffort)
           ? {
               model_reasoning_effort: executionProfile?.reasoningEffort ?? params.reasoningEffort,
@@ -262,6 +268,10 @@ export const make: Effect.Effect<
         codexGatewayGenerationFence(capability),
       )) as unknown as ThreadStartResponse;
       startedThreadId = response.thread.id;
+      yield* Effect.try({
+        try: () => requireExactThreadStartProfile(response, executionProfile),
+        catch: (cause) => fail("verify-profile", entry, cause),
+      });
       const projectId = location.projectAssignment?.projectId ?? null;
       const accepted = entry.projectSessionId
         ? yield* directory.acceptSessionStart({
@@ -271,6 +281,7 @@ export const make: Effect.Effect<
             executionProfile,
             runtimeWorkspaceRoots: location.workspaceRoots,
             fallbackCwd: location.cwd,
+            managedWorktreePath: includeWorktreeInit ? entry.worktreeGitRoot : null,
           })
         : yield* directory.acceptStandaloneStart({
             response,
@@ -284,11 +295,6 @@ export const make: Effect.Effect<
       const initialTitle = (
         entry.labelEdited ? entry.label : (entry.initialThreadTitle ?? "")
       ).trim();
-      if (entry.clientThreadId) {
-        yield* clientIdentity
-          .remember(threadId, entry.clientThreadId)
-          .pipe(Effect.mapError((cause) => fail("remember-client-thread", entry, cause)));
-      }
       const materializedGoal =
         includeWorktreeInit && entry.threadGoalDraft
           ? yield* attachments.materializeGoal(entry.threadGoalDraft)
@@ -300,7 +306,7 @@ export const make: Effect.Effect<
       const turn = yield* turns.start(threadId, prompt, {
         preparedPrompt: preparedPrompt(entry, prompt),
         model: executionProfile?.modelId ?? params.collaborationMode?.settings.model ?? undefined,
-        serviceTier: params.serviceTier,
+        serviceTier: executionProfile ? executionProfile.serviceTier : params.serviceTier,
         reasoningEffort: executionProfile?.reasoningEffort ?? params.reasoningEffort ?? undefined,
         collaborationMode: collaborationMode(params.collaborationMode),
         permissionMode: permissionMode(params.agentMode),
@@ -372,6 +378,13 @@ export const make: Effect.Effect<
         "finish-worktree",
         finishWorktree(entry, threadId, workspaceRoot, includeWorktreeInit, true),
       );
+      // Publishing this mapping is the pending route's launch-ready signal. Keep it as the
+      // final required commit so renderer ownership cannot race first-Turn or worktree metadata.
+      if (entry.clientThreadId) {
+        yield* clientIdentity
+          .remember(threadId, entry.clientThreadId)
+          .pipe(Effect.mapError((cause) => fail("remember-client-thread", entry, cause)));
+      }
       return { threadId };
     }).pipe(
       Effect.onExit(() =>

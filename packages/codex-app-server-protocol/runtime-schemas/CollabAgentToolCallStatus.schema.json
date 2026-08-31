@@ -4,7 +4,8 @@
   "enum": [
     "inProgress",
     "completed",
-    "failed"
+    "failed",
+    "interrupted"
   ],
   "title": "CollabAgentToolCallStatus",
   "type": "string"

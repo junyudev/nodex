@@ -35,6 +35,7 @@ function makeSearchSummary(
   overrides: Partial<CommandPaletteThreadSummary> = {},
 ): CommandPaletteThreadSummary {
   return {
+    backendBinding: overrides.backendBinding ?? { kind: "codex" },
     threadId: overrides.threadId ?? "thr-1",
     sessionId: overrides.sessionId === undefined ? "session-1" : overrides.sessionId,
     projectId: overrides.projectId === undefined ? "project-1" : overrides.projectId,

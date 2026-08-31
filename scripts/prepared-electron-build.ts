@@ -35,6 +35,7 @@ const IGNORED_INPUT_DIRECTORY_NAMES = new Set([
 ]);
 
 const REQUIRED_INPUT_PATHS = [
+  ".cargo",
   "agent-skills",
   "config",
   "crates",
@@ -65,7 +66,7 @@ const PREREQUISITE_SOURCE_PATHS = [
   "agent-skills",
   "resources/icon.icon",
   "resources/nodex-icon.svg",
-  "resources/third-party/open-interpreter",
+  "resources/third-party/codex",
   "scripts/build-resources.ts",
   "scripts/generate-third-party-notices.ts",
   "scripts/official-agent-skills-artifact.d.mts",

@@ -11,7 +11,6 @@ import {
   useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import {
   NODEX_AGENT_AUTHORIZATION_RENDERER_METHOD,
@@ -46,13 +45,16 @@ import {
   prepareCodexPrompt,
 } from "../../../shared/codex-prompt-preparation";
 import { resolveCodexReasoningSummary } from "../../../shared/codex-reasoning-summary-policy";
+import { normalizeCodexServiceTier } from "../../../shared/codex-service-tier";
 import type {
   CodexAccountSnapshot,
   CodexApprovalRequest,
   CodexApprovalKind,
   CodexApprovalResponse,
-  CodexBackgroundSubagentThreadsHydrateInput,
-  CodexSubagentPanelHydrateInput,
+  CodexSubagentOverviewReadInput,
+  CodexSubagentOverviewWindow,
+  CodexSelectedSubagentHydrateInput,
+  CodexSelectedSubagentHydrateResult,
   CodexBackgroundTerminalRow,
   PageRunInTarget,
   CodexCanonicalOptionPickerResponse,
@@ -147,7 +149,10 @@ import {
 } from "../../../shared/codex-conversation-state/codex-steering-state";
 import { replaceCodexCanonicalRollbackThread } from "../../../shared/codex-conversation-state/codex-rollback-state";
 import { reduceCodexBackgroundTerminalCleanup } from "../../../shared/codex-conversation-state/codex-background-terminal-cleanup";
-import { normalizeCodexMcpServerElicitationResponse } from "../../../shared/codex-mcp-elicitation";
+import {
+  normalizeCodexMcpServerElicitationMode,
+  normalizeCodexMcpServerElicitationResponse,
+} from "../../../shared/codex-mcp-elicitation";
 import { completeCodexMcpToolCallForTurn } from "../../../shared/codex-mcp-tool-call";
 import type {
   CodexBackgroundProcessRow,
@@ -289,14 +294,6 @@ import {
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { terminalSessionStore } from "../../lib/terminal-session-store";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
-import { useAgentExecutionProfile } from "../../lib/use-agent-execution-profile";
-import { agentProviderCatalogQueryOptions } from "../../lib/query-options";
-import { queryKeys } from "../../lib/query-keys";
-import type {
-  AgentProviderCredentialDeleteInput,
-  AgentProviderCredentialMutationInput,
-  AgentProviderCredentialMutationResult,
-} from "../../../shared/agent-runtime";
 import {
   logAssistantStreamingDebug,
   logAssistantStreamingDebugSampled,
@@ -372,7 +369,6 @@ const EMPTY_CONVERSATION_SUMMARY_FIELDS = {
   projectId: null,
   threadName: null,
   threadPreview: "",
-  modelProvider: null,
   cwd: null,
   managedWorktreePath: null,
   projectlessOutputDirectory: null,
@@ -483,10 +479,6 @@ function normalizeThreadSettingsModel(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeCodexServiceTier(value: unknown): CodexServiceTier {
-  return value === "fast" ? "fast" : null;
 }
 
 function createOwnerPendingSteer(
@@ -1002,7 +994,6 @@ function areThreadSummariesStructurallyEqual(
     left.agentPath === right.agentPath &&
     left.threadName === right.threadName &&
     left.threadPreview === right.threadPreview &&
-    left.modelProvider === right.modelProvider &&
     left.cwd === right.cwd &&
     left.statusType === right.statusType &&
     left.statusActiveFlags.join("|") === right.statusActiveFlags.join("|") &&
@@ -1185,7 +1176,6 @@ interface ConversationSummaryFields {
   projectId: string | null;
   threadName: string | null;
   threadPreview: string;
-  modelProvider: string | null;
   cwd: string | null;
   managedWorktreePath: string | null;
   projectlessOutputDirectory: string | null;
@@ -1286,7 +1276,6 @@ function areConversationSummaryFieldsEqual(
     left.projectId === right.projectId &&
     left.threadName === right.threadName &&
     left.threadPreview === right.threadPreview &&
-    left.modelProvider === right.modelProvider &&
     left.cwd === right.cwd &&
     left.managedWorktreePath === right.managedWorktreePath &&
     left.projectlessOutputDirectory === right.projectlessOutputDirectory &&
@@ -2620,7 +2609,6 @@ function materializeOwnerRollbackConversation(
     agentRole: subagentMetadata.agentRole ?? currentConversation.agentRole ?? null,
     agentPath: subagentMetadata.agentPath ?? currentConversation.agentPath ?? null,
     threadPreview: thread.preview,
-    modelProvider: thread.modelProvider,
     cwd: thread.cwd,
     statusType: statusPayload.statusType,
     statusActiveFlags: statusPayload.statusActiveFlags,
@@ -2864,7 +2852,12 @@ function applyOwnerTurnLifecycleToConversation(
       id: payload.turnId,
       status: payload.status,
       error: payload.errorMessage
-        ? { message: payload.errorMessage, codexErrorInfo: null, additionalDetails: null }
+        ? {
+            message: payload.errorMessage,
+            codexErrorInfo: null,
+            additionalDetails: null,
+            misalignment: null,
+          }
         : null,
       startedAt:
         payload.startedAt === null || payload.startedAt === undefined
@@ -3147,7 +3140,7 @@ function buildOwnerConversationThreadSettings(
   return {
     model,
     modelProvider: threadSettings.modelProvider,
-    serviceTier: threadSettings.serviceTier,
+    serviceTier: normalizeCodexServiceTier(threadSettings.serviceTier),
     reasoningEffort,
     summary: threadSettings.summary,
     collaborationMode: {
@@ -3435,7 +3428,7 @@ function buildOwnerMcpElicitationRequest(
     turnId: params.turnId ?? "",
     itemId: `mcp-server-elicitation-${requestId}`,
     kind: params.mode === "url" ? "toolSuggestion" : "generic",
-    mode: params.mode,
+    mode: normalizeCodexMcpServerElicitationMode(params.mode),
     serverName: params.serverName,
     message: params.message,
     url: params.mode === "url" ? params.url : undefined,
@@ -3854,6 +3847,37 @@ function arePermissionStatesEqual(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function normalizeSelectedSubagentInput(
+  input: CodexSelectedSubagentHydrateInput,
+): CodexSelectedSubagentHydrateInput {
+  return {
+    rootThreadId: input.rootThreadId.trim(),
+    threadId: input.threadId.trim(),
+  };
+}
+
+function selectedSubagentHydrationFailure(
+  input: CodexSelectedSubagentHydrateInput,
+  errorMessage: string,
+  basis?: CodexSelectedSubagentHydrateResult,
+): CodexSelectedSubagentHydrateResult {
+  const normalized = normalizeSelectedSubagentInput(input);
+  return {
+    rootThreadId: normalized.rootThreadId,
+    threadId: normalized.threadId,
+    revision: basis?.revision ?? 0,
+    fidelity: basis?.fidelity ?? "metadata",
+    checkpoint: null,
+    canInteract: false,
+    outcome: "failed",
+    errorMessage,
+  };
+}
+
+function selectedSubagentErrorMessage(cause: unknown, fallback: string): string {
+  return cause instanceof Error ? cause.message : fallback;
+}
+
 export class CodexAppServerManager {
   private connection: CodexConnectionState = INITIAL_CONNECTION;
   private account: CodexAccountSnapshot | null = null;
@@ -3998,7 +4022,13 @@ export class CodexAppServerManager {
     this.isOpenAIFormElicitationsEnabled = options.isOpenAIFormElicitationsEnabled ?? (() => true);
     this.busUnsubscribers.push(
       subscribeCodexEvents((event) => {
-        if (event.type === "dictationState") this.setDictationState(event.state);
+        if (event.type === "dictationState") {
+          this.setDictationState(event.state);
+          return;
+        }
+        if (event.type === "threadDeleted") {
+          this.handleThreadDeleted({ hostId: this.hostId, threadId: event.threadId });
+        }
       }),
       subscribeCodexAppServerMessage("shared-object-updated", (event) => {
         this.handleSharedObjectUpdated(event);
@@ -4539,32 +4569,114 @@ export class CodexAppServerManager {
     })) as boolean;
   }
 
-  async markSubagentThreadOpened(threadId: string): Promise<boolean> {
-    return (await runConversationOperation("codex:subagent-thread:opened", threadId)) as boolean;
+  async readSubagentOverview(
+    input: CodexSubagentOverviewReadInput,
+  ): Promise<CodexSubagentOverviewWindow> {
+    return (await runConversationOperation(
+      "codex:subagents:overview:read",
+      input,
+    )) as CodexSubagentOverviewWindow;
   }
 
-  async hydrateBackgroundSubagentThreads(
-    input: CodexBackgroundSubagentThreadsHydrateInput,
-  ): Promise<CodexThreadSummary[]> {
-    const summaries = (await runConversationOperation(
-      "codex:thread:background-subagents:hydrate",
-      input,
-    )) as CodexThreadSummary[];
-    for (const summary of summaries) {
-      this.applyThreadSummary(summary);
+  private async requestSelectedSubagentAuthority(
+    input: CodexSelectedSubagentHydrateInput,
+  ): Promise<CodexSelectedSubagentHydrateResult> {
+    const normalized = normalizeSelectedSubagentInput(input);
+    if (!normalized.rootThreadId || !normalized.threadId) {
+      return selectedSubagentHydrationFailure(normalized, "Subagent identity is required");
     }
-    return summaries;
+
+    const result = (await runConversationOperation(
+      "codex:subagents:selected:hydrate",
+      normalized,
+    )) as CodexSelectedSubagentHydrateResult;
+    if (
+      result.rootThreadId.trim() !== normalized.rootThreadId ||
+      result.threadId.trim() !== normalized.threadId
+    ) {
+      return selectedSubagentHydrationFailure(
+        normalized,
+        "Selected subagent identity changed while opening",
+        result,
+      );
+    }
+    return {
+      ...result,
+      rootThreadId: normalized.rootThreadId,
+      threadId: normalized.threadId,
+    };
   }
 
-  async hydrateSubagentPanel(input: CodexSubagentPanelHydrateInput): Promise<CodexThreadSummary[]> {
-    const summaries = (await runConversationOperation(
-      "codex:thread:subagents-panel:hydrate",
-      input,
-    )) as CodexThreadSummary[];
-    for (const summary of summaries) {
-      this.applyThreadSummary(summary);
+  /** Reads current Main-owned selection authority without attaching or resuming the child. */
+  async refreshSelectedSubagentAuthority(
+    input: CodexSelectedSubagentHydrateInput,
+  ): Promise<CodexSelectedSubagentHydrateResult> {
+    try {
+      return await this.requestSelectedSubagentAuthority(input);
+    } catch (cause) {
+      return selectedSubagentHydrationFailure(
+        input,
+        selectedSubagentErrorMessage(cause, "Could not refresh selected subagent authority"),
+      );
     }
-    return summaries;
+  }
+
+  async hydrateSelectedSubagent(
+    input: CodexSelectedSubagentHydrateInput,
+  ): Promise<CodexSelectedSubagentHydrateResult> {
+    const normalized = normalizeSelectedSubagentInput(input);
+    const hydrated = await this.refreshSelectedSubagentAuthority(normalized);
+    if (hydrated.outcome !== "ready") return hydrated;
+
+    try {
+      const attached = await this.requestThreadStreamResume(normalized.threadId);
+      const applied = this.readConversation(normalized.threadId);
+      const role = this.readConversationStreamRole(normalized.threadId);
+      const attachment = this.readConversationAttachmentState(normalized.threadId);
+      if (
+        !attached ||
+        attached.threadId !== normalized.threadId ||
+        !applied ||
+        applied.threadId !== normalized.threadId ||
+        role === null ||
+        attachment.status !== "attached"
+      ) {
+        return {
+          ...hydrated,
+          canInteract: false,
+          outcome: "unavailable",
+          errorMessage: "This subagent could not attach to this window.",
+        };
+      }
+
+      const revalidated = await this.refreshSelectedSubagentAuthority(normalized);
+      if (revalidated.outcome !== "ready") {
+        return { ...revalidated, canInteract: false };
+      }
+      const revalidatedConversation = this.readConversation(normalized.threadId);
+      const revalidatedRole = this.readConversationStreamRole(normalized.threadId);
+      const revalidatedAttachment = this.readConversationAttachmentState(normalized.threadId);
+      if (
+        !revalidatedConversation ||
+        revalidatedConversation.threadId !== normalized.threadId ||
+        revalidatedRole === null ||
+        revalidatedAttachment.status !== "attached"
+      ) {
+        return {
+          ...revalidated,
+          canInteract: false,
+          outcome: "unavailable",
+          errorMessage: "This subagent detached before it was ready.",
+        };
+      }
+      return revalidated;
+    } catch (cause) {
+      return selectedSubagentHydrationFailure(
+        normalized,
+        selectedSubagentErrorMessage(cause, "Could not attach the selected subagent"),
+        hydrated,
+      );
+    }
   }
 
   requestHistoryPage(
@@ -6895,6 +7007,12 @@ export class CodexAppServerManager {
     const continuation = this.waitForActiveGoalContinuationDelay(threadId)
       .then(async () => {
         if (!this.canContinueActiveThreadGoalAsOwner(threadId)) return;
+        const subagents = await this.readSubagentOverview({
+          rootThreadId: threadId,
+          mode: "initial",
+        });
+        if (subagents.completeness !== "complete" || subagents.active.knownCount > 0) return;
+        if (!this.canContinueActiveThreadGoalAsOwner(threadId)) return;
         await this.ownerAppServerRequestClient.setThreadGoal(threadId, {
           threadId,
           status: "active",
@@ -8658,18 +8776,9 @@ export class CodexAppServerManager {
             this.streamState.setStreaming(effect.threadId, true);
             continue;
           }
-          if (effect.type !== "hydrateCollabThreads") continue;
-          void this.hydrateBackgroundSubagentThreads({
-            rootThreadId: payload.threadId,
-            threadIds: [...effect.receiverThreadIds],
-            includeTail: true,
-          }).catch((error) => {
-            console.warn("Failed to hydrate collaboration receiver threads", {
-              threadId: payload.threadId,
-              receiverThreadIds: effect.receiverThreadIds,
-              error,
-            });
-          });
+          // Collaboration receiver metadata invalidates the bounded overview projection; it must
+          // never make an owner lifecycle notification hydrate child transcript history.
+          if (effect.type === "hydrateCollabThreads") continue;
         }
         this.applyOwnerCanonicalHiddenTurns(payload.threadId, projection.hiddenTurns);
         return {
@@ -11314,18 +11423,8 @@ export function requestLocalConversationResume(
   return getDefaultLocalConversationManager().requestThreadStreamResume(threadId);
 }
 
-export function markLocalSubagentThreadOpened(threadId: string): Promise<boolean> {
-  return getDefaultLocalConversationManager().markSubagentThreadOpened(threadId);
-}
-
 export function markLocalConversationAsRead(threadId: string): Promise<void> {
   return getDefaultLocalConversationManager().markConversationAsRead(threadId);
-}
-
-export function hydrateLocalBackgroundSubagentThreads(
-  input: CodexBackgroundSubagentThreadsHydrateInput,
-): Promise<CodexThreadSummary[]> {
-  return getDefaultLocalConversationManager().hydrateBackgroundSubagentThreads(input);
 }
 
 export function setLocalConversationThreadViewActive(
@@ -11444,7 +11543,6 @@ export function useConversationSummaryFields(threadId: string | null): Conversat
         projectId: conversation.projectId,
         threadName: conversation.threadName,
         threadPreview: conversation.threadPreview,
-        modelProvider: conversation.modelProvider,
         cwd: conversation.cwd,
         managedWorktreePath: conversation.managedWorktreePath ?? null,
         projectlessOutputDirectory: conversation.projectlessOutputDirectory ?? null,
@@ -11782,8 +11880,6 @@ export function useCodexThreadStartProgress(
 
 export function useCodexAppServerControl(activeProjectId: string | null) {
   const manager = useDefaultCodexAppServerManager();
-  const queryClient = useQueryClient();
-  const providerCatalogQuery = useQuery(agentProviderCatalogQueryOptions());
   const availableModels = useCodexAvailableModels();
   const permissionState = useCodexPermissionState(activeProjectId);
   const permissionMode = permissionState.mode;
@@ -11813,12 +11909,27 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     () => resolveCodexThreadSettings(storedThreadSettings, availableModels),
     [availableModels, storedThreadSettings],
   );
-  const { executionProfile, setExecutionProfile } = useAgentExecutionProfile({
-    catalog: providerCatalogQuery.data ?? null,
-    legacyModelId: threadSettings.model,
-    legacyReasoningEffort: threadSettings.reasoningEffort,
-    serviceTier: serviceTierSettings.serviceTier,
-  });
+  const executionProfile = useMemo(
+    () =>
+      threadSettings.model
+        ? {
+            modelId: threadSettings.model,
+            reasoningEffort: threadSettings.reasoningEffort,
+            serviceTier: serviceTierSettings.serviceTier,
+          }
+        : null,
+    [serviceTierSettings.serviceTier, threadSettings.model, threadSettings.reasoningEffort],
+  );
+  const setExecutionProfile = useCallback(
+    (profile: NonNullable<typeof executionProfile>) => {
+      updateStoredThreadSettings({
+        model: profile.modelId,
+        reasoningEffort: profile.reasoningEffort ?? threadSettings.reasoningEffort,
+      });
+      setServiceTier(profile.serviceTier, "composer_menu");
+    },
+    [setServiceTier, threadSettings.reasoningEffort, updateStoredThreadSettings],
+  );
   const reasoningEffortOptions = useMemo<CodexReasoningEffortOption[]>(
     () => [...resolveCodexReasoningEffortOptions(threadSettings.model, availableModels)],
     [availableModels, threadSettings.model],
@@ -11838,17 +11949,17 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     async (threadId: string) => manager.requestThreadStreamSnapshot(threadId),
     [manager],
   );
-  const markSubagentThreadOpened = useCallback(
-    async (threadId: string) => manager.markSubagentThreadOpened(threadId),
+  const readSubagentOverview = useCallback(
+    async (input: CodexSubagentOverviewReadInput) => manager.readSubagentOverview(input),
     [manager],
   );
-  const hydrateBackgroundSubagentThreads = useCallback(
-    async (input: CodexBackgroundSubagentThreadsHydrateInput) =>
-      manager.hydrateBackgroundSubagentThreads(input),
+  const hydrateSelectedSubagent = useCallback(
+    async (input: CodexSelectedSubagentHydrateInput) => manager.hydrateSelectedSubagent(input),
     [manager],
   );
-  const hydrateSubagentPanel = useCallback(
-    async (input: CodexSubagentPanelHydrateInput) => manager.hydrateSubagentPanel(input),
+  const refreshSelectedSubagentAuthority = useCallback(
+    async (input: CodexSelectedSubagentHydrateInput) =>
+      manager.refreshSelectedSubagentAuthority(input),
     [manager],
   );
 
@@ -12244,37 +12355,8 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     },
     [setServiceTier],
   );
-  const setProviderCredential = useCallback(
-    async (
-      input: AgentProviderCredentialMutationInput,
-    ): Promise<AgentProviderCredentialMutationResult> => {
-      const result = (await runConversationOperation(
-        "agent-runtime:credential:set",
-        input,
-      )) as AgentProviderCredentialMutationResult;
-      await queryClient.invalidateQueries({ queryKey: queryKeys.agentProviderCatalog.all() });
-      return result;
-    },
-    [queryClient],
-  );
-  const deleteProviderCredential = useCallback(
-    async (
-      input: AgentProviderCredentialDeleteInput,
-    ): Promise<AgentProviderCredentialMutationResult> => {
-      const result = (await runConversationOperation(
-        "agent-runtime:credential:delete",
-        input,
-      )) as AgentProviderCredentialMutationResult;
-      await queryClient.invalidateQueries({ queryKey: queryKeys.agentProviderCatalog.all() });
-      return result;
-    },
-    [queryClient],
-  );
-
   return {
     availableModels,
-    agentProviderCatalog: providerCatalogQuery.data ?? null,
-    agentProviderCatalogLoading: providerCatalogQuery.isLoading,
     executionProfile,
     threadSettings,
     reasoningEffortOptions,
@@ -12284,9 +12366,9 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     loadModels,
     listCollaborationModes,
     requestThreadStreamSnapshot,
-    markSubagentThreadOpened,
-    hydrateBackgroundSubagentThreads,
-    hydrateSubagentPanel,
+    readSubagentOverview,
+    hydrateSelectedSubagent,
+    refreshSelectedSubagentAuthority,
     startThreadForSession,
     startSideChat,
     discardSideChat,
@@ -12340,7 +12422,5 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     setThreadReasoningEffort,
     setDefaultServiceTier,
     setExecutionProfile,
-    setProviderCredential,
-    deleteProviderCredential,
   };
 }

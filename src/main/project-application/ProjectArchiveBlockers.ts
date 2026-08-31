@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import type { ProjectArchiveBlocker, ProjectSessionSummary } from "../../shared/types";
 import {
   CodexBackgroundProcesses,
@@ -57,12 +58,22 @@ export const live: Layer.Layer<
         session.thread ? [session.thread] : [],
       );
       const threadIds = [...new Set(threadSummaries.map((thread) => thread.threadId))];
+      const codexThreadIds = [
+        ...new Set(
+          threadSummaries.flatMap((thread) =>
+            isCodexAgentBackendBinding(thread.backendBinding) ? [thread.threadId] : [],
+          ),
+        ),
+      ];
       const durableThreadById = new Map(
         threadSummaries.map((thread) => [thread.threadId, thread] as const),
       );
-      const codexBlockers = threadIds.flatMap<ProjectArchiveBlocker>((threadId) => {
-        const current = conversations.activity(threadId);
+      const agentBlockers = threadIds.flatMap<ProjectArchiveBlocker>((threadId) => {
         const durable = durableThreadById.get(threadId);
+        const current =
+          durable && isCodexAgentBackendBinding(durable.backendBinding)
+            ? conversations.activity(threadId)
+            : { active: false, pending: false, label: null };
         const label = current.label || durable?.threadName?.trim() || null;
         const active = current.active || durable?.statusType === "active";
         const pending = current.pending || (durable?.statusActiveFlags.length ?? 0) > 0;
@@ -81,7 +92,7 @@ export const live: Layer.Layer<
         projectSessionId: session.projectSessionId,
       }));
       const processRows = yield* Effect.all(
-        threadIds.map((threadId) => backgroundProcesses.list({ threadId })),
+        codexThreadIds.map((threadId) => backgroundProcesses.list({ threadId })),
         { concurrency: "unbounded" },
       );
       const processBlockers = processRows.flatMap((rows) =>
@@ -98,7 +109,7 @@ export const live: Layer.Layer<
             : [],
         ),
       );
-      return deduplicate([...codexBlockers, ...terminalBlockers, ...processBlockers]);
+      return deduplicate([...agentBlockers, ...terminalBlockers, ...processBlockers]);
     });
 
     return ProjectArchiveBlockers.of({ list });

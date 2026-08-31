@@ -8,6 +8,7 @@ import * as Schema from "effect/Schema";
 import { parseAssetSource } from "../../shared/assets";
 import { dedupeCodexLiveFileAttachments } from "../../shared/codex-live-file-attachments";
 import { prepareCodexPrompt } from "../../shared/codex-prompt-preparation";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import {
   parseCodexReasoningSummary,
   resolveCodexReasoningSummary,
@@ -32,7 +33,6 @@ import type {
 import type { CodexCanonicalSteeringUserMessageItem } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { ProfileAssets } from "../local-store/ProfileAssets";
 import { buildTurnPermissionOverrides } from "../codex/codex-permission-resolver";
-import { AgentProviderRuntime } from "./AgentProviderRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexConversationContext } from "./CodexConversationContext";
@@ -130,11 +130,6 @@ const normalizeText = (value: unknown): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
-const normalizeServiceTier = (value: unknown): CodexServiceTier => {
-  const normalized = normalizeText(value);
-  return normalized && normalized !== "standard" ? normalized : null;
-};
-
 const parseMode = (value: string): CodexCollaborationModeKind | null =>
   value === "default" || value === "plan" ? value : null;
 
@@ -181,10 +176,24 @@ const collaborationMode = (input: {
   };
 };
 
+/**
+ * Preserves the wire distinction between an explicit Standard reset (`null`)
+ * and an absent override, while canonicalizing app-server Standard aliases.
+ */
+export function projectCodexTurnServiceTier(
+  overrides: CodexTurnStartPreparationInput["overrides"],
+  inheritedServiceTier: unknown,
+): Pick<TurnStartParams, "serviceTier"> {
+  if (overrides?.serviceTier !== undefined) {
+    return { serviceTier: normalizeCodexServiceTier(overrides.serviceTier) };
+  }
+  const inherited = normalizeCodexServiceTier(inheritedServiceTier);
+  return inherited === null ? {} : { serviceTier: inherited };
+}
+
 export const make: Effect.Effect<
   CodexTurnPreparation["Service"],
   never,
-  | AgentProviderRuntime
   | CodexAttachments
   | CodexConversationContext
   | CodexConversationProjection
@@ -194,7 +203,6 @@ export const make: Effect.Effect<
   | ComposerCatalog
   | ProfileAssets
 > = Effect.gen(function* () {
-  const agentProviders = yield* AgentProviderRuntime;
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
   const projection = yield* CodexConversationProjection;
@@ -295,7 +303,6 @@ export const make: Effect.Effect<
 
   const start: CodexTurnPreparation["Service"]["start"] = (input) =>
     Effect.gen(function* () {
-      yield* agentProviders.ensureRuntimeReady;
       yield* threadSettings.awaitCurrent(input.threadId);
       const state = yield* projection.read(input.threadId);
       const prepared = yield* preparePrompt(
@@ -350,10 +357,11 @@ export const make: Effect.Effect<
         configuredSummary: settings?.summary ?? hydratedSettings?.summary,
         explicitSummary,
       });
-      const serviceTier =
-        input.overrides && Object.hasOwn(input.overrides, "serviceTier")
-          ? normalizeServiceTier(input.overrides.serviceTier)
-          : normalizeServiceTier(settings?.serviceTier ?? hydratedSettings?.serviceTier);
+      const serviceTierRequest = projectCodexTurnServiceTier(
+        input.overrides,
+        settings?.serviceTier ?? hydratedSettings?.serviceTier,
+      );
+      const serviceTier = serviceTierRequest.serviceTier ?? null;
       const clientUserMessageId = input.overrides?.clientUserMessageId ?? randomUUID();
       const request: TurnStartParams = {
         threadId: input.threadId,
@@ -362,7 +370,7 @@ export const make: Effect.Effect<
         ...(prepared.additionalContext ? { additionalContext: prepared.additionalContext } : {}),
         ...turnPermissions,
         ...(model ? { model } : {}),
-        ...(serviceTier ? { serviceTier } : {}),
+        ...serviceTierRequest,
         ...(effort ? { effort } : {}),
         summary,
         ...(selectedCollaborationMode ? { collaborationMode: selectedCollaborationMode } : {}),
@@ -560,7 +568,10 @@ export const make: Effect.Effect<
             ...(input.command.collaborationMode
               ? { collaborationMode: input.command.collaborationMode }
               : {}),
-            ...(input.command.serviceTier ? { serviceTier: input.command.serviceTier } : {}),
+            ...(Object.hasOwn(input.command, "serviceTier") &&
+            input.command.serviceTier !== undefined
+              ? { serviceTier: normalizeCodexServiceTier(input.command.serviceTier) }
+              : {}),
             ...(input.command.summary !== undefined ? { summary: input.command.summary } : {}),
             ...(input.command.promptInput ? { promptInput: input.command.promptInput } : {}),
           },

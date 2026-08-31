@@ -592,6 +592,7 @@ export function McpToolCall({
       payload && resourceUri
         ? {
             threadId: item.threadId,
+            originCallId: payload.callId,
             server: payload.invocation.server,
             uri: resourceUri,
           }

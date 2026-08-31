@@ -391,6 +391,27 @@ fn set_session_archived(
             "Project Session disappeared during lifecycle update",
         ));
     }
+    if let Some(thread_id) = &authority.thread_id {
+        let changed = connection.execute(
+            "UPDATE codex_threads SET archived = ?1 WHERE thread_id = ?2",
+            params![i64::from(archived), thread_id],
+        )?;
+        if changed != 1 {
+            return Err(corrupt(
+                "Linked Agent Thread disappeared during lifecycle update",
+            ));
+        }
+        if archived {
+            connection.execute(
+                "DELETE FROM codex_pinned_threads WHERE thread_id = ?1",
+                [thread_id],
+            )?;
+            connection.execute(
+                "DELETE FROM codex_unread_threads WHERE thread_id = ?1",
+                [thread_id],
+            )?;
+        }
+    }
     finish_session_mutation(
         connection,
         library_id,
@@ -405,7 +426,7 @@ fn set_session_archived(
         },
         session_id,
         authority,
-        Vec::new(),
+        authority.thread_id.iter().cloned().collect(),
         SessionInvalidationKind::SummaryAndDetail,
         now,
     )

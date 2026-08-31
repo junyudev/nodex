@@ -1448,7 +1448,9 @@ describe("ThreadBlockRenderer subagent activity block", () => {
       Boolean(view.container.querySelector('[data-subagent-avatar-seed="thread-child-1"]')),
     ).toBe(true);
 
-    fireEvent.click(view.getByRole("button", { name: "Scout" }));
+    expect(group.getAttribute("role")).toBe("status");
+    expect(group.getAttribute("aria-live")).toBe("polite");
+    fireEvent.click(view.getByRole("button", { name: "Open subagent Scout" }));
 
     expect(opened.length).toBe(1);
     expect(opened[0]?.threadId).toBe("thread-child-1");

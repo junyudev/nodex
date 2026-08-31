@@ -255,6 +255,9 @@ export class ElectronScenarioHarness {
         profile,
         cwd,
         {
+          ...(input.prepareAgentRuntime !== false && cwd === profile.runRoot
+            ? { NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: "." }
+            : {}),
           ...input.environment,
           ...developmentFeatureEnvironment(
             resolveDevelopmentFeatureOverrides(input.enabledFeatures ?? []),

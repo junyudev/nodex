@@ -75,6 +75,13 @@ The normal visible picker exposes these visible modes:
 The only behavioral difference between `auto` and `guardian-approvals` is the reviewer.
 They intentionally share the same sandbox and approval policy.
 
+## Fresh Profile Default
+
+- When a permission scope has no persisted Nodex selection and no explicit permission choice from a non-default config layer, Nodex defaults to `guardian-approvals` when Auto-review is available.
+- An explicit config choice or persisted Nodex selection remains authoritative; the fresh default never rewrites it.
+- When requirements or the feature gate make Auto-review unavailable, the resolver keeps the nearest allowed non-Auto-review mode instead.
+- This is a resolved product default, not an eager `config.toml` write. Choosing a mode in the UI continues to use the normal config and persistence transaction.
+
 ## Required Literals
 
 These exact literals must exist in the implementation:
@@ -122,6 +129,8 @@ Preferred fallback order is:
 
 - when Auto-review is enabled: `auto` -> `guardian-approvals` -> `full-access` -> `read-only`
 - when Auto-review is disabled: `auto` -> `full-access` -> `read-only`
+
+This fallback order resolves invalid or constrained raw app-server configuration. It is separate from the fresh-Profile selection default above.
 
 ## Custom Escape Hatch
 

@@ -265,13 +265,13 @@ The correct contract is:
 - it enters the internal classifier path as an agent-like item
 - it can block assistant promotion
 - active running turns keep it visible in `agentBodyEntries`
-- completed collapsible turns filter it back out before visible agent-body rendering
+- completed collapsible turns extract it before either collapsed or expanded agent-body rendering
 - completed turns reuse it through `ThreadWorkedForBlockModel` as label input for the historical `Worked for ...` toggle
 
 In practice this means:
 
 - do not exclude it from `bucketizeTurnItems(...)`
-- do not leave completed worked-for blocks visible inside collapsed historical `agentBodyEntries`
+- do not leave completed worked-for blocks visible inside collapsed or expanded historical `agentBodyEntries`; one extracted item is the sole toggle-label source
 - do keep active running worked-for blocks visible so the transcript renders `Working` / `Working for ...` before tool/commentary rows
 - do not let its visual treatment rewrite assistant ownership
 

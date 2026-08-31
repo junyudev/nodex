@@ -109,6 +109,11 @@ export interface RendererTransport {
   subscribeProjectChanges: (
     callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
   ) => () => void;
+  subscribeAcpBackendSessionChanges: (
+    callback: (
+      event: import("../../shared/agent-backend-api").AcpBackendSessionChangedEvent,
+    ) => void,
+  ) => () => void;
   subscribeCodexHostMessages: (
     callback: (message: import("./types").CodexHostMessage) => void,
   ) => () => void;

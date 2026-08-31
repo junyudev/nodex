@@ -5,7 +5,7 @@ export const CODEX_AUTOMATION_DEVELOPER_INSTRUCTIONS = `Response MUST end with a
 ## Responding
 
 - Answer the user normally and concisely. Explain what you found, what you did, and what the user should focus on now.
-- Automations: use the memory file at \`$INTERPRETER_HOME/automations/<automation_id>/memory.md\` (create it if missing).
+- Automations: use the memory file at \`$CODEX_HOME/automations/<automation_id>/memory.md\` (create it if missing).
   - Read it first (if present) to avoid repeating recent work, especially for "changes since last run" tasks.
   - Memory is important: some tasks must build on prior work, and others must avoid duplicating prior focus.
   - Before returning the directive, write a concise summary of what you did/decided plus the current run time.
@@ -95,7 +95,7 @@ export function buildCodexScheduledAutomationRunPrompt(
   return [
     `Automation: ${automation.name}`,
     `Automation ID: ${automation.id}`,
-    `Automation memory: $INTERPRETER_HOME/automations/${automation.id}/memory.md`,
+    `Automation memory: $CODEX_HOME/automations/${automation.id}/memory.md`,
     `Last run: ${lastRun}`,
     "",
     automation.prompt,
@@ -118,17 +118,10 @@ export function buildCodexScheduledAutomationHeartbeatPrompt(
 }
 
 export function resolveCodexScheduledAutomationModelSettings(input: {
-  automation: Pick<CodexScheduledAutomation, "model" | "modelProvider" | "reasoningEffort">;
+  automation: Pick<CodexScheduledAutomation, "model" | "reasoningEffort">;
   models: readonly CodexModelOption[];
 }): CodexScheduledAutomationModelSettings {
   const requestedModel = normalizeModel(input.automation.model);
-  const requestedProvider = normalizeModel(input.automation.modelProvider);
-  if (requestedProvider && requestedModel) {
-    return {
-      model: requestedModel,
-      reasoningEffort: normalizeModel(input.automation.reasoningEffort),
-    };
-  }
   const selectedModel = requestedModel
     ? (input.models.find(
         (model) => model.model === requestedModel || model.id === requestedModel,

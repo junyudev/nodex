@@ -118,6 +118,7 @@ class FakeDebugger extends EventEmitter {
 }
 
 class FakeWebContents extends EventEmitter {
+  readonly id = 11;
   readonly debugger = new FakeDebugger();
   readonly executeJavaScript = vi.fn(async () => ({ ok: true }));
 
@@ -153,6 +154,7 @@ class FakeWebContents extends EventEmitter {
 }
 
 class FakeBrowserService extends EventEmitter {
+  automaticallyReady = true;
   readonly activeTabs: Array<string | null> = [];
   readonly captures: Array<{ surfaceSize: { height: number; width: number } | null }> = [];
   readonly closed: BrowserSidebarTabIdentity[] = [];
@@ -215,6 +217,7 @@ class FakeBrowserService extends EventEmitter {
       },
       hasBrowserPage: true,
       isLoading: false,
+      lifecycleState: this.automaticallyReady ? "live-detached" : "restoring",
       projectId: null,
       webContentsId: 11,
     } as unknown as BrowserSidebarTabSnapshot);
@@ -336,6 +339,35 @@ describe("BrowserUseIabApi", () => {
       expect([...service.tabs.values()]).toEqual([
         expect.objectContaining({ codexSessionId: "thread-1" }),
       ]);
+    }),
+  );
+
+  it.effect("does not expose attached WebContents until page restoration is ready", () =>
+    withApi(async ({ api, service }) => {
+      service.automaticallyReady = false;
+      let settled = false;
+      const creating = api
+        .dispatch("createTab", {
+          session_id: "thread-1",
+          turn_id: "turn-1",
+        })
+        .then((result) => {
+          settled = true;
+          return result;
+        });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      const snapshot = [...service.snapshots.values()][0];
+      if (!snapshot) throw new Error("Expected Browser Use snapshot");
+      service.snapshots.set(
+        `${snapshot.browserConversationId}:${snapshot.browserViewScopeId}:${snapshot.browserTabId}`,
+        { ...snapshot, lifecycleState: "live-detached" },
+      );
+      service.emit("webviewAttached", snapshot);
+
+      await expect(creating).resolves.toMatchObject({ id: 1 });
     }),
   );
 

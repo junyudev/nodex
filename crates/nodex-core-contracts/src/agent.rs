@@ -3,6 +3,20 @@ use utoipa::ToSchema;
 
 use crate::workspace::ProjectWorkspaceTurnAuthority;
 
+/// Durable identity of the runtime family that owns an Agent conversation.
+/// Backend-specific settings live behind their own stable identifiers instead
+/// of accumulating nullable fields on Threads and Automations.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AgentBackendBinding {
+    #[default]
+    Codex,
+    Acp {
+        agent_definition_id: String,
+        instance_config_id: Option<String>,
+    },
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AgentTurnProvenance {
     pub profile_id: String,

@@ -22,10 +22,9 @@ function makeAutomation(
     prompt: "Summarize the repo.",
     rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
     model: null,
-    modelProvider: null,
-    harnessId: null,
     reasoningEffort: null,
     serviceTier: null,
+    backendBinding: { kind: "codex" },
     cwds: ["/repo/project"],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
@@ -49,6 +48,10 @@ function makeModel(overrides: Partial<CodexModelOption> = {}): CodexModelOption 
       { reasoningEffort: "high", description: "" },
     ],
     defaultReasoningEffort: "high",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: true,
     ...overrides,
   };
@@ -63,7 +66,7 @@ describe("codex scheduled automation runtime helpers", () => {
     ).toBe(true);
     expect(
       CODEX_AUTOMATION_DEVELOPER_INSTRUCTIONS.includes(
-        "use the memory file at `$INTERPRETER_HOME/automations/<automation_id>/memory.md` (create it if missing)",
+        "use the memory file at `$CODEX_HOME/automations/<automation_id>/memory.md` (create it if missing)",
       ),
     ).toBe(true);
     expect(
@@ -95,7 +98,7 @@ describe("codex scheduled automation runtime helpers", () => {
 
     expect(prompt.startsWith("Automation: Daily report\nAutomation ID: daily-report\n")).toBe(true);
     expect(
-      prompt.includes("Automation memory: $INTERPRETER_HOME/automations/daily-report/memory.md"),
+      prompt.includes("Automation memory: $CODEX_HOME/automations/daily-report/memory.md"),
     ).toBe(true);
     expect(prompt.includes("Last run: 2026-07-08T01:02:03.000Z (1783472523000)")).toBe(true);
     expect(prompt.endsWith("\n\nSummarize the repo.")).toBe(true);
@@ -185,20 +188,6 @@ describe("codex scheduled automation runtime helpers", () => {
 
     expect(settings.model).toBe("gpt-5.1");
     expect(settings.reasoningEffort).toBe("medium");
-  });
-
-  test("preserves a provider-scoped Kimi model and opaque reasoning effort", () => {
-    const settings = resolveCodexScheduledAutomationModelSettings({
-      automation: makeAutomation({
-        modelProvider: "kimi-for-coding",
-        model: "kimi-k3",
-        reasoningEffort: "Thinking",
-      }),
-      models: [makeModel({ id: "gpt-5", model: "gpt-5", isDefault: true })],
-    });
-
-    expect(settings.model).toBe("kimi-k3");
-    expect(settings.reasoningEffort).toBe("Thinking");
   });
 
   test("falls back to the default model and default effort when the requested model is unavailable", () => {

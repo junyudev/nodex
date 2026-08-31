@@ -10,7 +10,7 @@ import {
   applyMacCodeObjectEntitlementPolicy,
   applyMacSigningMode,
   isPreservedBrowserRuntimeVendorCode,
-  refreshSignedAgentRuntimeMetadata,
+  isPreservedCodexRuntimeVendorCode,
   refreshSignedBrowserRuntimeManifest,
   refreshSignedSparkleRuntimeManifest,
   sparkleCodeSignArguments,
@@ -128,6 +128,35 @@ describe("desktop tool runtime vendor signing boundary", () => {
   });
 });
 
+describe("Codex runtime vendor signing boundary", () => {
+  const appPath = "/tmp/Nodex.app";
+
+  test("preserves only the official Codex package executables", () => {
+    for (const relativePath of [
+      "Contents/Resources/bin/codex-app-server",
+      "Contents/Resources/bin/codex-code-mode-host",
+      "Contents/Resources/codex-path/rg",
+      "Contents/Resources/codex-resources/zsh/bin/zsh",
+    ]) {
+      expect(isPreservedCodexRuntimeVendorCode(appPath, path.join(appPath, relativePath))).toBe(
+        true,
+      );
+    }
+    expect(
+      isPreservedCodexRuntimeVendorCode(
+        appPath,
+        path.join(appPath, "Contents/Resources/bin/nodex"),
+      ),
+    ).toBe(false);
+    expect(
+      isPreservedCodexRuntimeVendorCode(
+        appPath,
+        path.join(appPath, "Contents/Resources/bin/codex-app-server.backup"),
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("Sparkle code signing", () => {
   test("uses hardened runtime without an entitlement file", () => {
     expect(
@@ -179,7 +208,7 @@ describe("Sparkle code signing", () => {
           stable: "https://nodex.jyu.app/updates/stable/arm64/appcast.xml",
           nightly: "https://nodex.jyu.app/updates/nightly/arm64/appcast.xml",
         },
-        minimumMacOS: "12.0",
+        minimumMacOS: "15.0",
         publicKey: "A".repeat(43) + "=",
         schemaVersion: 3,
         sparkleArchiveSha256: "1".repeat(64),
@@ -202,51 +231,6 @@ describe("Sparkle code signing", () => {
       buildChannel: "nightly",
       schemaVersion: 3,
     });
-  });
-});
-
-describe("refreshSignedAgentRuntimeMetadata", () => {
-  test("reseals Agent artifacts after nested executable signing changes their bytes", () => {
-    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-agent-signing-"));
-    temporaryRoots.push(appPath);
-    const resourcesPath = path.join(appPath, "Contents", "Resources");
-    const executablePath = path.join(resourcesPath, "bin", "interpreter");
-    fs.mkdirSync(path.dirname(executablePath), { recursive: true });
-    fs.writeFileSync(executablePath, "developer-id-signed-interpreter", { mode: 0o755 });
-    const metadataPath = path.join(resourcesPath, "agent-runtime.json");
-    fs.writeFileSync(
-      metadataPath,
-      JSON.stringify({
-        layoutVersion: 3,
-        artifacts: [
-          {
-            executable: true,
-            path: "bin/interpreter",
-            sha256: "0".repeat(64),
-            size: 1,
-          },
-        ],
-      }),
-    );
-
-    refreshSignedAgentRuntimeMetadata(appPath);
-
-    const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8")) as {
-      artifacts: Array<{
-        executable: boolean;
-        path: string;
-        sha256: string;
-        size: number;
-      }>;
-    };
-    expect(metadata.artifacts).toEqual([
-      {
-        executable: true,
-        path: "bin/interpreter",
-        sha256: createHash("sha256").update("developer-id-signed-interpreter").digest("hex"),
-        size: Buffer.byteLength("developer-id-signed-interpreter"),
-      },
-    ]);
   });
 });
 

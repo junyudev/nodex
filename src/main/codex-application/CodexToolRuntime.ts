@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -32,15 +33,17 @@ export class CodexToolRuntime extends Context.Service<
       params: McpServerToolCallParams,
     ) => Effect.Effect<McpServerToolCallResponse, CodexRuntimeError>;
     readonly listApps: Effect.Effect<readonly AppInfo[], CodexRuntimeError>;
-    readonly listServerStatuses: Effect.Effect<ListMcpServerStatusResponse, CodexRuntimeError>;
+    readonly listServerStatuses: (
+      threadId?: string,
+    ) => Effect.Effect<ListMcpServerStatusResponse, CodexRuntimeError>;
   }
 >()("nodex/main/codex-application/CodexToolRuntime") {}
 
 const asPlainResponse = <A>(value: unknown): A => value as A;
 
-type ServerStatusEffect = Effect.Effect<ListMcpServerStatusResponse, CodexRuntimeError>;
+type ServerStatusDeferred = Deferred.Deferred<ListMcpServerStatusResponse, CodexRuntimeError>;
 interface ServerStatusSelection {
-  readonly effect: ServerStatusEffect;
+  readonly deferred: ServerStatusDeferred;
   readonly owner: boolean;
 }
 
@@ -53,7 +56,7 @@ export const live = (
       const gateway = yield* CodexGateway;
       const account = yield* CodexAccount;
       const awaitReady = gateway.awaitReady(gateway.localHostId);
-      const statusInFlight = yield* Ref.make<ServerStatusEffect | null>(null);
+      const statusInFlight = yield* Ref.make<ServerStatusDeferred | null>(null);
 
       const fetchApps = Effect.gen(function* () {
         const apps: AppInfo[] = [];
@@ -77,27 +80,34 @@ export const live = (
         return normalizeCodexAppInfoLogos(apps);
       });
 
-      const fetchServerStatuses = gateway
-        .requestLocal("mcpServerStatus/list", { detail: "full", cursor: null, limit: 100 })
-        .pipe(Effect.map(asPlainResponse<ListMcpServerStatusResponse>));
+      const fetchServerStatuses = (threadId?: string) =>
+        gateway
+          .requestLocal("mcpServerStatus/list", {
+            detail: "full",
+            cursor: null,
+            limit: 100,
+            ...(threadId ? { threadId } : {}),
+          })
+          .pipe(Effect.map(asPlainResponse<ListMcpServerStatusResponse>));
 
-      const listServerStatuses = Effect.gen(function* () {
-        const candidate = yield* Effect.cached(fetchServerStatuses);
-        const selection = yield* Ref.modify<ServerStatusEffect | null, ServerStatusSelection>(
+      const listGlobalServerStatuses = Effect.gen(function* () {
+        const candidate = yield* Deferred.make<ListMcpServerStatusResponse, CodexRuntimeError>();
+        const selection = yield* Ref.modify<ServerStatusDeferred | null, ServerStatusSelection>(
           statusInFlight,
           (current) =>
             current === null
-              ? [{ effect: candidate, owner: true }, candidate]
-              : [{ effect: current, owner: false }, current],
+              ? [{ deferred: candidate, owner: true }, candidate]
+              : [{ deferred: current, owner: false }, current],
         );
-        if (!selection.owner) return yield* selection.effect;
-        return yield* selection.effect.pipe(
+        if (!selection.owner) return yield* Deferred.await(selection.deferred);
+        yield* Deferred.complete(selection.deferred, fetchServerStatuses()).pipe(
           Effect.ensuring(
             Ref.update(statusInFlight, (current) =>
-              current === selection.effect ? null : current,
+              current === selection.deferred ? null : current,
             ),
           ),
         );
+        return yield* Deferred.await(selection.deferred);
       });
 
       return CodexToolRuntime.of({
@@ -128,7 +138,10 @@ export const live = (
           yield* awaitReady;
           return yield* fetchApps.pipe(Effect.retry({ times: 1 }));
         }),
-        listServerStatuses: awaitReady.pipe(Effect.andThen(listServerStatuses)),
+        listServerStatuses: (threadId) =>
+          awaitReady.pipe(
+            Effect.andThen(threadId ? fetchServerStatuses(threadId) : listGlobalServerStatuses),
+          ),
       });
     }),
   );

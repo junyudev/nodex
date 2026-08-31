@@ -71,6 +71,7 @@ export const agentActivityV2CommandApprovalRequest = {
   id: 201,
   method: "item/commandExecution/requestApproval",
   params: {
+    kind: "command",
     threadId: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
     turnId: AGENT_ACTIVITY_V2_CORPUS_TURN_ID,
     itemId: "pending-command-approval",

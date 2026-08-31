@@ -12,7 +12,6 @@ import type {
   WorktreeEnvironmentOption,
 } from "@/lib/types";
 import { NODEX_QUERY_DEFAULT_OPTIONS } from "@/lib/query-client";
-import type { AgentProviderCatalog } from "../../../shared/agent-runtime";
 import { WorkbenchAutomationsRouteShell } from "./workbench-automations-overlay";
 import { buildAutomationsPath } from "./workbench-automations-routes";
 
@@ -27,10 +26,9 @@ const AUTOMATIONS: CodexScheduledAutomation[] = [
     prompt: "Check the daily engineering standup thread.",
     rrule: "FREQ=DAILY",
     model: null,
-    modelProvider: null,
-    harnessId: null,
     reasoningEffort: null,
     serviceTier: null,
+    backendBinding: { kind: "codex" },
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
@@ -49,10 +47,9 @@ const AUTOMATIONS: CodexScheduledAutomation[] = [
     prompt: "Review active project threads.",
     rrule: "FREQ=WEEKLY;BYDAY=MO,WE,FR",
     model: null,
-    modelProvider: null,
-    harnessId: null,
     reasoningEffort: null,
     serviceTier: null,
+    backendBinding: { kind: "codex" },
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
@@ -71,10 +68,9 @@ const AUTOMATIONS: CodexScheduledAutomation[] = [
     prompt: "Triage inbox updates.",
     rrule: "FREQ=DAILY;INTERVAL=2",
     model: null,
-    modelProvider: null,
-    harnessId: null,
     reasoningEffort: null,
     serviceTier: null,
+    backendBinding: { kind: "codex" },
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
@@ -95,10 +91,9 @@ const HISTORY_AUTOMATION: CodexScheduledAutomation = {
   prompt: "Summarize repository health and open follow-ups.",
   rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
   model: "gpt-5",
-  modelProvider: "openai",
-  harnessId: null,
   reasoningEffort: "low",
   serviceTier: null,
+  backendBinding: { kind: "codex" },
   cwds: ["/Users/asc/repo/nodex"],
   executionEnvironment: "local",
   localEnvironmentConfigPath: null,
@@ -224,6 +219,10 @@ const CODEX_MODELS: CodexModelOption[] = [
       { reasoningEffort: "high", description: "Deep" },
     ],
     defaultReasoningEffort: "medium",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: true,
   },
   {
@@ -237,120 +236,13 @@ const CODEX_MODELS: CodexModelOption[] = [
       { reasoningEffort: "xhigh", description: "Extra deep" },
     ],
     defaultReasoningEffort: "high",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: false,
   },
 ];
-
-const AGENT_PROVIDER_CATALOG: AgentProviderCatalog = {
-  providers: [
-    {
-      id: "openai",
-      displayName: "OpenAI",
-      description: "Codex Responses models.",
-      wireApi: "responses",
-      credentialStatus: "runtimeManaged",
-      supportedByNodex: true,
-      isDefault: true,
-      credentialEnvKey: null,
-      recommendedHarnessId: null,
-      models: [
-        {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          displayName: "GPT-5.5",
-          description: "Default Codex coding model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: null,
-          supportedReasoningEfforts: [
-            {
-              value: "high",
-              displayName: "High",
-              description: "Deep reasoning.",
-            },
-          ],
-          defaultReasoningEffort: "high",
-          supportedServiceTiers: [
-            { value: null, displayName: "Standard", description: "Default speed, normal usage" },
-            { value: "fast", displayName: "Fast", description: "Faster responses, higher usage" },
-          ],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "same-thread",
-        },
-      ],
-    },
-    {
-      id: "anthropic",
-      displayName: "Anthropic",
-      description: "Claude Messages models.",
-      wireApi: "messages",
-      credentialStatus: "missing",
-      supportedByNodex: true,
-      isDefault: false,
-      credentialEnvKey: "ANTHROPIC_API_KEY",
-      recommendedHarnessId: "claude-code",
-      models: [
-        {
-          providerId: "anthropic",
-          modelId: "claude-fable-5",
-          displayName: "Claude Fable 5",
-          description: "Claude coding model exposed by the pinned runtime.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: "claude-code",
-          supportedReasoningEfforts: [
-            {
-              value: "high",
-              displayName: "High",
-              description: "Extended thinking.",
-            },
-          ],
-          defaultReasoningEffort: "high",
-          supportedServiceTiers: [],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "new-thread",
-        },
-      ],
-    },
-    {
-      id: "kimi-for-coding",
-      displayName: "Kimi For Coding",
-      description: "Kimi coding endpoint.",
-      wireApi: "chat",
-      credentialStatus: "ready",
-      supportedByNodex: true,
-      isDefault: false,
-      credentialEnvKey: "KIMI_API_KEY",
-      recommendedHarnessId: "kimi-code",
-      models: [
-        {
-          providerId: "kimi-for-coding",
-          modelId: "kimi-k3",
-          displayName: "Kimi K3",
-          description: "Kimi coding agent model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: "kimi-code",
-          supportedReasoningEfforts: [
-            {
-              value: "Thinking",
-              displayName: "Thinking",
-              description: "Reason before responding.",
-            },
-            { value: "Instant", displayName: "Instant", description: "Respond directly." },
-          ],
-          defaultReasoningEffort: "Thinking",
-          supportedServiceTiers: [],
-          defaultServiceTier: null,
-          inputCapabilities: ["text"],
-          switchPolicy: "new-thread",
-        },
-      ],
-    },
-  ],
-};
 
 type StoryModelListState = "loaded" | "loading";
 
@@ -395,10 +287,9 @@ function storyAutomationFromInput(
     prompt: input.prompt ?? "",
     rrule: input.rrule ?? null,
     model: input.model ?? null,
-    modelProvider: input.modelProvider ?? null,
-    harnessId: input.harnessId ?? null,
     reasoningEffort: input.reasoningEffort ?? null,
     serviceTier: input.serviceTier ?? null,
+    backendBinding: input.backendBinding ?? { kind: "codex" },
     cwds: input.cwds ?? [],
     executionEnvironment: input.executionEnvironment ?? "worktree",
     localEnvironmentConfigPath: input.localEnvironmentConfigPath ?? null,
@@ -415,14 +306,12 @@ function installAutomationsStoryApi({
   automationRuns,
   setAutomationRuns,
   modelListState,
-  multiProviderCatalog,
 }: {
   automations: CodexScheduledAutomation[];
   setAutomations: (automations: CodexScheduledAutomation[]) => void;
   automationRuns: CodexAutomationInboxItem[];
   setAutomationRuns: (items: CodexAutomationInboxItem[]) => void;
   modelListState: StoryModelListState;
-  multiProviderCatalog: boolean;
 }) {
   if (typeof window === "undefined") return;
   window.api = {
@@ -431,9 +320,6 @@ function installAutomationsStoryApi({
       if (channel === "codex:model:list") {
         if (modelListState === "loading") return new Promise<never>(() => undefined);
         return CODEX_MODELS;
-      }
-      if (channel === "agent-runtime:catalog:get") {
-        return multiProviderCatalog ? AGENT_PROVIDER_CATALOG : null;
       }
       if (channel === "worktrees:environments:list") {
         const projectId = String(args[0] ?? "");
@@ -577,7 +463,6 @@ function AutomationsRouteShellStory({
   autoSearchTemplatesQuery,
   autoSelectTemplateId,
   modelListState = "loaded",
-  multiProviderCatalog = false,
 }: {
   initialPath: string;
   automations?: CodexScheduledAutomation[];
@@ -593,7 +478,6 @@ function AutomationsRouteShellStory({
   autoSearchTemplatesQuery?: string;
   autoSelectTemplateId?: string;
   modelListState?: StoryModelListState;
-  multiProviderCatalog?: boolean;
 }) {
   const [automationState, setAutomationState] = useState(automations);
   const [automationRunState, setAutomationRunState] = useState(automationRuns);
@@ -604,7 +488,6 @@ function AutomationsRouteShellStory({
     automationRuns: automationRunState,
     setAutomationRuns: setAutomationRunState,
     modelListState,
-    multiProviderCatalog,
   });
   const [path, setPath] = useState(initialPath);
   const queryClient = useMemo(createStoryQueryClient, []);
@@ -850,14 +733,6 @@ export const CreateTaskModelDropdown: Story = {
   args: {
     initialPath: buildAutomationsPath({ automationMode: "create" }),
     autoOpenModelDropdown: true,
-  },
-};
-
-export const CreateTaskMultiProviderDropdown: Story = {
-  args: {
-    initialPath: buildAutomationsPath({ automationMode: "create" }),
-    autoOpenModelDropdown: true,
-    multiProviderCatalog: true,
   },
 };
 

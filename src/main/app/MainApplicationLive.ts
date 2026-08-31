@@ -45,6 +45,7 @@ import { ElectronIpc, ElectronSyncIpc } from "../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
+import { TerminalRuntimeMap } from "../terminal-runtime/TerminalRuntimeMap";
 import * as TerminalRuntimeLive from "../terminal-runtime/TerminalRuntimeLive";
 import { MainApplication, MainApplicationError } from "./MainApplication";
 import { MainCleanup } from "./MainCleanup";
@@ -117,6 +118,7 @@ export const live: Layer.Layer<
   | MainShutdown
   | ScopedCallbackRuntime
   | TerminalSessions
+  | TerminalRuntimeMap
   | ApplicationInitializationRuntime
   | ApplicationWindowShellRuntime
   | AppProtocolRuntime.AppProtocolRuntime

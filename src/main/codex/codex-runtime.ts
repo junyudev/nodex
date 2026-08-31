@@ -6,6 +6,7 @@ import {
   parseBundledAgentRuntimeMetadata,
   type BundledAgentRuntimeMetadata,
 } from "../../shared/codex-runtime-metadata";
+import { projectBundledAppServerRuntimeIdentity } from "../../shared/browser-app-server-compatibility";
 import {
   resolveBrowserRuntimeBundle,
   type BrowserRuntimeAvailability,
@@ -19,11 +20,11 @@ export type ResolvedCodexRuntime = {
   additionalSearchPaths: string[];
   binaryPath: string;
   browserRuntime: BrowserRuntimeAvailability;
-  codexCompatibilityVersion: string | null;
+  appServerRuntimeVersion: string | null;
   metadataPath: string | null;
   missingBinaryMessage: string;
   rootPath: string;
-  runtimeFamily: "open-interpreter";
+  runtimeFamily: "codex-app-server";
   source: CodexRuntimeSource;
   version: string | null;
 };
@@ -111,7 +112,7 @@ function resolveRuntimeFromRoot(input: {
   validateRuntimeArtifacts(input.runtimeRoot, metadata);
   validateRuntimeSearchPaths(input.runtimeRoot, metadata);
   const browserRuntime = resolveBrowserRuntimeBundle({
-    expectedCodexCompatibilityVersion: metadata.codexCompatibilityVersion,
+    appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
     platformArtifactVerifier:
       input.browserRuntimePlatformArtifactVerifier ??
       createBrowserRuntimePlatformArtifactVerifier({
@@ -130,9 +131,9 @@ function resolveRuntimeFromRoot(input: {
     additionalSearchPaths: metadata.searchPaths.map((searchPath) =>
       path.join(input.runtimeRoot, ...searchPath.split("/")),
     ),
-    codexCompatibilityVersion: metadata.codexCompatibilityVersion,
+    appServerRuntimeVersion: metadata.appServerRuntimeVersion,
     runtimeFamily: metadata.runtimeFamily,
-    version: metadata.runtimeVersion,
+    version: metadata.appServerRuntimeVersion,
     metadataPath,
     missingBinaryMessage: input.missingBinaryMessage,
     rootPath: input.runtimeRoot,

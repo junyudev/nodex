@@ -13,7 +13,7 @@ vi.mock("@/components/ui/toast", () => ({
 
 vi.mock("@/features/local-conversation/local-conversation-store", () => ({
   useCodexAppServerControl: () => ({
-    agentProviderCatalog: null,
+    availableModels: [],
     executionProfile: null,
   }),
   useCodexConversationValue: (

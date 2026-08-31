@@ -53,7 +53,7 @@ cask "nodex" do
   end
 
   auto_updates true
-  depends_on macos: :monterey
+  depends_on macos: :sequoia
 
   app "Nodex.app"
   binary "#{appdir}/Nodex.app/Contents/Resources/bin/nodex", target: "nodex"

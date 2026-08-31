@@ -54,7 +54,6 @@ const SESSION_HEADER_READ_BYTES = 256 * 1_024;
 const SOURCE_LABELS: Record<AgentImportSourceKind, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
-  "open-interpreter": "Open Interpreter",
 };
 
 const ITEM_LABELS: Record<AgentImportItemKind, string> = {
@@ -196,7 +195,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isAgentImportSourceKind(value: unknown): value is AgentImportSourceKind {
-  return value === "claude-code" || value === "codex" || value === "open-interpreter";
+  return value === "claude-code" || value === "codex";
 }
 
 function mapExternalItemKind(itemType: ExternalAgentConfigMigrationItemType): AgentImportItemKind {
@@ -243,7 +242,6 @@ function createPendingItem(
 
 function defaultSourceHome(sourceKind: AgentImportSourceKind): string {
   if (sourceKind === "claude-code") return path.join(homedir(), ".claude");
-  if (sourceKind === "open-interpreter") return path.join(homedir(), ".openinterpreter");
   const configured = process.env.CODEX_HOME?.trim();
   return path.resolve(configured || path.join(homedir(), ".codex"));
 }
@@ -743,7 +741,7 @@ async function copyImportCandidate(
 
 async function scanNativeHome(input: {
   readonly sourceHome: string;
-  readonly sourceKind: Exclude<AgentImportSourceKind, "claude-code">;
+  readonly sourceKind: "codex";
   readonly runtimeStateHome: string;
   readonly now: number;
 }): Promise<NativeScanResult> {

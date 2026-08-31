@@ -36,7 +36,6 @@ export function projectSessionSummaryToDomain(
       ? { ...current.thread, ...summary.thread }
       : {
           ...summary.thread,
-          modelProvider: "openai",
           executionProfile: null,
           managedWorktreePath: null,
           projectlessOutputDirectory: null,

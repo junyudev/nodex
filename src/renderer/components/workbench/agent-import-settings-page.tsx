@@ -43,12 +43,6 @@ const SOURCE_OPTIONS: readonly {
     label: "Codex",
     supportsPicker: true,
   },
-  {
-    description: "Recent rollout history and native Open Interpreter agent configuration.",
-    kind: "open-interpreter",
-    label: "Open Interpreter",
-    supportsPicker: true,
-  },
 ] as const;
 
 export interface AgentImportSettingsRuntime {
@@ -225,8 +219,7 @@ export function AgentImportSettingsPage({
           <div className="flex min-w-0 flex-col gap-1 p-3">
             <div className="truncate text-sm text-token-text-primary">{scan.sourceHome}</div>
             <div className="text-sm text-token-text-secondary">
-              Source files stay unchanged. Provider credentials and authentication state are never
-              imported.
+              Source files stay unchanged. Authentication and connection secrets are never imported.
             </div>
           </div>
           {scan.items.map((item) => (

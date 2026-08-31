@@ -228,6 +228,14 @@ pub(super) fn read(
                 ),
             })
         }
+        ProjectWorkspaceRead::ThreadBackendSession { thread_id } => {
+            validate_id("thread_id", &thread_id)?;
+            Ok(ProjectWorkspaceReadValue::ThreadBackendSession {
+                session: super::thread::read_thread_backend_session(
+                    connection, library_id, &thread_id,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::QueuedFollowUpLedger { thread_id } => {
             validate_id("thread_id", &thread_id)?;
             Ok(ProjectWorkspaceReadValue::QueuedFollowUpLedger {
@@ -250,6 +258,44 @@ pub(super) fn read(
                 commit_head,
                 &parent_thread_id,
                 include_archived.unwrap_or(false),
+                &window,
+            )?,
+        }),
+        ProjectWorkspaceRead::SubagentOverviewWindow {
+            universe,
+            active_window,
+            done_window,
+        } => Ok(ProjectWorkspaceReadValue::SubagentOverviewWindow {
+            overview: super::subagent_projection::read_overview(
+                connection,
+                library_id,
+                commit_head,
+                &universe,
+                &active_window,
+                &done_window,
+            )?,
+        }),
+        ProjectWorkspaceRead::SubagentOverviewItem {
+            universe,
+            thread_id,
+        } => Ok(ProjectWorkspaceReadValue::SubagentOverviewItem {
+            item: super::subagent_projection::read_overview_item(
+                connection, library_id, &universe, &thread_id,
+            )?
+            .map(Box::new),
+            projection_revision: commit_head,
+        }),
+        ProjectWorkspaceRead::SubagentLifecycleBatch {
+            lifecycle_operation_id,
+            include_settled,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::SubagentLifecycleBatch {
+            lifecycle: super::subagent_projection::read_lifecycle_batch(
+                connection,
+                library_id,
+                commit_head,
+                &lifecycle_operation_id,
+                include_settled,
                 &window,
             )?,
         }),
@@ -695,20 +741,20 @@ mod tests {
                            ('session-projectless', NULL, 'Projectless', 0, 0, NULL, 0, NULL, 0, \
                             '2026-07-19T03:30:00.000Z', '2026-07-19T03:30:00.000Z'); \
                          INSERT INTO codex_threads( \
-                           thread_id, project_id, thread_name, thread_preview, model_provider, \
+                           thread_id, project_id, thread_name, thread_preview, \
                            managed_worktree_path, status_type, status_active_flags_json, archived, \
                            created_at, updated_at, recency_at, linked_at \
                          ) VALUES \
-                           ('thread-1', 'project-1', '', 'Thread preview', 'openai', \
+                           ('thread-1', 'project-1', '', 'Thread preview', \
                             '/worktrees/shared', 'idle', '[]', 0, 1, 2, 2, \
                             '2026-07-19T03:33:00.000Z'), \
-                           ('thread-2', 'project-1', 'Other', '', 'openai', \
+                           ('thread-2', 'project-1', 'Other', '', \
                             '/worktrees/shared', 'idle', '[]', 0, 1, 2, 2, \
                             '2026-07-19T03:33:00.000Z'), \
-                           ('thread-3', 'project-1', 'Third', '', 'openai', \
+                           ('thread-3', 'project-1', 'Third', '', \
                             '/worktrees/zeta', 'idle', '[]', 0, 1, 2, 2, \
                             '2026-07-19T03:33:00.000Z'), \
-                           ('thread-foreign', 'project-foreign', 'Foreign', '', 'openai', \
+                           ('thread-foreign', 'project-foreign', 'Foreign', '', \
                             '/worktrees/foreign', 'idle', '[]', 0, 1, 2, 2, \
                             '2026-07-19T03:33:00.000Z'); \
                          INSERT INTO project_session_threads(session_id, thread_id, linked_at) \

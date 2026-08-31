@@ -1,143 +1,295 @@
 import { act } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vite-plus/test";
-import type { ThreadComposerShellBackgroundAgentRowModel } from "../../thread-stage-types";
-import type { CodexThreadSummary } from "../../../../../shared/types";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import type {
+  CodexSubagentOverviewReadInput,
+  CodexSubagentOverviewRow,
+  CodexSubagentOverviewWindow,
+  CodexEvent,
+} from "../../../../../shared/types";
 import {
-  buildSubagentsPanelMemberships,
+  formatSubagentElapsedTime,
+  formatSubagentObjective,
   formatSubagentRelativeTime,
+  SubagentsPanelOverview,
   SubagentsPanelOverviewContent,
 } from "./subagents-panel";
 
-function buildSummary(input: {
-  agentPath: string | null;
-  parentThreadId: string;
-  threadId: string;
-}): CodexThreadSummary {
-  return {
-    threadId: input.threadId,
-    projectId: "project-1",
-    source: { parentThreadId: input.parentThreadId },
-    agentNickname: `@${input.threadId}`,
-    agentPath: input.agentPath,
-    threadName: null,
-    threadPreview: "",
-    modelProvider: "openai",
-    cwd: "/tmp/project",
-    statusType: "idle",
-    statusActiveFlags: [],
-    archived: false,
-    createdAt: 10,
-    updatedAt: 20,
-    linkedAt: "2026-07-20T00:00:00.000Z",
-  };
-}
+const overviewMocks = vi.hoisted(() => ({
+  read: vi.fn(),
+  subscribe: vi.fn<(listener: (event: CodexEvent) => void) => () => void>(() => () => undefined),
+}));
 
-describe("buildSubagentsPanelMemberships", () => {
-  test("includes nested source-discovered descendants in the root panel", () => {
-    const direct = buildSummary({
-      agentPath: "agents/direct",
-      parentThreadId: "root",
-      threadId: "direct",
-    });
-    const nested = buildSummary({
-      agentPath: null,
-      parentThreadId: "direct",
-      threadId: "nested",
-    });
+vi.mock("@/lib/api", () => ({
+  subscribeCodexEvents: overviewMocks.subscribe,
+}));
 
-    const memberships = buildSubagentsPanelMemberships({
-      discoveredThreadIds: [direct.threadId, nested.threadId],
-      memberships: [],
-      rootThreadId: "root",
-      summaries: { direct, nested },
-    });
-
-    expect(memberships.map((membership) => membership.threadId)).toEqual(["direct", "nested"]);
-    expect(memberships[1]?.parentThreadId).toBe("direct");
-    expect(memberships[1]?.showInlineActivity).toBe(true);
-  });
-});
+vi.mock("../../local-conversation-store", () => ({
+  useCodexAppServerControl: () => ({ readSubagentOverview: overviewMocks.read }),
+}));
 
 function buildRow(
   index: number,
-  status: "active" | "done",
-): ThreadComposerShellBackgroundAgentRowModel {
+  status: CodexSubagentOverviewRow["status"],
+): CodexSubagentOverviewRow {
   return {
-    conversationId: `${status}-${index}`,
-    parentConversationId: "root",
-    parentTurnKey: "turn-root",
-    displayName: `${status === "active" ? "Active" : "Done"} ${index}`,
+    threadId: `${status}-${index}`,
+    parentThreadId: "root",
+    displayName: `${status} ${index}`,
     actorName: `Agent ${index}`,
     agentRole: null,
     spawnModel: null,
+    objective: status === "active" ? `Inspect target ${index}` : null,
     status,
-    statusSummary: status === "active" ? "checking files" : null,
-    lastAssistantMessage: status === "done" ? `Completed ${index}` : null,
-    lastAssistantMessageAtMs: status === "done" ? index : null,
-    recencyAtMs: 100 - index,
-    showInlineActivity: true,
+    statusSummary: status === "waiting" ? "Queued behind another agent" : null,
+    startedAtMs: status === "done" ? null : 1_000,
+    lastActivityAtMs: status === "done" ? 2_000 : 1_000,
+    completedAtMs: status === "done" ? 2_000 : null,
     diffStats: null,
-    role: "backgroundChild",
+    canOpen: true,
+    canInteract: true,
   };
 }
 
-describe("SubagentsPanelOverviewContent", () => {
-  test("paginates active and done agents with Codex batch sizes", async () => {
-    const rows = [
-      ...Array.from({ length: 5 }, (_, index) => buildRow(index + 1, "active")),
-      ...Array.from({ length: 11 }, (_, index) => buildRow(index + 1, "done")),
-    ];
+function buildOverview(input: {
+  active: CodexSubagentOverviewRow[];
+  done: CodexSubagentOverviewRow[];
+  activeTotal?: number | null;
+  doneTotal?: number | null;
+  completeness?: CodexSubagentOverviewWindow["completeness"];
+}): CodexSubagentOverviewWindow {
+  return {
+    rootThreadId: "root",
+    revision: 7,
+    generation: 2,
+    completeness: input.completeness ?? "complete",
+    active: {
+      rows: input.active,
+      knownCount: input.active.length,
+      totalCount: input.activeTotal === undefined ? input.active.length : input.activeTotal,
+      continuation: null,
+    },
+    done: {
+      rows: input.done,
+      knownCount: input.done.length,
+      totalCount: input.doneTotal === undefined ? input.done.length : input.doneTotal,
+      continuation: null,
+    },
+  };
+}
+
+beforeEach(() => {
+  overviewMocks.read.mockReset();
+  overviewMocks.subscribe.mockClear();
+});
+
+describe("SubagentsPanelOverview", () => {
+  test("reads only the initial metadata window until explicit expansion, then releases it", async () => {
+    const active = Array.from({ length: 5 }, (_, index) => buildRow(index + 1, "active"));
+    const initial = buildOverview({ active: active.slice(0, 4), done: [], activeTotal: 5 });
+    initial.active.continuation = "active:4";
+    const expanded = buildOverview({ active, done: [], activeTotal: 5 });
+    overviewMocks.read.mockImplementation(async (input: CodexSubagentOverviewReadInput) =>
+      input.mode === "initial" ? initial : expanded,
+    );
+
     render(
-      <SubagentsPanelOverviewContent
+      <SubagentsPanelOverview
+        projectId="project"
         rootThreadId="root"
-        rows={rows}
+        onError={() => undefined}
         onSelect={() => undefined}
-        onVisibleRowsChange={() => undefined}
       />,
     );
 
-    expect(screen.getByText("Done · 11")).toBeTruthy();
-    expect(screen.queryByText("Active 5")).toBeNull();
-    expect(screen.queryByText("Done 11")).toBeNull();
+    expect(await screen.findByText("Active · 5")).toBeTruthy();
+    expect(screen.queryByText("active 5")).toBeNull();
+    expect(overviewMocks.read).toHaveBeenCalledTimes(1);
+    expect(overviewMocks.read).toHaveBeenLastCalledWith({ rootThreadId: "root", mode: "initial" });
 
-    const showMoreButtons = screen.getAllByRole("button", { name: "Show more" });
     await act(async () => {
-      fireEvent.click(showMoreButtons[0]!);
-      fireEvent.click(showMoreButtons[1]!);
+      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
       await Promise.resolve();
     });
+    expect(await screen.findByText("active 5")).toBeTruthy();
+    expect(overviewMocks.read).toHaveBeenLastCalledWith({
+      rootThreadId: "root",
+      mode: "expanded",
+    });
 
-    expect(screen.getByText("Active 5")).toBeTruthy();
-    expect(screen.getByText("Done 11")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(overviewMocks.read).toHaveBeenCalledTimes(3));
+    expect(screen.queryByText("active 5")).toBeNull();
+    expect(overviewMocks.read).toHaveBeenLastCalledWith({ rootThreadId: "root", mode: "initial" });
   });
 
-  test("shows the active empty state and routes a completed row", async () => {
-    const onSelect = vi.fn();
-    const row = buildRow(1, "done");
+  test("rereads only the matching root after a Directory invalidation", async () => {
+    let onEvent: ((event: CodexEvent) => void) | null = null;
+    overviewMocks.subscribe.mockImplementation((listener) => {
+      onEvent = listener;
+      return () => undefined;
+    });
+    const initial = buildOverview({ active: [buildRow(1, "unknown")], done: [] });
+    const settled = {
+      ...buildOverview({ active: [], done: [buildRow(1, "done")] }),
+      revision: initial.revision + 1,
+    };
+    overviewMocks.read.mockResolvedValueOnce(initial).mockResolvedValue(settled);
+
     render(
-      <SubagentsPanelOverviewContent
+      <SubagentsPanelOverview
+        projectId="project"
         rootThreadId="root"
-        rows={[row]}
-        onSelect={onSelect}
-        onVisibleRowsChange={() => undefined}
+        onError={() => undefined}
+        onSelect={() => undefined}
       />,
     );
+    expect(await screen.findByText("Active · 1")).toBeTruthy();
 
-    expect(screen.getByText("No active subagents")).toBeTruthy();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Done 1/u }));
-      await Promise.resolve();
+      onEvent?.({ type: "subagentOverviewInvalidated", rootThreadId: "another-root" });
+      await new Promise((resolve) => setTimeout(resolve, 75));
     });
-    expect(onSelect).toHaveBeenCalledWith(row);
+    expect(overviewMocks.read).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      onEvent?.({ type: "subagentOverviewInvalidated", rootThreadId: "root" });
+      await new Promise((resolve) => setTimeout(resolve, 75));
+    });
+    await waitFor(() => expect(overviewMocks.read).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Done · 1")).toBeTruthy();
   });
 });
 
-describe("formatSubagentRelativeTime", () => {
-  test("uses compact minute, hour, and day labels", () => {
+describe("SubagentsPanelOverviewContent", () => {
+  test("mounts 4 active and 10 done rows, then expands all and collapses again", async () => {
+    const active = Array.from({ length: 5 }, (_, index) => buildRow(index + 1, "active"));
+    const done = Array.from({ length: 11 }, (_, index) => buildRow(index + 1, "done"));
+    const overview = buildOverview({ active, done });
+    const onToggleExpanded = vi.fn();
+    const view = render(
+      <SubagentsPanelOverviewContent
+        rootThreadId="root"
+        overview={overview}
+        onSelect={() => undefined}
+        onToggleExpanded={onToggleExpanded}
+      />,
+    );
+
+    expect(screen.getByText("Active · 5")).toBeTruthy();
+    expect(screen.getByText("Done · 11")).toBeTruthy();
+    expect(screen.queryByText("active 5")).toBeNull();
+    expect(screen.queryByText("done 11")).toBeNull();
+    expect(
+      view.container.querySelectorAll('[data-slot="thread-summary-panel-item-group"]')[0]?.children,
+    ).toHaveLength(4);
+    expect(
+      view.container.querySelectorAll('[data-slot="thread-summary-panel-item-group"]')[1]?.children,
+    ).toHaveLength(10);
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Show more" })[0]!);
+      await Promise.resolve();
+    });
+    expect(onToggleExpanded).toHaveBeenCalledWith("active", true);
+
+    view.rerender(
+      <SubagentsPanelOverviewContent
+        rootThreadId="root"
+        overview={overview}
+        expandedSections={new Set(["active"])}
+        onSelect={() => undefined}
+        onToggleExpanded={onToggleExpanded}
+      />,
+    );
+    expect(screen.getByText("active 5")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+      await Promise.resolve();
+    });
+    expect(onToggleExpanded).toHaveBeenCalledWith("active", false);
+  });
+
+  test("keeps unknown unresolved without claiming that it is working or running its clock", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const waiting = buildRow(1, "waiting");
+    const unknown = buildRow(2, "unknown");
+    const view = render(
+      <SubagentsPanelOverviewContent
+        rootThreadId="root"
+        overview={buildOverview({ active: [waiting, unknown], done: [] })}
+        onSelect={() => undefined}
+      />,
+    );
+
+    try {
+      expect(screen.getByText("Active · 2")).toBeTruthy();
+      expect(screen.getByText("1 waiting")).toBeTruthy();
+      expect(screen.getByText("Waiting")).toBeTruthy();
+      const unknownRow = screen.getByRole("button", { name: "Open subagent unknown 2" });
+      expect(unknownRow.textContent).toContain("Status unavailable");
+      expect(unknownRow.textContent).not.toContain("Working");
+      expect(unknownRow.textContent).not.toContain("9s");
+      expect(screen.queryByText(/Done ·/u)).toBeNull();
+    } finally {
+      view.unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  test("does not create a no-op button for an unavailable row", async () => {
+    const onSelect = vi.fn();
+    const unavailable = { ...buildRow(1, "active"), canOpen: false };
+    const view = render(
+      <SubagentsPanelOverviewContent
+        rootThreadId="root"
+        overview={buildOverview({ active: [unavailable], done: [] })}
+        onSelect={onSelect}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Open subagent/u })).toBeNull();
+    expect(
+      view.container.querySelector('[data-subagent-overview-unavailable="true"]'),
+    ).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test("labels incomplete counts without claiming a total", () => {
+    render(
+      <SubagentsPanelOverviewContent
+        rootThreadId="root"
+        overview={buildOverview({
+          active: [buildRow(1, "unknown")],
+          done: [],
+          activeTotal: null,
+          doneTotal: null,
+          completeness: "incomplete",
+        })}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("Active · 1+")).toBeTruthy();
+  });
+});
+
+describe("subagent overview formatting", () => {
+  test("normalizes and bounds objective text", () => {
+    expect(formatSubagentObjective("##  Inspect   the renderer ")).toBe("Inspect the renderer");
+    const long = formatSubagentObjective("x".repeat(80));
+    expect(long?.length).toBe(60);
+    expect(long?.endsWith("…")).toBe(true);
+  });
+
+  test("uses compact elapsed and relative labels", () => {
+    expect(formatSubagentElapsedTime(32_000)).toBe("32s");
+    expect(formatSubagentElapsedTime(22 * 60_000)).toBe("22m");
     expect(formatSubagentRelativeTime(1_000, 1_500)).toBe("now");
-    expect(formatSubagentRelativeTime(0, 22 * 60_000)).toBe("22m");
     expect(formatSubagentRelativeTime(0, 3 * 3_600_000)).toBe("3h");
-    expect(formatSubagentRelativeTime(0, 2 * 86_400_000)).toBe("2d");
   });
 });

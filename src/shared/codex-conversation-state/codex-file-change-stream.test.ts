@@ -66,6 +66,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     ephemeral: false,
     section: null,
     sectionEnteredAt: null,
+    projectId: null,
     historyMode: "paginated",
     modelProvider: "openai",
     createdAt: 1,
@@ -404,6 +405,7 @@ describe("Codex canonical file-change stream", () => {
       text: "must not mask the exact item",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     };
     const last = {
       ...fileChange("shared", [change("last.ts")], "declined"),
@@ -448,6 +450,7 @@ describe("Codex canonical file-change stream", () => {
       text: "replace this slot",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     };
     const middle: ThreadItem = {
       type: "plan",
@@ -514,6 +517,7 @@ describe("Codex canonical file-change stream", () => {
       text: "does not mask MCP",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     };
     const raw = rawTurn([first, last, wrongType], {
       firstTurnWorkItemStartedAtMs: null,

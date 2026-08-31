@@ -4,7 +4,7 @@ import {
   CODEX_THREAD_DIVIDER_ENTER_ANIMATE,
   CODEX_THREAD_DIVIDER_ENTER_INITIAL,
   CODEX_THREAD_DIVIDER_EXIT,
-  resolveCodexThreadWorkedForEnterMotion,
+  resolveCodexThreadAgentBodyMotion,
 } from "./thread-motion";
 
 describe("thread motion contract", () => {
@@ -26,17 +26,30 @@ describe("thread motion contract", () => {
     expect(CODEX_THREAD_DIVIDER_EXIT.height).toBe(0);
   });
 
-  test("uses an enter-only historical agent-body motion contract", () => {
-    const motion = resolveCodexThreadWorkedForEnterMotion(false);
+  test("uses the historical agent-body enter and exit motion contract", () => {
+    const motion = resolveCodexThreadAgentBodyMotion(false);
 
-    expect(motion).not.toHaveProperty("exit");
     expect(motion.initial).toEqual({
+      height: 0,
       opacity: 0,
+      overflow: "hidden",
       transform: "translateY(-8px)",
     });
     expect(motion.animate).toEqual({
+      height: "auto",
       opacity: 1,
       transform: "translateY(0)",
+      transitionEnd: { overflow: "visible" },
+    });
+    expect(motion.exit).toEqual({
+      height: 0,
+      opacity: 0,
+      overflow: "hidden",
+      transform: "translateY(-8px)",
+      transition: {
+        duration: 0.15,
+        ease: [0.23, 1, 0.32, 1],
+      },
     });
     expect(motion.transition).toEqual({
       duration: 0.22,
@@ -45,12 +58,16 @@ describe("thread motion contract", () => {
   });
 
   test("removes translation and shortens the enter under reduced motion", () => {
-    const motion = resolveCodexThreadWorkedForEnterMotion(true);
+    const motion = resolveCodexThreadAgentBodyMotion(true);
 
     expect(motion.initial).toEqual({
+      height: "auto",
       opacity: 0,
+      overflow: "hidden",
       transform: "translateY(0)",
     });
+    expect(motion.exit.height).toBe("auto");
+    expect(motion.exit.transform).toBe("translateY(0)");
     expect(motion.transition.duration).toBe(0.12);
   });
 });

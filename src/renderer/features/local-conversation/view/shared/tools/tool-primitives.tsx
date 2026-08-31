@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { CSSProperties, ReactNode } from "react";
 import { ChevronRightIcon } from "@/components/shared/icons";
 import { readResizeObserverBorderBoxSize } from "@/lib/resize-observer-size";
+import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { motion } from "motion/react";
 import { cn } from "../../../../../lib/utils";
 import { semanticActivitySummaryClassName } from "../../../../../lib/semantic-activity-status";
@@ -30,11 +31,13 @@ export interface ThreadActivityHeaderProps {
 }
 
 export function ThreadActivityChevron({ expanded }: { expanded: boolean }) {
+  const reducedMotion = useResolvedReducedMotion();
   return (
     <ChevronRightIcon
       aria-hidden="true"
       className={cn(
-        "icon-2xs shrink-0 text-token-conversation-body opacity-0 transition-transform duration-relaxed",
+        "icon-2xs shrink-0 text-token-conversation-body opacity-0",
+        !reducedMotion && "transition-transform duration-relaxed",
         "group-focus-visible/activity-header:text-token-foreground group-focus-visible/activity-header:opacity-100",
         "group-has-[:focus-visible]/activity-header:text-token-foreground group-has-[:focus-visible]/activity-header:opacity-100",
         "[@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:opacity-100",

@@ -63,6 +63,7 @@ function buildThread(items: ThreadItem[] = [], turnId = TURN_ID): Thread {
     ephemeral: false,
     section: null,
     sectionEnteredAt: null,
+    projectId: null,
     historyMode: "paginated",
     modelProvider: "openai",
     createdAt: 1,
@@ -401,6 +402,7 @@ describe("canonical item lifecycle reducer", () => {
       text: "final",
       phase: "final_answer",
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const clock = buildClock(50_001);
     const next = reduceLifecycle(
@@ -542,6 +544,7 @@ describe("canonical item lifecycle reducer", () => {
       text: "",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const completed = {
       ...started,
@@ -600,6 +603,7 @@ describe("canonical item lifecycle reducer", () => {
           message: "old failure",
           codexErrorInfo: null,
           additionalDetails: null,
+          misalignment: null,
         },
       },
       sidecar: {
@@ -671,6 +675,7 @@ describe("canonical item lifecycle reducer", () => {
       text: "",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const next = reduceLifecycle(
       { ...initial, turns: [placeholder] },
@@ -1313,6 +1318,7 @@ describe("canonical item lifecycle reducer", () => {
       text: "",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const next = reduceLifecycle(
       state,

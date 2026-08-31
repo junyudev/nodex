@@ -33,7 +33,7 @@ const temporaryRoot = Effect.acquireRelease(
 );
 
 const prepareSession = (root: string) => {
-  const sourceHome = path.join(root, "source", ".openinterpreter");
+  const sourceHome = path.join(root, "source", ".codex-import");
   const runtimeStateHome = path.join(root, "target", "agent");
   const cwd = path.join(root, "workspace");
   mkdirSync(path.join(sourceHome, "sessions"), { recursive: true });
@@ -159,7 +159,7 @@ it.effect("imports a native rollout through the canonical services and records i
       const harness = makeHarness(source.runtimeStateHome, source.cwd);
       const runtime = yield* harness.runtime;
 
-      const scan = yield* runtime.scan("open-interpreter", source.sourceHome);
+      const scan = yield* runtime.scan("codex", source.sourceHome);
       const sessionItem = scan.items.find((item) => item.kind === "sessions");
       assert.isDefined(sessionItem);
       const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [sessionItem.id] });
@@ -198,7 +198,7 @@ it.effect("imports a native rollout through the canonical services and records i
         runtime.apply({ scanId: scan.scanId, itemIds: [sessionItem.id] }),
       );
       assert.strictEqual(consumed.reason, "expired-scan");
-      const secondScan = yield* runtime.scan("open-interpreter", source.sourceHome);
+      const secondScan = yield* runtime.scan("codex", source.sourceHome);
       assert.isFalse(secondScan.items.some((item) => item.kind === "sessions"));
       assert.strictEqual(secondScan.skippedAlreadyImportedSessions, 1);
     }),
@@ -221,7 +221,7 @@ it.effect("deletes a fork when canonical materialization fails", () =>
           ),
       });
       const runtime = yield* harness.runtime;
-      const scan = yield* runtime.scan("open-interpreter", source.sourceHome);
+      const scan = yield* runtime.scan("codex", source.sourceHome);
       const sessionItem = scan.items.find((item) => item.kind === "sessions");
       assert.isDefined(sessionItem);
 
@@ -248,7 +248,7 @@ it.effect("rejects and deletes an import response that carries transcript histor
         returnsTranscript: true,
       });
       const runtime = yield* harness.runtime;
-      const scan = yield* runtime.scan("open-interpreter", source.sourceHome);
+      const scan = yield* runtime.scan("codex", source.sourceHome);
       const sessionItem = scan.items.find((item) => item.kind === "sessions");
       assert.isDefined(sessionItem);
 

@@ -68,6 +68,16 @@ describe("Codex app-server capability policy", () => {
       below: "0.148.0-alpha.12",
       minimum: "0.148.0-alpha.13",
     },
+    {
+      capability: "subagentAncestorFilter",
+      below: "0.150.0-alpha.12.1",
+      minimum: "0.150.0-alpha.12.2",
+    },
+    {
+      capability: "multiAgentV2Protocol",
+      below: "0.150.0-alpha.12.1",
+      minimum: "0.150.0-alpha.12.2",
+    },
   ])("enables $capability exactly at its prerelease floor", ({ capability, below, minimum }) => {
     const belowSnapshot = createCodexAppServerCapabilitySnapshot({
       hostId: "local",
@@ -128,6 +138,8 @@ describe("Codex app-server capability policy", () => {
       ephemeralFork: false,
       sideConversation: false,
       threadRevert: true,
+      subagentAncestorFilter: false,
+      multiAgentV2Protocol: false,
     });
   });
 
@@ -150,6 +162,8 @@ describe("Codex app-server capability policy", () => {
         ephemeralFork: false,
         sideConversation: false,
         threadRevert: false,
+        subagentAncestorFilter: false,
+        multiAgentV2Protocol: false,
       },
     });
     expect(Object.isFrozen(snapshot)).toBe(true);
@@ -179,6 +193,7 @@ describe("Codex app-server capability policy", () => {
       let userAgent = "Codex Desktop/0.147.0 (test)";
       const endpoint = CodexEndpoint.of({
         hostId: "remote-a",
+        sourceEpoch: "endpoint-epoch-a",
         session: Effect.sync(
           () =>
             ({
@@ -207,6 +222,7 @@ describe("Codex app-server capability policy", () => {
       expect(first).toMatchObject({
         hostId: "remote-a",
         generation: 7,
+        sourceEpoch: "endpoint-epoch-a",
         version: "0.147.0",
         flags: { paginatedHistory: true, threadRevert: false },
       });

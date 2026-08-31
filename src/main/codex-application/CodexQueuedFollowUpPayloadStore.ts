@@ -12,6 +12,7 @@ import type {
   CodexQueuedFollowUpPayloadRef,
 } from "../../shared/codex-queued-follow-up-state";
 import { CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION } from "../../shared/codex-queued-follow-up-state";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import type { CodexLiveFileAttachment, CodexPromptInput } from "../../shared/types";
 import { publishContentAddressedAsset, resolveAssetPathInRoot } from "../local-store/assets";
 import { ProfileAssets } from "../local-store/ProfileAssets";
@@ -375,7 +376,7 @@ function hydrateAtRoot(
     promptInput: hydratePromptInput(payload.prompt_input, assetsRootPath),
     createdAtMs: entry.createdAtMs,
     collaborationMode: payload.collaboration_mode ?? null,
-    serviceTier: payload.service_tier ?? null,
+    serviceTier: normalizeCodexServiceTier(payload.service_tier),
     summary: payload.summary ?? null,
     pause: entry.pause,
     payloadRef: entry.payloadRef,

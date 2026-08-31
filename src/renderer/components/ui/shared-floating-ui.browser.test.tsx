@@ -7,7 +7,12 @@ import { PropertyOptionPicker } from "@/components/database/property-option-pick
 import { NFM_EDITOR_FLOATING_UI_Z_INDEX } from "@/components/board/editor/nfm-blocknote-floating-ui";
 import { Circle } from "@/components/shared/icons/generic-icons";
 import { openNodexMenu } from "@/test/dom";
-import { NodexDropdownButtonTrigger, NodexDropdownMenu, NodexOptionPicker } from "./dropdown";
+import {
+  NodexDropdownButtonTrigger,
+  NodexDropdownItem,
+  NodexDropdownMenu,
+  NodexOptionPicker,
+} from "./dropdown";
 import { NodexDialog, NodexDialogContent, NodexDialogTitle } from "./dialog";
 import { NodexHoverCard, NodexHoverCardProvider } from "./hover-card";
 import { NodexPopover, NodexPopoverAnchor, NodexPopoverContent } from "./popover";
@@ -224,6 +229,23 @@ describe("shared floating UI in Chromium", () => {
     expect(style.paddingBottom).toBe("4px");
     expect(shortcut.tagName).toBe("KBD");
     expect(shortcut.getBoundingClientRect().height).toBe(18);
+  });
+
+  test("preserves button semantics for non-native dropdown triggers", async () => {
+    const view = render(
+      <NodexDropdownMenu triggerButton={<div>Environment</div>} triggerNativeButton={false}>
+        <NodexDropdownItem>Local</NodexDropdownItem>
+      </NodexDropdownMenu>,
+    );
+    const trigger = view.getByRole("button", { name: "Environment" });
+
+    expect(trigger.tagName).toBe("DIV");
+    await act(async () => {
+      await userEvent.click(trigger);
+      await settleFloatingSurface();
+    });
+
+    expect(view.getByRole("menuitem", { name: "Local" })).toBeTruthy();
   });
 
   test("increments the layer for recursively portalled floating surfaces", async () => {

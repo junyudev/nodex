@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
 
+use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::automation::{
     AutomationCommitValue, AutomationDefinition, AutomationDefinitionInput,
     AutomationDefinitionKind, AutomationDefinitionStatus, AutomationDueWorkPlan, AutomationEvent,
@@ -17,6 +18,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::document::sha256;
+use crate::domain::agent_backend::binding_storage;
 use crate::infrastructure::durable_mutation::{
     self, CommitResult, DurableMutationScope, OperationIdentity, ReceiptMetadata, SealedOutcome,
 };
@@ -54,10 +56,9 @@ struct NormalizedDefinition {
     prompt: String,
     rrule: String,
     model: Option<String>,
-    model_provider: Option<String>,
-    harness_id: Option<String>,
     reasoning_effort: Option<String>,
     service_tier: Option<String>,
+    backend_binding: AgentBackendBinding,
     cwds: Vec<String>,
     execution_environment: AutomationExecutionEnvironment,
     local_environment_config_path: Option<String>,
@@ -686,14 +687,17 @@ fn create_definition(
     let next_run = scheduled_next(connection, automation_id, &definition, now_ms)?;
     let cwds_json = serde_json::to_string(&definition.cwds)
         .map_err(|_| internal("Scheduled Automation cwd JSON cannot be encoded"))?;
+    let backend = binding_storage(&definition.backend_binding)
+        .map_err(|_| internal("Normalized Agent backend binding is invalid"))?;
     connection.execute(
         "INSERT INTO codex_scheduled_automations(\
            automation_id, kind, status, target_thread_id, name, prompt, rrule, model, \
-           model_provider, harness_id, reasoning_effort, service_tier, cwds_json, \
+           reasoning_effort, service_tier, cwds_json, agent_backend_kind, \
+           agent_backend_definition_id, agent_backend_instance_config_id, \
            execution_environment, local_environment_config_path, next_run_at, last_run_at, \
            created_at, updated_at, definition_revision\
-         ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, \
-           ?15, NULL, ?16, ?16, 1)",
+         ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
+           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1)",
         params![
             automation_id,
             kind_string(definition.kind),
@@ -702,11 +706,12 @@ fn create_definition(
             definition.prompt,
             definition.rrule,
             definition.model,
-            definition.model_provider,
-            definition.harness_id,
             definition.reasoning_effort,
             definition.service_tier,
             cwds_json,
+            backend.kind,
+            backend.agent_definition_id,
+            backend.instance_config_id,
             environment_string(definition.execution_environment),
             definition.local_environment_config_path,
             next_run,
@@ -794,14 +799,17 @@ fn update_definition(
     };
     let cwds_json = serde_json::to_string(&definition.cwds)
         .map_err(|_| internal("Scheduled Automation cwd JSON cannot be encoded"))?;
+    let backend = binding_storage(&definition.backend_binding)
+        .map_err(|_| internal("Normalized Agent backend binding is invalid"))?;
     let changed = connection.execute(
         "UPDATE codex_scheduled_automations SET \
            kind = ?1, status = ?2, target_thread_id = ?3, name = ?4, prompt = ?5, rrule = ?6, \
-           model = ?7, model_provider = ?8, harness_id = ?9, reasoning_effort = ?10, \
-           service_tier = ?11, cwds_json = ?12, execution_environment = ?13, \
-           local_environment_config_path = ?14, next_run_at = ?15, updated_at = ?16, \
+           model = ?7, reasoning_effort = ?8, service_tier = ?9, cwds_json = ?10, \
+           agent_backend_kind = ?11, agent_backend_definition_id = ?12, \
+           agent_backend_instance_config_id = ?13, execution_environment = ?14, \
+           local_environment_config_path = ?15, next_run_at = ?16, updated_at = ?17, \
            definition_revision = definition_revision + 1 \
-         WHERE automation_id = ?17 AND definition_revision = ?18",
+         WHERE automation_id = ?18 AND definition_revision = ?19",
         params![
             kind_string(definition.kind),
             status_string(status),
@@ -810,11 +818,12 @@ fn update_definition(
             definition.prompt,
             definition.rrule,
             definition.model,
-            definition.model_provider,
-            definition.harness_id,
             definition.reasoning_effort,
             definition.service_tier,
             cwds_json,
+            backend.kind,
+            backend.agent_definition_id,
+            backend.instance_config_id,
             environment_string(definition.execution_environment),
             definition.local_environment_config_path,
             next_run,
@@ -1491,13 +1500,6 @@ fn normalize_definition(
     }
     let rrule = normalize_rrule(input.rrule.as_deref()).map_err(schedule_invalid)?;
     let model = normalize_optional_string(input.model.as_deref(), MAX_MODEL_BYTES, "model")?;
-    let model_provider = normalize_optional_string(
-        input.model_provider.as_deref(),
-        MAX_MODEL_BYTES,
-        "model_provider",
-    )?;
-    let harness_id =
-        normalize_optional_string(input.harness_id.as_deref(), MAX_MODEL_BYTES, "harness_id")?;
     let reasoning_effort = normalize_optional_string(
         input.reasoning_effort.as_deref(),
         MAX_REASONING_EFFORT_BYTES,
@@ -1508,6 +1510,7 @@ fn normalize_definition(
         MAX_REASONING_EFFORT_BYTES,
         "service_tier",
     )?;
+    binding_storage(&input.backend_binding).map_err(invalid)?;
     let target_thread_id = normalize_optional_string(
         input.target_thread_id.as_deref(),
         MAX_ID_LENGTH,
@@ -1564,10 +1567,9 @@ fn normalize_definition(
         prompt: prompt.to_owned(),
         rrule,
         model,
-        model_provider,
-        harness_id,
         reasoning_effort,
         service_tier,
+        backend_binding: input.backend_binding.clone(),
         cwds,
         execution_environment,
         local_environment_config_path: if input.kind == AutomationDefinitionKind::Cron {
@@ -1936,6 +1938,7 @@ fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, Utc};
+    use nodex_core_contracts::agent::AgentBackendBinding;
     use nodex_core_contracts::automation::{
         AutomationDefinitionInput, AutomationDefinitionKind, AutomationDefinitionStatus,
         AutomationDueWorkLane, AutomationIntent, AutomationLeaseStatus, AutomationRead,
@@ -2022,10 +2025,9 @@ mod tests {
             prompt: Some("Prepare the report".to_owned()),
             rrule: Some("FREQ=MINUTELY;INTERVAL=5".to_owned()),
             model: Some("claude-opus-4-1".to_owned()),
-            model_provider: Some("anthropic".to_owned()),
-            harness_id: Some("fable".to_owned()),
             reasoning_effort: Some("Thinking".to_owned()),
             service_tier: Some("priority".to_owned()),
+            backend_binding: AgentBackendBinding::Codex,
             cwds: Some(vec!["/workspace/report".to_owned()]),
             execution_environment: None,
             local_environment_config_path: None,
@@ -2292,10 +2294,10 @@ mod tests {
             .call(move |connection| {
                 connection.execute(
                     "INSERT INTO codex_threads(\
-                       thread_id, project_id, thread_name, thread_preview, model_provider, \
+                       thread_id, project_id, thread_name, thread_preview, \
                        status_type, status_active_flags_json, archived, created_at, updated_at, \
                        linked_at\
-                     ) VALUES (?1, 'project:default', '', '', 'openai', 'idle', '[]', 0, 1, 1, \
+                     ) VALUES (?1, 'project:default', '', '', 'idle', '[]', 0, 1, 1, \
                        '2026-07-19T00:00:00.000Z')",
                     [thread_id],
                 )?;
@@ -2466,9 +2468,7 @@ mod tests {
         let items = window.items;
         assert_eq!(items, created.committed.value.definitions);
         let definition = &items[0];
-        assert_eq!(definition.model_provider.as_deref(), Some("anthropic"));
         assert_eq!(definition.model.as_deref(), Some("claude-opus-4-1"));
-        assert_eq!(definition.harness_id.as_deref(), Some("fable"));
         assert_eq!(definition.reasoning_effort.as_deref(), Some("Thinking"));
         assert_eq!(definition.service_tier.as_deref(), Some("priority"));
     }

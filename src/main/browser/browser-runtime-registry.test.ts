@@ -147,6 +147,29 @@ describe("BrowserRuntimeRegistry", () => {
     });
   });
 
+  test("authorizes a physical guest independently from the current presentation generation", () => {
+    const registry = makeBrowserRuntimeRegistry();
+    registry.registerRendererSession({
+      browserViewScopeId: identity.browserViewScopeId,
+      ownerWebContentsId: 7,
+      rendererInstanceId: "renderer-1",
+    });
+    registry.registerHost(7, host({ mountGeneration: 3 }));
+
+    expect(
+      registry.authorizeAttachment(7, {
+        ...identity,
+        rendererInstanceId: "renderer-1",
+        hostGeneration: 1,
+      }),
+    ).toMatchObject({
+      ok: true,
+      authorization: {
+        mountGeneration: 3,
+      },
+    });
+  });
+
   test("revoked attachment authorization cannot be consumed", () => {
     const registry = makeBrowserRuntimeRegistry();
     registry.registerRendererSession({

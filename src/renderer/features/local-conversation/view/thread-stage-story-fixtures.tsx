@@ -178,6 +178,10 @@ const DEFAULT_MODELS: CodexModelOption[] = [
       { reasoningEffort: "high", description: "Deep" },
     ],
     defaultReasoningEffort: "high",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: true,
   },
 ];
@@ -191,6 +195,10 @@ const IMPLEMENT_PLAN_MODELS: CodexModelOption[] = [
     hidden: false,
     supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Light" }],
     defaultReasoningEffort: "low",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: "v2",
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: false,
   },
   {
@@ -207,6 +215,10 @@ const IMPLEMENT_PLAN_MODELS: CodexModelOption[] = [
       { reasoningEffort: "ultra", description: "Ultra" },
     ],
     defaultReasoningEffort: "xhigh",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: "v2",
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: true,
   },
 ];

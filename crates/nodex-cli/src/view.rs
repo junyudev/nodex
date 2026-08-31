@@ -433,9 +433,9 @@ fn internal(error: impl std::fmt::Display) -> CliError {
 mod tests {
     use nodex_core_contracts::collection::{CollectionWindow, CollectionWindowAuthority};
     use nodex_core_contracts::database::{
-        DatabasePropertyCapabilities, DatabasePropertyFilterOperator,
-        DatabasePropertyManagementPolicy, DatabasePropertySystemRole, DatabaseRowSummary,
-        DatabaseViewGroupSummary, DatabaseViewGroups,
+        DatabasePropertyCapabilities, DatabasePropertyManagementPolicy, DatabasePropertySystemRole,
+        DatabaseRowSummary, DatabaseViewFilterOperator, DatabaseViewGroupSummary,
+        DatabaseViewGroups,
     };
     use nodex_core_contracts::{
         LocalProjectionScope, ProjectionScopeKey, ProjectionSnapshotAuthority,
@@ -492,9 +492,12 @@ mod tests {
                 "database_id": "database-1",
                 "data_source_id": "source-1",
                 "definition": {
-                    "filter": { "kind": "group", "operator": "and", "children": [] },
+                    "rules": {
+                        "propertyFilters": [],
+                        "advancedFilter": null,
+                        "sorts": []
+                    },
                     "presentation": {
-                        "sort": [],
                         "group": { "propertyId": "status" },
                         "subgroup": null,
                         "groupDirection": "asc",
@@ -523,10 +526,10 @@ mod tests {
                 schema: DatabasePropertySchema::Select,
                 capabilities: DatabasePropertyCapabilities {
                     filter_operators: vec![
-                        DatabasePropertyFilterOperator::Equals,
-                        DatabasePropertyFilterOperator::NotEquals,
-                        DatabasePropertyFilterOperator::IsEmpty,
-                        DatabasePropertyFilterOperator::IsNotEmpty,
+                        DatabaseViewFilterOperator::Equals,
+                        DatabaseViewFilterOperator::NotEquals,
+                        DatabaseViewFilterOperator::IsEmpty,
+                        DatabaseViewFilterOperator::IsNotEmpty,
                     ],
                     sortable: true,
                     groupable: true,

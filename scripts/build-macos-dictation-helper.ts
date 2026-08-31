@@ -18,7 +18,7 @@ import {
 
 interface BuildStamp {
   readonly architecture: NativeRuntimeArchitecture;
-  readonly minimumMacOS: "12.0";
+  readonly minimumMacOS: "15.0";
   readonly protocolVersion: 2;
   readonly sourceSha256: string;
 }
@@ -56,7 +56,7 @@ const main = (): void => {
   const sourcePath = path.join(repositoryRoot, "resources/macos/nodex-dictation-helper.swift");
   const stamp: BuildStamp = {
     architecture: resolveArchitecture(),
-    minimumMacOS: "12.0",
+    minimumMacOS: "15.0",
     protocolVersion: 2,
     sourceSha256: createHash("sha256").update(readFileSync(sourcePath)).digest("hex"),
   };

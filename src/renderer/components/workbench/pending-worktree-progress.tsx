@@ -7,7 +7,7 @@ import {
   WorktreeStatusIcon,
 } from "@/components/shared/icons";
 import { CodexShimmerText } from "@/features/local-conversation/view/shared/codex-shimmer-text";
-import { ThreadCommandShellBlock } from "@/features/local-conversation/view/shared/tools/thread-command-shell-block";
+import { ThreadExecShellContainer } from "@/features/local-conversation/view/shared/tools/thread-command-shell-block";
 import { cn } from "@/lib/utils";
 import { semanticActivityTextClassName } from "@/lib/semantic-activity-status";
 import type {
@@ -145,9 +145,8 @@ export function PendingWorktreeProgress({
           ) : null}
           {detailsVisible ? (
             <div id={detailsId} hidden={!detailsExpanded}>
-              <ThreadCommandShellBlock
-                variant="embedded"
-                embeddedAppearance="plain"
+              <ThreadExecShellContainer
+                surface="plain"
                 command=""
                 output={detailsExpanded ? model.outputText : initialOutput}
                 isInProgress={entry.phase === "creating" || entry.phase === "setting-up"}

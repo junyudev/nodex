@@ -22,6 +22,8 @@ import {
   type CodexServerRequestResponseProjectionError,
 } from "./CodexServerRequestResponses";
 import { type CodexThreadGoalError, CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
+import { CodexThreadDirectory, CodexThreadDirectoryError } from "./CodexThreadDirectory";
+import { CodexSubagentDirectory, CodexSubagentDirectoryError } from "./CodexSubagentDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 type BackgroundTerminal =
@@ -32,39 +34,52 @@ type ConversationCommandsError =
   | CodexConversationArchiveError
   | CodexConversationProjectionError
   | CodexServerRequestResponseProjectionError
+  | CodexSubagentDirectoryError
+  | CodexThreadDirectoryError
   | CodexThreadGoalError;
+
+type ConversationThreadCommandError = CodexRuntimeError | CodexThreadDirectoryError;
+
+const INTERRUPT_TOTAL_DEADLINE_MS = 5_000;
+const INTERRUPT_SUBTREE_HEADROOM_MS = 250;
 
 export class ConversationCommands extends Context.Service<
   ConversationCommands,
   {
     readonly archive: (threadId: string) => Effect.Effect<boolean, CodexConversationArchiveError>;
+    readonly deleteArchived: (
+      threadId: string,
+    ) => Effect.Effect<boolean, CodexConversationArchiveError>;
     readonly unarchive: (
       threadId: string,
     ) => Effect.Effect<CodexThreadSummary | null, CodexConversationArchiveError>;
     readonly setMemoryMode: (
       threadId: string,
       mode: ClientRequestParamsByMethod["thread/memoryMode/set"]["mode"],
-    ) => Effect.Effect<void, CodexRuntimeError>;
+    ) => Effect.Effect<void, ConversationThreadCommandError>;
     readonly startReview: (
       params: ClientRequestParamsByMethod["review/start"],
-    ) => Effect.Effect<ClientRequestResponsesByMethod["review/start"], CodexRuntimeError>;
+    ) => Effect.Effect<
+      ClientRequestResponsesByMethod["review/start"],
+      ConversationThreadCommandError
+    >;
     readonly uploadFeedback: (
       params: ClientRequestParamsByMethod["feedback/upload"],
     ) => Effect.Effect<void, CodexRuntimeError>;
     readonly listBackgroundTerminals: (
       threadId: string,
-    ) => Effect.Effect<readonly BackgroundTerminal[], CodexRuntimeError>;
+    ) => Effect.Effect<readonly BackgroundTerminal[], ConversationThreadCommandError>;
     readonly listBackgroundTerminalsPage: (
       threadId: string,
       options?: { readonly cursor?: string | null; readonly limit?: number },
     ) => Effect.Effect<
       ClientRequestResponsesByMethod["thread/backgroundTerminals/list"],
-      CodexRuntimeError
+      ConversationThreadCommandError
     >;
     readonly terminateBackgroundTerminal: (
       threadId: string,
       processId: string,
-    ) => Effect.Effect<boolean, CodexRuntimeError>;
+    ) => Effect.Effect<boolean, ConversationThreadCommandError>;
     readonly interrupt: (
       threadId: string,
       turnId?: string,
@@ -85,6 +100,8 @@ export const live: Layer.Layer<
   | CodexConversationProjection
   | CodexGateway
   | CodexServerRequestResponses
+  | CodexSubagentDirectory
+  | CodexThreadDirectory
   | CodexThreadGoalRuntime
   | ConversationEntityMap
 > = Layer.effect(
@@ -95,10 +112,26 @@ export const live: Layer.Layer<
     const conversations = yield* ConversationEntityMap;
     const serverRequestResponses = yield* CodexServerRequestResponses;
     const projection = yield* CodexConversationProjection;
+    const subagents = yield* CodexSubagentDirectory;
+    const directory = yield* CodexThreadDirectory;
     const threadGoals = yield* CodexThreadGoalRuntime;
 
     const runSerial = <A, E>(threadId: string, operation: Effect.Effect<A, E>) =>
       conversations.runCommand(threadId, operation);
+    const requireCodexThread = (threadId: string) =>
+      directory.resolve({ threadId, fidelity: "durable" }).pipe(
+        Effect.flatMap((entry) =>
+          entry
+            ? Effect.void
+            : Effect.fail(
+                new CodexThreadDirectoryError({
+                  operation: "read",
+                  threadId,
+                  cause: new Error(`Thread '${threadId}' is not owned by the Codex backend`),
+                }),
+              ),
+        ),
+      );
     const listBackgroundTerminalsPage = (
       threadId: string,
       options?: { readonly cursor?: string | null; readonly limit?: number },
@@ -136,6 +169,8 @@ export const live: Layer.Layer<
     const interruptInLane = (
       threadId: string,
       turnId?: string,
+      settleSubtree = true,
+      subtreeDeadlineAtMs?: number,
     ): Effect.Effect<boolean, ConversationCommandsError> =>
       Effect.gen(function* () {
         const resolvedTurnId = yield* projection.resolveInterruptTurn(threadId, turnId);
@@ -158,6 +193,25 @@ export const live: Layer.Layer<
               ),
             ),
           );
+        if (settleSubtree) {
+          const subtree = yield* subagents.settleInterruptedSubtree(
+            threadId,
+            subtreeDeadlineAtMs === undefined ? undefined : { deadlineAtMs: subtreeDeadlineAtMs },
+          );
+          if (
+            !subtree.discoveryComplete ||
+            subtree.failed.length > 0 ||
+            subtree.unresolvedThreadIds.length > 0
+          ) {
+            return yield* new CodexSubagentDirectoryError({
+              operation: "lifecycle",
+              rootThreadId: threadId,
+              cause: new Error(
+                `Subagent interruption left ${subtree.failed.length} failed, ${subtree.unresolvedThreadIds.length} unresolved descendants, and discovery ${subtree.discoveryComplete ? "complete" : "incomplete"}`,
+              ),
+            });
+          }
+        }
         return true;
       });
 
@@ -166,53 +220,122 @@ export const live: Layer.Layer<
         runSerial(threadId, archive.archive(threadId)).pipe(
           Effect.tap((archived) => (archived ? conversations.retire(threadId) : Effect.void)),
         ),
+      deleteArchived: (threadId) =>
+        runSerial(threadId, archive.deleteArchived(threadId)).pipe(
+          Effect.tap((deleted) => (deleted ? conversations.retire(threadId) : Effect.void)),
+        ),
       unarchive: (threadId) => runSerial(threadId, archive.unarchive(threadId)),
       setMemoryMode: (threadId, mode) =>
-        gateway
-          .requestForThread(threadId, "thread/memoryMode/set", { threadId, mode })
-          .pipe(Effect.asVoid),
-      startReview: (params) => gateway.requestForThread(params.threadId, "review/start", params),
+        requireCodexThread(threadId).pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              gateway
+                .requestForThread(threadId, "thread/memoryMode/set", { threadId, mode })
+                .pipe(Effect.asVoid),
+            ),
+          ),
+        ),
+      startReview: (params) =>
+        requireCodexThread(params.threadId).pipe(
+          Effect.andThen(
+            Effect.suspend(() => gateway.requestForThread(params.threadId, "review/start", params)),
+          ),
+        ),
       uploadFeedback: (params) =>
         gateway.requestLocal("feedback/upload", params).pipe(Effect.asVoid),
       listBackgroundTerminalsPage: (threadId, options) =>
-        listBackgroundTerminalsPage(threadId.trim(), options),
-      listBackgroundTerminals: (threadId) => listBackgroundTerminals(threadId.trim()),
+        requireCodexThread(threadId.trim()).pipe(
+          Effect.andThen(
+            Effect.suspend(() => listBackgroundTerminalsPage(threadId.trim(), options)),
+          ),
+        ),
+      listBackgroundTerminals: (threadId) =>
+        requireCodexThread(threadId.trim()).pipe(
+          Effect.andThen(Effect.suspend(() => listBackgroundTerminals(threadId.trim()))),
+        ),
       terminateBackgroundTerminal: (threadId, processId) =>
-        gateway
-          .requestForThread(threadId, "thread/backgroundTerminals/terminate", {
-            threadId,
-            processId,
-          })
-          .pipe(Effect.map((response) => response.terminated)),
-      interrupt: (threadId, turnId) => runSerial(threadId, interruptInLane(threadId, turnId)),
-      cleanBackgroundTerminals: (threadId) =>
-        runSerial(
-          threadId,
-          projection.backgroundTerminalTurnIds(threadId).pipe(
-            Effect.flatMap((turnIds) => {
-              if (turnIds === null) return Effect.succeed(false);
-              if (turnIds.length === 0) return Effect.succeed(true);
-              return Effect.forEach(turnIds, (turnId) => interruptInLane(threadId, turnId), {
-                discard: true,
-              }).pipe(Effect.as(true));
+        requireCodexThread(threadId).pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              gateway
+                .requestForThread(threadId, "thread/backgroundTerminals/terminate", {
+                  threadId,
+                  processId,
+                })
+                .pipe(Effect.map((response) => response.terminated)),
+            ),
+          ),
+        ),
+      interrupt: (threadId, turnId) =>
+        requireCodexThread(threadId).pipe(
+          Effect.andThen(
+            Effect.gen(function* () {
+              const startedAtMs = yield* Clock.currentTimeMillis;
+              return yield* runSerial(
+                threadId,
+                interruptInLane(
+                  threadId,
+                  turnId,
+                  true,
+                  startedAtMs + INTERRUPT_TOTAL_DEADLINE_MS - INTERRUPT_SUBTREE_HEADROOM_MS,
+                ),
+              );
             }),
+          ),
+          Effect.timeoutOrElse({
+            duration: `${INTERRUPT_TOTAL_DEADLINE_MS} millis`,
+            orElse: () =>
+              Effect.fail(
+                new CodexSubagentDirectoryError({
+                  operation: "lifecycle",
+                  rootThreadId: threadId,
+                  cause: new Error("Thread and Subagent interruption exceeded five seconds"),
+                }),
+              ),
+          }),
+        ),
+      cleanBackgroundTerminals: (threadId) =>
+        requireCodexThread(threadId).pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              runSerial(
+                threadId,
+                projection.backgroundTerminalTurnIds(threadId).pipe(
+                  Effect.flatMap((turnIds) => {
+                    if (turnIds === null) return Effect.succeed(false);
+                    if (turnIds.length === 0) return Effect.succeed(true);
+                    return Effect.forEach(
+                      turnIds,
+                      (turnId) => interruptInLane(threadId, turnId, false),
+                      { discard: true },
+                    ).pipe(Effect.as(true));
+                  }),
+                ),
+              ),
+            ),
           ),
         ),
       cleanBackgroundTerminalsSilently: (threadId) =>
-        runSerial(
-          threadId,
-          gateway
-            .requestForThread(threadId, "thread/backgroundTerminals/clean", { threadId })
-            .pipe(
-              Effect.andThen(
-                Clock.currentTimeMillis.pipe(
-                  Effect.flatMap((observedAtMs) =>
-                    projection.backgroundTerminalsCleaned(threadId, observedAtMs),
+        requireCodexThread(threadId).pipe(
+          Effect.andThen(
+            Effect.suspend(() =>
+              runSerial(
+                threadId,
+                gateway
+                  .requestForThread(threadId, "thread/backgroundTerminals/clean", { threadId })
+                  .pipe(
+                    Effect.andThen(
+                      Clock.currentTimeMillis.pipe(
+                        Effect.flatMap((observedAtMs) =>
+                          projection.backgroundTerminalsCleaned(threadId, observedAtMs),
+                        ),
+                      ),
+                    ),
+                    Effect.as(true),
                   ),
-                ),
               ),
-              Effect.as(true),
             ),
+          ),
         ),
     });
   }),

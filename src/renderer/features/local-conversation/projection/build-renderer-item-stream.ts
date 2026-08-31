@@ -38,6 +38,7 @@ const PROTOCOL_THREAD_ITEM_RENDERER_TYPES = {
   userMessage: "userMessage",
   hookPrompt: null,
   agentMessage: "assistantMessage",
+  functionCallOutput: null,
   plan: SEMANTIC_FALLBACK,
   reasoning: "reasoning",
   commandExecution: "exec",

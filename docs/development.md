@@ -336,12 +336,11 @@ The test commands follow production boundaries:
   against a stale `target/debug/nodex-core` binary.
   Electron E2E is retained for deliberate local/agent diagnostics and is not
   invoked by PR, Main, Nightly, Performance, or release-certification workflows.
-- Authenticated `@subscription-quota` Electron cases are a separate opt-in
-  tier. The ordinary E2E command skips them. Run them only after the user has
-  explicitly approved paid subscription-quota use, by setting
-  `NODEX_ALLOW_SUBSCRIPTION_E2E=1` and selecting the tag explicitly. These
-  cases copy `auth.json` plus the portable Codex config into a disposable
-  profile; never point them at the user's live Nodex workspace.
+- Real subscription-backed Agent canaries use the dedicated, single-case
+  [`agent:smoke:paid` runner](paid-agent-smoke.md). The explicit command is the
+  quota authorization; it fixes one worker, disables retries, copies only auth
+  into a disposable Profile, and records sanitized evidence.
+  Ordinary Electron E2E remains deterministic and never consumes Agent quota.
 
 Seeded fixtures have four distinct evidence classes:
 
@@ -356,10 +355,6 @@ Seeded fixtures have four distinct evidence classes:
 
 Never share a writable seeded Store between tests.
 Add a snapshot cache only after measurement shows live authoritative materialization is a meaningful bottleneck; `board/dense` remains live-seeded in the initial implementation.
-
-```bash
-NODEX_ALLOW_SUBSCRIPTION_E2E=1 vp run test:e2e:subscription
-```
 
 ### Block drag-and-drop smoke
 

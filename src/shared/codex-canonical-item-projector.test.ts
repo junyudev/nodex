@@ -65,6 +65,14 @@ function generatedItems(): readonly CodexCanonicalItem[] {
       text: "Answer",
       phase: "final_answer",
       memoryCitation: null,
+      delivery: null,
+    },
+    {
+      type: "functionCallOutput",
+      id: "injected-tool-output",
+      name: "external_lookup",
+      namespace: null,
+      output: "opaque model-context result",
     },
     { type: "plan", id: "plan", text: "- [x] still a proposed plan" },
     { type: "reasoning", id: "reasoning", summary: ["Summary"], content: [] },
@@ -208,6 +216,7 @@ describe("projectCodexCanonicalTurnItemViews", () => {
       text: "partial",
       phase: "commentary",
       memoryCitation: null,
+      delivery: null,
     });
     const plan = materializeCodexCanonicalProtocolItem({
       type: "plan",
@@ -258,6 +267,7 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     expect(viewCount("user")).toBe(1);
     expect(viewCount("hook-prompt")).toBe(1);
     expect(viewCount("assistant")).toBe(1);
+    expect(viewCount("injected-tool-output")).toBe(0);
     expect(viewCount("plan")).toBe(1);
     expect(viewCount("reasoning")).toBe(1);
     expect(viewCount("command-multi")).toBe(4);
@@ -273,6 +283,19 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     expect(viewCount("review-enter")).toBe(0);
     expect(viewCount("review-exit")).toBe(0);
     expect(viewCount("compaction")).toBe(1);
+  });
+
+  test("retains injected function output in canonical state without creating transcript UI", () => {
+    const item = materializeCodexCanonicalProtocolItem({
+      type: "functionCallOutput",
+      id: "injected-tool-output",
+      name: "external_lookup",
+      namespace: "tools",
+      output: [{ type: "input_text", text: "opaque model-context result" }],
+    });
+
+    expect(item.type).toBe("functionCallOutput");
+    expect(project([item])).toEqual([]);
   });
 
   test("uses exact hook, plan, visualization, generated-image, and subagent projections", () => {
@@ -657,6 +680,7 @@ describe("projectCodexCanonicalTurnViews", () => {
       text: "Answer",
       phase: "final_answer",
       memoryCitation: null,
+      delivery: null,
     });
 
     const views = projectCodexCanonicalTurnViews({

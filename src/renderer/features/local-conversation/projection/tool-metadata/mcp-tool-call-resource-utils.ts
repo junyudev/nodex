@@ -153,7 +153,10 @@ export function resolveMcpEmbeddedRenderableResource(input: {
   const resourceUri = resolveMcpAppResourceUri(input) ?? contents[0]?.uri;
   if (!resourceUri) return null;
 
-  return resolveMcpRenderableResource(resourceUri, { contents });
+  return resolveMcpRenderableResource(resourceUri, {
+    contents,
+    originCallId: input.payload.callId,
+  });
 }
 
 export function shouldHideDuplicateMcpTextContent(

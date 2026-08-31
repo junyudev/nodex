@@ -79,9 +79,12 @@ export function makeDefaultBrowserSidebarTabId(browserConversationId: string): s
   return `${browserConversationId}:legacy`;
 }
 
-export interface BrowserSidebarHostRouteIdentity extends BrowserSidebarTabIdentity {
+export interface BrowserSidebarPhysicalHostIdentity extends BrowserSidebarTabIdentity {
   rendererInstanceId: string;
   hostGeneration: number;
+}
+
+export interface BrowserSidebarHostRouteIdentity extends BrowserSidebarPhysicalHostIdentity {
   mountGeneration: number;
 }
 
@@ -98,19 +101,13 @@ export function requireWorkbenchBrowserTabProjectionId(tab: {
 
 export function makeBrowserSidebarRoutePartition(
   identity: BrowserSidebarTabIdentity,
-  host?: Pick<
-    BrowserSidebarHostRouteIdentity,
-    "rendererInstanceId" | "hostGeneration" | "mountGeneration"
-  >,
+  host?: Pick<BrowserSidebarPhysicalHostIdentity, "rendererInstanceId" | "hostGeneration">,
 ): string {
   const route = `${BROWSER_SIDEBAR_ROUTE_PARTITION_PREFIX}${encodeURIComponent(
     makeBrowserSidebarTabKey(identity),
   )}`;
   if (!host) return route;
-  return (
-    `${route}:host:${encodeURIComponent(host.rendererInstanceId)}` +
-    `:${host.hostGeneration}:${host.mountGeneration}`
-  );
+  return `${route}:host:${encodeURIComponent(host.rendererInstanceId)}:${host.hostGeneration}`;
 }
 
 export function parseBrowserSidebarRoutePartition(
@@ -143,23 +140,20 @@ export function parseBrowserSidebarRoutePartition(
 
 export function parseBrowserSidebarHostRoutePartition(
   partition: string | null | undefined,
-): BrowserSidebarHostRouteIdentity | null {
+): BrowserSidebarPhysicalHostIdentity | null {
   const identity = parseBrowserSidebarRoutePartition(partition);
   if (!identity || !partition) return null;
   try {
     const hostMarkerIndex = partition.indexOf(":host:");
     if (hostMarkerIndex < 0) return null;
     const hostParts = partition.slice(hostMarkerIndex + ":host:".length).split(":");
-    if (hostParts.length !== 3) return null;
+    if (hostParts.length !== 2) return null;
     const rendererInstanceId = decodeURIComponent(hostParts[0] ?? "").trim();
     const hostGeneration = Number.parseInt(hostParts[1] ?? "", 10);
-    const mountGeneration = Number.parseInt(hostParts[2] ?? "", 10);
     if (
       rendererInstanceId.length === 0 ||
       !Number.isSafeInteger(hostGeneration) ||
-      hostGeneration <= 0 ||
-      !Number.isSafeInteger(mountGeneration) ||
-      mountGeneration <= 0
+      hostGeneration <= 0
     ) {
       return null;
     }
@@ -167,7 +161,6 @@ export function parseBrowserSidebarHostRoutePartition(
       ...identity,
       rendererInstanceId,
       hostGeneration,
-      mountGeneration,
     };
   } catch {
     return null;

@@ -15,6 +15,7 @@ import path from "node:path";
 
 import { readIsolatedRunLeaseOwner } from "../src/main/core-client/isolated-run-ownership";
 import { copyIsolatedCodexConfig } from "./copy-isolated-codex-config";
+import { installPrivateFile, resolveRegularPrivateFileSource } from "./private-file";
 
 export const DEVELOPMENT_HOME_MANIFEST_FILE = "dev-home.json" as const;
 const DEVELOPMENT_HOME_MANIFEST_VERSION = 1 as const;
@@ -377,43 +378,22 @@ export const markDevelopmentEnvironmentInitialized = async (
   return { ...home, manifest };
 };
 
-const requireRegularSource = async (source: string, label: string): Promise<string> => {
-  const resolved = path.resolve(source);
-  const stats = await lstat(resolved);
-  if (stats.isSymbolicLink() || !stats.isFile()) {
-    throw new Error(`${label} must be a regular file: ${resolved}`);
-  }
-  return resolved;
-};
-
-const installPrivateFile = async (
-  destination: string,
-  write: (temporaryPath: string) => Promise<void>,
-): Promise<void> => {
-  const temporaryPath = `${destination}.${randomUUID()}.tmp`;
-  try {
-    await write(temporaryPath);
-    await chmod(temporaryPath, 0o600);
-    await rename(temporaryPath, destination);
-    await chmod(destination, 0o600);
-  } finally {
-    await rm(temporaryPath, { force: true });
-  }
-};
-
 export const updateDevelopmentAgentFiles = async (
   home: DevelopmentEnvironmentHome,
   input: { readonly authJson?: string; readonly agentConfigToml?: string },
 ): Promise<void> => {
   await mkdir(home.codexHome, { recursive: true, mode: 0o700 });
   if (input.authJson) {
-    const source = await requireRegularSource(input.authJson, "--auth-json");
+    const source = await resolveRegularPrivateFileSource(input.authJson, "--auth-json");
     await installPrivateFile(path.join(home.codexHome, "auth.json"), async (target) => {
       await copyFile(source, target);
     });
   }
   if (input.agentConfigToml) {
-    const source = await requireRegularSource(input.agentConfigToml, "--agent-config-toml");
+    const source = await resolveRegularPrivateFileSource(
+      input.agentConfigToml,
+      "--agent-config-toml",
+    );
     await installPrivateFile(path.join(home.codexHome, "config.toml"), async (target) => {
       await copyIsolatedCodexConfig(source, target);
     });

@@ -139,6 +139,7 @@ function buildMcpStatuses(resourceUri: string): ProtocolListMcpServerStatusRespo
         },
         resources: [],
         resourceTemplates: [],
+        runtimeStatus: "connected",
         authStatus: "unsupported",
       },
     ],

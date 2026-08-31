@@ -49,6 +49,7 @@ const protocolThread = (threadId: string): Thread => ({
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 100,
@@ -75,9 +76,10 @@ const forkResponse = {
     forkedFromId: parentThreadId,
   },
   cwd: "/workspace",
-  model: "gpt-test",
-  reasoningEffort: null,
+  model: "gpt-parent",
+  reasoningEffort: "high",
   modelProvider: "openai",
+  serviceTier: "priority",
   approvalPolicy: "never",
   approvalsReviewer: "user",
   sandbox: {
@@ -107,6 +109,7 @@ interface SideChatHarnessOptions {
   readonly initialTurn?: Effect.Effect<void, CodexRuntimeError>;
   readonly unsubscribe?: Effect.Effect<unknown, CodexRuntimeError>;
   readonly parentProjection?: "materialized" | "released";
+  readonly parentBackend?: "codex" | "acp";
   readonly parentSideConversation?: boolean;
   readonly capabilityCurrent?: boolean;
   readonly capabilityVersion?: string;
@@ -198,9 +201,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
       source: { parentThreadId: null },
       cwd: "/workspace",
       executionProfile: {
-        providerId: "openai",
         modelId: "gpt-parent",
-        harnessId: "harness-a",
         reasoningEffort: "high",
         serviceTier: "priority",
       },
@@ -250,6 +251,14 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
       fidelity: "durable",
       durable: {
         cwd: "/workspace",
+        backendBinding:
+          options.parentBackend === "acp"
+            ? {
+                kind: "acp",
+                agentDefinitionId: "claude-agent-acp",
+                instanceConfigId: "claude-local",
+              }
+            : { kind: "codex" },
         executionProfile: parentSnapshot.executionProfile,
         executionHostId: remoteHostId,
       },
@@ -265,7 +274,6 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
         directoryFidelities.push(input.fidelity);
         return conversations.runCommand(parentThreadId, Effect.succeed(directoryEntry));
       },
-      descendants: () => Effect.die("unused"),
       acceptRollbackResult: () => Effect.die("unused"),
       acceptImportResult: () => Effect.die("unused"),
       acceptForkResult: () => Effect.die("unused"),
@@ -366,7 +374,7 @@ it.effect("forks from durable parent context without requesting parent history",
     assert.strictEqual(params.threadId, parentThreadId);
     assert.strictEqual(params.cwd, "/workspace");
     assert.strictEqual(params.model, "gpt-parent");
-    assert.strictEqual(params.modelProvider, "openai");
+    assert.isUndefined(params.modelProvider);
     assert.strictEqual(params.serviceTier, "priority");
     assert.strictEqual(params.ephemeral, true);
     assert.strictEqual(params.excludeTurns, true);
@@ -376,9 +384,11 @@ it.effect("forks from durable parent context without requesting parent history",
     assert.strictEqual(params.permissions, ":workspace");
     assert.isUndefined(params.sandbox);
     assert.strictEqual(params.developerInstructions, SIDE_CHAT_DEVELOPER_INSTRUCTIONS);
-    assert.deepInclude(params.config, {
-      harness: "harness-a",
+    assert.deepEqual(params.config, {
       model_reasoning_effort: "high",
+      "features.apply_patch_streaming_events": true,
+      "features.concurrent_reasoning_summaries": true,
+      "features.thread_tools": true,
     });
     assert.deepEqual(
       harness.requests.map((request) => request.method),
@@ -391,6 +401,17 @@ it.effect("forks from durable parent context without requesting parent history",
         { expectedHostId: remoteHostId, expectedGeneration: 1 },
       ],
     );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects an ACP parent before any Codex side-chat request", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope, { parentBackend: "acp" });
+
+    yield* harness.commands.start({ parentThreadId }).pipe(Effect.flip);
+    assert.deepEqual(harness.requests, []);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -464,6 +485,25 @@ it.effect("rejects stale generations and fork responses containing inline histor
     );
     assert.isNull(yield* inline.routing.resolve(sideThreadId));
     yield* Scope.close(inlineScope, Exit.void);
+  }),
+);
+
+it.effect("rejects and compensates a fork whose runtime profile was substituted", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope, {
+      forkResponse: { ...forkResponse, model: "gpt-substituted" },
+    });
+
+    const exit = yield* Effect.exit(harness.commands.start({ parentThreadId }));
+
+    assert.isTrue(Exit.isFailure(exit));
+    assert.isNull(yield* harness.routing.resolve(sideThreadId));
+    assert.deepEqual(
+      harness.requests.map((request) => request.method),
+      ["thread/fork", "thread/unsubscribe"],
+    );
+    yield* Scope.close(scope, Exit.void);
   }),
 );
 

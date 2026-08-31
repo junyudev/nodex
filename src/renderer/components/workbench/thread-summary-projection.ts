@@ -9,7 +9,6 @@ export function projectSessionThreadLinkToSummary(
     source: thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : null,
     threadName: thread.threadName ?? null,
     threadPreview: thread.threadPreview,
-    modelProvider: thread.modelProvider,
     executionProfile: thread.executionProfile ?? null,
     cwd: thread.cwd ?? null,
     managedWorktreePath: thread.managedWorktreePath ?? null,

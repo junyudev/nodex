@@ -20,6 +20,10 @@ const STORY_MODELS: CodexModelOption[] = [
       { reasoningEffort: "xhigh", description: "Maximum reasoning" },
     ],
     defaultReasoningEffort: "high",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: true,
   },
   {
@@ -34,6 +38,10 @@ const STORY_MODELS: CodexModelOption[] = [
       { reasoningEffort: "high", description: "Deep reasoning" },
     ],
     defaultReasoningEffort: "medium",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: false,
   },
 ];

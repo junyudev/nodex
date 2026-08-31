@@ -981,11 +981,7 @@ function RequestCardStack({
             input={null}
             layout="multiline"
             leadingControls={
-              <ModelSelectorDropdown
-                model={model}
-                controller={intelligenceController}
-                actions={actions}
-              />
+              <ModelSelectorDropdown model={model} controller={intelligenceController} />
             }
             trailingControls={null}
           />
@@ -1165,10 +1161,7 @@ function ScopedLocalConversationComposerShell({
     isResponseInProgress: model.isThreadRunning,
     hasRequestCards: model.composerShell.showRequestCards,
   });
-  const selectorAvailable =
-    model.agentProviderCatalog && model.executionProfile
-      ? true
-      : model.availableModels.some((candidate) => !candidate.hidden);
+  const selectorAvailable = model.availableModels.some((candidate) => !candidate.hidden);
   const selectorOwnedBySurface =
     replacementOwner === "normal" ||
     (replacementOwner === "requestStack" &&

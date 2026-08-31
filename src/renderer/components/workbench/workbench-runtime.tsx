@@ -4323,6 +4323,7 @@ export function WorkbenchRuntime({
             "right",
             {
               kind: "session",
+              backendKind: activeRenderSession.thread?.backendBinding.kind ?? "codex",
               projectId: activeRenderSession.projectId,
               hasAttachedThread: Boolean(activeRenderSession.thread),
               cwd: activeRenderSession.thread?.cwd,

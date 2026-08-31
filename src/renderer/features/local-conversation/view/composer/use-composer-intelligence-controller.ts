@@ -34,9 +34,7 @@ function focusModelPickerContent(trigger: HTMLButtonElement): void {
     return;
   }
 
-  const candidates = content.querySelectorAll<HTMLElement>(
-    '[role="slider"], [role="tab"][aria-selected="true"], [role="menuitem"]',
-  );
+  const candidates = content.querySelectorAll<HTMLElement>('[role="menuitem"]');
   const target = [...candidates].find((candidate) => !candidate.closest("[inert]"));
   (target ?? trigger).focus();
 }
@@ -85,19 +83,12 @@ export function useComposerIntelligenceController(
           try {
             if (commit) {
               await commit(candidate);
-            } else if (candidate.kind === "codex") {
+            } else {
               await Promise.all([
                 actionsRef.current.onModelChange(candidate.model),
                 actionsRef.current.onReasoningEffortChange(candidate.reasoningEffort),
               ]);
               setServiceTier(candidate.serviceTier, "composer_menu");
-            } else if (actionsRef.current.onExecutionProfileChange) {
-              await actionsRef.current.onExecutionProfileChange(
-                candidate.profile,
-                candidate.change,
-              );
-            } else {
-              throw new Error("Model selection is unavailable");
             }
             lastFailureRef.current = null;
           } catch (error) {

@@ -20,19 +20,29 @@ export const CODEX_THREAD_DIVIDER_EXIT: TargetAndTransition = {
   height: 0,
 };
 
-/**
- * Historical agent work enters as a complete layout block. Collapsing removes
- * it immediately, so this contract intentionally has no exit state.
- */
-export function resolveCodexThreadWorkedForEnterMotion(reducedMotion: boolean) {
+/** Historical agent work stays mounted through its bounded exit animation. */
+export function resolveCodexThreadAgentBodyMotion(reducedMotion: boolean) {
+  const collapsed = {
+    height: reducedMotion ? "auto" : 0,
+    opacity: 0,
+    overflow: "hidden",
+    transform: reducedMotion ? "translateY(0)" : "translateY(-8px)",
+  } satisfies TargetAndTransition;
+
   return {
-    initial: {
-      opacity: 0,
-      transform: reducedMotion ? "translateY(0)" : "translateY(-8px)",
-    } satisfies TargetAndTransition,
+    initial: collapsed,
     animate: {
+      height: "auto",
       opacity: 1,
       transform: "translateY(0)",
+      transitionEnd: { overflow: "visible" },
+    } satisfies TargetAndTransition,
+    exit: {
+      ...collapsed,
+      transition: {
+        duration: 0.15,
+        ease: [0.23, 1, 0.32, 1],
+      },
     } satisfies TargetAndTransition,
     transition: {
       duration: reducedMotion ? 0.12 : 0.22,

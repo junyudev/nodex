@@ -202,7 +202,6 @@ pub(super) fn create_session_thread(
                 project_id: Some(project_id.map(str::to_owned)),
                 thread_name: Some(Some(thread_id.to_owned())),
                 thread_preview: Some(format!("{thread_id} preview")),
-                model_provider: Some("openai".to_owned()),
                 created_at: Some(updated_at),
                 updated_at: Some(updated_at),
                 linked_at: Some(NOW.to_owned()),

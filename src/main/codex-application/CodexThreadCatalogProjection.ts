@@ -10,10 +10,14 @@ import type {
 } from "../../shared/types";
 import { normalizeCodexManualThreadTitle } from "../../shared/codex-thread-title";
 import { MAX_PROJECT_SESSION_TITLE_LENGTH } from "../../shared/schemas/project-sessions";
-import type { DesktopProjectWorkspaceThread } from "../core-client/project-workspace-adapter";
+import {
+  projectAgentBackendBindingFromCore,
+  type DesktopProjectWorkspaceThread,
+} from "../core-client/project-workspace-adapter";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CodexThreadStatusSchema } from "../../shared/schemas/codex";
 import { hasCodexSubagentSource } from "../../shared/codex-subagent-metadata";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 
 export interface ParsedThreadStatus {
   readonly statusType: CodexThreadStatusType;
@@ -140,7 +144,6 @@ export const buildWorkspaceThreadSummary = (
     agentPath: thread.agentPath,
     threadName: thread.threadName,
     threadPreview: thread.threadPreview,
-    modelProvider: thread.modelProvider,
     executionProfile: thread.executionProfile,
     cwd: thread.cwd,
     managedWorktreePath: thread.managedWorktreePath,
@@ -215,16 +218,14 @@ export const projectCoreWorkspaceTask = (task: CoreWorkspaceTask): ProjectSessio
         agentPath: task.thread.agent_path ?? null,
         threadName: task.thread.thread_name ?? undefined,
         threadPreview: task.thread.thread_preview,
-        modelProvider: task.thread.model_provider,
         executionProfile: task.thread.model_id
           ? {
-              providerId: task.thread.model_provider,
               modelId: task.thread.model_id,
-              harnessId: task.thread.harness_id ?? null,
               reasoningEffort: task.thread.reasoning_effort ?? null,
-              serviceTier: task.thread.service_tier ?? null,
+              serviceTier: normalizeCodexServiceTier(task.thread.service_tier),
             }
           : null,
+        backendBinding: projectAgentBackendBindingFromCore(task.thread.backend_binding),
         executionHostId: task.thread.execution_host_id,
         cwd: task.thread.cwd ?? undefined,
         managedWorktreePath: task.thread.managed_worktree_path ?? null,
@@ -259,14 +260,11 @@ export const buildCoreWorkspaceTaskThreadSummary = (
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? null,
   threadPreview: thread.thread_preview,
-  modelProvider: thread.model_provider,
   executionProfile: thread.model_id
     ? {
-        providerId: thread.model_provider,
         modelId: thread.model_id,
-        harnessId: thread.harness_id ?? null,
         reasoningEffort: thread.reasoning_effort ?? null,
-        serviceTier: thread.service_tier ?? null,
+        serviceTier: normalizeCodexServiceTier(thread.service_tier),
       }
     : null,
   cwd: thread.cwd ?? null,
@@ -300,14 +298,11 @@ export const buildCoreWorkspaceThreadSummary = (
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? null,
   threadPreview: thread.thread_preview,
-  modelProvider: thread.model_provider,
   executionProfile: thread.model_id
     ? {
-        providerId: thread.model_provider,
         modelId: thread.model_id,
-        harnessId: thread.harness_id ?? null,
         reasoningEffort: thread.reasoning_effort ?? null,
-        serviceTier: thread.service_tier ?? null,
+        serviceTier: normalizeCodexServiceTier(thread.service_tier),
       }
     : null,
   cwd: thread.cwd ?? null,
@@ -338,7 +333,6 @@ export const hasSidebarThreadSummaryChanged = (
     previous.agentPath !== next.agentPath ||
     previous.threadName !== next.threadName ||
     previous.threadPreview !== next.threadPreview ||
-    previous.modelProvider !== next.modelProvider ||
     previous.cwd !== next.cwd ||
     previous.managedWorktreePath !== next.managedWorktreePath ||
     previous.projectlessOutputDirectory !== next.projectlessOutputDirectory ||

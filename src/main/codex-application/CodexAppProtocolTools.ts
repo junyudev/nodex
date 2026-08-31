@@ -390,6 +390,35 @@ export const make: Effect.Effect<
     return entry;
   });
 
+  /**
+   * App-protocol thread controls below are Codex runtime operations. Core owns the
+   * durable backend identity, so reject foreign backends before consulting any
+   * Codex directory or gateway-backed owner.
+   */
+  const requireCodexThreadAuthority = Effect.fn(
+    "CodexAppProtocolTools.requireCodexThreadAuthority",
+  )(function* (threadId: string) {
+    const normalized = threadId.trim();
+    if (!normalized) return yield* toolError("Thread id is required");
+    const snapshot = yield* core.workspace.read({ kind: "thread", thread_id: normalized });
+    if (snapshot.value.kind !== "thread") {
+      return yield* toolError(`Thread '${normalized}' was not found`);
+    }
+    if (snapshot.value.thread.backend_binding.kind !== "codex") {
+      return yield* toolError(`Thread '${normalized}' is not owned by the Codex Agent Backend`);
+    }
+    return normalized;
+  });
+
+  const requireCodexThread = Effect.fn("CodexAppProtocolTools.requireCodexThread")(function* (
+    threadId: string,
+  ) {
+    const normalized = yield* requireCodexThreadAuthority(threadId);
+    const entry = yield* directory.resolve({ threadId: normalized, fidelity: "metadata" });
+    if (!entry) return yield* toolError(`Thread '${normalized}' was not found`);
+    return entry;
+  });
+
   const readSidebarSections = Effect.fn("CodexAppProtocolTools.readSidebarSections")(function* (
     includeDeleted = false,
   ) {
@@ -521,7 +550,7 @@ export const make: Effect.Effect<
       );
     }
     if ("kind" in parsed && parsed.kind === "heartbeat") {
-      yield* requireThread(parsed.targetThreadId ?? params.threadId);
+      yield* requireCodexThreadAuthority(parsed.targetThreadId ?? params.threadId);
     }
     if (parsed.mode === "create") {
       const automation = yield* automations.definitions.create(
@@ -576,6 +605,7 @@ export const make: Effect.Effect<
   ) {
     const threadId = stringArg(args.threadId);
     if (!threadId) return yield* toolError("read_thread requires threadId");
+    yield* requireCodexThreadAuthority(threadId);
     return yield* readThreadHistory
       .read({
         threadId,
@@ -1070,7 +1100,7 @@ export const make: Effect.Effect<
         const prompt = stringArg(args.prompt);
         if (!threadId || !prompt)
           return yield* toolError("send_message_to_thread requires threadId and prompt");
-        yield* requireThread(threadId);
+        yield* requireCodexThread(threadId);
         yield* turns.start(threadId, prompt, {
           model: stringArg(args.model) ?? undefined,
           reasoningEffort: reasoningEffort(args.thinking),
@@ -1082,7 +1112,7 @@ export const make: Effect.Effect<
         const title = stringArg(args.title);
         if (!threadId || !title)
           return yield* toolError("set_thread_title requires threadId and title");
-        yield* requireThread(threadId);
+        yield* requireCodexThread(threadId);
         yield* titles.set({ threadId, name: title, normalization: "manual" });
         return buildCodexAppDynamicToolSuccess({ threadId, title });
       }
@@ -1090,7 +1120,7 @@ export const make: Effect.Effect<
         const threadId = stringArg(args.threadId) ?? params.threadId;
         if (typeof args.archived !== "boolean")
           return yield* toolError("set_thread_archived requires threadId and archived");
-        yield* requireThread(threadId);
+        yield* requireCodexThread(threadId);
         yield* args.archived ? commands.archive(threadId) : commands.unarchive(threadId);
         return buildCodexAppDynamicToolSuccess({ threadId, archived: args.archived });
       }
@@ -1106,7 +1136,7 @@ export const make: Effect.Effect<
         const sourceThreadId = stringArg(args.threadId) ?? params.threadId;
         const environment = asRecord(args.environment);
         if (environment?.type === "worktree") {
-          const source = yield* requireThread(sourceThreadId);
+          const source = yield* requireCodexThread(sourceThreadId);
           const sessionId = source.durable.sessionId;
           if (!sessionId) return yield* toolError("Worktree fork requires a Project Session");
           const forked = yield* projectSessionFork.fork({
@@ -1120,6 +1150,7 @@ export const make: Effect.Effect<
         }
         if (environment && environment.type !== "same-directory")
           return yield* toolError("fork_thread received invalid arguments.");
+        yield* requireCodexThread(sourceThreadId);
         const forked = yield* conversationFork.fork({ sourceThreadId, threadSource: "subagent" });
         return buildCodexAppDynamicToolSuccess({
           environment: { type: "same-directory" },
@@ -1230,7 +1261,7 @@ export const make: Effect.Effect<
         if (!threadId) return yield* toolError("handoff_thread requires threadId");
         if (threadId === params.threadId)
           return yield* toolError("A thread cannot hand itself off. Choose another thread.");
-        yield* requireThread(threadId);
+        yield* requireCodexThread(threadId);
         const existing = yield* handoffs.get(params.callId);
         const operation =
           existing ??

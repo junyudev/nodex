@@ -2,8 +2,10 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
 import type { Project, ProjectArchiveBlocker, ProjectSessionSummary } from "../../shared/types";
+import { AcpBackendSessionManager } from "../agent-backend/acp/AcpBackendSessionManager";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { live as projectRuntimeLifecycleLive } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
@@ -30,8 +32,14 @@ const makeProject = (lifecycle: Project["lifecycle"] = "active"): Project => ({
   updated: new Date("2026-01-01T00:00:00.000Z"),
 });
 
-const session = (): ProjectSessionSummary => ({
-  id: "session-1",
+const session = (
+  backendBinding: AgentBackendBinding = { kind: "codex" },
+  identity: { readonly sessionId: string; readonly threadId: string } = {
+    sessionId: "session-1",
+    threadId: "thread-1",
+  },
+): ProjectSessionSummary => ({
+  id: identity.sessionId,
   projectId: "project-1",
   noThreadFallbackTitle: "Alpha chat",
   displayTitle: "Alpha chat",
@@ -42,11 +50,11 @@ const session = (): ProjectSessionSummary => ({
   archivedAt: null,
   unread: false,
   thread: {
-    sessionId: "session-1",
+    sessionId: identity.sessionId,
     projectId: "project-1",
-    threadId: "thread-1",
+    threadId: identity.threadId,
     threadPreview: "",
-    modelProvider: "openai",
+    backendBinding,
     executionHostId: "local",
     statusType: "idle",
     statusActiveFlags: [],
@@ -85,7 +93,10 @@ const lifecycleCommand = (lifecycle: "active" | "archived") => ({
   payload: { projectId: "project-1", lifecycle },
 });
 
-const testRuntime = (blockers: readonly (readonly ProjectArchiveBlocker[])[]) => {
+const testRuntime = (
+  blockers: readonly (readonly ProjectArchiveBlocker[])[],
+  sessions: readonly ProjectSessionSummary[] = [session()],
+) => {
   let project = makeProject();
   let blockerRead = 0;
   const setProjectLifecycle = vi.fn((command: ReturnType<typeof lifecycleCommand>) =>
@@ -101,11 +112,12 @@ const testRuntime = (blockers: readonly (readonly ProjectArchiveBlocker[])[]) =>
   const closeBrowserConversation = vi.fn(() => Effect.void);
   const closeBrowserProject = vi.fn(() => Effect.void);
   const discardExitedSessionsForOwners = vi.fn(() => Effect.succeed<readonly string[]>([]));
+  const closeAcpSession = vi.fn(() => Effect.void);
   const workspace = ProjectWorkspace.of({
     getProject: () => Effect.succeed(project),
     listProjectSessionSummaryWindow: () =>
       Effect.succeed({
-        items: [session()],
+        items: [...sessions],
         nextCursor: null,
         hasMore: false,
         projectionRevision: 1,
@@ -115,6 +127,12 @@ const testRuntime = (blockers: readonly (readonly ProjectArchiveBlocker[])[]) =>
   const lifecycleLayer = live.pipe(
     Layer.provide(
       Layer.mergeAll(
+        Layer.succeed(
+          AcpBackendSessionManager,
+          AcpBackendSessionManager.of({
+            close: closeAcpSession,
+          } as unknown as AcpBackendSessionManager["Service"]),
+        ),
         Layer.succeed(
           BrowserApplication,
           BrowserApplication.of({
@@ -145,6 +163,7 @@ const testRuntime = (blockers: readonly (readonly ProjectArchiveBlocker[])[]) =>
     closeBrowserConversation,
     closeBrowserProject,
     discardExitedSessionsForOwners,
+    closeAcpSession,
     blockerReads: () => blockerRead,
   };
 };
@@ -189,7 +208,20 @@ it.effect("rechecks blockers under the Project gate immediately before commit", 
 });
 
 it.effect("archives, cleans Project-owned runtimes, and restores through one command owner", () => {
-  const runtime = testRuntime([[], []]);
+  const runtime = testRuntime(
+    [[], []],
+    [
+      session(),
+      session(
+        {
+          kind: "acp",
+          agentDefinitionId: "claude-agent-acp",
+          instanceConfigId: "claude-local",
+        },
+        { sessionId: "session-2", threadId: "thread-2" },
+      ),
+    ],
+  );
   return Effect.gen(function* () {
     const commands = yield* ProjectLifecycleCommands;
     const archived = yield* commands.setLifecycle(lifecycleCommand("archived"));
@@ -201,9 +233,10 @@ it.effect("archives, cleans Project-owned runtimes, and restores through one com
       changed: true,
     });
     assert.strictEqual(archived.result.apply.receipt.operation_id, "operation:archived");
-    assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 1);
+    assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 2);
     assert.strictEqual(runtime.closeBrowserProject.mock.calls.length, 1);
     assert.strictEqual(runtime.discardExitedSessionsForOwners.mock.calls.length, 1);
+    assert.deepStrictEqual(runtime.closeAcpSession.mock.calls, [["thread-2"]]);
 
     const restored = yield* commands.setLifecycle(lifecycleCommand("active"));
     assert.strictEqual(restored.kind, "committed");

@@ -13,7 +13,9 @@ import type {
   ProjectSessionThreadSummary,
   ProjectSessionThreadLink,
 } from "../../shared/types";
-import type { AgentExecutionProfile } from "../../shared/agent-runtime";
+import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import type { DynamicToolCatalogSelection } from "../codex/dynamic-tool-registry";
 import type {
   SidebarSectionItem,
@@ -36,6 +38,10 @@ type CoreTask = Extract<
 >["tasks"]["items"][number];
 type CoreTaskThread = NonNullable<CoreTask["thread"]>;
 type CoreThread = Extract<ProjectWorkspaceReadSnapshot["value"], { kind: "thread" }>["thread"];
+type CoreThreadBackendSession = Extract<
+  ProjectWorkspaceReadSnapshot["value"],
+  { kind: "thread_backend_session" }
+>["session"];
 type CoreBackgroundProcess = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { kind: "background_process_window" }
@@ -56,6 +62,28 @@ type CoreSidebarSectionItem = Extract<
   ProjectWorkspaceReadSnapshot["value"],
   { kind: "sidebar_section_item_window" }
 >["items"]["items"][number];
+
+type CoreAgentBackendBinding = CoreThread["backend_binding"];
+
+export const projectAgentBackendBindingFromCore = (
+  binding: CoreAgentBackendBinding,
+): AgentBackendBinding =>
+  binding.kind === "codex"
+    ? { kind: "codex" }
+    : {
+        kind: "acp",
+        agentDefinitionId: binding.agent_definition_id,
+        instanceConfigId: binding.instance_config_id ?? null,
+      };
+
+export const projectAgentBackendBindingToCore = (binding: AgentBackendBinding) =>
+  binding.kind === "codex"
+    ? { kind: "codex" as const }
+    : {
+        kind: "acp" as const,
+        agent_definition_id: binding.agentDefinitionId,
+        instance_config_id: binding.instanceConfigId,
+      };
 
 export const projectWorkspaceSidebarSectionSummaryFromCore = (
   section: CoreSidebarSectionSummary,
@@ -114,8 +142,8 @@ export interface DesktopProjectWorkspaceThread {
   readonly agentPath: string | null;
   readonly threadName: string | null;
   readonly threadPreview: string;
-  readonly modelProvider: string;
-  readonly executionProfile?: AgentExecutionProfile | null;
+  readonly executionProfile?: CodexExecutionProfile | null;
+  readonly backendBinding: AgentBackendBinding;
   readonly executionHostId: string;
   readonly cwd: string | null;
   readonly managedWorktreePath: string | null;
@@ -176,8 +204,8 @@ export interface DesktopProjectWorkspaceThreadPatch {
   readonly agentRole?: string | null;
   readonly agentPath?: string | null;
   readonly threadPreview?: string;
-  readonly modelProvider?: string;
-  readonly executionProfile?: AgentExecutionProfile | null;
+  readonly executionProfile?: CodexExecutionProfile | null;
+  readonly backendBinding?: AgentBackendBinding;
   readonly executionHostId?: string;
   readonly cwd?: string | null;
   readonly managedWorktreePath?: string | null;
@@ -225,6 +253,53 @@ export interface DesktopProjectWorkspaceExecutionLocation {
   readonly projectlessOutputDirectory: string | null;
   readonly projectlessWorkspaceBrowserRoot: string | null;
 }
+
+export interface DesktopProjectWorkspaceThreadBackendSession {
+  readonly threadId: string;
+  readonly backendBinding: Extract<AgentBackendBinding, { readonly kind: "acp" }>;
+  readonly backendSessionId: string;
+  readonly updatedAt: number;
+}
+
+export const projectWorkspaceThreadBackendSessionFromCore = (
+  session: NonNullable<CoreThreadBackendSession>,
+): DesktopProjectWorkspaceThreadBackendSession => {
+  const backendBinding = projectAgentBackendBindingFromCore(session.backend_binding);
+  if (backendBinding.kind !== "acp") {
+    throw new Error("Core returned a native backend protocol session");
+  }
+  return {
+    threadId: session.thread_id,
+    backendBinding,
+    backendSessionId: session.backend_session_id,
+    updatedAt: session.updated_at,
+  };
+};
+
+export const projectWorkspaceThreadBackendSessionRead = (threadId: string) => ({
+  kind: "thread_backend_session" as const,
+  thread_id: threadId,
+});
+
+export const projectWorkspaceBindThreadBackendSessionIntent = (input: {
+  readonly threadId: string;
+  readonly backendBinding: Extract<AgentBackendBinding, { readonly kind: "acp" }>;
+  readonly backendSessionId: string;
+}) => ({
+  kind: "bind_thread_backend_session" as const,
+  thread_id: input.threadId,
+  backend_binding: projectAgentBackendBindingToCore(input.backendBinding),
+  backend_session_id: input.backendSessionId,
+});
+
+export const projectWorkspaceClearThreadBackendSessionIntent = (input: {
+  readonly threadId: string;
+  readonly backendBinding: Extract<AgentBackendBinding, { readonly kind: "acp" }>;
+}) => ({
+  kind: "clear_thread_backend_session" as const,
+  thread_id: input.threadId,
+  backend_binding: projectAgentBackendBindingToCore(input.backendBinding),
+});
 
 export interface DesktopProjectWorkspaceSidebar {
   readonly threads: readonly DesktopProjectWorkspaceThread[];
@@ -348,16 +423,14 @@ export const projectWorkspaceSessionThreadFromCore = (
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? undefined,
   threadPreview: thread.thread_preview,
-  modelProvider: thread.model_provider,
   executionProfile: thread.model_id
     ? {
-        providerId: thread.model_provider,
         modelId: thread.model_id,
-        harnessId: thread.harness_id ?? null,
         reasoningEffort: thread.reasoning_effort ?? null,
-        serviceTier: thread.service_tier ?? null,
+        serviceTier: normalizeCodexServiceTier(thread.service_tier),
       }
     : null,
+  backendBinding: projectAgentBackendBindingFromCore(thread.backend_binding),
   executionHostId: thread.execution_host_id,
   cwd: thread.cwd ?? undefined,
   managedWorktreePath: thread.managed_worktree_path ?? null,
@@ -389,16 +462,14 @@ const fromCoreTaskThread = (
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? undefined,
   threadPreview: thread.thread_preview,
-  modelProvider: thread.model_provider,
   executionProfile: thread.model_id
     ? {
-        providerId: thread.model_provider,
         modelId: thread.model_id,
-        harnessId: thread.harness_id ?? null,
         reasoningEffort: thread.reasoning_effort ?? null,
-        serviceTier: thread.service_tier ?? null,
+        serviceTier: normalizeCodexServiceTier(thread.service_tier),
       }
     : null,
+  backendBinding: projectAgentBackendBindingFromCore(thread.backend_binding),
   executionHostId: thread.execution_host_id,
   cwd: thread.cwd ?? undefined,
   managedWorktreePath: thread.managed_worktree_path ?? null,
@@ -446,16 +517,14 @@ export const projectWorkspaceThreadFromCore = (
   agentPath: thread.agent_path ?? null,
   threadName: thread.thread_name ?? null,
   threadPreview: thread.thread_preview,
-  modelProvider: thread.model_provider,
   executionProfile: thread.model_id
     ? {
-        providerId: thread.model_provider,
         modelId: thread.model_id,
-        harnessId: thread.harness_id ?? null,
         reasoningEffort: thread.reasoning_effort ?? null,
-        serviceTier: thread.service_tier ?? null,
+        serviceTier: normalizeCodexServiceTier(thread.service_tier),
       }
     : null,
+  backendBinding: projectAgentBackendBindingFromCore(thread.backend_binding),
   executionHostId: thread.execution_host_id,
   cwd: thread.cwd ?? null,
   managedWorktreePath: thread.managed_worktree_path ?? null,
@@ -473,19 +542,16 @@ export const projectWorkspaceThreadFromCore = (
 });
 
 export const projectWorkspaceExecutionProfilePatchToCore = (
-  profile: AgentExecutionProfile | null,
+  profile: CodexExecutionProfile | null,
 ) =>
   profile
     ? {
-        model_provider: profile.providerId,
         model_id: profile.modelId,
-        harness_id: profile.harnessId,
         reasoning_effort: profile.reasoningEffort,
-        service_tier: profile.serviceTier,
+        service_tier: normalizeCodexServiceTier(profile.serviceTier),
       }
     : {
         model_id: null,
-        harness_id: null,
         reasoning_effort: null,
         service_tier: null,
       };
@@ -519,10 +585,12 @@ export const projectWorkspaceThreadPatchToCore = (patch: DesktopProjectWorkspace
     ? { agent_path: patch.agentPath ?? null }
     : {}),
   ...(patch.threadPreview === undefined ? {} : { thread_preview: patch.threadPreview }),
-  ...(patch.modelProvider === undefined ? {} : { model_provider: patch.modelProvider }),
   ...(Object.prototype.hasOwnProperty.call(patch, "executionProfile")
     ? projectWorkspaceExecutionProfilePatchToCore(patch.executionProfile ?? null)
     : {}),
+  ...(patch.backendBinding === undefined
+    ? {}
+    : { backend_binding: projectAgentBackendBindingToCore(patch.backendBinding) }),
   ...(patch.executionHostId === undefined ? {} : { execution_host_id: patch.executionHostId }),
   ...(Object.prototype.hasOwnProperty.call(patch, "cwd") ? { cwd: patch.cwd ?? null } : {}),
   ...(Object.prototype.hasOwnProperty.call(patch, "managedWorktreePath")

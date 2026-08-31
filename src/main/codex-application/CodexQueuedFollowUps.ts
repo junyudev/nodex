@@ -21,6 +21,7 @@ import type {
   CodexServiceTier,
 } from "../../shared/types";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import {
   CODEX_INTERRUPTED_STEER_REASON,
   CODEX_QUEUE_OWNER_UPDATE_METHOD,
@@ -158,12 +159,6 @@ export class CodexQueuedFollowUps extends Context.Service<
 >()("nodex/main/codex-application/CodexQueuedFollowUps") {}
 
 const normalizeId = (value: string): string => value.trim();
-
-const normalizeServiceTier = (value: CodexServiceTier | undefined): CodexServiceTier => {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized && normalized !== "standard" ? normalized : null;
-};
 
 const queueError = (
   operation: QueueOperation,
@@ -848,7 +843,7 @@ export const make: Effect.Effect<
               promptInput,
               createdAtMs,
               collaborationMode: input.collaborationMode ?? null,
-              serviceTier: normalizeServiceTier(input.serviceTier),
+              serviceTier: normalizeCodexServiceTier(input.serviceTier),
               summary: input.summary ?? null,
               pause: input.pause ?? null,
               payloadRef: null,
@@ -914,7 +909,7 @@ export const make: Effect.Effect<
               serviceTier:
                 input.serviceTier === undefined
                   ? previous.serviceTier
-                  : normalizeServiceTier(input.serviceTier),
+                  : normalizeCodexServiceTier(input.serviceTier),
               summary: input.summary === undefined ? previous.summary : input.summary,
             })
             .pipe(Effect.mapError((cause) => queueError("replace", normalizedThreadId, cause)));

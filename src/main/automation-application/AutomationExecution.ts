@@ -15,7 +15,11 @@ import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import type { AgentExecutionProfile } from "../../shared/agent-runtime";
+import {
+  CODEX_AGENT_BACKEND_BINDING,
+  isCodexAgentBackendBinding,
+} from "../../shared/agent-backend";
+import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
 import { resolveCodexCanonicalHydratedCwd } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { createCodexTextUserInput } from "../../shared/codex-prompt-preparation";
 import type {
@@ -70,7 +74,6 @@ import {
 import { getLogger } from "../logging/logger";
 import { buildNodexAgentDynamicToolSpecs } from "../nodex-agent-application/NodexAgentDynamicTools";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import { AgentProviderRuntime } from "../codex-application/AgentProviderRuntime";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbeatTurnCompletion";
@@ -84,11 +87,13 @@ import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTit
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { ComposerCatalog } from "../codex-application/ComposerCatalog";
+import { requireExactThreadStartProfile } from "../codex-application/codex-thread-start-profile";
 import { CodexConversations } from "../codex-application/CodexConversations";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRetentionRuntime } from "../codex-application/ManagedWorktreeRetentionRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { AutomationApplication } from "./AutomationApplication";
+import { requireCodexAutomationBackendBinding } from "./AutomationProjection";
 import {
   hasCompleteAutomationArchiveExchange,
   readBoundedAutomationArchiveExcerpt,
@@ -231,7 +236,6 @@ export const live = (
 ): Layer.Layer<
   AutomationExecution,
   never,
-  | AgentProviderRuntime
   | AutomationApplication
   | CodexApplicationEventHub
   | CodexAppServerCapabilities
@@ -259,7 +263,6 @@ export const live = (
   Layer.effect(
     AutomationExecution,
     Effect.gen(function* () {
-      const agentProviders = yield* AgentProviderRuntime;
       const automation = yield* AutomationApplication;
       const events = yield* CodexApplicationEventHub;
       const capabilities = yield* CodexAppServerCapabilities;
@@ -292,6 +295,33 @@ export const live = (
       const protect = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
         effect.pipe(Effect.mapError((cause) => error(operation, cause)));
       const fail = (operation: string, cause: unknown) => Effect.fail(error(operation, cause));
+      const requireCodexAutomationBackend = (
+        operation: string,
+        binding: CodexScheduledAutomation["backendBinding"],
+      ) =>
+        Effect.try({
+          try: () => requireCodexAutomationBackendBinding(binding),
+          catch: (cause) => error(operation, cause),
+        });
+      const requireCodexHeartbeatTarget = Effect.fn(
+        "AutomationExecution.requireCodexHeartbeatTarget",
+      )(function* (operation: string, targetThreadId: string | null | undefined) {
+        const normalized = targetThreadId?.trim() ?? "";
+        if (!normalized) {
+          return yield* fail(operation, "Heartbeat thread not found.");
+        }
+        const target = yield* workspace
+          .getThread(normalized)
+          .pipe(Effect.mapError((cause) => error(operation, cause)));
+        if (!target) return yield* fail(operation, "Heartbeat thread not found.");
+        if (!isCodexAgentBackendBinding(target.backendBinding)) {
+          return yield* fail(
+            operation,
+            `Heartbeat target '${normalized}' is not owned by the Codex Agent Backend`,
+          );
+        }
+        return normalized;
+      });
       const assertHostGeneration = (
         operation: string,
         snapshot: CodexAppServerCapabilitySnapshot,
@@ -326,33 +356,40 @@ export const live = (
         protect(
           "prepare-definition",
           Effect.gen(function* () {
-            const providerId = input.modelProvider?.trim() || current?.modelProvider?.trim();
-            if (!providerId) return input;
+            yield* requireCodexAutomationBackend(
+              "prepare-definition",
+              input.backendBinding ?? current?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
+            );
+            if (input.kind === "heartbeat") {
+              yield* requireCodexHeartbeatTarget(
+                "prepare-definition",
+                input.targetThreadId ?? current?.targetThreadId,
+              );
+            }
             const requestedModelId = input.model?.trim();
             const modelId = requestedModelId || current?.model?.trim();
-            if (!modelId)
-              return yield* fail(
-                "prepare-definition",
-                "A scheduled automation provider requires a model",
-              );
+            if (!modelId) return input;
+            const models = yield* composer.listModels;
+            const model = models.find(
+              (candidate) => candidate.model === modelId || candidate.id === modelId,
+            );
+            if (!model) {
+              return yield* fail("prepare-definition", `Codex model '${modelId}' is unavailable`);
+            }
             const modelChanged = Boolean(
               current?.model && requestedModelId && requestedModelId !== current.model,
             );
-            const profile = yield* agentProviders.resolveExecutionProfile({
-              providerId,
-              modelId,
-              harnessId: modelChanged ? null : (input.harnessId ?? current?.harnessId ?? null),
-              reasoningEffort:
-                input.reasoningEffort ?? (modelChanged ? null : current?.reasoningEffort) ?? null,
-              serviceTier: input.serviceTier ?? current?.serviceTier ?? null,
-            });
             return {
               ...input,
-              model: profile.modelId,
-              modelProvider: profile.providerId,
-              harnessId: profile.harnessId,
-              reasoningEffort: profile.reasoningEffort,
-              serviceTier: profile.serviceTier,
+              model: model.model,
+              reasoningEffort:
+                input.reasoningEffort ??
+                (modelChanged ? model.defaultReasoningEffort : current?.reasoningEffort) ??
+                model.defaultReasoningEffort,
+              serviceTier:
+                input.serviceTier ??
+                (modelChanged ? model.defaultServiceTier : current?.serviceTier) ??
+                model.defaultServiceTier,
             };
           }),
         );
@@ -593,7 +630,6 @@ export const live = (
                 history: null,
                 path: target.rolloutPath,
                 model: target.entry.durable.executionProfile?.modelId ?? null,
-                modelProvider: target.entry.durable.executionProfile?.providerId ?? null,
                 serviceTier: target.entry.durable.executionProfile?.serviceTier ?? null,
                 cwd: requestedCwd,
                 approvalPolicy: null,
@@ -601,9 +637,6 @@ export const live = (
                 config: {
                   ...(browserConfig ?? {}),
                   ...buildCodexThreadConfigOverrides(),
-                  ...(target.entry.durable.executionProfile?.harnessId
-                    ? { harness: target.entry.durable.executionProfile.harnessId }
-                    : {}),
                   ...(target.entry.durable.executionProfile?.reasoningEffort
                     ? {
                         model_reasoning_effort:
@@ -879,16 +912,13 @@ export const live = (
         let threadId: string | null = null;
         let managedWorktreePath: string | null = null;
         const transaction = Effect.gen(function* () {
-          const executionProfile: AgentExecutionProfile | null =
-            input.definition.modelProvider && input.model
-              ? yield* agentProviders.resolveExecutionProfile({
-                  providerId: input.definition.modelProvider,
-                  modelId: input.model,
-                  harnessId: input.definition.harnessId,
-                  reasoningEffort: input.reasoningEffort,
-                  serviceTier: input.definition.serviceTier,
-                })
-              : null;
+          const executionProfile: CodexExecutionProfile | null = input.model
+            ? {
+                modelId: input.model,
+                reasoningEffort: input.reasoningEffort,
+                serviceTier: input.definition.serviceTier,
+              }
+            : null;
           const location = yield* runLocation(input.definition, input.cwd, input.now);
           managedWorktreePath = location.managedWorktreePath;
           const threadRoots = location.projectlessOutputDirectory
@@ -921,10 +951,8 @@ export const live = (
           const params = {
             cwd: location.cwd,
             model: input.model,
-            modelProvider: executionProfile?.providerId ?? null,
             config: {
               ...(browserConfig ?? {}),
-              ...(executionProfile?.harnessId ? { harness: executionProfile.harnessId } : {}),
               ...(executionProfile?.reasoningEffort
                 ? { model_reasoning_effort: executionProfile.reasoningEffort }
                 : {}),
@@ -946,6 +974,28 @@ export const live = (
             params,
             codexGatewayGenerationFence(capability),
           )) as GatewayThreadStartResponse as unknown as ThreadStartResponse;
+          yield* Effect.try({
+            try: () => requireExactThreadStartProfile(response, executionProfile),
+            catch: (cause) => error("verify-cron-execution-profile", cause),
+          }).pipe(
+            Effect.tapError(() =>
+              gateway
+                .requestLocal(
+                  "thread/delete",
+                  { threadId: response.thread.id },
+                  codexGatewayGenerationFence(capability),
+                )
+                .pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.logWarning(
+                      "Could not delete a profile-substituted automation Thread",
+                    ).pipe(
+                      Effect.annotateLogs({ threadId: response.thread.id, cause: String(cause) }),
+                    ),
+                  ),
+                ),
+            ),
+          );
           const effectiveCwd =
             resolveCodexCanonicalHydratedCwd({
               requestedCwd: location.cwd,
@@ -1127,16 +1177,18 @@ export const live = (
       const execute = (definition: CodexScheduledAutomation, context: AutomationRunContext) =>
         protect(
           "execute",
-          gateway
-            .awaitReady(gateway.localHostId)
-            .pipe(
-              Effect.andThen(agentProviders.ensureRuntimeReady),
-              Effect.andThen(
-                definition.kind === "heartbeat"
-                  ? startHeartbeat(definition, context)
-                  : startCron(definition, context),
-              ),
+          requireCodexAutomationBackend("execute", definition.backendBinding).pipe(
+            Effect.andThen(
+              definition.kind === "heartbeat"
+                ? requireCodexHeartbeatTarget("execute", definition.targetThreadId).pipe(
+                    Effect.andThen(gateway.awaitReady(gateway.localHostId)),
+                    Effect.andThen(startHeartbeat(definition, context)),
+                  )
+                : gateway
+                    .awaitReady(gateway.localHostId)
+                    .pipe(Effect.andThen(startCron(definition, context))),
             ),
+          ),
         );
 
       const resolveArchiveMessages = (

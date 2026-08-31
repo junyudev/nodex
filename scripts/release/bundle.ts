@@ -470,7 +470,7 @@ export function recordArchitectureBuild(options: {
       rust: commandVersion("rustc", ["--version"]),
     },
     runtimeLocks: {
-      agentSha256: sha256File(join(cwd, "resources/agent-runtime/openinterpreter.lock.json")),
+      agentSha256: sha256File(join(cwd, "resources/agent-runtime/codex-app-server.lock.json")),
       browserSha256: sha256File(join(cwd, "resources/browser-runtime/browser-runtime.lock.json")),
       sparkleSha256: sha256File(join(cwd, "resources/sparkle/sparkle.lock.json")),
     },

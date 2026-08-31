@@ -9,6 +9,7 @@ use nodex_core_contracts::collection::{
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::domain::agent_backend::binding_from_storage;
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
 use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
@@ -191,8 +192,9 @@ fn read_definition_window(
         .transpose()?;
     let mut statement = connection.prepare(
         "SELECT automation_id, definition_revision, kind, status, target_thread_id, name, \
-                prompt, rrule, model, model_provider, harness_id, reasoning_effort, service_tier, \
-                cwds_json, execution_environment, \
+                prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
+                agent_backend_kind, agent_backend_definition_id, \
+                agent_backend_instance_config_id, execution_environment, \
                 local_environment_config_path, next_run_at, last_run_at, created_at, updated_at \
          FROM codex_scheduled_automations \
          WHERE (?1 OR status <> 'DELETED') \
@@ -248,8 +250,9 @@ pub(super) fn read_definition(
     let definition = connection
         .query_row(
             "SELECT automation_id, definition_revision, kind, status, target_thread_id, name, \
-                    prompt, rrule, model, model_provider, harness_id, reasoning_effort, service_tier, \
-                    cwds_json, execution_environment, \
+                    prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
+                    agent_backend_kind, agent_backend_definition_id, \
+                    agent_backend_instance_config_id, execution_environment, \
                     local_environment_config_path, next_run_at, last_run_at, created_at, updated_at \
              FROM codex_scheduled_automations WHERE automation_id = ?1",
             [automation_id],
@@ -263,8 +266,8 @@ pub(super) fn read_definition(
 fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDefinition> {
     let kind = parse_kind(row.get::<_, String>(2)?).map_err(rusqlite_conversion)?;
     let status = parse_status(row.get::<_, String>(3)?).map_err(rusqlite_conversion)?;
-    let environment = parse_environment(row.get::<_, String>(14)?).map_err(rusqlite_conversion)?;
-    let cwds_json = row.get::<_, String>(13)?;
+    let environment = parse_environment(row.get::<_, String>(15)?).map_err(rusqlite_conversion)?;
+    let cwds_json = row.get::<_, String>(11)?;
     let cwds = serde_json::from_str::<Vec<String>>(&cwds_json)
         .map_err(|_| rusqlite_conversion("Scheduled Automation cwd JSON is invalid".to_owned()))?;
     Ok(AutomationDefinition {
@@ -277,17 +280,21 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
         prompt: row.get(6)?,
         rrule: row.get(7)?,
         model: row.get(8)?,
-        model_provider: row.get(9)?,
-        harness_id: row.get(10)?,
-        reasoning_effort: row.get(11)?,
-        service_tier: row.get(12)?,
+        reasoning_effort: row.get(9)?,
+        service_tier: row.get(10)?,
+        backend_binding: binding_from_storage(
+            row.get::<_, String>(12)?.as_str(),
+            row.get(13)?,
+            row.get(14)?,
+        )
+        .map_err(|message| rusqlite_conversion(message.to_owned()))?,
         cwds,
         execution_environment: environment,
-        local_environment_config_path: row.get(15)?,
-        next_run_at_ms: row.get(16)?,
-        last_run_at_ms: row.get(17)?,
-        created_at_ms: row.get(18)?,
-        updated_at_ms: row.get(19)?,
+        local_environment_config_path: row.get(16)?,
+        next_run_at_ms: row.get(17)?,
+        last_run_at_ms: row.get(18)?,
+        created_at_ms: row.get(19)?,
+        updated_at_ms: row.get(20)?,
     })
 }
 
@@ -306,9 +313,7 @@ fn validate_definition(
         return Err(corrupt("Stored Scheduled Automation definition is invalid"));
     }
     for (label, value, max_bytes) in [
-        ("model_provider", definition.model_provider.as_deref(), 512),
         ("model", definition.model.as_deref(), 512),
-        ("harness_id", definition.harness_id.as_deref(), 512),
         (
             "reasoning_effort",
             definition.reasoning_effort.as_deref(),

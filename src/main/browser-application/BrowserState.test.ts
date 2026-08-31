@@ -152,6 +152,7 @@ const makeFixture = (
     const events: BrowserSidebarEvent[] = [];
     const pages = makeMemoryPages(options.page ? [options.page] : []);
     const runBackground = yield* FiberSet.makeRuntime<never, void, never>();
+    const runtimeRegistry = makeBrowserRuntimeRegistry();
     const state = new BrowserState({
       earlyPageRestores: yield* makeBrowserEarlyPageRestoreRuntime<BrowserSidebarTabSnapshot>(),
       electron: {
@@ -171,14 +172,14 @@ const makeFixture = (
       logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },
       pageEmulation: makeBrowserPageEmulationRuntimeUnsafe(),
       pageStore: pages.runtime,
-      runtimeRegistry: makeBrowserRuntimeRegistry(),
+      runtimeRegistry,
       saveBrowserImage: () => {
         throw new Error("Unexpected browser image save");
       },
       siteStatus: { cachedCommentModeBlocked: () => null },
       webContentsListeners: yield* makeBrowserWebContentsListenerRuntime,
     });
-    return { contents, events, pages: pages.pages, state };
+    return { contents, events, pages: pages.pages, runtimeRegistry, state };
   });
 
 const registerTab = (state: BrowserState, browserStorageId = "browser:durable") =>
@@ -346,6 +347,136 @@ describe("BrowserState semantic capability", () => {
         ok: true,
         snapshot: { webContentsId: 101 },
       });
+    }),
+  );
+
+  it.effect("rejects a presentation sync that no longer owns the physical host generation", () =>
+    Effect.gen(function* () {
+      const { state } = yield* makeFixture();
+      yield* registerTab(state);
+      const context = { ownerWebContentsId: 7 };
+      yield* state.handleCommand(
+        {
+          type: "register-renderer-session",
+          browserViewScopeId: identity.browserViewScopeId,
+          rendererInstanceId: "renderer-1",
+        },
+        context,
+      );
+      yield* state.handleCommand(
+        {
+          type: "register-host",
+          ...identity,
+          browserStorageId: "browser:durable",
+          rendererInstanceId: "renderer-1",
+          hostGeneration: 1,
+          mountGeneration: 3,
+          hostKind: "retained",
+          pagePersistence: "durable",
+          themeVariant: "dark",
+        },
+        context,
+      );
+
+      const result = yield* state.handleCommand(
+        {
+          type: "sync-host",
+          ...identity,
+          rendererInstanceId: "renderer-1",
+          hostGeneration: 2,
+          mountGeneration: 3,
+          hostKind: "retained",
+          presented: false,
+          themeVariant: "dark",
+          visible: false,
+        },
+        context,
+      );
+
+      expect(result).toMatchObject({ ok: false });
+    }),
+  );
+
+  it.effect("rejects a late host-created acknowledgement from a superseded presentation", () =>
+    Effect.gen(function* () {
+      const { runtimeRegistry, state } = yield* makeFixture();
+      yield* registerTab(state);
+      runtimeRegistry.registerRendererSession({
+        browserViewScopeId: identity.browserViewScopeId,
+        ownerWebContentsId: 7,
+        rendererInstanceId: "renderer-1",
+      });
+      expect(
+        runtimeRegistry.registerHost(7, {
+          ...identity,
+          browserStorageId: "browser:durable",
+          rendererInstanceId: "renderer-1",
+          hostGeneration: 1,
+          mountGeneration: 1,
+          hostKind: "retained",
+          pagePersistence: "durable",
+        }).ok,
+      ).toBe(true);
+      state.registerAttachedWebviewOwnership(
+        7,
+        101,
+        {
+          ...identity,
+          browserStorageId: "browser:durable",
+          rendererInstanceId: "renderer-1",
+          hostGeneration: 1,
+          mountGeneration: 1,
+        },
+        "browser:durable",
+      );
+      expect(
+        runtimeRegistry.registerHost(7, {
+          ...identity,
+          browserStorageId: "browser:durable",
+          rendererInstanceId: "renderer-1",
+          hostGeneration: 1,
+          mountGeneration: 2,
+          hostKind: "panel",
+          pagePersistence: "durable",
+        }).ok,
+      ).toBe(true);
+
+      const late = yield* state.handleWebviewHostCreated(
+        {
+          ...identity,
+          browserStorageId: "browser:durable",
+          rendererInstanceId: "renderer-1",
+          hostGeneration: 1,
+          mountGeneration: 1,
+          projectId: "project-1",
+          hostKind: "retained",
+          webContentsId: 101,
+          initialUrl: "about:blank",
+        },
+        7,
+      );
+      expect(late).toEqual({
+        ok: false,
+        message: "Browser webview does not belong to the requesting window",
+      });
+      assert.isNull(readTab(state).webContentsId);
+
+      expect(
+        yield* state.handleWebviewHostCreated(
+          {
+            ...identity,
+            browserStorageId: "browser:durable",
+            rendererInstanceId: "renderer-1",
+            hostGeneration: 1,
+            mountGeneration: 2,
+            projectId: "project-1",
+            hostKind: "panel",
+            webContentsId: 101,
+            initialUrl: "about:blank",
+          },
+          7,
+        ),
+      ).toMatchObject({ ok: true, snapshot: { mountGeneration: 2, webContentsId: 101 } });
     }),
   );
 

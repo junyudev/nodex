@@ -52,6 +52,7 @@ function buildThread(name: string | null): CodexCanonicalConversationState["prot
     ephemeral: false,
     section: null,
     sectionEnteredAt: null,
+    projectId: null,
     historyMode: "paginated",
     modelProvider: "openai",
     createdAt: 1,
@@ -151,7 +152,7 @@ describe("Codex 30751 thread metadata", () => {
       "thread-token",
       settings,
     );
-    expect(configured.sidecar.latestThreadSettings === settings).toBe(true);
+    expect(configured.sidecar.latestThreadSettings).toEqual(settings);
     expect(configured.protocol.cwd).toBe("/new");
     expect(configured.protocol.modelProvider).toBe("openai-new");
 
@@ -175,6 +176,39 @@ describe("Codex 30751 thread metadata", () => {
     const cleared = reduceCodexConversationThreadGoalCleared(completed.state, "thread-token");
     expect(cleared.sidecar.threadGoal).toBe(null);
     expect(cleared.sidecar.completedThreadGoal === goal).toBe(true);
+  });
+
+  test("canonicalizes the app-server Standard sentinel in live and hydrated settings", () => {
+    const before = buildState();
+    const state: CodexCanonicalConversationState = {
+      ...before,
+      sidecar: {
+        ...before.sidecar,
+        hydrationContext: {
+          model: "gpt-old",
+          reasoningEffort: "high",
+          latestModel: "gpt-old",
+          latestReasoningEffort: "high",
+          cwd: "/old",
+          latestThreadSettings: settings,
+          currentPermissions: {
+            activePermissionProfile: null,
+            runtimeWorkspaceRoots: ["/old"],
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandboxPolicy: settings.sandboxPolicy,
+          },
+        },
+      },
+    };
+
+    const configured = reduceCodexConversationThreadSettings(state, "thread-token", {
+      ...settings,
+      serviceTier: "default",
+    });
+
+    expect(configured.sidecar.latestThreadSettings?.serviceTier).toBe(null);
+    expect(configured.sidecar.hydrationContext?.latestThreadSettings?.serviceTier).toBe(null);
   });
 
   test("dismisses a resume confirmation without changing the canonical goal", () => {

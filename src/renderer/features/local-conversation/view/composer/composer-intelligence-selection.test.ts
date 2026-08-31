@@ -20,8 +20,6 @@ describe("composer intelligence selection", () => {
       {
         selectedModel: "gpt-5.6-sol",
         selectedReasoningEffort: "xhigh",
-        agentProviderCatalog: null,
-        executionProfile: null,
         conversation: {
           latestThreadSettings: { serviceTier: "fast" },
         },
@@ -32,25 +30,12 @@ describe("composer intelligence selection", () => {
     expect(selection).toEqual(CODEX_SELECTION);
   });
 
-  test("builds exact Codex turn overrides and keeps Agent execution profile authoritative", () => {
+  test("builds exact native Codex turn overrides", () => {
     expect(buildComposerIntelligenceTurnOverrides(CODEX_SELECTION)).toEqual({
       model: "gpt-5.6-sol",
       reasoningEffort: "xhigh",
       serviceTier: "fast",
     });
-    expect(
-      buildComposerIntelligenceTurnOverrides({
-        kind: "agent",
-        change: "model",
-        profile: {
-          providerId: "anthropic",
-          harnessId: "claude-code",
-          modelId: "claude-opus",
-          reasoningEffort: "high",
-          serviceTier: null,
-        },
-      }),
-    ).toEqual({});
   });
 
   test("compares semantic values instead of object identity", () => {

@@ -7,7 +7,6 @@ import * as Scope from "effect/Scope";
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexScheduledAutomation, CodexTranscriptEntry } from "../../shared/types";
 import { testLayer as mainConfigLayer } from "../app/MainConfig";
-import { AgentProviderRuntime } from "../codex-application/AgentProviderRuntime";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbeatTurnCompletion";
@@ -66,7 +65,9 @@ const capability = {
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: false,
+    multiAgentV2Protocol: false,
     sideConversation: false,
+    subagentAncestorFilter: false,
     threadRevert: false,
   },
 } satisfies CodexAppServerCapabilitySnapshot;
@@ -80,25 +81,22 @@ const capabilities = CodexAppServerCapabilities.of({
 const buildExecutionContext = (
   scope: Scope.Scope,
   input: {
-    readonly agentProviders?: AgentProviderRuntime["Service"];
     readonly automation?: AutomationApplication["Service"];
     readonly capabilities?: CodexAppServerCapabilities["Service"];
+    readonly composer?: ComposerCatalog["Service"];
     readonly conversations?: CodexConversations["Service"];
     readonly desktopTools?: DesktopToolRuntime["Service"];
     readonly directory?: CodexThreadDirectory["Service"];
     readonly gateway?: CodexGateway["Service"];
     readonly historyPages?: CodexHistoryPageAdapter["Service"];
     readonly rendererConversations?: CodexRendererConversationRegistry["Service"];
+    readonly workspace?: ProjectWorkspace["Service"];
   } = {},
 ) =>
   Layer.buildWithScope(
     live({ runtimeStateHome: "/tmp/nodex-test", runtimeVersion: "test" }).pipe(
       Layer.provide(
         Layer.mergeAll(
-          Layer.succeed(
-            AgentProviderRuntime,
-            input.agentProviders ?? ({} as AgentProviderRuntime["Service"]),
-          ),
           Layer.succeed(
             AutomationApplication,
             input.automation ?? ({} as AutomationApplication["Service"]),
@@ -132,7 +130,7 @@ const buildExecutionContext = (
           Layer.succeed(CodexThreadTitlePersistence, {} as CodexThreadTitlePersistence["Service"]),
           Layer.succeed(CodexTurnAuthority, {} as CodexTurnAuthority["Service"]),
           Layer.succeed(CodexTurnCommands, {} as CodexTurnCommands["Service"]),
-          Layer.succeed(ComposerCatalog, {} as ComposerCatalog["Service"]),
+          Layer.succeed(ComposerCatalog, input.composer ?? ({} as ComposerCatalog["Service"])),
           Layer.succeed(
             CodexConversations,
             input.conversations ?? ({} as CodexConversations["Service"]),
@@ -148,7 +146,17 @@ const buildExecutionContext = (
             {} as ManagedWorktreeRetentionRuntime["Service"],
           ),
           Layer.succeed(ManagedWorktreeRuntime, {} as ManagedWorktreeRuntime["Service"]),
-          Layer.succeed(ProjectWorkspace, {} as ProjectWorkspace["Service"]),
+          Layer.succeed(
+            ProjectWorkspace,
+            input.workspace ??
+              ({
+                getThread: (threadId: string) =>
+                  Effect.succeed({
+                    threadId,
+                    backendBinding: { kind: "codex" },
+                  } as never),
+              } as unknown as ProjectWorkspace["Service"]),
+          ),
         ),
       ),
     ),
@@ -184,7 +192,6 @@ describe("Automation archive projection", () => {
 it.effect("run-now enters the scoped execution capability after runtime readiness", () =>
   Effect.gen(function* () {
     let gatewayReady = 0;
-    let providerReady = 0;
     const scope = yield* Scope.make();
     const definition = {
       id: "automation-run-now",
@@ -196,10 +203,9 @@ it.effect("run-now enters the scoped execution capability after runtime readines
       prompt: "Run.",
       rrule: "FREQ=DAILY",
       model: null,
-      modelProvider: null,
-      harnessId: null,
       reasoningEffort: null,
       serviceTier: null,
+      backendBinding: { kind: "codex" },
       cwds: [],
       executionEnvironment: "local",
       localEnvironmentConfigPath: null,
@@ -209,11 +215,6 @@ it.effect("run-now enters the scoped execution capability after runtime readines
       updatedAt: 1,
     } as const;
     const context = yield* buildExecutionContext(scope, {
-      agentProviders: {
-        ensureRuntimeReady: Effect.sync(() => {
-          providerReady += 1;
-        }),
-      } as unknown as AgentProviderRuntime["Service"],
       automation: {
         definitions: { get: () => Effect.succeed(definition) },
       } as unknown as AutomationApplication["Service"],
@@ -228,7 +229,6 @@ it.effect("run-now enters the scoped execution capability after runtime readines
 
     yield* Context.get(context, AutomationExecution).runNow({ id: definition.id });
     assert.strictEqual(gatewayReady, 1);
-    assert.strictEqual(providerReady, 1);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -243,10 +243,9 @@ const heartbeatDefinition = {
   prompt: "Continue.",
   rrule: "FREQ=MINUTELY",
   model: null,
-  modelProvider: null,
-  harnessId: null,
   reasoningEffort: null,
   serviceTier: null,
+  backendBinding: { kind: "codex" },
   cwds: [],
   executionEnvironment: "local",
   localEnvironmentConfigPath: null,
@@ -280,6 +279,119 @@ const heartbeatContext = {
   },
 } as const;
 
+it.effect("rejects unsupported Automation backends during preparation and execution", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    let modelReads = 0;
+    let gatewayReady = 0;
+    const context = yield* buildExecutionContext(scope, {
+      composer: {
+        listModels: Effect.sync(() => {
+          modelReads += 1;
+          return [];
+        }),
+      } as unknown as ComposerCatalog["Service"],
+      gateway: {
+        localHostId: "local",
+        awaitReady: () =>
+          Effect.sync(() => {
+            gatewayReady += 1;
+          }),
+      } as unknown as CodexGateway["Service"],
+    });
+    const execution = Context.get(context, AutomationExecution);
+    const backendBinding = {
+      kind: "acp",
+      agentDefinitionId: "claude-agent-acp",
+      instanceConfigId: "claude:default",
+    } as const;
+
+    const preparationError = yield* Effect.flip(
+      execution.prepareDefinition({
+        kind: "cron",
+        name: "Unsupported",
+        prompt: "Do not run.",
+        backendBinding,
+      }),
+    );
+    assert.strictEqual(preparationError.operation, "prepare-definition");
+    assert.match(String(preparationError.cause), /only the Codex Agent Backend/);
+    assert.strictEqual(modelReads, 0);
+
+    const executionError = yield* Effect.flip(
+      execution.executeClaimed({ ...heartbeatDefinition, backendBinding }, heartbeatContext),
+    );
+    assert.strictEqual(executionError.operation, "execute");
+    assert.match(String(executionError.cause), /only the Codex Agent Backend/);
+    assert.strictEqual(gatewayReady, 0);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects an ACP-owned heartbeat target before any Codex runtime access", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    let gatewayReady = 0;
+    let directoryReads = 0;
+    let modelReads = 0;
+    const context = yield* buildExecutionContext(scope, {
+      composer: {
+        listModels: Effect.sync(() => {
+          modelReads += 1;
+          return [];
+        }),
+      } as unknown as ComposerCatalog["Service"],
+      directory: {
+        resolve: () =>
+          Effect.sync(() => {
+            directoryReads += 1;
+            return heartbeatDirectoryEntry;
+          }),
+      } as unknown as CodexThreadDirectory["Service"],
+      gateway: {
+        localHostId: "local",
+        awaitReady: () =>
+          Effect.sync(() => {
+            gatewayReady += 1;
+          }),
+      } as unknown as CodexGateway["Service"],
+      workspace: {
+        getThread: (threadId: string) =>
+          Effect.succeed({
+            threadId,
+            backendBinding: {
+              kind: "acp",
+              agentDefinitionId: "claude-agent-acp",
+              instanceConfigId: "claude:default",
+            },
+          } as never),
+      } as unknown as ProjectWorkspace["Service"],
+    });
+    const execution = Context.get(context, AutomationExecution);
+
+    const preparationError = yield* Effect.flip(
+      execution.prepareDefinition({
+        kind: "heartbeat",
+        targetThreadId: heartbeatDefinition.targetThreadId,
+        name: "Foreign target",
+        prompt: "Do not run.",
+      }),
+    );
+    assert.strictEqual(preparationError.operation, "prepare-definition");
+    assert.match(String(preparationError.cause), /not owned by the Codex Agent Backend/);
+
+    const executionError = yield* Effect.flip(
+      execution.executeClaimed(heartbeatDefinition, heartbeatContext),
+    );
+    assert.strictEqual(executionError.operation, "execute");
+    assert.match(String(executionError.cause), /not owned by the Codex Agent Backend/);
+    assert.strictEqual(modelReads, 0);
+    assert.strictEqual(gatewayReady, 0);
+    assert.strictEqual(directoryReads, 0);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 const heartbeatDirectoryEntry = {
   durable: {
     threadId: "thread-heartbeat",
@@ -301,9 +413,6 @@ it.effect("does not observe heartbeat metadata returned by a replaced host gener
     const methods: string[] = [];
     const scheduling: unknown[] = [];
     const context = yield* buildExecutionContext(scope, {
-      agentProviders: {
-        ensureRuntimeReady: Effect.void,
-      } as unknown as AgentProviderRuntime["Service"],
       capabilities: CodexAppServerCapabilities.of({
         forHost: () => Effect.succeed(capability),
         forThread: () => Effect.succeed(capability),
@@ -353,9 +462,6 @@ it.effect("does not accept heartbeat resume metadata from a replaced host genera
     const methods: string[] = [];
     const scheduling: unknown[] = [];
     const context = yield* buildExecutionContext(scope, {
-      agentProviders: {
-        ensureRuntimeReady: Effect.void,
-      } as unknown as AgentProviderRuntime["Service"],
       capabilities: CodexAppServerCapabilities.of({
         forHost: () => Effect.succeed(capability),
         forThread: () => Effect.succeed(capability),
@@ -468,6 +574,7 @@ it.effect("fills a missing local Automation archive side through bounded history
                   text: "older history response",
                   phase: null,
                   memoryCitation: null,
+                  delivery: null,
                 },
               ],
               nextCursor: null,

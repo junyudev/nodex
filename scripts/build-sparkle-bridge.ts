@@ -34,7 +34,7 @@ export interface SparkleRuntimeManifest {
   readonly architecture: SparkleRuntimeArchitecture;
   readonly buildChannel: SparkleRuntimeChannel;
   readonly feedUrls: null | Readonly<Record<"stable" | "nightly", string>>;
-  readonly minimumMacOS: "12.0";
+  readonly minimumMacOS: "15.0";
   readonly publicKey: string;
   readonly schemaVersion: 3;
   readonly sparkleArchiveSha256: string;
@@ -189,7 +189,7 @@ export async function buildSparkleBridge(
     ],
     {
       cwd: projectRoot,
-      env: { ...process.env, MACOSX_DEPLOYMENT_TARGET: "12.0" },
+      env: { ...process.env, MACOSX_DEPLOYMENT_TARGET: "15.0" },
       stdio: "inherit",
     },
   );
@@ -247,7 +247,7 @@ export async function buildSparkleBridge(
       architecture: options.architecture,
       buildChannel: options.channel,
       feedUrls: options.channel === "disabled" ? null : feedUrlsFor(options.architecture),
-      minimumMacOS: "12.0",
+      minimumMacOS: "15.0",
       publicKey,
       schemaVersion: 3,
       sparkleArchiveSha256: lock.archive.sha256,

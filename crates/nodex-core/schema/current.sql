@@ -58,7 +58,6 @@ CREATE TABLE codex_threads (
       agent_nickname TEXT,
       agent_role TEXT,
       thread_preview TEXT NOT NULL DEFAULT '',
-      model_provider TEXT NOT NULL DEFAULT '',
       cwd TEXT,
       managed_worktree_path TEXT,
       projectless_output_directory TEXT,
@@ -69,7 +68,15 @@ CREATE TABLE codex_threads (
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       linked_at TEXT NOT NULL
-    , forked_from_id TEXT, service_name TEXT, agent_path TEXT, model_id TEXT, harness_id TEXT, reasoning_effort TEXT, service_tier TEXT, execution_host_id TEXT NOT NULL DEFAULT 'local' CHECK (execution_host_id = trim(execution_host_id) AND length(execution_host_id) BETWEEN 1 AND 512), recency_at INTEGER NOT NULL DEFAULT 0 CHECK (recency_at >= 0)) WITHOUT ROWID;
+    , forked_from_id TEXT, service_name TEXT, agent_path TEXT, model_id TEXT, reasoning_effort TEXT, service_tier TEXT, execution_host_id TEXT NOT NULL DEFAULT 'local' CHECK (execution_host_id = trim(execution_host_id) AND length(execution_host_id) BETWEEN 1 AND 512), recency_at INTEGER NOT NULL DEFAULT 0 CHECK (recency_at >= 0), agent_backend_kind TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_kind IN ('codex', 'acp')), agent_backend_definition_id TEXT CHECK (agent_backend_definition_id IS NULL OR (agent_backend_definition_id = trim(agent_backend_definition_id) AND length(agent_backend_definition_id) BETWEEN 1 AND 512)), agent_backend_instance_config_id TEXT CHECK (((agent_backend_kind = 'codex' AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NULL) OR (agent_backend_kind = 'acp' AND agent_backend_definition_id IS NOT NULL AND (agent_backend_instance_config_id IS NULL OR (agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512)))))) WITHOUT ROWID;
+CREATE TABLE thread_backend_sessions (
+  thread_id TEXT PRIMARY KEY REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
+  backend_kind TEXT NOT NULL CHECK (backend_kind = 'acp'),
+  agent_definition_id TEXT NOT NULL CHECK (agent_definition_id = trim(agent_definition_id) AND length(agent_definition_id) BETWEEN 1 AND 512),
+  instance_config_id TEXT CHECK (instance_config_id IS NULL OR (instance_config_id = trim(instance_config_id) AND length(instance_config_id) BETWEEN 1 AND 512)),
+  backend_session_id TEXT NOT NULL CHECK (backend_session_id = trim(backend_session_id) AND length(backend_session_id) BETWEEN 1 AND 512),
+  updated_at INTEGER NOT NULL CHECK (updated_at >= 0)
+) WITHOUT ROWID, STRICT;
 CREATE TABLE codex_thread_dynamic_tool_catalogs (
       thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
       namespace TEXT NOT NULL,
@@ -728,8 +735,6 @@ CREATE TABLE "codex_scheduled_automations" (
            prompt TEXT NOT NULL DEFAULT '',
            rrule TEXT,
            model TEXT,
-           model_provider TEXT,
-           harness_id TEXT,
            reasoning_effort TEXT,
            service_tier TEXT,
            cwds_json TEXT NOT NULL DEFAULT '[]',
@@ -740,12 +745,13 @@ CREATE TABLE "codex_scheduled_automations" (
            created_at INTEGER NOT NULL,
            updated_at INTEGER NOT NULL,
            definition_revision INTEGER NOT NULL DEFAULT 1 CHECK (definition_revision >= 1),
+           agent_backend_kind TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_kind IN ('codex', 'acp')),
+           agent_backend_definition_id TEXT CHECK (agent_backend_definition_id IS NULL OR (agent_backend_definition_id = trim(agent_backend_definition_id) AND length(agent_backend_definition_id) BETWEEN 1 AND 512)),
+           agent_backend_instance_config_id TEXT CHECK (((agent_backend_kind = 'codex' AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NULL) OR (agent_backend_kind = 'acp' AND agent_backend_definition_id IS NOT NULL AND (agent_backend_instance_config_id IS NULL OR (agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512))))),
            CHECK (kind IN ('cron', 'heartbeat')),
            CHECK (status IN ('ACTIVE', 'PAUSED', 'DELETED')),
            CHECK (execution_environment IN ('local', 'worktree')),
-           CHECK (model_provider IS NULL OR length(trim(model_provider)) BETWEEN 1 AND 512),
            CHECK (model IS NULL OR length(trim(model)) BETWEEN 1 AND 512),
-           CHECK (harness_id IS NULL OR length(trim(harness_id)) BETWEEN 1 AND 512),
            CHECK (reasoning_effort IS NULL OR length(trim(reasoning_effort)) BETWEEN 1 AND 64),
            CHECK (service_tier IS NULL OR length(trim(service_tier)) BETWEEN 1 AND 64)
          ) WITHOUT ROWID;
@@ -777,6 +783,119 @@ CREATE TABLE workspace_app_server_thread_observations (
     REFERENCES codex_threads(thread_id) ON UPDATE CASCADE ON DELETE CASCADE,
   last_seen_sweep_id TEXT NOT NULL,
   updated_at TEXT NOT NULL
+) WITHOUT ROWID, STRICT;
+CREATE TABLE workspace_subagent_universes (
+  host_id TEXT NOT NULL,
+  source_epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK (generation >= 0),
+  root_thread_id TEXT NOT NULL
+    REFERENCES codex_threads(thread_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  discovery_continuation TEXT,
+  discovery_complete INTEGER NOT NULL DEFAULT 0 CHECK (discovery_complete IN (0, 1)),
+  observed_page_count INTEGER NOT NULL DEFAULT 0 CHECK (observed_page_count >= 0),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (host_id, source_epoch, generation, root_thread_id),
+  CHECK (length(trim(host_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(source_epoch)) BETWEEN 1 AND 512),
+  CHECK (length(trim(root_thread_id)) BETWEEN 1 AND 512),
+  CHECK (discovery_continuation IS NULL OR length(CAST(discovery_continuation AS BLOB)) <= 524288)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE workspace_subagent_discovery_pages (
+  host_id TEXT NOT NULL,
+  source_epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  root_thread_id TEXT NOT NULL,
+  page_identity TEXT NOT NULL,
+  page_hash TEXT NOT NULL,
+  continuation TEXT,
+  complete INTEGER NOT NULL CHECK (complete IN (0, 1)),
+  observed_at TEXT NOT NULL,
+  PRIMARY KEY (host_id, source_epoch, generation, root_thread_id, page_identity),
+  FOREIGN KEY (host_id, source_epoch, generation, root_thread_id)
+    REFERENCES workspace_subagent_universes(host_id, source_epoch, generation, root_thread_id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CHECK (length(trim(page_identity)) BETWEEN 1 AND 512),
+  CHECK (length(page_hash) = 64 AND page_hash NOT GLOB '*[^0-9a-f]*'),
+  CHECK (continuation IS NULL OR length(CAST(continuation AS BLOB)) <= 524288)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE workspace_subagent_descendants (
+  host_id TEXT NOT NULL,
+  source_epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  root_thread_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON UPDATE CASCADE ON DELETE CASCADE,
+  parent_thread_id TEXT NOT NULL,
+  first_seen_page_identity TEXT NOT NULL,
+  observed_at TEXT NOT NULL,
+  PRIMARY KEY (host_id, source_epoch, generation, root_thread_id, thread_id),
+  FOREIGN KEY (host_id, source_epoch, generation, root_thread_id)
+    REFERENCES workspace_subagent_universes(host_id, source_epoch, generation, root_thread_id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  CHECK (thread_id <> root_thread_id),
+  CHECK (thread_id <> parent_thread_id),
+  CHECK (length(trim(parent_thread_id)) BETWEEN 1 AND 512)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE workspace_subagent_status_evidence (
+  host_id TEXT NOT NULL,
+  source_epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL,
+  root_thread_id TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'waiting', 'done', 'unknown')),
+  evidence_kind TEXT NOT NULL CHECK (evidence_kind IN ('metadata', 'notification', 'completion', 'reconciliation')),
+  source_revision INTEGER NOT NULL CHECK (source_revision >= 0),
+  observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (host_id, source_epoch, generation, root_thread_id, thread_id),
+  FOREIGN KEY (host_id, source_epoch, generation, root_thread_id, thread_id)
+    REFERENCES workspace_subagent_descendants(host_id, source_epoch, generation, root_thread_id, thread_id)
+    ON UPDATE CASCADE ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+CREATE TABLE workspace_subagent_pending_status_evidence (
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+  host_id TEXT NOT NULL,
+  source_epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK (generation >= 0),
+  thread_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'waiting', 'done', 'unknown')),
+  evidence_kind TEXT NOT NULL CHECK (evidence_kind IN ('notification', 'completion', 'reconciliation')),
+  source_revision INTEGER NOT NULL CHECK (source_revision >= 0),
+  observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (library_id, host_id, source_epoch, generation, thread_id),
+  CHECK (length(trim(host_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(source_epoch)) BETWEEN 1 AND 512),
+  CHECK (length(trim(thread_id)) BETWEEN 1 AND 512)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE workspace_subagent_lifecycle_operations (
+  lifecycle_operation_id TEXT PRIMARY KEY,
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
+  host_id TEXT NOT NULL,
+  source_epoch TEXT NOT NULL,
+  generation INTEGER NOT NULL CHECK (generation >= 0),
+  root_thread_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('archive', 'delete')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CHECK (length(trim(lifecycle_operation_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(library_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(host_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(source_epoch)) BETWEEN 1 AND 512),
+  CHECK (length(trim(root_thread_id)) BETWEEN 1 AND 512)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE workspace_subagent_lifecycle_members (
+  lifecycle_operation_id TEXT NOT NULL
+    REFERENCES workspace_subagent_lifecycle_operations(lifecycle_operation_id)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  thread_id TEXT NOT NULL,
+  outcome TEXT NOT NULL DEFAULT 'pending'
+    CHECK (outcome IN ('pending', 'unresolved', 'failed', 'settled')),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  last_reason TEXT,
+  observed_at_ms INTEGER,
+  PRIMARY KEY (lifecycle_operation_id, thread_id),
+  CHECK (last_reason IS NULL OR length(CAST(last_reason AS BLOB)) <= 4096),
+  CHECK (observed_at_ms IS NULL OR observed_at_ms >= 0)
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE "canvas_scenes" (
   document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
@@ -2343,6 +2462,20 @@ CREATE INDEX idx_workspace_sidebar_positions_thread
   ON workspace_sidebar_positions(thread_id, scope_key);
 CREATE INDEX idx_workspace_app_server_thread_observations_sweep
   ON workspace_app_server_thread_observations(last_seen_sweep_id, thread_id);
+CREATE INDEX idx_workspace_subagent_descendants_parent
+  ON workspace_subagent_descendants(
+    host_id, source_epoch, generation, root_thread_id, parent_thread_id, thread_id
+  );
+CREATE INDEX idx_workspace_subagent_status_lane
+  ON workspace_subagent_status_evidence(
+    host_id, source_epoch, generation, root_thread_id, status, thread_id
+  );
+CREATE INDEX idx_workspace_subagent_pending_status_recency
+  ON workspace_subagent_pending_status_evidence(
+    library_id, observed_at_ms DESC, source_revision DESC, host_id, thread_id
+  );
+CREATE INDEX idx_workspace_subagent_lifecycle_unresolved
+  ON workspace_subagent_lifecycle_members(lifecycle_operation_id, outcome, thread_id);
 CREATE INDEX idx_canvas_scene_elements_order
            ON canvas_scene_elements(document_id, order_key, element_id);
 CREATE INDEX idx_canvas_scene_elements_bucket
@@ -4790,4 +4923,4 @@ CREATE TABLE operational_journal_state (
   ),
   CHECK (length(operation_identity_cutover_at) > 0)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 147;
+PRAGMA user_version = 150;

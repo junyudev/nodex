@@ -12,6 +12,7 @@ mod session_lifecycle;
 mod session_mutation;
 mod sidebar;
 mod sidebar_section;
+mod subagent_projection;
 mod task_window;
 #[cfg(test)]
 mod test_support;

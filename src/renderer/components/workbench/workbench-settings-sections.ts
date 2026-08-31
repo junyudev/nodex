@@ -33,6 +33,7 @@ export type SettingsSectionId =
   | "local-environments"
   | "worktrees"
   | "page"
+  | "data-controls"
   | "backups";
 
 export type SettingsSectionGroupKey = "personal" | "integrations" | "coding" | "workspace" | "data";
@@ -173,6 +174,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: PageIcon,
     groupKey: "workspace",
     searchMessages: SETTINGS_SEARCH_CATALOG.page.messages,
+  },
+  {
+    id: "data-controls",
+    label: "Data controls",
+    pageKey: "data-controls",
+    icon: ArchiveIcon,
+    groupKey: "data",
+    searchMessages: SETTINGS_SEARCH_CATALOG["data-controls"].messages,
   },
   {
     id: "backups",

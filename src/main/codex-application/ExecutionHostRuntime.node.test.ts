@@ -56,7 +56,17 @@ it.effect("routes ephemeral Threads before the durable Workspace authority", () 
               return {
                 value: {
                   kind: "thread",
-                  thread: { execution_host_id: "remote-durable" },
+                  thread: {
+                    backend_binding:
+                      read.thread_id === "thread:acp"
+                        ? {
+                            kind: "acp",
+                            agent_definition_id: "claude-code",
+                            instance_config_id: null,
+                          }
+                        : { kind: "codex" },
+                    execution_host_id: "remote-durable",
+                  },
                 },
               } as ProjectWorkspaceReadSnapshot;
             }),
@@ -82,7 +92,10 @@ it.effect("routes ephemeral Threads before the durable Workspace authority", () 
 
       assert.strictEqual(yield* resolver.resolve("thread:ephemeral"), "remote-ephemeral");
       assert.strictEqual(yield* resolver.resolve("thread:durable"), "remote-durable");
-      assert.deepStrictEqual(durableReads, ["thread:durable"]);
+      const rejected = yield* resolver.resolve("thread:acp").pipe(Effect.flip);
+      assert.strictEqual(rejected.reason, "request");
+      assert.strictEqual(rejected.operation, "thread-host.resolve-backend");
+      assert.deepStrictEqual(durableReads, ["thread:durable", "thread:acp"]);
     }),
   ),
 );

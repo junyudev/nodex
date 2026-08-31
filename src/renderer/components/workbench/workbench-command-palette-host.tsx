@@ -21,6 +21,7 @@ import type {
 import type { useWorkbenchSidebarController } from "./use-workbench-sidebar-controller";
 import { CommandPalette } from "./command-palette";
 import { usePageCreateTargetResolution } from "@/lib/page-create-target-registry";
+import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SessionCommands = Pick<
@@ -108,6 +109,9 @@ export function WorkbenchCommandPaletteHost({
     hasActiveSession: Boolean(activeSession),
     activeSessionPinned: activeSession?.pinned ?? false,
     hasAttachedThread: Boolean(activeSession?.thread),
+    canExportConversationMarkdown: activeSession?.thread
+      ? isCodexAgentBackendBinding(activeSession.thread.backendBinding)
+      : false,
     panelActionAvailability: Object.fromEntries(
       Object.entries(panelCapabilities.actions).map(([kind, capability]) => [
         kind,
@@ -145,7 +149,11 @@ export function WorkbenchCommandPaletteHost({
       void sidebarCommands.archiveSession(activeSession);
     },
     copyConversationMarkdown: () => {
-      if (!activeSession?.thread) return;
+      if (
+        !activeSession?.thread ||
+        !isCodexAgentBackendBinding(activeSession.thread.backendBinding)
+      )
+        return;
       void copyConversationMarkdown({
         conversationId: activeSession.thread.threadId,
         parentConversationId: activeSession.thread.parentThreadId ?? null,

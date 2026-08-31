@@ -4,13 +4,21 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
-import type { CodexConversationSnapshot } from "../../shared/types";
+import type {
+  CodexConversationSnapshot,
+  CodexThreadStartForSessionInput,
+  CodexTurnStartOptions,
+} from "../../shared/types";
+import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
+import type { CodexPendingWorktreeRequest } from "../../shared/codex-pending-worktree";
 import {
   CodexAppServerCapabilities,
   createCodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
@@ -56,11 +64,18 @@ const harness = (
   options: {
     readonly start?: Effect.Effect<unknown>;
     readonly commitFails?: boolean;
+    readonly desktopToolConfig?: Record<string, unknown> | null;
+    readonly promoteFails?: boolean;
+    readonly responseOverrides?: Readonly<Record<string, unknown>>;
   } = {},
 ) => {
   const events: string[] = [];
   const threadStartParams: Array<Record<string, unknown>> = [];
+  const firstTurnOverrides: CodexTurnStartOptions[] = [];
+  const preparationInputs: Parameters<CodexTurnPreparation["Service"]["start"]>[0][] = [];
+  const pendingWorktreeRequests: CodexPendingWorktreeRequest[] = [];
   const requestScheduling: unknown[] = [];
+  const browserPromotions: unknown[] = [];
   let attempt = 0;
   const capability = createCodexAppServerCapabilitySnapshot({
     hostId: "local",
@@ -79,7 +94,17 @@ const harness = (
       threadStartParams.push(params);
       events.push(`start:${attempt}`);
       return (options.start ?? Effect.void).pipe(
-        Effect.as({ thread: { id: `thread-${attempt}` } }),
+        Effect.as({
+          thread: { id: `thread-${attempt}` },
+          model: params.model,
+          modelProvider: params.modelProvider,
+          reasoningEffort:
+            typeof params.config === "object" && params.config !== null
+              ? (params.config as Record<string, unknown>).model_reasoning_effort
+              : null,
+          serviceTier: params.serviceTier,
+          ...options.responseOverrides,
+        }),
       );
     }) as CodexGateway["Service"]["requestLocal"],
   } as unknown as CodexGateway["Service"]);
@@ -121,19 +146,36 @@ const harness = (
           }),
   } as unknown as CodexThreadDirectory["Service"]);
   const turns = CodexTurnCommands.of({
-    start: (threadId: string) =>
+    start: (threadId: string, _prompt: string, overrides?: CodexTurnStartOptions) =>
       Effect.sync(() => {
         events.push(`turn:${threadId}`);
+        firstTurnOverrides.push(overrides ?? {});
         return { threadId, turnId: "turn-a", status: "inProgress", itemIds: [] } as const;
       }),
   } as unknown as CodexTurnCommands["Service"]);
+  const preparation = CodexTurnPreparation.of({
+    start: (preparationInput: Parameters<CodexTurnPreparation["Service"]["start"]>[0]) =>
+      Effect.sync(() => {
+        preparationInputs.push(preparationInput);
+        return {
+          canonicalParams: {},
+          request: {},
+          clientUserMessageId: "client-user-message-a",
+          verifiedBuiltinFullAccess: false,
+        } as never;
+      }),
+  } as unknown as CodexTurnPreparation["Service"]);
   const completion = CodexThreadLaunchCompletion.of({
     accepted: ({ threadId }) => Effect.sync(() => events.push(`complete:${threadId}`)),
     failed: () => undefined,
   });
   return {
     events,
+    firstTurnOverrides,
+    preparationInputs,
+    pendingWorktreeRequests,
     requestScheduling,
+    browserPromotions,
     threadStartParams,
     effect: make.pipe(
       Effect.provideService(
@@ -154,6 +196,27 @@ const harness = (
       ),
       Effect.provideService(CodexGateway, gateway),
       Effect.provideService(CoreModules, core),
+      Effect.provideService(
+        BrowserUseRuntime,
+        BrowserUseRuntime.of({
+          promoteRoute: (promotion: Parameters<BrowserUseRuntime["Service"]["promoteRoute"]>[0]) =>
+            options.promoteFails
+              ? Effect.fail({
+                  operation: "promote-route",
+                  cause: new Error("route expired"),
+                } as never)
+              : Effect.sync(() => {
+                  browserPromotions.push(promotion);
+                  events.push(`promote:${promotion.codexSessionId}`);
+                }),
+        } as unknown as BrowserUseRuntime["Service"]),
+      ),
+      Effect.provideService(
+        DesktopToolRuntime,
+        DesktopToolRuntime.of({
+          threadConfig: Effect.succeed(options.desktopToolConfig ?? null),
+        } as unknown as DesktopToolRuntime["Service"]),
+      ),
       Effect.provideService(CodexThreadDirectory, directory),
       Effect.provideService(CodexTurnCommands, turns),
       Effect.provideService(CodexThreadLaunchCompletion, completion),
@@ -164,16 +227,20 @@ const harness = (
       ),
       Effect.provideService(
         CodexPendingWorktreeRuntime,
-        CodexPendingWorktreeRuntime.of({} as CodexPendingWorktreeRuntime["Service"]),
+        CodexPendingWorktreeRuntime.of({
+          create: (request) =>
+            Effect.sync(() => {
+              pendingWorktreeRequests.push(request);
+            }),
+        } as CodexPendingWorktreeRuntime["Service"]),
       ),
       Effect.provideService(
         CodexFreshThreadLaunchRuntime,
-        CodexFreshThreadLaunchRuntime.of({} as CodexFreshThreadLaunchRuntime["Service"]),
+        CodexFreshThreadLaunchRuntime.of({
+          register: () => undefined,
+        } as unknown as CodexFreshThreadLaunchRuntime["Service"]),
       ),
-      Effect.provideService(
-        CodexTurnPreparation,
-        CodexTurnPreparation.of({} as CodexTurnPreparation["Service"]),
-      ),
+      Effect.provideService(CodexTurnPreparation, preparation),
       Effect.provideService(Scope.Scope, scope),
     ),
   };
@@ -199,6 +266,185 @@ it.effect("commits the Session link before admitting its first Turn", () =>
   }),
 );
 
+it.effect("promotes the Session Browser route before the first Turn starts", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope);
+    const service = yield* test.effect;
+
+    const result = yield* service.start(
+      {
+        ...input(),
+        browserUsePresentationOrigin: {
+          browserConversationId: "session-a",
+          browserViewScopeId: "window-a",
+        },
+      },
+      context,
+    );
+
+    assert.strictEqual(result.kind, "started");
+    assert.deepEqual(test.browserPromotions, [
+      {
+        browserConversationId: "session-a",
+        browserViewScopeId: "window-a",
+        codexSessionId: "thread-1",
+        projectId: "project-a",
+      },
+    ]);
+    assert.deepEqual(test.events, [
+      "start:1",
+      "commit:thread-1",
+      "promote:thread-1",
+      "turn:thread-1",
+      "complete:thread-1",
+    ]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("starts the first Turn when the optional Browser route can no longer be promoted", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope, { promoteFails: true });
+    const service = yield* test.effect;
+
+    const result = yield* service.start(
+      {
+        ...input(),
+        browserUsePresentationOrigin: {
+          browserConversationId: "session-a",
+          browserViewScopeId: "window-a",
+        },
+      },
+      context,
+    );
+
+    assert.strictEqual(result.kind, "started");
+    assert.deepEqual(test.events, [
+      "start:1",
+      "commit:thread-1",
+      "turn:thread-1",
+      "complete:thread-1",
+    ]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+const lunaMaxProfile: CodexExecutionProfile = {
+  modelId: "gpt-5.6-luna",
+  reasoningEffort: "max",
+  serviceTier: null,
+};
+
+const conflictingLaunchInput = (): CodexThreadStartForSessionInput => ({
+  ...input(),
+  executionProfile: lunaMaxProfile,
+  model: "gpt-5.6-sol",
+  reasoningEffort: "high",
+  serviceTier: "fast",
+});
+
+it.effect("uses one execution profile for renderer-owned Thread and first-Turn planning", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope, {
+      desktopToolConfig: {
+        "features.js_repl": false,
+        "mcp_servers.node_repl": { command: "/runtime/node" },
+      },
+    });
+    const service = yield* test.effect;
+
+    const result = yield* service.start(conflictingLaunchInput(), {
+      ...context,
+      ownerClientId: "renderer-a",
+    });
+
+    assert.strictEqual(result.kind, "started");
+    assert.deepEqual(test.threadStartParams[0], {
+      cwd: "/workspace",
+      runtimeWorkspaceRoots: ["/workspace"],
+      model: "gpt-5.6-luna",
+      serviceTier: null,
+      baseInstructions: null,
+      developerInstructions: null,
+      threadSource: "user",
+      config: {
+        "features.js_repl": false,
+        "mcp_servers.node_repl": { command: "/runtime/node" },
+        "features.apply_patch_streaming_events": true,
+        "features.concurrent_reasoning_summaries": true,
+        "features.thread_tools": true,
+        model_reasoning_effort: "max",
+      },
+    });
+    assert.deepEqual(test.preparationInputs[0]?.overrides, {
+      promptInput: undefined,
+      model: "gpt-5.6-luna",
+      serviceTier: null,
+      permissionMode: undefined,
+      reasoningEffort: "max",
+      collaborationMode: undefined,
+    });
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("uses the same execution profile for a Main-owned first Turn", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope);
+    const service = yield* test.effect;
+
+    yield* service.start(conflictingLaunchInput(), context);
+
+    assert.deepEqual(test.firstTurnOverrides[0], {
+      promptInput: undefined,
+      model: "gpt-5.6-luna",
+      serviceTier: null,
+      permissionMode: undefined,
+      reasoningEffort: "max",
+      collaborationMode: undefined,
+    });
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("deletes a provider-substituted Thread before admitting its first Turn", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope, { responseOverrides: { model: "gpt-5.6-sol" } });
+    const service = yield* test.effect;
+
+    const result = yield* Effect.exit(service.start(conflictingLaunchInput(), context));
+
+    assert.isTrue(Exit.isFailure(result));
+    assert.deepEqual(test.events, ["start:1", "delete:thread-1"]);
+    assert.deepEqual(test.firstTurnOverrides, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("accepts the app-server Standard sentinel without weakening profile checks", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope, { responseOverrides: { serviceTier: "default" } });
+    const service = yield* test.effect;
+
+    const result = yield* service.start(conflictingLaunchInput(), context);
+
+    assert.strictEqual(result.kind, "started");
+    assert.deepEqual(test.events, [
+      "start:1",
+      "commit:thread-1",
+      "turn:thread-1",
+      "complete:thread-1",
+    ]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 it.effect("preserves the semantic source of protocol-created child Threads", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
@@ -208,6 +454,35 @@ it.effect("preserves the semantic source of protocol-created child Threads", () 
     yield* service.start({ ...input(), threadSource: "subagent" }, context);
 
     assert.strictEqual(test.threadStartParams[0]?.threadSource, "subagent");
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("freezes Project authority into managed-worktree launches", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope);
+    const service = yield* test.effect;
+
+    const result = yield* service.start(
+      {
+        ...input(),
+        runInTarget: "newWorktree",
+        permissionMode: "guardian-approvals",
+      },
+      context,
+    );
+
+    assert.strictEqual(result.kind, "pending");
+    const request = test.pendingWorktreeRequests[0];
+    assert.strictEqual(request?.launchMode, "start-conversation");
+    if (request?.launchMode !== "start-conversation") return;
+    assert.deepEqual(request.startConversationParamsInput.projectAssignment, {
+      projectKind: "local",
+      projectId: "project-a",
+      pendingCoreUpdate: false,
+    });
+    assert.strictEqual(request.startConversationParamsInput.agentMode, "guardian-approvals");
     yield* Scope.close(scope, Exit.void);
   }),
 );

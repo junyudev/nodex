@@ -8,10 +8,10 @@ import {
   resolveBrowserRuntimeReleaseLockPath,
 } from "./browser-runtime-release-lock";
 import {
-  readOpenInterpreterReleaseLock,
-  resolveOpenInterpreterReleaseLockPath,
+  readCodexAppServerReleaseLock,
+  resolveCodexAppServerReleaseLockPath,
 } from "./agent-runtime-release-lock";
-import { isBrowserRuntimeCompatibleWithCodex } from "../src/shared/browser-runtime-codex-compatibility";
+import { TESTED_BROWSER_APP_SERVER_PAIRS } from "../src/shared/browser-app-server-compatibility";
 
 const HASH = "a".repeat(64);
 
@@ -77,27 +77,36 @@ describe("parseBrowserRuntimeReleaseLock", () => {
     expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("assets.darwin-arm64.url");
   });
 
-  test("keeps the committed Browser and Agent runtime locks compatible", () => {
+  test("binds every committed Browser target to an exact app-server conformance pair", () => {
     const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
     const browserLockPath = resolveBrowserRuntimeReleaseLockPath(projectRoot);
     expect(fs.existsSync(browserLockPath)).toBe(true);
     const browserLock = readBrowserRuntimeReleaseLock(browserLockPath);
-    const agentLock = readOpenInterpreterReleaseLock(
-      resolveOpenInterpreterReleaseLockPath(projectRoot),
+    const agentLock = readCodexAppServerReleaseLock(
+      resolveCodexAppServerReleaseLockPath(projectRoot),
     );
 
-    const browserVersions = Object.values(browserLock.assets);
-    expect(browserVersions).not.toHaveLength(0);
-    for (const asset of browserVersions) {
-      expect(
-        isBrowserRuntimeCompatibleWithCodex(
-          {
-            codexCompatibilityVersion: browserLock.codexCompatibilityVersion,
-            runtimeVersions: asset.runtimeVersions,
-          },
-          agentLock.codexCompatibilityVersion,
-        ),
-      ).toBe(true);
+    for (const targetArch of ["arm64", "x64"] as const) {
+      const asset = browserLock.assets[`darwin-${targetArch}`];
+      const pair = TESTED_BROWSER_APP_SERVER_PAIRS.find(
+        (candidate) => candidate.appServer.targetArch === targetArch,
+      );
+      expect(pair).toBeDefined();
+      expect(pair?.appServer).toMatchObject({
+        entrypointSha256: agentLock.builds[`darwin-${targetArch}`].entrypointSha256,
+        protocolSchemaFingerprint: agentLock.protocolSchema.sha256,
+        runtimeVersion: agentLock.appServerRuntimeVersion,
+        sourceCommit: agentLock.upstream.commit,
+        targetArch,
+        targetPlatform: "darwin",
+      });
+      expect(pair?.browser).toMatchObject({
+        browserPluginVersion: browserLock.browserPluginVersion,
+        manifestSha256: asset.manifestSha256,
+        peerCliVersion: asset.runtimeVersions.codexCli,
+        targetArch,
+        targetPlatform: "darwin",
+      });
     }
   });
 });

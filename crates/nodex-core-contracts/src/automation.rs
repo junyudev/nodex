@@ -2,10 +2,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
 
+use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const AUTOMATION_CONTRACT_VERSION: u32 = 4;
+pub const AUTOMATION_CONTRACT_VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -53,10 +54,10 @@ pub struct AutomationDefinitionInput {
     pub prompt: Option<String>,
     pub rrule: Option<String>,
     pub model: Option<String>,
-    pub model_provider: Option<String>,
-    pub harness_id: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    #[serde(default)]
+    pub backend_binding: AgentBackendBinding,
     pub cwds: Option<Vec<String>>,
     pub execution_environment: Option<AutomationExecutionEnvironment>,
     pub local_environment_config_path: Option<String>,
@@ -73,10 +74,9 @@ pub struct AutomationDefinition {
     pub prompt: String,
     pub rrule: String,
     pub model: Option<String>,
-    pub model_provider: Option<String>,
-    pub harness_id: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    pub backend_binding: AgentBackendBinding,
     pub cwds: Vec<String>,
     pub execution_environment: AutomationExecutionEnvironment,
     pub local_environment_config_path: Option<String>,

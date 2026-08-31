@@ -40,7 +40,9 @@ const snapshot: CodexAppServerCapabilitySnapshot = {
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: true,
+    multiAgentV2Protocol: false,
     sideConversation: true,
+    subagentAncestorFilter: false,
     threadRevert: true,
   },
 };
@@ -282,6 +284,7 @@ it.effect("resolves one shell offset and hydrates only the selected Turn", () =>
       text: "answer",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     };
     const selectedTurn = {
       ...turnShell("selected-turn"),

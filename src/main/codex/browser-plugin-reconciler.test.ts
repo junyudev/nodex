@@ -1,7 +1,10 @@
 import { describe, expect, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { it } from "@effect/vitest";
-import { writeBrowserRuntimeFixture } from "./browser-runtime-test-fixture";
+import {
+  makeTestedBrowserAppServerPair,
+  writeBrowserRuntimeFixture,
+} from "./browser-runtime-test-fixture";
 import { resolveBrowserRuntimeBundle } from "./browser-runtime-bundle";
 import {
   browserPluginRequestPortFromPromise,
@@ -27,12 +30,15 @@ function makeTestBrowserPluginReconciler(
 
 function makeRuntime() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-plugin-"));
-  writeBrowserRuntimeFixture(path.join(root, "browser-runtime"));
+  const bundleRoot = path.join(root, "browser-runtime");
+  const manifest = writeBrowserRuntimeFixture(bundleRoot);
+  const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
   const browserRuntime = resolveBrowserRuntimeBundle({
-    expectedCodexCompatibilityVersion: "0.144.6",
+    appServerIdentity: testedPair.appServer,
     runtimeRoot: root,
     targetArch: "arm64",
     targetPlatform: "darwin",
+    testedPairs: [testedPair],
   });
   if (browserRuntime.status === "unavailable") throw new Error(browserRuntime.message);
   const runtimeStateHome = path.join(root, "state");

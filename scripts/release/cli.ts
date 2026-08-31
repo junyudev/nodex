@@ -8,7 +8,6 @@ import {
   type MacArchitecture,
 } from "./bundle";
 import { extractReleaseNotes } from "./changelog";
-import { publishAgentRuntime } from "./agent-runtime";
 import { publishBrowserRuntime } from "./browser-runtime";
 import { buildMacDistribution } from "./distribution";
 import { generateHomebrewCaskFromBundle } from "./homebrew";
@@ -329,16 +328,6 @@ const main = async (): Promise<void> => {
     publishBrowserRuntime({
       arm64Path: required(flags, "arm64"),
       repo: required(flags, "repo"),
-      tag: required(flags, "tag"),
-      x64Path: required(flags, "x64"),
-    });
-    return;
-  }
-  if (command === "publish-agent-runtime") {
-    publishAgentRuntime({
-      arm64Path: required(flags, "arm64"),
-      repo: required(flags, "repo"),
-      sourceCommit: required(flags, "source-commit"),
       tag: required(flags, "tag"),
       x64Path: required(flags, "x64"),
     });

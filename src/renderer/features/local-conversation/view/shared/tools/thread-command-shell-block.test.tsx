@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { render } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { ThreadCommandShellBlock } from "./thread-command-shell-block";
+import { ThreadExecShellContainer } from "./thread-command-shell-block";
 
 function renderPlainShell({
   output,
@@ -12,19 +12,18 @@ function renderPlainShell({
 }) {
   return render(
     <NodexTooltipProvider>
-      <ThreadCommandShellBlock
+      <ThreadExecShellContainer
         command=""
-        embeddedAppearance="plain"
         footer={<button type="button">Retry setup</button>}
         isInProgress={isInProgress}
         output={output}
-        variant="embedded"
+        surface="plain"
       />
     </NodexTooltipProvider>,
   );
 }
 
-describe("ThreadCommandShellBlock plain embedded appearance", () => {
+describe("ThreadExecShellContainer plain surface", () => {
   test("keeps the action footer outside the clipped shell body", () => {
     const view = renderPlainShell({ output: "Environment setup failed\n" });
     const footer = view.getByRole("button", { name: "Retry setup" });

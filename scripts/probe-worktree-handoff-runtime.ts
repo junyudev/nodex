@@ -11,7 +11,6 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -30,6 +29,7 @@ import {
   openCodexProbeSession,
   runCodexProbeMain,
 } from "./codex-probe-session";
+import { responses, ScriptedModelServer } from "./scenarios/runtime/scripted-model-server";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDirectory, "..");
@@ -177,47 +177,36 @@ async function waitForThreadCwd(input: {
   }
 }
 
-async function startBlockingResponsesServer(): Promise<{
-  readonly baseUrl: string;
-  readonly close: () => Promise<void>;
-}> {
-  const server = createServer((request, response) => {
-    if (request.method !== "POST" || request.url !== "/v1/responses") {
-      response.writeHead(404, { "content-type": "application/json" });
-      response.end('{"error":"not found"}');
-      return;
-    }
-    request.resume();
-    response.writeHead(200, {
-      "cache-control": "no-cache",
-      "content-type": "text/event-stream",
-    });
-    response.write(
-      'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_handoff_probe"}}\n\n',
-    );
+async function startBlockingResponsesServer(): Promise<ScriptedModelServer> {
+  return await ScriptedModelServer.start({
+    modelsResponse: {
+      object: "list",
+      data: [
+        {
+          id: "mock-handoff-model",
+          object: "model",
+          created: 0,
+          owned_by: "nodex-test",
+        },
+      ],
+    },
+    exchanges: [
+      {
+        name: "active handoff turn remains in flight",
+        match: (request) => request.path.endsWith("/responses"),
+        respond: responses.stream([responses.created("resp_handoff_probe")], {
+          keepOpen: true,
+        }),
+      },
+    ],
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Handoff probe server did not bind a TCP port");
-  }
-  return {
-    baseUrl: `http://127.0.0.1:${address.port}/v1`,
-    close: async () =>
-      await new Promise<void>((resolve, reject) => {
-        server.closeAllConnections();
-        server.close((error) => (error ? reject(error) : resolve()));
-      }),
-  };
 }
 
 function createClient(
   callbacks: ScopedCallbackRuntime["Service"],
   binaryPath: string,
   stateHome: string,
+  loopbackEnvironment: Readonly<Record<string, string>>,
 ): Promise<CodexProbeSessionLease> {
   return callbacks.runPromise(
     openCodexProbeSession(callbacks, {
@@ -226,7 +215,8 @@ function createClient(
       requestTimeout: waitTimeoutMs,
       env: {
         ...process.env,
-        INTERPRETER_HOME: stateHome,
+        ...loopbackEnvironment,
+        CODEX_HOME: stateHome,
         NODEX_HANDOFF_PROBE_API_KEY: "isolated-probe-secret",
       },
       clientInfo: {
@@ -258,11 +248,18 @@ async function assertShellCwd(input: {
   readonly evidencePath: string;
   readonly threadId: string;
 }): Promise<void> {
+  const completed = waitForNotification(
+    input.client,
+    (notification) =>
+      notification.method === "turn/completed" &&
+      readNotificationThreadId(notification) === input.threadId,
+    `shell-command completion on ${input.threadId}`,
+  );
   await input.client.request("thread/shellCommand", {
     threadId: input.threadId,
     command: `/bin/pwd > ${quoteShellPath(input.evidencePath)}`,
   });
-  await waitForFile(input.evidencePath, realpathSync(input.cwd));
+  await Promise.all([waitForFile(input.evidencePath, realpathSync(input.cwd)), completed]);
 }
 
 async function probeWorktreeHandoffRuntimePromise(
@@ -291,6 +288,7 @@ async function probeWorktreeHandoffRuntimePromise(
   }
 
   const notifications: string[] = [];
+  const notificationTrace: string[] = [];
   let firstClient: CodexProbeSessionLease | null = null;
   let secondClient: CodexProbeSessionLease | null = null;
   let thirdClient: CodexProbeSessionLease | null = null;
@@ -298,7 +296,7 @@ async function probeWorktreeHandoffRuntimePromise(
   const probeConfig = {
     "model_providers.nodex-handoff-probe": {
       name: "Nodex handoff probe",
-      base_url: responsesServer.baseUrl,
+      base_url: `${responsesServer.baseUrl}/v1`,
       env_key: "NODEX_HANDOFF_PROBE_API_KEY",
       wire_api: "responses",
       request_max_retries: 0,
@@ -308,9 +306,15 @@ async function probeWorktreeHandoffRuntimePromise(
     "features.plugins": false,
   } as const;
   try {
-    firstClient = await createClient(callbacks, input.binaryPath, stateHome);
+    firstClient = await createClient(
+      callbacks,
+      input.binaryPath,
+      stateHome,
+      responsesServer.loopbackEnvironment(),
+    );
     firstClient.on("notification", (notification: ServerNotification) => {
       notifications.push(notification.method);
+      notificationTrace.push(JSON.stringify(notification));
     });
     const started = await firstClient.request<"thread/start", ThreadStartResponse>("thread/start", {
       cwd: sourceRoot,
@@ -415,9 +419,15 @@ async function probeWorktreeHandoffRuntimePromise(
 
     await firstClient.stop();
     firstClient = null;
-    secondClient = await createClient(callbacks, input.binaryPath, stateHome);
+    secondClient = await createClient(
+      callbacks,
+      input.binaryPath,
+      stateHome,
+      responsesServer.loopbackEnvironment(),
+    );
     secondClient.on("notification", (notification: ServerNotification) => {
       notifications.push(notification.method);
+      notificationTrace.push(JSON.stringify(notification));
     });
     const unloaded = await waitForThreadCwd({
       client: secondClient,
@@ -484,6 +494,10 @@ async function probeWorktreeHandoffRuntimePromise(
     const activeTurn = await turnStarted;
     const activeTurnId = readNotificationTurnId(activeTurn) ?? activeTurnStart.turn.id;
     if (!activeTurnId) throw new Error("turn/started did not include a turn id");
+    await responsesServer.waitForRequest(
+      (request) => request.path.endsWith("/responses"),
+      waitTimeoutMs,
+    );
     const turnCompleted = waitForNotification(
       secondClient,
       (notification) =>
@@ -542,7 +556,12 @@ async function probeWorktreeHandoffRuntimePromise(
 
     await secondClient.stop();
     secondClient = null;
-    thirdClient = await createClient(callbacks, input.binaryPath, stateHome);
+    thirdClient = await createClient(
+      callbacks,
+      input.binaryPath,
+      stateHome,
+      responsesServer.loopbackEnvironment(),
+    );
     const coldRead = await thirdClient.request<"thread/read", ThreadReadResponse>("thread/read", {
       threadId,
       includeTurns: false,
@@ -604,7 +623,13 @@ async function probeWorktreeHandoffRuntimePromise(
         mode: 0o600,
       });
     }
+    responsesServer.verify();
     return report;
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\n\nNotifications:\n${notificationTrace.slice(-20).join("\n") || "<empty>"}\n\nModel transcript:\n${responsesServer.transcript() || "<empty>"}`,
+      { cause: error },
+    );
   } finally {
     await thirdClient?.stop().catch(() => undefined);
     await secondClient?.stop().catch(() => undefined);
@@ -632,9 +657,12 @@ function readOption(argv: readonly string[], name: string): string | null {
 }
 
 const main = Effect.gen(function* () {
-  const runtime = resolveCodexRuntime({ isPackaged: false, projectRootPath: projectRoot });
   const argv = process.argv.slice(2);
-  const binaryPath = path.resolve(readOption(argv, "--binary") ?? runtime.binaryPath);
+  const explicitBinaryPath = readOption(argv, "--binary");
+  const binaryPath = path.resolve(
+    explicitBinaryPath ??
+      resolveCodexRuntime({ isPackaged: false, projectRootPath: projectRoot }).binaryPath,
+  );
   const outputPath = path.resolve(
     readOption(argv, "--out") ??
       path.join(projectRoot, ".generated", "agent-runtime-conformance", "handoff.json"),

@@ -42,7 +42,7 @@ use crate::infrastructure::writer::StoreWriter;
 
 use super::{
     ProjectWorkspaceApplyOutcome, execution, queued_follow_up, session_lifecycle, session_mutation,
-    sidebar, sidebar_section, thread,
+    sidebar, sidebar_section, subagent_projection, thread,
 };
 
 const MODULE_NAME: &str = "project_workspace";
@@ -653,6 +653,34 @@ pub(super) fn apply(
                     thread_id,
                     location,
                 ),
+                ProjectWorkspaceIntent::BindThreadBackendSession {
+                    thread_id,
+                    backend_binding,
+                    backend_session_id,
+                } => thread::bind_thread_backend_session(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    thread_id,
+                    backend_binding,
+                    backend_session_id,
+                ),
+                ProjectWorkspaceIntent::ClearThreadBackendSession {
+                    thread_id,
+                    backend_binding,
+                } => thread::clear_thread_backend_session(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    thread_id,
+                    backend_binding,
+                ),
                 ProjectWorkspaceIntent::DeleteThread { thread_id } => thread::delete_thread(
                     transaction,
                     &library_id,
@@ -703,6 +731,101 @@ pub(super) fn apply(
                         *limit,
                     )
                 }
+                ProjectWorkspaceIntent::ObserveSubagentDiscoveryPage {
+                    universe,
+                    page_identity,
+                    observations,
+                    continuation,
+                    complete,
+                } => subagent_projection::observe_discovery_page(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    universe,
+                    page_identity,
+                    observations,
+                    continuation.as_deref(),
+                    *complete,
+                ),
+                ProjectWorkspaceIntent::ObserveSubagentStatusEvidence {
+                    universe,
+                    thread_id,
+                    status,
+                    evidence_kind,
+                    source_revision,
+                    observed_at_ms,
+                    precondition,
+                } => subagent_projection::observe_status_evidence(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    universe,
+                    thread_id,
+                    *status,
+                    *evidence_kind,
+                    *source_revision,
+                    *observed_at_ms,
+                    precondition.as_ref(),
+                ),
+                ProjectWorkspaceIntent::BufferSubagentStatusEvidence {
+                    host_id,
+                    source_epoch,
+                    generation,
+                    thread_id,
+                    status,
+                    evidence_kind,
+                    source_revision,
+                    observed_at_ms,
+                } => subagent_projection::buffer_status_evidence(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    host_id,
+                    source_epoch,
+                    *generation,
+                    thread_id,
+                    *status,
+                    *evidence_kind,
+                    *source_revision,
+                    *observed_at_ms,
+                ),
+                ProjectWorkspaceIntent::BeginSubagentLifecycle {
+                    universe,
+                    lifecycle_operation_id,
+                    action,
+                } => subagent_projection::begin_lifecycle(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    universe,
+                    lifecycle_operation_id,
+                    *action,
+                ),
+                ProjectWorkspaceIntent::ObserveSubagentLifecycleOutcomes {
+                    lifecycle_operation_id,
+                    observations,
+                } => subagent_projection::observe_lifecycle_outcomes(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    lifecycle_operation_id,
+                    observations,
+                ),
                 ProjectWorkspaceIntent::SetThreadArchived {
                     thread_id,
                     archived,
@@ -3520,11 +3643,11 @@ mod tests {
             .call(|connection| {
                 connection.execute(
                     "INSERT INTO codex_threads(\
-                       thread_id, project_id, thread_name, thread_preview, model_provider, \
+                       thread_id, project_id, thread_name, thread_preview, \
                        status_type, status_active_flags_json, archived, created_at, updated_at, \
                        recency_at, linked_at\
                      ) VALUES (\
-                       'thread-archived-owner', 'project-native', '', 'Preview', 'openai', \
+                       'thread-archived-owner', 'project-native', '', 'Preview', \
                        'idle', '[]', 0, 1, 2, 2, ?1\
                      )",
                     [NOW],
@@ -3797,11 +3920,11 @@ mod tests {
             .call(|connection| {
                 connection.execute(
                     "INSERT INTO codex_threads(\
-                       thread_id, project_id, thread_name, thread_preview, model_provider, \
+                       thread_id, project_id, thread_name, thread_preview, \
                        status_type, status_active_flags_json, archived, created_at, updated_at, \
                        recency_at, linked_at\
                      ) VALUES (\
-                       'thread-native', 'project-native', '', 'Preview', 'openai', 'idle', '[]', \
+                       'thread-native', 'project-native', '', 'Preview', 'idle', '[]', \
                        0, 1, 2, 2, ?1\
                      )",
                     [NOW],
@@ -3880,7 +4003,6 @@ mod tests {
                         thread_patch: Some(Box::new(ProjectWorkspaceThreadPatch {
                             project_id: Some(Some("project-native".to_owned())),
                             thread_preview: Some("Updated preview".to_owned()),
-                            model_provider: Some("openai".to_owned()),
                             status: Some(ProjectWorkspaceThreadStatus {
                                 status_type: CodexThreadStatusType::Active,
                                 active_flags: vec![CodexThreadActiveFlag::WaitingOnApproval],
@@ -4160,22 +4282,22 @@ mod tests {
             .call(|connection| {
                 connection.execute(
                     "INSERT INTO codex_threads(\
-                       thread_id, project_id, thread_name, thread_preview, model_provider, \
+                       thread_id, project_id, thread_name, thread_preview, \
                        status_type, status_active_flags_json, archived, created_at, updated_at, \
                        recency_at, linked_at\
                      ) VALUES (\
-                       'thread:default-draft', 'project-gamma', '', '', 'openai', 'idle', '[]', \
+                       'thread:default-draft', 'project-gamma', '', '', 'idle', '[]', \
                        0, 1, 1, 1, ?1\
                      )",
                     [NOW],
                 )?;
                 connection.execute(
                     "INSERT INTO codex_threads(\
-                       thread_id, project_id, thread_name, thread_preview, model_provider, \
+                       thread_id, project_id, thread_name, thread_preview, \
                        status_type, status_active_flags_json, archived, created_at, updated_at, \
                        recency_at, linked_at\
                      ) VALUES (\
-                       'thread:default-draft-race', 'project-gamma', '', '', 'openai', 'idle', \
+                       'thread:default-draft-race', 'project-gamma', '', '', 'idle', \
                        '[]', 0, 1, 1, 1, ?1\
                      )",
                     [NOW],
@@ -4456,11 +4578,11 @@ mod tests {
             .call(|connection| {
                 connection.execute(
                     "INSERT INTO codex_threads(\
-                       thread_id, project_id, thread_name, thread_preview, model_provider, \
+                       thread_id, project_id, thread_name, thread_preview, \
                        status_type, status_active_flags_json, archived, created_at, updated_at, \
                        recency_at, linked_at\
                      ) VALUES (\
-                       'thread-projectless', NULL, '', 'Projectless preview', 'openai', \
+                       'thread-projectless', NULL, '', 'Projectless preview', \
                        'idle', '[]', 0, 1, 2, 2, ?1\
                      )",
                     [NOW],
@@ -4483,6 +4605,42 @@ mod tests {
                 ),
             )
             .expect("link projectless Codex Thread");
+        let archived_link = module
+            .apply(
+                &context(),
+                session_request(
+                    "workspace-session-archive-projectless",
+                    "session-projectless",
+                    ProjectSessionIntent::SetArchived { archived: true },
+                ),
+            )
+            .expect("archive linked projectless Session");
+        assert_eq!(
+            archived_link.committed.value.affected_thread_ids,
+            ["thread-projectless"]
+        );
+        let archived_thread = kernel
+            .writer()
+            .call(|connection| {
+                let archived = connection.query_row(
+                    "SELECT archived FROM codex_threads WHERE thread_id = 'thread-projectless'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?;
+                Ok(archived)
+            })
+            .expect("read archived linked Agent Thread");
+        assert_eq!(archived_thread, 1);
+        module
+            .apply(
+                &context(),
+                session_request(
+                    "workspace-session-restore-projectless",
+                    "session-projectless",
+                    ProjectSessionIntent::SetArchived { archived: false },
+                ),
+            )
+            .expect("restore linked projectless Session");
         let moved = module
             .apply(
                 &context(),

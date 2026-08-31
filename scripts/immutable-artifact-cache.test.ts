@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutable-artifact-cache";
+import {
+  ensureGeneratedImmutableArtifact,
+  ensureImmutableArtifact,
+  resolveImmutableArtifactPath,
+} from "./immutable-artifact-cache";
 
 const temporaryRoots: string[] = [];
 const HASH = "a".repeat(64);
@@ -72,6 +76,31 @@ describe("immutable artifact cache", () => {
     await Promise.all([ensureImmutableArtifact(input), ensureImmutableArtifact(input)]);
 
     expect(fetchArchive).toHaveBeenCalledTimes(1);
+    expect(fs.readFileSync(destinationPath)).toEqual(contents);
+    expect(fs.existsSync(`${destinationPath}.lock`)).toBe(false);
+  });
+
+  test("publishes one verified build across concurrent callers", async () => {
+    const root = makeRoot();
+    const destinationPath = path.join(root, "cache", HASH, "runtime.tar.gz");
+    const contents = Buffer.from("reproducible runtime");
+    const generate = vi.fn(async (temporaryPath: string) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      fs.writeFileSync(temporaryPath, contents);
+    });
+    const input = {
+      destinationPath,
+      generate,
+      label: "Test source build",
+      validate: contentValidator(contents),
+    };
+
+    await Promise.all([
+      ensureGeneratedImmutableArtifact(input),
+      ensureGeneratedImmutableArtifact(input),
+    ]);
+
+    expect(generate).toHaveBeenCalledTimes(1);
     expect(fs.readFileSync(destinationPath)).toEqual(contents);
     expect(fs.existsSync(`${destinationPath}.lock`)).toBe(false);
   });

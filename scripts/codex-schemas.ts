@@ -13,7 +13,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
+import {
+  readCodexAppServerReleaseLock,
+  resolveCodexAppServerReleaseLockPath,
+} from "./agent-runtime-release-lock";
+import { fingerprintCodexSchemaTree } from "./codex-schema-fingerprint";
+import { withPinnedCodexSchemaTool } from "./codex-schema-tool";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
@@ -299,25 +304,15 @@ function readJsonObject(path: string): JsonObject {
   return value;
 }
 
-function resolveAgentRuntimeLauncherPath(): string {
-  return resolveCodexRuntime({
-    isPackaged: false,
-    projectRootPath: projectRoot,
-  }).binaryPath;
-}
-
 function runCodexSchemaGenerator(
+  schemaToolPath: string,
   kind: "generate-json-schema" | "generate-ts",
   outputPath: string,
 ): void {
-  execFileSync(
-    resolveAgentRuntimeLauncherPath(),
-    ["app-server", kind, "--experimental", "--out", outputPath],
-    {
-      cwd: projectRoot,
-      stdio: "inherit",
-    },
-  );
+  execFileSync(schemaToolPath, ["app-server", kind, "--experimental", "--out", outputPath], {
+    cwd: projectRoot,
+    stdio: "inherit",
+  });
 }
 
 function generateRuntimeSchemas(jsonSchemaPath: string, outputPath: string): void {
@@ -342,14 +337,22 @@ type GeneratedArtifacts = {
   typescriptPath: string;
 };
 
-function generateArtifacts(parentPath: string): GeneratedArtifacts {
-  const typescriptPath = join(parentPath, "src");
-  const jsonSchemaPath = join(parentPath, "json-schema-source");
+function generateArtifacts(parentPath: string, schemaToolPath: string): GeneratedArtifacts {
+  const schemaSourcePath = join(parentPath, "schema-source");
+  const typescriptPath = join(schemaSourcePath, "ts");
+  const jsonSchemaPath = join(schemaSourcePath, "json");
   const runtimeSchemasPath = join(parentPath, "runtime-schemas");
   const effectSchemasPath = join(parentPath, "effect-schemas");
 
-  runCodexSchemaGenerator("generate-ts", typescriptPath);
-  runCodexSchemaGenerator("generate-json-schema", jsonSchemaPath);
+  runCodexSchemaGenerator(schemaToolPath, "generate-ts", typescriptPath);
+  runCodexSchemaGenerator(schemaToolPath, "generate-json-schema", jsonSchemaPath);
+  const lock = readCodexAppServerReleaseLock(resolveCodexAppServerReleaseLockPath(projectRoot));
+  const fingerprint = fingerprintCodexSchemaTree(schemaSourcePath);
+  if (fingerprint !== lock.protocolSchema.sha256) {
+    throw new Error(
+      `Codex schema fingerprint ${fingerprint} does not match release lock ${lock.protocolSchema.sha256}`,
+    );
+  }
   generateRuntimeSchemas(jsonSchemaPath, runtimeSchemasPath);
   execFileSync(
     process.execPath,
@@ -407,22 +410,23 @@ function replaceGeneratedDirectories(
   }
 }
 
-export function generateSchemas(): void {
-  const stagingPath = mkdtempSync(join(protocolPackagePath, ".codex-schema-stage-"));
-
-  try {
-    const generated = generateArtifacts(stagingPath);
-    replaceGeneratedDirectories(
-      [
-        { generatedPath: generated.typescriptPath, targetPath: schemasOutputPath },
-        { generatedPath: generated.runtimeSchemasPath, targetPath: runtimeSchemasOutputPath },
-        { generatedPath: generated.effectSchemasPath, targetPath: effectSchemasOutputPath },
-      ],
-      stagingPath,
-    );
-  } finally {
-    rmSync(stagingPath, { recursive: true, force: true });
-  }
+export async function generateSchemas(): Promise<void> {
+  await withPinnedCodexSchemaTool(projectRoot, (schemaToolPath) => {
+    const stagingPath = mkdtempSync(join(protocolPackagePath, ".codex-schema-stage-"));
+    try {
+      const generated = generateArtifacts(stagingPath, schemaToolPath);
+      replaceGeneratedDirectories(
+        [
+          { generatedPath: generated.typescriptPath, targetPath: schemasOutputPath },
+          { generatedPath: generated.runtimeSchemasPath, targetPath: runtimeSchemasOutputPath },
+          { generatedPath: generated.effectSchemasPath, targetPath: effectSchemasOutputPath },
+        ],
+        stagingPath,
+      );
+    } finally {
+      rmSync(stagingPath, { recursive: true, force: true });
+    }
+  });
 }
 
 function readDirectoryFileMap(rootPath: string): Map<string, string> {
@@ -474,17 +478,18 @@ function verifyDirectory(expectedPath: string, actualPath: string): void {
   }
 }
 
-export function verifySchemas(): void {
-  const tempPath = mkdtempSync(join(tmpdir(), "nodex-codex-schemas-"));
-
-  try {
-    const generated = generateArtifacts(tempPath);
-    verifyDirectory(schemasOutputPath, generated.typescriptPath);
-    verifyDirectory(runtimeSchemasOutputPath, generated.runtimeSchemasPath);
-    verifyDirectory(effectSchemasOutputPath, generated.effectSchemasPath);
-  } finally {
-    rmSync(tempPath, { recursive: true, force: true });
-  }
+export async function verifySchemas(): Promise<void> {
+  await withPinnedCodexSchemaTool(projectRoot, (schemaToolPath) => {
+    const tempPath = mkdtempSync(join(tmpdir(), "nodex-codex-schemas-"));
+    try {
+      const generated = generateArtifacts(tempPath, schemaToolPath);
+      verifyDirectory(schemasOutputPath, generated.typescriptPath);
+      verifyDirectory(runtimeSchemasOutputPath, generated.runtimeSchemasPath);
+      verifyDirectory(effectSchemasOutputPath, generated.effectSchemasPath);
+    } finally {
+      rmSync(tempPath, { recursive: true, force: true });
+    }
+  });
 }
 
 function parseCliOptions(argv: string[]): CliOptions {
@@ -502,18 +507,22 @@ function parseCliOptions(argv: string[]): CliOptions {
   return { command };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
 
   if (options.command === "generate") {
-    generateSchemas();
+    await generateSchemas();
     return;
   }
 
-  verifySchemas();
+  await verifySchemas();
   console.log("Committed app-server protocol package matches the pinned Agent runtime.");
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  void main().catch((error: unknown) => {
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exitCode = 1;
+  });
 }

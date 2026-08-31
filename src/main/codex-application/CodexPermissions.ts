@@ -104,7 +104,12 @@ const fallbackState = (
     return {
       mode: "custom",
       effectivePreset: "custom",
-      availableModes: ["auto", "guardian-approvals", "full-access", "custom"],
+      availableModes: previous?.availableModes ?? [
+        "auto",
+        "guardian-approvals",
+        "full-access",
+        "custom",
+      ],
       approvalPolicy: previous?.approvalPolicy ?? null,
       approvalsReviewer: previous?.approvalsReviewer ?? "user",
       sandboxMode: previous?.sandboxMode ?? null,
@@ -140,7 +145,12 @@ const fallbackState = (
   return {
     mode,
     effectivePreset: mode === "guardian-approvals" && !autoReviewAvailable ? "auto" : mode,
-    availableModes: ["auto", "guardian-approvals", "full-access", "custom"],
+    availableModes: previous?.availableModes ?? [
+      "auto",
+      "guardian-approvals",
+      "full-access",
+      "custom",
+    ],
     approvalPolicy: mode === "full-access" ? "never" : "on-request",
     approvalsReviewer,
     sandboxMode: mode === "full-access" ? "danger-full-access" : "workspace-write",
@@ -161,31 +171,10 @@ export const resolvePermissionMode = (
   return fallbackState(runtimeStateHome, requestedMode, workspaceRoots, permissionState);
 };
 
-const permissionModeMatches = (
+const permissionModeIsAvailable = (
   state: CodexPermissionState,
   mode: Exclude<CodexPermissionMode, "custom">,
-): boolean => {
-  if (!state.availableModes.includes(mode)) return false;
-  if (mode === "full-access") {
-    return (
-      state.sandboxMode === "danger-full-access" &&
-      state.approvalPolicy === "never" &&
-      state.approvalsReviewer === "user"
-    );
-  }
-  if (mode === "guardian-approvals") {
-    return (
-      state.sandboxMode === "workspace-write" &&
-      state.approvalPolicy === "on-request" &&
-      state.approvalsReviewer === "auto_review"
-    );
-  }
-  return (
-    state.sandboxMode === "workspace-write" &&
-    state.approvalPolicy === "on-request" &&
-    state.approvalsReviewer === "user"
-  );
-};
+): boolean => state.availableModes.includes(mode);
 
 export const live = (options: {
   readonly runtimeStateHome: string;
@@ -267,6 +256,7 @@ export const live = (options: {
       });
 
       const readConfig = Effect.fn("CodexPermissions.readConfig")(function* () {
+        yield* gateway.awaitReady(gateway.localHostId);
         const [configResult, requirementsResult] = yield* Effect.all(
           [
             gateway.requestLocal("config/read", { includeLayers: true }),
@@ -331,7 +321,7 @@ export const live = (options: {
           if (selection === "custom") {
             return fallbackState(runtimeStateHome, selection, workspaceRoots, state);
           }
-          if (!permissionModeMatches(state, selection)) {
+          if (!permissionModeIsAvailable(state, selection)) {
             if (projectId !== null) {
               yield* Ref.update(verifiedModeByProject, (current) => {
                 const next = new Map(current);
@@ -360,7 +350,7 @@ export const live = (options: {
 
         const workspaceRoots = yield* readWorkspaceRoots(projectId);
         const previous = (yield* Ref.get(stateByScope)).get(projectId) ?? null;
-        const state = yield* Effect.gen(function* () {
+        const resolution = yield* Effect.gen(function* () {
           const config = yield* readConfig();
           const resolved = resolveCodexPermissionState({
             ...config,
@@ -369,18 +359,35 @@ export const live = (options: {
           });
           return yield* applyPersistedSelection(projectId, resolved, workspaceRoots);
         }).pipe(
-          Effect.catch(() =>
-            Effect.succeed(
-              fallbackState(runtimeStateHome, previous?.mode ?? "auto", workspaceRoots, previous),
+          Effect.map((state) => ({ cacheable: true as const, state })),
+          Effect.catch((cause) =>
+            Effect.logWarning(
+              "Codex permission authority read failed; using a transient fallback",
+            ).pipe(
+              Effect.annotateLogs({
+                cause: cause instanceof Error ? cause.message : String(cause),
+                projectId,
+              }),
+              Effect.as({
+                cacheable: false as const,
+                state: fallbackState(
+                  runtimeStateHome,
+                  previous?.mode ?? "auto",
+                  workspaceRoots,
+                  previous,
+                ),
+              }),
             ),
           ),
         );
-        yield* Ref.update(stateByScope, (current) => {
-          const next = new Map(current);
-          next.set(projectId, state);
-          return next;
-        });
-        return state;
+        if (resolution.cacheable) {
+          yield* Ref.update(stateByScope, (current) => {
+            const next = new Map(current);
+            next.set(projectId, resolution.state);
+            return next;
+          });
+        }
+        return resolution.state;
       });
 
       const setMode: CodexPermissions["Service"]["setMode"] = Effect.fn("CodexPermissions.setMode")(

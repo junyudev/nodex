@@ -42,6 +42,7 @@ const assistantItem = (id: string, text: string): ThreadItem => ({
   text,
   phase: null,
   memoryCitation: null,
+  delivery: null,
 });
 
 interface RecordedRequest {
@@ -59,7 +60,9 @@ const capability = {
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: false,
+    multiAgentV2Protocol: false,
     sideConversation: false,
+    subagentAncestorFilter: false,
     threadRevert: false,
   },
 } satisfies CodexAppServerCapabilitySnapshot;

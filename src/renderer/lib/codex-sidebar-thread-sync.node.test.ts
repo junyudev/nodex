@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   buildCodexSidebarPinnedReorderMutation,
   buildSidebarThreadSyncModel,
+  isCodexSidebarThreadItemReorderable,
   listReorderableCodexSidebarChatKeys,
   listPendingPinnedBeforeThreadUpdates,
   listRealThreadIdsForSidebarKeys,
@@ -45,6 +46,7 @@ function makeThread(input: {
   return {
     key: `local:${input.threadId}`,
     kind: "local",
+    backendBinding: { kind: "codex" },
     runLocation: { kind: "local-checkout" },
     hostId: "local",
     threadId: input.threadId,
@@ -635,6 +637,24 @@ describe("project thread reorder eligibility", () => {
         }),
       ),
     ).toBe(JSON.stringify(["thread:a", "thread:b"]));
+  });
+
+  test("keeps ACP Threads out of Codex-owned move and reorder commands", () => {
+    const acp: CodexSidebarThreadItem = {
+      ...makeThread({ threadId: "thread:acp", projectId: "alpha" }),
+      backendBinding: {
+        kind: "acp",
+        agentDefinitionId: "claude-agent-acp",
+        instanceConfigId: "claude-main",
+      },
+    };
+
+    expect(isCodexSidebarThreadItemReorderable(acp)).toBe(false);
+    expect(
+      isCodexSidebarThreadItemReorderable(
+        makeThread({ threadId: "thread:codex", projectId: "alpha" }),
+      ),
+    ).toBe(true);
   });
 });
 

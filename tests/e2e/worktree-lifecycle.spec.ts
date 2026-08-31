@@ -5,9 +5,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import { createBoundedOperationId } from "../../src/shared/operation-identity";
+import { createUuidV7 } from "../../src/shared/uuid-v7";
 
 const repositoryRoot = process.cwd();
-const subscriptionE2eAuthorized = process.env.NODEX_ALLOW_SUBSCRIPTION_E2E === "1";
 const worktreeElectronEnvironment = {
   NODEX_CORE_IDLE_TIMEOUT_MS: "250",
   NODEX_LOG_CONSOLE: "0",
@@ -101,20 +103,36 @@ function createRepository(root: string): {
   return { additionalRoot, nestedCwd, sourceRoot };
 }
 
-function resolveCodexAuthPath(): string | null {
-  const configuredHome = process.env.CODEX_HOME?.trim();
-  const sourceHome = configuredHome
-    ? path.resolve(configuredHome)
-    : path.join(os.homedir(), ".codex");
-  const authPath = path.join(sourceHome, "auth.json");
-  return fs.existsSync(authPath) ? authPath : null;
+async function createWorktreeHarness(label: string): Promise<ElectronScenarioHarness> {
+  const harness = await ElectronScenarioHarness.create({
+    label,
+    retention: process.env.NODEX_KEEP_SCENARIO_PROFILES === "1" ? "keep" : "dispose",
+    prepareAgentRuntime: false,
+    environment: {
+      ...worktreeElectronEnvironment,
+      NODEX_FAKE_CODEX_LOG_PATH: ".fake-codex/requests.jsonl",
+      NODEX_FAKE_CODEX_STATE_PATH: ".fake-codex/state.json",
+      NODEX_LOG_FILE: "1",
+      NODEX_LOG_FILE_LEVEL: "debug",
+      NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
+    },
+  });
+  prepareScenarioCodexAppServerRuntimeSync(
+    harness.profile.runRoot,
+    path.join(repositoryRoot, "tests/e2e/fixtures/codex-queue-app-server.mjs"),
+  );
+  return harness;
 }
 
 async function createProject(page: Page, sources: readonly string[]): Promise<string> {
+  const projectId = createUuidV7();
   const project = requireCoreValue(
     await invokeIpc(page, "projects:create", {
-      name: "Managed Worktree E2E",
-      sources,
+      operationId: createBoundedOperationId("e2e.worktree.project.create"),
+      payload: {
+        projectId,
+        input: { name: "Managed Worktree E2E", sources },
+      },
     }),
     "Project creation",
   );
@@ -125,14 +143,32 @@ async function createProject(page: Page, sources: readonly string[]): Promise<st
 }
 
 async function createProjectSession(page: Page, projectId: string): Promise<string> {
+  const sessionId = createUuidV7();
   const session = await invokeIpc(page, "project-sessions:create", {
-    projectId,
-    noThreadFallbackTitle: "New thread",
+    operationId: createBoundedOperationId("e2e.worktree.session.create"),
+    payload: {
+      sessionId,
+      input: { projectId, noThreadFallbackTitle: "New thread", initialPageIds: [] },
+    },
   });
-  if (!isRecord(session) || typeof session.id !== "string") {
+  const value = requireCoreValue(session, "Project Session creation");
+  if (!isRecord(value) || typeof value.id !== "string") {
     throw new Error("Project Session creation returned no session id");
   }
-  return session.id;
+  return value.id;
+}
+
+async function waitForProjectDraft(page: Page, projectId: string): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const tasks = await invokeIpc(page, "workspace:tasks:list", projectId, { first: 20 });
+        if (!isRecord(tasks) || !Array.isArray(tasks.items)) return 0;
+        return tasks.items.filter((item) => isRecord(item) && item.thread === null).length;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(1);
 }
 
 function pendingStartInput(input: {
@@ -219,6 +255,10 @@ async function waitForPendingThread(page: Page, clientThreadId: string): Promise
         if (result.state === "succeeded" && typeof result.threadId === "string") {
           resolvedThreadId = result.threadId;
         }
+        if (result.state === "failed") {
+          const pending = await invokeIpc(page, "codex:pending-worktrees:list");
+          return `failed: ${JSON.stringify({ pending, resolution: result })}`;
+        }
         return String(result.state ?? "missing");
       },
       { timeout: 45_000 },
@@ -228,25 +268,9 @@ async function waitForPendingThread(page: Page, clientThreadId: string): Promise
   return resolvedThreadId;
 }
 
-test("keeps a pre-checkout failure in the creation state and renders exact recovery actions @subscription-quota", async () => {
+test("keeps a pre-checkout failure in the creation state and renders exact recovery actions", async () => {
   test.setTimeout(90_000);
-  test.skip(
-    !subscriptionE2eAuthorized,
-    "Set NODEX_ALLOW_SUBSCRIPTION_E2E=1 only after the user approves subscription quota use",
-  );
-  const authPath = resolveCodexAuthPath();
-  if (authPath === null) {
-    test.skip(true, "A Codex auth.json is required for a real Composer E2E");
-    return;
-  }
-  const harness = await ElectronScenarioHarness.create({
-    label: "worktree-failure",
-    codex: "copy-auth-and-config",
-    sourceCodexHome: path.dirname(authPath),
-    cwd: repositoryRoot,
-    environment: worktreeElectronEnvironment,
-    prepareAgentRuntime: false,
-  });
+  const harness = await createWorktreeHarness("worktree-failure");
   let fixtureRoot: string | undefined;
   try {
     fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ndx-wt-fail-"));
@@ -254,7 +278,7 @@ test("keeps a pre-checkout failure in the creation state and renders exact recov
     const fixture = createRepository(fixtureRoot);
     fs.mkdirSync(managedRoot, { recursive: true });
     const page = await harness.launch();
-    await createProject(page, [fixture.sourceRoot]);
+    const projectId = await createProject(page, [fixture.sourceRoot]);
     await invokeIpc(page, "worktrees:settings:update", {
       worktreeRoot: managedRoot,
       autoDeleteEnabled: false,
@@ -270,6 +294,7 @@ test("keeps a pre-checkout failure in the creation state and renders exact recov
         exact: true,
       })
       .click();
+    await waitForProjectDraft(page, projectId);
     const composer = page.locator('[contenteditable="true"][aria-label="Do anything"]');
     await composer.fill("Invalid Git source E2E");
     await page.getByRole("button", { name: "Start in" }).click();
@@ -364,27 +389,11 @@ test("keeps a pre-checkout failure in the creation state and renders exact recov
   }
 });
 
-test("creates a new-worktree Task through the real Composer without changing renderer identity @subscription-quota", async () => {
+test("creates a new-worktree Task through the real Composer without changing renderer identity", async () => {
   test.setTimeout(120_000);
-  test.skip(
-    !subscriptionE2eAuthorized,
-    "Set NODEX_ALLOW_SUBSCRIPTION_E2E=1 only after the user approves subscription quota use",
-  );
-  const authPath = resolveCodexAuthPath();
-  if (authPath === null) {
-    test.skip(true, "A Codex auth.json is required for a real new-thread E2E");
-    return;
-  }
   // Core uses a Unix-domain socket under this root; keep the prefix short enough
   // to leave room for the generated profile/run/core endpoint on macOS.
-  const harness = await ElectronScenarioHarness.create({
-    label: "worktree-composer",
-    codex: "copy-auth-and-config",
-    sourceCodexHome: path.dirname(authPath),
-    cwd: repositoryRoot,
-    environment: worktreeElectronEnvironment,
-    prepareAgentRuntime: false,
-  });
+  const harness = await createWorktreeHarness("worktree-composer");
   let fixtureRoot: string | undefined;
   try {
     fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ndx-wt-ui-"));
@@ -392,7 +401,7 @@ test("creates a new-worktree Task through the real Composer without changing ren
     const fixture = createRepository(fixtureRoot);
     fs.mkdirSync(managedRoot, { recursive: true });
     const page = await harness.launch();
-    await createProject(page, [fixture.sourceRoot]);
+    const projectId = await createProject(page, [fixture.sourceRoot]);
     await invokeIpc(page, "worktrees:settings:update", {
       worktreeRoot: managedRoot,
       autoDeleteEnabled: false,
@@ -408,6 +417,7 @@ test("creates a new-worktree Task through the real Composer without changing ren
     });
     await expect(openProjectChat).toBeVisible({ timeout: 20_000 });
     await openProjectChat.click();
+    await waitForProjectDraft(page, projectId);
 
     const composer = page.locator('[contenteditable="true"][aria-label="Do anything"]');
     await expect(composer).toBeVisible({ timeout: 20_000 });
@@ -442,33 +452,16 @@ test("creates a new-worktree Task through the real Composer without changing ren
       .toBe("captured");
     if (clientThreadId === null) throw new Error("Composer worktree returned no client id");
 
-    await waitForPendingThread(page, clientThreadId);
+    const threadId = await waitForPendingThread(page, clientThreadId);
     const threadPage = page.getByTestId("session-thread-page");
     const prompt = threadPage.getByText("Report the current working directory.", { exact: true });
     await expect(prompt).toBeVisible({ timeout: 20_000 });
-
-    const workedForButton = threadPage.getByRole("button", { name: /^Worked for / }).first();
-    await expect(workedForButton).toBeVisible({ timeout: 90_000 });
-    await expect(workedForButton).toHaveAttribute("aria-expanded", "false");
-    await workedForButton.click();
-
-    const worktreeButton = threadPage.getByRole("button", { name: "Worktree created" });
-    await expect(worktreeButton).toBeVisible({ timeout: 20_000 });
-    await expect(worktreeButton).toHaveAttribute("aria-expanded", "false");
-    const worktreeButtonHandle = await worktreeButton.elementHandle();
-    if (worktreeButtonHandle === null) throw new Error("Worktree activity button disappeared");
-    expect(
-      await prompt.evaluate(
-        (node, worktree) =>
-          Boolean(node.compareDocumentPosition(worktree) & Node.DOCUMENT_POSITION_FOLLOWING),
-        worktreeButtonHandle,
-      ),
-    ).toBe(true);
-
-    await worktreeButton.click();
-    await expect(
-      threadPage.getByText("[info] Starting worktree creation", { exact: false }),
-    ).toBeVisible();
+    await expect(threadPage.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+    await expect(threadPage.getByText("Thread could not be restored", { exact: true })).toHaveCount(
+      0,
+    );
+    const snapshot = await invokeIpc(page, "codex:thread:snapshot:request", threadId);
+    expect(worktreeInitCount(snapshot)).toBe(1);
     expect(
       rendererErrors.filter((message) => message.includes("IdentityPromotionConflict")),
     ).toEqual([]);
@@ -485,25 +478,9 @@ test("creates a new-worktree Task through the real Composer without changing ren
   }
 });
 
-test("keeps a managed Task recoverable across renderer and full app restarts @subscription-quota", async () => {
+test("keeps a managed Task recoverable across renderer and full app restarts", async () => {
   test.setTimeout(180_000);
-  test.skip(
-    !subscriptionE2eAuthorized,
-    "Set NODEX_ALLOW_SUBSCRIPTION_E2E=1 only after the user approves subscription quota use",
-  );
-  const authPath = resolveCodexAuthPath();
-  if (authPath === null) {
-    test.skip(true, "A Codex auth.json is required for a real new-thread E2E");
-    return;
-  }
-  const harness = await ElectronScenarioHarness.create({
-    label: "worktree-restart",
-    codex: "copy-auth-and-config",
-    sourceCodexHome: path.dirname(authPath),
-    cwd: repositoryRoot,
-    environment: worktreeElectronEnvironment,
-    prepareAgentRuntime: false,
-  });
+  const harness = await createWorktreeHarness("worktree-restart");
   let fixtureRoot: string | undefined;
   let managedPath = "";
   try {
@@ -569,8 +546,9 @@ test("keeps a managed Task recoverable across renderer and full app restarts @su
         }),
       ]),
     });
-    await invokeIpc(page, "project-sessions:set-pinned", projectSessionId, {
-      pinned: true,
+    await invokeIpc(page, "project-sessions:set-pinned", {
+      operationId: createBoundedOperationId("e2e.worktree.session.pin"),
+      payload: { sessionId: projectSessionId, pinned: true },
     });
 
     await expect

@@ -21,4 +21,10 @@ The New Chat home is one focused composition: a decorative Nodex mark, a Project
 
 The heading uses normal tracking and asks what to build in the selected Project. The entire trailing `Project?` text is the selector trigger with a dotted underline. Its searchable picker reuses the shared semantic dropdown surface, selected-row check, Project creation action, and conditional projectless action.
 
+## First-send transition
+
+- Enter and the Send button share one submission lifecycle. After a successful start, both clear the current Composer draft and show the same first user message; a failed start preserves the draft.
+- A durable Session-to-Thread binding may arrive before the initiating renderer has committed the first optimistic turn. During that interval, the New Chat composition remains visible. It is replaced only when the first user turn can be shown, so the surface never passes through an empty attached-Thread frame.
+- Backend discovery and binding must preserve the active Codex Composer subtree while a New Chat Session becomes a Codex Thread. Draft cleanup follows the latest Composer identity after that binding, including the Project Agent Dock surface.
+
 Visual motion, edge quality, and repeated-click feel are accepted through manual review in the real New Chat surface. Storybook and browser automation are not release gates for this feature.

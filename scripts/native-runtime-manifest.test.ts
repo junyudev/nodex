@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+
+import { parse as parseToml } from "smol-toml";
 import { describe, expect, test } from "vite-plus/test";
 
 import { parseNativeRuntimeManifest, swiftTargetForNativeRuntime } from "./native-runtime-manifest";
@@ -7,7 +10,7 @@ const manifest = {
   targetPlatform: "darwin",
   targetArch: "arm64",
   rustTarget: "aarch64-apple-darwin",
-  minimumMacOS: "12.0",
+  minimumMacOS: "15.0",
   productVersion: "0.1.10",
   binaries: [
     {
@@ -56,9 +59,25 @@ const manifest = {
 };
 
 describe("native runtime manifest", () => {
+  test("keeps Cargo and both macOS linkers on the product deployment target", () => {
+    const config = parseToml(readFileSync(".cargo/config.toml", "utf8"));
+
+    expect(config).toMatchObject({
+      env: { MACOSX_DEPLOYMENT_TARGET: "15.0" },
+      target: {
+        "aarch64-apple-darwin": {
+          rustflags: ["-C", "link-arg=-mmacosx-version-min=15.0"],
+        },
+        "x86_64-apple-darwin": {
+          rustflags: ["-C", "link-arg=-mmacosx-version-min=15.0"],
+        },
+      },
+    });
+  });
+
   test("maps package architectures to valid Swift target triples", () => {
-    expect(swiftTargetForNativeRuntime("arm64")).toBe("arm64-apple-macos12.0");
-    expect(swiftTargetForNativeRuntime("x64")).toBe("x86_64-apple-macos12.0");
+    expect(swiftTargetForNativeRuntime("arm64")).toBe("arm64-apple-macos15.0");
+    expect(swiftTargetForNativeRuntime("x64")).toBe("x86_64-apple-macos15.0");
   });
 
   test("accepts the complete architecture-bound package inventory", () => {

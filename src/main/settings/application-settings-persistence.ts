@@ -19,6 +19,8 @@ import {
   type CommandKeymapState,
 } from "../../shared/command-keybindings";
 import type {
+  AcpAgentInstanceConfig,
+  AcpAgentSettings,
   AppUpdateSettings,
   BackupSettings,
   CodexDeveloperInstructionSettings,
@@ -32,6 +34,7 @@ import type {
   ThreadNotificationSettings,
   ThreadNotificationTurnMode,
   UpdateAppUpdateSettingsInput,
+  UpdateAcpAgentSettingsInput,
   UpdateBackupSettingsInput,
   UpdateCodexDeveloperInstructionSettingsInput,
   UpdateCodexGitSettingsInput,
@@ -84,6 +87,7 @@ interface ServerTomlConfig {
   worktree_auto_delete_enabled?: boolean;
   worktree_auto_delete_limit?: number;
   execution_hosts?: unknown[];
+  acp_agent_instances?: unknown[];
 }
 
 interface RootTomlConfig extends Record<string, unknown> {
@@ -120,6 +124,7 @@ const CODEX_THREAD_DETAIL_LEVEL_DEFAULT: CodexThreadDetailLevel = "STEPS_COMMAND
 const CODEX_GIT_BRANCH_PREFIX_DEFAULT = "codex/";
 const WORKTREE_AUTO_DELETE_LIMIT_DEFAULT = 15;
 const EXECUTION_HOST_LIMIT = 32;
+const ACP_AGENT_INSTANCE_LIMIT = 16;
 
 function serverSectionFromDocument(
   parsed: SettingsTomlDocument,
@@ -919,6 +924,135 @@ export function updateCodexExecutionHostSettings(
   const next = { ...loadProfileServerTomlConfig(source), execution_hosts: normalized };
   writeProfileServerTomlConfig(source, next);
   return getCodexExecutionHostSettings(source);
+}
+
+function normalizeAcpAgentInstanceConfig(value: unknown): AcpAgentInstanceConfig {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("ACP Agent instance must be an object");
+  }
+  const input = value as Record<string, unknown>;
+  const allowedKeys = new Set([
+    "id",
+    "agentDefinitionId",
+    "packageRoot",
+    "nodeExecutable",
+    "enabled",
+    "credentials",
+    "proxy",
+  ]);
+  if (Object.keys(input).some((key) => !allowedKeys.has(key))) {
+    throw new Error("ACP Agent instance contains unsupported keys");
+  }
+  const requiredString = (key: string, maximum: number): string => {
+    const candidate = input[key];
+    if (typeof candidate !== "string") throw new Error(`${key} must be a string`);
+    const trimmed = candidate.trim();
+    if (trimmed.length === 0 || trimmed.length > maximum) {
+      throw new Error(`${key} must contain 1-${maximum} characters`);
+    }
+    return trimmed;
+  };
+  const id = requiredString("id", 128);
+  const agentDefinitionId = requiredString("agentDefinitionId", 128);
+  const packageRoot = requiredString("packageRoot", 4_096);
+  const nodeExecutable = requiredString("nodeExecutable", 4_096);
+  if (!path.isAbsolute(packageRoot) || !path.isAbsolute(nodeExecutable)) {
+    throw new Error("ACP Agent package and Node executable paths must be absolute");
+  }
+  if (typeof input.enabled !== "boolean") throw new Error("enabled must be a boolean");
+  if (input.proxy !== "inherit-host" && input.proxy !== "isolated") {
+    throw new Error("proxy must be inherit-host or isolated");
+  }
+  const credentials = input.credentials;
+  if (typeof credentials !== "object" || credentials === null || Array.isArray(credentials)) {
+    throw new Error("credentials must be an object");
+  }
+  const credentialRecord = credentials as Record<string, unknown>;
+  if (credentialRecord.kind === "inherit-host-profile") {
+    if (Object.keys(credentialRecord).some((key) => key !== "kind")) {
+      throw new Error("Inherited credentials contain unsupported keys");
+    }
+    return {
+      id,
+      agentDefinitionId,
+      packageRoot,
+      nodeExecutable,
+      enabled: input.enabled,
+      credentials: { kind: "inherit-host-profile" },
+      proxy: input.proxy,
+    };
+  }
+  if (credentialRecord.kind !== "isolated-home") {
+    throw new Error("credentials.kind must be inherit-host-profile or isolated-home");
+  }
+  if (Object.keys(credentialRecord).some((key) => key !== "kind" && key !== "home")) {
+    throw new Error("Isolated credentials contain unsupported keys");
+  }
+  if (typeof credentialRecord.home !== "string" || !path.isAbsolute(credentialRecord.home)) {
+    throw new Error("Isolated credential home must be an absolute path");
+  }
+  return {
+    id,
+    agentDefinitionId,
+    packageRoot,
+    nodeExecutable,
+    enabled: input.enabled,
+    credentials: { kind: "isolated-home", home: credentialRecord.home.trim() },
+    proxy: input.proxy,
+  };
+}
+
+export function getAcpAgentSettings(source: ApplicationSettingsDocumentSource): AcpAgentSettings {
+  const configured = loadProfileServerTomlConfig(source).acp_agent_instances;
+  const instances = Array.isArray(configured) ? configured : [];
+  if (instances.length > ACP_AGENT_INSTANCE_LIMIT) {
+    throw new Error(`ACP Agent settings exceed the ${ACP_AGENT_INSTANCE_LIMIT} instance bound`);
+  }
+  const normalized = instances.map((instance, index) => {
+    try {
+      return normalizeAcpAgentInstanceConfig(instance);
+    } catch (cause) {
+      throw new Error(
+        `Invalid ACP Agent instance at index ${index}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      );
+    }
+  });
+  const identities = new Set<string>();
+  for (const instance of normalized) {
+    if (identities.has(instance.id))
+      throw new Error(`Duplicate ACP Agent instance id: ${instance.id}`);
+    identities.add(instance.id);
+  }
+  return { instances: normalized };
+}
+
+export function updateAcpAgentSettings(
+  input: UpdateAcpAgentSettingsInput,
+  source: ApplicationSettingsDocumentSource,
+): AcpAgentSettings {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    Array.isArray(input) ||
+    Object.keys(input).some((key) => key !== "instances") ||
+    !Array.isArray(input.instances)
+  ) {
+    throw new Error("Invalid ACP Agent settings update");
+  }
+  if (input.instances.length > ACP_AGENT_INSTANCE_LIMIT) {
+    throw new Error(`ACP Agent settings exceed the ${ACP_AGENT_INSTANCE_LIMIT} instance bound`);
+  }
+  const normalized = input.instances.map(normalizeAcpAgentInstanceConfig);
+  const identities = new Set<string>();
+  for (const instance of normalized) {
+    if (identities.has(instance.id))
+      throw new Error(`Duplicate ACP Agent instance id: ${instance.id}`);
+    identities.add(instance.id);
+  }
+  const next = { ...loadProfileServerTomlConfig(source), acp_agent_instances: normalized };
+  writeProfileServerTomlConfig(source, next);
+  return getAcpAgentSettings(source);
 }
 
 export function getCommandKeybindingOverrides(

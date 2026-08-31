@@ -1,5 +1,5 @@
 import type { AgentImportSourceKind } from "../../shared/agent-import";
-import type { UpdateCodexGitSettingsInput } from "../../shared/types";
+import type { UpdateAcpAgentSettingsInput, UpdateCodexGitSettingsInput } from "../../shared/types";
 import type {
   RestoreBackupInput,
   UpdateBackupSettingsInput,
@@ -82,11 +82,35 @@ const updateGitSettingsCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
+const updateAcpAgentSettingsCommand = defineRendererCommand({
+  key: "workbench_settings.acp_agents.update",
+  channel: "settings:acp-agents:update",
+  authority: "main",
+  owner: "AgentBackendSettings",
+  protocol: { kind: "returned_value" },
+});
+
 const applyAgentImportCommand = defineRendererCommand({
   key: "agent_import.apply",
   channel: "agent-import:apply",
   authority: "main",
   owner: "AgentImportSettings",
+  protocol: { kind: "returned_value" },
+});
+
+const unarchiveChatCommand = defineRendererCommand({
+  key: "archived_chats.unarchive",
+  channel: "codex:thread:unarchive",
+  authority: "external",
+  owner: "ArchivedChatsSettings",
+  protocol: { kind: "returned_value" },
+});
+
+const deleteArchivedChatCommand = defineRendererCommand({
+  key: "archived_chats.delete",
+  channel: "codex:thread:delete-archived",
+  authority: "external",
+  owner: "ArchivedChatsSettings",
   protocol: { kind: "returned_value" },
 });
 
@@ -138,6 +162,11 @@ export const readGitSettings = () => invokeRendererQuery("settings:git:get");
 export const updateGitSettings = (input: UpdateCodexGitSettingsInput) =>
   invokePlainCommand(updateGitSettingsCommand, input);
 
+export const readAcpAgentSettings = () => invokeRendererQuery("settings:acp-agents:get");
+
+export const updateAcpAgentSettings = (input: UpdateAcpAgentSettingsInput) =>
+  invokePlainCommand(updateAcpAgentSettingsCommand, input);
+
 export const scanAgentImport = (sourceKind: AgentImportSourceKind) =>
   invokeRendererQuery("agent-import:scan", { sourceKind });
 
@@ -146,3 +175,12 @@ export const scanPickedAgentImportHome = (sourceKind: AgentImportSourceKind) =>
 
 export const applyAgentImport = (scanId: string, itemIds: readonly string[]) =>
   invokePlainCommand(applyAgentImportCommand, { itemIds, scanId });
+
+export const readArchivedChats = (refresh: boolean) =>
+  invokeRendererQuery("codex:sidebar:snapshot", { includeArchived: true, refresh });
+
+export const unarchiveChat = (threadId: string) =>
+  invokePlainCommand(unarchiveChatCommand, threadId);
+
+export const deleteArchivedChat = (threadId: string) =>
+  invokePlainCommand(deleteArchivedChatCommand, threadId);

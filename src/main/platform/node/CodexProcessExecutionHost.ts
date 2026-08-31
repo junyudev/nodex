@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { live as sessionLive } from "../../codex-runtime/CodexAppServerSession";
 import type { CodexExecutionHostConfig } from "../../codex-runtime/CodexEndpointMap";
 import { codexRuntimeError } from "../../codex-runtime/CodexRuntimeError";
+import { standaloneCodexAppServerArgs } from "../../../shared/codex-app-server-launch";
 
 export interface CodexAppServerClientOptions {
   readonly binaryPath?: string;
@@ -64,8 +65,8 @@ export const makeCodexProcessExecutionHost = (
       sessionLive({
         hostId,
         generation,
-        command: options.binaryPath ?? "codex",
-        args: options.args ?? ["app-server", "--listen", "stdio://"],
+        command: options.binaryPath ?? "codex-app-server",
+        args: options.args ?? standaloneCodexAppServerArgs(),
         env: {},
         resolveEnv,
         forceTermination: "2 seconds",

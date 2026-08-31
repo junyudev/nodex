@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
+import { AGENT_RUNTIME_LAYOUT_VERSION } from "../../shared/codex-runtime-metadata";
 import { writeBrowserRuntimeFixture } from "./browser-runtime-test-fixture";
 import { resolveCodexRuntime } from "./codex-runtime";
 
@@ -14,15 +15,15 @@ function writeRuntime(rootPath: string): void {
       "codex-package.json",
       JSON.stringify({
         layoutVersion: 1,
-        version: "0.146.0",
+        version: "0.152.0",
         target: "aarch64-apple-darwin",
-        variant: "open-interpreter",
-        entrypoint: "bin/interpreter",
+        variant: "codex-app-server",
+        entrypoint: "bin/codex-app-server",
         resourcesDir: "codex-resources",
         pathDir: "codex-path",
       }),
     ],
-    ["bin/interpreter", "#!/bin/sh\necho interpreter\n"],
+    ["bin/codex-app-server", "#!/bin/sh\necho codex-app-server\n"],
     ["bin/codex-code-mode-host", "#!/bin/sh\necho host\n"],
     ["codex-path/rg", "#!/bin/sh\necho rg\n"],
     ["codex-resources/zsh/bin/zsh", "#!/bin/sh\necho zsh\n"],
@@ -43,32 +44,36 @@ function writeRuntime(rootPath: string): void {
   fs.writeFileSync(
     path.join(rootPath, "agent-runtime.json"),
     JSON.stringify({
-      artifactRelease: {
+      releaseAsset: {
         archiveSha256: "1".repeat(64),
-        assetName: "open-interpreter-package-aarch64-apple-darwin.tar.gz",
-        repository: "junyudev/nodex",
-        tag: "agent-runtime-v0.146.0-855ab60c",
+        archiveSize: 1,
+        assetName: "codex-app-server-package-aarch64-apple-darwin.tar.gz",
+        entrypointSha256: createHash("sha256")
+          .update(artifactBodies.get("bin/codex-app-server") ?? "")
+          .digest("hex"),
+        repository: "openai/codex",
+        tag: "rust-v0.152.0",
       },
       artifacts,
-      codexCompatibilityVersion: "0.146.0",
-      entrypoint: "bin/interpreter",
-      layoutVersion: 3,
+      appServerRuntimeVersion: "0.152.0",
+      entrypoint: "bin/codex-app-server",
+      layoutVersion: AGENT_RUNTIME_LAYOUT_VERSION,
       packageManifest: {
         layoutVersion: 1,
-        version: "0.146.0",
+        version: "0.152.0",
         target: "aarch64-apple-darwin",
-        variant: "open-interpreter",
-        entrypoint: "bin/interpreter",
+        variant: "codex-app-server",
+        entrypoint: "bin/codex-app-server",
         resourcesDir: "codex-resources",
         pathDir: "codex-path",
       },
-      runtimeFamily: "open-interpreter",
-      runtimeVersion: "0.146.0",
+      runtimeFamily: "codex-app-server",
+      protocolSchemaFingerprint: "2".repeat(64),
       searchPaths: ["codex-path"],
       sourceRevision: {
         commit: "855ab60c0e10dac6bc89f3e248cba3746d44f034",
-        patches: [],
-        repository: "openinterpreter/openinterpreter",
+        repository: "openai/codex",
+        tag: "rust-v0.152.0",
       },
       targetArch: "arm64",
       targetPlatform: "darwin",
@@ -97,7 +102,7 @@ function makeStagedRuntimeFixture(): { cleanup: () => void; projectRootPath: str
 }
 
 describe("codex-runtime", () => {
-  test("resolves the bundled Open Interpreter runtime from Electron Resources", () => {
+  test("resolves the bundled Codex app-server runtime from Electron Resources", () => {
     const fixture = makeBundledRuntimeFixture();
     try {
       const runtime = resolveCodexRuntime({
@@ -105,13 +110,13 @@ describe("codex-runtime", () => {
         resourcesPath: fixture.resourcesPath,
       });
       expect(runtime.source).toBe("bundled");
-      expect(runtime.runtimeFamily).toBe("open-interpreter");
-      expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin", "interpreter"));
+      expect(runtime.runtimeFamily).toBe("codex-app-server");
+      expect(runtime.binaryPath).toBe(path.join(fixture.resourcesPath, "bin", "codex-app-server"));
       expect(runtime.additionalSearchPaths).toEqual([
         path.join(fixture.resourcesPath, "codex-path"),
       ]);
-      expect(runtime.version).toBe("0.146.0");
-      expect(runtime.codexCompatibilityVersion).toBe("0.146.0");
+      expect(runtime.version).toBe("0.152.0");
+      expect(runtime.appServerRuntimeVersion).toBe("0.152.0");
       expect(runtime.rootPath).toBe(fixture.resourcesPath);
       expect(runtime.browserRuntime).toMatchObject({
         reason: "manifest-missing",
@@ -203,9 +208,9 @@ describe("codex-runtime", () => {
         "agent-runtime",
       );
       expect(runtime.source).toBe("staged");
-      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "interpreter"));
+      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "codex-app-server"));
       expect(runtime.additionalSearchPaths).toEqual([path.join(runtimeRoot, "codex-path")]);
-      expect(runtime.version).toBe("0.146.0");
+      expect(runtime.version).toBe("0.152.0");
       expect(runtime.metadataPath).toBe(path.join(runtimeRoot, "agent-runtime.json"));
       expect(runtime.missingBinaryMessage).toBe(
         "Pinned agent runtime is missing or incomplete. Run `pnpm run stage:codex-runtime:mac`.",
@@ -215,7 +220,7 @@ describe("codex-runtime", () => {
     }
   });
 
-  test("retains the primary app server while exposing the signed Desktop Tool launcher", () => {
+  test("rejects a Browser artifact pair without an exact conformance record", () => {
     const fixture = makeStagedRuntimeFixture();
     try {
       const runtimeRoot = path.join(
@@ -225,7 +230,7 @@ describe("codex-runtime", () => {
         "agent-runtime",
       );
       writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY), {
-        codexCompatibilityVersion: "0.146.0",
+        codexCompatibilityVersion: "0.152.0",
       });
       const runtime = resolveCodexRuntime({
         browserRuntimePlatformArtifactVerifier: () => null,
@@ -233,12 +238,11 @@ describe("codex-runtime", () => {
         projectRootPath: fixture.projectRootPath,
       });
 
-      expect(runtime.browserRuntime.status).toBe("available");
-      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "interpreter"));
-      if (runtime.browserRuntime.status !== "available") return;
-      expect(runtime.browserRuntime.bundle.paths.codexCli).toBe(
-        path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY, "bin", "codex"),
-      );
+      expect(runtime.browserRuntime).toMatchObject({
+        reason: "untested-runtime-pair",
+        status: "unavailable",
+      });
+      expect(runtime.binaryPath).toBe(path.join(runtimeRoot, "bin", "codex-app-server"));
     } finally {
       fixture.cleanup();
     }

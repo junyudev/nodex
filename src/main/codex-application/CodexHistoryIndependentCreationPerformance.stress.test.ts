@@ -82,6 +82,7 @@ const protocolThread = (threadId: string, overrides: Partial<Thread> = {}): Thre
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 100,
@@ -115,9 +116,7 @@ const conversationSnapshot = (
     source: { parentThreadId: null },
     cwd: "/workspace",
     executionProfile: {
-      providerId: "openai",
       modelId: "gpt-test",
-      harnessId: null,
       reasoningEffort: "high",
       serviceTier: null,
     },

@@ -47,17 +47,15 @@ describe("matchesBrowserSidebarTabIdentity", () => {
 });
 
 describe("Browser host route partition", () => {
-  test("round trips renderer, host, mount, and logical route identity", () => {
+  test("round trips the physical renderer host independently from presentation generations", () => {
     const partition = makeBrowserSidebarRoutePartition(identity, {
       rendererInstanceId: "renderer:one",
       hostGeneration: 3,
-      mountGeneration: 5,
     });
     expect(parseBrowserSidebarHostRoutePartition(partition)).toEqual({
       ...identity,
       rendererInstanceId: "renderer:one",
       hostGeneration: 3,
-      mountGeneration: 5,
     });
   });
 
@@ -67,7 +65,7 @@ describe("Browser host route partition", () => {
     ).toBeNull();
     expect(
       parseBrowserSidebarHostRoutePartition(
-        `${makeBrowserSidebarRoutePartition(identity)}:host:renderer:0:1`,
+        `${makeBrowserSidebarRoutePartition(identity)}:host:renderer:0`,
       ),
     ).toBeNull();
   });

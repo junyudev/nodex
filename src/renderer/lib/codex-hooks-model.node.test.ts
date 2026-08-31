@@ -5,6 +5,7 @@ import {
   groupCodexHooksListEntries,
   isCodexHookActive,
   resolveSelectedCodexHooksEntry,
+  summarizeCodexHookEvents,
 } from "./codex-hooks-model";
 
 type CommandHookMetadata = Extract<HookMetadata, { handlerType: "command" }>;
@@ -41,6 +42,19 @@ test("managed hooks are active while review-needed hooks are not", () => {
   expect(isCodexHookActive(hook({ key: "new", source: "user", trustStatus: "untrusted" }))).toBe(
     false,
   );
+});
+
+test("summarizes interrupt hooks as a first-class event", () => {
+  const summaries = summarizeCodexHookEvents([
+    hook({ key: "interrupt", source: "user", eventName: "interrupt" }),
+  ]);
+
+  expect(summaries.at(-1)).toEqual({
+    eventName: "interrupt",
+    active: 1,
+    installed: 1,
+    needsReview: 0,
+  });
 });
 
 describe("Codex Hooks source grouping", () => {

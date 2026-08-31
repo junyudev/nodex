@@ -5,8 +5,8 @@ export type NativeRuntimeArchitecture = "arm64" | "x64";
 
 export const swiftTargetForNativeRuntime = (
   architecture: NativeRuntimeArchitecture,
-): "arm64-apple-macos12.0" | "x86_64-apple-macos12.0" =>
-  architecture === "arm64" ? "arm64-apple-macos12.0" : "x86_64-apple-macos12.0";
+): "arm64-apple-macos15.0" | "x86_64-apple-macos15.0" =>
+  architecture === "arm64" ? "arm64-apple-macos15.0" : "x86_64-apple-macos15.0";
 
 export type NativeRuntimeBinaryName =
   | "nodex"
@@ -26,7 +26,7 @@ export interface NativeRuntimeBinaryManifest {
 
 export interface NativeRuntimeManifest {
   readonly binaries: readonly NativeRuntimeBinaryManifest[];
-  readonly minimumMacOS: "12.0";
+  readonly minimumMacOS: "15.0";
   readonly productVersion: string;
   readonly rustTarget: "aarch64-apple-darwin" | "x86_64-apple-darwin";
   readonly schemaVersion: 4;
@@ -107,8 +107,8 @@ export function parseNativeRuntimeManifest(value: unknown): NativeRuntimeManifes
   if (value.rustTarget !== expectedRustTarget) {
     throw new Error("Native runtime Rust target does not match its architecture");
   }
-  if (value.minimumMacOS !== "12.0") {
-    throw new Error("Native runtime minimum macOS must be 12.0");
+  if (value.minimumMacOS !== "15.0") {
+    throw new Error("Native runtime minimum macOS must be 15.0");
   }
   const productVersion = requireString(value.productVersion, "productVersion");
   if (
@@ -129,7 +129,7 @@ export function parseNativeRuntimeManifest(value: unknown): NativeRuntimeManifes
   }
   return {
     binaries,
-    minimumMacOS: "12.0",
+    minimumMacOS: "15.0",
     productVersion,
     rustTarget: expectedRustTarget,
     schemaVersion: 4,

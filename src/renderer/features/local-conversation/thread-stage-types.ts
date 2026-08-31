@@ -66,12 +66,7 @@ import type { CodexTurnScopedConversationRequest } from "./conversation-request-
 import type { NewChatProjectSelectorOption } from "../../lib/new-chat-project-selector";
 import type { NewChatStartInTarget } from "../../lib/new-chat-start-in-selector";
 import type { ThreadWorkedForTiming } from "./thread-worked-for-time";
-import type {
-  AgentExecutionProfile,
-  AgentExecutionProfileChange,
-  AgentProviderCatalog,
-  AgentProviderCredentialMutationResult,
-} from "../../../shared/agent-runtime";
+import type { CodexExecutionProfile } from "../../../shared/codex-execution-profile";
 import type { ComposerIntelligenceSelection } from "./view/composer/composer-intelligence-types";
 import type { CommandShortcutPresentation } from "../../../shared/command-keybindings";
 import type { LocalConversationAttachmentState } from "./conversation-attachment-state";
@@ -193,7 +188,7 @@ export interface ThreadPlanSidePanelState {
   activeRightPanelTabId: string | null;
 }
 
-export type ThreadOpenSubagentStatus = "active" | "waiting" | "done";
+export type ThreadOpenSubagentStatus = "active" | "waiting" | "done" | "unknown";
 
 export interface ThreadSubagentDiffStats {
   linesAdded: number;
@@ -207,6 +202,8 @@ export interface ThreadOpenSubagentPayload {
   spawnModel: string | null;
   status: ThreadOpenSubagentStatus;
   statusSummary: string | null;
+  /** Directory-verified selected detail interaction eligibility. */
+  canInteract?: boolean;
   showInlineActivity?: boolean;
   diffStats: ThreadSubagentDiffStats | null;
 }
@@ -253,9 +250,7 @@ export interface ThreadStageRouteInput {
   connection: CodexConnectionState;
   account: CodexAccountSnapshot | null;
   availableModels: CodexModelOption[];
-  agentProviderCatalog?: AgentProviderCatalog | null;
-  agentProviderCatalogLoading?: boolean;
-  selectedExecutionProfile?: AgentExecutionProfile | null;
+  selectedExecutionProfile?: CodexExecutionProfile | null;
   collaborationModes: CodexCollaborationModePreset[];
   selectedCollaborationMode: CodexCollaborationModeKind;
   selectedModel: string;
@@ -288,17 +283,6 @@ export interface ThreadStageActions {
     selection: ComposerIntelligenceSelection,
     options?: { collaborationMode?: CodexCollaborationModeKind },
   ) => Promise<void>;
-  onExecutionProfileChange?: (
-    profile: AgentExecutionProfile,
-    change?: AgentExecutionProfileChange,
-  ) => void | Promise<void>;
-  onProviderCredentialSet?: (
-    providerId: string,
-    apiKey: string,
-  ) => Promise<AgentProviderCredentialMutationResult>;
-  onProviderCredentialDelete?: (
-    providerId: string,
-  ) => Promise<AgentProviderCredentialMutationResult>;
   onPersonalityChange?: (personality: CodexPersonality) => void | Promise<void>;
   onPermissionModeChange: (mode: CodexPermissionMode) => void | Promise<void>;
   onQueueingEnabledChange: (enabled: boolean) => void;
@@ -1145,9 +1129,7 @@ export interface ThreadFooterModel {
   selectedModel: string;
   modelPickerShortcut: CommandShortcutPresentation | null;
   availableModels: CodexModelOption[];
-  agentProviderCatalog?: AgentProviderCatalog | null;
-  agentProviderCatalogLoading?: boolean;
-  executionProfile?: AgentExecutionProfile | null;
+  executionProfile?: CodexExecutionProfile | null;
   executionIdentityLocked?: boolean;
   selectedReasoningEffort: CodexReasoningEffort;
   selectedPersonality?: CodexPersonality;

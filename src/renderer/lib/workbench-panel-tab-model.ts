@@ -7,6 +7,7 @@ import type {
 import type {
   CodexScheduledAutomationCreateInput,
   CodexScheduledAutomationUpdateInput,
+  CodexSelectedSubagentHydrateResult,
   PanelId,
   WorkbenchTabProjection,
 } from "@/lib/types";
@@ -106,6 +107,15 @@ export interface BackgroundAgentPanelTab {
   subagent: ThreadOpenSubagentPayload;
 }
 
+export type SelectedSubagentHydrationState =
+  | { status: "pending"; requestId: number }
+  | {
+      status: "ready";
+      revision: number;
+      fidelity: CodexSelectedSubagentHydrateResult["fidelity"];
+      checkpoint: string | null;
+    };
+
 export interface SubagentsPanelTab {
   subagentsPanel: true;
   id: string;
@@ -116,11 +126,81 @@ export interface SubagentsPanelTab {
   rootThreadId: string;
   selectedThreadId: string | null;
   selectedDisplayName: string | null;
+  selectedCanInteract?: boolean;
+  selectedHydration: SelectedSubagentHydrationState | null;
   title: "Subagents";
   stateKey: number;
 }
 
 export type AgentPanelTab = BackgroundAgentPanelTab | SubagentsPanelTab;
+
+/**
+ * Settles only the pending route that still owns this hydration request. A close, Session prune,
+ * or newer selection removes that authority, so an old async completion cannot recreate a tab.
+ */
+export function settlePendingSubagentsPanelTab(
+  tabsBySession: Readonly<Record<string, AgentPanelTab[]>>,
+  input: {
+    readonly sessionId: string;
+    readonly tabId: string;
+    readonly requestId: number;
+    readonly tab: SubagentsPanelTab;
+  },
+): Record<string, AgentPanelTab[]> {
+  const currentTabs = tabsBySession[input.sessionId];
+  if (!currentTabs) return tabsBySession;
+
+  const index = currentTabs.findIndex((candidate) => {
+    if (!("subagentsPanel" in candidate) || candidate.id !== input.tabId) return false;
+    return (
+      candidate.selectedHydration?.status === "pending" &&
+      candidate.selectedHydration.requestId === input.requestId
+    );
+  });
+  if (index < 0) return tabsBySession;
+
+  const currentTab = currentTabs[index];
+  if (!currentTab) return tabsBySession;
+  const nextTabs = [...currentTabs];
+  nextTabs[index] = {
+    ...input.tab,
+    stateKey: currentTab.stateKey + 1,
+  };
+  return {
+    ...tabsBySession,
+    [input.sessionId]: nextTabs,
+  };
+}
+
+/**
+ * Returns every Subagents tab selecting a deleted child to its metadata overview.
+ * The panel model owns this route repair so it also covers hidden tabs and the
+ * hydration gap before the detail view has mounted an event subscription.
+ */
+export function routeDeletedSelectedSubagentsToOverview(
+  tabsBySession: Readonly<Record<string, AgentPanelTab[]>>,
+  deletedThreadId: string,
+): Record<string, AgentPanelTab[]> {
+  let changed = false;
+  const next = Object.fromEntries(
+    Object.entries(tabsBySession).map(([sessionId, tabs]) => [
+      sessionId,
+      tabs.map((tab) => {
+        if (!("subagentsPanel" in tab) || tab.selectedThreadId !== deletedThreadId) return tab;
+        changed = true;
+        return {
+          ...tab,
+          selectedThreadId: null,
+          selectedDisplayName: null,
+          selectedCanInteract: false,
+          selectedHydration: null,
+          stateKey: tab.stateKey + 1,
+        } satisfies SubagentsPanelTab;
+      }),
+    ]),
+  );
+  return changed ? next : tabsBySession;
+}
 
 export interface ProcessOutputPanelTab {
   processOutputPanel: true;

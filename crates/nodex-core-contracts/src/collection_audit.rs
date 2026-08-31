@@ -34,6 +34,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::TaskWindow { .. }
         | ProjectWorkspaceRead::SidebarOverview { .. }
         | ProjectWorkspaceRead::ChildThreadWindow { .. }
+        | ProjectWorkspaceRead::SubagentOverviewWindow { .. }
+        | ProjectWorkspaceRead::SubagentLifecycleBatch { .. }
         | ProjectWorkspaceRead::BackgroundProcessWindow { .. }
         | ProjectWorkspaceRead::ManagedWorktreeWindow { .. }
         | ProjectWorkspaceRead::PageChatWindow { .. }
@@ -51,6 +53,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ProjectlessPermissionMode
         | ProjectWorkspaceRead::Session { .. }
         | ProjectWorkspaceRead::Thread { .. }
+        | ProjectWorkspaceRead::ThreadBackendSession { .. }
+        | ProjectWorkspaceRead::SubagentOverviewItem { .. }
         | ProjectWorkspaceRead::QueuedFollowUpLedger { .. }
         | ProjectWorkspaceRead::ExecutionContext { .. }
         | ProjectWorkspaceRead::TurnAuthority { .. }

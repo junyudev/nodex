@@ -17,7 +17,7 @@ const runtimeManifest = (overrides: Record<string, unknown> = {}) => ({
     stable: "https://nodex.jyu.app/updates/stable/arm64/appcast.xml",
     nightly: "https://nodex.jyu.app/updates/nightly/arm64/appcast.xml",
   },
-  minimumMacOS: "12.0",
+  minimumMacOS: "15.0",
   publicKey: "YNySLZ74gjVAOpEdMo9OOEPvuTEMZf8fMnI+oQD7Ifs=",
   schemaVersion: 3,
   sparkleArchiveSha256: "ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9",

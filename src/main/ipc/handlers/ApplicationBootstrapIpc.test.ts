@@ -60,6 +60,9 @@ it.effect("owns only the trusted bootstrap handlers before Core is ready", () =>
       "app:flush-before-close:done",
       "app:renderer-initialization-finished",
       "app:restart",
+      "window-sessions:bootstrap",
+      "window-sessions:save-layout",
+      "window-sessions:update-bounds",
     ]);
 
     yield* Scope.close(scope, Exit.void);

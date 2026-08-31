@@ -114,6 +114,44 @@ describe("ApplicationSettings", () => {
     }),
   );
 
+  it.effect("persists bounded ACP Agent instance configuration without storing credentials", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture();
+      const settings = yield* makeApplicationSettings({ environment: {}, settingsPath });
+      const updated = yield* settings.update({
+        type: "update-acp-agents",
+        input: {
+          instances: [
+            {
+              id: "claude-main",
+              agentDefinitionId: "claude-agent-acp",
+              packageRoot: path.join(root, "claude-agent-acp"),
+              nodeExecutable: "/usr/local/bin/node",
+              enabled: true,
+              credentials: { kind: "isolated-home", home: path.join(root, "claude-home") },
+              proxy: "inherit-host",
+            },
+          ],
+        },
+      });
+
+      assert.deepEqual(updated.acpAgents.instances, [
+        {
+          id: "claude-main",
+          agentDefinitionId: "claude-agent-acp",
+          packageRoot: path.join(root, "claude-agent-acp"),
+          nodeExecutable: "/usr/local/bin/node",
+          enabled: true,
+          credentials: { kind: "isolated-home", home: path.join(root, "claude-home") },
+          proxy: "inherit-host",
+        },
+      ]);
+      const source = readFileSync(settingsPath, "utf8");
+      assert.notInclude(source, "API_KEY");
+      assert.notInclude(source, "token");
+    }),
+  );
+
   it.effect("fails closed for malformed and non-UTF-8 documents", () =>
     Effect.gen(function* () {
       for (const source of [

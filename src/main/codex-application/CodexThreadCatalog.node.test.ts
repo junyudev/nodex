@@ -35,6 +35,81 @@ const emptyCoreWindow = (kind: "project_window" | "sidebar_overview" | "task_win
           },
         } as never);
 
+const coreTask = (
+  threadId: string,
+  backendBinding:
+    | { readonly kind: "codex" }
+    | {
+        readonly kind: "acp";
+        readonly agent_definition_id: string;
+        readonly instance_config_id: string | null;
+      },
+) =>
+  ({
+    session: {
+      id: `session-${threadId}`,
+      project_id: "project-a",
+      no_thread_fallback_title: threadId,
+      display_title: threadId,
+      order: 0,
+      pinned: true,
+      pinned_order: 0,
+      archived: false,
+      archived_at: null,
+      unread: false,
+      thread_id: threadId,
+      created_at: "2026-09-02T00:00:00.000Z",
+      updated_at: "2026-09-02T00:00:00.000Z",
+    },
+    thread: {
+      thread_id: threadId,
+      session_id: `session-${threadId}`,
+      project_id: "project-a",
+      forked_from_id: null,
+      parent_thread_id: null,
+      thread_source: null,
+      service_name: null,
+      agent_nickname: null,
+      agent_role: null,
+      agent_path: null,
+      thread_name: threadId,
+      thread_preview: `${threadId} preview`,
+      backend_binding: backendBinding,
+      model_id: "gpt-test",
+      reasoning_effort: "high",
+      service_tier: null,
+      execution_host_id: "local",
+      cwd: "/repo",
+      managed_worktree_path: null,
+      projectless_output_directory: null,
+      projectless_workspace_browser_root: null,
+      status: { status_type: "idle", active_flags: [] },
+      archived: false,
+      created_at: 100,
+      updated_at: 200,
+      recency_at: 200,
+      linked_at: "2026-09-02T00:00:00.000Z",
+    },
+  }) as never;
+
+const mixedBackendWindow = (kind: "sidebar_overview" | "task_window") => {
+  const tasks = {
+    items: [
+      coreTask("thread-codex", { kind: "codex" }),
+      coreTask("thread-acp", {
+        kind: "acp",
+        agent_definition_id: "claude-code",
+        instance_config_id: null,
+      }),
+    ],
+    next_cursor: null,
+    authority: { projection_revision: 1 },
+  };
+  return {
+    value: kind === "sidebar_overview" ? { kind, pinned_tasks: tasks } : { kind, tasks },
+  } as never;
+};
+
 const catalog = (input: {
   readonly read: (request: { readonly kind: string }) => Effect.Effect<unknown>;
   readonly requestLocal?: (
@@ -103,6 +178,40 @@ it.effect("fails closed instead of draining unbounded pinned Thread pages", () =
 
       assert.strictEqual(error.operation, "list-pinned");
       assert.strictEqual(reads, CODEX_PINNED_THREAD_LIST_MAX_PAGES);
+    }),
+  ),
+);
+
+it.effect("keeps every Codex-only catalog list free of durable ACP Threads", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const service = yield* catalog({
+        read: ({ kind }) => {
+          if (kind === "sidebar_overview" || kind === "task_window") {
+            return Effect.succeed(mixedBackendWindow(kind));
+          }
+          return Effect.succeed(emptyCoreWindow(kind as never));
+        },
+      });
+
+      const [pinned, project, palette] = yield* Effect.all([
+        service.listPinned,
+        service.listProject("project-a"),
+        service.listPalette({ scope: "sidebar" }),
+      ] as const);
+
+      assert.deepEqual(pinned, ["thread-codex"]);
+      assert.deepEqual(
+        project.items.map((thread) => thread.threadId),
+        ["thread-codex"],
+      );
+      assert.deepEqual(
+        palette.map((thread) => ({
+          threadId: thread.threadId,
+          backendBinding: thread.backendBinding,
+        })),
+        [{ threadId: "thread-codex", backendBinding: { kind: "codex" } }],
+      );
     }),
   ),
 );

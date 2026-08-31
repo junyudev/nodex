@@ -102,14 +102,15 @@ ci:verify-ignored-rust-tests` prevents silent drift.
 
 ## Local Electron diagnostics
 
-`vp run test:e2e`, `vp run test:e2e:subscription`, and `vp run
-test:e2e:performance` are retained for agents and developers who need to
+`vp run test:e2e` and `vp run test:e2e:performance` are retained for agents and developers who need to
 inspect the production Electron/preload/Main/Core composition. No scheduled,
 required, nightly, performance, or release workflow invokes these commands.
 They are diagnostic evidence, not a release certificate.
 
 Each scenario owns a disposable Profile with isolated Nodex/Core/Electron
-state. Authenticated subscription cases still require explicit user approval.
+state. The local-only [`agent:smoke:paid`](paid-agent-smoke.md) runner is the
+only subscription-backed Agent E2E entry point; invoking it with one explicit
+case is the user approval. CI must never invoke it.
 Native DnD tests must continue to use the realistic mouse helper described in
 `AGENTS.md`; direct typed-transfer tests remain the scalable convergence owner.
 

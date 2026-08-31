@@ -22,10 +22,9 @@ const definition = (
   prompt: "Summarize the workspace.",
   rrule: "FREQ=DAILY;BYHOUR=9",
   model: "gpt-5",
-  model_provider: "openai",
-  harness_id: null,
   reasoning_effort: "medium",
   service_tier: null,
+  backend_binding: { kind: "codex" },
   cwds: ["/workspace"],
   execution_environment: "worktree",
   local_environment_config_path: null,
@@ -214,6 +213,105 @@ it.effect("commits Definition and Run routing before mutations return", () =>
       }),
     );
     assert.strictEqual(routing.runAutomationId("thread:run"), "daily-report");
+  }),
+);
+
+it.effect("rejects unsupported backend bindings before Definition mutations reach Core", () =>
+  Effect.gen(function* () {
+    let reads = 0;
+    let applies = 0;
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () => {
+            reads += 1;
+            return Effect.succeed(
+              readSnapshot({
+                kind: "definition",
+                item: definition({
+                  backend_binding: {
+                    kind: "acp",
+                    agent_definition_id: "claude-agent-acp",
+                    instance_config_id: "claude:default",
+                  },
+                }),
+              }),
+            );
+          },
+          apply: () => {
+            applies += 1;
+            return Effect.die("Unsupported backend mutation reached Core");
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+    const binding = {
+      kind: "acp",
+      agentDefinitionId: "claude-agent-acp",
+      instanceConfigId: "claude:default",
+    } as const;
+
+    const createError = yield* Effect.flip(
+      application.definitions.create({
+        kind: "cron",
+        name: "Unsupported",
+        prompt: "Do not run.",
+        backendBinding: binding,
+      }),
+    );
+    assert.strictEqual(createError.operation, "definitions.create");
+    assert.match(String(createError.cause), /only the Codex Agent Backend/);
+    assert.strictEqual(reads, 0);
+
+    const updateError = yield* Effect.flip(
+      application.definitions.update({
+        id: "daily-report",
+        kind: "heartbeat",
+        status: "ACTIVE",
+        name: "Unsupported",
+        prompt: "Do not run.",
+        backendBinding: binding,
+      }),
+    );
+    assert.strictEqual(updateError.operation, "definitions.update");
+    assert.match(String(updateError.cause), /only the Codex Agent Backend/);
+    assert.strictEqual(reads, 1);
+    assert.strictEqual(applies, 0);
+  }),
+);
+
+it.effect("rejects unsupported durable Definitions at the projection boundary", () =>
+  Effect.gen(function* () {
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () =>
+            Effect.succeed(
+              readSnapshot({
+                kind: "definitions",
+                window: window([
+                  definition({
+                    backend_binding: {
+                      kind: "acp",
+                      agent_definition_id: "claude-agent-acp",
+                      instance_config_id: null,
+                    },
+                  }),
+                ]),
+              }),
+            ),
+          apply: () => Effect.die("Projection attempted an Automation mutation"),
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+
+    const projectionError = yield* Effect.flip(application.definitions.list());
+    assert.strictEqual(projectionError.operation, "definitions.list");
+    assert.match(String(projectionError.cause), /only the Codex Agent Backend/);
   }),
 );
 

@@ -6,6 +6,13 @@ import path from "node:path";
 
 const statePath = process.env.NODEX_FAKE_CODEX_STATE_PATH ?? path.join(process.cwd(), "state.json");
 const logPath = process.env.NODEX_FAKE_CODEX_LOG_PATH ?? path.join(process.cwd(), "requests.jsonl");
+const automaticCompletionDelayMs = Number.parseInt(
+  process.env.NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS ?? "120",
+  10,
+);
+// This fixture implements the bounded paginated-history protocol introduced at this version.
+// Do not claim a newer generation until its additional capability contracts are implemented here.
+const appServerVersion = "0.145.0-alpha.15";
 
 const readState = () => {
   try {
@@ -38,9 +45,9 @@ const record = (method, params) => {
   fs.appendFileSync(logPath, `${JSON.stringify({ method, params })}\n`);
 };
 
-const turn = (id, status, timestamps = {}) => ({
+const turn = (id, status, timestamps = {}, items = []) => ({
   id,
-  items: [],
+  items,
   itemsView: "full",
   status,
   error: null,
@@ -59,6 +66,7 @@ const thread = (includeTurns = false) => ({
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: state.thread?.createdAt ?? nowSeconds(),
@@ -69,7 +77,7 @@ const thread = (includeTurns = false) => ({
     : { type: "idle" },
   path: null,
   cwd: state.thread?.cwd ?? process.cwd(),
-  cliVersion: "0.0.0-queue-parity-scenario",
+  cliVersion: appServerVersion,
   source: { custom: "nodex-e2e" },
   canAcceptDirectInput: true,
   threadSource: "user",
@@ -86,7 +94,7 @@ const threadResponse = (includeTurns = false) => ({
   modelProvider: "openai",
   serviceTier: null,
   cwd: state.thread?.cwd ?? process.cwd(),
-  runtimeWorkspaceRoots: [state.thread?.cwd ?? process.cwd()],
+  runtimeWorkspaceRoots: state.thread?.runtimeWorkspaceRoots ?? [state.thread?.cwd ?? process.cwd()],
   instructionSources: [],
   approvalPolicy: "never",
   approvalsReviewer: "user",
@@ -94,6 +102,9 @@ const threadResponse = (includeTurns = false) => ({
   activePermissionProfile: null,
   reasoningEffort: "medium",
   multiAgentMode: "explicitRequestOnly",
+  initialTurnsPage: null,
+  turnsBackwardsCursor: null,
+  itemsBackwardsCursor: null,
 });
 
 const completeTurn = (turnId, status) => {
@@ -109,14 +120,30 @@ const completeTurn = (turnId, status) => {
 };
 
 const scheduleAutomaticCompletion = (turnId) => {
-  setTimeout(() => completeTurn(turnId, "completed"), 120);
+  setTimeout(
+    () => completeTurn(turnId, "completed"),
+    Number.isFinite(automaticCompletionDelayMs) ? Math.max(0, automaticCompletionDelayMs) : 120,
+  );
 };
 
 const startTurn = (params) => {
   state = readState();
   state.turnSequence += 1;
-  const shouldAutoComplete = state.turnSequence > 1;
-  const next = turn(`turn-queue-parity-${state.turnSequence}`, "inProgress");
+  const shouldAutoComplete =
+    process.env.NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN === "1" || state.turnSequence > 1;
+  const next = turn(
+    `turn-queue-parity-${state.turnSequence}`,
+    "inProgress",
+    {},
+    [
+      {
+        type: "userMessage",
+        id: `item-user-queue-parity-${state.turnSequence}`,
+        clientId: params.clientUserMessageId ?? null,
+        content: Array.isArray(params.input) ? params.input : [],
+      },
+    ],
+  );
   state.turns.push(next);
   persist();
   record("turn/start", params);
@@ -192,7 +219,7 @@ const handle = (message) => {
   switch (method) {
     case "initialize":
       respond(id, {
-        userAgent: "nodex-queue-parity-scenario",
+        userAgent: `codex-app-server/${appServerVersion}`,
         codexHome: process.env.CODEX_HOME ?? process.cwd(),
         platformFamily: os.platform() === "win32" ? "windows" : "unix",
         platformOs: os.platform() === "darwin" ? "macos" : os.platform(),
@@ -236,11 +263,6 @@ const handle = (message) => {
     case "configRequirements/read":
       respond(id, { requirements: null });
       return;
-    case "interpreter/provider/list":
-    case "interpreter/model/list":
-    case "interpreter/harness/list":
-      respond(id, { data: [] });
-      return;
     case "thread/list":
       respond(id, { data: state.thread ? [thread()] : [], nextCursor: null, backwardsCursor: null });
       return;
@@ -249,16 +271,18 @@ const handle = (message) => {
         id: "01900000-0000-7000-8000-000000000001",
         sessionId: "queue-parity-session",
         cwd: params.cwd ?? process.cwd(),
+        runtimeWorkspaceRoots: params.runtimeWorkspaceRoots ?? [params.cwd ?? process.cwd()],
         createdAt: nowSeconds(),
       };
       persist();
       record(method, params);
       respond(id, threadResponse());
+      setTimeout(() => notify("thread/started", { thread: thread() }), 0);
       return;
     }
     case "thread/resume":
       respond(id, {
-        ...threadResponse(true),
+        ...threadResponse(false),
         initialTurnsPage: null,
         turnsBackwardsCursor: null,
         itemsBackwardsCursor: null,
@@ -270,11 +294,41 @@ const handle = (message) => {
     case "thread/read":
       respond(id, { thread: thread(true) });
       return;
+    case "thread/turns/list":
+      respond(id, {
+        data: state.turns.map((entry) =>
+          params.itemsView === "notLoaded"
+            ? { ...entry, items: [], itemsView: "notLoaded" }
+            : entry,
+        ),
+        nextCursor: null,
+        backwardsCursor: null,
+      });
+      return;
+    case "thread/items/list": {
+      const selectedTurn = state.turns.find((entry) => entry.id === params.turnId);
+      const items = selectedTurn?.items ?? [];
+      respond(id, {
+        data: (params.sortDirection === "desc" ? [...items].reverse() : items).map((item) => ({
+          turnId: params.turnId,
+          item,
+        })),
+        nextCursor: null,
+        backwardsCursor: null,
+      });
+      return;
+    }
     case "thread/goal/get":
       respond(id, { goal: null });
       return;
     case "thread/unsubscribe":
+      respond(id, {});
+      return;
     case "thread/delete":
+      if (state.thread?.id === params.threadId) {
+        state = { thread: null, turns: [], turnSequence: 0 };
+        persist();
+      }
       respond(id, {});
       return;
     case "turn/start":

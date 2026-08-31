@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import type {
   CodexPendingThreadSource,
   CodexPendingWorktreeRequest,
@@ -134,6 +135,13 @@ export const make: Effect.Effect<
         "admit",
         normalizedSessionId,
         new Error("Project Session does not own its durable Thread"),
+      );
+    }
+    if (!isCodexAgentBackendBinding(resolved.durable.backendBinding)) {
+      return yield* error(
+        "admit",
+        normalizedSessionId,
+        new Error("Project Session is not owned by the native Codex backend"),
       );
     }
     const projectId = sourceSession.project_id ?? null;

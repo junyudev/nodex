@@ -29,10 +29,12 @@ const methods: ReadonlySet<CodexOneShotServerRequest["method"]> = new Set([
   "execCommandApproval",
 ]);
 
+export const isCodexOneShotServerRequestMethod = (method: string): boolean =>
+  methods.has(method as CodexOneShotServerRequest["method"]);
+
 export const isCodexOneShotServerRequest = (
   request: CodexServerRequest,
-): request is CodexOneShotServerRequest =>
-  methods.has(request.method as CodexOneShotServerRequest["method"]);
+): request is CodexOneShotServerRequest => isCodexOneShotServerRequestMethod(request.method);
 
 export class CodexOneShotServerRequests extends Context.Service<
   CodexOneShotServerRequests,

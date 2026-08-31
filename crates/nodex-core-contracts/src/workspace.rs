@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 19;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 21;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -65,12 +66,29 @@ pub enum ProjectWorkspaceRead {
     Thread {
         thread_id: String,
     },
+    ThreadBackendSession {
+        thread_id: String,
+    },
     QueuedFollowUpLedger {
         thread_id: String,
     },
     ChildThreadWindow {
         parent_thread_id: String,
         include_archived: Option<bool>,
+        window: CollectionWindowRequest,
+    },
+    SubagentOverviewWindow {
+        universe: ProjectWorkspaceSubagentUniverse,
+        active_window: CollectionWindowRequest,
+        done_window: CollectionWindowRequest,
+    },
+    SubagentOverviewItem {
+        universe: ProjectWorkspaceSubagentUniverse,
+        thread_id: String,
+    },
+    SubagentLifecycleBatch {
+        lifecycle_operation_id: String,
+        include_settled: bool,
         window: CollectionWindowRequest,
     },
     ExecutionContext {
@@ -146,11 +164,24 @@ pub enum ProjectWorkspaceReadValue {
     Thread {
         thread: Box<ProjectWorkspaceThread>,
     },
+    ThreadBackendSession {
+        session: Option<ProjectWorkspaceThreadBackendSession>,
+    },
     QueuedFollowUpLedger {
         ledger: ProjectWorkspaceQueuedFollowUpLedger,
     },
     ChildThreadWindow {
         threads: CollectionWindow<ProjectWorkspaceThreadSummary>,
+    },
+    SubagentOverviewWindow {
+        overview: ProjectWorkspaceSubagentOverview,
+    },
+    SubagentOverviewItem {
+        item: Option<Box<ProjectWorkspaceSubagentOverviewItem>>,
+        projection_revision: i64,
+    },
+    SubagentLifecycleBatch {
+        lifecycle: ProjectWorkspaceSubagentLifecycle,
     },
     ExecutionContext {
         context: Box<ProjectWorkspaceExecutionContext>,
@@ -364,11 +395,10 @@ pub struct ProjectWorkspaceThread {
     pub agent_role: Option<String>,
     pub agent_path: Option<String>,
     pub thread_preview: String,
-    pub model_provider: String,
     pub model_id: Option<String>,
-    pub harness_id: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    pub backend_binding: AgentBackendBinding,
     pub execution_host_id: String,
     pub cwd: Option<String>,
     pub managed_worktree_path: Option<String>,
@@ -384,6 +414,17 @@ pub struct ProjectWorkspaceThread {
     pub updated_at: i64,
     pub recency_at: i64,
     pub linked_at: String,
+}
+
+/// Durable protocol-session identity for a non-native Agent Backend. It is
+/// separate from backend instance configuration and may be cleared when a
+/// backend can no longer resume the remote session.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceThreadBackendSession {
+    pub thread_id: String,
+    pub backend_binding: AgentBackendBinding,
+    pub backend_session_id: String,
+    pub updated_at: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -406,6 +447,125 @@ pub enum CodexThreadStatusType {
 pub enum CodexThreadActiveFlag {
     WaitingOnApproval,
     WaitingOnUserInput,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentUniverse {
+    pub host_id: String,
+    pub source_epoch: String,
+    pub generation: i64,
+    pub root_thread_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentObservation {
+    pub thread_id: String,
+    pub parent_thread_id: String,
+    pub patch: Box<ProjectWorkspaceThreadPatch>,
+    pub source_revision: i64,
+    pub observed_at_ms: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSubagentStatus {
+    Active,
+    Waiting,
+    Done,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSubagentStatusEvidenceKind {
+    Metadata,
+    Notification,
+    Completion,
+    Reconciliation,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentStatusEvidence {
+    pub kind: ProjectWorkspaceSubagentStatusEvidenceKind,
+    pub source_revision: i64,
+    pub observed_at_ms: i64,
+}
+
+/// Optional compare-and-set guard for observations derived from an asynchronous remote read.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum ProjectWorkspaceSubagentStatusEvidencePrecondition {
+    Absent,
+    Exact {
+        evidence_kind: ProjectWorkspaceSubagentStatusEvidenceKind,
+        source_revision: i64,
+        observed_at_ms: i64,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentOverviewItem {
+    pub thread: ProjectWorkspaceThreadSummary,
+    pub status: ProjectWorkspaceSubagentStatus,
+    pub evidence: Option<ProjectWorkspaceSubagentStatusEvidence>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentOverview {
+    pub universe: ProjectWorkspaceSubagentUniverse,
+    pub active: CollectionWindow<ProjectWorkspaceSubagentOverviewItem>,
+    pub done: CollectionWindow<ProjectWorkspaceSubagentOverviewItem>,
+    pub known_active_count: u32,
+    pub known_done_count: u32,
+    pub discovery_complete: bool,
+    pub discovery_continuation: Option<String>,
+    pub projection_revision: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSubagentLifecycleAction {
+    Archive,
+    Delete,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceSubagentLifecycleOutcome {
+    Pending,
+    Unresolved,
+    Failed,
+    Settled,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentLifecycleObservation {
+    pub thread_id: String,
+    pub outcome: ProjectWorkspaceSubagentLifecycleOutcome,
+    pub reason: Option<String>,
+    pub observed_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentLifecycleMember {
+    pub thread_id: String,
+    pub outcome: ProjectWorkspaceSubagentLifecycleOutcome,
+    pub attempt_count: u32,
+    pub last_reason: Option<String>,
+    pub observed_at_ms: Option<i64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSubagentLifecycle {
+    pub universe: ProjectWorkspaceSubagentUniverse,
+    pub lifecycle_operation_id: String,
+    pub action: ProjectWorkspaceSubagentLifecycleAction,
+    pub members: CollectionWindow<ProjectWorkspaceSubagentLifecycleMember>,
+    pub expected_count: u32,
+    pub processed_count: u32,
+    pub unresolved_count: u32,
+    pub complete: bool,
+    pub projection_revision: i64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -598,19 +758,12 @@ pub struct ProjectWorkspaceThreadPatch {
     )]
     pub agent_path: Option<Option<String>>,
     pub thread_preview: Option<String>,
-    pub model_provider: Option<String>,
     #[serde(
         default,
         deserialize_with = "crate::deserialize_present",
         skip_serializing_if = "Option::is_none"
     )]
     pub model_id: Option<Option<String>>,
-    #[serde(
-        default,
-        deserialize_with = "crate::deserialize_present",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub harness_id: Option<Option<String>>,
     #[serde(
         default,
         deserialize_with = "crate::deserialize_present",
@@ -623,6 +776,8 @@ pub struct ProjectWorkspaceThreadPatch {
         skip_serializing_if = "Option::is_none"
     )]
     pub service_tier: Option<Option<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend_binding: Option<AgentBackendBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_host_id: Option<String>,
     #[serde(
@@ -839,11 +994,10 @@ pub struct ProjectWorkspaceTaskThreadSummary {
     pub agent_role: Option<String>,
     pub agent_path: Option<String>,
     pub thread_preview: String,
-    pub model_provider: String,
     pub model_id: Option<String>,
-    pub harness_id: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    pub backend_binding: AgentBackendBinding,
     pub execution_host_id: String,
     pub cwd: Option<String>,
     pub managed_worktree_path: Option<String>,
@@ -871,11 +1025,10 @@ pub struct ProjectWorkspaceThreadSummary {
     pub agent_role: Option<String>,
     pub agent_path: Option<String>,
     pub thread_preview: String,
-    pub model_provider: String,
     pub model_id: Option<String>,
-    pub harness_id: Option<String>,
     pub reasoning_effort: Option<String>,
     pub service_tier: Option<String>,
+    pub backend_binding: AgentBackendBinding,
     pub execution_host_id: String,
     pub cwd: Option<String>,
     pub managed_worktree_path: Option<String>,
@@ -1067,6 +1220,15 @@ pub enum ProjectWorkspaceIntent {
         thread_id: String,
         location: ProjectWorkspaceThreadExecutionLocation,
     },
+    BindThreadBackendSession {
+        thread_id: String,
+        backend_binding: AgentBackendBinding,
+        backend_session_id: String,
+    },
+    ClearThreadBackendSession {
+        thread_id: String,
+        backend_binding: AgentBackendBinding,
+    },
     DeleteThread {
         thread_id: String,
     },
@@ -1082,6 +1244,42 @@ pub enum ProjectWorkspaceIntent {
     ReconcileAppServerThreadSweep {
         sweep_id: String,
         limit: Option<u32>,
+    },
+    ObserveSubagentDiscoveryPage {
+        universe: ProjectWorkspaceSubagentUniverse,
+        page_identity: String,
+        observations: Vec<ProjectWorkspaceSubagentObservation>,
+        continuation: Option<String>,
+        complete: bool,
+    },
+    ObserveSubagentStatusEvidence {
+        universe: ProjectWorkspaceSubagentUniverse,
+        thread_id: String,
+        status: ProjectWorkspaceSubagentStatus,
+        evidence_kind: ProjectWorkspaceSubagentStatusEvidenceKind,
+        source_revision: i64,
+        observed_at_ms: i64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        precondition: Option<ProjectWorkspaceSubagentStatusEvidencePrecondition>,
+    },
+    BufferSubagentStatusEvidence {
+        host_id: String,
+        source_epoch: String,
+        generation: i64,
+        thread_id: String,
+        status: ProjectWorkspaceSubagentStatus,
+        evidence_kind: ProjectWorkspaceSubagentStatusEvidenceKind,
+        source_revision: i64,
+        observed_at_ms: i64,
+    },
+    BeginSubagentLifecycle {
+        universe: ProjectWorkspaceSubagentUniverse,
+        lifecycle_operation_id: String,
+        action: ProjectWorkspaceSubagentLifecycleAction,
+    },
+    ObserveSubagentLifecycleOutcomes {
+        lifecycle_operation_id: String,
+        observations: Vec<ProjectWorkspaceSubagentLifecycleObservation>,
     },
     SetThreadArchived {
         thread_id: String,

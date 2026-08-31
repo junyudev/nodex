@@ -23,13 +23,18 @@ import { live as reminderSchedulerLive } from "../host-runtime/ReminderScheduler
 import { live as storeAdministrationSchedulerLive } from "../host-runtime/StoreAdministrationSchedulerRuntime";
 import { CodexPlatform } from "./CodexApplicationLive";
 import { MainConfig } from "./MainConfig";
+import { live as agentBackendApplicationLive } from "../agent-backend/AgentBackendApplication";
+import { live as agentBackendRegistryLive } from "../agent-backend/AgentBackendRegistry";
+import { live as acpBackendSessionManagerLive } from "../agent-backend/acp/AcpBackendSessionManager";
+import { live as acpAgentLaunchProbeLive } from "../platform/node/AcpAgentLaunchProbe";
+import { live as acpSessionTransportLive } from "../platform/node/AcpSessionTransport";
 
 const automationExecution = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;
     return automationExecutionLive({
       runtimeStateHome: codex.runtimeStateHome,
-      runtimeVersion: codex.runtime.codexCompatibilityVersion ?? codex.runtime.version,
+      runtimeVersion: codex.runtime.appServerRuntimeVersion ?? codex.runtime.version,
     });
   }),
 );
@@ -40,10 +45,14 @@ const backgroundProcesses = Layer.effect(
 const projectArchiveBlockers = projectArchiveBlockersLive.pipe(
   Layer.provideMerge(backgroundProcesses),
 );
+const acpPlatform = Layer.merge(acpAgentLaunchProbeLive, acpSessionTransportLive);
+const acpSessions = acpBackendSessionManagerLive.pipe(Layer.provideMerge(acpPlatform));
 const projectLifecycle = projectLifecycleCommandsLive.pipe(
-  Layer.provideMerge(projectArchiveBlockers),
+  Layer.provideMerge(Layer.merge(projectArchiveBlockers, acpSessions)),
 );
-const projectSessions = projectSessionCommandsLive.pipe(Layer.provideMerge(projectLifecycle));
+const projectSessions = projectSessionCommandsLive.pipe(
+  Layer.provideMerge(Layer.merge(projectLifecycle, acpSessions)),
+);
 const managedWorktreeCatalog = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -77,6 +86,10 @@ const projectionDelivery = projectionDeliveryLive.pipe(
 const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelivery));
 const reminders = reminderSchedulerLive({}).pipe(Layer.provideMerge(coreEvents));
 const storeSchedulers = storeAdministrationSchedulerLive({}).pipe(Layer.provideMerge(reminders));
+const agentBackends = agentBackendApplicationLive.pipe(
+  Layer.provideMerge(Layer.merge(agentBackendRegistryLive, acpSessions)),
+  Layer.provideMerge(storeSchedulers),
+);
 
 /** Application operations that depend on the Core, host, and canonical Conversation graphs. */
-export const live = storeSchedulers;
+export const live = agentBackends;

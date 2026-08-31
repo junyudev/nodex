@@ -34,7 +34,7 @@ import type { SkyNativeAddon } from "../src/main/sky-native";
 import { runCodexProbeMain, withCodexProbeSession } from "./codex-probe-session";
 
 type BrowserRuntimeProbeReport = {
-  appServerCompatibilityVersion: string;
+  appServerRuntimeVersion: string;
   browserPluginVersion: string;
   browserRuntimeVersions: {
     codexCli: string;
@@ -205,10 +205,10 @@ async function probeBrowserRuntimePromise(
   if (runtime.browserRuntime.status === "unavailable") {
     throw new Error(runtime.browserRuntime.message);
   }
-  if (!runtime.codexCompatibilityVersion) {
-    throw new Error("Agent runtime is missing its Codex compatibility version");
+  if (!runtime.appServerRuntimeVersion) {
+    throw new Error("Agent runtime is missing its app-server runtime version");
   }
-  const codexCompatibilityVersion = runtime.codexCompatibilityVersion;
+  const appServerRuntimeVersion = runtime.appServerRuntimeVersion;
 
   const bundle = runtime.browserRuntime.bundle;
   const stateHome = fs.mkdtempSync(path.join(projectRoot, ".generated", "browser-runtime-probe-"));
@@ -307,7 +307,6 @@ async function probeBrowserRuntimePromise(
           env: {
             ...process.env,
             CODEX_HOME: stateHome,
-            INTERPRETER_HOME: stateHome,
           },
           expectedCodexHome: stateHome,
           requestTimeout: 150_000,
@@ -432,7 +431,7 @@ async function probeBrowserRuntimePromise(
           }
 
           return {
-            appServerCompatibilityVersion: codexCompatibilityVersion,
+            appServerRuntimeVersion,
             browserPluginVersion: bundle.manifest.browserPlugin.version,
             browserRuntimeVersions: bundle.manifest.runtimeVersions,
             computerUse,

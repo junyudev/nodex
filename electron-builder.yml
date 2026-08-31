@@ -78,7 +78,7 @@ protocols:
 mac:
   icon: icon.icon
   sign: scripts/sign-macos-runtime.mjs
-  minimumSystemVersion: 12.0.0
+  minimumSystemVersion: 15.0.0
   target:
     - dmg
   artifactName: "${productName}-${version}-${arch}.${ext}"
@@ -90,10 +90,6 @@ mac:
     - Contents/Resources/bin/nodex-dictation-helper
     - Contents/Resources/bin/nodex-browser-profile-helper
     - Contents/Resources/bin/nodex-core
-    - Contents/Resources/bin/interpreter
-    - Contents/Resources/bin/codex-code-mode-host
-    - Contents/Resources/codex-path/rg
-    - Contents/Resources/codex-resources/zsh/bin/zsh
     - Contents/Resources/browser-runtime/bin/codex
     - Contents/Resources/browser-runtime/bin/node
     - Contents/Resources/browser-runtime/bin/node_repl

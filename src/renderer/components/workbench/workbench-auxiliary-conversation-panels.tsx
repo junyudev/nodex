@@ -9,12 +9,12 @@ import {
 } from "@/features/local-conversation";
 import { createThreadStageActions } from "@/features/local-conversation/thread-action-controller";
 import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/thread-stage-types";
-import { buildBackgroundAgentOpenContext } from "@/features/local-conversation/projection/background-subagent-open-context";
 import {
   SubagentsPanelDetailHeader,
   SubagentsPanelOverview,
 } from "@/features/local-conversation/view/subagents-panel/subagents-panel";
 import type { ComposerEnterBehavior } from "@/lib/composer-enter-behavior";
+import { subscribeCodexEvents } from "@/lib/api";
 import { resolveSideChatProjectId } from "@/lib/side-chat-conversation-context";
 import type {
   CodexCollaborationModeKind,
@@ -33,6 +33,10 @@ import {
   SideChatFailedPanel,
   SideChatLoadingPanel,
 } from "./workbench-side-chat-panels";
+import {
+  projectSubagentOverviewRowToOpenPayload,
+  projectThreadStatusToSubagentOpenStatus,
+} from "./workbench-subagent-status";
 
 export function BackgroundAgentSessionTab({
   tab,
@@ -68,7 +72,6 @@ export function BackgroundAgentSessionTab({
   const codexControl = useCodexAppServerControl(tab.projectId);
   const loadModels = codexControl.loadModels;
   const listCollaborationModes = codexControl.listCollaborationModes;
-  const requestThreadStreamSnapshot = codexControl.requestThreadStreamSnapshot;
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationModePreset[]>([]);
   const [selectedCollaborationMode, setSelectedCollaborationMode] =
     useState<CodexCollaborationModeKind>("default");
@@ -79,10 +82,6 @@ export function BackgroundAgentSessionTab({
       .then(setCollaborationModes)
       .catch(() => setCollaborationModes([]));
   }, [listCollaborationModes, loadModels]);
-
-  useEffect(() => {
-    void requestThreadStreamSnapshot(tab.threadId).catch(() => undefined);
-  }, [requestThreadStreamSnapshot, tab.threadId]);
 
   const actions = useMemo(
     () =>
@@ -137,6 +136,7 @@ export function BackgroundAgentSessionTab({
     >
       <ConnectedThreadStage
         projectId={tab.projectId}
+        composerScopeIdentity={`background-agent:${tab.id}`}
         projectWorkspacePath={projectWorkspaceRootOrNull(project)}
         isNewThreadTab={false}
         newThreadTarget={null}
@@ -146,9 +146,8 @@ export function BackgroundAgentSessionTab({
         activeThreadId={tab.threadId}
         activeThreadSummary={conversation}
         backgroundAgentDetail={true}
+        backgroundAgentCanInteract={tab.subagent.canInteract === true}
         availableModels={codexControl.availableModels}
-        agentProviderCatalog={codexControl.agentProviderCatalog}
-        agentProviderCatalogLoading={codexControl.agentProviderCatalogLoading}
         selectedExecutionProfile={codexControl.executionProfile}
         collaborationModes={collaborationModes}
         selectedCollaborationMode={selectedCollaborationMode}
@@ -203,6 +202,64 @@ export function SubagentsPanelSessionTab({
   turnDiffHoverPreviewDisabled: boolean;
 }) {
   const selectedConversation = useConversation(tab.selectedThreadId);
+  const codexControl = useCodexAppServerControl(tab.projectId);
+  const refreshSelectedSubagentAuthority = codexControl.refreshSelectedSubagentAuthority;
+  const [selectedCanInteract, setSelectedCanInteract] = useState(false);
+  useEffect(() => {
+    const selectedThreadId = tab.selectedThreadId;
+    setSelectedCanInteract(false);
+    if (!selectedThreadId || tab.selectedHydration?.status !== "ready") return;
+    let disposed = false;
+    let timer: number | null = null;
+    let sequence = 0;
+    const refreshAuthority = (): void => {
+      const requestSequence = ++sequence;
+      setSelectedCanInteract(false);
+      void refreshSelectedSubagentAuthority({
+        rootThreadId: tab.rootThreadId,
+        threadId: selectedThreadId,
+      })
+        .then((hydrated) => {
+          if (disposed || requestSequence !== sequence) return;
+          const authorized =
+            hydrated.outcome === "ready" &&
+            hydrated.rootThreadId === tab.rootThreadId &&
+            hydrated.threadId === selectedThreadId;
+          setSelectedCanInteract(authorized && hydrated.canInteract);
+        })
+        .catch(() => {
+          if (disposed || requestSequence !== sequence) return;
+          setSelectedCanInteract(false);
+        });
+    };
+    const unsubscribe = subscribeCodexEvents((event) => {
+      const rootInvalidated =
+        event.type === "subagentOverviewInvalidated" && event.rootThreadId === tab.rootThreadId;
+      const selectedArchived =
+        event.type === "threadArchivedState" && event.threadId === selectedThreadId;
+      if (!rootInvalidated && !selectedArchived) return;
+      sequence += 1;
+      setSelectedCanInteract(false);
+      if (timer !== null) return;
+      timer = window.setTimeout(() => {
+        timer = null;
+        refreshAuthority();
+      }, 75);
+    });
+    refreshAuthority();
+    return () => {
+      disposed = true;
+      sequence += 1;
+      unsubscribe();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    refreshSelectedSubagentAuthority,
+    onRouteSubagent,
+    tab.rootThreadId,
+    tab.selectedHydration?.status,
+    tab.selectedThreadId,
+  ]);
   const routeSelectedSubagent = useCallback(
     (subagent: ThreadOpenSubagentPayload) => {
       void onRouteSubagent(subagent);
@@ -231,8 +288,7 @@ export function SubagentsPanelSessionTab({
           rootThreadId={tab.rootThreadId}
           onError={(message) => toast.danger(message)}
           onSelect={(row) => {
-            const subagent = buildBackgroundAgentOpenContext(row).subagent;
-            if (subagent) routeSelectedSubagent(subagent);
+            routeSelectedSubagent(projectSubagentOverviewRowToOpenPayload(row));
           }}
         />
       </div>
@@ -244,6 +300,24 @@ export function SubagentsPanelSessionTab({
     selectedConversation?.agentNickname?.replace(/^@/u, "") ||
     selectedConversation?.threadName ||
     tab.selectedThreadId;
+  if (tab.selectedHydration?.status !== "ready") {
+    return (
+      <div
+        className="flex h-full min-h-0 flex-col bg-token-main-surface-primary"
+        data-subagents-side-panel-tab={tab.id}
+        data-subagents-selected-hydration="pending"
+      >
+        <SubagentsPanelDetailHeader
+          threadId={tab.selectedThreadId}
+          displayName={displayName}
+          onBack={() => void onRouteSubagent(null)}
+        />
+        <div className="min-h-0 flex-1">
+          <BackgroundAgentLoadingPanel title={displayName} />
+        </div>
+      </div>
+    );
+  }
   const detailTab: BackgroundAgentPanelTab = {
     backgroundAgent: true,
     id: `${tab.id}:detail:${tab.selectedThreadId}`,
@@ -259,8 +333,9 @@ export function SubagentsPanelSessionTab({
       displayName,
       agentRole: selectedConversation?.agentRole ?? null,
       spawnModel: null,
-      status: selectedConversation?.statusType === "active" ? "active" : "done",
+      status: projectThreadStatusToSubagentOpenStatus(selectedConversation?.statusType),
       statusSummary: null,
+      canInteract: selectedCanInteract,
       showInlineActivity: true,
       diffStats: null,
     },
@@ -270,6 +345,7 @@ export function SubagentsPanelSessionTab({
     <div
       className="flex h-full min-h-0 flex-col bg-token-main-surface-primary"
       data-subagents-side-panel-tab={tab.id}
+      data-subagents-selected-hydration="ready"
     >
       <SubagentsPanelDetailHeader
         threadId={tab.selectedThreadId}
@@ -439,8 +515,6 @@ export function SideChatSessionTab({
         activeThreadId={tab.threadId}
         activeThreadSummary={conversation}
         availableModels={codexControl.availableModels}
-        agentProviderCatalog={codexControl.agentProviderCatalog}
-        agentProviderCatalogLoading={codexControl.agentProviderCatalogLoading}
         selectedExecutionProfile={codexControl.executionProfile}
         collaborationModes={collaborationModes}
         selectedCollaborationMode={selectedCollaborationMode}

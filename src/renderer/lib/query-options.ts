@@ -43,7 +43,6 @@ import type { LocalPathPresentationContext } from "../../shared/local-path-prese
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import type { ProtocolMcpResourceReadParams } from "../../shared/types";
 import type { CodexHooksListInput, CodexHooksListResponse } from "../../shared/codex-hooks";
-import type { AgentProviderCatalog } from "../../shared/agent-runtime";
 import type { DatabaseViewWindowSnapshot } from "../../shared/database-views";
 import {
   admitResourceAuthorityQuery,
@@ -261,14 +260,6 @@ export function codexComposerChatGptConversationsListQueryOptions(query: string)
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
-  });
-}
-
-export function agentProviderCatalogQueryOptions() {
-  return queryOptions({
-    queryKey: queryKeys.agentProviderCatalog.current(),
-    queryFn: () => invoke("agent-runtime:catalog:get") as Promise<AgentProviderCatalog>,
-    staleTime: 5 * 60_000,
   });
 }
 

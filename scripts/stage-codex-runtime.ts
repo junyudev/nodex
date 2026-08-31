@@ -21,35 +21,47 @@ import { fileURLToPath } from "node:url";
 import {
   AGENT_RUNTIME_LAYOUT_VERSION,
   AGENT_RUNTIME_METADATA_FILENAME,
+  canonicalBundledAgentRuntimeMetadataJson,
   type AgentRuntimeArtifact,
   type BundledAgentRuntimeMetadata,
-  type OpenInterpreterPackageManifest,
+  type CodexAppServerPackageManifest,
   parseBundledAgentRuntimeMetadata,
 } from "../src/shared/codex-runtime-metadata";
 import {
-  readOpenInterpreterReleaseLock,
-  resolveOpenInterpreterReleaseLockPath,
+  readCodexAppServerReleaseLock,
+  resolveCodexAppServerReleaseLockPath,
+  type AgentRuntimeBuild,
   type AgentRuntimeTargetArch,
   type AgentRuntimeTargetPlatform,
-  type OpenInterpreterReleaseLock,
+  type CodexAppServerReleaseLock,
 } from "./agent-runtime-release-lock";
 import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { stageBrowserRuntime } from "./stage-browser-runtime";
 import type { BrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-bundle";
+import { projectBundledAppServerRuntimeIdentity } from "../src/shared/browser-app-server-compatibility";
+import {
+  AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
+  type AgentRuntimeMacosPlatformContractVerifier,
+  verifyAgentRuntimeMacosPlatformContract,
+} from "./agent-runtime-macos-platform-contract";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
 const EXECUTABLE_RUNTIME_MODE = 0o755;
 const REGULAR_RUNTIME_MODE = 0o644;
+const SYSTEM_TAR_PATH = "/usr/bin/tar";
 const canonicalRuntimeMode = (executable: boolean): number =>
   executable ? EXECUTABLE_RUNTIME_MODE : REGULAR_RUNTIME_MODE;
 
-type StageAgentRuntimeOptions = {
+export type StageAgentRuntimeOptions = {
+  agentRuntimePlatformContractVerifier?: AgentRuntimeMacosPlatformContractVerifier;
   archivePath?: string;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   browserRuntimeSourceRoot?: string;
   cachePath?: string;
+  checksumManifestPath?: string;
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
   lockPath?: string;
   outputPath: string;
   projectRootPath?: string;
@@ -103,32 +115,54 @@ function assertRegularFile(filePath: string, label: string): void {
   try {
     stats = lstatSync(filePath);
   } catch {
-    throw new Error(`Open Interpreter release is missing ${label}: ${filePath}`);
+    throw new Error(`Codex app-server release is missing ${label}: ${filePath}`);
   }
   if (!stats.isFile() || stats.isSymbolicLink()) {
-    throw new Error(`Open Interpreter release ${label} is not a regular file: ${filePath}`);
+    throw new Error(`Codex app-server release ${label} is not a regular file: ${filePath}`);
   }
 }
 
-function assertNoSymlinks(rootPath: string, currentPath = rootPath): void {
+function listClosedRegularFilePaths(rootPath: string, currentPath = rootPath): string[] {
+  const paths: string[] = [];
   for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
     const entryPath = join(currentPath, entry.name);
     const stats = lstatSync(entryPath);
     if (stats.isSymbolicLink()) {
       throw new Error(
-        `Open Interpreter release contains a symlink: ${relative(rootPath, entryPath)}`,
+        `Codex app-server release contains a symlink: ${relative(rootPath, entryPath)}`,
       );
     }
     if (stats.isDirectory()) {
-      assertNoSymlinks(rootPath, entryPath);
+      paths.push(...listClosedRegularFilePaths(rootPath, entryPath));
       continue;
     }
     if (!stats.isFile()) {
       throw new Error(
-        `Open Interpreter release contains an unsupported entry: ${relative(rootPath, entryPath)}`,
+        `Codex app-server release contains an unsupported entry: ${relative(rootPath, entryPath)}`,
       );
     }
+    paths.push(relative(rootPath, entryPath).split(sep).join("/"));
   }
+  return paths;
+}
+
+function assertExactPackageFileClosure(
+  rootPath: string,
+  requiredArtifacts: readonly string[],
+): void {
+  const actual = listClosedRegularFilePaths(rootPath).sort((left, right) =>
+    left.localeCompare(right),
+  );
+  const expected = [...requiredArtifacts].sort((left, right) => left.localeCompare(right));
+  if (JSON.stringify(actual) === JSON.stringify(expected)) return;
+  const expectedSet = new Set(expected);
+  const actualSet = new Set(actual);
+  const missing = expected.filter((artifactPath) => !actualSet.has(artifactPath));
+  const unexpected = actual.filter((artifactPath) => !expectedSet.has(artifactPath));
+  throw new Error(
+    `Codex app-server package file closure differs from the release lock ` +
+      `(missing: ${missing.join(", ") || "none"}; unexpected: ${unexpected.join(", ") || "none"})`,
+  );
 }
 
 function copyRuntimeFile(sourcePath: string, destinationPath: string): void {
@@ -164,32 +198,20 @@ function listRuntimeArtifacts(
   return artifacts.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-const canonicalJson = (value: unknown): string => {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (typeof value === "object" && value !== null) {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
-      left.localeCompare(right),
-    );
-    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-};
-
 export const bundledAgentRuntimeMetadataSha256 = (metadata: BundledAgentRuntimeMetadata): string =>
-  createHash("sha256").update(canonicalJson(metadata)).digest("hex");
+  createHash("sha256").update(canonicalBundledAgentRuntimeMetadataJson(metadata)).digest("hex");
 
 const metadataMatchesLock = (input: {
-  lock: OpenInterpreterReleaseLock;
+  lock: CodexAppServerReleaseLock;
   metadata: BundledAgentRuntimeMetadata;
   target: AgentRuntimeTarget;
 }): boolean => {
   const { lock, metadata, target } = input;
-  const asset = lock.assets[target.targetKey];
+  const build = lock.builds[target.targetKey];
   return (
-    bundledAgentRuntimeMetadataSha256(metadata) === asset.runtimeMetadataSha256 &&
-    metadata.codexCompatibilityVersion === lock.codexCompatibilityVersion &&
+    bundledAgentRuntimeMetadataSha256(metadata) === build.runtimeMetadataSha256 &&
+    metadata.appServerRuntimeVersion === lock.appServerRuntimeVersion &&
+    metadata.protocolSchemaFingerprint === lock.protocolSchema.sha256 &&
     metadata.entrypoint === lock.packageManifest.entrypoint &&
     metadata.packageManifest.layoutVersion === lock.packageManifest.layoutVersion &&
     metadata.packageManifest.pathDir === lock.packageManifest.pathDir &&
@@ -198,18 +220,16 @@ const metadataMatchesLock = (input: {
     metadata.packageManifest.variant === lock.packageManifest.variant &&
     metadata.packageManifest.version === lock.packageManifest.version &&
     metadata.runtimeFamily === lock.runtimeFamily &&
-    metadata.runtimeVersion === lock.runtimeVersion &&
     JSON.stringify(metadata.searchPaths) === JSON.stringify([lock.packageManifest.pathDir]) &&
-    metadata.artifactRelease.archiveSha256 === asset.archiveSha256 &&
-    metadata.artifactRelease.assetName === asset.assetName &&
-    metadata.artifactRelease.repository === lock.release.repository &&
-    metadata.artifactRelease.tag === lock.release.tag &&
-    metadata.sourceRevision.commit === lock.source.commit &&
-    JSON.stringify(metadata.sourceRevision.patches) ===
-      JSON.stringify(
-        lock.source.patches.map((patch) => ({ path: patch.artifactPath, sha256: patch.sha256 })),
-      ) &&
-    metadata.sourceRevision.repository === lock.source.repository &&
+    metadata.releaseAsset.archiveSha256 === build.archiveSha256 &&
+    metadata.releaseAsset.archiveSize === build.archiveSize &&
+    metadata.releaseAsset.assetName === build.assetName &&
+    metadata.releaseAsset.entrypointSha256 === build.entrypointSha256 &&
+    metadata.releaseAsset.repository === lock.upstream.repository &&
+    metadata.releaseAsset.tag === lock.upstream.tag &&
+    metadata.sourceRevision.commit === lock.upstream.commit &&
+    metadata.sourceRevision.repository === lock.upstream.repository &&
+    metadata.sourceRevision.tag === lock.upstream.tag &&
     metadata.targetArch === target.targetArch &&
     metadata.targetPlatform === target.targetPlatform &&
     metadata.targetTriple === target.targetTriple
@@ -217,7 +237,7 @@ const metadataMatchesLock = (input: {
 };
 
 function readReusableRuntime(input: {
-  lock: OpenInterpreterReleaseLock;
+  lock: CodexAppServerReleaseLock;
   outputPath: string;
   repositoryRoot: string;
   target: AgentRuntimeTarget;
@@ -243,8 +263,8 @@ function readReusableRuntime(input: {
 
   const expectedPaths = [
     ...input.lock.requiredArtifacts,
-    "third-party/open-interpreter/LICENSE",
-    "third-party/open-interpreter/NOTICE",
+    "third-party/codex/LICENSE",
+    "third-party/codex/NOTICE",
   ].sort((left, right) => left.localeCompare(right));
   if (
     JSON.stringify(metadata.artifacts.map(({ path }) => path)) !== JSON.stringify(expectedPaths)
@@ -283,19 +303,19 @@ function readReusableRuntime(input: {
 
 function readAndValidatePackageManifest(
   sourceRoot: string,
-  lock: OpenInterpreterReleaseLock,
+  lock: CodexAppServerReleaseLock,
   targetTriple: string,
-): OpenInterpreterPackageManifest {
+): CodexAppServerPackageManifest {
   const manifestPath = join(sourceRoot, "codex-package.json");
   assertRegularFile(manifestPath, "codex-package.json");
   let value: unknown;
   try {
     value = JSON.parse(readFileSync(manifestPath, "utf8"));
   } catch {
-    throw new Error(`Invalid Open Interpreter package manifest at ${manifestPath}`);
+    throw new Error(`Invalid Codex app-server package manifest at ${manifestPath}`);
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`Invalid Open Interpreter package manifest at ${manifestPath}`);
+    throw new Error(`Invalid Codex app-server package manifest at ${manifestPath}`);
   }
   const candidate = value as Record<string, unknown>;
   const expected = lock.packageManifest;
@@ -309,7 +329,7 @@ function readAndValidatePackageManifest(
     candidate.target !== targetTriple
   ) {
     throw new Error(
-      `Open Interpreter package manifest does not match the release lock for ${targetTriple}`,
+      `Codex app-server package manifest does not match the release lock for ${targetTriple}`,
     );
   }
   return {
@@ -323,34 +343,80 @@ function readAndValidatePackageManifest(
   };
 }
 
-function validateArchive(archivePath: string, expectedSha256: string, expectedSize: number): void {
-  assertRegularFile(archivePath, "release archive");
-  const stats = statSync(archivePath);
-  if (stats.size !== expectedSize) {
+function validateArtifactIdentity(input: {
+  expectedSha256: string;
+  expectedSize: number;
+  filePath: string;
+  label: string;
+}): void {
+  assertRegularFile(input.filePath, input.label);
+  const stats = statSync(input.filePath);
+  if (stats.size !== input.expectedSize) {
     throw new Error(
-      `Open Interpreter archive size mismatch: expected ${expectedSize}, found ${stats.size}`,
+      `${input.label} size mismatch: expected ${input.expectedSize}, found ${stats.size}`,
     );
   }
-  const actualSha256 = readSha256(archivePath);
-  if (actualSha256 !== expectedSha256) {
+  const actualSha256 = readSha256(input.filePath);
+  if (actualSha256 !== input.expectedSha256) {
     throw new Error(
-      `Open Interpreter archive checksum mismatch: expected ${expectedSha256}, found ${actualSha256}`,
+      `${input.label} checksum mismatch: expected ${input.expectedSha256}, found ${actualSha256}`,
+    );
+  }
+}
+
+function validateChecksumManifest(input: {
+  build: AgentRuntimeBuild;
+  lock: CodexAppServerReleaseLock;
+  manifestPath: string;
+}): void {
+  const manifest = input.lock.upstream.checksumManifest;
+  validateArtifactIdentity({
+    expectedSha256: manifest.sha256,
+    expectedSize: manifest.size,
+    filePath: input.manifestPath,
+    label: "Codex checksum manifest",
+  });
+  const entries = readFileSync(input.manifestPath, "utf8")
+    .split(/\r?\n/u)
+    .flatMap((line) => {
+      if (line.length === 0) return [];
+      const match = /^([a-f0-9]{64})  ([^/\\]+)$/u.exec(line);
+      if (!match?.[1] || !match[2]) {
+        throw new Error("Codex checksum manifest contains an invalid entry");
+      }
+      return [{ assetName: match[2], sha256: match[1] }];
+    });
+  const matches = entries.filter(({ assetName }) => assetName === input.build.assetName);
+  if (matches.length !== 1 || matches[0]?.sha256 !== input.build.archiveSha256) {
+    throw new Error(
+      `Codex checksum manifest does not bind ${input.build.assetName} to the locked archive`,
     );
   }
 }
 
 function validateArchivePaths(archivePath: string): void {
-  const entries = execFileSync("tar", ["-tzf", archivePath], { encoding: "utf8" })
+  const entries = execFileSync(SYSTEM_TAR_PATH, ["-tzf", archivePath], { encoding: "utf8" })
     .split("\n")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
   for (const entry of entries) {
     if (entry.startsWith("/") || entry.includes("\\")) {
-      throw new Error(`Open Interpreter archive contains an unsafe path: ${entry}`);
+      throw new Error(`Codex app-server archive contains an unsafe path: ${entry}`);
     }
     const segments = entry.replace(/\/$/u, "").split("/");
     if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
-      throw new Error(`Open Interpreter archive contains an unsafe path: ${entry}`);
+      throw new Error(`Codex app-server archive contains an unsafe path: ${entry}`);
+    }
+  }
+  const verboseEntries = execFileSync(SYSTEM_TAR_PATH, ["-tvzf", archivePath], {
+    encoding: "utf8",
+    env: { ...process.env, LANG: "C", LC_ALL: "C" },
+  })
+    .split("\n")
+    .filter((entry) => entry.length > 0);
+  for (const entry of verboseEntries) {
+    if (entry[0] !== "-" && entry[0] !== "d") {
+      throw new Error("Codex app-server archive may contain only regular files and directories");
     }
   }
 }
@@ -358,44 +424,91 @@ function validateArchivePaths(archivePath: string): void {
 async function resolveSourceRoot(input: {
   archivePath?: string;
   cachePath?: string;
+  checksumManifestPath?: string;
   extractionParent: string;
-  lock: OpenInterpreterReleaseLock;
+  fetch?: (url: string, init: RequestInit) => Promise<Response>;
+  lock: CodexAppServerReleaseLock;
   projectRoot: string;
   sourceRoot?: string;
   target: AgentRuntimeTarget;
 }): Promise<{ cleanup: () => void; sourceRoot: string }> {
   if (input.sourceRoot) {
     const sourceRoot = resolve(input.sourceRoot);
-    assertNoSymlinks(sourceRoot);
+    assertExactPackageFileClosure(sourceRoot, input.lock.requiredArtifacts);
     return { sourceRoot, cleanup: () => undefined };
   }
 
-  const asset = input.lock.assets[input.target.targetKey];
-  const archivePath = resolve(
-    input.archivePath ??
+  const build = input.lock.builds[input.target.targetKey];
+  const manifest = input.lock.upstream.checksumManifest;
+  const siblingManifestPath = input.archivePath
+    ? join(dirname(resolve(input.archivePath)), manifest.assetName)
+    : undefined;
+  const explicitManifestPath = input.checksumManifestPath
+    ? resolve(input.checksumManifestPath)
+    : siblingManifestPath && existsSync(siblingManifestPath)
+      ? siblingManifestPath
+      : undefined;
+  const manifestPath = resolve(
+    explicitManifestPath ??
       resolveImmutableArtifactPath({
-        archiveSha256: asset.archiveSha256,
-        assetName: asset.assetName,
+        archiveSha256: manifest.sha256,
+        assetName: manifest.assetName,
         cachePath: input.cachePath,
         family: "agent-runtime",
         projectRoot: input.projectRoot,
       }),
   );
-  await ensureImmutableArtifact({
-    destinationPath: archivePath,
-    expectedSize: asset.archiveSize,
-    label: "Open Interpreter runtime",
-    replaceInvalid: input.archivePath === undefined,
-    url: asset.url,
-    validate: (candidatePath) =>
-      validateArchive(candidatePath, asset.archiveSha256, asset.archiveSize),
-  });
+  if (!explicitManifestPath) {
+    await ensureImmutableArtifact({
+      destinationPath: manifestPath,
+      expectedSize: manifest.size,
+      fetch: input.fetch,
+      label: "Codex checksum manifest",
+      url: manifest.url,
+      validate: (candidatePath) =>
+        validateChecksumManifest({ build, lock: input.lock, manifestPath: candidatePath }),
+    });
+  }
+  validateChecksumManifest({ build, lock: input.lock, manifestPath });
+  const archivePath = resolve(
+    input.archivePath ??
+      resolveImmutableArtifactPath({
+        archiveSha256: build.archiveSha256,
+        assetName: build.assetName,
+        cachePath: input.cachePath,
+        family: "agent-runtime",
+        projectRoot: input.projectRoot,
+      }),
+  );
+  if (input.archivePath) {
+    validateArtifactIdentity({
+      expectedSha256: build.archiveSha256,
+      expectedSize: build.archiveSize,
+      filePath: archivePath,
+      label: "Codex app-server archive",
+    });
+  } else {
+    await ensureImmutableArtifact({
+      destinationPath: archivePath,
+      expectedSize: build.archiveSize,
+      fetch: input.fetch,
+      label: `Codex app-server ${input.target.targetTriple}`,
+      url: build.url,
+      validate: (candidatePath) =>
+        validateArtifactIdentity({
+          expectedSha256: build.archiveSha256,
+          expectedSize: build.archiveSize,
+          filePath: candidatePath,
+          label: "Codex app-server archive",
+        }),
+    });
+  }
   validateArchivePaths(archivePath);
 
-  const extractionRoot = mkdtempSync(join(input.extractionParent, "open-interpreter-extract-"));
+  const extractionRoot = mkdtempSync(join(input.extractionParent, "codex-app-server-extract-"));
   try {
-    execFileSync("tar", ["-xzf", archivePath, "-C", extractionRoot]);
-    assertNoSymlinks(extractionRoot);
+    execFileSync(SYSTEM_TAR_PATH, ["-xzf", archivePath, "-C", extractionRoot]);
+    assertExactPackageFileClosure(extractionRoot, input.lock.requiredArtifacts);
     return {
       sourceRoot: extractionRoot,
       cleanup: () => rmSync(extractionRoot, { recursive: true, force: true }),
@@ -415,23 +528,29 @@ function validateNotice(input: {
   assertRegularFile(input.sourcePath, input.label);
   const sha256 = readSha256(input.sourcePath);
   if (sha256 !== input.expectedSha256) {
-    throw new Error(`${input.label} checksum does not match the Open Interpreter release lock`);
+    throw new Error(`${input.label} checksum does not match the Codex app-server release lock`);
   }
   copyRuntimeFile(input.sourcePath, input.destinationPath);
 }
 
-export async function stageCodexRuntime(
+async function stageCodexRuntimeClosure(
   options: StageAgentRuntimeOptions,
-): Promise<BundledAgentRuntimeMetadata> {
+  verifyMetadataSha256: boolean,
+): Promise<{
+  metadata: BundledAgentRuntimeMetadata;
+  metadataSha256: string;
+}> {
   const repositoryRoot = resolve(options.projectRootPath ?? projectRoot);
   const lockPath = resolve(
-    options.lockPath ?? resolveOpenInterpreterReleaseLockPath(repositoryRoot),
+    options.lockPath ?? resolveCodexAppServerReleaseLockPath(repositoryRoot),
   );
-  const lock = readOpenInterpreterReleaseLock(lockPath);
+  const lock = readCodexAppServerReleaseLock(lockPath);
   const target = resolveCodexRuntimeTarget(options.targetPlatform, options.targetArch);
-  const asset = lock.assets[target.targetKey];
-  if (asset.targetTriple !== target.targetTriple) {
-    throw new Error(`Open Interpreter release lock target mismatch for ${target.targetKey}`);
+  const platformContractVerifier =
+    options.agentRuntimePlatformContractVerifier ?? verifyAgentRuntimeMacosPlatformContract;
+  const build = lock.builds[target.targetKey];
+  if (build.targetTriple !== target.targetTriple) {
+    throw new Error(`Codex app-server release lock target mismatch for ${target.targetKey}`);
   }
 
   const outputPath = resolve(options.outputPath);
@@ -449,9 +568,15 @@ export async function stageCodexRuntime(
       target,
     });
     if (reusable) {
+      platformContractVerifier({
+        productMinimumMacos: AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
+        requiredArtifacts: lock.requiredArtifacts,
+        runtimeRoot: join(outputPath, "agent-runtime"),
+        targetArch: target.targetArch,
+      });
       if (options.browserRuntimeSourceRoot) {
         stageBrowserRuntime({
-          expectedCodexCompatibilityVersion: reusable.codexCompatibilityVersion,
+          appServerIdentity: projectBundledAppServerRuntimeIdentity(reusable),
           platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
           runtimeRoot: join(outputPath, "agent-runtime"),
           sourceRoot: options.browserRuntimeSourceRoot,
@@ -460,7 +585,10 @@ export async function stageCodexRuntime(
         });
       }
       process.stderr.write("Reused verified staged agent runtime.\n");
-      return reusable;
+      return {
+        metadata: reusable,
+        metadataSha256: bundledAgentRuntimeMetadataSha256(reusable),
+      };
     }
   }
   const tempOutputPath = mkdtempSync(join(outputPath, ".agent-runtime-stage-"));
@@ -472,7 +600,9 @@ export async function stageCodexRuntime(
     const resolvedSource = await resolveSourceRoot({
       archivePath: options.archivePath,
       cachePath,
+      checksumManifestPath: options.checksumManifestPath,
       extractionParent: outputParent,
+      fetch: options.fetch,
       lock,
       projectRoot: repositoryRoot,
       sourceRoot: options.sourceRoot,
@@ -491,28 +621,19 @@ export async function stageCodexRuntime(
       copyRuntimeFile(sourcePath, destinationPath);
     }
 
-    const noticesRoot = join(tempRuntimeRoot, "third-party", "open-interpreter");
+    const noticesRoot = join(tempRuntimeRoot, "third-party", "codex");
     validateNotice({
       sourcePath: join(repositoryRoot, ...lock.notices.licensePath.split("/")),
       destinationPath: join(noticesRoot, "LICENSE"),
       expectedSha256: lock.notices.licenseSha256,
-      label: "Open Interpreter LICENSE",
+      label: "Codex LICENSE",
     });
     validateNotice({
       sourcePath: join(repositoryRoot, ...lock.notices.noticePath.split("/")),
       destinationPath: join(noticesRoot, "NOTICE"),
       expectedSha256: lock.notices.noticeSha256,
-      label: "Open Interpreter NOTICE",
+      label: "Codex NOTICE",
     });
-    for (const patch of lock.source.patches) {
-      validateNotice({
-        sourcePath: join(repositoryRoot, ...patch.sourcePath.split("/")),
-        destinationPath: join(tempRuntimeRoot, ...patch.artifactPath.split("/")),
-        expectedSha256: patch.sha256,
-        label: `Open Interpreter source patch ${patch.sourcePath}`,
-      });
-    }
-
     const artifacts = listRuntimeArtifacts(tempRuntimeRoot);
     for (const artifact of artifacts) {
       const expectedMode = canonicalRuntimeMode(artifact.executable);
@@ -533,29 +654,39 @@ export async function stageCodexRuntime(
         `Staged agent runtime entrypoint is not executable: ${packageManifest.entrypoint}`,
       );
     }
+    if (verifyMetadataSha256 && entrypoint.sha256 !== build.entrypointSha256) {
+      throw new Error(
+        `Staged agent runtime entrypoint does not match the release lock for ${target.targetKey}: ${entrypoint.sha256}`,
+      );
+    }
+    platformContractVerifier({
+      productMinimumMacos: AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS,
+      requiredArtifacts: lock.requiredArtifacts,
+      runtimeRoot: tempRuntimeRoot,
+      targetArch: target.targetArch,
+    });
 
     const metadata: BundledAgentRuntimeMetadata = {
-      artifactRelease: {
-        archiveSha256: asset.archiveSha256,
-        assetName: asset.assetName,
-        repository: lock.release.repository,
-        tag: lock.release.tag,
+      releaseAsset: {
+        archiveSha256: build.archiveSha256,
+        archiveSize: build.archiveSize,
+        assetName: build.assetName,
+        entrypointSha256: entrypoint.sha256,
+        repository: lock.upstream.repository,
+        tag: lock.upstream.tag,
       },
       artifacts,
-      codexCompatibilityVersion: lock.codexCompatibilityVersion,
+      appServerRuntimeVersion: lock.appServerRuntimeVersion,
       entrypoint: packageManifest.entrypoint,
       layoutVersion: AGENT_RUNTIME_LAYOUT_VERSION,
       packageManifest,
+      protocolSchemaFingerprint: lock.protocolSchema.sha256,
       runtimeFamily: lock.runtimeFamily,
-      runtimeVersion: lock.runtimeVersion,
       searchPaths: [packageManifest.pathDir],
       sourceRevision: {
-        commit: lock.source.commit,
-        patches: lock.source.patches.map((patch) => ({
-          path: patch.artifactPath,
-          sha256: patch.sha256,
-        })),
-        repository: lock.source.repository,
+        commit: lock.upstream.commit,
+        repository: lock.upstream.repository,
+        tag: lock.upstream.tag,
       },
       targetArch: target.targetArch,
       targetPlatform: target.targetPlatform,
@@ -563,7 +694,7 @@ export async function stageCodexRuntime(
     };
 
     const metadataSha256 = bundledAgentRuntimeMetadataSha256(metadata);
-    if (metadataSha256 !== asset.runtimeMetadataSha256) {
+    if (verifyMetadataSha256 && metadataSha256 !== build.runtimeMetadataSha256) {
       throw new Error(
         `Staged agent runtime metadata does not match the release lock for ${target.targetKey}: ${metadataSha256}`,
       );
@@ -574,7 +705,7 @@ export async function stageCodexRuntime(
     chmodSync(metadataPath, REGULAR_RUNTIME_MODE);
     if (options.browserRuntimeSourceRoot) {
       stageBrowserRuntime({
-        expectedCodexCompatibilityVersion: metadata.codexCompatibilityVersion,
+        appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
         platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
         runtimeRoot: tempRuntimeRoot,
         sourceRoot: options.browserRuntimeSourceRoot,
@@ -583,11 +714,28 @@ export async function stageCodexRuntime(
       });
     }
     replaceOwnedDirectory(tempRuntimeRoot, join(outputPath, "agent-runtime"));
-    return metadata;
+    return { metadata, metadataSha256 };
   } finally {
     sourceCleanup();
     rmSync(tempOutputPath, { recursive: true, force: true });
   }
+}
+
+export async function stageCodexRuntime(
+  options: StageAgentRuntimeOptions,
+): Promise<BundledAgentRuntimeMetadata> {
+  const result = await stageCodexRuntimeClosure(options, true);
+  return result.metadata;
+}
+
+/**
+ * Builds the same canonical closure as production staging while returning the
+ * candidate metadata digest before that digest is committed to the release lock.
+ */
+export function stageCodexRuntimeCandidate(
+  options: StageAgentRuntimeOptions,
+): Promise<{ metadata: BundledAgentRuntimeMetadata; metadataSha256: string }> {
+  return stageCodexRuntimeClosure({ ...options, reuseExisting: false }, false);
 }
 
 function parseCliOptions(argv: string[]): CliOptions {

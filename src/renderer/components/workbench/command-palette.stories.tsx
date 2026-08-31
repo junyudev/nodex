@@ -136,6 +136,7 @@ function CommandPaletteStory({
         hasActiveSession: true,
         activeSessionPinned: true,
         hasAttachedThread: false,
+        canExportConversationMarkdown: false,
         panelActionAvailability: {
           db_view: true,
           page_stage: true,
@@ -298,6 +299,7 @@ export const RootCommandsAndHistory: Story = {
         results: [
           {
             thread: {
+              backendBinding: { kind: "codex" },
               threadId: "thr-server-only-open",
               sessionId: null,
               projectId: "nodex",

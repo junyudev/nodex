@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useLayoutEffect } from "react";
-import { MotionConfig } from "motion/react";
-import { fireEvent, getByRole, getByText, waitFor } from "@testing-library/dom";
+import { fireEvent, getByRole, waitFor } from "@testing-library/dom";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
 import { CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY } from "@/lib/codex-service-tier-settings";
@@ -14,7 +13,6 @@ import type {
   CodexPermissionMode,
   CodexReasoningEffortOption,
 } from "@/lib/types";
-import type { AgentProviderCatalog } from "../../../../../shared/agent-runtime";
 import type {
   NewChatProjectSelectorModel,
   ThreadFooterModel,
@@ -43,7 +41,7 @@ interface ComposerSendButtonStoryProps {
   permissionMode: CodexPermissionMode;
   selectedModel: string;
   selectedModelDisplayName: string;
-  modelCatalog: "default" | "expanded" | "power" | "loading";
+  modelCatalog: "default" | "expanded" | "rich" | "loading";
   selectedModelReasoningSupport: "default" | "highOnly";
   selectedCollaborationMode: CodexCollaborationModeKind;
   threadState: "existingThread" | "interruptedThread" | "newChat";
@@ -55,148 +53,7 @@ interface ComposerSendButtonStoryProps {
   seedAppshot: boolean;
   seedImageAttachment: boolean;
   pastedTextState: "none" | "pending" | "ready" | "failed";
-  multiProviderCatalog: boolean;
 }
-
-const STORY_AGENT_PROVIDER_CATALOG: AgentProviderCatalog = {
-  providers: [
-    {
-      id: "openai",
-      displayName: "OpenAI",
-      description: "Codex Responses models.",
-      wireApi: "responses",
-      credentialStatus: "runtimeManaged",
-      supportedByNodex: true,
-      isDefault: true,
-      credentialEnvKey: null,
-      recommendedHarnessId: null,
-      models: [
-        {
-          providerId: "openai",
-          modelId: "gpt-5.5",
-          displayName: "GPT-5.5",
-          description: "Default Codex coding model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: null,
-          supportedReasoningEfforts: [
-            {
-              value: "high",
-              displayName: "High",
-              description: "Deep reasoning.",
-            },
-          ],
-          defaultReasoningEffort: "high",
-          supportedServiceTiers: [
-            { value: null, displayName: "Standard", description: "Default speed, normal usage" },
-            {
-              value: "priority",
-              displayName: "Fast",
-              description: "Faster responses, higher usage",
-            },
-          ],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "same-thread",
-        },
-        {
-          providerId: "openai",
-          modelId: "gpt-5.4",
-          displayName: "GPT-5.4",
-          description: "Previous Codex coding model.",
-          hidden: false,
-          isDefault: false,
-          recommendedHarnessId: null,
-          supportedReasoningEfforts: [
-            { value: "medium", displayName: "Medium", description: "Balanced reasoning." },
-            { value: "high", displayName: "High", description: "Deep reasoning." },
-          ],
-          defaultReasoningEffort: "medium",
-          supportedServiceTiers: [
-            { value: null, displayName: "Standard", description: "Default speed, normal usage" },
-            {
-              value: "priority",
-              displayName: "Fast",
-              description: "Faster responses, higher usage",
-            },
-          ],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "same-thread",
-        },
-      ],
-    },
-    {
-      id: "anthropic",
-      displayName: "Anthropic",
-      description: "Claude Messages models.",
-      wireApi: "messages",
-      credentialStatus: "missing",
-      supportedByNodex: true,
-      isDefault: false,
-      credentialEnvKey: "ANTHROPIC_API_KEY",
-      recommendedHarnessId: "claude-code",
-      models: [
-        {
-          providerId: "anthropic",
-          modelId: "claude-opus-4-1",
-          displayName: "Claude Opus 4.1",
-          description: "Claude's most capable coding model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: "claude-code",
-          supportedReasoningEfforts: [
-            {
-              value: "high",
-              displayName: "High",
-              description: "Extended thinking.",
-            },
-          ],
-          defaultReasoningEffort: "high",
-          supportedServiceTiers: [],
-          defaultServiceTier: null,
-          inputCapabilities: ["text", "image"],
-          switchPolicy: "new-thread",
-        },
-      ],
-    },
-    {
-      id: "kimi-for-coding",
-      displayName: "Kimi For Coding",
-      description: "Kimi coding endpoint.",
-      wireApi: "chat",
-      credentialStatus: "ready",
-      supportedByNodex: true,
-      isDefault: false,
-      credentialEnvKey: "KIMI_API_KEY",
-      recommendedHarnessId: "kimi-code",
-      models: [
-        {
-          providerId: "kimi-for-coding",
-          modelId: "kimi-k3",
-          displayName: "Kimi K3",
-          description: "Kimi's coding agent model.",
-          hidden: false,
-          isDefault: true,
-          recommendedHarnessId: "kimi-code",
-          supportedReasoningEfforts: [
-            {
-              value: "Thinking",
-              displayName: "Thinking",
-              description: "Reason before responding.",
-            },
-            { value: "Instant", displayName: "Instant", description: "Respond directly." },
-          ],
-          defaultReasoningEffort: "Thinking",
-          supportedServiceTiers: [],
-          defaultServiceTier: null,
-          inputCapabilities: ["text"],
-          switchPolicy: "new-thread",
-        },
-      ],
-    },
-  ],
-};
 
 const LONG_PROMPT_STORY_DRAFT = Array.from(
   { length: 32 },
@@ -240,7 +97,7 @@ function resolveStoryAvailableModels(input: {
     return [];
   }
 
-  if (input.args.modelCatalog === "power") {
+  if (input.args.modelCatalog === "rich") {
     const efforts = ["low", "medium", "high", "xhigh", "ultra"] as const;
     return [
       {
@@ -251,6 +108,10 @@ function resolveStoryAvailableModels(input: {
         hidden: false,
         isDefault: false,
         defaultReasoningEffort: "low",
+        inputModalities: ["text", "image"],
+        multiAgentVersion: "v2",
+        serviceTiers: [],
+        defaultServiceTier: null,
         supportedReasoningEfforts: efforts.slice(0, 4).map((reasoningEffort) => ({
           reasoningEffort,
           description: "",
@@ -264,6 +125,10 @@ function resolveStoryAvailableModels(input: {
         hidden: false,
         isDefault: true,
         defaultReasoningEffort: "low",
+        inputModalities: ["text", "image"],
+        multiAgentVersion: "v2",
+        serviceTiers: [],
+        defaultServiceTier: null,
         supportedReasoningEfforts: efforts.map((reasoningEffort) => ({
           reasoningEffort,
           description: "",
@@ -290,6 +155,10 @@ function resolveStoryAvailableModels(input: {
       hidden: false,
       isDefault: false,
       defaultReasoningEffort: "high",
+      inputModalities: ["text", "image"],
+      multiAgentVersion: null,
+      serviceTiers: [],
+      defaultServiceTier: null,
       supportedReasoningEfforts: input.footerModel.reasoningEffortOptions,
     },
     {
@@ -300,6 +169,10 @@ function resolveStoryAvailableModels(input: {
       hidden: false,
       isDefault: false,
       defaultReasoningEffort: "medium",
+      inputModalities: ["text", "image"],
+      multiAgentVersion: null,
+      serviceTiers: [],
+      defaultServiceTier: null,
       supportedReasoningEfforts: input.footerModel.reasoningEffortOptions,
     },
     {
@@ -310,6 +183,10 @@ function resolveStoryAvailableModels(input: {
       hidden: false,
       isDefault: false,
       defaultReasoningEffort: "medium",
+      inputModalities: ["text", "image"],
+      multiAgentVersion: null,
+      serviceTiers: [],
+      defaultServiceTier: null,
       supportedReasoningEfforts: input.footerModel.reasoningEffortOptions,
     },
   ];
@@ -382,7 +259,7 @@ function buildModel(args: ComposerSendButtonStoryProps): ThreadFooterModel {
     args,
     footerModel.reasoningEffortOptions,
   );
-  const selectedModelOption = {
+  const selectedModelOption: CodexModelOption = {
     id: args.selectedModel,
     model: args.selectedModel,
     displayName: args.selectedModelDisplayName,
@@ -391,6 +268,10 @@ function buildModel(args: ComposerSendButtonStoryProps): ThreadFooterModel {
     isDefault: false,
     defaultReasoningEffort:
       selectedModelReasoningOptions[0]?.reasoningEffort ?? footerModel.selectedReasoningEffort,
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     supportedReasoningEfforts: selectedModelReasoningOptions,
   };
 
@@ -409,28 +290,6 @@ function buildModel(args: ComposerSendButtonStoryProps): ThreadFooterModel {
       : (selectedModelReasoningOptions[0]?.reasoningEffort ?? footerModel.selectedReasoningEffort),
     reasoningEffortOptions: selectedModelReasoningOptions,
     selectedCollaborationMode: args.selectedCollaborationMode,
-    ...(args.multiProviderCatalog
-      ? {
-          agentProviderCatalog: STORY_AGENT_PROVIDER_CATALOG,
-          executionProfile:
-            args.threadState === "newChat"
-              ? {
-                  providerId: "anthropic",
-                  modelId: "claude-opus-4-1",
-                  harnessId: "claude-code",
-                  reasoningEffort: "high",
-                  serviceTier: null,
-                }
-              : {
-                  providerId: "openai",
-                  modelId: "gpt-5.4",
-                  harnessId: null,
-                  reasoningEffort: "medium",
-                  serviceTier: args.initialServiceTier === "fast" ? "priority" : null,
-                },
-          executionIdentityLocked: args.threadState !== "newChat",
-        }
-      : {}),
     ...(args.threadState === "newChat" && newChatTarget
       ? {
           newThreadTarget: newChatTarget,
@@ -607,17 +466,6 @@ function buildActions(): ThreadStageActions {
     onCollaborationModeChange: () => {},
     onModelChange: () => {},
     onReasoningEffortChange: () => {},
-    onExecutionProfileChange: () => {},
-    onProviderCredentialSet: async (providerId) => ({
-      providerId,
-      status: "ready",
-      runtimeRestartPending: false,
-    }),
-    onProviderCredentialDelete: async (providerId) => ({
-      providerId,
-      status: "missing",
-      runtimeRestartPending: false,
-    }),
     onPersonalityChange: () => {},
     onPermissionModeChange: () => {},
     onQueueingEnabledChange: () => {},
@@ -866,7 +714,6 @@ const meta = {
     seedAppshot: false,
     seedImageAttachment: false,
     pastedTextState: "none",
-    multiProviderCatalog: false,
   },
   argTypes: {
     isQueueingEnabled: {
@@ -895,7 +742,7 @@ const meta = {
     },
     modelCatalog: {
       control: "radio",
-      options: ["default", "expanded", "power", "loading"],
+      options: ["default", "expanded", "rich", "loading"],
     },
     selectedModelReasoningSupport: {
       control: "radio",
@@ -936,9 +783,6 @@ const meta = {
     pastedTextState: {
       control: "inline-radio",
       options: ["none", "pending", "ready", "failed"],
-    },
-    multiProviderCatalog: {
-      control: "boolean",
     },
   },
   parameters: {
@@ -986,7 +830,6 @@ export const IntelligenceAnchorStability: Story = {
   args: {
     threadState: "newChat",
     modelCatalog: "expanded",
-    multiProviderCatalog: true,
     selectedModel: "gpt-5.5",
     selectedModelDisplayName: "GPT-5.5",
   },
@@ -1000,7 +843,7 @@ export const IntelligenceAnchorStability: Story = {
     docs: {
       description: {
         story:
-          "Open multi-provider Intelligence selector. The trigger expands to its stable candidate width so model or reasoning changes cannot move the open menu anchor.",
+          "Open the Codex Intelligence selector. The trigger expands to its stable candidate width so model, reasoning, or speed changes cannot move the open menu anchor.",
       },
     },
   },
@@ -1186,7 +1029,6 @@ export const FastModelIndicator: Story = {
     composerEnterBehavior: "enter",
     draftPrompt: "",
     initialServiceTier: "fast",
-    multiProviderCatalog: true,
   },
 };
 
@@ -1198,9 +1040,9 @@ export const DefaultModelSelector: Story = {
   },
 };
 
-export const PowerPickerSimple: Story = {
+export const RichModelCatalog: Story = {
   args: {
-    modelCatalog: "power",
+    modelCatalog: "rich",
     selectedModel: "gpt-5.6-sol",
     selectedModelDisplayName: "GPT-5.6 Sol",
   },
@@ -1208,31 +1050,21 @@ export const PowerPickerSimple: Story = {
     const trigger = getByRole(canvasElement, "button", { name: "Select model" });
     fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
     fireEvent.click(trigger);
-    const simple = await waitFor(() => getByRole(document.body, "tab", { name: "Simple" }));
-    fireEvent.click(simple);
-    await waitFor(() => getByRole(document.body, "slider", { name: "Power" }));
+    await waitFor(() => getByRole(document.body, "menuitem", { name: /Model/ }));
+    getByRole(document.body, "menuitem", { name: /Effort/ });
+    getByRole(document.body, "menuitem", { name: /Speed/ });
   },
   parameters: {
     docs: {
       description: {
         story:
-          "The runtime-supported Terra/Sol catalog resolves to the compact Power picker, including Speed in the same next-turn selection surface.",
+          "A heterogeneous runtime catalog uses the same provider-neutral Model, Effort, and Speed hierarchy without a secondary picker mode.",
       },
     },
   },
 };
 
-export const PowerPickerAdvanced: Story = {
-  ...PowerPickerSimple,
-  play: async (context) => {
-    await PowerPickerSimple.play?.(context);
-    const advanced = getByRole(document.body, "tab", { name: "Advanced" });
-    fireEvent.click(advanced);
-    await waitFor(() => getByRole(document.body, "menuitem", { name: /Model/ }));
-  },
-};
-
-export const ClassicPickerFallback: Story = {
+export const ExpandedModelCatalog: Story = {
   args: {
     modelCatalog: "expanded",
     selectedModel: "gpt-5.5",
@@ -1246,9 +1078,9 @@ export const ClassicPickerFallback: Story = {
   },
 };
 
-export const PowerPickerForcedAdvanced: Story = {
+export const RichCatalogWithUnlistedSelection: Story = {
   args: {
-    modelCatalog: "power",
+    modelCatalog: "rich",
     selectedModel: "gpt-5.5",
     selectedModelDisplayName: "GPT-5.5",
   },
@@ -1260,39 +1092,31 @@ export const PowerPickerForcedAdvanced: Story = {
   },
 };
 
-export const PowerPickerUltraWarning: Story = {
-  ...PowerPickerSimple,
+export const RichCatalogUltraEffort: Story = {
+  ...RichModelCatalog,
   play: async (context) => {
-    await PowerPickerSimple.play?.(context);
-    const slider = getByRole(document.body, "slider", { name: "Power" });
-    fireEvent.keyDown(slider, { key: "End" });
-    await waitFor(() => getByText(document.body, "Ultra uses significantly more model capacity"));
+    await RichModelCatalog.play?.(context);
+    const effort = getByRole(document.body, "menuitem", { name: /Effort/ });
+    fireEvent.pointerMove(effort);
+    fireEvent.click(effort);
+    await waitFor(() => getByRole(document.body, "menuitem", { name: /Ultra/ }));
   },
 };
 
-export const PowerPickerFast: Story = {
-  ...PowerPickerSimple,
+export const RichCatalogFast: Story = {
+  ...RichModelCatalog,
   args: {
-    ...PowerPickerSimple.args,
+    ...RichModelCatalog.args,
     initialServiceTier: "fast",
   },
 };
 
-export const PowerPickerNarrow: Story = {
-  ...PowerPickerSimple,
+export const RichCatalogNarrow: Story = {
+  ...RichModelCatalog,
   args: {
-    ...PowerPickerSimple.args,
+    ...RichModelCatalog.args,
     surfaceWidth: "narrow",
   },
-};
-
-export const PowerPickerReducedMotion: Story = {
-  ...PowerPickerSimple,
-  render: (args) => (
-    <MotionConfig reducedMotion="always">
-      <ComposerSendButtonStory {...args} />
-    </MotionConfig>
-  ),
 };
 
 export const ModelPickerLoading: Story = {
@@ -1325,38 +1149,6 @@ export const ExpandedModelSubmenu: Story = {
     draftPrompt: "",
     initialServiceTier: "fast",
     modelCatalog: "expanded",
-  },
-};
-
-export const MultiProviderClaudeSetup: Story = {
-  args: {
-    threadState: "newChat",
-    multiProviderCatalog: true,
-    initialServiceTier: "standard",
-  },
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "New-task provider, model, effort, and capability-driven speed summaries. Anthropic credential setup opens in the shared modal layer instead of nesting a form inside the model menu.",
-      },
-    },
-  },
-};
-
-export const MultiProviderThreadProfile: Story = {
-  args: {
-    threadState: "existingThread",
-    multiProviderCatalog: true,
-    initialServiceTier: "standard",
-  },
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "An existing task with the second catalog model selected. The model flyout keeps provider catalog order stable while compatible model, effort, and speed settings remain editable for the next turn.",
-      },
-    },
   },
 };
 

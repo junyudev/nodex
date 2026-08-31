@@ -57,7 +57,7 @@ export function renderInitialProjectWelcomePage(input: {
       "</callout>",
       "<empty-block/>",
       "## Connect your model",
-      "Use **Sign in** at the bottom of the sidebar to sign in with ChatGPT. To use another provider, choose it in a chat composer and add its API key when prompted.",
+      "Use **Sign in** at the bottom of the sidebar to connect ChatGPT. Available Codex models then appear in the chat composer.",
       "<empty-block/>",
       "## Try your first task",
       "Select the prompt block below, choose **Send to chat**, then choose **New chat**.",

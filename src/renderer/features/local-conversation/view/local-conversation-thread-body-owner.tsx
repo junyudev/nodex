@@ -465,7 +465,6 @@ export function LocalConversationThreadBodyOwner({
             source: null,
             threadName: null,
             threadPreview: "",
-            modelProvider: "",
             cwd,
             projectlessOutputDirectory: projectlessOutputDirectory ?? null,
             statusType: statusType ?? (resumeState === "resumed" ? "idle" : "notLoaded"),

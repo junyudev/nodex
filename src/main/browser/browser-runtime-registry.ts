@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   makeBrowserSidebarTabKey,
   type BrowserSidebarHostRouteIdentity,
+  type BrowserSidebarPhysicalHostIdentity,
   type BrowserSidebarTabIdentity,
   type BrowserSidebarWebviewHostKind,
 } from "../../shared/browser-sidebar";
@@ -91,6 +92,19 @@ function isSameHostRoute(
   );
 }
 
+function isSamePhysicalHost(
+  left: BrowserSidebarPhysicalHostIdentity,
+  right: BrowserSidebarPhysicalHostIdentity,
+): boolean {
+  return (
+    left.browserConversationId === right.browserConversationId &&
+    left.browserViewScopeId === right.browserViewScopeId &&
+    left.browserTabId === right.browserTabId &&
+    left.rendererInstanceId === right.rendererInstanceId &&
+    left.hostGeneration === right.hostGeneration
+  );
+}
+
 export interface BrowserRuntimeRegistry {
   readonly registerRendererSession: (
     input: BrowserRendererSessionRegistration,
@@ -105,7 +119,7 @@ export interface BrowserRuntimeRegistry {
   ) => BrowserHostRouteMatchResult;
   readonly authorizeAttachment: (
     ownerWebContentsId: number,
-    input: BrowserSidebarHostRouteIdentity,
+    input: BrowserSidebarPhysicalHostIdentity,
   ) => BrowserAttachmentAuthorizationResult;
   readonly consumeAuthorizedAttachment: (
     attachToken: string,
@@ -266,7 +280,7 @@ export function makeBrowserRuntimeRegistry(
       if (host.pendingTeardown) {
         return { ok: false, reason: "pending-teardown" };
       }
-      if (host.ownerWebContentsId !== ownerWebContentsId || !isSameHostRoute(host, input)) {
+      if (host.ownerWebContentsId !== ownerWebContentsId || !isSamePhysicalHost(host, input)) {
         return { ok: false, reason: "host-mismatch" };
       }
 

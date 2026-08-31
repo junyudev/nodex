@@ -7,11 +7,14 @@ import type {
   CodexConversationStateUpdate,
   CodexConversationItem,
   CodexConversationSnapshot,
+  CodexEvent,
   CodexHostMessage,
   CodexProtocolRequestId,
   CodexQueueOwnerUpdateRequest,
   CodexQueuedFollowUpProjection,
+  CodexSelectedSubagentHydrateResult,
   CodexSideChatStartResult,
+  CodexSubagentOverviewWindow,
   CodexThreadStreamStateChange,
   CodexThreadSummary,
   CodexThreadHistoryEditResult,
@@ -53,6 +56,7 @@ import type {
 let invokeCalls: string[] = [];
 let invokeRecords: Array<{ channel: string; args: unknown[] }> = [];
 let hostMessageListener: ((message: CodexHostMessage) => void) | null = null;
+let codexEventListener: ((event: CodexEvent) => void) | null = null;
 let rendererClientRequestListener: ((message: unknown) => void) | null = null;
 let threadListByProject: Record<string, CodexThreadSummary[]> = {};
 let snapshotByThread: Record<string, CodexConversationSnapshot | null> = {};
@@ -89,6 +93,13 @@ let ownerNotificationAckHandler: ((input: unknown) => boolean | Promise<boolean>
 let ownerRequestResponseHandler:
   | ((channel: string, args: unknown[]) => boolean | Promise<boolean>)
   | null = null;
+let selectedSubagentHydrateResult: CodexSelectedSubagentHydrateResult | null = null;
+let selectedSubagentHydrateHandler:
+  | ((
+      input: unknown,
+    ) => CodexSelectedSubagentHydrateResult | Promise<CodexSelectedSubagentHydrateResult>)
+  | null = null;
+let subagentOverviewResult: CodexSubagentOverviewWindow | null = null;
 const generatedThreadTitleResult: unknown = { title: null };
 const generatedThreadTitleError: Error | null = null;
 
@@ -226,6 +237,29 @@ vi.mock("./local-conversation-deps", () => ({
         throw new Error("Persisted-history hydration fixture is unavailable");
       }
       return persistedHistoryHydrationResult;
+    }
+
+    if (channel === "codex:subagents:selected:hydrate") {
+      if (selectedSubagentHydrateHandler) {
+        return await selectedSubagentHydrateHandler(args[0]);
+      }
+      if (!selectedSubagentHydrateResult) {
+        throw new Error("Selected subagent hydration fixture is unavailable");
+      }
+      return selectedSubagentHydrateResult;
+    }
+
+    if (channel === "codex:subagents:overview:read") {
+      if (subagentOverviewResult) return subagentOverviewResult;
+      const input = args[0] as { rootThreadId: string };
+      return {
+        rootThreadId: input.rootThreadId,
+        revision: 0,
+        generation: 1,
+        completeness: "complete",
+        active: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
+        done: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
+      } satisfies CodexSubagentOverviewWindow;
     }
 
     if (channel === "codex:thread-owner:app-server-request") {
@@ -441,7 +475,12 @@ vi.mock("./local-conversation-deps", () => ({
       }
     };
   },
-  subscribeCodexEvents: () => () => undefined,
+  subscribeCodexEvents: (listener: (event: CodexEvent) => void) => {
+    codexEventListener = listener;
+    return () => {
+      if (codexEventListener === listener) codexEventListener = null;
+    };
+  },
   subscribeCodexRendererClientRequests: (listener: (message: unknown) => void) => {
     rendererClientRequestListener = listener;
     return () => {
@@ -523,6 +562,9 @@ function resetLocalConversationStoreTestHarness(reset: () => void): void {
   queuedFollowUpCommandHandler = null;
   persistedHistoryHydrationResult = null;
   historyPageResult = null;
+  selectedSubagentHydrateResult = null;
+  selectedSubagentHydrateHandler = null;
+  codexEventListener = null;
   reset();
 }
 
@@ -679,6 +721,7 @@ function buildRollbackResponseFromConversation(
                   text: item.markdownText ?? "",
                   phase: null,
                   memoryCitation: null,
+                  delivery: null,
                 }),
           };
         }) as never[],
@@ -735,7 +778,7 @@ function withCanonicalState(conversation: CodexConversationSnapshot): CodexConve
     sandboxPolicy: { type: "readOnly" as const, networkAccess: false },
     activePermissionProfile: null,
     model: latestConversationSettings?.model ?? "gpt-test-fixture",
-    modelProvider: conversation.modelProvider,
+    modelProvider: conversation.modelProvider ?? "openai",
     serviceTier: null,
     effort: latestConversationSettings?.reasoningEffort ?? "high",
     summary: null,
@@ -985,6 +1028,7 @@ function buildAssistantMessage(
       text: markdownText,
       phase: null,
       memoryCitation: null,
+      delivery: null,
     },
     createdAt: 1,
     updatedAt: 1,
@@ -2739,6 +2783,7 @@ describe("local-conversation-store", () => {
               text: "",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -2829,6 +2874,7 @@ describe("local-conversation-store", () => {
               text: "partial final",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -3496,6 +3542,347 @@ describe("local-conversation-store", () => {
       resumeThreadOwnerClientId = "renderer-owner";
       resumeThreadRevision = 0;
       resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("selected subagent hydration returns ready only after its renderer attachment is applied", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadError = null;
+    resumeThreadRole = "owner";
+    resumeThreadRevision = 7;
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const child = buildConversation("thread-selected", "project-1");
+    selectedSubagentHydrateResult = {
+      rootThreadId: "thread-root",
+      threadId: child.threadId,
+      revision: 11,
+      fidelity: "attachedSparse",
+      checkpoint: "[1,2,3]",
+      canInteract: true,
+      outcome: "ready",
+      errorMessage: null,
+    };
+    let resolveResume: (conversation: CodexConversationSnapshot) => void = () => {
+      throw new Error("resume gate was not initialized");
+    };
+    resumeThreadResult = new Promise<CodexConversationSnapshot>((resolve) => {
+      resolveResume = resolve;
+    });
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      let settled = false;
+      const hydration = manager.hydrateSelectedSubagent({
+        rootThreadId: "thread-root",
+        threadId: child.threadId,
+      });
+      void hydration.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await flushAsyncWork();
+
+      const hydrateIndices = invokeRecords.flatMap((record, index) =>
+        record.channel === "codex:subagents:selected:hydrate" ? [index] : [],
+      );
+      const attachIndex = invokeRecords.findIndex(
+        (record) =>
+          record.channel === "codex:thread:resume:request" && record.args[0] === child.threadId,
+      );
+      expect(hydrateIndices).toHaveLength(1);
+      expect(attachIndex).toBeGreaterThan(hydrateIndices[0]!);
+      expect(settled).toBe(false);
+      expect(manager.readConversation(child.threadId)).toBeNull();
+
+      resolveResume(child);
+      await expect(hydration).resolves.toMatchObject({
+        threadId: child.threadId,
+        outcome: "ready",
+        canInteract: true,
+      });
+      expect(manager.readConversation(child.threadId)?.threadId).toBe(child.threadId);
+      expect(manager.readConversationStreamRole(child.threadId)).toBe("owner");
+      expect(manager.readConversationAttachmentState(child.threadId).status).toBe("attached");
+      const completedHydrateIndices = invokeRecords.flatMap((record, index) =>
+        record.channel === "codex:subagents:selected:hydrate" ? [index] : [],
+      );
+      expect(completedHydrateIndices).toHaveLength(2);
+      expect(completedHydrateIndices[1]).toBeGreaterThan(attachIndex);
+    } finally {
+      selectedSubagentHydrateResult = null;
+      resumeThreadResult = null;
+      resumeThreadRevision = 0;
+      manager.destroy();
+    }
+  });
+
+  test("selected subagent hydration downgrades ready when renderer attachment is unavailable", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadResult = null;
+    resumeThreadError = null;
+    resumeThreadRole = "owner";
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    selectedSubagentHydrateResult = {
+      rootThreadId: "thread-root",
+      threadId: "thread-unavailable",
+      revision: 12,
+      fidelity: "residentSparse",
+      checkpoint: "[1,2,4]",
+      canInteract: true,
+      outcome: "ready",
+      errorMessage: null,
+    };
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      await expect(
+        manager.hydrateSelectedSubagent({
+          rootThreadId: "thread-root",
+          threadId: "thread-unavailable",
+        }),
+      ).resolves.toMatchObject({
+        threadId: "thread-unavailable",
+        outcome: "unavailable",
+        canInteract: false,
+        errorMessage: "This subagent could not attach to this window.",
+      });
+      expect(manager.readConversation("thread-unavailable")).toBeNull();
+      expect(manager.readConversationStreamRole("thread-unavailable")).toBeNull();
+    } finally {
+      selectedSubagentHydrateResult = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("selected subagent hydration converts renderer attachment errors into failed outcomes", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadResult = null;
+    resumeThreadError = new Error("renderer attachment failed");
+    resumeThreadRole = "owner";
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    selectedSubagentHydrateResult = {
+      rootThreadId: "thread-root",
+      threadId: "thread-failed",
+      revision: 13,
+      fidelity: "attachedSparse",
+      checkpoint: "[1,2,5]",
+      canInteract: true,
+      outcome: "ready",
+      errorMessage: null,
+    };
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      await expect(
+        manager.hydrateSelectedSubagent({
+          rootThreadId: "thread-root",
+          threadId: "thread-failed",
+        }),
+      ).resolves.toMatchObject({
+        threadId: "thread-failed",
+        outcome: "failed",
+        canInteract: false,
+        errorMessage: "renderer attachment failed",
+      });
+      expect(manager.readConversation("thread-failed")).toBeNull();
+      expect(manager.readConversationStreamRole("thread-failed")).toBeNull();
+      expect(manager.readConversationAttachmentState("thread-failed").status).toBe("failed");
+    } finally {
+      selectedSubagentHydrateResult = null;
+      resumeThreadResult = null;
+      resumeThreadError = null;
+      manager.destroy();
+    }
+  });
+
+  test("selected subagent hydration revalidates interaction authority without reattaching", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadError = null;
+    resumeThreadRole = "owner";
+    resumeThreadRevision = 14;
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const child = buildConversation("thread-authority", "project-1");
+    resumeThreadResult = child;
+    let authorityReads = 0;
+    selectedSubagentHydrateHandler = async (rawInput) => {
+      const input = rawInput as { rootThreadId: string; threadId: string };
+      authorityReads += 1;
+      return {
+        rootThreadId: input.rootThreadId,
+        threadId: input.threadId,
+        revision: authorityReads,
+        fidelity: "attachedSparse",
+        checkpoint: `[${authorityReads}]`,
+        canInteract: authorityReads === 1,
+        outcome: "ready",
+        errorMessage: null,
+      };
+    };
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      await expect(
+        manager.hydrateSelectedSubagent({
+          rootThreadId: "thread-root",
+          threadId: child.threadId,
+        }),
+      ).resolves.toMatchObject({
+        rootThreadId: "thread-root",
+        threadId: child.threadId,
+        revision: 2,
+        outcome: "ready",
+        canInteract: false,
+      });
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread:resume:request"),
+      ).toHaveLength(1);
+
+      await expect(
+        manager.refreshSelectedSubagentAuthority({
+          rootThreadId: "thread-root",
+          threadId: child.threadId,
+        }),
+      ).resolves.toMatchObject({
+        revision: 3,
+        outcome: "ready",
+        canInteract: false,
+      });
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread:resume:request"),
+      ).toHaveLength(1);
+    } finally {
+      selectedSubagentHydrateHandler = null;
+      resumeThreadResult = null;
+      resumeThreadRevision = 0;
+      manager.destroy();
+    }
+  });
+
+  test("selected subagent hydration rejects a mismatched identity before renderer attachment", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadError = null;
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    selectedSubagentHydrateHandler = async () => ({
+      rootThreadId: "wrong-root",
+      threadId: "wrong-child",
+      revision: 15,
+      fidelity: "attachedSparse",
+      checkpoint: "wrong-checkpoint",
+      canInteract: true,
+      outcome: "ready",
+      errorMessage: null,
+    });
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      await expect(
+        manager.hydrateSelectedSubagent({
+          rootThreadId: "thread-root",
+          threadId: "thread-selected",
+        }),
+      ).resolves.toMatchObject({
+        rootThreadId: "thread-root",
+        threadId: "thread-selected",
+        outcome: "failed",
+        canInteract: false,
+      });
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread:resume:request"),
+      ).toHaveLength(0);
+    } finally {
+      selectedSubagentHydrateHandler = null;
+      manager.destroy();
+    }
+  });
+
+  test("selected subagent hydration rejects a mismatched post-attachment authority", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadError = null;
+    resumeThreadRole = "owner";
+    resumeThreadRevision = 16;
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const child = buildConversation("thread-selected", "project-1");
+    resumeThreadResult = child;
+    let authorityReads = 0;
+    selectedSubagentHydrateHandler = async (rawInput) => {
+      const input = rawInput as { rootThreadId: string; threadId: string };
+      authorityReads += 1;
+      return {
+        rootThreadId: authorityReads === 1 ? input.rootThreadId : "wrong-root",
+        threadId: input.threadId,
+        revision: authorityReads,
+        fidelity: "attachedSparse",
+        checkpoint: `[${authorityReads}]`,
+        canInteract: true,
+        outcome: "ready",
+        errorMessage: null,
+      };
+    };
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      await expect(
+        manager.hydrateSelectedSubagent({
+          rootThreadId: "thread-root",
+          threadId: child.threadId,
+        }),
+      ).resolves.toMatchObject({
+        rootThreadId: "thread-root",
+        threadId: child.threadId,
+        outcome: "failed",
+        canInteract: false,
+      });
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:thread:resume:request"),
+      ).toHaveLength(1);
+    } finally {
+      selectedSubagentHydrateHandler = null;
+      resumeThreadResult = null;
+      resumeThreadRevision = 0;
       manager.destroy();
     }
   });
@@ -4411,6 +4798,7 @@ describe("local-conversation-store", () => {
               text: "",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -4441,6 +4829,7 @@ describe("local-conversation-store", () => {
               text: "done",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -4880,6 +5269,7 @@ describe("local-conversation-store", () => {
               text: "",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -5117,6 +5507,7 @@ describe("local-conversation-store", () => {
               text: delta,
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -5650,6 +6041,7 @@ describe("local-conversation-store", () => {
               ephemeral: false,
               section: null,
               sectionEnteredAt: null,
+              projectId: null,
               historyMode: "legacy",
               modelProvider: "openai-responses",
               createdAt: 10,
@@ -5758,6 +6150,7 @@ describe("local-conversation-store", () => {
             id: "approval-1",
             method: "item/commandExecution/requestApproval",
             params: {
+              kind: "command",
               threadId: "thread-1",
               turnId: "turn-1",
               itemId: "cmd-1",
@@ -5769,6 +6162,7 @@ describe("local-conversation-store", () => {
             id: "approval-1",
             method: "item/commandExecution/requestApproval",
             params: {
+              kind: "command",
               threadId: "thread-1",
               turnId: "turn-1",
               itemId: "cmd-2",
@@ -5822,6 +6216,7 @@ describe("local-conversation-store", () => {
               message: "Tool failed",
               codexErrorInfo: null,
               additionalDetails: "exit 1",
+              misalignment: null,
             },
             willRetry: false,
           },
@@ -5952,6 +6347,7 @@ describe("local-conversation-store", () => {
           id: "approval-1",
           method: "item/commandExecution/requestApproval",
           params: {
+            kind: "command",
             threadId: "thread-1",
             turnId: "turn-1",
             itemId: "cmd-1",
@@ -6181,6 +6577,7 @@ describe("local-conversation-store", () => {
             id,
             method: "item/commandExecution/requestApproval",
             params: {
+              kind: "command",
               threadId: "thread-1",
               turnId: "turn-1",
               itemId: "cmd-1",
@@ -6320,6 +6717,7 @@ describe("local-conversation-store", () => {
             id: requestId,
             method: "item/commandExecution/requestApproval",
             params: {
+              kind: "command",
               threadId: "thread-1",
               turnId: "turn-1",
               itemId: "cmd-1",
@@ -6595,6 +6993,7 @@ describe("local-conversation-store", () => {
             id: requestId,
             method: "item/commandExecution/requestApproval",
             params: {
+              kind: "command",
               threadId,
               turnId,
               itemId: `command-${turnId}`,
@@ -6689,6 +7088,7 @@ describe("local-conversation-store", () => {
           id: "approval-follower",
           method: "item/commandExecution/requestApproval",
           params: {
+            kind: "command",
             threadId: "thread-1",
             turnId: "turn-1",
             itemId: "cmd-follower-approval",
@@ -6819,6 +7219,7 @@ describe("local-conversation-store", () => {
         id: input.requestId,
         method: "item/commandExecution/requestApproval" as const,
         params: {
+          kind: "command" as const,
           threadId: input.threadId,
           turnId,
           itemId: `command-${input.requestId}`,
@@ -6981,6 +7382,7 @@ describe("local-conversation-store", () => {
         id: input.requestId,
         method: "item/commandExecution/requestApproval" as const,
         params: {
+          kind: "command" as const,
           threadId: input.threadId,
           turnId,
           itemId: `command-${input.requestId}`,
@@ -7147,6 +7549,7 @@ describe("local-conversation-store", () => {
             id: "canonical-1",
             method: "item/commandExecution/requestApproval",
             params: {
+              kind: "command",
               threadId: "thread-1",
               turnId: "turn-1",
               itemId: "cmd-1",
@@ -9492,6 +9895,7 @@ describe("local-conversation-store", () => {
               text: delta,
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -10243,6 +10647,7 @@ describe("local-conversation-store", () => {
                 text: delta,
                 phase: null,
                 memoryCitation: null,
+                delivery: null,
               },
             },
           },
@@ -11127,6 +11532,7 @@ describe("local-conversation-store", () => {
               text: "",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -11199,6 +11605,7 @@ describe("local-conversation-store", () => {
               text: "",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -13154,6 +13561,7 @@ describe("local-conversation-store", () => {
               text: "",
               phase: null,
               memoryCitation: null,
+              delivery: null,
             },
           },
         },
@@ -13234,6 +13642,7 @@ describe("local-conversation-store", () => {
                 text: "",
                 phase: null,
                 memoryCitation: null,
+                delivery: null,
               },
             },
           },
@@ -15196,6 +15605,7 @@ describe("local-conversation-store", () => {
           id: "command-1",
           method: "item/commandExecution/requestApproval",
           params: {
+            kind: "command",
             threadId: "thread-1",
             turnId: "turn-1",
             itemId: "cmd-1",
@@ -15586,6 +15996,81 @@ describe("local-conversation-store", () => {
       expect(goalSetRequests.length).toBe(1);
       expect(manager.readConversation("thread-1")?.statusType).toBe("idle");
     } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("owner idle status waits for the complete subagent tree before continuing a goal", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    subagentOverviewResult = {
+      rootThreadId: "thread-1",
+      revision: 1,
+      generation: 1,
+      completeness: "incomplete",
+      active: { rows: [], knownCount: 1, totalCount: null, continuation: null },
+      done: { rows: [], knownCount: 0, totalCount: null, continuation: null },
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      statusType: "active",
+      threadGoal: {
+        threadId: "thread-1",
+        objective: "finish the migration",
+        status: "active",
+        tokenBudget: null,
+        tokensUsed: 12,
+        timeUsedSeconds: 34,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      turns: [
+        {
+          threadId: "thread-1",
+          turnId: "turn-1",
+          status: "completed",
+          itemIds: ["assistant-1"],
+          items: [buildAssistantMessage("thread-1", "turn-1", "assistant-1", "done")],
+        },
+      ],
+    };
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      invokeRecords = [];
+
+      dispatchCodexAppServerMessage("thread-owner-notification", {
+        hostId: "default",
+        sequence: 1,
+        notification: {
+          method: "thread/status/changed",
+          params: { threadId: "thread-1", status: { type: "idle" } },
+        },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+
+      expect(
+        invokeRecords.some(
+          (record) =>
+            record.channel === "codex:thread-owner:app-server-request" &&
+            (record.args[0] as { request?: { method?: string } }).request?.method ===
+              "thread/goal/set",
+        ),
+      ).toBe(false);
+      expect(
+        invokeRecords.some((record) => record.channel === "codex:subagents:overview:read"),
+      ).toBe(true);
+    } finally {
+      subagentOverviewResult = null;
       resumeThreadResult = null;
       manager.destroy();
     }
@@ -19310,7 +19795,7 @@ describe("local-conversation-store", () => {
     expect(String(invokeCalls.filter((call) => call === "codex:threads:list").length)).toBe("1");
   });
 
-  test("drops cached conversation state when the host reports a deleted thread", async () => {
+  test("drops cached conversation state for host and durable deleted-thread events", async () => {
     invokeCalls = [];
     hostMessageListener = null;
     threadListByProject = {};
@@ -19347,6 +19832,27 @@ describe("local-conversation-store", () => {
       expect(JSON.stringify(manager.readProjectThreadSummaries("project-1"))).toBe(
         JSON.stringify([]),
       );
+
+      manager.hydrateThreadSummaries("project-1", [
+        buildThreadSummary("thread-durable-delete", "project-1"),
+      ]);
+      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
+        hostId: "default",
+        conversationId: "thread-durable-delete",
+        version: 2,
+        change: {
+          type: "snapshot",
+          revision: 1,
+          conversationState: buildConversation("thread-durable-delete", "project-1"),
+        },
+        sourceClientId: "test-owner",
+      });
+      expect(manager.readConversation("thread-durable-delete")?.threadId).toBe(
+        "thread-durable-delete",
+      );
+      codexEventListener?.({ type: "threadDeleted", threadId: "thread-durable-delete" });
+      expect(manager.readThreadSummary("thread-durable-delete")).toBe(null);
+      expect(manager.readConversation("thread-durable-delete")).toBe(null);
     } finally {
       manager.destroy();
     }

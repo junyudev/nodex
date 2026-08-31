@@ -985,11 +985,11 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
                 )?;
                 connection.execute(
                     "INSERT INTO codex_threads( \
-                   thread_id, project_id, thread_preview, model_provider, status_type, \
+                   thread_id, project_id, thread_preview, status_type, \
                    status_active_flags_json, archived, created_at, updated_at, recency_at, \
                    linked_at, execution_host_id \
                  ) VALUES ( \
-                   'thread:backup-queue', 'project:administration-test', '', 'openai', \
+                   'thread:backup-queue', 'project:administration-test', '', \
                    'notLoaded', '[]', 0, 1, 1, 1, '2026-07-19T00:00:00.000Z', 'local' \
                  )",
                     [],

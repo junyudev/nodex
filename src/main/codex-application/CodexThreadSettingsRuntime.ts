@@ -12,23 +12,22 @@ import type {
   CodexConversationThreadSettings,
   CodexConversationThreadSettingsPatch,
 } from "../../shared/types";
-import type { AgentExecutionProfile } from "../../shared/agent-runtime";
+import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
-import { AgentProviderRuntime } from "./AgentProviderRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
+import { ComposerCatalog } from "./ComposerCatalog";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { projectCodexConversationThreadSettings } from "./CodexConversationSnapshotProjection";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { buildCoreWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
 import {
   buildThreadSettingsUpdateParams,
-  mergeAgentModelChange,
+  mergeCodexModelChange,
   mergeThreadSettingsPatch,
-  normalizeThreadSettingsModel,
 } from "./CodexThreadSettingsProjection";
 
 export type CodexThreadSettingsUpdateSupport = "unknown" | "supported" | "unsupported";
@@ -109,15 +108,15 @@ type CoreThread = Extract<
 export const make: Effect.Effect<
   CodexThreadSettingsRuntime["Service"],
   never,
-  | AgentProviderRuntime
   | CodexApplicationEventHub
+  | ComposerCatalog
   | CodexConversationProjection
   | CodexGateway
   | CodexSidebarSyncRuntime
   | CoreModules
   | Scope.Scope
 > = Effect.gen(function* () {
-  const agentProviders = yield* AgentProviderRuntime;
+  const catalog = yield* ComposerCatalog;
   const events = yield* CodexApplicationEventHub;
   const projection = yield* CodexConversationProjection;
   const gateway = yield* CodexGateway;
@@ -186,58 +185,36 @@ export const make: Effect.Effect<
     "CodexThreadSettingsRuntime.validateExecutionProfile",
   )(function* (
     threadId: string,
-    requested: AgentExecutionProfile,
+    requested: CodexExecutionProfile,
     change: CodexConversationThreadSettingsPatch["executionProfileChange"],
-    currentSettings: CodexConversationThreadSettings | null,
   ) {
     const workspaceThread = yield* readCoreThread(threadId);
     const current = buildCoreWorkspaceThreadSummary(workspaceThread).executionProfile ?? null;
-    const modelChangeCatalog =
-      current && change === "model"
-        ? yield* agentProviders
-            .list()
-            .pipe(Effect.mapError((cause) => operationError(threadId, cause)))
+    const models =
+      change === "model"
+        ? yield* catalog.listModels.pipe(
+            Effect.mapError((cause) => operationError(threadId, cause)),
+          )
         : null;
     const requestedModel =
-      modelChangeCatalog?.providers
-        .find((provider) => provider.id === current?.providerId)
-        ?.models.find((model) => model.modelId === requested.modelId) ?? null;
+      models?.find(
+        (model) => model.model === requested.modelId || model.id === requested.modelId,
+      ) ?? null;
+    if (change === "model" && !requestedModel) {
+      return yield* operationError(
+        threadId,
+        new Error(`Codex model '${requested.modelId}' is unavailable`),
+      );
+    }
     const requestedUpdate =
       current && change === "model"
-        ? mergeAgentModelChange(current, requested, requestedModel)
+        ? mergeCodexModelChange(current, requested, requestedModel)
         : current && change === "reasoningEffort"
           ? { ...current, reasoningEffort: requested.reasoningEffort }
           : current && change === "serviceTier"
             ? { ...current, serviceTier: requested.serviceTier }
             : requested;
-    const resolved = yield* agentProviders
-      .resolveExecutionProfile(requestedUpdate)
-      .pipe(Effect.mapError((cause) => operationError(threadId, cause)));
-    const boundProviderId =
-      current?.providerId ?? normalizeThreadSettingsModel(workspaceThread.model_provider);
-    if (boundProviderId && resolved.providerId !== boundProviderId) {
-      return yield* operationError(threadId, new Error("Start a new thread to change provider"));
-    }
-    if (current && resolved.harnessId !== current.harnessId) {
-      return yield* operationError(
-        threadId,
-        new Error("Start a new thread to change the agent harness"),
-      );
-    }
-    const currentModelId = current?.modelId ?? normalizeThreadSettingsModel(currentSettings?.model);
-    if (currentModelId && resolved.modelId !== currentModelId) {
-      const catalog =
-        modelChangeCatalog ??
-        (yield* agentProviders
-          .list()
-          .pipe(Effect.mapError((cause) => operationError(threadId, cause))));
-      const model = catalog.providers
-        .find((provider) => provider.id === resolved.providerId)
-        ?.models.find((candidate) => candidate.modelId === resolved.modelId);
-      if (!model || model.switchPolicy !== "same-thread") {
-        return yield* operationError(threadId, new Error("Start a new thread to use this model"));
-      }
-    }
+    const resolved = requestedUpdate;
 
     const observedAtMs = yield* Clock.currentTimeMillis;
     yield* core.workspace
@@ -247,8 +224,6 @@ export const make: Effect.Effect<
           kind: "update_thread",
           thread_id: threadId,
           patch: {
-            model_provider: resolved.providerId,
-            harness_id: resolved.harnessId,
             model_id: resolved.modelId,
             reasoning_effort: resolved.reasoningEffort,
             service_tier: resolved.serviceTier,
@@ -283,7 +258,6 @@ export const make: Effect.Effect<
           input.threadId,
           input.patch.executionProfile,
           input.patch.executionProfileChange,
-          currentSettings,
         )
       : null;
     const patch = executionProfile ? { ...input.patch, executionProfile } : input.patch;

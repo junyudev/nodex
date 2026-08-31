@@ -4,6 +4,45 @@ import type { BrowserRuntimePlatformArtifactVerifier } from "./browser-runtime-b
 
 type CommandReader = (command: string, args: string[]) => string;
 
+const PRODUCT_MINIMUM_MACOS = "15.0";
+
+const parseVersion = (value: string): readonly number[] | null =>
+  /^\d+(?:\.\d+){0,2}$/u.test(value) ? value.split(".").map(Number) : null;
+
+export function parseMachOMinimumMacosVersion(output: string): string | null {
+  const versions: string[] = [];
+  let command: "build-version" | "version-min" | null = null;
+  for (const line of output.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("cmd ")) {
+      command = trimmed === "cmd LC_BUILD_VERSION" ? "build-version" : null;
+      if (trimmed === "cmd LC_VERSION_MIN_MACOSX") command = "version-min";
+      continue;
+    }
+    const match =
+      command === "build-version"
+        ? /^minos\s+(\d+(?:\.\d+){0,2})$/u.exec(trimmed)
+        : command === "version-min"
+          ? /^version\s+(\d+(?:\.\d+){0,2})$/u.exec(trimmed)
+          : null;
+    if (!match?.[1]) continue;
+    versions.push(match[1]);
+    command = null;
+  }
+  return versions.length === 1 ? versions[0]! : null;
+}
+
+const compareVersions = (left: string, right: string): number | null => {
+  const leftParts = parseVersion(left);
+  const rightParts = parseVersion(right);
+  if (!leftParts || !rightParts) return null;
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return Math.sign(difference);
+  }
+  return 0;
+};
+
 function defaultCommandReader(command: string, args: string[]): string {
   const result = spawnSync(command, args, {
     encoding: "utf8",
@@ -76,6 +115,21 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     const expectedArch = manifest.targetArch === "x64" ? "x86_64" : "arm64";
     if (!architectures.includes(expectedArch)) {
       return `Mach-O artifact does not contain ${expectedArch}`;
+    }
+    let minimumMacos: string | null;
+    try {
+      minimumMacos = parseMachOMinimumMacosVersion(
+        run("/usr/bin/otool", ["-arch", expectedArch, "-l", artifactPath]),
+      );
+    } catch {
+      minimumMacos = null;
+    }
+    if (!minimumMacos) return "could not inspect Mach-O minimum macOS version";
+    if (compareVersions(minimumMacos, PRODUCT_MINIMUM_MACOS) === 1) {
+      return (
+        `Mach-O artifact requires macOS ${minimumMacos}, newer than the product minimum ` +
+        PRODUCT_MINIMUM_MACOS
+      );
     }
     try {
       run("/usr/bin/codesign", ["--verify", "--strict", artifactPath]);

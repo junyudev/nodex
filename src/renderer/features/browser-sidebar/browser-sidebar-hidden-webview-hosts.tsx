@@ -5,22 +5,23 @@ import type {
   BrowserSidebarDestroyWebviewRequest,
   BrowserSidebarTabSnapshot,
   BrowserSidebarThemeVariant,
-  BrowserSidebarWebviewHostCreated,
   BrowserSidebarWebviewHostKind,
 } from "../../../shared/browser-sidebar";
 import {
+  makeBrowserSidebarConversationScopeKey,
+  makeBrowserSidebarTabKey,
   matchesBrowserSidebarTabIdentity,
   requireWorkbenchBrowserTabProjectionId,
 } from "../../../shared/browser-sidebar";
 import { isBlankBrowserUrl, normalizeBrowserNavigationUrl } from "../../../shared/browser-url";
 import type { WorkbenchTabProjection } from "@/lib/types";
-import {
-  invokeBrowserSidebarCommand,
-  notifyBrowserWebviewDestroyed,
-  notifyBrowserWebviewHostCreated,
-} from "./browser-sidebar-commands";
+import { notifyBrowserWebviewDestroyed } from "./browser-sidebar-commands";
 import { useTheme } from "@/lib/use-theme";
-import { browserSidebarRendererWebviewManager } from "./browser-sidebar-webview-manager";
+import {
+  browserSidebarRendererWebviewManager,
+  type BrowserSidebarHostClaimInput,
+  type BrowserSidebarHostLease,
+} from "./browser-sidebar-webview-manager";
 import { useBrowserSidebarRendererState } from "./browser-sidebar-renderer-state-store";
 import {
   readBrowserConfigDeviceToolbarState,
@@ -52,6 +53,7 @@ interface HiddenHostDescriptor {
   deviceToolbarVisible?: boolean;
   deviceToolbarState?: BrowserSidebarTabSnapshot["deviceToolbarState"];
   paintSize?: { height: number; width: number };
+  shouldPaint?: boolean;
 }
 
 export function BrowserSidebarHiddenWebviewHosts({
@@ -66,40 +68,6 @@ export function BrowserSidebarHiddenWebviewHosts({
     state: { tabs: snapshots },
     browserUseState,
   } = useBrowserSidebarRendererState();
-  const [browserUseViewport, setBrowserUseViewport] =
-    useState<BrowserSidebarBrowserUseViewportEvent | null>(null);
-
-  useEffect(() => {
-    const unsubscribeBrowserUseViewport = window.api?.on(
-      "browser-sidebar-browser-use-viewport",
-      (payload) => {
-        setBrowserUseViewport(payload as BrowserSidebarBrowserUseViewportEvent);
-      },
-    );
-    const unsubscribeBrowserUseCaptureSurface = window.api?.on(
-      "browser-sidebar-browser-use-capture-surface",
-      (payload) => {
-        browserSidebarRendererWebviewManager.setBrowserUseCaptureSurface(
-          payload as BrowserSidebarBrowserUseCaptureSurfaceEvent,
-        );
-      },
-    );
-    const unsubscribeDestroyWebview = window.api?.on(
-      "browser-sidebar-destroy-webview",
-      (payload) => {
-        const request = payload as BrowserSidebarDestroyWebviewRequest | undefined;
-        if (!request) return;
-        browserSidebarRendererWebviewManager.destroyWebviewAtHostRequest(request, (event) => {
-          void notifyBrowserWebviewDestroyed(event);
-        });
-      },
-    );
-    return () => {
-      unsubscribeBrowserUseViewport?.();
-      unsubscribeBrowserUseCaptureSurface?.();
-      unsubscribeDestroyWebview?.();
-    };
-  }, []);
 
   const descriptors = useMemo(() => {
     const liveBrowserUseTabs = browserUseState.tabs.filter(
@@ -150,40 +118,9 @@ export function BrowserSidebarHiddenWebviewHosts({
       ];
     });
 
-    const browserUseDescriptors = liveBrowserUseTabs.flatMap((tab): HiddenHostDescriptor[] => {
-      const hasMountedWorkbenchTab =
-        tab.browserConversationId === durableBrowserConversationId &&
-        tabs.some(
-          (workbenchTab) =>
-            workbenchTab.kind === "browser" &&
-            (visibleTabIds.has(workbenchTab.id) || mountedTabIds.has(workbenchTab.id)) &&
-            requireWorkbenchBrowserTabProjectionId(workbenchTab) === tab.browserTabId,
-        );
-      if (hasMountedWorkbenchTab) return [];
-      return [
-        {
-          browserConversationId: tab.browserConversationId,
-          browserViewScopeId: tab.browserViewScopeId,
-          browserTabId: tab.browserTabId,
-          browserStorageId: `browser:use:${tab.browserTabId}`,
-          projectId: tab.projectId,
-          hostKind: "retained",
-          initialUrl: tab.url,
-          title: tab.title,
-          paintSize: (matchesBrowserSidebarTabIdentity(browserUseViewport, tab)
-            ? browserUseViewport?.viewportSize
-            : null) ?? {
-            height: tab.viewport.height,
-            width: tab.viewport.width,
-          },
-        },
-      ];
-    });
-
-    return [...browserDescriptors, ...browserUseDescriptors];
+    return browserDescriptors;
   }, [
     browserUseState,
-    browserUseViewport,
     browserViewScopeId,
     durableBrowserConversationId,
     mountedTabIds,
@@ -205,6 +142,113 @@ export function BrowserSidebarHiddenWebviewHosts({
   );
 }
 
+/**
+ * App-global materializer for Browser Use pages. A Browser session owns its guest independently
+ * of any workbench route; panels only borrow presentation ownership for an existing identity.
+ */
+export function BrowserSidebarBrowserUseWebviewHosts() {
+  const { resolved: themeVariant } = useTheme();
+  const { browserUseState } = useBrowserSidebarRendererState();
+  const [browserUseViewports, setBrowserUseViewports] = useState<
+    ReadonlyMap<string, BrowserSidebarBrowserUseViewportEvent>
+  >(() => new Map());
+
+  useEffect(() => {
+    const unsubscribeBrowserUseViewport = window.api?.on(
+      "browser-sidebar-browser-use-viewport",
+      (payload) => {
+        const event = payload as BrowserSidebarBrowserUseViewportEvent;
+        setBrowserUseViewports((current) => {
+          const next = new Map(current);
+          if (event.viewportSize) next.set(makeBrowserSidebarTabKey(event), event);
+          else next.delete(makeBrowserSidebarTabKey(event));
+          return next;
+        });
+      },
+    );
+    const unsubscribeBrowserUseCaptureSurface = window.api?.on(
+      "browser-sidebar-browser-use-capture-surface",
+      (payload) => {
+        browserSidebarRendererWebviewManager.setBrowserUseCaptureSurface(
+          payload as BrowserSidebarBrowserUseCaptureSurfaceEvent,
+        );
+      },
+    );
+    const unsubscribeDestroyWebview = window.api?.on(
+      "browser-sidebar-destroy-webview",
+      (payload) => {
+        const request = payload as BrowserSidebarDestroyWebviewRequest | undefined;
+        if (!request) return;
+        browserSidebarRendererWebviewManager.destroyWebviewAtHostRequest(request, (event) => {
+          void notifyBrowserWebviewDestroyed(event);
+        });
+      },
+    );
+    return () => {
+      unsubscribeBrowserUseViewport?.();
+      unsubscribeBrowserUseCaptureSurface?.();
+      unsubscribeDestroyWebview?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const liveTabKeys = new Set(
+      browserUseState.tabs
+        .filter((tab) => !tab.released)
+        .map((tab) => makeBrowserSidebarTabKey(tab)),
+    );
+    setBrowserUseViewports((current) => {
+      if ([...current.keys()].every((key) => liveTabKeys.has(key))) return current;
+      return new Map([...current].filter(([key]) => liveTabKeys.has(key)));
+    });
+  }, [browserUseState.tabs]);
+
+  const descriptors = useMemo(
+    () =>
+      browserUseState.tabs.flatMap((tab): HiddenHostDescriptor[] => {
+        if (tab.released) return [];
+        const viewport = browserUseViewports.get(makeBrowserSidebarTabKey(tab))?.viewportSize;
+        return [
+          {
+            browserConversationId: tab.browserConversationId,
+            browserViewScopeId: tab.browserViewScopeId,
+            browserTabId: tab.browserTabId,
+            browserStorageId: `browser:use:${tab.browserTabId}`,
+            projectId: tab.projectId,
+            hostKind: "retained",
+            initialUrl: tab.url,
+            title: tab.title,
+            paintSize: viewport ?? {
+              height: tab.viewport.height,
+              width: tab.viewport.width,
+            },
+            shouldPaint:
+              browserUseState.activeBrowserTabIdsByConversationScope[
+                makeBrowserSidebarConversationScopeKey(tab)
+              ] === tab.browserTabId,
+          },
+        ];
+      }),
+    [
+      browserUseState.activeBrowserTabIdsByConversationScope,
+      browserUseState.tabs,
+      browserUseViewports,
+    ],
+  );
+
+  return (
+    <>
+      {descriptors.map((descriptor) => (
+        <HiddenBrowserWebviewHost
+          key={`${descriptor.browserConversationId}:${descriptor.browserViewScopeId}:${descriptor.browserTabId}`}
+          descriptor={descriptor}
+          themeVariant={themeVariant}
+        />
+      ))}
+    </>
+  );
+}
+
 function HiddenBrowserWebviewHost({
   descriptor,
   themeVariant,
@@ -212,79 +256,27 @@ function HiddenBrowserWebviewHost({
   descriptor: HiddenHostDescriptor;
   themeVariant: BrowserSidebarThemeVariant;
 }) {
-  const initialUrl = normalizeBrowserNavigationUrl(descriptor.initialUrl);
-  const [registered, setRegistered] = useState(false);
-  const syncHostPresentationRef = useRef<(() => void) | null>(null);
-  const themeVariantRef = useRef(themeVariant);
-  themeVariantRef.current = themeVariant;
-
-  useEffect(() => {
-    if (!window.api) return;
-    let cancelled = false;
-    void (async () => {
-      const rendererResult = await invokeBrowserSidebarCommand({
-        type: "register-renderer-session",
-        browserViewScopeId: descriptor.browserViewScopeId,
-        rendererInstanceId: browserSidebarRendererWebviewManager.getRendererInstanceId(),
-      });
-      if (!rendererResult.ok || cancelled) return;
-      const result = await invokeBrowserSidebarCommand({
-        type: "register-tab",
-        browserConversationId: descriptor.browserConversationId,
-        browserViewScopeId: descriptor.browserViewScopeId,
-        browserTabId: descriptor.browserTabId,
-        browserStorageId: descriptor.browserStorageId,
-        projectId: descriptor.projectId,
-        initialUrl,
-        title: descriptor.title,
-        faviconUrl: descriptor.faviconUrl,
-        deviceToolbarVisible: descriptor.deviceToolbarVisible,
-        deviceToolbarState: descriptor.deviceToolbarState,
-      });
-      if (result.ok && !cancelled) setRegistered(true);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    descriptor.browserConversationId,
-    descriptor.browserStorageId,
-    descriptor.browserTabId,
-    descriptor.browserViewScopeId,
-    descriptor.deviceToolbarState,
-    descriptor.deviceToolbarVisible,
-    descriptor.faviconUrl,
-    descriptor.projectId,
-    descriptor.title,
-    initialUrl,
-  ]);
-
-  useLayoutEffect(() => {
-    if (!window.api || !registered) return undefined;
-    if (isBlankBrowserUrl(initialUrl) && descriptor.hostKind !== "retained") return undefined;
-    const mountGeneration = browserSidebarRendererWebviewManager.claimMountGeneration({
+  // A retained Browser page owns one webview for the lifetime of its route identity. URL, title,
+  // viewport, and presentation changes are live projections of that page, not remount signals.
+  const initialUrlRef = useRef(normalizeBrowserNavigationUrl(descriptor.initialUrl));
+  const leaseRef = useRef<BrowserSidebarHostLease | null>(null);
+  const claimInput = useMemo<BrowserSidebarHostClaimInput>(
+    () => ({
       browserConversationId: descriptor.browserConversationId,
       browserViewScopeId: descriptor.browserViewScopeId,
       browserTabId: descriptor.browserTabId,
-    });
-    const hostGeneration = browserSidebarRendererWebviewManager.claimHostGeneration({
-      browserConversationId: descriptor.browserConversationId,
-      browserViewScopeId: descriptor.browserViewScopeId,
-      browserTabId: descriptor.browserTabId,
-    });
-    const rendererInstanceId = browserSidebarRendererWebviewManager.getRendererInstanceId();
-    let disposed = false;
-    let started = false;
-    const syncHostPresentation = () => {
-      if (!started || disposed) return;
-      browserSidebarRendererWebviewManager.syncWebview({
-        browserConversationId: descriptor.browserConversationId,
-        browserViewScopeId: descriptor.browserViewScopeId,
-        browserTabId: descriptor.browserTabId,
-        browserStorageId: descriptor.browserStorageId,
-        projectId: descriptor.projectId,
-        hostKind: descriptor.hostKind,
-        initialUrl,
+      browserStorageId: descriptor.browserStorageId,
+      projectId: descriptor.projectId,
+      hostKind: descriptor.hostKind,
+      initialUrl: initialUrlRef.current,
+      title: descriptor.title,
+      faviconUrl: descriptor.faviconUrl,
+      deviceToolbarVisible: descriptor.deviceToolbarVisible,
+      deviceToolbarState: descriptor.deviceToolbarState,
+      pagePersistence: descriptor.hostKind === "retained" ? "browser-use" : "durable",
+      // No visible panel route exists to establish hidden and retained tabs.
+      tabRegistration: "ensure",
+      presentation: {
         bounds:
           descriptor.hostKind === "retained"
             ? {
@@ -294,73 +286,28 @@ function HiddenBrowserWebviewHost({
                 y: 0,
               }
             : null,
-        mountGeneration,
         isVisible: false,
-        shouldPaint: descriptor.hostKind === "retained",
-        onHostCreated: (event: BrowserSidebarWebviewHostCreated) => {
-          void notifyBrowserWebviewHostCreated(event);
-        },
-      });
-      void invokeBrowserSidebarCommand({
-        type: "sync-host",
-        browserConversationId: descriptor.browserConversationId,
-        browserViewScopeId: descriptor.browserViewScopeId,
-        browserTabId: descriptor.browserTabId,
-        rendererInstanceId,
-        hostGeneration,
-        mountGeneration,
-        hostKind: descriptor.hostKind,
-        presented: false,
-        themeVariant: themeVariantRef.current,
-        visible: false,
-      });
-    };
-    syncHostPresentationRef.current = syncHostPresentation;
-    void invokeBrowserSidebarCommand({
-      type: "register-host",
-      browserConversationId: descriptor.browserConversationId,
-      browserViewScopeId: descriptor.browserViewScopeId,
-      browserTabId: descriptor.browserTabId,
-      browserStorageId: descriptor.browserStorageId,
-      rendererInstanceId,
-      hostGeneration,
-      mountGeneration,
-      hostKind: descriptor.hostKind,
-      pagePersistence: descriptor.hostKind === "retained" ? "browser-use" : "durable",
-      themeVariant: themeVariantRef.current,
-    }).then((result) => {
-      if (!result.ok || disposed) return;
-      started = true;
-      syncHostPresentation();
-    });
+        // Bootstrap and paint are separate leases. Only the actively controlled Browser Use page
+        // paints while hidden; capture can temporarily supply a paint surface for any retained tab.
+        shouldPaint: descriptor.shouldPaint === true,
+      },
+      themeVariant,
+    }),
+    [descriptor, themeVariant],
+  );
+  const claimInputRef = useRef(claimInput);
+  claimInputRef.current = claimInput;
 
+  useLayoutEffect(() => {
+    if (!window.api) return undefined;
+    if (isBlankBrowserUrl(initialUrlRef.current) && descriptor.hostKind !== "retained") {
+      return undefined;
+    }
+    const lease = browserSidebarRendererWebviewManager.claimHost(claimInputRef.current);
+    leaseRef.current = lease;
     return () => {
-      disposed = true;
-      if (syncHostPresentationRef.current === syncHostPresentation) {
-        syncHostPresentationRef.current = null;
-      }
-      if (!started) return;
-      void invokeBrowserSidebarCommand({
-        type: "sync-host",
-        browserConversationId: descriptor.browserConversationId,
-        browserViewScopeId: descriptor.browserViewScopeId,
-        browserTabId: descriptor.browserTabId,
-        rendererInstanceId,
-        hostGeneration,
-        mountGeneration,
-        hostKind: descriptor.hostKind,
-        presented: false,
-        themeVariant: themeVariantRef.current,
-        visible: false,
-      });
-      browserSidebarRendererWebviewManager.detachWebview(
-        {
-          browserConversationId: descriptor.browserConversationId,
-          browserViewScopeId: descriptor.browserViewScopeId,
-          browserTabId: descriptor.browserTabId,
-        },
-        mountGeneration,
-      );
+      if (leaseRef.current === lease) leaseRef.current = null;
+      lease.release();
     };
   }, [
     descriptor.browserConversationId,
@@ -368,16 +315,12 @@ function HiddenBrowserWebviewHost({
     descriptor.browserTabId,
     descriptor.browserViewScopeId,
     descriptor.hostKind,
-    descriptor.paintSize?.height,
-    descriptor.paintSize?.width,
     descriptor.projectId,
-    initialUrl,
-    registered,
   ]);
 
   useLayoutEffect(() => {
-    syncHostPresentationRef.current?.();
-  }, [themeVariant]);
+    leaseRef.current?.update(claimInput);
+  }, [claimInput]);
 
   return null;
 }

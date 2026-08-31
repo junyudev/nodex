@@ -3,11 +3,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
+import { standaloneCodexAppServerArgs } from "../../shared/codex-app-server-launch";
 import { resolveCodexRuntime } from "../codex/codex-runtime";
-import {
-  AgentProviderRuntime,
-  live as agentProviderRuntimeLive,
-} from "../codex-application/AgentProviderRuntime";
 import { CodexAccount, live as codexAccountLive } from "../codex-application/CodexAccount";
 import {
   CodexApplicationEventHub,
@@ -81,11 +78,6 @@ import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGat
 import * as CodexRuntimeLive from "../codex-runtime/CodexRuntimeLive";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexRequestScheduler } from "../codex-runtime/CodexRequestScheduler";
-import {
-  createElectronProviderCredentialStore,
-  type ProviderCredentialStore,
-} from "../platform/electron/ProviderCredentialStore";
-import * as ProviderCredentials from "../platform/electron/ProviderCredentials";
 import * as CodexSessionTransport from "../platform/node/CodexSessionTransport";
 import { resolveCodexProcessEnvironment } from "../platform/node/CodexProcessEnvironment";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
@@ -98,7 +90,6 @@ export class CodexPlatform extends Context.Service<
   CodexPlatform,
   {
     readonly runtime: ReturnType<typeof resolveCodexRuntime>;
-    readonly providerCredentialStore: ProviderCredentialStore;
     readonly runtimeStateHome: string;
   }
 >()("nodex/main/app/CodexPlatform") {}
@@ -121,17 +112,8 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig> = L
       catch: (cause) =>
         new MainApplicationError({ phase: "startup", operation: "resolve-codex-runtime", cause }),
     });
-    const providerCredentialStore = yield* Effect.try({
-      try: () =>
-        createElectronProviderCredentialStore(
-          `${config.nodexHome}/secrets/provider-credentials.v1.json`,
-        ),
-      catch: (cause) =>
-        new MainApplicationError({ phase: "startup", operation: "provider-credentials", cause }),
-    });
     return CodexPlatform.of({
       runtime,
-      providerCredentialStore,
       runtimeStateHome: `${config.nodexHome}/agent`,
     });
   }),
@@ -171,13 +153,12 @@ const runtime = Layer.unwrap(
       local: {
         hostId: "local",
         command: codex.runtime.binaryPath,
-        args: ["app-server", "--listen", "stdio://"],
+        args: standaloneCodexAppServerArgs(),
         env: {},
         resolveEnv: () =>
           resolveCodexProcessEnvironment({
             additionalSearchPaths: codex.runtime.additionalSearchPaths,
             pathDelimiter: config.platform === "win32" ? ";" : ":",
-            providerCredentialStore: codex.providerCredentialStore,
             runtimeStateHome: codex.runtimeStateHome,
           }),
         forceTermination: "2 seconds",
@@ -208,17 +189,7 @@ const foundations = Layer.mergeAll(
 const transport = runtime.pipe(Layer.provideMerge(foundations));
 const kernel = pendingRequests.pipe(Layer.provideMerge(transport));
 
-const providerCredentials = Layer.unwrap(
-  Effect.gen(function* () {
-    const codex = yield* CodexPlatform;
-    return ProviderCredentials.fromStore(codex.providerCredentialStore);
-  }),
-);
-
 const account = codexAccountLive({ pollInterval: "60 seconds" }).pipe(Layer.provideMerge(kernel));
-const provider = agentProviderRuntimeLive.pipe(
-  Layer.provideMerge(Layer.merge(kernel, providerCredentials.pipe(Layer.provideMerge(platform)))),
-);
 const catalog = composerCatalogLive.pipe(Layer.provideMerge(kernel));
 const connection = codexConnectionLive.pipe(Layer.provideMerge(kernel));
 const tools = codexToolRuntimeLive({
@@ -290,7 +261,6 @@ const serverRequestResponses = Layer.effect(
 
 const applicationServices = Layer.mergeAll(
   account,
-  provider,
   catalog,
   connection,
   tools,
@@ -319,8 +289,6 @@ export const live: Layer.Layer<
   | CodexRequestScheduler
   | CodexEndpointMap
   | CodexEventHub
-  | ProviderCredentials.ProviderCredentials
-  | AgentProviderRuntime
   | CodexAccount
   | ComposerCatalog
   | CodexConnection

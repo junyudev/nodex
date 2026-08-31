@@ -51,6 +51,7 @@ import {
   redoRemoveStroke,
   undoRemoveStroke,
 } from "./remove-mask";
+import type { CodexModelOption } from "../../../../shared/types";
 import type { EditableImageDescriptor, GeneratedImageDescriptor } from "./types";
 
 function makeImage(
@@ -84,48 +85,25 @@ function makeGeneratedImage(
 
 describe("image preview policy", () => {
   test("rejects only a known model that omits image input", () => {
-    const catalog = {
-      providers: [
-        {
-          id: "text-provider",
-          displayName: "Text provider",
-          description: null,
-          wireApi: "responses" as const,
-          credentialStatus: "ready" as const,
-          supportedByNodex: true,
-          isDefault: true,
-          credentialEnvKey: null,
-          recommendedHarnessId: null,
-          models: [
-            {
-              providerId: "text-provider",
-              modelId: "text-only",
-              displayName: "Text only",
-              description: null,
-              hidden: false,
-              isDefault: true,
-              recommendedHarnessId: null,
-              supportedReasoningEfforts: [],
-              defaultReasoningEffort: null,
-              supportedServiceTiers: [],
-              defaultServiceTier: null,
-              inputCapabilities: ["text" as const],
-              switchPolicy: "same-thread" as const,
-            },
-          ],
-        },
-      ],
-    };
-    const executionProfile = {
-      providerId: "text-provider",
-      modelId: "text-only",
-      harnessId: null,
-      reasoningEffort: null,
-      serviceTier: null,
-    };
+    const models = [
+      {
+        id: "text-only",
+        model: "text-only",
+        displayName: "Text only",
+        description: "Text-only model",
+        hidden: false,
+        isDefault: true,
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: "medium",
+        inputModalities: ["text" as const],
+        multiAgentVersion: null,
+        serviceTiers: [],
+        defaultServiceTier: null,
+      },
+    ] satisfies CodexModelOption[];
 
-    expect(resolveImageInputSupport({ catalog, executionProfile })).toBe(false);
-    expect(resolveImageInputSupport({ catalog: null, executionProfile })).toBe(true);
+    expect(resolveImageInputSupport({ models, selectedModel: "text-only" })).toBe(false);
+    expect(resolveImageInputSupport({ models: [], selectedModel: "text-only" })).toBe(true);
   });
 
   test("normalizes a sparse uploaded-image opener once", () => {

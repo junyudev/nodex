@@ -129,16 +129,23 @@ and replaces its ordinary icon with the shared activity spinner only while that
 conversation is responding. Panel loading, open, or expiry state is not repeated
 as row text.
 
-Subagents uses the canonical child-agent projection and shared identity from
-[Codex Thread Transcript Behavior](codex-thread-transcript-behavior.md). Inline
-agents appear as a compact strip that prefers up to four unfinished agents, or
-the last four finished agents when none remain active. Ordinary rows exclude
-those inline agents, preserve active/done grouping, show `is working` only for
-active agents, reserve trailing content for non-zero diff stats, and open the
-single root-scoped Subagents panel. The selected child transcript remains
+Subagents uses the canonical root-scoped overview and shared identity from
+[Codex Subagent Behavior](codex-subagent-behavior.md). Inline agents appear as a
+compact strip that prefers up to four unfinished agents, or the last four
+finished agents when none remain active. The root panel groups metadata-only
+rows as Active and Done, initially shows at most four Active and ten Done rows,
+and exposes exact totals only after discovery is complete. Unknown evidence
+stays unresolved instead of becoming Done, Waiting rows retain elapsed time,
+and the Done section is absent when its count is zero. Explicit `Show more`
+loads the expanded metadata window; `Show less` returns to the bounded initial
+window.
+
+Overview rows use objective or status summary text and never assistant answer
+text. Selecting a row verifies root membership and hydrates only that child's
+bounded sparse detail; siblings remain metadata-only. A ready child detail is
+interactive only when its child and writer state permit it and otherwise stays
 read-only. Avatar identity and row preview text remain static across status
-changes; only the active row's explicit `is working` status uses the classic
-working-label shimmer.
+changes.
 
 Tasks represents registered background processes, not child-agent metadata.
 Rows can open the same live Process output surface as Process Manager, and the

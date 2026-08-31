@@ -1,9 +1,10 @@
-import type { ThreadAgentRenderUnit } from "../thread-stage-types";
+import type { ThreadAgentRenderUnit, ThreadWorkedForBlockModel } from "../thread-stage-types";
 
 export interface ThreadAgentBodyCollapsePresentation {
   collapsibleUnits: ThreadAgentRenderUnit[];
   expandedUnits: readonly ThreadAgentRenderUnit[];
   persistentUnits: ThreadAgentRenderUnit[];
+  workedForItem: ThreadWorkedForBlockModel | null;
 }
 
 function isCollapsePersistentUnit(unit: ThreadAgentRenderUnit): boolean {
@@ -23,11 +24,24 @@ function isCollapsePersistentUnit(unit: ThreadAgentRenderUnit): boolean {
  */
 export function projectAgentBodyCollapsePresentation(
   units: readonly ThreadAgentRenderUnit[],
+  options: { readonly extractWorkedFor?: boolean } = {},
 ): ThreadAgentBodyCollapsePresentation {
   const collapsibleUnits: ThreadAgentRenderUnit[] = [];
+  const expandedUnits: ThreadAgentRenderUnit[] = [];
   const persistentUnits: ThreadAgentRenderUnit[] = [];
+  let workedForItem: ThreadWorkedForBlockModel | null = null;
 
   for (const unit of units) {
+    if (
+      options.extractWorkedFor === true &&
+      unit.kind === "entry" &&
+      unit.block.type === "workedFor"
+    ) {
+      workedForItem = unit.block;
+      continue;
+    }
+
+    expandedUnits.push(unit);
     if (isCollapsePersistentUnit(unit)) {
       persistentUnits.push(unit);
       continue;
@@ -38,8 +52,9 @@ export function projectAgentBodyCollapsePresentation(
 
   return {
     collapsibleUnits,
-    expandedUnits: units,
+    expandedUnits: options.extractWorkedFor === true ? expandedUnits : units,
     persistentUnits,
+    workedForItem,
   };
 }
 

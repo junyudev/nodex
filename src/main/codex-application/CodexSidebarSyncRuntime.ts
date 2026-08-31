@@ -386,8 +386,8 @@ export const make = (
           agentPath: thread.agentPath,
           threadName: thread.threadName ?? undefined,
           threadPreview: thread.threadPreview,
-          modelProvider: thread.modelProvider,
           executionProfile: thread.executionProfile ?? null,
+          backendBinding: thread.backendBinding,
           executionHostId: thread.executionHostId,
           cwd: thread.cwd ?? undefined,
           managedWorktreePath: thread.managedWorktreePath,
@@ -590,6 +590,7 @@ export const make = (
           {
             key: `${isLocalHost ? "local" : "remote"}:${thread.threadId}`,
             kind: isLocalHost ? ("local" as const) : ("remote" as const),
+            backendBinding: thread.backendBinding,
             runLocation: managedWorktreePath
               ? isLocalHost
                 ? ({ kind: "local-worktree", path: managedWorktreePath, phase: "ready" } as const)

@@ -8,8 +8,10 @@ it.layer(layer)("MainShutdown", (it) => {
   it.effect("keeps the first shutdown reason and first runtime exit", () =>
     Effect.gen(function* () {
       const shutdown = yield* MainShutdown;
+      assert.isFalse(yield* shutdown.isRequested);
       assert.isTrue(yield* shutdown.request({ _tag: "UserQuit" }));
       assert.isFalse(yield* shutdown.request({ _tag: "UpdateInstall" }));
+      assert.isTrue(yield* shutdown.isRequested);
       assert.deepEqual(yield* shutdown.awaitRequest, { _tag: "UserQuit" });
 
       const first = Exit.fail(

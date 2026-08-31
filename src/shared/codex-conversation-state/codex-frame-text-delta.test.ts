@@ -61,6 +61,7 @@ function buildState(
     ephemeral: false,
     section: null,
     sectionEnteredAt: null,
+    projectId: null,
     historyMode: "paginated",
     modelProvider: "openai",
     createdAt: 1,
@@ -162,6 +163,7 @@ describe("canonical frame-text delta reduction", () => {
         text: "first",
         phase: null,
         memoryCitation: null,
+        delivery: null,
       },
       { type: "plan", id: "shared-item", text: "plan" },
       {
@@ -170,6 +172,7 @@ describe("canonical frame-text delta reduction", () => {
         text: "last",
         phase: null,
         memoryCitation: null,
+        delivery: null,
       },
     ];
     const result = reduceCodexFrameTextDeltaItems(
@@ -344,6 +347,7 @@ describe("canonical frame-text delta reduction", () => {
         text: "",
         phase: null,
         memoryCitation: null,
+        delivery: null,
       },
       { type: "plan", id: "plan", text: "" },
       { type: "reasoning", id: "reasoning", summary: [], content: [] },

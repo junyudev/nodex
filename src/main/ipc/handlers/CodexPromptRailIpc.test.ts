@@ -13,6 +13,7 @@ import type {
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexPromptRailHistory } from "../../codex-application/CodexPromptRailHistory";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./CodexPromptRailIpc";
 
@@ -38,7 +39,7 @@ const index: CodexPromptRailIndex = {
 it.effect("routes typed shell and known-Turn requests and cancels only the owning renderer", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string, handler: Handler) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -47,7 +48,7 @@ it.effect("routes typed shell and known-Turn requests and cancels only the ownin
           () => Effect.sync(() => handlers.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     const revealTargets: string[] = [];
     let slowStarted: (() => void) | undefined;
     const started = new Promise<void>((resolve) => {
@@ -245,7 +246,7 @@ it.effect("routes typed shell and known-Turn requests and cancels only the ownin
 it.effect("rejects a forged shell offset before the History and host RPC boundary", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
-    const ipc = ElectronIpc.of({
+    const ipc = makeTestElectronIpc({
       handle: (channel: string, handler: Handler) =>
         Effect.acquireRelease(
           Effect.sync(() => {
@@ -254,7 +255,7 @@ it.effect("rejects a forged shell offset before the History and host RPC boundar
           () => Effect.sync(() => handlers.delete(channel)),
         ),
       on: () => Effect.die("unused"),
-    } as unknown as ElectronIpc["Service"]);
+    });
     let historyCalls = 0;
     const history = CodexPromptRailHistory.of({
       loadIndex: () => Effect.die("unused"),

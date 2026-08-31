@@ -225,7 +225,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           threadSource: "user",
           threadName: input.thread.threadName,
           threadPreview: input.thread.threadPreview,
-          modelProvider: "openai",
+          backendBinding: { kind: "codex" },
           status: {
             statusType: input.thread.statusType,
             activeFlags: [...input.thread.statusActiveFlags],
@@ -241,7 +241,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
           threadSource: "user",
           threadName: input.thread.threadName,
           threadPreview: input.thread.threadPreview,
-          modelProvider: "openai",
+          backendBinding: { kind: "codex" },
           statusType: input.thread.statusType,
           statusActiveFlags: [...input.thread.statusActiveFlags],
           createdAt: observedAt,

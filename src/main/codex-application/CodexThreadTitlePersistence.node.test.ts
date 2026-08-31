@@ -23,7 +23,11 @@ type CoreThread = Extract<
   { readonly kind: "thread" }
 >["thread"];
 
-const coreThread = (threadId: string, name: string): CoreThread =>
+const coreThread = (
+  threadId: string,
+  name: string,
+  backendKind: "codex" | "acp" = "codex",
+): CoreThread =>
   ({
     thread_id: threadId,
     project_id: "project-a",
@@ -37,9 +41,15 @@ const coreThread = (threadId: string, name: string): CoreThread =>
     agent_path: null,
     thread_name: name,
     thread_preview: "",
-    model_provider: "openai",
+    backend_binding:
+      backendKind === "codex"
+        ? { kind: "codex" }
+        : {
+            kind: "acp",
+            agent_definition_id: "claude-agent-acp",
+            instance_config_id: "claude-local",
+          },
     model_id: "gpt-test",
-    harness_id: null,
     reasoning_effort: "high",
     service_tier: null,
     execution_host_id: "local",
@@ -52,11 +62,12 @@ const coreThread = (threadId: string, name: string): CoreThread =>
     archived: false,
     pinned_order: null,
     has_unread_turn: false,
+    dynamic_tool_catalogs: [],
     created_at: 1,
     updated_at: 1,
     recency_at: 1,
     linked_at: "2026-08-24T00:00:00.000Z",
-  }) as unknown as CoreThread;
+  }) satisfies CoreThread;
 
 const gateway = (request: CodexGateway["Service"]["requestForThread"]): CodexGateway["Service"] => {
   const unsupported = () => Effect.die(new Error("Unsupported test operation"));
@@ -82,6 +93,7 @@ const harness = (input: {
   readonly request: CodexGateway["Service"]["requestForThread"];
   readonly onProject?: (threadId: string, name: string) => void;
   readonly onCoreApply?: (threadId: string, name: string) => void;
+  readonly backendKind?: "codex" | "acp";
 }) => {
   const names = new Map<string, string>();
   const projection = CodexConversationProjection.of({
@@ -112,7 +124,10 @@ const harness = (input: {
     read: (read) => {
       const id = read.kind === "thread" ? read.thread_id : "unexpected";
       return Effect.succeed({
-        value: { kind: "thread", thread: coreThread(id, names.get(id) ?? "") },
+        value: {
+          kind: "thread",
+          thread: coreThread(id, names.get(id) ?? "", input.backendKind),
+        },
       } as ProjectWorkspaceReadSnapshot);
     },
   };
@@ -166,6 +181,23 @@ it.effect("normalizes locally before best-effort remote and durable persistence"
     assert.isFalse(
       yield* persistence.set({ threadId: "thread-1", name: "   ", normalization: "trim" }),
     );
+  }),
+);
+
+it.effect("rejects ACP titles before mutating projection, app-server, or Core", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const persistence = yield* harness({
+      backendKind: "acp",
+      onProject: () => calls.push("project"),
+      onCoreApply: () => calls.push("workspace"),
+      request: (() => Effect.sync(() => calls.push("remote"))) as never,
+    });
+
+    yield* persistence
+      .setRequired({ threadId: "thread-acp", name: "ACP", normalization: "trim" })
+      .pipe(Effect.flip);
+    assert.deepEqual(calls, []);
   }),
 );
 

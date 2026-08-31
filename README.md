@@ -44,7 +44,7 @@ It is intentionally local-first. The core task state lives on your machine, and 
 
 ## Try Nodex
 
-Nodex is in beta for macOS 12 and later, with builds for Apple silicon and Intel Macs.
+Nodex is in beta for macOS 15 and later, with builds for Apple silicon and Intel Macs.
 
 Start with the [public product page](https://nodex.jyu.app), or download the latest build directly:
 

@@ -7,6 +7,10 @@ import {
   type BrowserRuntimeArtifact,
   type BrowserRuntimeManifest,
 } from "../../shared/browser-runtime-metadata";
+import type {
+  AppServerRuntimeIdentity,
+  TestedBrowserAppServerPair,
+} from "../../shared/browser-app-server-compatibility";
 
 type BrowserRuntimeFixtureOptions = {
   codexCliVersion?: string;
@@ -134,6 +138,33 @@ const COMPUTER_USE_FIXTURE_FILES = [
 
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+export function makeTestedBrowserAppServerPair(input: {
+  readonly bundleRoot: string;
+  readonly manifest: BrowserRuntimeManifest;
+}): TestedBrowserAppServerPair {
+  const appServer: AppServerRuntimeIdentity = {
+    entrypointSha256: "a".repeat(64),
+    protocolSchemaFingerprint: "b".repeat(64),
+    runtimeVersion: "0.152.0-test",
+    sourceCommit: "c".repeat(40),
+    targetArch: input.manifest.targetArch,
+    targetPlatform: input.manifest.targetPlatform,
+  };
+  const manifestBytes = fs.readFileSync(
+    path.join(input.bundleRoot, BROWSER_RUNTIME_MANIFEST_FILENAME),
+  );
+  return {
+    appServer,
+    browser: {
+      browserPluginVersion: input.manifest.browserPlugin.version,
+      manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+      peerCliVersion: input.manifest.runtimeVersions.codexCli,
+      targetArch: input.manifest.targetArch,
+      targetPlatform: input.manifest.targetPlatform,
+    },
+  };
 }
 
 function fixtureContent(relativePath: string): string {

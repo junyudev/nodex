@@ -8,6 +8,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import type { CodexSidebarSnapshot } from "../../shared/types";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
+import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
@@ -26,6 +27,11 @@ import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadExecution } from "./CodexThreadExecution";
 import { make as makeThreadCatalog } from "./CodexThreadCatalog";
 import { projectCoreWorkspaceTask } from "./CodexThreadCatalogProjection";
+
+type CoreThread = Extract<
+  ProjectWorkspaceReadSnapshot["value"],
+  { readonly kind: "thread" }
+>["thread"];
 
 const emptySnapshot: CodexSidebarSnapshot = {
   items: [],
@@ -58,7 +64,7 @@ const project = (input: {
   updated_at: "2026-08-24T00:00:00.000Z",
 });
 
-const thread = (projectId: string) => ({
+const thread = (projectId: string): CoreThread => ({
   thread_id: "thread:move",
   project_id: projectId,
   session_id: "session:move",
@@ -71,9 +77,8 @@ const thread = (projectId: string) => ({
   agent_role: null,
   agent_path: null,
   thread_preview: "Move me",
-  model_provider: "openai",
+  backend_binding: { kind: "codex" as const },
   model_id: "gpt-test",
-  harness_id: null,
   reasoning_effort: "high",
   service_tier: "priority",
   execution_host_id: "local",
@@ -631,9 +636,7 @@ it("projects execution authority from the Core task window without follow-up rea
   } as never);
 
   assert.deepStrictEqual(projected.thread?.executionProfile, {
-    providerId: "openai",
     modelId: "gpt-test",
-    harnessId: null,
     reasoningEffort: "high",
     serviceTier: "priority",
   });

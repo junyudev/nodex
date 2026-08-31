@@ -41,6 +41,10 @@ export const DEFAULT_TEST_CODEX_MODELS: CodexModelOption[] = [
       { reasoningEffort: "high", description: "Deep" },
     ],
     defaultReasoningEffort: "medium",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: true,
   },
   {
@@ -51,6 +55,10 @@ export const DEFAULT_TEST_CODEX_MODELS: CodexModelOption[] = [
     hidden: false,
     supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Deep" }],
     defaultReasoningEffort: "high",
+    inputModalities: ["text", "image"],
+    multiAgentVersion: null,
+    serviceTiers: [],
+    defaultServiceTier: null,
     isDefault: false,
   },
 ];
@@ -92,10 +100,9 @@ export function makeScheduledAutomation(
     prompt: "Check the alpha standup thread.",
     rrule: "FREQ=DAILY",
     model: null,
-    modelProvider: null,
-    harnessId: null,
     reasoningEffort: null,
     serviceTier: null,
+    backendBinding: { kind: "codex" },
     cwds: [],
     executionEnvironment: "worktree",
     localEnvironmentConfigPath: null,
@@ -493,7 +500,7 @@ export function makeAttachedSession(overrides: SessionFixtureOverrides = {}): Pr
       parentThreadId: undefined,
       threadName: "Alpha thread",
       threadPreview: "Working on the active session",
-      modelProvider: "openai",
+      backendBinding: { kind: "codex" },
       executionHostId: "local",
       cwd: "/Users/asc/repo/nodex",
       statusType: "notLoaded",
@@ -560,6 +567,7 @@ export function makeSidebarSnapshotItemForSession(session: ProjectSession): Code
   return {
     key: `${local ? "local" : "remote"}:${session.thread.threadId}`,
     kind: local ? "local" : "remote",
+    backendBinding: session.thread.backendBinding,
     runLocation: managedWorktreePath
       ? local
         ? { kind: "local-worktree", path: managedWorktreePath, phase: "ready" }

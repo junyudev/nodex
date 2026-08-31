@@ -8,14 +8,19 @@ import {
   type BrowserRuntimeArtifact,
   type BrowserRuntimeManifest,
 } from "../../shared/browser-runtime-metadata";
-import { isBrowserRuntimeCompatibleWithCodex } from "../../shared/browser-runtime-codex-compatibility";
+import {
+  isTestedBrowserAppServerPair,
+  type AppServerRuntimeIdentity,
+  type BrowserPeerRuntimeIdentity,
+  type TestedBrowserAppServerPair,
+} from "../../shared/browser-app-server-compatibility";
 
 export type BrowserRuntimeUnavailableReason =
   | "artifact-integrity"
   | "artifact-invalid"
   | "artifact-missing"
   | "backend-unavailable"
-  | "incompatible-codex"
+  | "untested-runtime-pair"
   | "invalid-manifest"
   | "manifest-missing"
   | "module-directory-invalid"
@@ -23,6 +28,7 @@ export type BrowserRuntimeUnavailableReason =
   | "target-mismatch";
 
 export type VerifiedBrowserRuntimeBundle = {
+  identity: BrowserPeerRuntimeIdentity;
   browserPluginMarketplaceRoot: string;
   browserPluginRoot: string;
   manifest: BrowserRuntimeManifest;
@@ -59,11 +65,12 @@ export type BrowserRuntimeAvailability =
     };
 
 type ResolveBrowserRuntimeBundleOptions = {
-  expectedCodexCompatibilityVersion: string;
+  appServerIdentity: AppServerRuntimeIdentity;
   platformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   runtimeRoot: string;
   targetArch?: NodeJS.Architecture;
   targetPlatform?: NodeJS.Platform;
+  testedPairs?: readonly TestedBrowserAppServerPair[];
 };
 
 export type BrowserRuntimePlatformArtifactVerifier = (input: {
@@ -196,12 +203,6 @@ export function resolveBrowserRuntimeBundle(
   if (!manifest) {
     return unavailable("invalid-manifest", "Browser runtime bundle manifest is invalid");
   }
-  if (!isBrowserRuntimeCompatibleWithCodex(manifest, options.expectedCodexCompatibilityVersion)) {
-    return unavailable(
-      "incompatible-codex",
-      "Browser runtime bundle does not match the active Codex compatibility version",
-    );
-  }
   if (
     manifest.targetPlatform !== (options.targetPlatform ?? process.platform) ||
     manifest.targetArch !== (options.targetArch ?? process.arch)
@@ -209,6 +210,22 @@ export function resolveBrowserRuntimeBundle(
     return unavailable(
       "target-mismatch",
       "Browser runtime bundle does not match the active platform and architecture",
+    );
+  }
+
+  const browserIdentity: BrowserPeerRuntimeIdentity = {
+    browserPluginVersion: manifest.browserPlugin.version,
+    manifestSha256: readSha256(manifestPath),
+    peerCliVersion: manifest.runtimeVersions.codexCli,
+    targetArch: manifest.targetArch,
+    targetPlatform: manifest.targetPlatform,
+  };
+  if (
+    !isTestedBrowserAppServerPair(options.appServerIdentity, browserIdentity, options.testedPairs)
+  ) {
+    return unavailable(
+      "untested-runtime-pair",
+      `Browser runtime pair has no conformance record: app-server ${options.appServerIdentity.runtimeVersion}/${options.appServerIdentity.targetArch} (${options.appServerIdentity.entrypointSha256}), Browser ${browserIdentity.browserPluginVersion}/${browserIdentity.targetArch} (${browserIdentity.manifestSha256})`,
     );
   }
 
@@ -255,6 +272,7 @@ export function resolveBrowserRuntimeBundle(
   return {
     status: "available",
     bundle: {
+      identity: browserIdentity,
       browserPluginMarketplaceRoot: resolve(manifest.browserPlugin.marketplaceRoot),
       browserPluginRoot: resolve(manifest.browserPlugin.root),
       manifest,

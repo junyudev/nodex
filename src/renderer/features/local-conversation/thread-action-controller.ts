@@ -171,46 +171,13 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
       return updateThreadSettingsOrDraft({ reasoningEffort });
     },
     onIntelligenceSelectionChange: async (selection, options) => {
-      if (selection.kind === "codex") {
-        await updateThreadSettingsOrDraft({
-          ...options,
-          model: selection.model,
-          reasoningEffort: selection.reasoningEffort,
-          serviceTier: selection.serviceTier,
-        });
-        return;
-      }
-
-      if (input.activeThreadId) {
-        await input.codexControl.setConversationThreadSettings(input.activeThreadId, {
-          ...options,
-          executionProfile: selection.profile,
-          executionProfileChange: selection.change,
-        });
-        return;
-      }
-
-      if (options?.collaborationMode) {
-        input.setSelectedCollaborationMode(options.collaborationMode);
-      }
-      input.codexControl.setExecutionProfile(selection.profile);
-      input.codexControl.setDefaultServiceTier(selection.profile.serviceTier);
+      await updateThreadSettingsOrDraft({
+        ...options,
+        model: selection.model,
+        reasoningEffort: selection.reasoningEffort,
+        serviceTier: selection.serviceTier,
+      });
     },
-    onExecutionProfileChange: async (profile, change) => {
-      if (input.activeThreadId) {
-        await input.codexControl.setConversationThreadSettings(input.activeThreadId, {
-          executionProfile: profile,
-          ...(change ? { executionProfileChange: change } : {}),
-        });
-        return;
-      }
-      input.codexControl.setExecutionProfile(profile);
-      input.codexControl.setDefaultServiceTier(profile.serviceTier);
-    },
-    onProviderCredentialSet: async (providerId, apiKey) =>
-      input.codexControl.setProviderCredential({ providerId, apiKey }),
-    onProviderCredentialDelete: async (providerId) =>
-      input.codexControl.deleteProviderCredential({ providerId }),
     onPersonalityChange: async (personality) => {
       await Promise.all([
         input.codexControl.setPersonality(personality),

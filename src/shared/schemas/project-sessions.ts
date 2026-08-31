@@ -216,16 +216,25 @@ export const ProjectSessionThreadLinkInputSchema = z.object({
   agentPath: z.string().nullable().optional(),
   threadName: z.string().nullable().optional(),
   threadPreview: z.string().optional(),
-  modelProvider: z.string().optional(),
   executionProfile: z
     .object({
-      providerId: z.string().trim().min(1).max(512),
       modelId: z.string().trim().min(1).max(512),
-      harnessId: z.string().trim().min(1).max(512).nullable(),
       reasoningEffort: z.string().trim().min(1).max(64).nullable(),
       serviceTier: z.string().trim().min(1).max(64).nullable(),
     })
     .nullable()
+    .optional(),
+  backendBinding: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("codex") }).strict(),
+      z
+        .object({
+          kind: z.literal("acp"),
+          agentDefinitionId: z.string().trim().min(1).max(512),
+          instanceConfigId: z.string().trim().min(1).max(512).nullable(),
+        })
+        .strict(),
+    ])
     .optional(),
   executionHostId: z.string().trim().min(1).max(512).optional(),
   runtimeWorkspaceRoots: z.array(z.string()).max(128).optional(),

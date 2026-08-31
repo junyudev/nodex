@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
@@ -12,6 +13,7 @@ import type {
 } from "../../../shared/ipc-endpoint-policy";
 import type { IpcApi } from "../../../shared/ipc-api";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
+import { toElectronIpcRendererError } from "./electron-ipc-error";
 
 type ElectronIpcReadonlyWireResult<Value> = Value extends (...args: never[]) => unknown
   ? Value
@@ -165,7 +167,16 @@ const asyncLive: Layer.Layer<ElectronIpc, never, ScopedCallbackRuntime> = Layer.
               unknown,
               unknown
             >;
-            return callbacks.runPromise(task);
+            return callbacks.runPromise(
+              task.pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logError("Electron IPC handler failed").pipe(
+                    Effect.annotateLogs({ channel, cause: Cause.pretty(cause) }),
+                    Effect.andThen(Effect.fail(toElectronIpcRendererError(Cause.squash(cause)))),
+                  ),
+                ),
+              ),
+            );
           });
         }),
         () => Effect.sync(() => ipcMain.removeHandler(channel)),

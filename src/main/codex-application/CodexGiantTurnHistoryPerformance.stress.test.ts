@@ -105,6 +105,7 @@ const trackedAgentItem = (index: number, onPayloadRead: () => void): ThreadItem 
     id: itemId(index),
     phase: "final_answer",
     memoryCitation: null,
+    delivery: null,
   } as Record<string, unknown>;
   Object.defineProperty(value, "text", {
     enumerable: true,
@@ -122,6 +123,7 @@ const pageAgentItem = (index: number): ThreadItem => ({
   text: `${ITEM_TEXT}:${itemId(index)}`,
   phase: "final_answer",
   memoryCitation: null,
+  delivery: null,
 });
 
 const appThread = (items: readonly ThreadItem[]): Thread => ({
@@ -134,6 +136,7 @@ const appThread = (items: readonly ThreadItem[]): Thread => ({
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 1,

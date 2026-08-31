@@ -463,8 +463,8 @@ describe("useWorkbenchSessionCatalog", () => {
     const thread = {
       threadId: "thread:alpha",
       cwd: "/work/alpha",
-      modelProvider: "openai",
       executionProfile: null,
+      backendBinding: { kind: "codex" },
       managedWorktreePath: null,
       projectlessOutputDirectory: null,
       projectlessWorkspaceBrowserRoot: null,

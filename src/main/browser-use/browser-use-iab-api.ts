@@ -1010,8 +1010,21 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
 
   private async waitForLiveTab(tab: ControlledBrowserUseTab): Promise<BrowserWebContentsLike> {
     const identity = toIdentity(this.route, tab.browserTabId);
-    const existing = this.browser.getWebContents(identity);
-    if (existing && !existing.isDestroyed()) return existing;
+    const readReadyContents = (): BrowserWebContentsLike | null => {
+      const snapshot = this.browser.getTab(identity);
+      const contents = this.browser.getWebContents(identity);
+      if (!snapshot || !contents || contents.isDestroyed()) return null;
+      if (snapshot.webContentsId !== contents.id) return null;
+      if (
+        snapshot.lifecycleState !== "live-attached" &&
+        snapshot.lifecycleState !== "live-detached"
+      ) {
+        return null;
+      }
+      return contents;
+    };
+    const existing = readReadyContents();
+    if (existing) return existing;
 
     return await this.asyncRuntime.waitFor<BrowserWebContentsLike>(
       (succeed) => {
@@ -1023,11 +1036,14 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
           ) {
             return;
           }
-          const contents = this.browser.getWebContents(identity);
-          if (!contents || contents.isDestroyed()) return;
+          const contents = readReadyContents();
+          if (!contents) return;
           succeed(contents);
         };
-        return this.subscribeWebviewAttached(onAttached);
+        const unsubscribe = this.subscribeWebviewAttached(onAttached);
+        const attachedDuringSubscription = readReadyContents();
+        if (attachedDuringSubscription) succeed(attachedDuringSubscription);
+        return unsubscribe;
       },
       this.pageReadyTimeoutMs,
       () => {

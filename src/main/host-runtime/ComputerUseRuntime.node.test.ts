@@ -13,7 +13,10 @@ import { assert, it } from "@effect/vitest";
 import { afterEach, vi } from "vite-plus/test";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
 import { resolveBrowserRuntimeBundle } from "../codex/browser-runtime-bundle";
-import { writeBrowserRuntimeFixture } from "../codex/browser-runtime-test-fixture";
+import {
+  makeTestedBrowserAppServerPair,
+  writeBrowserRuntimeFixture,
+} from "../codex/browser-runtime-test-fixture";
 import {
   ComputerUseHostPlatformError,
   type ComputerUseHostPlatform,
@@ -26,12 +29,15 @@ function makeRuntimeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-computer-use-runtime-"));
   temporaryRoots.push(root);
   const runtimeRoot = path.join(root, "runtime");
-  writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY));
+  const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+  const manifest = writeBrowserRuntimeFixture(bundleRoot);
+  const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
   const browserRuntime = resolveBrowserRuntimeBundle({
-    expectedCodexCompatibilityVersion: "0.144.6",
+    appServerIdentity: testedPair.appServer,
     runtimeRoot,
     targetArch: "arm64",
     targetPlatform: "darwin",
+    testedPairs: [testedPair],
   });
   if (browserRuntime.status !== "available") throw new Error(browserRuntime.message);
   return { browserRuntime, root };

@@ -780,6 +780,8 @@ function projectCanonicalItemViews(
         },
       ];
     }
+    case "functionCallOutput":
+      return [];
     case "plan": {
       const status = resolveCanonicalItemStatus(item, context);
       return [

@@ -79,6 +79,7 @@ const makeFixture = (): {
   const repositoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-prepared-build-"));
   temporaryRoots.push(repositoryRoot);
   const requiredInputs = [
+    ".cargo/config.toml",
     "agent-skills/nodex/SKILL.md",
     "config/value.ts",
     "native/macos-sparkle/binding.gyp",
@@ -89,8 +90,8 @@ const makeFixture = (): {
     "resources/icon.png",
     "resources/nodex-icon.svg",
     "resources/nodex-notification.aiff",
-    "resources/third-party/open-interpreter/LICENSE",
-    "resources/third-party/open-interpreter/NOTICE",
+    "resources/third-party/codex/LICENSE",
+    "resources/third-party/codex/NOTICE",
     "scripts/build-resources.ts",
     "scripts/generate-third-party-notices.ts",
     "scripts/official-agent-skills-artifact.d.mts",
@@ -212,6 +213,10 @@ describe("prepared Electron build", () => {
 
     recordPreparedElectronBuild(fixture);
     fs.appendFileSync(path.join(fixture.repositoryRoot, "electron-builder.yml"), "changed: true\n");
+    expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
+
+    recordPreparedElectronBuild(fixture);
+    fs.appendFileSync(path.join(fixture.repositoryRoot, ".cargo/config.toml"), "changed = true\n");
     expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
   });
 

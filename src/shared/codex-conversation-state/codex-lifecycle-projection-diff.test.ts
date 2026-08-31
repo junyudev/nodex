@@ -512,6 +512,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       text: "",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
     const streamed = { ...started, text: "partial" };
     const current = {
@@ -584,6 +585,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       text: "",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
     const streamedAssistant = {
       ...project(assistant),
@@ -709,6 +711,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       text: "Done",
       phase: "final_answer",
       memoryCitation: null,
+      delivery: null,
     } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
     const items = [command, mcp, compaction, review, assistant] as const;
     const currentViews = projectCodexCanonicalTurnItemViews({

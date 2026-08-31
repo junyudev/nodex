@@ -12,7 +12,7 @@ import type {
   ThreadStageActions,
   ThreadTurnModel,
 } from "../thread-stage-types";
-import { resolveCodexThreadWorkedForEnterMotion } from "./shared/thread-motion";
+import { resolveCodexThreadAgentBodyMotion } from "./shared/thread-motion";
 import { useWorkedForLabelText } from "./shared/use-worked-for-label";
 import { CodexShimmerText } from "./shared/codex-shimmer-text";
 import { ThreadBlockRenderer } from "./blocks/local-conversation-block-renderer";
@@ -196,18 +196,21 @@ function ThreadTurnBody({
   turnDiffHoverPreviewDisabled = false,
   latestTurnFollowContentRef,
 }: ThreadTurnProps & { agentBodyUnits: ThreadAgentRenderUnit[] }) {
-  const agentBodyCollapsePresentation = projectAgentBodyCollapsePresentation(agentBodyUnits);
+  const agentBodyCollapsePresentation = projectAgentBodyCollapsePresentation(agentBodyUnits, {
+    extractWorkedFor: turn.hasRenderableAgentBodyUnits,
+  });
   const shouldAllowAgentBodyCollapse =
     turn.hasRenderableAgentBodyUnits && agentBodyCollapsePresentation.collapsibleUnits.length > 0;
   const effectiveAgentBodyCollapsed = shouldAllowAgentBodyCollapse ? agentBodyCollapsed : false;
   const reducedMotion = useResolvedReducedMotion();
-  const workedForEnterMotion = resolveCodexThreadWorkedForEnterMotion(reducedMotion);
+  const agentBodyMotion = resolveCodexThreadAgentBodyMotion(reducedMotion);
+  const workedForItem = turn.workedForItem ?? agentBodyCollapsePresentation.workedForItem;
   const workedForLabel = useWorkedForLabelText({
-    timing: turn.workedForItem
+    timing: workedForItem
       ? {
-          status: turn.workedForItem.status,
-          startedAtMs: turn.workedForItem.startedAtMs,
-          completedAtMs: turn.workedForItem.completedAtMs,
+          status: workedForItem.status,
+          startedAtMs: workedForItem.startedAtMs,
+          completedAtMs: workedForItem.completedAtMs,
         }
       : null,
     durationMs: turn.workedDurationMs,
@@ -286,9 +289,11 @@ function ThreadTurnBody({
                   <motion.div
                     ref={latestTurnFollowContentRef}
                     key="agent-body"
-                    initial={workedForEnterMotion.initial}
-                    animate={workedForEnterMotion.animate}
-                    transition={workedForEnterMotion.transition}
+                    className="-ms-2 ps-2"
+                    initial={agentBodyMotion.initial}
+                    animate={agentBodyMotion.animate}
+                    exit={agentBodyMotion.exit}
+                    transition={agentBodyMotion.transition}
                   >
                     {shouldAllowAgentBodyCollapse ? <ThreadGap /> : null}
                     <div className="flex flex-col gap-[var(--conversation-item-gap,16px)]">

@@ -18,6 +18,7 @@ import { CodexRendererConversationCoordinator } from "./CodexRendererConversatio
 import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
 import { CodexThreadDurableProjection } from "./CodexThreadDurableProjection";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -111,9 +112,22 @@ it.effect("drains frame text before terminal turn consequences", () =>
       ),
       Effect.provideService(
         CodexThreadDirectory,
-        CodexThreadDirectory.of({
-          descendants: () => Effect.succeed([]),
-        } as unknown as CodexThreadDirectory["Service"]),
+        CodexThreadDirectory.of({} as unknown as CodexThreadDirectory["Service"]),
+      ),
+      Effect.provideService(
+        CodexSubagentDirectory,
+        CodexSubagentDirectory.of({
+          readKnownOverview: ({ rootThreadId }: { readonly rootThreadId: string }) =>
+            Effect.succeed({
+              rootThreadId,
+              revision: 0,
+              generation: 7,
+              completeness: "complete",
+              active: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
+              done: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
+            }),
+          observeNotification: () => Effect.void,
+        } as unknown as CodexSubagentDirectory["Service"]),
       ),
       Effect.provideService(
         CodexThreadGoalRuntime,
@@ -208,6 +222,7 @@ it.effect("drains frame text before terminal turn consequences", () =>
             text: "x".repeat(2 * 1_024 * 1_024 + 1),
             phase: null,
             memoryCitation: null,
+            delivery: null,
           },
         },
       } as unknown as CodexServerNotification,

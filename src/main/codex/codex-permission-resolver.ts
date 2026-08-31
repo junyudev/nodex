@@ -372,19 +372,29 @@ export function resolveCodexPermissionState(input: {
     matchedResolvedPreset !== null &&
     isPresetAllowed(matchedResolvedPreset, input.requirements) &&
     (matchedPreset !== "guardian-approvals" || autoReviewAvailable);
-  const explicitKeys = input.origins.approval_policy || input.origins.sandbox_mode;
+  const explicitKeys =
+    input.origins.approval_policy ||
+    input.origins.sandbox_mode ||
+    input.origins[APPROVALS_REVIEWER_KEY];
   const hasRepresentableExplicitConfig =
     Boolean(explicitKeys) &&
     isRepresentableCustomState(sandboxMode, approvalPolicy, approvalsReviewer, input.requirements);
+  const useFreshProfileDefault =
+    !explicitKeys &&
+    (matchedPreset === null || matchedPreset === "auto") &&
+    autoReviewAvailable &&
+    availableModes.includes("guardian-approvals");
   // Raw config values describe effective Codex sandbox behavior, not proof that
   // the user selected one of Nodex's built-in presets. Main may overlay a
   // separately persisted built-in selection after validating these values.
   const isCustom = hasRepresentableExplicitConfig;
   const effectivePreset = isCustom
     ? "custom"
-    : matchedResolvedPreset && matchedPresetAllowed
-      ? matchedResolvedPreset.preset
-      : fallbackPreset.preset;
+    : useFreshProfileDefault
+      ? "guardian-approvals"
+      : matchedResolvedPreset && matchedPresetAllowed
+        ? matchedResolvedPreset.preset
+        : fallbackPreset.preset;
   const effectiveResolvedPreset =
     effectivePreset === "custom"
       ? null

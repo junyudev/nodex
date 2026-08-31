@@ -3,6 +3,7 @@ import { DOMParser } from "@xmldom/xmldom";
 import type { SparkleArchitectureUpdateManifest, SparkleFileIdentity } from "./sparkle-manifest";
 
 const SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle";
+const PRODUCT_MINIMUM_MACOS = /^15(?:\.0){0,2}$/u;
 
 const sparkleText = (item: Element, localName: string): string | null =>
   item.getElementsByTagNameNS(SPARKLE_NAMESPACE, localName).item(0)?.textContent?.trim() || null;
@@ -34,6 +35,10 @@ export function verifySparkleAppcastContract(
   }
   if (matchingItems.length !== 1) {
     throw new Error("Sparkle appcast must contain exactly one target release item.");
+  }
+  const minimumSystemVersion = sparkleText(matchingItems[0], "minimumSystemVersion");
+  if (!minimumSystemVersion || !PRODUCT_MINIMUM_MACOS.test(minimumSystemVersion)) {
+    throw new Error("Sparkle appcast target must require macOS 15.0.");
   }
 
   const fullEnclosures: Element[] = [];

@@ -13,7 +13,7 @@ import type {
   BrowserSidebarBrowserUseViewportEvent,
   BrowserSidebarCommand,
   BrowserSidebarCommandResult,
-  BrowserSidebarHostRouteIdentity,
+  BrowserSidebarPhysicalHostIdentity,
   BrowserSidebarLocalServerThumbnailRequest,
   BrowserSidebarStateSnapshot,
   BrowserSidebarTabIdentity,
@@ -79,7 +79,7 @@ export interface BrowserUseRouteIdentity {
 export interface BrowserGuestHost {
   readonly authorizeAttachment: (
     ownerWebContentsId: number,
-    route: BrowserSidebarHostRouteIdentity,
+    route: BrowserSidebarPhysicalHostIdentity,
   ) => BrowserAttachmentAuthorizationResult;
   readonly consumeAuthorizedAttachment: (
     attachToken: string,

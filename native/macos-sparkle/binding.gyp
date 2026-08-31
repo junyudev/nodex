@@ -32,7 +32,7 @@
         "LD_RUNPATH_SEARCH_PATHS": [
           "@loader_path/../../Frameworks"
         ],
-        "MACOSX_DEPLOYMENT_TARGET": "12.0"
+        "MACOSX_DEPLOYMENT_TARGET": "15.0"
       }
     }
   ]

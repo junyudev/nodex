@@ -75,7 +75,8 @@ import type {
   ServerNotification as CodexAppServerServerNotification,
   ThreadMemoryMode as CodexAppServerThreadMemoryMode,
 } from "@nodex/codex-app-server-protocol";
-import type { AgentExecutionProfile } from "./agent-runtime";
+import type { CodexExecutionProfile } from "./codex-execution-profile";
+import type { AgentBackendBinding } from "./agent-backend";
 import type { CodexPersistedHistoryOccurrenceHydrateRequest } from "./codex-persisted-history-search";
 import type {
   NodexClipboardEnvelopeV1,
@@ -537,6 +538,7 @@ export interface PageSearchMetadataSnapshot {
 }
 
 export interface CommandPaletteThreadSummary {
+  backendBinding: AgentBackendBinding;
   threadId: string;
   sessionId: string | null;
   projectId: string | null;
@@ -1109,8 +1111,8 @@ export interface ProjectSessionThreadLink {
   agentPath?: string | null;
   threadName?: string;
   threadPreview: string;
-  modelProvider: string;
-  executionProfile?: AgentExecutionProfile | null;
+  executionProfile?: CodexExecutionProfile | null;
+  backendBinding: AgentBackendBinding;
   executionHostId: string;
   cwd?: string;
   managedWorktreePath?: string | null;
@@ -1138,8 +1140,8 @@ export interface ProjectSessionThreadSummary {
   agentPath?: string | null;
   threadName?: string;
   threadPreview: string;
-  modelProvider: string;
-  executionProfile?: AgentExecutionProfile | null;
+  executionProfile?: CodexExecutionProfile | null;
+  backendBinding: AgentBackendBinding;
   executionHostId: string;
   cwd?: string;
   managedWorktreePath?: string | null;
@@ -1379,8 +1381,8 @@ export interface ProjectSessionThreadLinkInput {
   agentPath?: string | null;
   threadName?: string | null;
   threadPreview?: string;
-  modelProvider?: string;
-  executionProfile?: AgentExecutionProfile | null;
+  executionProfile?: CodexExecutionProfile | null;
+  backendBinding?: AgentBackendBinding;
   executionHostId?: string;
   runtimeWorkspaceRoots?: string[];
   cwd?: string | null;
@@ -1420,6 +1422,7 @@ export type CodexSidebarRunLocation =
 export interface CodexSidebarThreadItem {
   key: string;
   kind: CodexSidebarThreadKind;
+  backendBinding: AgentBackendBinding;
   runLocation: CodexSidebarRunLocation;
   pendingWorktreeId?: string;
   clientThreadId?: string;
@@ -1695,6 +1698,25 @@ export interface CodexExecutionHostSettings {
 
 export interface UpdateCodexExecutionHostSettingsInput {
   sshHosts: CodexSshExecutionHostConfig[];
+}
+
+export interface AcpAgentInstanceConfig {
+  /** Stable Profile-local identity referenced by AgentBackendBinding.instanceConfigId. */
+  id: string;
+  agentDefinitionId: string;
+  packageRoot: string;
+  nodeExecutable: string;
+  enabled: boolean;
+  credentials: { kind: "inherit-host-profile" } | { kind: "isolated-home"; home: string };
+  proxy: "inherit-host" | "isolated";
+}
+
+export interface AcpAgentSettings {
+  instances: AcpAgentInstanceConfig[];
+}
+
+export interface UpdateAcpAgentSettingsInput {
+  instances: AcpAgentInstanceConfig[];
 }
 
 export type ManagedWorktreeAvailability =
@@ -2087,8 +2109,9 @@ export interface CodexThreadSummary {
   agentPath?: string | null;
   threadName: string | null;
   threadPreview: string;
-  modelProvider: string;
-  executionProfile?: AgentExecutionProfile | null;
+  /** Read-only app-server diagnostic; backend selection never derives from this field. */
+  modelProvider?: string | null;
+  executionProfile?: CodexExecutionProfile | null;
   cwd: string | null;
   managedWorktreePath?: string | null;
   projectlessOutputDirectory?: string | null;
@@ -2124,10 +2147,9 @@ export interface CodexScheduledAutomation {
   prompt: string;
   rrule: string | null;
   model: string | null;
-  modelProvider: string | null;
-  harnessId: string | null;
   reasoningEffort: CodexScheduledAutomationReasoningEffort | null;
   serviceTier: string | null;
+  backendBinding: AgentBackendBinding;
   cwds: string[];
   executionEnvironment: CodexScheduledAutomationExecutionEnvironment;
   localEnvironmentConfigPath: string | null;
@@ -2144,10 +2166,9 @@ export interface CodexScheduledAutomationCreateInput {
   prompt?: string | null;
   rrule?: string | null;
   model?: string | null;
-  modelProvider?: string | null;
-  harnessId?: string | null;
   reasoningEffort?: CodexScheduledAutomationReasoningEffort | null;
   serviceTier?: string | null;
+  backendBinding?: AgentBackendBinding;
   cwds?: string[];
   executionEnvironment?: CodexScheduledAutomationExecutionEnvironment | null;
   localEnvironmentConfigPath?: string | null;
@@ -2383,12 +2404,9 @@ export interface CodexConversationThreadSettingsPatch {
   summary?: CodexAppServerReasoningSummary | null;
   collaborationMode?: CodexCollaborationModeKind | null;
   personality?: CodexPersonality | null;
-  /**
-   * A validated compound update for profile-backed tasks. Main preserves the
-   * task's provider/harness binding and persists the mutable fields to Core.
-   */
-  executionProfile?: AgentExecutionProfile;
-  executionProfileChange?: import("./agent-runtime").AgentExecutionProfileChange;
+  /** A validated compound update for a task's mutable Codex intelligence settings. */
+  executionProfile?: CodexExecutionProfile;
+  executionProfileChange?: import("./codex-execution-profile").CodexExecutionProfileChange;
 }
 
 export type CodexPersonality = CodexAppServerPersonality;
@@ -2409,6 +2427,10 @@ export type CodexModelOption = Pick<
   | "hidden"
   | "supportedReasoningEfforts"
   | "defaultReasoningEffort"
+  | "inputModalities"
+  | "multiAgentVersion"
+  | "serviceTiers"
+  | "defaultServiceTier"
   | "isDefault"
 >;
 
@@ -2479,7 +2501,7 @@ export interface CodexThreadStartForSessionInput {
   threadName?: string;
   skipAutoTitleGeneration?: boolean;
   model?: string;
-  executionProfile?: AgentExecutionProfile;
+  executionProfile?: CodexExecutionProfile;
   serviceTier?: CodexServiceTier;
   permissionMode?: CodexPermissionMode;
   permissionProfileId?: string;
@@ -4556,16 +4578,72 @@ export interface CodexConversationHistoryExportNextResult {
   done: boolean;
 }
 
-export interface CodexBackgroundSubagentThreadsHydrateInput {
-  rootThreadId: string;
-  threadIds: string[];
-  includeTail?: boolean;
+/** Renderer-facing status from the bounded Subagent Directory overview projection. */
+export type CodexSubagentOverviewStatus = "active" | "waiting" | "done" | "unknown";
+
+/**
+ * Metadata-only child row. Transcript text is intentionally absent: opening a
+ * selected child is the sole boundary that may attach its sparse history.
+ */
+export interface CodexSubagentOverviewRow {
+  threadId: string;
+  parentThreadId: string | null;
+  displayName: string;
+  actorName: string | null;
+  agentRole: string | null;
+  spawnModel: string | null;
+  objective: string | null;
+  status: CodexSubagentOverviewStatus;
+  statusSummary: string | null;
+  startedAtMs: number | null;
+  lastActivityAtMs: number | null;
+  completedAtMs: number | null;
+  diffStats: {
+    linesAdded: number;
+    linesRemoved: number;
+  } | null;
+  canOpen: boolean;
+  canInteract: boolean;
 }
 
-export interface CodexSubagentPanelHydrateInput {
+export interface CodexSubagentOverviewSection {
+  rows: CodexSubagentOverviewRow[];
+  /** Number of positive facts currently indexed for this section. */
+  knownCount: number;
+  /** Null until discovery is complete; never infer a total from an incomplete pass. */
+  totalCount: number | null;
+  continuation: string | null;
+}
+
+/** One generation-fenced, revisioned and bounded root overview projection. */
+export interface CodexSubagentOverviewWindow {
   rootThreadId: string;
-  threadIds?: string[];
-  includeTail?: boolean;
+  revision: number;
+  generation: number;
+  completeness: "complete" | "incomplete";
+  active: CodexSubagentOverviewSection;
+  done: CodexSubagentOverviewSection;
+}
+
+export interface CodexSubagentOverviewReadInput {
+  rootThreadId: string;
+  mode: "initial" | "expanded";
+}
+
+export interface CodexSelectedSubagentHydrateInput {
+  rootThreadId: string;
+  threadId: string;
+}
+
+export interface CodexSelectedSubagentHydrateResult {
+  rootThreadId: string;
+  threadId: string;
+  revision: number;
+  fidelity: "residentSparse" | "attachedSparse" | "metadata";
+  checkpoint: string | null;
+  canInteract: boolean;
+  outcome: "ready" | "unavailable" | "failed";
+  errorMessage: string | null;
 }
 
 export type CodexConversationPatchPathSegment = string | number;
@@ -4592,6 +4670,7 @@ export type CodexEvent =
   | { type: "rateLimits"; rateLimits: CodexRateLimitsSnapshot | null }
   | { type: "appsUpdated"; apps: ProtocolAppInfo[] }
   | { type: "threadSummary"; thread: CodexThreadSummary }
+  | { type: "subagentOverviewInvalidated"; rootThreadId: string }
   | { type: "threadDeleted"; threadId: string }
   | { type: "threadArchivedState"; threadId: string; archived: boolean }
   | { type: "scheduledAutomationChanged"; event: CodexScheduledAutomationChangedEvent }

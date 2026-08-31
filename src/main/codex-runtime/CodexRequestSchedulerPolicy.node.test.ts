@@ -189,6 +189,29 @@ describe("Codex request coalescing policy", () => {
     );
   });
 
+  test("admits parameterless protocol requests and keeps omitted params distinct from null", () => {
+    const omittedBytes = codexScheduledRequestBytes("configRequirements/read", undefined);
+    expect(omittedBytes).toBe(
+      new TextEncoder().encode('{"method":"configRequirements/read"}').byteLength,
+    );
+
+    const omitted = scheduledRequest("omitted", {
+      method: "configRequirements/read",
+      params: undefined,
+      queuedBytes: omittedBytes ?? -1,
+    });
+    const explicitNull = scheduledRequest("null", {
+      method: "configRequirements/read",
+      params: null,
+    });
+
+    expect(admitCodexScheduledRequest({ request: omitted, queued: [] })).toEqual({
+      accepted: true,
+    });
+    expect(codexRequestCoalescingKey(omitted)).not.toBeNull();
+    expect(codexRequestCoalescingKey(omitted)).not.toBe(codexRequestCoalescingKey(explicitNull));
+  });
+
   test("rejects an oversized request before stable JSON materialization", () => {
     const oversized = "x".repeat(CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request);
 

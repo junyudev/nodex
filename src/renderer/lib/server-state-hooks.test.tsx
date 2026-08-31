@@ -182,6 +182,7 @@ describe("server state query hooks", () => {
                 tools: {},
                 resources: [],
                 resourceTemplates: [],
+                runtimeStatus: "connected",
                 authStatus: "unsupported",
               },
             ],

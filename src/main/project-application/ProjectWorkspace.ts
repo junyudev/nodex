@@ -7,7 +7,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 
-import type { AgentExecutionProfile } from "../../shared/agent-runtime";
+import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
 import {
   PageChatActivitySummaryInputSchema,
   PageChatLinkInputSchema,
@@ -75,6 +75,7 @@ import type { DynamicToolCatalogSelection } from "../codex/dynamic-tool-registry
 import { CoreModuleResponseError } from "../core-client/core-client";
 import {
   projectWorkspaceBackgroundProcessFromCore,
+  projectAgentBackendBindingToCore,
   projectWorkspaceExecutionProfilePatchToCore,
   projectWorkspaceProjectFromCore,
   projectWorkspacePageChatActivitySummaryFromCore,
@@ -85,6 +86,10 @@ import {
   projectWorkspaceSessionFromCore,
   projectWorkspaceSessionThreadFromCore,
   projectWorkspaceTaskFromCore,
+  projectWorkspaceBindThreadBackendSessionIntent,
+  projectWorkspaceClearThreadBackendSessionIntent,
+  projectWorkspaceThreadBackendSessionFromCore,
+  projectWorkspaceThreadBackendSessionRead,
   projectWorkspaceThreadFromCore,
   projectWorkspaceThreadLaneToCore,
   projectWorkspaceThreadMoveMetadataToCore,
@@ -100,6 +105,7 @@ import {
   type DesktopProjectWorkspaceExecutionLocation,
   type DesktopProjectWorkspaceSidebar,
   type DesktopProjectWorkspaceThread,
+  type DesktopProjectWorkspaceThreadBackendSession,
   type DesktopProjectWorkspaceThreadMoveInput,
   type DesktopProjectWorkspaceThreadPatch,
 } from "../core-client/project-workspace-adapter";
@@ -128,6 +134,7 @@ export type {
   DesktopProjectWorkspaceExecutionLocation,
   DesktopProjectWorkspaceSidebar,
   DesktopProjectWorkspaceThread,
+  DesktopProjectWorkspaceThreadBackendSession,
   DesktopProjectWorkspaceThreadMoveInput,
   DesktopProjectWorkspaceThreadPatch,
 } from "../core-client/project-workspace-adapter";
@@ -287,6 +294,18 @@ export interface ProjectWorkspaceService {
   readonly getThread: (
     threadId: string,
   ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThread | null>;
+  readonly readThreadBackendSession: (
+    threadId: string,
+  ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThreadBackendSession | null>;
+  readonly bindThreadBackendSession: (input: {
+    readonly threadId: string;
+    readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
+    readonly backendSessionId: string;
+  }) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThreadBackendSession>;
+  readonly clearThreadBackendSession: (input: {
+    readonly threadId: string;
+    readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
+  }) => ProjectWorkspaceEffect<void>;
   readonly upsertThread: (
     threadId: string,
     patch: DesktopProjectWorkspaceThreadPatch,
@@ -503,6 +522,50 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       const thread = yield* readCoreThread(threadId);
       return thread ? projectWorkspaceThreadFromCore(thread) : null;
     });
+
+    const readThreadBackendSession = Effect.fn("ProjectWorkspace.readThreadBackendSession")(
+      function* (threadId: string) {
+        const snapshot = yield* read(
+          "thread.backend-session.read",
+          projectWorkspaceThreadBackendSessionRead(threadId),
+        );
+        return yield* evaluate("thread.backend-session.read", () => {
+          const session = expectVariant(snapshot, "thread_backend_session").session;
+          return session ? projectWorkspaceThreadBackendSessionFromCore(session) : null;
+        });
+      },
+    );
+
+    const bindThreadBackendSession = Effect.fn("ProjectWorkspace.bindThreadBackendSession")(
+      function* (input: {
+        readonly threadId: string;
+        readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
+        readonly backendSessionId: string;
+      }) {
+        yield* apply(
+          "thread.backend-session.bind",
+          projectWorkspaceBindThreadBackendSessionIntent(input),
+        );
+        const session = yield* readThreadBackendSession(input.threadId);
+        if (session) return session;
+        return yield* projectWorkspaceError(
+          "thread.backend-session.bind",
+          new Error(`Bound backend session not found: ${input.threadId}`),
+        );
+      },
+    );
+
+    const clearThreadBackendSession = Effect.fn("ProjectWorkspace.clearThreadBackendSession")(
+      function* (input: {
+        readonly threadId: string;
+        readonly backendBinding: DesktopProjectWorkspaceThreadBackendSession["backendBinding"];
+      }) {
+        yield* apply(
+          "thread.backend-session.clear",
+          projectWorkspaceClearThreadBackendSessionIntent(input),
+        );
+      },
+    );
 
     const readSessionThread = Effect.fn("ProjectWorkspace.readSessionThread")(function* (
       summary: Extract<ProjectWorkspaceReadSnapshot["value"], { kind: "session" }>["session"],
@@ -1450,6 +1513,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             input,
             "executionProfile",
           );
+          const hasBackendBinding = Object.prototype.hasOwnProperty.call(input, "backendBinding");
           const hasExecutionHostId = Object.prototype.hasOwnProperty.call(input, "executionHostId");
           yield* apply("session.thread.link", {
             kind: "mutate_session",
@@ -1469,15 +1533,13 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
                 ...(hasAgentPath ? { agent_path: parsed.agentPath ?? null } : {}),
                 ...(parsed.threadName != null ? { thread_name: parsed.threadName } : {}),
                 thread_preview: parsed.threadPreview ?? existing?.thread_preview ?? "",
-                model_provider:
-                  parsed.executionProfile?.providerId ??
-                  parsed.modelProvider ??
-                  existing?.model_provider ??
-                  "",
                 ...(hasExecutionProfile
                   ? projectWorkspaceExecutionProfilePatchToCore(
-                      parsed.executionProfile as AgentExecutionProfile | null,
+                      parsed.executionProfile as CodexExecutionProfile | null,
                     )
+                  : {}),
+                ...(hasBackendBinding && parsed.backendBinding
+                  ? { backend_binding: projectAgentBackendBindingToCore(parsed.backendBinding) }
                   : {}),
                 ...(parsed.runtimeWorkspaceRoots === undefined
                   ? {
@@ -1545,6 +1607,9 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         },
       ),
       getThread,
+      readThreadBackendSession,
+      bindThreadBackendSession,
+      clearThreadBackendSession,
       upsertThread: Effect.fn("ProjectWorkspace.upsertThread")(function* (threadId, patch) {
         yield* apply("thread.upsert", {
           kind: "upsert_thread",

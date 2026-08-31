@@ -365,6 +365,20 @@ export interface components {
             /** @enum {string} */
             readonly kind: "page_or_block";
         };
+        /**
+         * @description Durable identity of the runtime family that owns an Agent conversation.
+         *     Backend-specific settings live behind their own stable identifiers instead
+         *     of accumulating nullable fields on Threads and Automations.
+         */
+        readonly AgentBackendBinding: {
+            /** @enum {string} */
+            readonly kind: "codex";
+        } | {
+            readonly agent_definition_id: string;
+            readonly instance_config_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "acp";
+        };
         /** @enum {string} */
         readonly AgentConsentRequirement: "none" | "resource";
         readonly AgentDocumentBlockGuard: {
@@ -780,19 +794,18 @@ export interface components {
         readonly AutomationApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_AutomationCommitValue_AutomationReceipt"];
         readonly AutomationDefinition: {
             readonly automation_id: string;
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             /** Format: int64 */
             readonly created_at_ms: number;
             readonly cwds: readonly string[];
             /** Format: int64 */
             readonly definition_revision: number;
             readonly execution_environment: components["schemas"]["AutomationExecutionEnvironment"];
-            readonly harness_id?: string | null;
             readonly kind: components["schemas"]["AutomationDefinitionKind"];
             /** Format: int64 */
             readonly last_run_at_ms?: number | null;
             readonly local_environment_config_path?: string | null;
             readonly model?: string | null;
-            readonly model_provider?: string | null;
             readonly name: string;
             /** Format: int64 */
             readonly next_run_at_ms?: number | null;
@@ -806,13 +819,12 @@ export interface components {
             readonly updated_at_ms: number;
         };
         readonly AutomationDefinitionInput: {
+            readonly backend_binding?: components["schemas"]["AgentBackendBinding"];
             readonly cwds?: readonly string[] | null;
             readonly execution_environment?: null | components["schemas"]["AutomationExecutionEnvironment"];
-            readonly harness_id?: string | null;
             readonly kind: components["schemas"]["AutomationDefinitionKind"];
             readonly local_environment_config_path?: string | null;
             readonly model?: string | null;
-            readonly model_provider?: string | null;
             readonly name: string;
             readonly prompt?: string | null;
             readonly reasoning_effort?: string | null;
@@ -1004,19 +1016,18 @@ export interface components {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
                 readonly automation_id: string;
+                readonly backend_binding: components["schemas"]["AgentBackendBinding"];
                 /** Format: int64 */
                 readonly created_at_ms: number;
                 readonly cwds: readonly string[];
                 /** Format: int64 */
                 readonly definition_revision: number;
                 readonly execution_environment: components["schemas"]["AutomationExecutionEnvironment"];
-                readonly harness_id?: string | null;
                 readonly kind: components["schemas"]["AutomationDefinitionKind"];
                 /** Format: int64 */
                 readonly last_run_at_ms?: number | null;
                 readonly local_environment_config_path?: string | null;
                 readonly model?: string | null;
-                readonly model_provider?: string | null;
                 readonly name: string;
                 /** Format: int64 */
                 readonly next_run_at_ms?: number | null;
@@ -1466,6 +1477,28 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_ProjectWorkspaceSubagentLifecycleMember: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                /** Format: int32 */
+                readonly attempt_count: number;
+                readonly last_reason?: string | null;
+                /** Format: int64 */
+                readonly observed_at_ms?: number | null;
+                readonly outcome: components["schemas"]["ProjectWorkspaceSubagentLifecycleOutcome"];
+                readonly thread_id: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
+        readonly CollectionWindow_ProjectWorkspaceSubagentOverviewItem: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly evidence?: null | components["schemas"]["ProjectWorkspaceSubagentStatusEvidence"];
+                readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
+                readonly thread: components["schemas"]["ProjectWorkspaceThreadSummary"];
+            }[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindow_ProjectWorkspaceTaskSummary: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -1481,16 +1514,15 @@ export interface components {
                 readonly agent_path?: string | null;
                 readonly agent_role?: string | null;
                 readonly archived: boolean;
+                readonly backend_binding: components["schemas"]["AgentBackendBinding"];
                 /** Format: int64 */
                 readonly created_at: number;
                 readonly cwd?: string | null;
                 readonly execution_host_id: string;
                 readonly forked_from_id?: string | null;
-                readonly harness_id?: string | null;
                 readonly linked_at: string;
                 readonly managed_worktree_path?: string | null;
                 readonly model_id?: string | null;
-                readonly model_provider: string;
                 readonly parent_thread_id?: string | null;
                 readonly project_id?: string | null;
                 readonly projectless_output_directory?: string | null;
@@ -6227,6 +6259,17 @@ export interface components {
                 readonly location: components["schemas"]["ProjectWorkspaceThreadExecutionLocation"];
                 readonly thread_id: string;
             } | {
+                readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+                readonly backend_session_id: string;
+                /** @enum {string} */
+                readonly kind: "bind_thread_backend_session";
+                readonly thread_id: string;
+            } | {
+                readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+                /** @enum {string} */
+                readonly kind: "clear_thread_backend_session";
+                readonly thread_id: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "delete_thread";
                 readonly thread_id: string;
@@ -6248,6 +6291,51 @@ export interface components {
                 /** Format: int32 */
                 readonly limit?: number | null;
                 readonly sweep_id: string;
+            } | {
+                readonly complete: boolean;
+                readonly continuation?: string | null;
+                /** @enum {string} */
+                readonly kind: "observe_subagent_discovery_page";
+                readonly observations: readonly components["schemas"]["ProjectWorkspaceSubagentObservation"][];
+                readonly page_identity: string;
+                readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+            } | {
+                readonly evidence_kind: components["schemas"]["ProjectWorkspaceSubagentStatusEvidenceKind"];
+                /** @enum {string} */
+                readonly kind: "observe_subagent_status_evidence";
+                /** Format: int64 */
+                readonly observed_at_ms: number;
+                readonly precondition?: null | components["schemas"]["ProjectWorkspaceSubagentStatusEvidencePrecondition"];
+                /** Format: int64 */
+                readonly source_revision: number;
+                readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
+                readonly thread_id: string;
+                readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+            } | {
+                readonly evidence_kind: components["schemas"]["ProjectWorkspaceSubagentStatusEvidenceKind"];
+                /** Format: int64 */
+                readonly generation: number;
+                readonly host_id: string;
+                /** @enum {string} */
+                readonly kind: "buffer_subagent_status_evidence";
+                /** Format: int64 */
+                readonly observed_at_ms: number;
+                readonly source_epoch: string;
+                /** Format: int64 */
+                readonly source_revision: number;
+                readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
+                readonly thread_id: string;
+            } | {
+                readonly action: components["schemas"]["ProjectWorkspaceSubagentLifecycleAction"];
+                /** @enum {string} */
+                readonly kind: "begin_subagent_lifecycle";
+                readonly lifecycle_operation_id: string;
+                readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "observe_subagent_lifecycle_outcomes";
+                readonly lifecycle_operation_id: string;
+                readonly observations: readonly components["schemas"]["ProjectWorkspaceSubagentLifecycleObservation"][];
             } | {
                 readonly archived: boolean;
                 /** @enum {string} */
@@ -7174,6 +7262,10 @@ export interface components {
                 readonly thread_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "thread_backend_session";
+                readonly thread_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "queued_follow_up_ledger";
                 readonly thread_id: string;
             } | {
@@ -7181,6 +7273,23 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "child_thread_window";
                 readonly parent_thread_id: string;
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                readonly active_window: components["schemas"]["CollectionWindowRequest"];
+                readonly done_window: components["schemas"]["CollectionWindowRequest"];
+                /** @enum {string} */
+                readonly kind: "subagent_overview_window";
+                readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "subagent_overview_item";
+                readonly thread_id: string;
+                readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+            } | {
+                readonly include_settled: boolean;
+                /** @enum {string} */
+                readonly kind: "subagent_lifecycle_batch";
+                readonly lifecycle_operation_id: string;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
@@ -7887,6 +7996,90 @@ export interface components {
             readonly page_id: string;
             readonly title_markdown: string;
         };
+        readonly ProjectWorkspaceSubagentLifecycle: {
+            readonly action: components["schemas"]["ProjectWorkspaceSubagentLifecycleAction"];
+            readonly complete: boolean;
+            /** Format: int32 */
+            readonly expected_count: number;
+            readonly lifecycle_operation_id: string;
+            readonly members: components["schemas"]["CollectionWindow_ProjectWorkspaceSubagentLifecycleMember"];
+            /** Format: int32 */
+            readonly processed_count: number;
+            /** Format: int64 */
+            readonly projection_revision: number;
+            readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+            /** Format: int32 */
+            readonly unresolved_count: number;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSubagentLifecycleAction: "archive" | "delete";
+        readonly ProjectWorkspaceSubagentLifecycleObservation: {
+            /** Format: int64 */
+            readonly observed_at_ms: number;
+            readonly outcome: components["schemas"]["ProjectWorkspaceSubagentLifecycleOutcome"];
+            readonly reason?: string | null;
+            readonly thread_id: string;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSubagentLifecycleOutcome: "pending" | "unresolved" | "failed" | "settled";
+        readonly ProjectWorkspaceSubagentObservation: {
+            /** Format: int64 */
+            readonly observed_at_ms: number;
+            readonly parent_thread_id: string;
+            readonly patch: components["schemas"]["ProjectWorkspaceThreadPatch"];
+            /** Format: int64 */
+            readonly source_revision: number;
+            readonly thread_id: string;
+        };
+        readonly ProjectWorkspaceSubagentOverview: {
+            readonly active: components["schemas"]["CollectionWindow_ProjectWorkspaceSubagentOverviewItem"];
+            readonly discovery_complete: boolean;
+            readonly discovery_continuation?: string | null;
+            readonly done: components["schemas"]["CollectionWindow_ProjectWorkspaceSubagentOverviewItem"];
+            /** Format: int32 */
+            readonly known_active_count: number;
+            /** Format: int32 */
+            readonly known_done_count: number;
+            /** Format: int64 */
+            readonly projection_revision: number;
+            readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+        };
+        readonly ProjectWorkspaceSubagentOverviewItem: {
+            readonly evidence?: null | components["schemas"]["ProjectWorkspaceSubagentStatusEvidence"];
+            readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
+            readonly thread: components["schemas"]["ProjectWorkspaceThreadSummary"];
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSubagentStatus: "active" | "waiting" | "done" | "unknown";
+        readonly ProjectWorkspaceSubagentStatusEvidence: {
+            readonly kind: components["schemas"]["ProjectWorkspaceSubagentStatusEvidenceKind"];
+            /** Format: int64 */
+            readonly observed_at_ms: number;
+            /** Format: int64 */
+            readonly source_revision: number;
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceSubagentStatusEvidenceKind: "metadata" | "notification" | "completion" | "reconciliation";
+        /** @description Optional compare-and-set guard for observations derived from an asynchronous remote read. */
+        readonly ProjectWorkspaceSubagentStatusEvidencePrecondition: {
+            /** @enum {string} */
+            readonly mode: "absent";
+        } | {
+            readonly evidence_kind: components["schemas"]["ProjectWorkspaceSubagentStatusEvidenceKind"];
+            /** @enum {string} */
+            readonly mode: "exact";
+            /** Format: int64 */
+            readonly observed_at_ms: number;
+            /** Format: int64 */
+            readonly source_revision: number;
+        };
+        readonly ProjectWorkspaceSubagentUniverse: {
+            /** Format: int64 */
+            readonly generation: number;
+            readonly host_id: string;
+            readonly root_thread_id: string;
+            readonly source_epoch: string;
+        };
         readonly ProjectWorkspaceTaskSummary: {
             readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
             readonly thread?: null | components["schemas"]["ProjectWorkspaceTaskThreadSummary"];
@@ -7896,16 +8089,15 @@ export interface components {
             readonly agent_path?: string | null;
             readonly agent_role?: string | null;
             readonly archived: boolean;
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             /** Format: int64 */
             readonly created_at: number;
             readonly cwd?: string | null;
             readonly execution_host_id: string;
             readonly forked_from_id?: string | null;
-            readonly harness_id?: string | null;
             readonly linked_at: string;
             readonly managed_worktree_path?: string | null;
             readonly model_id?: string | null;
-            readonly model_provider: string;
             readonly parent_thread_id?: string | null;
             readonly project_id?: string | null;
             readonly projectless_output_directory?: string | null;
@@ -7929,18 +8121,17 @@ export interface components {
             readonly agent_path?: string | null;
             readonly agent_role?: string | null;
             readonly archived: boolean;
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
             /** Format: int64 */
             readonly created_at: number;
             readonly cwd?: string | null;
             readonly dynamic_tool_catalogs: readonly components["schemas"]["ProjectWorkspaceDynamicToolCatalog"][];
             readonly execution_host_id: string;
             readonly forked_from_id?: string | null;
-            readonly harness_id?: string | null;
             readonly has_unread_turn: boolean;
             readonly linked_at: string;
             readonly managed_worktree_path?: string | null;
             readonly model_id?: string | null;
-            readonly model_provider: string;
             readonly parent_thread_id?: string | null;
             /** Format: int64 */
             readonly pinned_order?: number | null;
@@ -7961,6 +8152,18 @@ export interface components {
             /** Format: int64 */
             readonly updated_at: number;
             readonly writable_roots: readonly string[];
+        };
+        /**
+         * @description Durable protocol-session identity for a non-native Agent Backend. It is
+         *     separate from backend instance configuration and may be cleared when a
+         *     backend can no longer resume the remote session.
+         */
+        readonly ProjectWorkspaceThreadBackendSession: {
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+            readonly backend_session_id: string;
+            readonly thread_id: string;
+            /** Format: int64 */
+            readonly updated_at: number;
         };
         readonly ProjectWorkspaceThreadExecutionLocation: {
             readonly cwd?: string | null;
@@ -7995,16 +8198,15 @@ export interface components {
             readonly agent_path?: string | null;
             readonly agent_role?: string | null;
             readonly archived?: boolean | null;
+            readonly backend_binding?: null | components["schemas"]["AgentBackendBinding"];
             /** Format: int64 */
             readonly created_at?: number | null;
             readonly cwd?: string | null;
             readonly execution_host_id?: string | null;
             readonly forked_from_id?: string | null;
-            readonly harness_id?: string | null;
             readonly linked_at?: string | null;
             readonly managed_worktree_path?: string | null;
             readonly model_id?: string | null;
-            readonly model_provider?: string | null;
             readonly parent_thread_id?: string | null;
             readonly project_id?: string | null;
             readonly projectless_output_directory?: string | null;
@@ -8042,6 +8244,38 @@ export interface components {
         readonly ProjectWorkspaceThreadStatus: {
             readonly active_flags: readonly components["schemas"]["CodexThreadActiveFlag"][];
             readonly status_type: components["schemas"]["CodexThreadStatusType"];
+        };
+        readonly ProjectWorkspaceThreadSummary: {
+            readonly agent_nickname?: string | null;
+            readonly agent_path?: string | null;
+            readonly agent_role?: string | null;
+            readonly archived: boolean;
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+            /** Format: int64 */
+            readonly created_at: number;
+            readonly cwd?: string | null;
+            readonly execution_host_id: string;
+            readonly forked_from_id?: string | null;
+            readonly linked_at: string;
+            readonly managed_worktree_path?: string | null;
+            readonly model_id?: string | null;
+            readonly parent_thread_id?: string | null;
+            readonly project_id?: string | null;
+            readonly projectless_output_directory?: string | null;
+            readonly projectless_workspace_browser_root?: string | null;
+            readonly reasoning_effort?: string | null;
+            /** Format: int64 */
+            readonly recency_at: number;
+            readonly service_name?: string | null;
+            readonly service_tier?: string | null;
+            readonly session_id?: string | null;
+            readonly status: components["schemas"]["ProjectWorkspaceThreadStatus"];
+            readonly thread_id: string;
+            readonly thread_name?: string | null;
+            readonly thread_preview: string;
+            readonly thread_source?: string | null;
+            /** Format: int64 */
+            readonly updated_at: number;
         };
         readonly ProjectWorkspaceTurnAuthority: {
             readonly actor_project_id: string;
@@ -9049,12 +9283,30 @@ export interface components {
                     readonly thread: components["schemas"]["ProjectWorkspaceThread"];
                 } | {
                     /** @enum {string} */
+                    readonly kind: "thread_backend_session";
+                    readonly session?: null | components["schemas"]["ProjectWorkspaceThreadBackendSession"];
+                } | {
+                    /** @enum {string} */
                     readonly kind: "queued_follow_up_ledger";
                     readonly ledger: components["schemas"]["ProjectWorkspaceQueuedFollowUpLedger"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "child_thread_window";
                     readonly threads: components["schemas"]["CollectionWindow_ProjectWorkspaceThreadSummary"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "subagent_overview_window";
+                    readonly overview: components["schemas"]["ProjectWorkspaceSubagentOverview"];
+                } | {
+                    readonly item?: null | components["schemas"]["ProjectWorkspaceSubagentOverviewItem"];
+                    /** @enum {string} */
+                    readonly kind: "subagent_overview_item";
+                    /** Format: int64 */
+                    readonly projection_revision: number;
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "subagent_lifecycle_batch";
+                    readonly lifecycle: components["schemas"]["ProjectWorkspaceSubagentLifecycle"];
                 } | {
                     readonly context: components["schemas"]["ProjectWorkspaceExecutionContext"];
                     /** @enum {string} */

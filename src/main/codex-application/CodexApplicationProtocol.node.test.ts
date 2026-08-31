@@ -290,6 +290,7 @@ it.effect("replays bounded lifecycle metadata after its local materialization co
             text: "bounded live output",
             phase: null,
             memoryCitation: null,
+            delivery: null,
           },
         ];
         yield* inbox.publishNotification({

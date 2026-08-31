@@ -39,6 +39,13 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/rollback": "thread/rollback",
   "thread/revert": "thread/revert",
   "thread/list": "thread/list",
+  "project/list": "project/list",
+  "project/read": "project/read",
+  "project/create": "project/create",
+  "project/import": "project/import",
+  "project/update": "project/update",
+  "project/move": "project/move",
+  "project/delete": "project/delete",
   "threadSection/list": "threadSection/list",
   "threadSection/create": "threadSection/create",
   "threadSection/update": "threadSection/update",
@@ -82,6 +89,7 @@ export const CLIENT_REQUEST_METHODS = {
   "plugin/install": "plugin/install",
   "plugin/uninstall": "plugin/uninstall",
   "turn/start": "turn/start",
+  "turn/settings/update": "turn/settings/update",
   "turn/steer": "turn/steer",
   "turn/interrupt": "turn/interrupt",
   "thread/realtime/start": "thread/realtime/start",
@@ -89,6 +97,7 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/realtime/appendText": "thread/realtime/appendText",
   "thread/realtime/appendSpeech": "thread/realtime/appendSpeech",
   "thread/realtime/stop": "thread/realtime/stop",
+  "thread/timeline/list": "thread/timeline/list",
   "thread/realtime/listVoices": "thread/realtime/listVoices",
   "review/start": "review/start",
   "model/list": "model/list",
@@ -112,10 +121,14 @@ export const CLIENT_REQUEST_METHODS = {
   "config/mcpServer/reload": "config/mcpServer/reload",
   "mcpServerStatus/list": "mcpServerStatus/list",
   "mcpServer/resource/read": "mcpServer/resource/read",
+  "mcpServer/event/stream/start": "mcpServer/event/stream/start",
+  "mcpServer/event/stream/stop": "mcpServer/event/stream/stop",
   "mcpServer/tool/call": "mcpServer/tool/call",
   "windowsSandbox/setupStart": "windowsSandbox/setupStart",
   "windowsSandbox/readiness": "windowsSandbox/readiness",
   "account/login/start": "account/login/start",
+  "account/bedrock/discover": "account/bedrock/discover",
+  "account/bedrock/setup": "account/bedrock/setup",
   "account/login/cancel": "account/login/cancel",
   "account/logout": "account/logout",
   "account/rateLimits/read": "account/rateLimits/read",
@@ -182,6 +195,8 @@ export const SERVER_NOTIFICATION_METHODS = {
   "thread/goal/updated": "thread/goal/updated",
   "thread/goal/cleared": "thread/goal/cleared",
   "thread/queue/changed": "thread/queue/changed",
+  "project/changed": "project/changed",
+  "thread/project/updated": "thread/project/updated",
   "thread/environment/connected": "thread/environment/connected",
   "thread/environment/disconnected": "thread/environment/disconnected",
   "thread/settings/updated": "thread/settings/updated",
@@ -195,6 +210,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   "item/started": "item/started",
   "item/autoApprovalReview/started": "item/autoApprovalReview/started",
   "item/autoApprovalReview/completed": "item/autoApprovalReview/completed",
+  "autoApprovalReview/strictReviewRequired": "autoApprovalReview/strictReviewRequired",
   "item/completed": "item/completed",
   "rawResponseItem/completed": "rawResponseItem/completed",
   "rawResponse/completed": "rawResponse/completed",
@@ -211,6 +227,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   "item/mcpToolCall/progress": "item/mcpToolCall/progress",
   "mcpServer/oauthLogin/completed": "mcpServer/oauthLogin/completed",
   "mcpServer/startupStatus/updated": "mcpServer/startupStatus/updated",
+  "mcpServer/event/stream/notification": "mcpServer/event/stream/notification",
   "account/updated": "account/updated",
   "account/rateLimits/updated": "account/rateLimits/updated",
   "app/list/updated": "app/list/updated",
@@ -224,6 +241,8 @@ export const SERVER_NOTIFICATION_METHODS = {
   "thread/compacted": "thread/compacted",
   "model/rerouted": "model/rerouted",
   "model/verification": "model/verification",
+  "modelProvider/authRecoveryStarted": "modelProvider/authRecoveryStarted",
+  "modelProvider/authRecoveryCompleted": "modelProvider/authRecoveryCompleted",
   "turn/moderationMetadata": "turn/moderationMetadata",
   "model/safetyBuffering/updated": "model/safetyBuffering/updated",
   warning: "warning",
@@ -234,6 +253,9 @@ export const SERVER_NOTIFICATION_METHODS = {
   "fuzzyFileSearch/sessionCompleted": "fuzzyFileSearch/sessionCompleted",
   "thread/realtime/started": "thread/realtime/started",
   "thread/realtime/itemAdded": "thread/realtime/itemAdded",
+  "thread/realtime/item/started": "thread/realtime/item/started",
+  "thread/realtime/item/transcript/delta": "thread/realtime/item/transcript/delta",
+  "thread/realtime/item/completed": "thread/realtime/item/completed",
   "thread/realtime/transcript/delta": "thread/realtime/transcript/delta",
   "thread/realtime/transcript/done": "thread/realtime/transcript/done",
   "thread/realtime/outputAudio/delta": "thread/realtime/outputAudio/delta",
@@ -286,6 +308,13 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/rollback": CodexSchema.V2ThreadRollbackParams;
   readonly "thread/revert": CodexSchema.V2ThreadRevertParams;
   readonly "thread/list": CodexSchema.V2ThreadListParams;
+  readonly "project/list": CodexSchema.V2ProjectListParams;
+  readonly "project/read": CodexSchema.V2ProjectReadParams;
+  readonly "project/create": CodexSchema.V2ProjectCreateParams;
+  readonly "project/import": CodexSchema.V2ProjectImportParams;
+  readonly "project/update": CodexSchema.V2ProjectUpdateParams;
+  readonly "project/move": CodexSchema.V2ProjectMoveParams;
+  readonly "project/delete": CodexSchema.V2ProjectDeleteParams;
   readonly "threadSection/list": CodexSchema.V2ThreadSectionListParams;
   readonly "threadSection/create": CodexSchema.V2ThreadSectionCreateParams;
   readonly "threadSection/update": CodexSchema.V2ThreadSectionUpdateParams;
@@ -329,6 +358,7 @@ export interface ClientRequestParamsByMethod {
   readonly "plugin/install": CodexSchema.V2PluginInstallParams;
   readonly "plugin/uninstall": CodexSchema.V2PluginUninstallParams;
   readonly "turn/start": CodexSchema.V2TurnStartParams;
+  readonly "turn/settings/update": CodexSchema.V2TurnSettingsUpdateParams;
   readonly "turn/steer": CodexSchema.V2TurnSteerParams;
   readonly "turn/interrupt": CodexSchema.V2TurnInterruptParams;
   readonly "thread/realtime/start": CodexSchema.V2ThreadRealtimeStartParams;
@@ -336,6 +366,7 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/realtime/appendText": CodexSchema.V2ThreadRealtimeAppendTextParams;
   readonly "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechParams;
   readonly "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopParams;
+  readonly "thread/timeline/list": CodexSchema.V2ThreadTimelineListParams;
   readonly "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesParams;
   readonly "review/start": CodexSchema.V2ReviewStartParams;
   readonly "model/list": CodexSchema.V2ModelListParams;
@@ -359,10 +390,14 @@ export interface ClientRequestParamsByMethod {
   readonly "config/mcpServer/reload": undefined;
   readonly "mcpServerStatus/list": CodexSchema.V2ListMcpServerStatusParams;
   readonly "mcpServer/resource/read": CodexSchema.V2McpResourceReadParams;
+  readonly "mcpServer/event/stream/start": CodexSchema.V2McpServerEventStreamStartParams;
+  readonly "mcpServer/event/stream/stop": CodexSchema.V2McpServerEventStreamStopParams;
   readonly "mcpServer/tool/call": CodexSchema.V2McpServerToolCallParams;
   readonly "windowsSandbox/setupStart": CodexSchema.V2WindowsSandboxSetupStartParams;
   readonly "windowsSandbox/readiness": undefined;
   readonly "account/login/start": CodexSchema.V2LoginAccountParams;
+  readonly "account/bedrock/discover": CodexSchema.V2BedrockDiscoverParams;
+  readonly "account/bedrock/setup": CodexSchema.V2BedrockSetupParams;
   readonly "account/login/cancel": CodexSchema.V2CancelLoginAccountParams;
   readonly "account/logout": undefined;
   readonly "account/rateLimits/read": undefined;
@@ -435,6 +470,13 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/rollback": CodexSchema.V2ThreadRollbackResponse;
   readonly "thread/revert": CodexSchema.V2ThreadRevertResponse;
   readonly "thread/list": CodexSchema.V2ThreadListResponse;
+  readonly "project/list": CodexSchema.V2ProjectListResponse;
+  readonly "project/read": CodexSchema.V2ProjectReadResponse;
+  readonly "project/create": CodexSchema.V2ProjectCreateResponse;
+  readonly "project/import": CodexSchema.V2ProjectImportResponse;
+  readonly "project/update": CodexSchema.V2ProjectUpdateResponse;
+  readonly "project/move": CodexSchema.V2ProjectMoveResponse;
+  readonly "project/delete": CodexSchema.V2ProjectDeleteResponse;
   readonly "threadSection/list": CodexSchema.V2ThreadSectionListResponse;
   readonly "threadSection/create": CodexSchema.V2ThreadSectionCreateResponse;
   readonly "threadSection/update": CodexSchema.V2ThreadSectionUpdateResponse;
@@ -478,6 +520,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "plugin/install": CodexSchema.V2PluginInstallResponse;
   readonly "plugin/uninstall": CodexSchema.V2PluginUninstallResponse;
   readonly "turn/start": CodexSchema.V2TurnStartResponse;
+  readonly "turn/settings/update": CodexSchema.V2TurnSettingsUpdateResponse;
   readonly "turn/steer": CodexSchema.V2TurnSteerResponse;
   readonly "turn/interrupt": CodexSchema.V2TurnInterruptResponse;
   readonly "thread/realtime/start": CodexSchema.V2ThreadRealtimeStartResponse;
@@ -485,6 +528,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/realtime/appendText": CodexSchema.V2ThreadRealtimeAppendTextResponse;
   readonly "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechResponse;
   readonly "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopResponse;
+  readonly "thread/timeline/list": CodexSchema.V2ThreadTimelineListResponse;
   readonly "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesResponse;
   readonly "review/start": CodexSchema.V2ReviewStartResponse;
   readonly "model/list": CodexSchema.V2ModelListResponse;
@@ -508,10 +552,14 @@ export interface ClientRequestResponsesByMethod {
   readonly "config/mcpServer/reload": CodexSchema.V2McpServerRefreshResponse;
   readonly "mcpServerStatus/list": CodexSchema.V2ListMcpServerStatusResponse;
   readonly "mcpServer/resource/read": CodexSchema.V2McpResourceReadResponse;
+  readonly "mcpServer/event/stream/start": CodexSchema.V2McpServerEventStreamStartResponse;
+  readonly "mcpServer/event/stream/stop": CodexSchema.V2McpServerEventStreamStopResponse;
   readonly "mcpServer/tool/call": CodexSchema.V2McpServerToolCallResponse;
   readonly "windowsSandbox/setupStart": CodexSchema.V2WindowsSandboxSetupStartResponse;
   readonly "windowsSandbox/readiness": CodexSchema.V2WindowsSandboxReadinessResponse;
   readonly "account/login/start": CodexSchema.V2LoginAccountResponse;
+  readonly "account/bedrock/discover": CodexSchema.V2BedrockDiscoverResponse;
+  readonly "account/bedrock/setup": CodexSchema.V2BedrockSetupResponse;
   readonly "account/login/cancel": CodexSchema.V2CancelLoginAccountResponse;
   readonly "account/logout": CodexSchema.V2LogoutAccountResponse;
   readonly "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse;
@@ -592,6 +640,8 @@ export interface ServerNotificationParamsByMethod {
   readonly "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification;
   readonly "thread/goal/cleared": CodexSchema.V2ThreadGoalClearedNotification;
   readonly "thread/queue/changed": CodexSchema.V2ThreadQueueChangedNotification;
+  readonly "project/changed": CodexSchema.V2ProjectChangedNotification;
+  readonly "thread/project/updated": CodexSchema.V2ThreadProjectUpdatedNotification;
   readonly "thread/environment/connected": CodexSchema.V2EnvironmentConnectionNotification;
   readonly "thread/environment/disconnected": CodexSchema.V2EnvironmentConnectionNotification;
   readonly "thread/settings/updated": CodexSchema.V2ThreadSettingsUpdatedNotification;
@@ -605,6 +655,7 @@ export interface ServerNotificationParamsByMethod {
   readonly "item/started": CodexSchema.V2ItemStartedNotification;
   readonly "item/autoApprovalReview/started": CodexSchema.V2ItemGuardianApprovalReviewStartedNotification;
   readonly "item/autoApprovalReview/completed": CodexSchema.V2ItemGuardianApprovalReviewCompletedNotification;
+  readonly "autoApprovalReview/strictReviewRequired": CodexSchema.V2StrictReviewRequiredNotification;
   readonly "item/completed": CodexSchema.V2ItemCompletedNotification;
   readonly "rawResponseItem/completed": CodexSchema.V2RawResponseItemCompletedNotification;
   readonly "rawResponse/completed": CodexSchema.V2RawResponseCompletedNotification;
@@ -621,6 +672,7 @@ export interface ServerNotificationParamsByMethod {
   readonly "item/mcpToolCall/progress": CodexSchema.V2McpToolCallProgressNotification;
   readonly "mcpServer/oauthLogin/completed": CodexSchema.V2McpServerOauthLoginCompletedNotification;
   readonly "mcpServer/startupStatus/updated": CodexSchema.V2McpServerStatusUpdatedNotification;
+  readonly "mcpServer/event/stream/notification": CodexSchema.V2McpServerEventStreamNotification;
   readonly "account/updated": CodexSchema.V2AccountUpdatedNotification;
   readonly "account/rateLimits/updated": CodexSchema.V2AccountRateLimitsUpdatedNotification;
   readonly "app/list/updated": CodexSchema.V2AppListUpdatedNotification;
@@ -634,6 +686,8 @@ export interface ServerNotificationParamsByMethod {
   readonly "thread/compacted": CodexSchema.V2ContextCompactedNotification;
   readonly "model/rerouted": CodexSchema.V2ModelReroutedNotification;
   readonly "model/verification": CodexSchema.V2ModelVerificationNotification;
+  readonly "modelProvider/authRecoveryStarted": CodexSchema.V2AuthRecoveryNotification;
+  readonly "modelProvider/authRecoveryCompleted": CodexSchema.V2AuthRecoveryNotification;
   readonly "turn/moderationMetadata": CodexSchema.V2TurnModerationMetadataNotification;
   readonly "model/safetyBuffering/updated": CodexSchema.V2ModelSafetyBufferingUpdatedNotification;
   readonly warning: CodexSchema.V2WarningNotification;
@@ -644,6 +698,9 @@ export interface ServerNotificationParamsByMethod {
   readonly "fuzzyFileSearch/sessionCompleted": CodexSchema.FuzzyFileSearchSessionCompletedNotification;
   readonly "thread/realtime/started": CodexSchema.V2ThreadRealtimeStartedNotification;
   readonly "thread/realtime/itemAdded": CodexSchema.V2ThreadRealtimeItemAddedNotification;
+  readonly "thread/realtime/item/started": CodexSchema.V2ThreadRealtimeItemStartedNotification;
+  readonly "thread/realtime/item/transcript/delta": CodexSchema.V2ThreadRealtimeItemTranscriptDeltaNotification;
+  readonly "thread/realtime/item/completed": CodexSchema.V2ThreadRealtimeItemCompletedNotification;
   readonly "thread/realtime/transcript/delta": CodexSchema.V2ThreadRealtimeTranscriptDeltaNotification;
   readonly "thread/realtime/transcript/done": CodexSchema.V2ThreadRealtimeTranscriptDoneNotification;
   readonly "thread/realtime/outputAudio/delta": CodexSchema.V2ThreadRealtimeOutputAudioDeltaNotification;
@@ -691,6 +748,13 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/rollback": CodexSchema.V2ThreadRollbackParams,
   "thread/revert": CodexSchema.V2ThreadRevertParams,
   "thread/list": CodexSchema.V2ThreadListParams,
+  "project/list": CodexSchema.V2ProjectListParams,
+  "project/read": CodexSchema.V2ProjectReadParams,
+  "project/create": CodexSchema.V2ProjectCreateParams,
+  "project/import": CodexSchema.V2ProjectImportParams,
+  "project/update": CodexSchema.V2ProjectUpdateParams,
+  "project/move": CodexSchema.V2ProjectMoveParams,
+  "project/delete": CodexSchema.V2ProjectDeleteParams,
   "threadSection/list": CodexSchema.V2ThreadSectionListParams,
   "threadSection/create": CodexSchema.V2ThreadSectionCreateParams,
   "threadSection/update": CodexSchema.V2ThreadSectionUpdateParams,
@@ -734,6 +798,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "plugin/install": CodexSchema.V2PluginInstallParams,
   "plugin/uninstall": CodexSchema.V2PluginUninstallParams,
   "turn/start": CodexSchema.V2TurnStartParams,
+  "turn/settings/update": CodexSchema.V2TurnSettingsUpdateParams,
   "turn/steer": CodexSchema.V2TurnSteerParams,
   "turn/interrupt": CodexSchema.V2TurnInterruptParams,
   "thread/realtime/start": CodexSchema.V2ThreadRealtimeStartParams,
@@ -741,6 +806,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/realtime/appendText": CodexSchema.V2ThreadRealtimeAppendTextParams,
   "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechParams,
   "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopParams,
+  "thread/timeline/list": CodexSchema.V2ThreadTimelineListParams,
   "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesParams,
   "review/start": CodexSchema.V2ReviewStartParams,
   "model/list": CodexSchema.V2ModelListParams,
@@ -768,10 +834,14 @@ export const CLIENT_REQUEST_PARAMS = {
   "config/mcpServer/reload": undefined,
   "mcpServerStatus/list": CodexSchema.V2ListMcpServerStatusParams,
   "mcpServer/resource/read": CodexSchema.V2McpResourceReadParams,
+  "mcpServer/event/stream/start": CodexSchema.V2McpServerEventStreamStartParams,
+  "mcpServer/event/stream/stop": CodexSchema.V2McpServerEventStreamStopParams,
   "mcpServer/tool/call": CodexSchema.V2McpServerToolCallParams,
   "windowsSandbox/setupStart": CodexSchema.V2WindowsSandboxSetupStartParams,
   "windowsSandbox/readiness": undefined,
   "account/login/start": CodexSchema.V2LoginAccountParams,
+  "account/bedrock/discover": CodexSchema.V2BedrockDiscoverParams,
+  "account/bedrock/setup": CodexSchema.V2BedrockSetupParams,
   "account/login/cancel": CodexSchema.V2CancelLoginAccountParams,
   "account/logout": undefined,
   "account/rateLimits/read": undefined,
@@ -845,6 +915,13 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/rollback": CodexSchema.V2ThreadRollbackResponse,
   "thread/revert": CodexSchema.V2ThreadRevertResponse,
   "thread/list": CodexSchema.V2ThreadListResponse,
+  "project/list": CodexSchema.V2ProjectListResponse,
+  "project/read": CodexSchema.V2ProjectReadResponse,
+  "project/create": CodexSchema.V2ProjectCreateResponse,
+  "project/import": CodexSchema.V2ProjectImportResponse,
+  "project/update": CodexSchema.V2ProjectUpdateResponse,
+  "project/move": CodexSchema.V2ProjectMoveResponse,
+  "project/delete": CodexSchema.V2ProjectDeleteResponse,
   "threadSection/list": CodexSchema.V2ThreadSectionListResponse,
   "threadSection/create": CodexSchema.V2ThreadSectionCreateResponse,
   "threadSection/update": CodexSchema.V2ThreadSectionUpdateResponse,
@@ -888,6 +965,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "plugin/install": CodexSchema.V2PluginInstallResponse,
   "plugin/uninstall": CodexSchema.V2PluginUninstallResponse,
   "turn/start": CodexSchema.V2TurnStartResponse,
+  "turn/settings/update": CodexSchema.V2TurnSettingsUpdateResponse,
   "turn/steer": CodexSchema.V2TurnSteerResponse,
   "turn/interrupt": CodexSchema.V2TurnInterruptResponse,
   "thread/realtime/start": CodexSchema.V2ThreadRealtimeStartResponse,
@@ -895,6 +973,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/realtime/appendText": CodexSchema.V2ThreadRealtimeAppendTextResponse,
   "thread/realtime/appendSpeech": CodexSchema.V2ThreadRealtimeAppendSpeechResponse,
   "thread/realtime/stop": CodexSchema.V2ThreadRealtimeStopResponse,
+  "thread/timeline/list": CodexSchema.V2ThreadTimelineListResponse,
   "thread/realtime/listVoices": CodexSchema.V2ThreadRealtimeListVoicesResponse,
   "review/start": CodexSchema.V2ReviewStartResponse,
   "model/list": CodexSchema.V2ModelListResponse,
@@ -918,10 +997,14 @@ export const CLIENT_REQUEST_RESPONSES = {
   "config/mcpServer/reload": CodexSchema.V2McpServerRefreshResponse,
   "mcpServerStatus/list": CodexSchema.V2ListMcpServerStatusResponse,
   "mcpServer/resource/read": CodexSchema.V2McpResourceReadResponse,
+  "mcpServer/event/stream/start": CodexSchema.V2McpServerEventStreamStartResponse,
+  "mcpServer/event/stream/stop": CodexSchema.V2McpServerEventStreamStopResponse,
   "mcpServer/tool/call": CodexSchema.V2McpServerToolCallResponse,
   "windowsSandbox/setupStart": CodexSchema.V2WindowsSandboxSetupStartResponse,
   "windowsSandbox/readiness": CodexSchema.V2WindowsSandboxReadinessResponse,
   "account/login/start": CodexSchema.V2LoginAccountResponse,
+  "account/bedrock/discover": CodexSchema.V2BedrockDiscoverResponse,
+  "account/bedrock/setup": CodexSchema.V2BedrockSetupResponse,
   "account/login/cancel": CodexSchema.V2CancelLoginAccountResponse,
   "account/logout": CodexSchema.V2LogoutAccountResponse,
   "account/rateLimits/read": CodexSchema.V2GetAccountRateLimitsResponse,
@@ -1004,6 +1087,8 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "thread/goal/updated": CodexSchema.V2ThreadGoalUpdatedNotification,
   "thread/goal/cleared": CodexSchema.V2ThreadGoalClearedNotification,
   "thread/queue/changed": CodexSchema.V2ThreadQueueChangedNotification,
+  "project/changed": CodexSchema.V2ProjectChangedNotification,
+  "thread/project/updated": CodexSchema.V2ThreadProjectUpdatedNotification,
   "thread/environment/connected": CodexSchema.V2EnvironmentConnectionNotification,
   "thread/environment/disconnected": CodexSchema.V2EnvironmentConnectionNotification,
   "thread/settings/updated": CodexSchema.V2ThreadSettingsUpdatedNotification,
@@ -1018,6 +1103,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "item/autoApprovalReview/started": CodexSchema.V2ItemGuardianApprovalReviewStartedNotification,
   "item/autoApprovalReview/completed":
     CodexSchema.V2ItemGuardianApprovalReviewCompletedNotification,
+  "autoApprovalReview/strictReviewRequired": CodexSchema.V2StrictReviewRequiredNotification,
   "item/completed": CodexSchema.V2ItemCompletedNotification,
   "rawResponseItem/completed": CodexSchema.V2RawResponseItemCompletedNotification,
   "rawResponse/completed": CodexSchema.V2RawResponseCompletedNotification,
@@ -1034,6 +1120,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "item/mcpToolCall/progress": CodexSchema.V2McpToolCallProgressNotification,
   "mcpServer/oauthLogin/completed": CodexSchema.V2McpServerOauthLoginCompletedNotification,
   "mcpServer/startupStatus/updated": CodexSchema.V2McpServerStatusUpdatedNotification,
+  "mcpServer/event/stream/notification": CodexSchema.V2McpServerEventStreamNotification,
   "account/updated": CodexSchema.V2AccountUpdatedNotification,
   "account/rateLimits/updated": CodexSchema.V2AccountRateLimitsUpdatedNotification,
   "app/list/updated": CodexSchema.V2AppListUpdatedNotification,
@@ -1049,6 +1136,8 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "thread/compacted": CodexSchema.V2ContextCompactedNotification,
   "model/rerouted": CodexSchema.V2ModelReroutedNotification,
   "model/verification": CodexSchema.V2ModelVerificationNotification,
+  "modelProvider/authRecoveryStarted": CodexSchema.V2AuthRecoveryNotification,
+  "modelProvider/authRecoveryCompleted": CodexSchema.V2AuthRecoveryNotification,
   "turn/moderationMetadata": CodexSchema.V2TurnModerationMetadataNotification,
   "model/safetyBuffering/updated": CodexSchema.V2ModelSafetyBufferingUpdatedNotification,
   warning: CodexSchema.V2WarningNotification,
@@ -1059,6 +1148,10 @@ export const SERVER_NOTIFICATION_PARAMS = {
   "fuzzyFileSearch/sessionCompleted": CodexSchema.FuzzyFileSearchSessionCompletedNotification,
   "thread/realtime/started": CodexSchema.V2ThreadRealtimeStartedNotification,
   "thread/realtime/itemAdded": CodexSchema.V2ThreadRealtimeItemAddedNotification,
+  "thread/realtime/item/started": CodexSchema.V2ThreadRealtimeItemStartedNotification,
+  "thread/realtime/item/transcript/delta":
+    CodexSchema.V2ThreadRealtimeItemTranscriptDeltaNotification,
+  "thread/realtime/item/completed": CodexSchema.V2ThreadRealtimeItemCompletedNotification,
   "thread/realtime/transcript/delta": CodexSchema.V2ThreadRealtimeTranscriptDeltaNotification,
   "thread/realtime/transcript/done": CodexSchema.V2ThreadRealtimeTranscriptDoneNotification,
   "thread/realtime/outputAudio/delta": CodexSchema.V2ThreadRealtimeOutputAudioDeltaNotification,

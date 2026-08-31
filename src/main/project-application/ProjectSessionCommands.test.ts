@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
 import type { ProjectSession } from "../../shared/types";
 import type { ProjectSessionDeleteCommandInput } from "../../shared/workspace-catalog-commands";
+import { AcpBackendSessionManager } from "../agent-backend/acp/AcpBackendSessionManager";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { CodexSidebarSectionSync } from "../codex-application/CodexSidebarSectionSync";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
@@ -28,7 +29,7 @@ const session: ProjectSession = {
     projectId: "project:one",
     threadId: "thread:one",
     threadPreview: "",
-    modelProvider: "openai",
+    backendBinding: { kind: "codex" },
     executionHostId: "local",
     statusType: "idle",
     statusActiveFlags: [],
@@ -111,6 +112,12 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
           } as unknown as ConversationCommands["Service"]),
         ),
         Layer.succeed(
+          AcpBackendSessionManager,
+          AcpBackendSessionManager.of({
+            close: () => Effect.void,
+          } as unknown as AcpBackendSessionManager["Service"]),
+        ),
+        Layer.succeed(
           CodexSidebarSectionSync,
           CodexSidebarSectionSync.of({
             request: () => Effect.sync(() => events.push("sections")),
@@ -133,7 +140,7 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
       operationId: "operation:delete",
       payload: { sessionId: session.id },
     });
-    assert.strictEqual(reads.mock.calls.length, readsBeforeDelete);
+    assert.strictEqual(reads.mock.calls.length, readsBeforeDelete + 1);
     yield* commands.archive({
       operationId: "operation:archive",
       payload: { sessionId: session.id },
@@ -161,6 +168,109 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
       "unarchive:operation:unarchive",
       "sections",
       "pinned:operation:pinned",
+      "sections",
+    ]);
+    // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectSessionCommands layer.
+  }).pipe(Effect.provide(layer));
+});
+
+it.effect("keeps ACP Session lifecycle inside Core and the ACP runtime owner", () => {
+  const events: string[] = [];
+  const acpSession: ProjectSession = {
+    ...session,
+    thread: {
+      ...session.thread!,
+      backendBinding: {
+        kind: "acp",
+        agentDefinitionId: "claude-agent-acp",
+        instanceConfigId: "claude-main",
+      },
+    },
+  };
+  const mutation = (name: string) => (command: { readonly operationId: string }) =>
+    Effect.sync(() => {
+      events.push(`${name}:${command.operationId}`);
+      return { value: acpSession, apply: applied };
+    });
+  const workspace = ProjectWorkspace.of({
+    getProjectSession: () => Effect.succeed(acpSession),
+    renameProjectSession: mutation("rename"),
+    archiveProjectSession: mutation("archive"),
+    unarchiveProjectSession: mutation("unarchive"),
+    deleteProjectSession: (command: ProjectSessionDeleteCommandInput) =>
+      Effect.sync(() => {
+        events.push(`delete:${command.operationId}`);
+        return { value: true, apply: applied };
+      }),
+  } as unknown as ProjectWorkspaceService);
+  const layer = live.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(ProjectWorkspace, workspace),
+        Layer.succeed(
+          AcpBackendSessionManager,
+          AcpBackendSessionManager.of({
+            close: (threadId: string) => Effect.sync(() => events.push(`close:${threadId}`)),
+          } as unknown as AcpBackendSessionManager["Service"]),
+        ),
+        Layer.succeed(
+          BrowserApplication,
+          BrowserApplication.of({
+            closeConversation: () => Effect.void,
+          } as unknown as BrowserApplication["Service"]),
+        ),
+        Layer.succeed(
+          CodexThreadTitlePersistence,
+          CodexThreadTitlePersistence.of({
+            set: () => Effect.die("ACP rename must not reach Codex"),
+          } as unknown as CodexThreadTitlePersistence["Service"]),
+        ),
+        Layer.succeed(
+          ConversationCommands,
+          ConversationCommands.of({
+            archive: () => Effect.die("ACP archive must not reach Codex"),
+            unarchive: () => Effect.die("ACP unarchive must not reach Codex"),
+          } as unknown as ConversationCommands["Service"]),
+        ),
+        Layer.succeed(
+          CodexSidebarSectionSync,
+          CodexSidebarSectionSync.of({
+            request: () => Effect.sync(() => events.push("sections")),
+          } as unknown as CodexSidebarSectionSync["Service"]),
+        ),
+      ),
+    ),
+  );
+
+  return Effect.gen(function* () {
+    const commands = yield* ProjectSessionCommands;
+    yield* commands.rename({
+      operationId: "operation:rename",
+      payload: { sessionId: acpSession.id, input: { title: "ACP title" } },
+    });
+    yield* commands.archive({
+      operationId: "operation:archive",
+      payload: { sessionId: acpSession.id },
+    });
+    yield* commands.unarchive({
+      operationId: "operation:unarchive",
+      payload: { sessionId: acpSession.id },
+    });
+    yield* commands.delete({
+      operationId: "operation:delete",
+      payload: { sessionId: acpSession.id },
+    });
+
+    assert.deepStrictEqual(events, [
+      "rename:operation:rename",
+      "sections",
+      `close:${acpSession.thread?.threadId}`,
+      "archive:operation:archive",
+      "sections",
+      "unarchive:operation:unarchive",
+      "sections",
+      `close:${acpSession.thread?.threadId}`,
+      "delete:operation:delete",
       "sections",
     ]);
     // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectSessionCommands layer.

@@ -49,6 +49,7 @@ const fakePty = (): FakePty => {
               write: (data) => Effect.sync(() => writes.push(data)).pipe(Effect.asVoid),
               resize: (cols, rows) =>
                 Effect.sync(() => resizes.push([cols, rows])).pipe(Effect.asVoid),
+              kill: Deferred.succeed(exit, { exitCode: null, signal: 15 }).pipe(Effect.asVoid),
             };
             return handle;
           }),

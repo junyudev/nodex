@@ -1,4 +1,4 @@
-export type AgentImportSourceKind = "claude-code" | "codex" | "open-interpreter";
+export type AgentImportSourceKind = "claude-code" | "codex";
 
 export type AgentImportItemKind =
   | "instructions"

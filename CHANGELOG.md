@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- New tasks can run through enabled local ACP Agents with durable session recovery, negotiated controls, bounded transcripts, cancellation, and explicit local-code trust settings, while Codex remains the full-fidelity default backend.
 - Added custom Sidebar Sections for organizing Projects and chats in one durable mixed order, with drag-and-drop, context menus, bulk archive, Undoable deletion, agent tools, and multi-host Codex synchronization.
 - Database Views now have independent Board or List identities, direct tab actions and durable drag ordering, inline typed Filter and Sort rules with personal publishing, plus a settings rail for View presentation, typed Source Properties, recoverable Property removal, conditional colors, and Page Property layouts.
 - Pages can now own and manage exact-format Files through native file and folder drops or explicit selection, while Agents can attach generated file outputs to the Page that owns them; Files keep their identity through Block moves and keyboard cut/paste, follow the move when every placement leaves its owner for one destination, disclose readable source Pages when placed elsewhere, refresh only previews of the changed File, and can be copied as opt-in local paths for use in other desktop apps.
@@ -19,9 +20,15 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Nodex now requires macOS 15 Sequoia or later so the desktop app and its native Agent toolchain share one supported system baseline.
 - Long chats now open from a bounded recent tail, load older turns and persisted search results on demand, keep active history within count-and-memory budgets, and fork, edit, create Side chats, or export without first loading the complete transcript.
-- Nodex now upgrades supported Profiles through Store v147 with a verified backup, current-only Block Document schemas and projections, durable File ownership history, bounded operational history, Core-owned Sidebar organization, coherent single-layout Database Views with typed query rules, and Source-owned Page Property layouts.
+- Subagent overviews now stay responsive as agent trees and child histories grow: they load bounded metadata and causal status only, keep unknown children from appearing finished, and attach history solely for the selected child detail.
+- Nodex now upgrades supported Profiles through Store v148 with a verified backup, current-only Block Document schemas and projections, durable File ownership history, bounded operational history, Core-owned Sidebar organization, coherent single-layout Database Views with typed query rules, and Source-owned Page Property layouts.
 - Permission selection now keeps custom config details out of the Composer menu and confirms the capabilities granted before enabling Full access.
+
+### Removed
+
+- Removed the legacy Agent runtime, provider and harness settings, application-owned provider credentials, and its import source; Codex now uses the pinned native app-server supply chain and runtime-owned authentication.
 
 ### Fixed
 

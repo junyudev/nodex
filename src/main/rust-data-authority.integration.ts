@@ -1585,7 +1585,7 @@ describe("Electron native data authority", () => {
               agentPath: "agents/session-launcher",
               threadName: "Electron linked Thread",
               threadPreview: "Native Session attach",
-              modelProvider: "openai",
+              backendBinding: { kind: "codex" },
               cwd: nodexHome,
               statusType: "idle",
               statusActiveFlags: [],

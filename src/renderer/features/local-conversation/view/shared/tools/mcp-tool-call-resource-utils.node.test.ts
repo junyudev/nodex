@@ -64,6 +64,7 @@ describe("mcp-tool-call-resource-utils", () => {
           },
           resources: [],
           resourceTemplates: [],
+          runtimeStatus: "connected",
           authStatus: "unsupported",
         },
       ],
@@ -97,6 +98,7 @@ describe("mcp-tool-call-resource-utils", () => {
           },
           resources: [],
           resourceTemplates: [],
+          runtimeStatus: "connected",
           authStatus: "unsupported",
         },
       ],
@@ -154,6 +156,7 @@ describe("mcp-tool-call-resource-utils", () => {
 
   test("selects HTML MCP app resources and hides duplicate text fallback", () => {
     const response: ProtocolMcpResourceReadResponse = {
+      originCallId: null,
       contents: [
         {
           uri: "ui://docs/search.html",
@@ -214,6 +217,7 @@ describe("mcp-tool-call-resource-utils", () => {
 
   test("uses HTML fallback for DIL resources while DIL rendering is disabled", () => {
     const dilOnly: ProtocolMcpResourceReadResponse = {
+      originCallId: null,
       contents: [
         {
           uri: "ui://docs/app.dil",
@@ -223,6 +227,7 @@ describe("mcp-tool-call-resource-utils", () => {
       ],
     };
     const withHtmlFallback: ProtocolMcpResourceReadResponse = {
+      originCallId: null,
       contents: [
         {
           uri: "ui://docs/app.dil",

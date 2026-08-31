@@ -142,10 +142,73 @@ describe("McpToolCall", () => {
     installWindowApi({
       invoke: async (channel: string) => {
         if (channel === "codex:mcp-server-statuses:list") return { data: [], nextCursor: null };
-        if (channel === "codex:mcp-resource:read") return { contents: [] };
+        if (channel === "codex:mcp-resource:read") {
+          return { contents: [], originCallId: null };
+        }
         throw new Error(`Unexpected channel: ${channel}`);
       },
       on: () => () => {},
+    });
+  });
+
+  test("scopes MCP app resource reads to the originating tool call", async () => {
+    const readCalls: unknown[] = [];
+    const resourceResponse: ProtocolMcpResourceReadResponse = {
+      contents: [
+        {
+          uri: "ui://context7/scoped-docs",
+          mimeType: "text/html;profile=mcp-app",
+          text: "<main>Scoped docs</main>",
+        },
+      ],
+      originCallId: "call_9L9LUlz6nkg1Jp2LA4mrAL8o",
+    };
+    installWindowApi({
+      invoke: async (channel: string, ...args: unknown[]) => {
+        if (channel === "codex:mcp-server-statuses:list") {
+          return { data: [], nextCursor: null };
+        }
+        if (channel === "codex:mcp-resource:read") {
+          readCalls.push(args[0]);
+          return resourceResponse;
+        }
+        throw new Error(`Unexpected channel: ${channel}`);
+      },
+      on: () => () => {},
+    });
+    const client = createTestQueryClient();
+    client.setQueryData(
+      queryKeys.mcp.resource({
+        threadId: "thread-1",
+        originCallId: "another-call",
+        server: "context7",
+        uri: "ui://context7/scoped-docs",
+      }),
+      { ...resourceResponse, originCallId: "another-call" },
+    );
+
+    renderMcp(
+      <TooltipProvider>
+        <McpToolCall
+          item={buildMcpEntry({
+            mcpToolCall: buildMcpView({
+              mcpAppResourceUri: "ui://context7/scoped-docs",
+            }),
+          })}
+        />
+      </TooltipProvider>,
+      client,
+    );
+
+    await waitFor(() => {
+      expect(readCalls).toEqual([
+        {
+          threadId: "thread-1",
+          originCallId: "call_9L9LUlz6nkg1Jp2LA4mrAL8o",
+          server: "context7",
+          uri: "ui://context7/scoped-docs",
+        },
+      ]);
     });
   });
 
@@ -534,6 +597,7 @@ describe("McpToolCall", () => {
 
   test("renders attached automatic approval reviews as title-only rows in MCP app card mode", async () => {
     const mcpAppResourceResponse: ProtocolMcpResourceReadResponse = {
+      originCallId: "call_9L9LUlz6nkg1Jp2LA4mrAL8o",
       contents: [
         {
           uri: "ui://context7/docs",
@@ -558,6 +622,7 @@ describe("McpToolCall", () => {
     client.setQueryData(
       queryKeys.mcp.resource({
         threadId: "thread-1",
+        originCallId: "call_9L9LUlz6nkg1Jp2LA4mrAL8o",
         server: "context7",
         uri: "ui://context7/docs",
       }),
@@ -692,6 +757,7 @@ describe("McpToolCall", () => {
   test("renders MCP app resources as the body branch instead of appending fallback content", async () => {
     const client = createTestQueryClient();
     const resourceResponse: ProtocolMcpResourceReadResponse = {
+      originCallId: "call_9L9LUlz6nkg1Jp2LA4mrAL8o",
       contents: [
         {
           uri: "ui://context7/docs-app",
@@ -703,6 +769,7 @@ describe("McpToolCall", () => {
     client.setQueryData(
       queryKeys.mcp.resource({
         threadId: "thread-1",
+        originCallId: "call_9L9LUlz6nkg1Jp2LA4mrAL8o",
         server: "context7",
         uri: "ui://context7/docs-app",
       }),

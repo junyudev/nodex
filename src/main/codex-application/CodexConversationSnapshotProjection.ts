@@ -48,7 +48,6 @@ export const projectCodexConversationMetadataSnapshot = (input: {
     threadName: input.state.protocol.name?.trim() || input.conversation.threadName,
     threadPreview: input.state.protocol.preview,
     cwd: input.state.protocol.cwd,
-    modelProvider: input.state.protocol.modelProvider,
     approvalPolicy: permissions?.approvalPolicy ?? input.conversation.approvalPolicy ?? null,
     approvalsReviewer:
       permissions?.approvalsReviewer ?? input.conversation.approvalsReviewer ?? null,

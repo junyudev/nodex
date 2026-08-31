@@ -209,6 +209,13 @@ describe("MultiAgentActionSurface", () => {
       { action: "sendInput", status: "inProgress", expected: "Messaging an agent" },
       { action: "sendInput", status: "completed", expected: "Messaged an agent" },
       { action: "sendInput", status: "failed", expected: "Failed to message an agent" },
+      { action: "sendInput", status: "interrupted", expected: "Interrupted an agent" },
+      { action: "sendMessage", status: "completed", expected: "Messaged an agent" },
+      { action: "followupTask", status: "inProgress", expected: "Messaging an agent" },
+      { action: "interruptAgent", status: "inProgress", expected: "Interrupting an agent" },
+      { action: "interruptAgent", status: "completed", expected: "Interrupted an agent" },
+      { action: "interruptAgent", status: "failed", expected: "Failed to interrupt an agent" },
+      { action: "listAgents", status: "completed", expected: "Listed" },
       { action: "resumeAgent", status: "inProgress", expected: "Resuming an agent" },
       { action: "resumeAgent", status: "completed", expected: "Resumed an agent" },
       { action: "resumeAgent", status: "failed", expected: "Failed to resume an agent" },
@@ -257,6 +264,29 @@ describe("MultiAgentActionSurface", () => {
       "Messaging 2 agents",
     );
     unmountLiveHeader();
+
+    const { getByTestId: getInterruptedHeader, unmount: unmountInterruptedHeader } = render(
+      <MultiAgentActionSurface
+        items={[
+          buildActionItem({
+            id: "message-completed-before-interrupt",
+            action: "sendInput",
+            status: "completed",
+            receiverThreadId: "thread-agent-1",
+          }),
+          buildActionItem({
+            id: "message-interrupted",
+            action: "sendInput",
+            status: "interrupted",
+            receiverThreadId: "thread-agent-2",
+          }),
+        ]}
+      />,
+    );
+    expect(activityHeaderText(getInterruptedHeader("multi-agent-action-header"))).toBe(
+      "Interrupted 2 agents",
+    );
+    unmountInterruptedHeader();
 
     const { getByTestId: getFailedHeader } = render(
       <MultiAgentActionSurface
@@ -338,7 +368,7 @@ describe("MultiAgentActionSurface", () => {
     fireEvent.click(multiAgentDisclosureButton(getByTestId("multi-agent-action-header")));
     await settleAsyncRender();
 
-    const agentButton = getByRole("button", { name: "research" });
+    const agentButton = getByRole("button", { name: "Open subagent research" });
     fireEvent.click(agentButton);
 
     expect(openedThreadIds.join(",")).toBe("thread-agent-1");
@@ -391,7 +421,7 @@ describe("MultiAgentActionSurface", () => {
     expect(content.includes("Euclid (explorer)")).toBe(true);
     expect(content.includes("019f3c6a-2ebc-7b82-ab83-cb7edb449ada")).toBe(false);
 
-    fireEvent.click(getByRole("button", { name: "Euclid" }));
+    fireEvent.click(getByRole("button", { name: "Open subagent Euclid" }));
     expect(calls[0]?.threadId).toBe("019f3c6a-2ebc-7b82-ab83-cb7edb449ada");
     expect(calls[0]?.context?.subagent?.displayName).toBe("Euclid");
     expect(calls[0]?.context?.subagent?.agentRole).toBe("explorer");
@@ -460,7 +490,7 @@ describe("MultiAgentActionSurface", () => {
     expect(content.includes("Nash (worker)")).toBe(true);
     expect(content.includes(threadId)).toBe(false);
 
-    fireEvent.click(getByRole("button", { name: "Nash" }));
+    fireEvent.click(getByRole("button", { name: "Open subagent Nash" }));
     expect(calls[0]?.threadId).toBe(threadId);
     expect(calls[0]?.context?.subagent?.displayName).toBe("Nash");
     expect(calls[0]?.context?.subagent?.agentRole).toBe("worker");
@@ -549,7 +579,7 @@ describe("MultiAgentActionSurface", () => {
     fireEvent.click(multiAgentDisclosureButton(getByTestId("multi-agent-action-header")));
     await settleAsyncRender();
 
-    const agentButtons = getAllByRole("button", { name: "research" });
+    const agentButtons = getAllByRole("button", { name: "Open subagent research" });
     const sendInputAgentButton = agentButtons[1];
     if (!sendInputAgentButton) throw new Error("Expected a send-input agent button");
     fireEvent.click(sendInputAgentButton);
@@ -622,7 +652,7 @@ describe("MultiAgentActionSurface", () => {
 
       fireEvent.click(multiAgentDisclosureButton(view.getByTestId("multi-agent-action-header")));
       await settleAsyncRender();
-      fireEvent.click(view.getByRole("button", { name: "research" }));
+      fireEvent.click(view.getByRole("button", { name: "Open subagent research" }));
 
       expect(calls[0]?.context?.subagent?.status).toBe("done");
       view.unmount();

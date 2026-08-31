@@ -29,8 +29,6 @@ export interface WorkbenchAutomationDraft {
   prompt: string;
   rrule: string;
   model: string;
-  modelProvider: string;
-  harnessId: string;
   reasoningEffort: CodexScheduledAutomationReasoningEffort | "";
   serviceTier: string;
   cwds: string[];
@@ -112,8 +110,6 @@ export function createWorkbenchAutomationDraft(
     prompt: automation?.prompt ?? "",
     rrule: automation?.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
     model: kind === "cron" ? (automation?.model ?? "") : "",
-    modelProvider: kind === "cron" ? (automation?.modelProvider ?? "") : "",
-    harnessId: kind === "cron" ? (automation?.harnessId ?? "") : "",
     reasoningEffort:
       kind === "cron"
         ? (automation?.reasoningEffort ?? DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT)
@@ -139,8 +135,6 @@ export function createWorkbenchAutomationDraftFromCreateInput(
     prompt: input.prompt ?? "",
     rrule: input.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
     model: kind === "cron" ? (input.model ?? "") : "",
-    modelProvider: kind === "cron" ? (input.modelProvider ?? "") : "",
-    harnessId: kind === "cron" ? (input.harnessId ?? "") : "",
     reasoningEffort:
       kind === "cron"
         ? (input.reasoningEffort ?? DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT)
@@ -171,8 +165,6 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
     prompt: update.prompt ?? base.prompt,
     rrule: update.rrule ?? base.rrule,
     model: kind === "cron" ? (update.model ?? base.model) : "",
-    modelProvider: kind === "cron" ? (update.modelProvider ?? base.modelProvider) : "",
-    harnessId: kind === "cron" ? (update.harnessId ?? base.harnessId) : "",
     reasoningEffort:
       kind === "cron"
         ? (update.reasoningEffort ??
@@ -197,8 +189,6 @@ export function resolveWorkbenchAutomationDraftModelSettings(input: {
   if (input.draft.kind !== "cron") {
     if (
       input.draft.model === "" &&
-      input.draft.modelProvider === "" &&
-      input.draft.harnessId === "" &&
       input.draft.reasoningEffort === "" &&
       input.draft.serviceTier === ""
     ) {
@@ -207,18 +197,12 @@ export function resolveWorkbenchAutomationDraftModelSettings(input: {
     return {
       ...input.draft,
       model: "",
-      modelProvider: "",
-      harnessId: "",
       reasoningEffort: "",
       serviceTier: "",
     };
   }
 
   if (getVisibleCodexModels(input.models).length === 0) {
-    return input.draft;
-  }
-
-  if (input.draft.modelProvider && input.draft.modelProvider !== "openai") {
     return input.draft;
   }
 
@@ -232,19 +216,13 @@ export function resolveWorkbenchAutomationDraftModelSettings(input: {
     ? selection.reasoningEffort
     : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT;
 
-  if (
-    input.draft.model === selection.model &&
-    input.draft.modelProvider === "openai" &&
-    input.draft.reasoningEffort === reasoningEffort
-  ) {
+  if (input.draft.model === selection.model && input.draft.reasoningEffort === reasoningEffort) {
     return input.draft;
   }
 
   return {
     ...input.draft,
     model: selection.model,
-    modelProvider: "openai",
-    harnessId: "",
     reasoningEffort,
   };
 }
@@ -396,8 +374,6 @@ function buildCodexScheduledAutomationDraftPayload(
     prompt,
     rrule,
     model: isHeartbeat ? null : normalizeOptionalText(draft.model),
-    modelProvider: isHeartbeat ? null : normalizeOptionalText(draft.modelProvider),
-    harnessId: isHeartbeat ? null : normalizeOptionalText(draft.harnessId),
     reasoningEffort: isHeartbeat ? null : draft.reasoningEffort || null,
     serviceTier: isHeartbeat ? null : normalizeOptionalText(draft.serviceTier),
     cwds: isHeartbeat ? [] : [...draft.cwds],
@@ -422,8 +398,6 @@ export function buildCodexScheduledAutomationCreateInput(input: {
     prompt: payload.prompt,
     rrule: payload.rrule,
     model: payload.model,
-    modelProvider: payload.modelProvider,
-    harnessId: payload.harnessId,
     reasoningEffort: payload.reasoningEffort,
     serviceTier: payload.serviceTier,
     cwds: payload.cwds,
@@ -462,10 +436,6 @@ export function isWorkbenchAutomationDraftDirty(input: {
     normalizeOptionalText(draft.prompt) !== existing.prompt ||
     normalizeOptionalText(draft.rrule) !== existing.rrule ||
     (draft.kind === "cron" ? normalizeOptionalText(draft.model) : null) !== existing.model ||
-    (draft.kind === "cron" ? normalizeOptionalText(draft.modelProvider) : null) !==
-      existing.modelProvider ||
-    (draft.kind === "cron" ? normalizeOptionalText(draft.harnessId) : null) !==
-      existing.harnessId ||
     (draft.kind === "cron" ? draft.reasoningEffort || null : null) !== existing.reasoningEffort ||
     (draft.kind === "cron" ? normalizeOptionalText(draft.serviceTier) : null) !==
       existing.serviceTier ||
@@ -493,9 +463,6 @@ export function hasWorkbenchAutomationCreateDraftChanges(
       normalizeOptionalText(draft.prompt) !== normalizeOptionalText(initialDraft.prompt) ||
       normalizeOptionalText(draft.rrule) !== normalizeOptionalText(initialDraft.rrule) ||
       normalizeOptionalText(draft.model) !== normalizeOptionalText(initialDraft.model) ||
-      normalizeOptionalText(draft.modelProvider) !==
-        normalizeOptionalText(initialDraft.modelProvider) ||
-      normalizeOptionalText(draft.harnessId) !== normalizeOptionalText(initialDraft.harnessId) ||
       (draft.reasoningEffort || "") !== (initialDraft.reasoningEffort || "") ||
       normalizeOptionalText(draft.serviceTier) !==
         normalizeOptionalText(initialDraft.serviceTier) ||
@@ -516,8 +483,6 @@ export function hasWorkbenchAutomationCreateDraftChanges(
     normalizeOptionalText(draft.prompt) !== null ||
     normalizeOptionalText(draft.rrule) !== DEFAULT_WORKBENCH_AUTOMATION_RRULE ||
     normalizeOptionalText(draft.model) !== null ||
-    normalizeOptionalText(draft.modelProvider) !== null ||
-    normalizeOptionalText(draft.harnessId) !== null ||
     (draft.reasoningEffort !== "" &&
       draft.reasoningEffort !== DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT) ||
     normalizeOptionalText(draft.serviceTier) !== null ||

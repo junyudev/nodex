@@ -9,6 +9,10 @@ import {
   codexSidebarProjectThreadContainerId,
   type CodexSidebarThreadContainerId,
 } from "../../shared/codex-sidebar-thread-move";
+import {
+  CODEX_AGENT_BACKEND_BINDING,
+  isCodexAgentBackendBinding,
+} from "../../shared/agent-backend";
 
 export interface CodexSidebarProjectGroup {
   project: Project;
@@ -37,6 +41,11 @@ export function isCodexSidebarRootThread(
 
 export function isCodexSidebarThreadItemVisible(item: CodexSidebarThreadItem): boolean {
   return item.kind === "remote" || isCodexSidebarRootThread(item);
+}
+
+/** Cross-container and canonical-order mutation remains owned by the Codex backend. */
+export function isCodexSidebarThreadItemReorderable(item: CodexSidebarThreadItem): boolean {
+  return isCodexAgentBackendBinding(item.backendBinding);
 }
 
 export function codexSidebarLocalThreadKey(threadIdentity: string): string {
@@ -93,6 +102,7 @@ export function mergePendingWorktreesIntoSidebarSnapshot(
       {
         key: codexSidebarLocalThreadKey(entry.clientThreadId),
         kind: "pending-worktree",
+        backendBinding: CODEX_AGENT_BACKEND_BINDING,
         runLocation: isLocalHost
           ? { kind: "local-worktree", path: worktreePath, phase }
           : { kind: "remote-worktree", hostId: entry.hostId, path: worktreePath, phase },

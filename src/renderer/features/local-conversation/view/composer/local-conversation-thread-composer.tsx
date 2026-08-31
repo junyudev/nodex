@@ -1,15 +1,12 @@
 import {
-  Component,
   useCallback,
   useDeferredValue,
   useEffect,
-  lazy,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
-  Suspense,
   type DragEvent,
   type ReactNode,
 } from "react";
@@ -46,18 +43,6 @@ import {
   removePastedTextAttachment,
 } from "@/lib/api";
 import {
-  findAgentModel,
-  findAgentProvider,
-  selectAgentModel,
-  selectAgentProvider,
-  selectAgentReasoningEffort,
-} from "@/lib/agent-execution-profile";
-import {
-  isFastAgentServiceTierOption,
-  type AgentModelOption,
-  type AgentProviderOption,
-} from "../../../../../shared/agent-runtime";
-import {
   resolveShortcutKeycapTokens,
   resolveThreadComposerAlternateShortcutAccelerator,
   resolveThreadComposerPrimaryShortcutAccelerator,
@@ -86,7 +71,6 @@ import {
   UpArrowIcon,
 } from "@/components/shared/icons";
 import { ShortcutKeycaps } from "@/components/ui/shortcut-keycaps";
-import { LoadingPlaceholder } from "@/components/ui/loading-placeholder";
 import { toast } from "@/components/ui/toast";
 import {
   NodexDialog,
@@ -118,7 +102,6 @@ import {
   NodexDropdownSearchInput,
   NodexDropdownSection,
   NodexDropdownSelectedIcon,
-  NodexDropdownSeparator,
   NodexDropdownSummarySubmenuItem,
   NodexDropdownTitle,
   NodexTooltip,
@@ -235,18 +218,8 @@ import {
   type ResolvedComposerImageInput,
 } from "./image-attachments";
 import { buildComposerImageEditAttachments } from "./image-attachments/image-edit-intent-attachments";
-import {
-  useScopedAtom,
-  useScopedAtomValue,
-  useScopeHandle,
-  useSetScopedAtom,
-  appScope,
-  usePersistedAtomValue,
-  useSetPersistedAtom,
-} from "@/lib/maitai";
-import { openModal } from "@/lib/modal-registry";
+import { useScopedAtom, useScopedAtomValue, useScopeHandle, useSetScopedAtom } from "@/lib/maitai";
 import { ComposerScope, ThreadScope } from "@/lib/workbench-ui-scopes";
-import { ProviderCredentialDialog } from "./provider-credential-dialog";
 import {
   useComposerIntelligenceController,
   type ComposerIntelligenceController,
@@ -255,11 +228,6 @@ import {
   isInterruptedTurnResumeEligible,
   createInterruptedTurnResumeGate,
 } from "./interrupted-turn-resume-controller";
-import {
-  findComposerPowerChoiceIndex,
-  resolveComposerPowerPolicy,
-} from "./composer-intelligence-power-policy";
-import { composerModelPickerViewAtom } from "./composer-model-picker-view-state";
 import {
   ComposerAddContextMenu,
   type ComposerAddContextMenuHandle,
@@ -326,37 +294,6 @@ const SERVICE_TIER_OPTIONS = [
     description: "1.5x speed · More usage",
   },
 ];
-
-const LazyModelPickerPowerSlider = lazy(async () => {
-  const module = await import("./model-picker-power-slider");
-  return { default: module.ModelPickerPowerSlider };
-});
-
-class ModelPickerPowerSliderBoundary extends Component<
-  { children: ReactNode; onError: () => void },
-  { failed: boolean }
-> {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  componentDidCatch() {
-    this.props.onError();
-  }
-
-  render() {
-    if (this.state.failed) {
-      return (
-        <div className="px-2 py-3 text-xs text-token-description-foreground">
-          Power controls are unavailable. Use Advanced instead.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 function isElectronLikeComposerEnvironment(): boolean {
   if (typeof window === "undefined") {
@@ -1101,66 +1038,7 @@ function ModelSelectorMenuItem({
   );
 }
 
-function ModelPickerViewPanels({
-  view,
-  simple,
-  advanced,
-}: {
-  view: "simple" | "advanced";
-  simple: ReactNode;
-  advanced: ReactNode;
-}) {
-  const simpleRef = useRef<HTMLDivElement>(null);
-  const advancedRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number | null>(null);
-
-  useLayoutEffect(() => {
-    const activePanel = view === "simple" ? simpleRef.current : advancedRef.current;
-    if (!activePanel) return undefined;
-
-    const updateHeight = () => setHeight(activePanel.getBoundingClientRect().height);
-    updateHeight();
-
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(activePanel);
-    return () => observer.disconnect();
-  }, [view]);
-
-  const panelClassName = (panelView: "simple" | "advanced") =>
-    cn(
-      "inset-x-0 top-0 transition-opacity duration-[320ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
-      view === panelView ? "relative z-10 opacity-100" : "pointer-events-none absolute opacity-0",
-    );
-
-  return (
-    <div
-      className="relative overflow-hidden transition-[height] duration-[320ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
-      style={height === null ? undefined : { height }}
-    >
-      <div
-        ref={simpleRef}
-        role="tabpanel"
-        aria-hidden={view !== "simple"}
-        inert={view !== "simple"}
-        className={panelClassName("simple")}
-      >
-        {simple}
-      </div>
-      <div
-        ref={advancedRef}
-        role="tabpanel"
-        aria-hidden={view !== "advanced"}
-        inert={view !== "advanced"}
-        className={panelClassName("advanced")}
-      >
-        {advanced}
-      </div>
-    </div>
-  );
-}
-
-function LegacyModelSelectorDropdown({
+export function ModelSelectorDropdown({
   model,
   controller,
 }: {
@@ -1175,8 +1053,6 @@ function LegacyModelSelectorDropdown({
   const setMenuOpen = controller.setOpen;
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const pickerViewLoadable = usePersistedAtomValue(composerModelPickerViewAtom);
-  const setPickerView = useSetPersistedAtom(composerModelPickerViewAtom);
   const normalizedQuery = deferredQuery.trim().toLocaleLowerCase();
   const matchingModels = model.availableModels.filter(
     (candidate) =>
@@ -1223,31 +1099,6 @@ function LegacyModelSelectorDropdown({
     reasoningLabel,
   ]);
   const triggerGeometry = useIntelligenceSelectorTriggerGeometry(labelCandidates);
-  const powerPolicy = useMemo(
-    () => resolveComposerPowerPolicy(model.availableModels),
-    [model.availableModels],
-  );
-  const selectedPowerIndex = powerPolicy
-    ? findComposerPowerChoiceIndex(powerPolicy.choices, selection.model, selection.reasoningEffort)
-    : -1;
-  const preferredPickerView = pickerViewLoadable.value;
-  const effectivePickerView =
-    powerPolicy && selectedPowerIndex >= 0 ? preferredPickerView : "advanced";
-  const showPickerViewToggle = powerPolicy !== null;
-  const setSimpleView = () => {
-    if (!powerPolicy) return;
-    if (selectedPowerIndex < 0) {
-      const fallback = powerPolicy.choices[0];
-      if (fallback) {
-        controller.select({
-          ...selection,
-          model: fallback.model,
-          reasoningEffort: fallback.reasoningEffort,
-        });
-      }
-    }
-    void setPickerView("simple");
-  };
 
   return (
     <NodexDropdownMenu
@@ -1273,659 +1124,121 @@ function LegacyModelSelectorDropdown({
       sideOffset={INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX}
       contentClassName="w-56"
     >
-      {showPickerViewToggle ? (
-        <div
-          className="flex items-center gap-0.5 px-1 pb-1"
-          role="tablist"
-          aria-label="Model picker view"
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={effectivePickerView === "simple"}
-            className={cn(
-              "h-7 flex-1 rounded-lg px-2 text-xs text-token-description-foreground",
-              effectivePickerView === "simple" && "bg-token-foreground/8 text-token-foreground",
-            )}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              setSimpleView();
-            }}
-          >
-            Simple
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={effectivePickerView === "advanced"}
-            className={cn(
-              "h-7 flex-1 rounded-lg px-2 text-xs text-token-description-foreground",
-              effectivePickerView === "advanced" && "bg-token-foreground/8 text-token-foreground",
-            )}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void setPickerView("advanced");
-            }}
-          >
-            Advanced
-          </button>
-        </div>
-      ) : null}
-
-      <ModelPickerViewPanels
-        view={effectivePickerView}
-        simple={
-          powerPolicy ? (
-            <div className="flex flex-col">
-              <ModelPickerPowerSliderBoundary
-                onError={() => {
-                  void setPickerView("advanced");
-                }}
-              >
-                <Suspense
-                  fallback={
-                    <LoadingPlaceholder
-                      aria-label="Loading model controls"
-                      className="mx-2 my-2 h-12 rounded-lg"
-                      role="status"
-                    />
-                  }
-                >
-                  <LazyModelPickerPowerSlider
-                    choices={powerPolicy.choices}
-                    selectedIndex={selectedPowerIndex}
-                    disabled={controller.isPending}
-                    onSelect={(index) => {
-                      const choice = powerPolicy.choices[index];
-                      if (!choice) return;
-                      controller.select({
-                        ...selection,
-                        model: choice.model,
-                        reasoningEffort: choice.reasoningEffort,
-                      });
-                      if (choice.isUltra) {
-                        toast.warning("Ultra uses significantly more model capacity", {
-                          duration: 2_000,
-                        });
-                      }
-                    }}
-                  />
-                </Suspense>
-              </ModelPickerPowerSliderBoundary>
-              <div className="mx-1 mb-1 flex items-center justify-between rounded-lg bg-token-foreground/5 px-2 py-1.5">
-                <span className="text-xs text-token-text-secondary">Speed</span>
-                <div className="flex items-center gap-0.5" aria-label="Speed">
-                  {SERVICE_TIER_OPTIONS.map((option) => (
-                    <NodexTooltip key={option.label} tooltipContent={option.description}>
-                      <button
-                        type="button"
-                        aria-pressed={selection.serviceTier === option.value}
-                        aria-description={option.description}
-                        className={cn(
-                          "rounded-md px-1.5 py-1 text-xs text-token-description-foreground",
-                          selection.serviceTier === option.value &&
-                            "bg-token-dropdown-background text-token-foreground shadow-sm",
-                        )}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          controller.select({ ...selection, serviceTier: option.value });
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    </NodexTooltip>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null
-        }
-        advanced={
-          <div className="flex flex-col">
-            <NodexDropdownSummarySubmenuItem
-              ariaLabel={`Model ${formatCodexModelLabel(selection.model, model.availableModels)}`}
-              label="Model"
-              value={formatCodexModelLabel(selection.model, model.availableModels)}
-              contentClassName="w-[280px]"
-            >
-              <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
-                <NodexDropdownTitle>Model</NodexDropdownTitle>
-                {model.availableModels.filter((candidate) => !candidate.hidden).length > 8 ? (
-                  <NodexDropdownSearchInput
-                    value={query}
-                    placeholder="Filter models…"
-                    onChange={(event) => setQuery(event.target.value)}
-                  />
-                ) : null}
-                <div className="vertical-scroll-fade-mask flex max-h-[250px] flex-col overflow-y-auto">
-                  {visibleModels.length === 0 ? (
-                    <NodexDropdownMessage compact centered>
-                      No matching models
-                    </NodexDropdownMessage>
-                  ) : (
-                    visibleModels.map((candidate) => (
-                      <ModelSelectorMenuItem
-                        key={candidate.id}
-                        candidate={candidate}
-                        model={model}
-                        serviceTier={selection.serviceTier}
-                        showFastIndicator
-                        controller={controller}
-                      />
-                    ))
-                  )}
-                  {hiddenMatchCount > 0 ? (
-                    <NodexDropdownMessage compact centered>
-                      Refine the search to see {hiddenMatchCount} more models
-                    </NodexDropdownMessage>
-                  ) : null}
-                </div>
-              </NodexDropdownSection>
-            </NodexDropdownSummarySubmenuItem>
-
-            <NodexDropdownSummarySubmenuItem
-              ariaLabel={`Effort ${reasoningLabel}`}
-              label="Effort"
-              value={reasoningLabel}
-              contentClassName="min-w-[180px]"
-            >
-              <NodexDropdownSection className="flex min-w-[180px] flex-col overflow-hidden">
-                <NodexDropdownTitle>Effort</NodexDropdownTitle>
-                {resolveCodexReasoningEffortOptions(selection.model, model.availableModels).map(
-                  (option) => (
-                    <NodexDropdownItem
-                      key={option.reasoningEffort}
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        controller.select({
-                          ...selection,
-                          reasoningEffort: option.reasoningEffort,
-                        });
-                      }}
-                      rightSlot={
-                        option.reasoningEffort === selection.reasoningEffort ? (
-                          <NodexDropdownSelectedIcon />
-                        ) : null
-                      }
-                      tooltipText={option.description || undefined}
-                      subText={
-                        option.reasoningEffort === "ultra"
-                          ? "Consumes usage limits faster"
-                          : undefined
-                      }
-                      allowWrap={option.reasoningEffort === "ultra"}
-                      data-intelligence-option={option.reasoningEffort}
-                      data-reasoning-selected={
-                        option.reasoningEffort === selection.reasoningEffort ? "true" : undefined
-                      }
-                    >
-                      {formatCodexReasoningEffortLabel(option.reasoningEffort)}
-                    </NodexDropdownItem>
-                  ),
-                )}
-              </NodexDropdownSection>
-            </NodexDropdownSummarySubmenuItem>
-
-            <NodexDropdownSummarySubmenuItem
-              ariaLabel={`Speed ${selection.serviceTier === "fast" ? "Fast" : "Standard"}`}
-              label="Speed"
-              value={selection.serviceTier === "fast" ? "Fast" : "Standard"}
-              contentClassName="w-[233px]"
-            >
-              <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
-                <NodexDropdownTitle>Speed</NodexDropdownTitle>
-                {SERVICE_TIER_OPTIONS.map((option) => (
-                  <NodexDropdownItem
-                    key={option.label}
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      controller.select({
-                        ...selection,
-                        serviceTier: option.value,
-                      });
-                    }}
-                    rightSlot={
-                      option.value === selection.serviceTier ? <NodexDropdownSelectedIcon /> : null
-                    }
-                    subText={option.description}
-                    allowWrap
-                  >
-                    {option.label}
-                  </NodexDropdownItem>
-                ))}
-              </NodexDropdownSection>
-            </NodexDropdownSummarySubmenuItem>
-          </div>
-        }
-      />
-    </NodexDropdownMenu>
-  );
-}
-
-function formatProviderCredentialIssue(provider: AgentProviderOption): string | null {
-  switch (provider.credentialStatus) {
-    case "ready":
-    case "inherited":
-    case "runtimeManaged":
-      return null;
-    case "missing":
-      return "API key required";
-    case "unavailable":
-      return "Secure storage unavailable";
-    case "unsupported":
-      return "Credential setup unsupported";
-  }
-}
-
-function canConfigureProvider(provider: AgentProviderOption, actions: ThreadStageActions): boolean {
-  return (
-    provider.credentialEnvKey !== null &&
-    actions.onProviderCredentialSet !== undefined &&
-    provider.credentialStatus !== "runtimeManaged"
-  );
-}
-
-function isProviderSelectable(provider: AgentProviderOption): boolean {
-  return (
-    provider.supportedByNodex &&
-    provider.models.some((model) => !model.hidden) &&
-    provider.credentialStatus !== "unavailable" &&
-    provider.credentialStatus !== "unsupported"
-  );
-}
-
-function AgentModelMenuItem({
-  candidate,
-  model,
-  controller,
-}: {
-  candidate: AgentModelOption;
-  model: ThreadFooterModel;
-  controller: ComposerIntelligenceController;
-}) {
-  const selection = controller.selection as Extract<
-    ComposerIntelligenceController["selection"],
-    { kind: "agent" }
-  >;
-  const current = selection.profile;
-  const selected =
-    current?.providerId === candidate.providerId && current.modelId === candidate.modelId;
-  const requiresNewThread =
-    model.executionIdentityLocked === true && !selected && candidate.switchPolicy === "new-thread";
-
-  return (
-    <NodexDropdownItem
-      disabled={requiresNewThread}
-      onSelect={(event) => {
-        event.preventDefault();
-        controller.select({
-          kind: "agent",
-          profile: selectAgentModel(candidate, current),
-          change: "model",
-        });
-      }}
-      rightSlot={selected ? <NodexDropdownSelectedIcon /> : null}
-      tooltipText={
-        requiresNewThread
-          ? "Start a new task to use this model"
-          : (candidate.description ?? undefined)
-      }
-      data-agent-model-selected={selected ? "true" : undefined}
-    >
-      {candidate.displayName}
-    </NodexDropdownItem>
-  );
-}
-
-function AgentModelSelectorDropdown({
-  model,
-  controller,
-  actions,
-}: {
-  model: ThreadFooterModel;
-  controller: ComposerIntelligenceController;
-  actions: ThreadStageActions;
-}) {
-  const appHandle = useScopeHandle(appScope);
-  const catalog = model.agentProviderCatalog;
-  const selection = controller.selection as Extract<
-    ComposerIntelligenceController["selection"],
-    { kind: "agent" }
-  >;
-  const profile = selection.profile;
-  const [query, setQuery] = useState("");
-  const menuOpen = controller.isOpen;
-  const setMenuOpen = controller.setOpen;
-  const deferredQuery = useDeferredValue(query);
-  const providerId = profile?.providerId;
-
-  useEffect(() => {
-    setQuery("");
-  }, [providerId]);
-
-  const labelCandidates = useMemo<readonly IntelligenceSelectorLabelCandidate[]>(() => {
-    if (!catalog || !profile) return [];
-
-    const currentModel = findAgentModel(catalog, profile);
-    const currentReasoning = currentModel?.supportedReasoningEfforts.find(
-      (option) => option.value === profile.reasoningEffort,
-    );
-    const currentModelLabel = currentModel?.displayName ?? profile.modelId;
-    const currentReasoningLabel =
-      currentReasoning?.displayName ??
-      (profile.reasoningEffort ? formatCodexReasoningEffortLabel(profile.reasoningEffort) : null);
-    const reasoningLabels = new Set<string>();
-    for (const candidateProvider of catalog.providers) {
-      for (const candidateModel of candidateProvider.models) {
-        if (candidateModel.hidden) continue;
-        for (const effort of candidateModel.supportedReasoningEfforts) {
-          reasoningLabels.add(effort.displayName);
-        }
-      }
-    }
-    if (currentReasoningLabel) reasoningLabels.add(currentReasoningLabel);
-    const candidates: IntelligenceSelectorLabelCandidate[] = [
-      {
-        id: "maximum-model-label",
-        modelLabel: "",
-        reasoningLabel: null,
-        reserveModelLabelWidth: true,
-      },
-      ...Array.from(reasoningLabels, (reasoningLabel) => ({
-        id: `maximum-model-label:${reasoningLabel}`,
-        modelLabel: "",
-        reasoningLabel,
-        reserveModelLabelWidth: true,
-      })),
-    ];
-
-    return [
-      ...candidates,
-      {
-        id: `selected:${profile.providerId}:${profile.modelId}:${profile.reasoningEffort ?? "default"}`,
-        modelLabel: currentModelLabel,
-        reasoningLabel: currentReasoningLabel,
-      },
-    ];
-  }, [catalog, profile]);
-  const triggerGeometry = useIntelligenceSelectorTriggerGeometry(labelCandidates);
-
-  if (!catalog || !profile) return null;
-
-  const provider = findAgentProvider(catalog, profile.providerId);
-  const selectedModel = findAgentModel(catalog, profile);
-  if (!provider) return null;
-  const normalizedQuery = deferredQuery.trim().toLocaleLowerCase();
-  const matchingModels = provider.models.filter(
-    (candidate) =>
-      !candidate.hidden &&
-      (!normalizedQuery ||
-        `${candidate.displayName} ${candidate.modelId}`
-          .toLocaleLowerCase()
-          .includes(normalizedQuery)),
-  );
-  const visibleModels = matchingModels.slice(0, 50);
-  const hiddenMatchCount = matchingModels.length - visibleModels.length;
-  const reasoningOptions = selectedModel?.supportedReasoningEfforts ?? [];
-  const selectedReasoning = reasoningOptions.find(
-    (option) => option.value === profile.reasoningEffort,
-  );
-  const speedOptions = selectedModel?.supportedServiceTiers ?? [];
-  const selectedSpeed = speedOptions.find((option) => option.value === profile.serviceTier);
-  const showFastIndicator = selectedSpeed
-    ? isFastAgentServiceTierOption(selectedSpeed)
-    : isFastAgentServiceTierOption({
-        value: profile.serviceTier,
-        displayName: "",
-      });
-  const modelLabel = selectedModel?.displayName ?? profile.modelId;
-  const reasoningLabel =
-    selectedReasoning?.displayName ??
-    (profile.reasoningEffort ? formatCodexReasoningEffortLabel(profile.reasoningEffort) : null);
-  const identityLocked = model.executionIdentityLocked === true;
-  const showProviderRow = catalog.providers.length > 1 || canConfigureProvider(provider, actions);
-  const manageCurrentProvider =
-    provider.credentialStatus !== "missing" && canConfigureProvider(provider, actions);
-  const lockedTooltip = identityLocked ? "Start a new task to change provider" : undefined;
-
-  const selectProvider = (candidate: AgentProviderOption) => {
-    const next = selectAgentProvider(catalog, candidate.id, profile);
-    if (next) {
-      controller.select({ kind: "agent", profile: next, change: "provider" });
-    }
-    return undefined;
-  };
-  const openCredentialDialog = (candidate: AgentProviderOption, selectAfterConfigure: boolean) => {
-    const onCredentialSet = actions.onProviderCredentialSet;
-    if (!onCredentialSet) return;
-
-    setMenuOpen(false);
-    queueMicrotask(() => {
-      openModal(appHandle, ProviderCredentialDialog, {
-        provider: candidate,
-        onCredentialSet,
-        onCredentialDelete: actions.onProviderCredentialDelete,
-        onConfigured: selectAfterConfigure ? () => selectProvider(candidate) : undefined,
-      });
-    });
-  };
-
-  return (
-    <NodexDropdownMenu
-      open={menuOpen}
-      onOpenChange={setMenuOpen}
-      triggerButton={
-        <IntelligenceSelectorTrigger
-          ref={controller.triggerRef}
-          geometry={triggerGeometry}
-          isOpen={menuOpen}
-          labelCandidates={labelCandidates}
-          modelLabel={modelLabel}
-          reasoningLabel={reasoningLabel}
-          showFastIndicator={showFastIndicator}
-          aria-keyshortcuts={model.modelPickerShortcut?.ariaKeyShortcuts}
-        />
-      }
-      triggerTooltipContent="Select model"
-      triggerTooltipShortcutLabel={model.modelPickerShortcut?.label}
-      side="top"
-      align="end"
-      alignOffset={triggerGeometry.alignOffset}
-      sideOffset={INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX}
-      contentClassName="w-56"
-    >
-      {showProviderRow ? (
+      <div className="flex flex-col">
         <NodexDropdownSummarySubmenuItem
-          ariaLabel={`Provider ${provider.displayName}`}
-          label="Provider"
-          value={provider.displayName}
-          disabled={identityLocked}
-          tooltipText={lockedTooltip}
-          contentClassName="min-w-60"
+          ariaLabel={`Model ${formatCodexModelLabel(selection.model, model.availableModels)}`}
+          label="Model"
+          value={formatCodexModelLabel(selection.model, model.availableModels)}
+          contentClassName="w-[280px]"
         >
-          <NodexDropdownSection className="flex min-w-60 flex-col overflow-hidden">
-            <NodexDropdownTitle>Provider</NodexDropdownTitle>
-            {catalog.providers.map((candidate) => {
-              const credentialIssue = formatProviderCredentialIssue(candidate);
-              const needsCredential = candidate.credentialStatus === "missing";
-              const canConfigure = canConfigureProvider(candidate, actions);
-              const disabled =
-                identityLocked ||
-                !isProviderSelectable(candidate) ||
-                (needsCredential && !canConfigure);
-
-              return (
-                <NodexDropdownItem
-                  key={candidate.id}
-                  disabled={disabled}
-                  onSelect={(event) => {
-                    if (needsCredential) {
-                      openCredentialDialog(candidate, true);
-                      return;
-                    }
-
-                    event.preventDefault();
-                    void selectProvider(candidate);
-                  }}
-                  rightSlot={candidate.id === provider.id ? <NodexDropdownSelectedIcon /> : null}
-                  subText={credentialIssue ?? undefined}
-                  tooltipText={disabled ? (credentialIssue ?? lockedTooltip) : undefined}
-                >
-                  {candidate.displayName}
-                </NodexDropdownItem>
-              );
-            })}
-            {manageCurrentProvider ? (
-              <>
-                <NodexDropdownSeparator />
-                <NodexDropdownItem onSelect={() => openCredentialDialog(provider, false)}>
-                  Manage {provider.displayName} credential…
-                </NodexDropdownItem>
-              </>
+          <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
+            <NodexDropdownTitle>Model</NodexDropdownTitle>
+            {model.availableModels.filter((candidate) => !candidate.hidden).length > 8 ? (
+              <NodexDropdownSearchInput
+                value={query}
+                placeholder="Filter models…"
+                onChange={(event) => setQuery(event.target.value)}
+              />
             ) : null}
+            <div className="vertical-scroll-fade-mask flex max-h-[250px] flex-col overflow-y-auto">
+              {visibleModels.length === 0 ? (
+                <NodexDropdownMessage compact centered>
+                  No matching models
+                </NodexDropdownMessage>
+              ) : (
+                visibleModels.map((candidate) => (
+                  <ModelSelectorMenuItem
+                    key={candidate.id}
+                    candidate={candidate}
+                    model={model}
+                    serviceTier={selection.serviceTier}
+                    showFastIndicator
+                    controller={controller}
+                  />
+                ))
+              )}
+              {hiddenMatchCount > 0 ? (
+                <NodexDropdownMessage compact centered>
+                  Refine the search to see {hiddenMatchCount} more models
+                </NodexDropdownMessage>
+              ) : null}
+            </div>
           </NodexDropdownSection>
         </NodexDropdownSummarySubmenuItem>
-      ) : null}
 
-      <NodexDropdownSummarySubmenuItem
-        ariaLabel={`Model ${modelLabel}`}
-        label="Model"
-        value={modelLabel}
-        contentClassName="w-[280px]"
-      >
-        <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
-          <NodexDropdownTitle>{provider.displayName}</NodexDropdownTitle>
-          {provider.models.filter((candidate) => !candidate.hidden).length > 8 ? (
-            <NodexDropdownSearchInput
-              value={query}
-              placeholder="Filter models…"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          ) : null}
-          <div className="vertical-scroll-fade-mask flex max-h-[250px] flex-col overflow-y-auto">
-            {visibleModels.length === 0 ? (
-              <NodexDropdownMessage compact centered>
-                No matching models
-              </NodexDropdownMessage>
-            ) : (
-              visibleModels.map((candidate) => (
-                <AgentModelMenuItem
-                  key={`${candidate.providerId}:${candidate.modelId}`}
-                  candidate={candidate}
-                  model={model}
-                  controller={controller}
-                />
-              ))
-            )}
-            {hiddenMatchCount > 0 ? (
-              <NodexDropdownMessage compact centered>
-                Refine the search to see {hiddenMatchCount} more models
-              </NodexDropdownMessage>
-            ) : null}
-          </div>
-        </NodexDropdownSection>
-      </NodexDropdownSummarySubmenuItem>
-
-      {reasoningOptions.length > 0 ? (
         <NodexDropdownSummarySubmenuItem
-          ariaLabel={`Effort ${reasoningLabel ?? "Provider default"}`}
+          ariaLabel={`Effort ${reasoningLabel}`}
           label="Effort"
-          value={reasoningLabel ?? "Provider default"}
+          value={reasoningLabel}
           contentClassName="min-w-[180px]"
         >
           <NodexDropdownSection className="flex min-w-[180px] flex-col overflow-hidden">
             <NodexDropdownTitle>Effort</NodexDropdownTitle>
-            {reasoningOptions.map((option) => (
-              <NodexDropdownItem
-                key={option.value}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  const next = selectAgentReasoningEffort(catalog, profile, option.value);
-                  if (next) {
+            {resolveCodexReasoningEffortOptions(selection.model, model.availableModels).map(
+              (option) => (
+                <NodexDropdownItem
+                  key={option.reasoningEffort}
+                  onSelect={(event) => {
+                    event.preventDefault();
                     controller.select({
-                      kind: "agent",
-                      profile: next,
-                      change: "reasoningEffort",
+                      ...selection,
+                      reasoningEffort: option.reasoningEffort,
                     });
+                  }}
+                  rightSlot={
+                    option.reasoningEffort === selection.reasoningEffort ? (
+                      <NodexDropdownSelectedIcon />
+                    ) : null
                   }
-                }}
-                rightSlot={
-                  option.value === profile.reasoningEffort ? <NodexDropdownSelectedIcon /> : null
-                }
-                subText={
-                  option.value.toLocaleLowerCase() === "ultra"
-                    ? (option.description ?? undefined)
-                    : undefined
-                }
-                tooltipText={
-                  option.value.toLocaleLowerCase() === "ultra"
-                    ? undefined
-                    : (option.description ?? undefined)
-                }
-                data-intelligence-option={option.value}
-              >
-                {option.displayName}
-              </NodexDropdownItem>
-            ))}
+                  tooltipText={option.description || undefined}
+                  subText={
+                    option.reasoningEffort === "ultra" ? "Consumes usage limits faster" : undefined
+                  }
+                  allowWrap={option.reasoningEffort === "ultra"}
+                  data-intelligence-option={option.reasoningEffort}
+                  data-reasoning-selected={
+                    option.reasoningEffort === selection.reasoningEffort ? "true" : undefined
+                  }
+                >
+                  {formatCodexReasoningEffortLabel(option.reasoningEffort)}
+                </NodexDropdownItem>
+              ),
+            )}
           </NodexDropdownSection>
         </NodexDropdownSummarySubmenuItem>
-      ) : null}
 
-      {speedOptions.length > 1 ? (
         <NodexDropdownSummarySubmenuItem
-          ariaLabel={`Speed ${selectedSpeed?.displayName ?? "Standard"}`}
+          ariaLabel={`Speed ${selection.serviceTier === "fast" ? "Fast" : "Standard"}`}
           label="Speed"
-          value={selectedSpeed?.displayName ?? "Standard"}
+          value={selection.serviceTier === "fast" ? "Fast" : "Standard"}
           contentClassName="w-[233px]"
         >
           <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">
             <NodexDropdownTitle>Speed</NodexDropdownTitle>
-            {speedOptions.map((option) => (
+            {SERVICE_TIER_OPTIONS.map((option) => (
               <NodexDropdownItem
-                key={option.value ?? "standard"}
+                key={option.label}
                 onSelect={(event) => {
                   event.preventDefault();
                   controller.select({
-                    kind: "agent",
-                    profile: { ...profile, serviceTier: option.value },
-                    change: "serviceTier",
+                    ...selection,
+                    serviceTier: option.value,
                   });
                 }}
                 rightSlot={
-                  option.value === profile.serviceTier ? <NodexDropdownSelectedIcon /> : null
+                  option.value === selection.serviceTier ? <NodexDropdownSelectedIcon /> : null
                 }
-                subText={option.description ?? undefined}
+                subText={option.description}
                 allowWrap
               >
-                {option.displayName}
+                {option.label}
               </NodexDropdownItem>
             ))}
           </NodexDropdownSection>
         </NodexDropdownSummarySubmenuItem>
-      ) : null}
-
-      {identityLocked ? (
-        <>
-          <NodexDropdownSeparator />
-          <NodexDropdownMessage compact>Start a new task to change provider.</NodexDropdownMessage>
-        </>
-      ) : null}
+      </div>
     </NodexDropdownMenu>
   );
-}
-
-export function ModelSelectorDropdown(props: {
-  model: ThreadFooterModel;
-  controller: ComposerIntelligenceController;
-  actions: ThreadStageActions;
-}) {
-  if (props.model.agentProviderCatalog && props.model.executionProfile) {
-    return <AgentModelSelectorDropdown {...props} />;
-  }
-  return <LegacyModelSelectorDropdown {...props} />;
 }
 
 function replaceReviewCommentAttachments(
@@ -2013,6 +1326,12 @@ function ControlledThreadComposer(
   const [, setGoalModeActive] = useScopedAtom(composerGoalModeActiveAtom);
   const resetGeneration = useScopedAtomValue(composerResetGenerationAtom);
   const clearCompletedDraft = useSetScopedAtom(clearComposerCompletedDraftAtom);
+  const submittedDraftCleanupRef = useRef({
+    clearCompletedDraft,
+    clearPromptDraft: promptDraft.clear,
+    composerThreadId,
+    onErrorMessage,
+  });
   const composerHandle = useScopeHandle(ComposerScope);
   const transferDefinition = composerDraftTransferFamily(
     composerThreadId ?? `inactive:${composerHandle.path}`,
@@ -2178,13 +1497,24 @@ function ControlledThreadComposer(
     },
     [onErrorMessage, promptDraft],
   );
+  useLayoutEffect(() => {
+    submittedDraftCleanupRef.current = {
+      clearCompletedDraft,
+      clearPromptDraft: promptDraft.clear,
+      composerThreadId,
+      onErrorMessage,
+    };
+  }, [clearCompletedDraft, composerThreadId, onErrorMessage, promptDraft.clear]);
   const clearSubmittedDraft = useCallback(() => {
-    clearCompletedDraft();
-    clearReviewDiffCommentAttachments(composerThreadId);
-    void promptDraft.clear().catch((error: unknown) => {
-      onErrorMessage(error instanceof Error ? error.message : "Could not clear composer draft");
+    const cleanup = submittedDraftCleanupRef.current;
+    cleanup.clearCompletedDraft();
+    clearReviewDiffCommentAttachments(cleanup.composerThreadId);
+    void cleanup.clearPromptDraft().catch((error: unknown) => {
+      cleanup.onErrorMessage(
+        error instanceof Error ? error.message : "Could not clear composer draft",
+      );
     });
-  }, [clearCompletedDraft, composerThreadId, onErrorMessage, promptDraft]);
+  }, []);
 
   if (promptDraft.loadable.status === "loading" || !initialized) {
     return (
@@ -2351,8 +1681,8 @@ function HydratedThreadComposer({
     getImageEditDraftSnapshot,
   );
   const imageInputSupported = resolveImageInputSupport({
-    catalog: model.agentProviderCatalog ?? null,
-    executionProfile: model.executionProfile ?? null,
+    models: model.availableModels,
+    selectedModel: model.selectedModel,
   });
   const imageAttachmentsRef = useRef(imageAttachments);
   imageAttachmentsRef.current = imageAttachments;
@@ -4356,7 +3686,7 @@ function HydratedThreadComposer({
         account={model.account}
         showFallbackLabel={false}
       />
-      <ModelSelectorDropdown model={model} controller={intelligenceController} actions={actions} />
+      <ModelSelectorDropdown model={model} controller={intelligenceController} />
     </>
   );
   const dictationControl = isDictationSupported ? (

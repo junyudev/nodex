@@ -78,6 +78,7 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
     ephemeral: false,
     section: null,
     sectionEnteredAt: null,
+    projectId: null,
     historyMode: "paginated",
     modelProvider: "openai",
     createdAt: 1,
@@ -128,6 +129,7 @@ describe("canonical command-execution stream reduction", () => {
       text: "must not mask the command",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     };
     const turns = [{ items: [old] }, { items: [newestFirst, newestLast, wrongTypeAfterTarget] }];
 

@@ -43,6 +43,7 @@ it.effect("owns Store administration ingress and commits restore shutdown atomic
           yield* Deferred.await(finishShutdownRequest);
           return true;
         }),
+      isRequested: Effect.succeed(false),
       awaitRequest: Effect.never,
       markRuntimeClosed: () => Effect.succeed(true),
       awaitRuntimeClosed: Effect.never,

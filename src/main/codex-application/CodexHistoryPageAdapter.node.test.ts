@@ -35,6 +35,7 @@ const agentItem = (id: string): ThreadItem => ({
   text: id,
   phase: null,
   memoryCitation: null,
+  delivery: null,
 });
 
 const userItem = (id: string, text: string): ThreadItem => ({

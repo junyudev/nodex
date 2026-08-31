@@ -7,7 +7,6 @@ import { signAsync } from "@electron/osx-sign";
 import { writePackagedBuildProvenance } from "./package-provenance.mjs";
 
 const nativeManifestRelativePath = "Contents/Resources/bin/rust-core-runtime.json";
-const agentManifestRelativePath = "Contents/Resources/agent-runtime.json";
 const browserManifestRelativePath =
   "Contents/Resources/browser-runtime/browser-runtime-manifest.json";
 const sparkleManifestRelativePath = "Contents/Resources/native/sparkle-runtime.json";
@@ -16,6 +15,12 @@ const sparkleOwnedRelativePaths = [
   "Contents/Frameworks/Sparkle.framework",
 ];
 const browserRuntimeVendorRelativePath = path.join("Contents", "Resources", "browser-runtime");
+const codexRuntimeVendorRelativePaths = [
+  "Contents/Resources/bin/codex-app-server",
+  "Contents/Resources/bin/codex-code-mode-host",
+  "Contents/Resources/codex-path/rg",
+  "Contents/Resources/codex-resources/zsh/bin/zsh",
+];
 const sparkleCodeObjectRelativePaths = [
   "Contents/Resources/native/nodex-sparkle.node",
   "Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate",
@@ -61,6 +66,11 @@ const isSparkleOwnedCode = (appPath, filePath) =>
 
 export const isPreservedBrowserRuntimeVendorCode = (appPath, filePath) =>
   isInside(path.join(appPath, browserRuntimeVendorRelativePath), filePath);
+
+export const isPreservedCodexRuntimeVendorCode = (appPath, filePath) =>
+  codexRuntimeVendorRelativePaths.some(
+    (relativePath) => path.resolve(filePath) === path.resolve(appPath, relativePath),
+  );
 
 export const sparkleCodeSignArguments = ({ identity, keychain, local, targetPath }) => [
   "--force",
@@ -215,37 +225,6 @@ const readMacosTeamIdentifier = (artifactPath) => {
     throw new Error("Browser runtime peer authorization has no Developer ID team");
   }
   return teamIdentifier;
-};
-
-export const refreshSignedAgentRuntimeMetadata = (appPath) => {
-  const manifestPath = path.join(appPath, agentManifestRelativePath);
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (manifest.layoutVersion !== 3 || !Array.isArray(manifest.artifacts)) {
-    throw new Error(`Unsupported Agent runtime manifest: ${manifestPath}`);
-  }
-
-  const seenPaths = new Set();
-  const artifacts = manifest.artifacts.map((entry) => {
-    const artifactPath = requireSafeAgentArtifactPath(entry.path, manifestPath);
-    if (seenPaths.has(artifactPath) || typeof entry.executable !== "boolean") {
-      throw new Error(`Invalid Agent runtime artifact entry in ${manifestPath}`);
-    }
-    seenPaths.add(artifactPath);
-
-    const bundledPath = path.join(appPath, "Contents", "Resources", ...artifactPath.split("/"));
-    const metadata = lstatSync(bundledPath);
-    const executable = (metadata.mode & 0o111) !== 0;
-    if (metadata.isSymbolicLink() || !metadata.isFile() || executable !== entry.executable) {
-      throw new Error(`Agent runtime entry is not a regular artifact: ${bundledPath}`);
-    }
-    return {
-      ...entry,
-      sha256: sha256File(bundledPath),
-      size: metadata.size,
-    };
-  });
-
-  writeManifestAtomically(manifestPath, { ...manifest, artifacts });
 };
 
 export const refreshSignedBrowserRuntimeManifest = (appPath, options = {}) => {
@@ -439,11 +418,11 @@ export const sign = async (options) => {
     ignore: (filePath) =>
       isSparkleOwnedCode(signOptions.app, filePath) ||
       isPreservedBrowserRuntimeVendorCode(signOptions.app, filePath) ||
+      isPreservedCodexRuntimeVendorCode(signOptions.app, filePath) ||
       matchesIgnore(baseIgnore, filePath),
   });
 
   refreshSignedNativeRuntimeManifest(signOptions.app);
-  refreshSignedAgentRuntimeMetadata(signOptions.app);
   refreshSignedBrowserRuntimeManifest(signOptions.app);
   refreshSignedSparkleRuntimeManifest(signOptions.app);
   writePackagedBuildProvenance(signOptions.app);

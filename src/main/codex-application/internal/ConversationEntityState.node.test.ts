@@ -30,6 +30,7 @@ const thread: Thread = {
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 1,
@@ -177,6 +178,47 @@ it("projects semantic canonical mutations into both the snapshot and dormant rep
   assert.strictEqual(aggregate.read().acceptedReplica?.conversation.turns.length, 1);
 });
 
+it("rebases an older owner publication onto the terminal Turn for renderer recovery", () => {
+  const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
+  const activeTurn = { ...completedTurn("turn-owner-lag"), status: "inProgress" as const };
+  const activeState = hydratedState([activeTurn]);
+  const activeSnapshot = snapshotWithCanonicalTurns(activeState);
+  aggregate.acceptCanonicalState(activeState);
+  aggregate.installSnapshot(activeSnapshot);
+  aggregate.acceptReplica({ conversation: activeSnapshot, revision: 1, ownerEpoch: 1 });
+
+  aggregate.commitProtocolNotification({
+    notification: {
+      method: "turn/completed",
+      params: {
+        threadId,
+        turn: completedTurn(activeTurn.id),
+      },
+    },
+    observedAtMs: 10,
+    projectReplica: false,
+    createId: () => "00000000-0000-4000-8000-000000000000",
+  });
+  assert.strictEqual(aggregate.readSnapshot()?.turns[0]?.status, "completed");
+
+  const recovered = aggregate.acceptReplica({
+    conversation: activeSnapshot,
+    revision: 2,
+    ownerEpoch: 1,
+  });
+
+  assert.strictEqual(
+    aggregate.read().acceptedReplica?.conversation.canonicalState?.turns[0]?.protocol.status,
+    "completed",
+  );
+  assert.strictEqual(recovered.conversation.turns[0]?.status, "completed");
+  assert.strictEqual(aggregate.readSnapshot()?.turns[0]?.status, "completed");
+  assert.strictEqual(
+    aggregate.readSnapshot()?.canonicalState?.turns[0]?.protocol.status,
+    "completed",
+  );
+});
+
 it("invalidates a stale item-window digest before hashing live text and command output", () => {
   const cases = [
     {
@@ -226,6 +268,7 @@ it("invalidates a stale item-window digest before hashing live text and command 
       text: "",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
     const initialState = hydratedState([
       { ...completedTurn("turn-live"), items: [agentItem, commandItem("command-live")] },
@@ -281,6 +324,7 @@ it("bounds cumulative live deltas in canonical state, snapshots, and dormant rep
         text: "",
         phase: null,
         memoryCitation: null,
+        delivery: null,
       },
     ],
   };
@@ -344,6 +388,7 @@ it("prevents a terminal item payload from restoring oversized live output", () =
         text: "",
         phase: null,
         memoryCitation: null,
+        delivery: null,
       },
     ],
   };
@@ -363,6 +408,7 @@ it("prevents a terminal item payload from restoring oversized live output", () =
           text: "z".repeat(CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES + 1_024),
           phase: null,
           memoryCitation: null,
+          delivery: null,
         },
         completedAtMs: 12,
       },

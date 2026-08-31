@@ -7,6 +7,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: null,
         hasAttachedThread: true,
         cwd: "/workspace",
@@ -21,6 +22,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "bottom",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: null,
         hasAttachedThread: true,
         cwd: "/workspace",
@@ -35,6 +37,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: null,
         hasAttachedThread: false,
         cwd: null,
@@ -49,6 +52,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: null,
         hasAttachedThread: true,
         cwd: null,
@@ -63,6 +67,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: null,
         hasAttachedThread: true,
         cwd: null,
@@ -78,6 +83,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: null,
         hasAttachedThread: false,
         cwd: null,
@@ -95,6 +101,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: "project-1",
         hasAttachedThread: true,
         cwd: null,
@@ -105,6 +112,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "bottom",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: "project-1",
         hasAttachedThread: true,
         cwd: null,
@@ -125,11 +133,37 @@ describe("resolveWorkbenchPanelCapabilities", () => {
     expect(bottom.availableActionKinds).toEqual(["terminal", "browser", "files", "side_chat"]);
   });
 
+  it("keeps Codex-derived Review and side chats out of ACP Sessions", () => {
+    const result = resolveWorkbenchPanelCapabilities({
+      panelId: "right",
+      owner: {
+        kind: "session",
+        backendKind: "acp",
+        projectId: "project-1",
+        hasAttachedThread: true,
+        cwd: "/workspace",
+        projectWorkspaceRoot: "/workspace",
+      },
+    });
+
+    expect(result.actions.review.reason).toBe("backend_not_supported");
+    expect(result.actions.side_chat.reason).toBe("backend_not_supported");
+    expect(result.availableActionKinds).toEqual([
+      "terminal",
+      "browser",
+      "files",
+      "db_view",
+      "page_stage",
+      "canvas_stage",
+    ]);
+  });
+
   it("hides an existing singleton without changing other actions", () => {
     const result = resolveWorkbenchPanelCapabilities({
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: "project-1",
         hasAttachedThread: true,
         cwd: "/workspace",
@@ -168,6 +202,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       panelId: "right",
       owner: {
         kind: "session",
+        backendKind: "codex",
         projectId: "project-1",
         hasAttachedThread: false,
         cwd: null,

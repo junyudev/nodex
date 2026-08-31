@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,14 +10,82 @@ import {
 } from "../src/shared/browser-runtime-metadata";
 import { writeBrowserRuntimeFixture } from "../src/main/codex/browser-runtime-test-fixture";
 import { resolveBrowserRuntimeBundle } from "../src/main/codex/browser-runtime-bundle";
+import type {
+  AppServerRuntimeIdentity,
+  TestedBrowserAppServerPair,
+} from "../src/shared/browser-app-server-compatibility";
+import { parseBrowserRuntimeManifest } from "../src/shared/browser-runtime-metadata";
 import { stageBrowserRuntime } from "./stage-browser-runtime";
 
 const temporaryRoots: string[] = [];
+const APP_SERVER_IDENTITY: AppServerRuntimeIdentity = {
+  entrypointSha256: "a".repeat(64),
+  protocolSchemaFingerprint: "b".repeat(64),
+  runtimeVersion: "0.152.0-test",
+  sourceCommit: "c".repeat(40),
+  targetArch: "arm64",
+  targetPlatform: "darwin",
+};
 
 function makeRoot(prefix: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   temporaryRoots.push(root);
   return root;
+}
+
+function testedPairsForSource(sourceRoot: string): readonly TestedBrowserAppServerPair[] {
+  const sourceBytes = fs.readFileSync(path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME));
+  const sourceManifest = parseBrowserRuntimeManifest(JSON.parse(sourceBytes.toString("utf8")));
+  if (!sourceManifest) throw new Error("Expected a valid Browser fixture manifest");
+  const manifest = sourceManifest.browserPlugin.nodeModuleDirs.includes(
+    "marketplace/plugins/browser/scripts/node_modules",
+  )
+    ? {
+        ...sourceManifest,
+        browserPlugin: {
+          ...sourceManifest.browserPlugin,
+          nodeModuleDirs: sourceManifest.browserPlugin.nodeModuleDirs.map((directory) =>
+            directory === "marketplace/plugins/browser/scripts/node_modules"
+              ? BROWSER_PLUGIN_NODE_MODULE_DIR
+              : directory,
+          ),
+        },
+      }
+    : sourceManifest;
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  return [
+    {
+      appServer: APP_SERVER_IDENTITY,
+      browser: {
+        browserPluginVersion: manifest.browserPlugin.version,
+        manifestSha256: createHash("sha256").update(manifestBytes).digest("hex"),
+        peerCliVersion: manifest.runtimeVersions.codexCli,
+        targetArch: manifest.targetArch,
+        targetPlatform: manifest.targetPlatform,
+      },
+    },
+  ];
+}
+
+function stageOptions(sourceRoot: string, runtimeRoot: string) {
+  return {
+    appServerIdentity: APP_SERVER_IDENTITY,
+    runtimeRoot,
+    sourceRoot,
+    targetArch: "arm64" as const,
+    targetPlatform: "darwin" as const,
+    testedPairs: testedPairsForSource(sourceRoot),
+  };
+}
+
+function resolveOptions(runtimeRoot: string, sourceRoot: string) {
+  return {
+    appServerIdentity: APP_SERVER_IDENTITY,
+    runtimeRoot,
+    targetArch: "arm64" as const,
+    targetPlatform: "darwin" as const,
+    testedPairs: testedPairsForSource(sourceRoot),
+  };
 }
 
 afterEach(() => {
@@ -34,26 +103,15 @@ describe("stageBrowserRuntime", () => {
     fs.mkdirSync(previousRoot);
     fs.writeFileSync(path.join(previousRoot, "stale"), "stale");
 
-    stageBrowserRuntime({
-      expectedCodexCompatibilityVersion: "0.144.6",
-      runtimeRoot,
-      sourceRoot,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
+    stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
     expect(fs.existsSync(path.join(previousRoot, "stale"))).toBe(false);
-    expect(
-      resolveBrowserRuntimeBundle({
-        expectedCodexCompatibilityVersion: "0.144.6",
-        runtimeRoot,
-        targetArch: "arm64",
-        targetPlatform: "darwin",
-      }).status,
-    ).toBe("available");
+    expect(resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot)).status).toBe(
+      "available",
+    );
   });
 
-  test("installs a closure for an Agent version inside its sealed protocol window", () => {
+  test("installs an explicitly tested Browser and App Server artifact pair", () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot, {
@@ -61,22 +119,11 @@ describe("stageBrowserRuntime", () => {
       codexCompatibilityVersion: "0.144.5",
     });
 
-    stageBrowserRuntime({
-      expectedCodexCompatibilityVersion: "0.144.6",
-      runtimeRoot,
-      sourceRoot,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
+    stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
-    expect(
-      resolveBrowserRuntimeBundle({
-        expectedCodexCompatibilityVersion: "0.144.6",
-        runtimeRoot,
-        targetArch: "arm64",
-        targetPlatform: "darwin",
-      }).status,
-    ).toBe("available");
+    expect(resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot)).status).toBe(
+      "available",
+    );
   });
 
   test("normalizes legacy Browser plugin module paths during staging", () => {
@@ -95,13 +142,7 @@ describe("stageBrowserRuntime", () => {
     );
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-    const stagedManifest = stageBrowserRuntime({
-      expectedCodexCompatibilityVersion: "0.144.6",
-      runtimeRoot,
-      sourceRoot,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
+    const stagedManifest = stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
     expect(stagedManifest.browserPlugin.nodeModuleDirs).toContain(BROWSER_PLUGIN_NODE_MODULE_DIR);
     expect(stagedManifest.browserPlugin.nodeModuleDirs).not.toContain(
@@ -110,22 +151,11 @@ describe("stageBrowserRuntime", () => {
     const activeRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
     const activeRootInode = fs.statSync(activeRoot).ino;
 
-    stageBrowserRuntime({
-      expectedCodexCompatibilityVersion: "0.144.6",
-      runtimeRoot,
-      sourceRoot,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
+    stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
-    expect(
-      resolveBrowserRuntimeBundle({
-        expectedCodexCompatibilityVersion: "0.144.6",
-        runtimeRoot,
-        targetArch: "arm64",
-        targetPlatform: "darwin",
-      }).status,
-    ).toBe("available");
+    expect(resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot)).status).toBe(
+      "available",
+    );
     expect(fs.statSync(activeRoot).ino).toBe(activeRootInode);
   });
 
@@ -141,15 +171,9 @@ describe("stageBrowserRuntime", () => {
     fs.mkdirSync(activeRoot);
     fs.writeFileSync(path.join(activeRoot, "preserved"), "active");
 
-    expect(() =>
-      stageBrowserRuntime({
-        expectedCodexCompatibilityVersion: "0.144.6",
-        runtimeRoot,
-        sourceRoot,
-        targetArch: "arm64",
-        targetPlatform: "darwin",
-      }),
-    ).toThrow("does not match its manifest");
+    expect(() => stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot))).toThrow(
+      "does not match its manifest",
+    );
     expect(fs.readFileSync(path.join(activeRoot, "preserved"), "utf8")).toBe("active");
   });
 
@@ -159,13 +183,7 @@ describe("stageBrowserRuntime", () => {
     fs.writeFileSync(path.join(sourceRoot, "undeclared.js"), "payload");
 
     expect(() =>
-      stageBrowserRuntime({
-        expectedCodexCompatibilityVersion: "0.144.6",
-        runtimeRoot: makeRoot("nodex-browser-destination-"),
-        sourceRoot,
-        targetArch: "arm64",
-        targetPlatform: "darwin",
-      }),
+      stageBrowserRuntime(stageOptions(sourceRoot, makeRoot("nodex-browser-destination-"))),
     ).toThrow("exactly the manifest-declared artifacts");
   });
 
@@ -173,13 +191,7 @@ describe("stageBrowserRuntime", () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
-    const options = {
-      expectedCodexCompatibilityVersion: "0.144.6",
-      runtimeRoot,
-      sourceRoot,
-      targetArch: "arm64" as const,
-      targetPlatform: "darwin" as const,
-    };
+    const options = stageOptions(sourceRoot, runtimeRoot);
     stageBrowserRuntime(options);
     const undeclaredPath = path.join(
       runtimeRoot,
@@ -203,13 +215,9 @@ describe("stageBrowserRuntime", () => {
 
     expect(() =>
       stageBrowserRuntime({
-        expectedCodexCompatibilityVersion: "0.144.6",
+        ...stageOptions(sourceRoot, runtimeRoot),
         platformArtifactVerifier: ({ artifact }) =>
           artifact.kind === "native-addon" ? "Node-API ABI mismatch" : null,
-        runtimeRoot,
-        sourceRoot,
-        targetArch: "arm64",
-        targetPlatform: "darwin",
       }),
     ).toThrow("Node-API ABI mismatch");
     expect(fs.readFileSync(path.join(activeRoot, "preserved"), "utf8")).toBe("active");

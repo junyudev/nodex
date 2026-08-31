@@ -28,6 +28,7 @@ import {
   RESTORE_PANEL_ICON_PREFIX,
   clickMenuItem,
   discardSideChatCalls,
+  emitCodexEvent,
   executeCommandPaletteCommand,
   getBottomPanelContentSizer,
   getConnectedThreadStagePropsByThreadId,
@@ -38,8 +39,8 @@ import {
   getPanelTabById,
   getThreadRow,
   getWorkbenchTabProjectionDeleteTabIds,
-  hydrateBackgroundSubagentThreadsCalls,
-  hydrateSubagentPanelCalls,
+  hydrateSelectedSubagentCalls,
+  refreshSelectedSubagentAuthorityCalls,
   installReducedMotionMatchMediaForTest,
   installTerminalEventApiMock,
   invokeCalls,
@@ -51,13 +52,13 @@ import {
   releasePointerDrag,
   renderWorkbench,
   requestPageCreateFromContextMock,
-  requestThreadStreamSnapshotCalls,
   setComposerIntentCalls,
+  setHydrateSelectedSubagentImpl,
+  setRefreshSelectedSubagentAuthorityImpl,
   setWindowInnerWidthForTest,
   sideChatConversations,
   startSideChatCalls,
   setInvokeCalls,
-  setRequestThreadStreamSnapshotImpl,
   setSideChatConversationProjectId,
   setStartSideChatError,
 } from "./workbench-testkit/workbench-shell-harness";
@@ -2712,7 +2713,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe("number");
   });
 
-  test("routes inline subagent contexts inside one Subagents right-panel tab", async () => {
+  test("routes every subagent surface through one bounded Subagents detail tab", async () => {
     sideChatConversations["thread-child"] = {
       threadId: "thread-child",
       projectId: "alpha",
@@ -2792,41 +2793,54 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(typeof openThread).toBe("function");
     if (!openThread) return;
 
-    let resolveSnapshot: () => void = () => undefined;
-    setRequestThreadStreamSnapshotImpl(async () => {
-      await new Promise<void>((resolve) => {
-        resolveSnapshot = resolve;
-      });
+    let releaseSelectedHydration: () => void = () => undefined;
+    const selectedHydrationGate = new Promise<void>((resolve) => {
+      releaseSelectedHydration = resolve;
     });
-
+    setHydrateSelectedSubagentImpl(async (input) => {
+      if (input.threadId === "thread-child") await selectedHydrationGate;
+      return {
+        rootThreadId: input.rootThreadId,
+        threadId: input.threadId,
+        revision: 3,
+        fidelity: "attachedSparse",
+        checkpoint: `checkpoint:${input.threadId}`,
+        canInteract: input.threadId === "thread-child" || input.threadId === "thread-child-2",
+        outcome: "ready",
+        errorMessage: null,
+      };
+    });
     setInvokeCalls([]);
-    try {
-      await act(async () => {
-        const openPromise = openThread("thread-child", {
-          subagent: {
-            conversationId: "thread-child",
-            displayName: "Scout",
-            agentRole: "explorer",
-            spawnModel: "gpt-5.5",
-            status: "active",
-            statusSummary: "checking files",
-            showInlineActivity: true,
-            diffStats: { linesAdded: 2, linesRemoved: 1 },
-          },
-        });
-        const openResult = await Promise.race([
-          openPromise.then(() => "resolved"),
-          new Promise<"pending">((resolve) => setTimeout(() => resolve("pending"), 0)),
-        ]);
-        expect(openResult).toBe("resolved");
-        await Promise.resolve();
+    let childOpen: Promise<void> | null = null;
+    await act(async () => {
+      childOpen = openThread("thread-child", {
+        subagent: {
+          conversationId: "thread-child",
+          displayName: "Scout",
+          agentRole: "explorer",
+          spawnModel: "gpt-5.5",
+          status: "active",
+          statusSummary: "checking files",
+          showInlineActivity: true,
+          diffStats: { linesAdded: 2, linesRemoved: 1 },
+        },
       });
-      await settleAsyncRender();
-      await settleAsyncRender();
-    } finally {
-      resolveSnapshot();
-      setRequestThreadStreamSnapshotImpl(null);
-    }
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    const pendingDetail = screen.container.querySelector(
+      '[data-subagents-side-panel-tab="subagents:thread-alpha"]',
+    );
+    expect(pendingDetail?.getAttribute("data-subagents-selected-hydration")).toBe("pending");
+    expect(getConnectedThreadStagePropsByThreadId("thread-child")).toBeUndefined();
+
+    await act(async () => {
+      releaseSelectedHydration();
+      await childOpen;
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
 
     const tab = getPanelTabById(screen.container, "subagents:thread-alpha");
     expect(tab.textContent?.includes("Subagents")).toBe(true);
@@ -2836,22 +2850,26 @@ describe("workbench session shell / layout-panel-actions", () => {
       screen.container.querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]') !==
         null,
     ).toBe(true);
+    expect(
+      screen.container
+        .querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]')
+        ?.getAttribute("data-subagents-selected-hydration"),
+    ).toBe("ready");
     expect(textContent(screen.container).includes("Thread:thread-child")).toBe(true);
     const detailStageProps = (
       globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> }
     ).__lastConnectedThreadStageProps;
     expect(detailStageProps?.backgroundAgentDetail).toBe(true);
+    expect(detailStageProps?.backgroundAgentCanInteract).toBe(true);
+    expect(detailStageProps?.composerScopeIdentity).toBe(
+      "background-agent:subagents:thread-alpha:detail:thread-child",
+    );
     const globalHeaderTitles = within(screen.getByTestId("workbench-global-header")).getAllByTestId(
       "thread-stage-title",
     );
     expect(globalHeaderTitles).toHaveLength(1);
     expect(globalHeaderTitles[0]?.textContent).toBe("Alpha thread");
     expect(invokeCalls.some((call) => call[0] === "codex:thread:ensure-session")).toBe(false);
-    expect(hydrateBackgroundSubagentThreadsCalls).toEqual([]);
-    expect(
-      requestThreadStreamSnapshotCalls.filter((threadId) => threadId === "thread-child").length >=
-        1,
-    ).toBe(true);
 
     await act(async () => {
       await openThread("thread-child-2", {
@@ -2876,10 +2894,23 @@ describe("workbench session shell / layout-panel-actions", () => {
         .filter((candidate) => candidate.textContent?.includes("Subagents")),
     ).toHaveLength(1);
     expect(textContent(screen.container).includes("Thread:thread-child-2")).toBe(true);
-    expect(hydrateSubagentPanelCalls).toEqual([
-      { rootThreadId: "thread-alpha", threadIds: ["thread-child"], includeTail: true },
-      { rootThreadId: "thread-alpha", threadIds: ["thread-child-2"], includeTail: true },
+    expect(
+      getConnectedThreadStagePropsByThreadId("thread-child-2")?.backgroundAgentCanInteract,
+    ).toBe(true);
+    expect(hydrateSelectedSubagentCalls).toEqual([
+      { rootThreadId: "thread-alpha", threadId: "thread-child" },
+      { rootThreadId: "thread-alpha", threadId: "thread-child-2" },
     ]);
+
+    await act(async () => {
+      emitCodexEvent({ type: "threadDeleted", threadId: "thread-child-2" });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(
+      screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
+    ).toBeTruthy();
+    expect(getConnectedThreadStagePropsByThreadId("thread-child-2")).toBeUndefined();
 
     await act(async () => {
       await openThread("thread-legacy", {
@@ -2898,9 +2929,319 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     await settleAsyncRender();
 
-    expect(getPanelTabById(screen.container, "background-agent:thread-legacy")).toBeTruthy();
-    expect(hydrateBackgroundSubagentThreadsCalls).toEqual([
-      { rootThreadId: "thread-alpha", threadIds: ["thread-legacy"] },
+    expect(getPanelTabById(screen.container, "subagents:thread-alpha")).toBeTruthy();
+    expect(hydrateSelectedSubagentCalls).toEqual([
+      { rootThreadId: "thread-alpha", threadId: "thread-child" },
+      { rootThreadId: "thread-alpha", threadId: "thread-child-2" },
+      { rootThreadId: "thread-alpha", threadId: "thread-legacy" },
     ]);
+
+    sideChatConversations["thread-stale"] = {
+      ...sideChatConversations["thread-child"],
+      threadId: "thread-stale",
+      threadName: "Stale worker",
+    };
+    sideChatConversations["thread-latest"] = {
+      ...sideChatConversations["thread-child"],
+      threadId: "thread-latest",
+      threadName: "Latest worker",
+    };
+    let releaseStaleHydrate: () => void = () => undefined;
+    setHydrateSelectedSubagentImpl(async (input) => {
+      if (input.threadId === "thread-stale") {
+        await new Promise<void>((resolve) => {
+          releaseStaleHydrate = () => resolve();
+        });
+        return {
+          rootThreadId: input.rootThreadId,
+          threadId: input.threadId,
+          revision: 4,
+          fidelity: "metadata",
+          checkpoint: null,
+          canInteract: false,
+          outcome: "unavailable",
+          errorMessage: "Stale worker is unavailable",
+        };
+      }
+      return {
+        rootThreadId: input.rootThreadId,
+        threadId: input.threadId,
+        revision: 5,
+        fidelity: "attachedSparse",
+        checkpoint: "latest-checkpoint",
+        canInteract: true,
+        outcome: "ready",
+        errorMessage: null,
+      };
+    });
+
+    let staleOpen: Promise<void> | null = null;
+    await act(async () => {
+      staleOpen = openThread("thread-stale", {
+        subagent: {
+          conversationId: "thread-stale",
+          displayName: "Stale worker",
+          agentRole: null,
+          spawnModel: null,
+          status: "active",
+          statusSummary: null,
+          showInlineActivity: true,
+          diffStats: null,
+        },
+      });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(getConnectedThreadStagePropsByThreadId("thread-stale")).toBeUndefined();
+    expect(textContent(screen.container).includes("Stale worker")).toBe(true);
+
+    await act(async () => {
+      await openThread("thread-latest", {
+        subagent: {
+          conversationId: "thread-latest",
+          displayName: "Latest worker",
+          agentRole: null,
+          spawnModel: null,
+          status: "active",
+          statusSummary: null,
+          showInlineActivity: true,
+          diffStats: null,
+        },
+      });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(textContent(screen.container).includes("Thread:thread-latest")).toBe(true);
+
+    await act(async () => {
+      releaseStaleHydrate();
+      await staleOpen;
+    });
+    await settleAsyncRender();
+    expect(textContent(screen.container).includes("Thread:thread-latest")).toBe(true);
+    expect(textContent(screen.container).includes("Thread:thread-stale")).toBe(false);
+
+    setHydrateSelectedSubagentImpl(async (input) => ({
+      rootThreadId: input.rootThreadId,
+      threadId: input.threadId,
+      revision: 6,
+      fidelity: "metadata",
+      checkpoint: null,
+      canInteract: false,
+      outcome: "unavailable",
+      errorMessage: "That subagent is no longer available",
+    }));
+    await act(async () => {
+      await openThread("thread-unavailable", {
+        subagent: {
+          conversationId: "thread-unavailable",
+          displayName: "Unavailable worker",
+          agentRole: null,
+          spawnModel: null,
+          status: "waiting",
+          statusSummary: null,
+          showInlineActivity: false,
+          diffStats: null,
+        },
+      });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(
+      screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
+    ).toBeTruthy();
+    expect(textContent(screen.container).includes("Thread:thread-unavailable")).toBe(false);
+    expect(
+      __getNodexToastSnapshotForTests().some(
+        (toastItem) =>
+          toastItem.kind === "plain" && toastItem.title === "That subagent is no longer available",
+      ),
+    ).toBe(true);
+
+    sideChatConversations["thread-authority"] = {
+      ...sideChatConversations["thread-child"],
+      threadId: "thread-authority",
+      threadName: "Authority worker",
+      source: { parentThreadId: "thread-alpha" },
+    };
+    setHydrateSelectedSubagentImpl(async (input) => ({
+      rootThreadId: input.rootThreadId,
+      threadId: input.threadId,
+      revision: 7,
+      fidelity: "attachedSparse",
+      checkpoint: "authority-checkpoint",
+      canInteract: true,
+      outcome: "ready",
+      errorMessage: null,
+    }));
+    let releaseAuthorityRefresh: () => void = () => undefined;
+    const authorityRefreshGate = new Promise<void>((resolve) => {
+      releaseAuthorityRefresh = resolve;
+    });
+    setRefreshSelectedSubagentAuthorityImpl(async (input) => {
+      await authorityRefreshGate;
+      return {
+        rootThreadId: input.rootThreadId,
+        threadId: input.threadId,
+        revision: 8,
+        fidelity: "attachedSparse",
+        checkpoint: "authority-checkpoint",
+        canInteract: true,
+        outcome: "ready",
+        errorMessage: null,
+      };
+    });
+
+    await act(async () => {
+      await openThread("thread-authority", {
+        subagent: {
+          conversationId: "thread-authority",
+          displayName: "Authority worker",
+          agentRole: null,
+          spawnModel: null,
+          status: "active",
+          statusSummary: null,
+          showInlineActivity: true,
+          diffStats: null,
+        },
+      });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(
+      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
+    ).toBe(false);
+
+    await act(async () => {
+      releaseAuthorityRefresh();
+      await authorityRefreshGate;
+    });
+    await waitFor(() => {
+      expect(
+        getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
+      ).toBe(true);
+    });
+
+    const hydrateCallCountBeforeInvalidation = hydrateSelectedSubagentCalls.length;
+    const authorityCallCountBeforeInvalidation = refreshSelectedSubagentAuthorityCalls.length;
+    let releaseStaleAuthorityRefresh: () => void = () => undefined;
+    const staleAuthorityRefreshGate = new Promise<void>((resolve) => {
+      releaseStaleAuthorityRefresh = resolve;
+    });
+    setRefreshSelectedSubagentAuthorityImpl(async (input) => {
+      await staleAuthorityRefreshGate;
+      return {
+        rootThreadId: input.rootThreadId,
+        threadId: input.threadId,
+        revision: 9,
+        fidelity: "attachedSparse",
+        checkpoint: "stale-authority-checkpoint",
+        canInteract: true,
+        outcome: "ready",
+        errorMessage: null,
+      };
+    });
+    await act(async () => {
+      emitCodexEvent({ type: "subagentOverviewInvalidated", rootThreadId: "thread-alpha" });
+      await Promise.resolve();
+    });
+    expect(
+      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
+    ).toBe(false);
+    await waitFor(() => {
+      expect(refreshSelectedSubagentAuthorityCalls.length).toBeGreaterThan(
+        authorityCallCountBeforeInvalidation,
+      );
+    });
+    const staleAuthorityCallCount = refreshSelectedSubagentAuthorityCalls.length;
+    setRefreshSelectedSubagentAuthorityImpl(async (input) => ({
+      rootThreadId: input.rootThreadId,
+      threadId: input.threadId,
+      revision: 10,
+      fidelity: "metadata",
+      checkpoint: null,
+      canInteract: false,
+      outcome: "failed",
+      errorMessage: "Authority is unavailable",
+    }));
+    await act(async () => {
+      emitCodexEvent({ type: "subagentOverviewInvalidated", rootThreadId: "thread-alpha" });
+      releaseStaleAuthorityRefresh();
+      await staleAuthorityRefreshGate;
+      await Promise.resolve();
+    });
+    expect(
+      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
+    ).toBe(false);
+    await waitFor(() => {
+      expect(refreshSelectedSubagentAuthorityCalls.length).toBeGreaterThan(staleAuthorityCallCount);
+    });
+    expect(hydrateSelectedSubagentCalls).toHaveLength(hydrateCallCountBeforeInvalidation);
+    expect(
+      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
+    ).toBe(false);
+
+    sideChatConversations["thread-close-pending"] = {
+      ...sideChatConversations["thread-child"],
+      threadId: "thread-close-pending",
+      threadName: "Closing worker",
+      source: { parentThreadId: "thread-alpha" },
+    };
+    let releaseClosingHydration: () => void = () => undefined;
+    const closingHydrationGate = new Promise<void>((resolve) => {
+      releaseClosingHydration = resolve;
+    });
+    setHydrateSelectedSubagentImpl(async (input) => {
+      if (input.threadId === "thread-close-pending") await closingHydrationGate;
+      return {
+        rootThreadId: input.rootThreadId,
+        threadId: input.threadId,
+        revision: 10,
+        fidelity: "attachedSparse",
+        checkpoint: "closing-checkpoint",
+        canInteract: true,
+        outcome: "ready",
+        errorMessage: null,
+      };
+    });
+    let closingOpen: Promise<void> | null = null;
+    await act(async () => {
+      closingOpen = openThread("thread-close-pending", {
+        subagent: {
+          conversationId: "thread-close-pending",
+          displayName: "Closing worker",
+          agentRole: null,
+          spawnModel: null,
+          status: "active",
+          statusSummary: null,
+          showInlineActivity: true,
+          diffStats: null,
+        },
+      });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(
+      screen.container
+        .querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]')
+        ?.getAttribute("data-subagents-selected-hydration"),
+    ).toBe("pending");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Close Subagents tab" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(screen.queryByRole("button", { name: "Close Subagents tab" })).toBeNull();
+
+    await act(async () => {
+      releaseClosingHydration();
+      await closingOpen;
+    });
+    await settleAsyncRender();
+    expect(screen.queryByRole("button", { name: "Close Subagents tab" })).toBeNull();
+    expect(
+      screen.container.querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]'),
+    ).toBeNull();
   });
 });

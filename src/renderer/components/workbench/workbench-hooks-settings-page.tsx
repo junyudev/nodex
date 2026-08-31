@@ -63,6 +63,7 @@ const HOOK_EVENT_LABELS: Record<HookEventName, string> = {
   subagentStart: "SubagentStart",
   subagentStop: "SubagentStop",
   stop: "Stop",
+  interrupt: "Interrupt",
 };
 
 const HOOK_EVENT_DESCRIPTIONS: Record<HookEventName, string> = {
@@ -77,6 +78,7 @@ const HOOK_EVENT_DESCRIPTIONS: Record<HookEventName, string> = {
   subagentStart: "When a subagent starts",
   subagentStop: "When a subagent stops",
   stop: "Right before Nodex ends its turn",
+  interrupt: "When a turn is interrupted",
 };
 
 const HOOK_SOURCE_LABELS: Record<CodexHooksSettingsSource, string> = {

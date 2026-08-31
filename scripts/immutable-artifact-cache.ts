@@ -42,6 +42,14 @@ export interface EnsureImmutableArtifactInput {
   readonly validate: (archivePath: string) => void;
 }
 
+export interface EnsureGeneratedImmutableArtifactInput {
+  readonly destinationPath: string;
+  readonly generate: (temporaryPath: string) => Promise<void> | void;
+  readonly label: string;
+  readonly replaceInvalid?: boolean;
+  readonly validate: (artifactPath: string) => void;
+}
+
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const LOCK_OWNER_FILENAME = "owner.json";
 const LOCK_MISSING_OWNER_GRACE_MS = 5_000;
@@ -283,6 +291,42 @@ export async function ensureImmutableArtifact(input: EnsureImmutableArtifactInpu
     removeAbandonedPartialFiles(input.destinationPath);
     await downloadAndPublish(input);
   } finally {
+    lock.release();
+  }
+}
+
+/** Builds, verifies, and atomically publishes one immutable artifact for all local worktrees. */
+export async function ensureGeneratedImmutableArtifact(
+  input: EnsureGeneratedImmutableArtifactInput,
+): Promise<void> {
+  const replaceInvalid = input.replaceInvalid ?? true;
+  if (validArtifactExists(input.destinationPath, input.validate, replaceInvalid)) return;
+
+  mkdirSync(path.dirname(input.destinationPath), { mode: 0o700, recursive: true });
+  const lock = await acquireCacheLock({
+    destinationPath: input.destinationPath,
+    replaceInvalid,
+    validate: input.validate,
+  });
+  if (!lock) return;
+
+  const temporaryPath = `${input.destinationPath}.part-${process.pid}-${randomUUID()}`;
+  try {
+    if (validArtifactExists(input.destinationPath, input.validate, replaceInvalid)) return;
+    if (existsSync(input.destinationPath)) rmSync(input.destinationPath, { force: true });
+    removeAbandonedPartialFiles(input.destinationPath);
+    await input.generate(temporaryPath);
+    input.validate(temporaryPath);
+    if (existsSync(input.destinationPath)) {
+      if (validArtifactExists(input.destinationPath, input.validate, replaceInvalid)) return;
+      rmSync(input.destinationPath, { force: true });
+    }
+    renameSync(temporaryPath, input.destinationPath);
+    input.validate(input.destinationPath);
+  } catch (error) {
+    throw new Error(`Failed to build ${input.label}: ${errorChain(error)}`, { cause: error });
+  } finally {
+    rmSync(temporaryPath, { force: true });
     lock.release();
   }
 }

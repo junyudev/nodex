@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { AcpConversationStage } from "@/features/acp-conversation/acp-conversation-stage";
+import { AcpNewConversationStage } from "@/features/acp-conversation/acp-new-conversation-stage";
 import {
   ConnectedThreadComposerDock,
   ConnectedThreadStage,
@@ -20,6 +22,13 @@ import type {
   ThreadSummaryPanelScheduledAutomationRow,
 } from "@/features/local-conversation/thread-stage-types";
 import { getGitWorkerClient } from "@/lib/api";
+import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
+import { readAcpAgentSettings } from "@/lib/workbench-settings-runtime";
+import {
+  newThreadBackendSelectionOwner,
+  type NewThreadBackendSelection,
+} from "@/lib/new-thread-backend-selection";
+import type { AcpAgentInstanceConfig } from "../../../shared/types";
 import { listWorktreeEnvironmentConfigs } from "@/lib/managed-worktree-runtime";
 import {
   createCommandKeymapState,
@@ -52,7 +61,7 @@ import {
 } from "./local-environment-selection";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 
-function ConnectedSessionThread({
+function CodexConnectedSessionThread({
   session,
   project,
   projects,
@@ -618,8 +627,6 @@ function ConnectedSessionThread({
     activeThreadId: summary?.threadId ?? null,
     activeThreadSummary: summary,
     availableModels: codexControl.availableModels,
-    agentProviderCatalog: codexControl.agentProviderCatalog,
-    agentProviderCatalogLoading: codexControl.agentProviderCatalogLoading,
     selectedExecutionProfile: codexControl.executionProfile,
     collaborationModes,
     selectedCollaborationMode,
@@ -677,7 +684,124 @@ function ConnectedSessionThread({
   );
 }
 
-type ConnectedSessionThreadProps = Parameters<typeof ConnectedSessionThread>[0];
+type ConnectedSessionThreadProps = Parameters<typeof CodexConnectedSessionThread>[0];
+
+function formatAcpAgentInstanceLabel(
+  instance: AcpAgentInstanceConfig,
+  instanceCount: number,
+): string {
+  const definitionLabel =
+    instance.agentDefinitionId === "claude-agent-acp" ? "Claude Agent" : instance.agentDefinitionId;
+  return instanceCount > 1 ? `${definitionLabel} · ${instance.id}` : definitionLabel;
+}
+
+/**
+ * Owns the backend choice without changing the Codex subtree's React position
+ * while a fresh Session acquires its durable Thread binding.
+ */
+function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
+  const thread = props.session.thread;
+  const canChooseBackend = thread === null;
+  const [instances, setInstances] = useState<readonly AcpAgentInstanceConfig[]>([]);
+  const selection = useSyncExternalStore(
+    (listener) => newThreadBackendSelectionOwner.subscribe(props.session.id, listener),
+    () => newThreadBackendSelectionOwner.read(props.session.id),
+    (): NewThreadBackendSelection => "codex",
+  );
+
+  useEffect(() => {
+    if (!canChooseBackend) {
+      setInstances([]);
+      return;
+    }
+
+    let disposed = false;
+    void readAcpAgentSettings()
+      .then((settings) => {
+        if (disposed) return;
+        setInstances(settings.instances.filter(({ enabled }) => enabled));
+      })
+      .catch(() => {
+        if (!disposed) setInstances([]);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [canChooseBackend, props.session.id]);
+
+  const selectedInstance =
+    !canChooseBackend || selection === "codex"
+      ? null
+      : (instances.find(({ id }) => id === selection.acpInstanceId) ?? null);
+  const attachedAcpThread =
+    thread?.backendBinding.kind === "acp"
+      ? { thread, backendBinding: thread.backendBinding }
+      : null;
+
+  if (props.composerDock) {
+    if (attachedAcpThread || selectedInstance) return null;
+    return <CodexConnectedSessionThread {...props} />;
+  }
+
+  const instanceLabel = (instance: AcpAgentInstanceConfig) =>
+    formatAcpAgentInstanceLabel(instance, instances.length);
+  const content = attachedAcpThread ? (
+    <AcpConversationStage
+      threadId={attachedAcpThread.thread.threadId}
+      agentLabel={
+        attachedAcpThread.backendBinding.agentDefinitionId === "claude-agent-acp"
+          ? "Claude Agent"
+          : attachedAcpThread.backendBinding.agentDefinitionId
+      }
+      cwd={attachedAcpThread.thread.cwd}
+      projectWorkspacePath={projectWorkspaceRootOrNull(props.project)}
+    />
+  ) : selectedInstance ? (
+    <AcpNewConversationStage
+      sessionId={props.session.id}
+      instanceConfigId={selectedInstance.id}
+      agentLabel={instanceLabel(selectedInstance)}
+      projectName={props.project?.name ?? null}
+      onStarted={async (threadId) => {
+        await props.onRefreshProjectSessions(props.session.projectId);
+        await props.onOpenThread(threadId);
+      }}
+    />
+  ) : (
+    <CodexConnectedSessionThread {...props} />
+  );
+
+  return (
+    <div className="relative h-full min-h-0">
+      {canChooseBackend && instances.length > 0 ? (
+        <div className="absolute top-3 right-4 z-30" data-new-thread-backend-selector="true">
+          <NodexOptionPicker
+            value={selection === "codex" ? "codex" : selection.acpInstanceId}
+            options={[
+              { value: "codex", label: "Codex" },
+              ...instances.map((instance) => ({
+                value: instance.id,
+                label: instanceLabel(instance),
+              })),
+            ]}
+            onValueChange={(value) =>
+              newThreadBackendSelectionOwner.write(
+                props.session.id,
+                value === "codex" ? "codex" : { acpInstanceId: value },
+              )
+            }
+            triggerButton={
+              <NodexDropdownButtonTrigger chrome="transparent" muted size="sm">
+                {selectedInstance ? instanceLabel(selectedInstance) : "Codex"}
+              </NodexDropdownButtonTrigger>
+            }
+          />
+        </div>
+      ) : null}
+      {content}
+    </div>
+  );
+}
 
 export function SessionThreadPage(
   props: Omit<

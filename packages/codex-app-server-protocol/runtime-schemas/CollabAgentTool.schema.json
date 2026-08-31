@@ -6,7 +6,11 @@
     "sendInput",
     "resumeAgent",
     "wait",
-    "closeAgent"
+    "closeAgent",
+    "sendMessage",
+    "followupTask",
+    "interruptAgent",
+    "listAgents"
   ],
   "title": "CollabAgentTool",
   "type": "string"

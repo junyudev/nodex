@@ -1,11 +1,10 @@
 import type { CodexServiceTier } from "./types";
+import { normalizeCodexServiceTier as normalizeSharedCodexServiceTier } from "../../shared/codex-service-tier";
 
 export const CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY = "nodex-codex-default-service-tier-v1";
 
 export function normalizeCodexServiceTier(value: unknown): CodexServiceTier {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized && normalized !== "standard" ? normalized : null;
+  return normalizeSharedCodexServiceTier(value);
 }
 
 export function readCodexServiceTier(): CodexServiceTier {

@@ -121,10 +121,6 @@ vi.mock("../local-conversation-deps", () => ({
       return [];
     }
 
-    if (channel === "codex:subagent-thread:opened") {
-      return true;
-    }
-
     return null;
   },
   subscribeCodexHostMessages: (listener: (message: CodexHostMessage) => void) => {
@@ -556,6 +552,10 @@ async function renderNewThreadHome(overrides?: {
                   hidden: false,
                   isDefault: true,
                   defaultReasoningEffort: "xhigh",
+                  inputModalities: ["text", "image"],
+                  multiAgentVersion: null,
+                  serviceTiers: [],
+                  defaultServiceTier: null,
                   supportedReasoningEfforts: [
                     { reasoningEffort: "xhigh", description: "Extra High" },
                   ],
@@ -826,83 +826,6 @@ describe("ConnectedThreadStage archived resume behavior", () => {
           call.presented === false,
       ),
     ).toBe(true);
-  });
-
-  test("does not mark ordinary child thread mounts as opened for full-fidelity subagent streaming", async () => {
-    installAsyncRequestAnimationFrame();
-    invokeCalls = [];
-    hostMessageListener = null;
-    const view = await renderStage(buildThreadSummary(false));
-    const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
-
-    await act(async () => {
-      dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-        hostId: "default",
-        conversationId: "thread_active",
-        version: 1,
-        sourceClientId: "test-owner",
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: buildConversation("thread_active", {
-            source: { parentThreadId: "thread_parent" },
-          }),
-        },
-      });
-      await settleAsyncRender();
-    });
-
-    await settleAsyncRender();
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call.channel === "codex:subagent-thread:opened" && call.threadId === "thread_active",
-      ),
-    ).toBe(false);
-
-    await act(async () => {
-      view.unmount();
-      await settleAsyncRender();
-    });
-  });
-
-  test("marks background-agent detail child threads as opened without requiring local parent source", async () => {
-    installAsyncRequestAnimationFrame();
-    invokeCalls = [];
-    hostMessageListener = null;
-    const view = await renderStage(buildThreadSummary(false), { backgroundAgentDetail: true });
-    const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
-
-    await act(async () => {
-      dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
-        hostId: "default",
-        conversationId: "thread_active",
-        version: 1,
-        sourceClientId: "test-owner",
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: buildConversation("thread_active"),
-        },
-      });
-      await settleAsyncRender();
-    });
-
-    await waitFor(() => {
-      if (
-        !invokeCalls.some(
-          (call) =>
-            call.channel === "codex:subagent-thread:opened" && call.threadId === "thread_active",
-        )
-      ) {
-        throw new Error("Expected background-agent child opened signal.");
-      }
-    });
-
-    await act(async () => {
-      view.unmount();
-      await settleAsyncRender();
-    });
   });
 
   test("keeps background-agent detail read-only beside the primary thread composer", async () => {

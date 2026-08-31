@@ -54,7 +54,7 @@ export type ComposerCatalogError =
 export class ComposerCatalog extends Context.Service<
   ComposerCatalog,
   {
-    readonly listModels: Effect.Effect<readonly CodexModelOption[], CodexRuntimeError>;
+    readonly listModels: Effect.Effect<readonly CodexModelOption[], ComposerCatalogError>;
     readonly listExperimentalFeatures: Effect.Effect<
       readonly ExperimentalFeature[],
       CodexRuntimeError
@@ -84,6 +84,9 @@ export class ComposerCatalog extends Context.Service<
 const normalizeCwds = (cwds: readonly string[]): string[] => [
   ...new Set(cwds.map((cwd) => cwd.trim()).filter(Boolean)),
 ];
+
+export const CODEX_MODEL_CATALOG_PAGE_SIZE = 100;
+export const CODEX_MODEL_CATALOG_MAX_PAGES = 100;
 
 // Both trees are generated from the same pinned app-server schema. The Effect tree is the wire
 // authority; the product projection helpers still consume the plain generated aliases.
@@ -162,14 +165,46 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
         }
       });
 
+    const listModels = Effect.fn("ComposerCatalog.listModels")(function* () {
+      yield* awaitReady;
+      const models: CodexModelOption[] = [];
+      const seenCursors = new Set<string>();
+      let cursor: string | null = null;
+
+      for (let page = 0; page < CODEX_MODEL_CATALOG_MAX_PAGES; page += 1) {
+        const response: ClientRequestResponsesByMethod["model/list"] = yield* gateway.requestLocal(
+          "model/list",
+          {
+            cursor,
+            limit: CODEX_MODEL_CATALOG_PAGE_SIZE,
+          },
+        );
+        models.push(
+          ...response.data
+            .map(parseModelOption)
+            .filter((option): option is CodexModelOption => option !== null),
+        );
+
+        const nextCursor: string | null = response.nextCursor ?? null;
+        if (nextCursor === null) return models;
+        if (seenCursors.has(nextCursor)) {
+          return yield* new ComposerCatalogProjectionError({
+            cause: new Error(`Model catalog repeated cursor '${nextCursor}'`),
+          });
+        }
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      }
+
+      return yield* new ComposerCatalogProjectionError({
+        cause: new Error(
+          `Model catalog exceeded ${CODEX_MODEL_CATALOG_MAX_PAGES} pages without completing`,
+        ),
+      });
+    });
+
     return ComposerCatalog.of({
-      listModels: Effect.gen(function* () {
-        yield* awaitReady;
-        const response = yield* gateway.requestLocal("model/list", {});
-        return response.data
-          .map(parseModelOption)
-          .filter((option): option is CodexModelOption => option !== null);
-      }),
+      listModels: listModels(),
       listExperimentalFeatures: Effect.gen(function* () {
         yield* awaitReady;
         const features: ExperimentalFeature[] = [];

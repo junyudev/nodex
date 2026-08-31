@@ -12,6 +12,7 @@ export type WorkbenchPanelActionUnavailableReason =
   | "no_cwd"
   | "project_required"
   | "session_required"
+  | "backend_not_supported"
   | "owner_not_supported"
   | "panel_not_supported"
   | "singleton_exists";
@@ -36,6 +37,7 @@ export interface ResolveWorkbenchPanelCapabilitiesInput {
       }
     | {
         readonly kind: "session";
+        readonly backendKind: "codex" | "acp";
         readonly projectId: string | null;
         readonly hasAttachedThread: boolean;
         readonly cwd: string | null | undefined;
@@ -116,6 +118,7 @@ function resolveActionCapability(
   if (kind === "side_chat" || kind === "review") {
     if (owner.kind !== "session") return unavailable("session_required");
     if (!owner.hasAttachedThread) return unavailable("no_thread");
+    if (owner.backendKind !== "codex") return unavailable("backend_not_supported");
   }
 
   if (kind === "terminal") {

@@ -18,6 +18,13 @@ const route: BrowserSidebarHostRouteIdentity = {
   hostGeneration: 2,
   mountGeneration: 3,
 };
+const physicalRoute = {
+  browserConversationId: route.browserConversationId,
+  browserViewScopeId: route.browserViewScopeId,
+  browserTabId: route.browserTabId,
+  rendererInstanceId: route.rendererInstanceId,
+  hostGeneration: route.hostGeneration,
+};
 
 const authorization: BrowserAuthorizedAttachment = {
   ...route,
@@ -49,7 +56,7 @@ describe("Browser webview attachment policy", () => {
       ok: true,
       authorization,
     });
-    expect(authorizeAttachment).toHaveBeenCalledWith(route);
+    expect(authorizeAttachment).toHaveBeenCalledWith(physicalRoute);
   });
 
   test("fails closed before host authorization for a foreign window or URL", () => {
@@ -92,7 +99,10 @@ describe("Browser webview attachment policy", () => {
       ok: false,
       reason: "storage-identity-mismatch",
     });
-    expect(isRegisteredBrowserStorage).toHaveBeenCalledWith(route, authorization.browserStorageId);
+    expect(isRegisteredBrowserStorage).toHaveBeenCalledWith(
+      physicalRoute,
+      authorization.browserStorageId,
+    );
     expect(revokeAuthorizedAttachment).toHaveBeenCalledWith(authorization.attachToken);
   });
 

@@ -117,11 +117,40 @@ export function useBrowserSidebarRendererState(): BrowserSidebarRendererState {
   );
 }
 
+async function refreshBrowserSidebarRendererStateStoreWhile(
+  shouldApply: () => boolean,
+): Promise<void> {
+  const initialStateRevision = stateRevision;
+  const initialBrowserUseRevision = browserUseRevision;
+  const runtimeSnapshot: BrowserSidebarRuntimeSnapshot = await invokeRendererQuery(
+    "browser-sidebar-runtime-snapshot",
+  );
+  if (!shouldApply()) return;
+  publish({
+    state: stateRevision === initialStateRevision ? runtimeSnapshot.state : snapshot.state,
+    browserUseState:
+      browserUseRevision === initialBrowserUseRevision
+        ? runtimeSnapshot.browserUseState
+        : snapshot.browserUseState,
+    presentationRequests: [
+      ...snapshot.presentationRequests,
+      ...runtimeSnapshot.presentationRequests.filter(
+        (request) =>
+          !snapshot.presentationRequests.some(
+            (candidate) => candidate.requestId === request.requestId,
+          ),
+      ),
+    ],
+  });
+}
+
+export function refreshBrowserSidebarRendererStateStore(): Promise<void> {
+  return refreshBrowserSidebarRendererStateStoreWhile(() => true);
+}
+
 export function startBrowserSidebarRendererStateStore(): () => void {
   if (!window.api) return () => undefined;
 
-  const initialStateRevision = stateRevision;
-  const initialBrowserUseRevision = browserUseRevision;
   let disposed = false;
   const unsubscribeState = window.api.on("browser-sidebar-state", (payload) => {
     updateState(payload as BrowserSidebarStateSnapshot);
@@ -142,28 +171,7 @@ export function startBrowserSidebarRendererStateStore(): () => void {
     },
   );
 
-  void invokeRendererQuery("browser-sidebar-runtime-snapshot")
-    .then((runtimeSnapshot: BrowserSidebarRuntimeSnapshot) => {
-      if (disposed) return;
-      const next = {
-        state: stateRevision === initialStateRevision ? runtimeSnapshot.state : snapshot.state,
-        browserUseState:
-          browserUseRevision === initialBrowserUseRevision
-            ? runtimeSnapshot.browserUseState
-            : snapshot.browserUseState,
-        presentationRequests: [
-          ...snapshot.presentationRequests,
-          ...runtimeSnapshot.presentationRequests.filter(
-            (request) =>
-              !snapshot.presentationRequests.some(
-                (candidate) => candidate.requestId === request.requestId,
-              ),
-          ),
-        ],
-      };
-      publish(next);
-    })
-    .catch(() => undefined);
+  void refreshBrowserSidebarRendererStateStoreWhile(() => !disposed).catch(() => undefined);
 
   return () => {
     disposed = true;

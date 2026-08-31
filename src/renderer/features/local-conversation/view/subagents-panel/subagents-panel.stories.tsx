@@ -1,55 +1,88 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { ThreadComposerShellBackgroundAgentRowModel } from "../../thread-stage-types";
+import type {
+  CodexSubagentOverviewRow,
+  CodexSubagentOverviewWindow,
+} from "../../../../../shared/types";
 import { SubagentsPanelDetailHeader, SubagentsPanelOverviewContent } from "./subagents-panel";
 
 const now = Date.now();
 
 function buildRow(
-  conversationId: string,
-  overrides: Partial<ThreadComposerShellBackgroundAgentRowModel>,
-): ThreadComposerShellBackgroundAgentRowModel {
+  threadId: string,
+  overrides: Partial<CodexSubagentOverviewRow>,
+): CodexSubagentOverviewRow {
   return {
-    conversationId,
-    parentConversationId: "thread-root",
-    parentTurnKey: "turn-root",
-    displayName: conversationId,
-    actorName: conversationId,
+    threadId,
+    parentThreadId: "thread-root",
+    displayName: threadId,
+    actorName: threadId,
     agentRole: null,
     spawnModel: null,
+    objective: null,
     status: "done",
     statusSummary: null,
-    lastAssistantMessage: null,
-    lastAssistantMessageAtMs: null,
-    recencyAtMs: 0,
-    showInlineActivity: true,
+    startedAtMs: null,
+    lastActivityAtMs: null,
+    completedAtMs: null,
     diffStats: null,
-    role: "backgroundChild",
+    canOpen: true,
+    canInteract: false,
     ...overrides,
   };
 }
 
-const activeAndDoneRows = [
+const active = [
   buildRow("Scout", {
     status: "active",
-    statusSummary: "checking renderer routes",
-    recencyAtMs: now,
+    objective: "Check renderer routes without loading any child transcript",
+    startedAtMs: now - 18_000,
+    lastActivityAtMs: now,
+    canInteract: true,
   }),
   buildRow("Planner with an intentionally long display name", {
     status: "waiting",
-    statusSummary: "waiting for the root agent",
-    recencyAtMs: now - 60_000,
-  }),
-  buildRow("Reviewer", {
-    lastAssistantMessage: "Verified the API boundary and the panel routing behavior.",
-    lastAssistantMessageAtMs: now - 22 * 60_000,
-    recencyAtMs: now - 22 * 60_000,
-  }),
-  buildRow("Builder", {
-    lastAssistantMessage: "Implemented the relationship hydration path.",
-    lastAssistantMessageAtMs: now - 34 * 60_000,
-    recencyAtMs: now - 34 * 60_000,
+    statusSummary: "Queued behind the root agent",
+    startedAtMs: now - 62_000,
+    lastActivityAtMs: now - 60_000,
+    canInteract: true,
   }),
 ];
+
+const done = [
+  buildRow("Reviewer", {
+    objective: "Verify API ownership and panel routing",
+    lastActivityAtMs: now - 22 * 60_000,
+    completedAtMs: now - 22 * 60_000,
+  }),
+  buildRow("Builder", {
+    lastActivityAtMs: now - 34 * 60_000,
+    completedAtMs: now - 34 * 60_000,
+  }),
+];
+
+function buildOverview(
+  activeRows: CodexSubagentOverviewRow[],
+  doneRows: CodexSubagentOverviewRow[],
+): CodexSubagentOverviewWindow {
+  return {
+    rootThreadId: "thread-root",
+    revision: 12,
+    generation: 1,
+    completeness: "complete",
+    active: {
+      rows: activeRows,
+      knownCount: activeRows.length,
+      totalCount: activeRows.length,
+      continuation: null,
+    },
+    done: {
+      rows: doneRows,
+      knownCount: doneRows.length,
+      totalCount: doneRows.length,
+      continuation: null,
+    },
+  };
+}
 
 const meta = {
   title: "Local Conversation/Subagents Panel",
@@ -66,49 +99,32 @@ const meta = {
   ],
   args: {
     rootThreadId: "thread-root",
-    rows: activeAndDoneRows,
+    overview: buildOverview(active, done),
     onSelect: () => undefined,
-    onVisibleRowsChange: () => undefined,
   },
 } satisfies Meta<typeof SubagentsPanelOverviewContent>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const ActiveAndDone: Story = {};
+export const ActiveWaitingAndDone: Story = {};
 
 export const NoActiveSubagents: Story = {
   args: {
-    rows: activeAndDoneRows.filter((row) => row.status === "done"),
+    overview: buildOverview([], done),
   },
 };
 
-export const LoadingPreviews: Story = {
+export const UnknownIsNotDone: Story = {
   args: {
-    rows: [
-      buildRow("Scout", {
-        status: "active",
-        statusSummary: "Working",
-        recencyAtMs: now,
-      }),
-      buildRow("Planner", {
-        status: "waiting",
-        statusSummary: null,
-        recencyAtMs: now - 1,
-      }),
-    ],
+    overview: buildOverview(
+      [buildRow("Discovering", { status: "unknown", canInteract: false })],
+      [],
+    ),
   },
 };
 
-export const SelectedReadOnlyDetailHeader: Story = {
-  parameters: {
-    docs: {
-      description: {
-        story:
-          "The selected subagent route places this header above a read-only transcript and intentionally renders no composer.",
-      },
-    },
-  },
+export const SelectedDetailHeader: Story = {
   render: () => (
     <SubagentsPanelDetailHeader
       displayName="Reviewer"

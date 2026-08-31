@@ -1,9 +1,9 @@
 [env]
-MACOSX_DEPLOYMENT_TARGET = "12.0"
+MACOSX_DEPLOYMENT_TARGET = "15.0"
 RUST_TEST_THREADS = { value = "2", force = false }
 
 [target.aarch64-apple-darwin]
-rustflags = ["-C", "link-arg=-mmacosx-version-min=12.0"]
+rustflags = ["-C", "link-arg=-mmacosx-version-min=15.0"]
 
 [target.x86_64-apple-darwin]
-rustflags = ["-C", "link-arg=-mmacosx-version-min=12.0"]
+rustflags = ["-C", "link-arg=-mmacosx-version-min=15.0"]

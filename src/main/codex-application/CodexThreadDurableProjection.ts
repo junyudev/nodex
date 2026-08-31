@@ -1,4 +1,3 @@
-import type { Thread } from "@nodex/codex-app-server-protocol/v2";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -92,14 +91,14 @@ const isCoreNotFound = (cause: unknown): boolean =>
   cause.cause instanceof CoreModuleResponseError &&
   cause.cause.coreError.code === "not_found";
 
-const fullPagination = (thread: Thread) => ({
+const metadataOnlyPagination = () => ({
   olderCursor: null,
   backwardsCursor: null,
-  oldestLoadedTurnId: thread.turns[0]?.id ?? null,
+  oldestLoadedTurnId: null,
   isLoadingOlder: false,
-  hasLoadedOldest: true,
-  loadedTurnCount: thread.turns.length,
-  itemsView: "full" as const,
+  hasLoadedOldest: false,
+  loadedTurnCount: 0,
+  itemsView: "notLoaded" as const,
 });
 
 /**
@@ -141,6 +140,23 @@ export const make: Effect.Effect<
       ),
     );
 
+  const resolveSubagentRootThreadId = Effect.fn(
+    "CodexThreadDurableProjection.resolveSubagentRootThreadId",
+  )(function* (thread: CoreThread) {
+    let parentThreadId = thread.parent_thread_id?.trim() ?? "";
+    if (!parentThreadId) return null;
+    const visited = new Set([thread.thread_id]);
+    for (let depth = 0; depth < 128 && parentThreadId && !visited.has(parentThreadId); depth += 1) {
+      visited.add(parentThreadId);
+      const parent = yield* read(parentThreadId);
+      if (!parent) return null;
+      const nextParentThreadId = parent.parent_thread_id?.trim() ?? "";
+      if (!nextParentThreadId) return parent.thread_id;
+      parentThreadId = nextParentThreadId;
+    }
+    return null;
+  });
+
   const publishSummary = (thread: CoreThread): void => {
     events.publish({
       kind: "codex",
@@ -162,6 +178,10 @@ export const make: Effect.Effect<
     const existing = yield* read(id);
     const parentId = extractCodexThreadSubagentMetadata(thread).parentThreadId;
     const parent = parentId ? yield* read(parentId) : null;
+    // A nested spawn may arrive before its direct parent. Deferring the identity observation keeps
+    // the first durable owner authoritative; CodexSubagentDirectory buffers and replays the edge
+    // after the parent becomes reachable instead of first inserting a projectless child.
+    if (parentId && !parent && !existing) return;
     const observedAtMs = yield* Clock.currentTimeMillis;
     const materialization = projectCodexThreadDirectoryMaterialization({
       thread,
@@ -193,7 +213,7 @@ export const make: Effect.Effect<
     const canonical = yield* Effect.try({
       try: () =>
         createCodexCanonicalHydratedConversationState(thread, {
-          model: persisted.model_id ?? thread.modelProvider,
+          model: persisted.model_id ?? "",
           reasoningEffort: persisted.reasoning_effort ?? null,
           cwd: persisted.cwd || thread.cwd || "/",
           approvalPolicy: permissions.approvalPolicy,
@@ -211,7 +231,7 @@ export const make: Effect.Effect<
         threadId: id,
         summary: buildCoreWorkspaceThreadSummary(persisted),
         canonical,
-        pagination: fullPagination(thread),
+        pagination: metadataOnlyPagination(),
         observedAtMs,
       })
       .pipe(Effect.mapError((cause) => error("hydrate", id, cause)));
@@ -223,9 +243,20 @@ export const make: Effect.Effect<
     const notification = input.notification;
     const id = threadId(notification);
     const before = yield* read(id);
+    // App-server can emit child lifecycle/status before thread/started crosses the identity lane.
+    // Metadata deltas cannot materialize a Thread safely and the later identity snapshot already
+    // carries their current value. Deletion remains observable and idempotent even without a row.
+    if (
+      !before &&
+      notification.method !== "thread/started" &&
+      notification.method !== "thread/deleted"
+    ) {
+      return;
+    }
     if (notification.method === "thread/started") {
       yield* observeStarted({ ...input, notification });
     } else if (notification.method === "thread/deleted") {
+      const subagentRootThreadId = before ? yield* resolveSubagentRootThreadId(before) : null;
       yield* core.workspace
         .apply({
           operationId: `codex:notification:${input.occurrenceId}:thread/deleted:${id}`,
@@ -237,6 +268,12 @@ export const make: Effect.Effect<
           ),
         );
       events.publish({ kind: "codex", value: { type: "threadDeleted", threadId: id } });
+      if (subagentRootThreadId) {
+        events.publish({
+          kind: "codex",
+          value: { type: "subagentOverviewInvalidated", rootThreadId: subagentRootThreadId },
+        });
+      }
     } else if (
       notification.method === "thread/archived" ||
       notification.method === "thread/unarchived"

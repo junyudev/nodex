@@ -20,6 +20,7 @@ const queryChannels = [
   "codex:model:list",
   "codex:permission:state:get",
   "codex:personality:get",
+  "codex:subagents:overview:read",
   "codex:thread:history-search",
   "codex:thread:background-processes:list",
   "codex:thread:background-terminals:list",
@@ -36,13 +37,12 @@ const controlChannels = [
   "codex:renderer-client:response",
   "codex:setup-codex-step:respond",
   "codex:setup-context-picker:respond",
-  "codex:subagent-thread:opened",
+  "codex:subagents:selected:hydrate",
   "codex:thread-follower:snapshot-applied",
   "codex:thread-owner:app-server-request",
   "codex:thread-owner:notification:ack",
   "codex:thread-owner:pending-requests:replay",
   "codex:thread-owner:stream-state:publish",
-  "codex:thread:background-subagents:hydrate",
   "codex:thread:fresh-owner:adopt",
   "codex:thread:history-export:cancel",
   "codex:thread:history-export:next",
@@ -55,7 +55,6 @@ const controlChannels = [
   "codex:thread:snapshot:request",
   "codex:thread:stream-following:set",
   "codex:thread:stream-resync:request",
-  "codex:thread:subagents-panel:hydrate",
   "codex:thread:view-active:set",
   "codex:user-input:respond",
 ] as const satisfies readonly IpcControlChannel[];
@@ -72,7 +71,7 @@ const defineReturnedConversationCommand = <const Channel extends NonVoidPlainRes
   defineRendererCommand({
     key: `local_conversation.${channel}`,
     channel,
-    authority: channel.startsWith("agent-runtime:") ? "main" : "external",
+    authority: "external",
     owner: "LocalConversationStore",
     protocol: { kind: "returned_value" },
     trace: { scopeKind: "thread" },
@@ -85,7 +84,7 @@ const definePendingConversationCommand = <const Channel extends PlainResultComma
   defineRendererCommand({
     key: semanticKey,
     channel,
-    authority: channel.startsWith("agent-runtime:") ? "main" : "external",
+    authority: "external",
     owner: "LocalConversationStore",
     protocol: { kind: "pending_operation" },
     trace: { scopeKind: "thread" },
@@ -93,10 +92,6 @@ const definePendingConversationCommand = <const Channel extends PlainResultComma
 
 /** Explicit semantic registry for the app-server commands owned by LocalConversationStore. */
 export const localConversationCommandDefinitions = {
-  "agent-runtime:credential:delete": defineReturnedConversationCommand(
-    "agent-runtime:credential:delete",
-  ),
-  "agent-runtime:credential:set": defineReturnedConversationCommand("agent-runtime:credential:set"),
   "codex:conversation-unread:set": defineReturnedConversationCommand(
     "codex:conversation-unread:set",
   ),
@@ -184,6 +179,9 @@ export const localConversationFollowerActionDefinitions = {
   setThreadMemoryMode: followerActionDefinition("setThreadMemoryMode"),
   editLastUserTurn: followerActionDefinition("editLastUserTurn"),
   forkConversationFromTurn: followerActionDefinition("forkConversationFromTurn"),
+  hydratePersistedHistoryOccurrence: followerActionDefinition("hydratePersistedHistoryOccurrence"),
+  loadHistoryPage: followerActionDefinition("loadHistoryPage"),
+  publishHistoryMutation: followerActionDefinition("publishHistoryMutation"),
   enqueueQueuedFollowUp: followerActionDefinition("enqueueQueuedFollowUp"),
   removeQueuedFollowUp: followerActionDefinition("removeQueuedFollowUp"),
   replaceQueuedFollowUp: followerActionDefinition("replaceQueuedFollowUp"),

@@ -55,7 +55,7 @@ function projectSession(threadId: string | null = null): ProjectSession {
           projectId: "project-1",
           threadId,
           threadPreview: "Task",
-          modelProvider: "openai",
+          backendBinding: { kind: "codex" },
           executionHostId: "local",
           statusType: "idle",
           statusActiveFlags: [],

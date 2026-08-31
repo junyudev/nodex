@@ -31,6 +31,10 @@ import {
   sha256File,
   type NativeRuntimeArchitecture,
 } from "./native-runtime-manifest";
+import {
+  compareMacosVersions,
+  parseOtoolMinimumMacosVersion,
+} from "./agent-runtime-macos-platform-contract";
 import { cleanupIsolatedCore } from "./isolated-core-cleanup";
 import { verifyPackagedAgentSkills } from "./verify-packaged-agent-skills";
 import { layer as mainShutdownLive } from "../src/main/app/MainShutdown";
@@ -274,6 +278,37 @@ const assertRegularExecutable = (filePath: string): void => {
   }
 };
 
+const readPlistMinimumMacos = (plistPath: string, label: string): string =>
+  run(
+    "/usr/bin/plutil",
+    ["-extract", "LSMinimumSystemVersion", "raw", "-o", "-", plistPath],
+    `Read ${label} minimum macOS`,
+  ).stdout.trim();
+
+const assertPlistMinimumMacos = (plistPath: string, expected: string, label: string): void => {
+  const minimum = readPlistMinimumMacos(plistPath, label);
+  const normalize = (value: string): string => {
+    if (!/^\d+(?:\.\d+){0,2}$/u.test(value)) return value;
+    const parts = value.split(".");
+    return [parts[0], parts[1] ?? "0", parts[2] ?? "0"].join(".");
+  };
+  if (normalize(minimum) !== normalize(expected)) {
+    throw new Error(`${label} minimum macOS is ${minimum}, expected ${expected}`);
+  }
+};
+
+const assertPlistMinimumNotNewerThan = (
+  plistPath: string,
+  maximumMacOS: string,
+  label: string,
+): void => {
+  const minimum = readPlistMinimumMacos(plistPath, label);
+  if (compareMacosVersions(minimum, maximumMacOS) <= 0) return;
+  throw new Error(
+    `${label} requires macOS ${minimum}, newer than the product minimum ${maximumMacOS}`,
+  );
+};
+
 const assertMachO = (
   filePath: string,
   architecture: NativeRuntimeArchitecture,
@@ -288,6 +323,25 @@ const assertMachO = (
   ) {
     throw new Error(`Native runtime minimum macOS mismatch for ${filePath}`);
   }
+};
+
+const assertMachONotNewerThan = (
+  filePath: string,
+  architecture: NativeRuntimeArchitecture,
+  maximumMacOS: string,
+): void => {
+  const minimumMacOS = parseOtoolMinimumMacosVersion(
+    run(
+      "otool",
+      ["-arch", expectedFileArchitecture(architecture), "-l", filePath],
+      `Inspect ${filePath} minimum macOS`,
+    ).stdout,
+  );
+  if (compareMacosVersions(minimumMacOS, maximumMacOS) <= 0) return;
+  throw new Error(
+    `Packaged nested binary ${filePath} requires macOS ${minimumMacOS}, ` +
+      `newer than the product minimum ${maximumMacOS}`,
+  );
 };
 
 const assertMachOArchitecture = (
@@ -436,7 +490,7 @@ const verifySparkleRuntime = (
       manifest.buildChannel !== "stable" &&
       manifest.buildChannel !== "nightly") ||
     (options.expectedUpdateChannel && manifest.buildChannel !== options.expectedUpdateChannel) ||
-    manifest.minimumMacOS !== "12.0" ||
+    manifest.minimumMacOS !== "15.0" ||
     manifest.sparkleVersion !== "2.9.4" ||
     typeof manifest.publicKey !== "string" ||
     !manifest.artifacts
@@ -479,7 +533,7 @@ const verifySparkleRuntime = (
   }
   const bridgePath = join(resourcesPath, "native/nodex-sparkle.node");
   assertRegularExecutable(bridgePath);
-  assertMachO(bridgePath, options.targetArch, "12.0");
+  assertMachO(bridgePath, options.targetArch, "15.0");
   const linkage = run("otool", ["-L", bridgePath], "Inspect Sparkle bridge linkage").stdout;
   const loadCommands = run("otool", ["-l", bridgePath], "Inspect Sparkle bridge rpath").stdout;
   if (
@@ -504,7 +558,17 @@ const verifySparkleRuntime = (
     if (JSON.stringify(architectures) !== JSON.stringify(["arm64", "x86_64"])) {
       throw new Error(`Packaged Sparkle framework binary is not universal: ${relativePath}.`);
     }
+    assertMachONotNewerThan(
+      join(contentsPath, ...relativePath.split("/")),
+      options.targetArch,
+      "15.0",
+    );
   }
+  assertPlistMinimumNotNewerThan(
+    join(frameworkPath, "Versions/B/Updater.app/Contents/Info.plist"),
+    "15.0",
+    "Packaged Sparkle updater",
+  );
   const appInfoPlist = join(contentsPath, "Info.plist");
   const readAppPlist = (key: string): string =>
     run(
@@ -1302,6 +1366,7 @@ export function verifyPackagedNativeRuntimeStructure(
     );
   }
   const infoPlist = join(contentsPath, "Info.plist");
+  assertPlistMinimumMacos(infoPlist, manifest.minimumMacOS, "Packaged app");
   const appVersion = run(
     "/usr/bin/plutil",
     ["-extract", "CFBundleShortVersionString", "raw", "-o", "-", infoPlist],
@@ -1348,6 +1413,17 @@ export function verifyPackagedNativeRuntimeStructure(
   assertMachOArchitecture(cliRipgrep, options.targetArch);
   nativeBinaryPaths.push(cliRipgrep);
   const sparkleCodeObjects = verifySparkleRuntime(appPath, options);
+  const computerUseInfo = join(
+    contentsPath,
+    "Resources/browser-runtime/runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/Info.plist",
+  );
+  if (existsSync(computerUseInfo)) {
+    assertPlistMinimumNotNewerThan(
+      computerUseInfo,
+      manifest.minimumMacOS,
+      "Packaged Computer Use app",
+    );
+  }
   assertLegacyPackagedRuntimePathsAbsent(contentsPath);
   const resourcesService = join(contentsPath, "Resources/bin/nodex-service");
   if (existsSync(resourcesService)) {
@@ -1361,6 +1437,7 @@ export function verifyPackagedNativeRuntimeStructure(
   if (!statSync(helperInfo).isFile() || !statSync(helperLaunchAgent).isFile()) {
     throw new Error("Packaged ServiceManagement helper bundle is incomplete");
   }
+  assertPlistMinimumMacos(helperInfo, manifest.minimumMacOS, "ServiceManagement helper");
   if (options.verifySignatures) {
     verifySignatures(
       appPath,

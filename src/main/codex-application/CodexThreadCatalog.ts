@@ -14,6 +14,7 @@ import {
   type CodexSidebarThreadMoveResult,
 } from "../../shared/codex-sidebar-thread-move";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
+import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 import type {
   CodexSidebarSnapshot,
   CodexThreadSummary,
@@ -275,11 +276,13 @@ export const make = (
       const add = (tasks: CoreTaskWindow): void => {
         for (const task of tasks.items) {
           if (summaries.length >= 100 || !task.thread || task.thread.parent_thread_id) continue;
+          if (task.thread.backend_binding.kind !== "codex") continue;
           if (task.session.archived || task.thread.archived || seen.has(task.thread.thread_id)) {
             continue;
           }
           seen.add(task.thread.thread_id);
           summaries.push({
+            backendBinding: CODEX_AGENT_BACKEND_BINDING,
             threadId: task.thread.thread_id,
             sessionId: task.session.id,
             projectId: task.session.project_id ?? null,
@@ -579,7 +582,8 @@ export const make = (
               );
             }
             for (const task of tasks.items) {
-              const threadId = task.thread?.thread_id;
+              const threadId =
+                task.thread?.backend_binding.kind === "codex" ? task.thread.thread_id : null;
               if (!threadId || seenThreadIds.has(threadId)) continue;
               if (ids.length >= CODEX_PINNED_THREAD_LIST_MAX_RESULTS) {
                 return yield* error(
@@ -631,7 +635,9 @@ export const make = (
           }).pipe(
             Effect.map((tasks) => ({
               items: tasks.items.flatMap((task) =>
-                task.thread && !task.thread.parent_thread_id
+                task.thread &&
+                task.thread.backend_binding.kind === "codex" &&
+                !task.thread.parent_thread_id
                   ? [buildCoreWorkspaceTaskThreadSummary(task.session, task.thread)]
                   : [],
               ),
@@ -744,6 +750,7 @@ export const make = (
                 const status = parseThreadStatus(thread.status);
                 const result: CommandPaletteThreadSearchResult = {
                   thread: {
+                    backendBinding: CODEX_AGENT_BACKEND_BINDING,
                     threadId: thread.id,
                     sessionId: persisted?.sessionId ?? null,
                     projectId,

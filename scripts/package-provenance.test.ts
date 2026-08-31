@@ -3,6 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import {
+  projectBrowserPeerRuntimeIdentity,
+  projectBundledAppServerRuntimeIdentity,
+  type TestedBrowserAppServerPair,
+} from "../src/shared/browser-app-server-compatibility";
 
 import {
   verifyPackagedBuildProvenance,
@@ -109,6 +114,39 @@ const writeJson = (filePath: string, value: unknown): void => {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
+const writeBrowserManifest = (appPath: string, peerCliVersion = "0.150.0-alpha.12.2"): string => {
+  const browserManifestPath = path.join(
+    appPath,
+    "Contents/Resources/browser-runtime/browser-runtime-manifest.json",
+  );
+  writeJson(browserManifestPath, {
+    browserPlugin: { version: "26.825.32147" },
+    runtimeVersions: { codexCli: peerCliVersion },
+    schemaVersion: 5,
+    targetArch: "arm64",
+    targetPlatform: "darwin",
+  });
+  return browserManifestPath;
+};
+
+const packagedRuntimePair = (appPath: string): TestedBrowserAppServerPair => {
+  const resources = path.join(appPath, "Contents/Resources");
+  const agentManifest = JSON.parse(
+    fs.readFileSync(path.join(resources, "agent-runtime.json"), "utf8"),
+  ) as Parameters<typeof projectBundledAppServerRuntimeIdentity>[0];
+  const browserManifestPath = path.join(resources, "browser-runtime/browser-runtime-manifest.json");
+  const browserManifest = JSON.parse(fs.readFileSync(browserManifestPath, "utf8")) as Parameters<
+    typeof projectBrowserPeerRuntimeIdentity
+  >[0];
+  return {
+    appServer: projectBundledAppServerRuntimeIdentity(agentManifest),
+    browser: projectBrowserPeerRuntimeIdentity(
+      browserManifest,
+      sha256(fs.readFileSync(browserManifestPath, "utf8")),
+    ),
+  };
+};
+
 const stableJson = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (typeof value === "object" && value !== null) {
@@ -136,6 +174,29 @@ const refreshBrowserProvenanceIdentity = (appPath: string): void => {
     path: "browser-runtime/browser-runtime-manifest.json",
     sha256: sha256(browserContents.toString("utf8")),
     size: browserContents.byteLength,
+  };
+  delete provenance.provenanceId;
+  provenance.provenanceId = sha256(stableJson(provenance));
+  writeJson(provenancePath, provenance);
+};
+
+const refreshAgentRuntimeProvenanceIdentity = (appPath: string): void => {
+  const resources = path.join(appPath, "Contents/Resources");
+  const manifestPath = path.join(resources, "agent-runtime.json");
+  const manifestContents = fs.readFileSync(manifestPath);
+  const manifest = JSON.parse(manifestContents.toString("utf8")) as unknown;
+  const provenancePath = path.join(resources, "nodex-build-provenance.json");
+  const provenance = JSON.parse(fs.readFileSync(provenancePath, "utf8")) as {
+    agentRuntime: { metadataSha256: string };
+    payload: { agentRuntimeManifest: unknown };
+    provenanceId?: string;
+    [key: string]: unknown;
+  };
+  provenance.agentRuntime.metadataSha256 = sha256(stableJson(manifest));
+  provenance.payload.agentRuntimeManifest = {
+    path: "agent-runtime.json",
+    sha256: sha256(manifestContents.toString("utf8")),
+    size: manifestContents.byteLength,
   };
   delete provenance.provenanceId;
   provenance.provenanceId = sha256(stableJson(provenance));
@@ -174,7 +235,7 @@ const writeSparkleRuntime = (appPath: string): void => {
       stable: "https://nodex.jyu.app/updates/stable/arm64/appcast.xml",
       nightly: "https://nodex.jyu.app/updates/nightly/arm64/appcast.xml",
     },
-    minimumMacOS: "12.0",
+    minimumMacOS: "15.0",
     publicKey: "YNySLZ74gjVAOpEdMo9OOEPvuTEMZf8fMnI+oQD7Ifs=",
     schemaVersion: 3,
     sparkleArchiveSha256: "6".repeat(64),
@@ -182,9 +243,110 @@ const writeSparkleRuntime = (appPath: string): void => {
   });
 };
 
-const makeApp = (): {
+const writeAgentRuntime = (root: string, resources: string): string => {
+  const canonicalLockPath = path.resolve("resources/agent-runtime/codex-app-server.lock.json");
+  const lock = JSON.parse(fs.readFileSync(canonicalLockPath, "utf8")) as {
+    builds: Record<
+      "darwin-arm64" | "darwin-x64",
+      {
+        archiveSha256: string;
+        archiveSize: number;
+        assetName: string;
+        entrypointSha256: string;
+        runtimeMetadataSha256: string;
+        targetTriple: string;
+      }
+    >;
+    packageManifest: {
+      entrypoint: string;
+      layoutVersion: number;
+      pathDir: string;
+      resourcesDir: string;
+      variant: "codex-app-server";
+      version: string;
+    };
+    protocolSchema: { sha256: string };
+    upstream: {
+      commit: string;
+      repository: "openai/codex";
+      tag: string;
+    };
+  };
+  const build = lock.builds["darwin-arm64"];
+  const packageManifest = {
+    ...lock.packageManifest,
+    target: build.targetTriple,
+  };
+  const files = new Map<string, { contents: Buffer; executable: boolean }>([
+    [
+      "codex-package.json",
+      { contents: Buffer.from(`${JSON.stringify(packageManifest)}\n`), executable: false },
+    ],
+    ["bin/codex-app-server", { contents: Buffer.from("app-server\n"), executable: true }],
+    ["bin/codex-code-mode-host", { contents: Buffer.from("code-mode\n"), executable: true }],
+    ["codex-path/rg", { contents: Buffer.from("ripgrep\n"), executable: true }],
+    ["codex-resources/zsh/bin/zsh", { contents: Buffer.from("zsh\n"), executable: true }],
+    ["third-party/codex/LICENSE", { contents: Buffer.from("license\n"), executable: false }],
+    ["third-party/codex/NOTICE", { contents: Buffer.from("notice\n"), executable: false }],
+  ]);
+  const artifacts = [...files].map(([relativePath, file]) => {
+    const destination = path.join(resources, ...relativePath.split("/"));
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, file.contents, { mode: file.executable ? 0o755 : 0o644 });
+    return {
+      executable: file.executable,
+      path: relativePath,
+      sha256: createHash("sha256").update(file.contents).digest("hex"),
+      size: file.contents.byteLength,
+    };
+  });
+  const entrypoint = artifacts.find(
+    ({ path: artifactPath }) => artifactPath === packageManifest.entrypoint,
+  );
+  if (!entrypoint) throw new Error("Missing test app-server entrypoint");
+  build.archiveSha256 = sha256("fixture archive");
+  build.archiveSize = Buffer.byteLength("fixture archive");
+  build.entrypointSha256 = entrypoint.sha256;
+  const metadata = {
+    appServerRuntimeVersion: lock.packageManifest.version,
+    artifacts,
+    entrypoint: packageManifest.entrypoint,
+    layoutVersion: 4,
+    packageManifest,
+    protocolSchemaFingerprint: lock.protocolSchema.sha256,
+    releaseAsset: {
+      archiveSha256: build.archiveSha256,
+      archiveSize: build.archiveSize,
+      assetName: build.assetName,
+      entrypointSha256: entrypoint.sha256,
+      repository: lock.upstream.repository,
+      tag: lock.upstream.tag,
+    },
+    runtimeFamily: "codex-app-server",
+    searchPaths: [packageManifest.pathDir],
+    sourceRevision: {
+      commit: lock.upstream.commit,
+      repository: lock.upstream.repository,
+      tag: lock.upstream.tag,
+    },
+    targetArch: "arm64",
+    targetPlatform: "darwin",
+    targetTriple: build.targetTriple,
+  };
+  build.runtimeMetadataSha256 = sha256(stableJson(metadata));
+  writeJson(path.join(resources, "agent-runtime.json"), metadata);
+  const lockPath = path.join(root, "codex-app-server.lock.json");
+  writeJson(lockPath, lock);
+  return lockPath;
+};
+
+const makeApp = (
+  options: { includeBrowser?: boolean } = {},
+): {
   appPath: string;
   currentPreparedPath: string;
+  lockPath: string;
+  testedPairs: readonly TestedBrowserAppServerPair[];
 } => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-package-provenance-"));
   temporaryRoots.push(root);
@@ -202,15 +364,18 @@ const makeApp = (): {
     targetPlatform: "darwin",
     targetArch: "arm64",
   });
-  writeJson(path.join(resources, "agent-runtime.json"), {
-    layoutVersion: 3,
-    targetPlatform: "darwin",
-    targetArch: "arm64",
-  });
+  const lockPath = writeAgentRuntime(root, resources);
+  if (options.includeBrowser !== false) writeBrowserManifest(appPath);
+  const testedPairs = options.includeBrowser === false ? [] : [packagedRuntimePair(appPath)];
   const currentPreparedPath = path.join(root, "current-prepared.json");
   writeJson(currentPreparedPath, prepared);
-  return { appPath, currentPreparedPath };
+  return { appPath, currentPreparedPath, lockPath, testedPairs };
 };
+
+const provenanceOptions = (fixture: ReturnType<typeof makeApp>) => ({
+  testedPairs: fixture.testedPairs,
+  testOnlyAgentRuntimeLockPath: fixture.lockPath,
+});
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
@@ -219,115 +384,92 @@ afterEach(() => {
 });
 
 describe("packaged build provenance", () => {
+  test("requires Browser runtime closure for production provenance", () => {
+    const fixture = makeApp({ includeBrowser: false });
+
+    expect(() => writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture))).toThrow(
+      "Browser runtime manifest is required",
+    );
+  });
+
+  test("rejects the synthetic lock injection outside Vitest", () => {
+    const fixture = makeApp();
+    const vitest = process.env.VITEST;
+    delete process.env.VITEST;
+    try {
+      expect(() =>
+        writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
+      ).toThrow("available only to the Vitest harness");
+    } finally {
+      if (vitest === undefined) delete process.env.VITEST;
+      else process.env.VITEST = vitest;
+    }
+  });
+
   test("binds app.asar and both runtime manifests to the prepared source generation", () => {
     const fixture = makeApp();
-    const written = writePackagedBuildProvenance(fixture.appPath);
+    const written = writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
 
     const verified = verifyPackagedBuildProvenance(fixture.appPath, {
+      ...provenanceOptions(fixture),
       expectedArch: "arm64",
       expectedPreparedManifestPath: fixture.currentPreparedPath,
     });
 
     expect(verified.provenanceId).toBe(written.provenanceId);
+    expect(verified.agentRuntime).toMatchObject({
+      lockSha256: sha256(fs.readFileSync(fixture.lockPath, "utf8")),
+      signingTeamId: "2DC432GLL2",
+      sourceTag: "rust-v0.152.0",
+      targetTriple: "aarch64-apple-darwin",
+      version: "0.152.0",
+    });
   });
 
-  test("binds the optional Browser runtime manifest when one is packaged", () => {
+  test("binds the required Browser runtime manifest", () => {
     const fixture = makeApp();
     const browserManifestPath = path.join(
       fixture.appPath,
       "Contents/Resources/browser-runtime/browser-runtime-manifest.json",
     );
-    const agentManifestPath = path.join(fixture.appPath, "Contents/Resources/agent-runtime.json");
-    writeJson(agentManifestPath, {
-      codexCompatibilityVersion: "0.146.0",
-      layoutVersion: 3,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
-    writeJson(browserManifestPath, {
-      codexCompatibilityVersion: "0.146.0",
-      schemaVersion: 1,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-      runtimeVersions: {
-        codexCli: "0.148.0-alpha.9",
-      },
-    });
-    writePackagedBuildProvenance(fixture.appPath);
+    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
     fs.appendFileSync(browserManifestPath, "tampered\n");
 
-    expect(() => verifyPackagedBuildProvenance(fixture.appPath)).toThrow(
-      "does not match the packaged provenance",
-    );
+    expect(() =>
+      verifyPackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
+    ).toThrow("does not match the packaged provenance");
   });
 
-  test("rejects a Browser runtime outside the compatibility window before sealing provenance", () => {
+  test("rejects an untested Browser and app-server artifact pair before sealing provenance", () => {
     const fixture = makeApp();
-    const browserManifestPath = path.join(
-      fixture.appPath,
-      "Contents/Resources/browser-runtime/browser-runtime-manifest.json",
-    );
-    const agentManifestPath = path.join(fixture.appPath, "Contents/Resources/agent-runtime.json");
-    writeJson(agentManifestPath, {
-      codexCompatibilityVersion: "0.147.0",
-      layoutVersion: 3,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
-    writeJson(browserManifestPath, {
-      codexCompatibilityVersion: "0.146.0",
-      runtimeVersions: { codexCli: "0.146.0" },
-      schemaVersion: 1,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
 
-    expect(() => writePackagedBuildProvenance(fixture.appPath)).toThrow("targets do not agree");
+    expect(() =>
+      writePackagedBuildProvenance(fixture.appPath, {
+        testOnlyAgentRuntimeLockPath: fixture.lockPath,
+      }),
+    ).toThrow("targets do not agree");
   });
 
-  test("rejects a Browser runtime that drifts outside the compatibility window during verification", () => {
+  test("rejects Browser artifact identity drift during verification", () => {
     const fixture = makeApp();
-    const browserManifestPath = path.join(
-      fixture.appPath,
-      "Contents/Resources/browser-runtime/browser-runtime-manifest.json",
-    );
-    const agentManifestPath = path.join(fixture.appPath, "Contents/Resources/agent-runtime.json");
-    writeJson(agentManifestPath, {
-      codexCompatibilityVersion: "0.147.0",
-      layoutVersion: 3,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
-    writeJson(browserManifestPath, {
-      codexCompatibilityVersion: "0.146.0",
-      runtimeVersions: { codexCli: "0.148.0-alpha.9" },
-      schemaVersion: 1,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
-    writePackagedBuildProvenance(fixture.appPath);
-    writeJson(browserManifestPath, {
-      codexCompatibilityVersion: "0.146.0",
-      runtimeVersions: { codexCli: "0.146.0" },
-      schemaVersion: 1,
-      targetArch: "arm64",
-      targetPlatform: "darwin",
-    });
+    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
+    writeBrowserManifest(fixture.appPath, "0.149.0");
     refreshBrowserProvenanceIdentity(fixture.appPath);
 
-    expect(() => verifyPackagedBuildProvenance(fixture.appPath)).toThrow(
-      "target does not match provenance",
-    );
+    expect(() =>
+      verifyPackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
+    ).toThrow("target does not match provenance");
   });
 
   test("rejects a stale prepared source generation", () => {
     const fixture = makeApp();
-    writePackagedBuildProvenance(fixture.appPath);
+    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
     const agentSkills = writeAgentSkills(path.join(fixture.appPath, "Contents/Resources"));
     writeJson(fixture.currentPreparedPath, makePreparedManifest(agentSkills, "5".repeat(64)));
 
     expect(() =>
       verifyPackagedBuildProvenance(fixture.appPath, {
+        ...provenanceOptions(fixture),
         expectedPreparedManifestPath: fixture.currentPreparedPath,
       }),
     ).toThrow("stale for the current prepared Electron source");
@@ -346,7 +488,9 @@ describe("packaged build provenance", () => {
       targetArch: "arm64",
     });
 
-    expect(() => writePackagedBuildProvenance(fixture.appPath)).toThrow("targets do not agree");
+    expect(() => writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture))).toThrow(
+      "targets do not agree",
+    );
   });
 
   test.each([
@@ -356,24 +500,70 @@ describe("packaged build provenance", () => {
     "native/nodex-sparkle.node",
   ])("rejects a packaged payload mutation in %s", (relativePath) => {
     const fixture = makeApp();
-    writePackagedBuildProvenance(fixture.appPath);
+    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
     fs.appendFileSync(path.join(fixture.appPath, "Contents/Resources", relativePath), "tampered\n");
 
-    expect(() => verifyPackagedBuildProvenance(fixture.appPath)).toThrow(
-      "does not match the packaged provenance",
-    );
+    expect(() =>
+      verifyPackagedBuildProvenance(fixture.appPath, {
+        ...provenanceOptions(fixture),
+      }),
+    ).toThrow("does not match the packaged provenance");
   });
 
   test("rejects a mutated packaged official Agent Skill", () => {
     const fixture = makeApp();
-    writePackagedBuildProvenance(fixture.appPath);
+    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
     fs.appendFileSync(
       path.join(fixture.appPath, "Contents/Resources/agent-skills/skills/nodex/SKILL.md"),
       "tampered\n",
     );
 
-    expect(() => verifyPackagedBuildProvenance(fixture.appPath)).toThrow(
-      "tree does not match its release manifest",
+    expect(() =>
+      verifyPackagedBuildProvenance(fixture.appPath, {
+        ...provenanceOptions(fixture),
+      }),
+    ).toThrow("tree does not match its release manifest");
+  });
+
+  test("rejects an incomplete Agent runtime manifest even when a test lock repeats its digest", () => {
+    const fixture = makeApp();
+    const manifestPath = path.join(fixture.appPath, "Contents/Resources/agent-runtime.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+    delete manifest.searchPaths;
+    writeJson(manifestPath, manifest);
+    const lock = JSON.parse(fs.readFileSync(fixture.lockPath, "utf8")) as {
+      builds: { "darwin-arm64": { runtimeMetadataSha256: string } };
+    };
+    lock.builds["darwin-arm64"].runtimeMetadataSha256 = sha256(stableJson(manifest));
+    writeJson(fixture.lockPath, lock);
+
+    expect(() => writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture))).toThrow(
+      "invalid or incomplete",
     );
+  });
+
+  test("rejects a self-consistent Agent artifact reseal that is absent from the canonical lock", () => {
+    const fixture = makeApp();
+    writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));
+    const resources = path.join(fixture.appPath, "Contents/Resources");
+    const artifactPath = path.join(resources, "codex-path/rg");
+    fs.writeFileSync(artifactPath, "tampered ripgrep\n", { mode: 0o755 });
+    const manifestPath = path.join(resources, "agent-runtime.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+      artifacts: Array<{ path: string; sha256: string; size: number }>;
+    };
+    const artifact = manifest.artifacts.find(
+      ({ path: relativePath }) => relativePath === "codex-path/rg",
+    );
+    if (!artifact) throw new Error("Missing test ripgrep artifact");
+    const artifactContents = fs.readFileSync(artifactPath);
+    artifact.sha256 = createHash("sha256").update(artifactContents).digest("hex");
+    artifact.size = artifactContents.byteLength;
+    writeJson(manifestPath, manifest);
+    refreshAgentRuntimeProvenanceIdentity(fixture.appPath);
+
+    expect(() =>
+      verifyPackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture)),
+    ).toThrow("canonical release lock");
   });
 });

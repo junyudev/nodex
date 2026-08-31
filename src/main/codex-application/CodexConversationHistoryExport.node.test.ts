@@ -40,6 +40,7 @@ const thread = (turns: Turn[]): Thread => ({
   ephemeral: false,
   section: null,
   sectionEnteredAt: null,
+  projectId: null,
   historyMode: "paginated",
   modelProvider: "openai",
   createdAt: 1,
@@ -80,7 +81,9 @@ const capability: CodexAppServerCapabilitySnapshot = {
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: true,
+    multiAgentV2Protocol: false,
     sideConversation: true,
+    subagentAncestorFilter: false,
     threadRevert: true,
   },
 };
@@ -154,6 +157,7 @@ it.effect("streams complete Turns oldest-first without installing them in reside
       text: "answer",
       phase: "final_answer",
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const pageRequests: Array<{ cursor: string | null; purpose?: string }> = [];
     const itemRequests: Array<{ cursor: string | null; purpose?: string }> = [];
@@ -252,6 +256,7 @@ it.effect("deduplicates inclusive item-page anchors without skipping export item
       text: "middle",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const newest = {
       type: "agentMessage",
@@ -259,6 +264,7 @@ it.effect("deduplicates inclusive item-page anchors without skipping export item
       text: "newest",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const pages = CodexHistoryPageAdapter.of({
       loadTurnPage: () =>
@@ -345,6 +351,7 @@ it.effect("requests at most one physical item page and rejects oversized respons
             text: `item-${index}`,
             phase: null,
             memoryCitation: null,
+            delivery: null,
           })),
           nextCursor: null,
           backwardsCursor: null,
@@ -377,6 +384,7 @@ it.effect("rejects an advancing duplicate-only item cursor chain", () =>
       text: "newest",
       phase: null,
       memoryCitation: null,
+      delivery: null,
     } satisfies ThreadItem;
     const pages = CodexHistoryPageAdapter.of({
       loadTurnPage: () =>

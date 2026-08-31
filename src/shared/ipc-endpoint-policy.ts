@@ -73,9 +73,9 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "agent-backend:acp:session:read"
   | "agent-import:scan"
   | "agent-import:scan-picked-home"
-  | "agent-runtime:catalog:get"
   | "app:await-initialization"
   | "app:get-core-authority-status"
   | "app:runtime-capabilities:get"
@@ -140,6 +140,7 @@ type QueryEndpointPolicy =
   | "codex:renderer-client:id"
   | "codex:scheduled-automations:list"
   | "codex:sidebar:snapshot"
+  | "codex:subagents:overview:read"
   | "codex:thread:history-search"
   | "codex:thread:background-processes:list"
   | "codex:thread:background-terminals:list"
@@ -192,6 +193,7 @@ type QueryEndpointPolicy =
   | "read-file-binary"
   | "read-file-metadata"
   | "settings:app-updates:get"
+  | "settings:acp-agents:get"
   | "settings:backup:get"
   | "settings:codex-developer:get"
   | "settings:diagnostics:get"
@@ -222,6 +224,8 @@ type QueryEndpointPolicy =
   | "worktrees:thread:availability";
 
 type ControlEndpointPolicy =
+  | "agent-backend:acp:session:observe"
+  | "agent-backend:acp:session:unobserve"
   | "app:flush-before-close:done"
   | "browser-sidebar-webview-destroyed"
   | "browser-sidebar-webview-host-created"
@@ -253,14 +257,13 @@ type ControlEndpointPolicy =
   | "codex:setup-codex-step:respond"
   | "codex:setup-context-picker:respond"
   | "codex:sidebar:sync"
-  | "codex:subagent-thread:opened"
+  | "codex:subagents:selected:hydrate"
   | "codex:thread-follower:snapshot-applied"
   | "codex:thread-owner:notification:ack"
   | "codex:thread-owner:app-server-request"
   | "codex:thread-owner:pending-requests:replay"
   | "codex:thread-owner:stream-state:publish"
   | "codex:thread:fresh-owner:adopt"
-  | "codex:thread:background-subagents:hydrate"
   | "codex:thread:goal:materialized-cleanup"
   | "codex:thread:resume-buffer:release"
   | "codex:thread:resume:request"
@@ -276,7 +279,6 @@ type ControlEndpointPolicy =
   | "codex:thread:snapshot:request"
   | "codex:thread:stream-following:set"
   | "codex:thread:stream-resync:request"
-  | "codex:thread:subagents-panel:hydrate"
   | "codex:thread:view-active:set"
   | "codex:user-input:auto-resolution:activity"
   | "codex:user-input:respond"
@@ -351,9 +353,15 @@ type CoreLocalCommitCommandEndpointPolicy =
 type MainRevisionCommandEndpointPolicy = "persisted-atom:update";
 
 type PlainResultCommandEndpointPolicy =
+  | "agent-backend:acp:session:authenticate"
+  | "agent-backend:acp:session:cancel"
+  | "agent-backend:acp:session:close"
+  | "agent-backend:acp:session:open"
+  | "agent-backend:acp:session:prompt"
+  | "agent-backend:acp:session:set-config-option"
+  | "agent-backend:acp:session:set-mode"
+  | "agent-backend:acp:thread:start"
   | "agent-import:apply"
-  | "agent-runtime:credential:delete"
-  | "agent-runtime:credential:set"
   | "app:update:check"
   | "app:update:install"
   | "app:relaunch-for-core-authority"
@@ -448,6 +456,7 @@ type PlainResultCommandEndpointPolicy =
   | "codex:thread:background-terminals:terminate"
   | "codex:thread:collaboration-mode:set"
   | "codex:thread:compact:start"
+  | "codex:thread:delete-archived"
   | "codex:thread:ensure-session"
   | "codex:thread:follow-up:enqueue"
   | "codex:thread:follow-up:remove"
@@ -511,6 +520,7 @@ type PlainResultCommandEndpointPolicy =
   | "reset-codex-command-keybindings"
   | "set-codex-command-keybinding"
   | "settings:app-updates:update"
+  | "settings:acp-agents:update"
   | "settings:backup:update"
   | "settings:codex-developer:update"
   | "settings:diagnostics:update"

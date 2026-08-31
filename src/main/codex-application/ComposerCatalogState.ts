@@ -5,6 +5,7 @@ import type {
   CodexReasoningEffort,
   CodexReasoningEffortOption,
 } from "../../shared/types";
+import * as Predicate from "effect/Predicate";
 
 export const parseReasoningEffort = (value: unknown): CodexReasoningEffort | null => {
   if (typeof value !== "string") return null;
@@ -50,7 +51,7 @@ export const parseCollaborationModePreset = (
 };
 
 const parseReasoningEffortOption = (value: unknown): CodexReasoningEffortOption | null => {
-  if (typeof value !== "object" || value === null) return null;
+  if (!Predicate.isObject(value)) return null;
   const candidate = value as Record<string, unknown>;
   const reasoningEffort = parseReasoningEffort(
     candidate.reasoningEffort ?? candidate.reasoning_effort,
@@ -63,8 +64,8 @@ const parseReasoningEffortOption = (value: unknown): CodexReasoningEffortOption 
 };
 
 export const parseModelOption = (value: unknown): CodexModelOption | null => {
-  if (typeof value !== "object" || value === null) return null;
-  const candidate = value as Record<string, unknown>;
+  if (!Predicate.isObject(value)) return null;
+  const candidate = value;
   if (typeof candidate.id !== "string" || typeof candidate.model !== "string") return null;
   const rawSupportedReasoningEfforts =
     candidate.supportedReasoningEfforts ?? candidate.supported_reasoning_efforts;
@@ -77,6 +78,39 @@ export const parseModelOption = (value: unknown): CodexModelOption | null => {
     parseReasoningEffort(candidate.defaultReasoningEffort ?? candidate.default_reasoning_effort) ??
     supportedReasoningEfforts[0]?.reasoningEffort;
   if (!defaultReasoningEffort) return null;
+  const rawInputModalities = candidate.inputModalities ?? candidate.input_modalities;
+  const inputModalities: CodexModelOption["inputModalities"] = Array.isArray(rawInputModalities)
+    ? rawInputModalities.filter(
+        (entry): entry is CodexModelOption["inputModalities"][number] =>
+          entry === "text" || entry === "image" || entry === "audio",
+      )
+    : [];
+  const rawServiceTiers = candidate.serviceTiers ?? candidate.service_tiers;
+  const serviceTiers = Array.isArray(rawServiceTiers)
+    ? rawServiceTiers.flatMap((entry): CodexModelOption["serviceTiers"] => {
+        if (!Predicate.isObject(entry)) return [];
+        if (
+          typeof entry.id !== "string" ||
+          typeof entry.name !== "string" ||
+          typeof entry.description !== "string"
+        ) {
+          return [];
+        }
+        return [{ id: entry.id, name: entry.name, description: entry.description }];
+      })
+    : [];
+  const rawMultiAgentVersion = candidate.multiAgentVersion ?? candidate.multi_agent_version;
+  const multiAgentVersion =
+    rawMultiAgentVersion === "disabled" ||
+    rawMultiAgentVersion === "v1" ||
+    rawMultiAgentVersion === "v2"
+      ? rawMultiAgentVersion
+      : null;
+  const rawDefaultServiceTier = candidate.defaultServiceTier ?? candidate.default_service_tier;
+  const defaultServiceTier =
+    typeof rawDefaultServiceTier === "string" && rawDefaultServiceTier.trim().length > 0
+      ? rawDefaultServiceTier.trim()
+      : null;
   return {
     id: candidate.id,
     model: candidate.model,
@@ -90,6 +124,10 @@ export const parseModelOption = (value: unknown): CodexModelOption | null => {
     hidden: Boolean(candidate.hidden),
     supportedReasoningEfforts,
     defaultReasoningEffort,
+    inputModalities,
+    multiAgentVersion,
+    serviceTiers,
+    defaultServiceTier,
     isDefault: Boolean(candidate.isDefault ?? candidate.is_default),
   };
 };

@@ -110,6 +110,22 @@ export const make: Effect.Effect<
       ? cause
       : new CodexThreadTitlePersistenceEffectError({ cause });
 
+  const requireCodexThread = Effect.fn("CodexThreadTitlePersistence.requireCodexThread")(function* (
+    threadId: string,
+  ) {
+    const response = yield* core.workspace
+      .read({ kind: "thread", thread_id: threadId })
+      .pipe(Effect.mapError(titleError));
+    if (
+      response.value.kind !== "thread" ||
+      response.value.thread.backend_binding.kind !== "codex"
+    ) {
+      return yield* new CodexThreadTitlePersistenceEffectError({
+        cause: new Error(`Thread '${threadId}' is not owned by the native Codex backend`),
+      });
+    }
+  });
+
   const project = Effect.fn("CodexThreadTitlePersistence.project")(function* (
     input: CodexThreadTitlePersistenceInput,
   ) {
@@ -183,7 +199,8 @@ export const make: Effect.Effect<
     const persisted = { threadId: normalized.threadId, name: normalized.name };
     return runSerial(
       normalized.threadId,
-      project(normalized).pipe(
+      requireCodexThread(normalized.threadId).pipe(
+        Effect.andThen(project(normalized)),
         Effect.andThen(
           setRemote(persisted).pipe(
             Effect.catch((error) => logFailure("app-server", persisted, error)),
@@ -207,7 +224,8 @@ export const make: Effect.Effect<
     const persisted = { threadId: normalized.threadId, name: normalized.name };
     return runSerial(
       normalized.threadId,
-      project(normalized).pipe(
+      requireCodexThread(normalized.threadId).pipe(
+        Effect.andThen(project(normalized)),
         Effect.andThen(setRemote(persisted)),
         Effect.andThen(persistWorkspace(persisted)),
         Effect.as(true),

@@ -9,7 +9,10 @@ import {
   parseBrowserRuntimeManifest,
   type BrowserRuntimeManifest,
 } from "../src/shared/browser-runtime-metadata";
-import { isBrowserRuntimeCompatibleWithCodex } from "../src/shared/browser-runtime-codex-compatibility";
+import type {
+  AppServerRuntimeIdentity,
+  TestedBrowserAppServerPair,
+} from "../src/shared/browser-app-server-compatibility";
 import { resolveBrowserRuntimeBundle } from "../src/main/codex/browser-runtime-bundle";
 import type { BrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-bundle";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
@@ -19,12 +22,13 @@ const REGULAR_RUNTIME_MODE = 0o644;
 const LEGACY_BROWSER_PLUGIN_NODE_MODULE_DIR = "marketplace/plugins/browser/scripts/node_modules";
 
 type StageBrowserRuntimeOptions = {
-  expectedCodexCompatibilityVersion: string;
+  appServerIdentity: AppServerRuntimeIdentity;
   platformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   runtimeRoot: string;
   sourceRoot: string;
   targetArch: "arm64" | "x64";
   targetPlatform: "darwin" | "linux" | "win32";
+  testedPairs?: readonly TestedBrowserAppServerPair[];
 };
 
 export function readBrowserRuntimeFileSha256(filePath: string): string {
@@ -157,10 +161,6 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
 
   const sourceManifest = readBrowserRuntimeSourceManifest(sourceRoot);
   if (
-    !isBrowserRuntimeCompatibleWithCodex(
-      sourceManifest,
-      options.expectedCodexCompatibilityVersion,
-    ) ||
     sourceManifest.targetArch !== options.targetArch ||
     sourceManifest.targetPlatform !== options.targetPlatform
   ) {
@@ -183,11 +183,12 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
     if (normalizedManifest.equals(activeManifest)) {
       assertBrowserRuntimeSourceClosure(activeRoot, manifest);
       const verification = resolveBrowserRuntimeBundle({
-        expectedCodexCompatibilityVersion: options.expectedCodexCompatibilityVersion,
+        appServerIdentity: options.appServerIdentity,
         platformArtifactVerifier: options.platformArtifactVerifier,
         runtimeRoot,
         targetArch: options.targetArch,
         targetPlatform: options.targetPlatform,
+        testedPairs: options.testedPairs,
       });
       if (verification.status === "available") return manifest;
     }
@@ -226,11 +227,12 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
     fs.chmodSync(manifestPath, REGULAR_RUNTIME_MODE);
 
     const verification = resolveBrowserRuntimeBundle({
-      expectedCodexCompatibilityVersion: options.expectedCodexCompatibilityVersion,
+      appServerIdentity: options.appServerIdentity,
       platformArtifactVerifier: options.platformArtifactVerifier,
       runtimeRoot: temporaryParent,
       targetArch: options.targetArch,
       targetPlatform: options.targetPlatform,
+      testedPairs: options.testedPairs,
     });
     if (verification.status === "unavailable") {
       throw new Error(`Staged Browser runtime failed verification: ${verification.message}`);
@@ -257,24 +259,39 @@ function parseCliOptions(argv: string[]): StageBrowserRuntimeOptions {
 
   const sourceRoot = values.get("--source");
   const runtimeRoot = values.get("--runtime-root");
-  const expectedCodexCompatibilityVersion = values.get("--codex-compatibility-version");
+  const appServerEntrypointSha256 = values.get("--app-server-entrypoint-sha256");
+  const appServerProtocolSchemaFingerprint = values.get("--app-server-protocol-schema-fingerprint");
+  const appServerRuntimeVersion = values.get("--app-server-runtime-version");
+  const appServerSourceCommit = values.get("--app-server-source-commit");
   const targetArch = values.get("--target-arch");
   const targetPlatform = values.get("--target-platform");
   if (
     !sourceRoot ||
     !runtimeRoot ||
-    !expectedCodexCompatibilityVersion ||
+    !appServerEntrypointSha256 ||
+    !appServerProtocolSchemaFingerprint ||
+    !appServerRuntimeVersion ||
+    !appServerSourceCommit ||
     (targetArch !== "arm64" && targetArch !== "x64") ||
     (targetPlatform !== "darwin" && targetPlatform !== "linux" && targetPlatform !== "win32")
   ) {
     throw new Error(
       "Usage: stage-browser-runtime.ts --source <dir> --runtime-root <dir> " +
-        "--codex-compatibility-version <version> --target-platform <platform> " +
+        "--app-server-runtime-version <version> --app-server-source-commit <commit> " +
+        "--app-server-protocol-schema-fingerprint <sha256> " +
+        "--app-server-entrypoint-sha256 <sha256> --target-platform <platform> " +
         "--target-arch <arm64|x64>",
     );
   }
   return {
-    expectedCodexCompatibilityVersion,
+    appServerIdentity: {
+      entrypointSha256: appServerEntrypointSha256,
+      protocolSchemaFingerprint: appServerProtocolSchemaFingerprint,
+      runtimeVersion: appServerRuntimeVersion,
+      sourceCommit: appServerSourceCommit,
+      targetArch,
+      targetPlatform,
+    },
     runtimeRoot,
     sourceRoot,
     targetArch,

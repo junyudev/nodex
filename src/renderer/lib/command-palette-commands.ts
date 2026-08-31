@@ -56,6 +56,7 @@ export interface CommandPaletteShellCommandContext {
   hasActiveSession: boolean;
   activeSessionPinned: boolean;
   hasAttachedThread: boolean;
+  canExportConversationMarkdown: boolean;
   panelActionAvailability: Record<WorkbenchPanelActionKind, boolean>;
   canOpenSessionInNewWindow: boolean;
   isMac: boolean;
@@ -267,18 +268,19 @@ export function buildCommandPaletteCommands(
         disabled: sessionCommandDisabled,
       },
     ),
-    command(
-      "copyConversationMarkdown",
-      "Chat",
-      "Copy as Markdown",
-      "Copy the complete active chat as Markdown",
-      ["copy", "markdown", "chat", "thread", "transcript"],
-      1075,
-      {
-        shortcut: shortcutLabel("copyConversationMarkdown"),
-        disabled: !context.hasAttachedThread,
-      },
-    ),
+    ...(context.canExportConversationMarkdown
+      ? [
+          command(
+            "copyConversationMarkdown",
+            "Chat",
+            "Copy as Markdown",
+            "Copy the complete active chat as Markdown",
+            ["copy", "markdown", "chat", "thread", "transcript"],
+            1075,
+            { shortcut: shortcutLabel("copyConversationMarkdown") },
+          ),
+        ]
+      : []),
     command(
       "toggleThreadPin",
       "Chat",

@@ -9,11 +9,13 @@ import type {
   ProjectSessionSummary,
   ProjectSessionSummaryWindow,
 } from "../../shared/types";
+import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import type {
   ProjectLifecycleCommandInput,
   ProjectLifecycleCommandRejected,
   ProjectLifecycleCommittedValue,
 } from "../../shared/workspace-catalog-commands";
+import { AcpBackendSessionManager } from "../agent-backend/acp/AcpBackendSessionManager";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
@@ -57,6 +59,7 @@ export const live: Layer.Layer<
   ProjectLifecycleCommands,
   never,
   | BrowserApplication
+  | AcpBackendSessionManager
   | ProjectArchiveBlockers
   | ProjectRuntimeLifecycleRuntime
   | ProjectWorkspace
@@ -65,6 +68,7 @@ export const live: Layer.Layer<
   ProjectLifecycleCommands,
   Effect.gen(function* () {
     const blockers = yield* ProjectArchiveBlockers;
+    const acpSessions = yield* AcpBackendSessionManager;
     const browser = yield* BrowserApplication;
     const lifecycleRuntime = yield* ProjectRuntimeLifecycleRuntime;
     const workspace = yield* ProjectWorkspace;
@@ -118,6 +122,16 @@ export const live: Layer.Layer<
       );
       const projectSessionIds = new Set(ownership.sessions.map((session) => session.id));
       const tasks = [
+        ...ownership.sessions.flatMap((session) =>
+          session.thread && !isCodexAgentBackendBinding(session.thread.backendBinding)
+            ? [
+                {
+                  label: `acp-session:${session.thread.threadId}`,
+                  effect: acpSessions.close(session.thread.threadId),
+                },
+              ]
+            : [],
+        ),
         ...ownership.sessions.map((session) => ({
           label: `browser-conversation:${session.id}`,
           effect: browser.closeConversation(session.id),

@@ -1428,6 +1428,49 @@
           }
         ]
       },
+      "AgentBackendBinding": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "codex"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "agent_definition_id",
+              "kind"
+            ],
+            "properties": {
+              "agent_definition_id": {
+                "type": "string"
+              },
+              "instance_config_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "acp"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Durable identity of the runtime family that owns an Agent conversation.\nBackend-specific settings live behind their own stable identifiers instead\nof accumulating nullable fields on Threads and Automations."
+      },
       "AgentConsentRequirement": {
         "type": "string",
         "enum": [
@@ -3302,6 +3345,7 @@
           "name",
           "prompt",
           "rrule",
+          "backend_binding",
           "cwds",
           "execution_environment",
           "created_at_ms",
@@ -3310,6 +3354,9 @@
         "properties": {
           "automation_id": {
             "type": "string"
+          },
+          "backend_binding": {
+            "$ref": "#/components/schemas/AgentBackendBinding"
           },
           "created_at_ms": {
             "type": "integer",
@@ -3328,12 +3375,6 @@
           "execution_environment": {
             "$ref": "#/components/schemas/AutomationExecutionEnvironment"
           },
-          "harness_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "kind": {
             "$ref": "#/components/schemas/AutomationDefinitionKind"
           },
@@ -3351,12 +3392,6 @@
             ]
           },
           "model": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "model_provider": {
             "type": [
               "string",
               "null"
@@ -3412,6 +3447,9 @@
           "name"
         ],
         "properties": {
+          "backend_binding": {
+            "$ref": "#/components/schemas/AgentBackendBinding"
+          },
           "cwds": {
             "type": [
               "array",
@@ -3431,12 +3469,6 @@
               }
             ]
           },
-          "harness_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "kind": {
             "$ref": "#/components/schemas/AutomationDefinitionKind"
           },
@@ -3447,12 +3479,6 @@
             ]
           },
           "model": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "model_provider": {
             "type": [
               "string",
               "null"
@@ -4209,6 +4235,7 @@
                 "name",
                 "prompt",
                 "rrule",
+                "backend_binding",
                 "cwds",
                 "execution_environment",
                 "created_at_ms",
@@ -4217,6 +4244,9 @@
               "properties": {
                 "automation_id": {
                   "type": "string"
+                },
+                "backend_binding": {
+                  "$ref": "#/components/schemas/AgentBackendBinding"
                 },
                 "created_at_ms": {
                   "type": "integer",
@@ -4235,12 +4265,6 @@
                 "execution_environment": {
                   "$ref": "#/components/schemas/AutomationExecutionEnvironment"
                 },
-                "harness_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
                 "kind": {
                   "$ref": "#/components/schemas/AutomationDefinitionKind"
                 },
@@ -4258,12 +4282,6 @@
                   ]
                 },
                 "model": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "model_provider": {
                   "type": [
                     "string",
                     "null"
@@ -6040,6 +6058,107 @@
           }
         }
       },
+      "CollectionWindow_ProjectWorkspaceSubagentLifecycleMember": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "thread_id",
+                "outcome",
+                "attempt_count"
+              ],
+              "properties": {
+                "attempt_count": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                },
+                "last_reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "observed_at_ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64"
+                },
+                "outcome": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycleOutcome"
+                },
+                "thread_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceSubagentOverviewItem": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "thread",
+                "status"
+              ],
+              "properties": {
+                "evidence": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidence"
+                    }
+                  ]
+                },
+                "status": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatus"
+                },
+                "thread": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceThreadSummary"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CollectionWindow_ProjectWorkspaceTaskSummary": {
         "type": "object",
         "required": [
@@ -6099,7 +6218,7 @@
               "required": [
                 "thread_id",
                 "thread_preview",
-                "model_provider",
+                "backend_binding",
                 "execution_host_id",
                 "status",
                 "archived",
@@ -6130,6 +6249,9 @@
                 "archived": {
                   "type": "boolean"
                 },
+                "backend_binding": {
+                  "$ref": "#/components/schemas/AgentBackendBinding"
+                },
                 "created_at": {
                   "type": "integer",
                   "format": "int64"
@@ -6149,12 +6271,6 @@
                     "null"
                   ]
                 },
-                "harness_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
                 "linked_at": {
                   "type": "string"
                 },
@@ -6169,9 +6285,6 @@
                     "string",
                     "null"
                   ]
-                },
-                "model_provider": {
-                  "type": "string"
                 },
                 "parent_thread_id": {
                   "type": [
@@ -25719,6 +25832,54 @@
                 "type": "object",
                 "required": [
                   "thread_id",
+                  "backend_binding",
+                  "backend_session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "backend_binding": {
+                    "$ref": "#/components/schemas/AgentBackendBinding"
+                  },
+                  "backend_session_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "bind_thread_backend_session"
+                    ]
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "thread_id",
+                  "backend_binding",
+                  "kind"
+                ],
+                "properties": {
+                  "backend_binding": {
+                    "$ref": "#/components/schemas/AgentBackendBinding"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "clear_thread_backend_session"
+                    ]
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "thread_id",
                   "kind"
                 ],
                 "properties": {
@@ -25811,6 +25972,195 @@
                   },
                   "sweep_id": {
                     "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "universe",
+                  "page_identity",
+                  "observations",
+                  "complete",
+                  "kind"
+                ],
+                "properties": {
+                  "complete": {
+                    "type": "boolean"
+                  },
+                  "continuation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "observe_subagent_discovery_page"
+                    ]
+                  },
+                  "observations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSubagentObservation"
+                    }
+                  },
+                  "page_identity": {
+                    "type": "string"
+                  },
+                  "universe": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "universe",
+                  "thread_id",
+                  "status",
+                  "evidence_kind",
+                  "source_revision",
+                  "observed_at_ms",
+                  "kind"
+                ],
+                "properties": {
+                  "evidence_kind": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidenceKind"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "observe_subagent_status_evidence"
+                    ]
+                  },
+                  "observed_at_ms": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "precondition": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidencePrecondition"
+                      }
+                    ]
+                  },
+                  "source_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatus"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  },
+                  "universe": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "host_id",
+                  "source_epoch",
+                  "generation",
+                  "thread_id",
+                  "status",
+                  "evidence_kind",
+                  "source_revision",
+                  "observed_at_ms",
+                  "kind"
+                ],
+                "properties": {
+                  "evidence_kind": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidenceKind"
+                  },
+                  "generation": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "host_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "buffer_subagent_status_evidence"
+                    ]
+                  },
+                  "observed_at_ms": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "source_epoch": {
+                    "type": "string"
+                  },
+                  "source_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatus"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "universe",
+                  "lifecycle_operation_id",
+                  "action",
+                  "kind"
+                ],
+                "properties": {
+                  "action": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycleAction"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "begin_subagent_lifecycle"
+                    ]
+                  },
+                  "lifecycle_operation_id": {
+                    "type": "string"
+                  },
+                  "universe": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "lifecycle_operation_id",
+                  "observations",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "observe_subagent_lifecycle_outcomes"
+                    ]
+                  },
+                  "lifecycle_operation_id": {
+                    "type": "string"
+                  },
+                  "observations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycleObservation"
+                    }
                   }
                 }
               },
@@ -29936,6 +30286,24 @@
                   "kind": {
                     "type": "string",
                     "enum": [
+                      "thread_backend_session"
+                    ]
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "thread_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
                       "queued_follow_up_ledger"
                     ]
                   },
@@ -29965,6 +30333,80 @@
                     ]
                   },
                   "parent_thread_id": {
+                    "type": "string"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "universe",
+                  "active_window",
+                  "done_window",
+                  "kind"
+                ],
+                "properties": {
+                  "active_window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  },
+                  "done_window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "subagent_overview_window"
+                    ]
+                  },
+                  "universe": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "universe",
+                  "thread_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "subagent_overview_item"
+                    ]
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  },
+                  "universe": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "lifecycle_operation_id",
+                  "include_settled",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "include_settled": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "subagent_lifecycle_batch"
+                    ]
+                  },
+                  "lifecycle_operation_id": {
                     "type": "string"
                   },
                   "window": {
@@ -32423,6 +32865,308 @@
           }
         }
       },
+      "ProjectWorkspaceSubagentLifecycle": {
+        "type": "object",
+        "required": [
+          "universe",
+          "lifecycle_operation_id",
+          "action",
+          "members",
+          "expected_count",
+          "processed_count",
+          "unresolved_count",
+          "complete",
+          "projection_revision"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycleAction"
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "expected_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "lifecycle_operation_id": {
+            "type": "string"
+          },
+          "members": {
+            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSubagentLifecycleMember"
+          },
+          "processed_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "projection_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "universe": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+          },
+          "unresolved_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ProjectWorkspaceSubagentLifecycleAction": {
+        "type": "string",
+        "enum": [
+          "archive",
+          "delete"
+        ]
+      },
+      "ProjectWorkspaceSubagentLifecycleObservation": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "outcome",
+          "observed_at_ms"
+        ],
+        "properties": {
+          "observed_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycleOutcome"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSubagentLifecycleOutcome": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "unresolved",
+          "failed",
+          "settled"
+        ]
+      },
+      "ProjectWorkspaceSubagentObservation": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "parent_thread_id",
+          "patch",
+          "source_revision",
+          "observed_at_ms"
+        ],
+        "properties": {
+          "observed_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "parent_thread_id": {
+            "type": "string"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/ProjectWorkspaceThreadPatch"
+          },
+          "source_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceSubagentOverview": {
+        "type": "object",
+        "required": [
+          "universe",
+          "active",
+          "done",
+          "known_active_count",
+          "known_done_count",
+          "discovery_complete",
+          "projection_revision"
+        ],
+        "properties": {
+          "active": {
+            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSubagentOverviewItem"
+          },
+          "discovery_complete": {
+            "type": "boolean"
+          },
+          "discovery_continuation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "done": {
+            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSubagentOverviewItem"
+          },
+          "known_active_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "known_done_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "projection_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "universe": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+          }
+        }
+      },
+      "ProjectWorkspaceSubagentOverviewItem": {
+        "type": "object",
+        "required": [
+          "thread",
+          "status"
+        ],
+        "properties": {
+          "evidence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidence"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatus"
+          },
+          "thread": {
+            "$ref": "#/components/schemas/ProjectWorkspaceThreadSummary"
+          }
+        }
+      },
+      "ProjectWorkspaceSubagentStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "waiting",
+          "done",
+          "unknown"
+        ]
+      },
+      "ProjectWorkspaceSubagentStatusEvidence": {
+        "type": "object",
+        "required": [
+          "kind",
+          "source_revision",
+          "observed_at_ms"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidenceKind"
+          },
+          "observed_at_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ProjectWorkspaceSubagentStatusEvidenceKind": {
+        "type": "string",
+        "enum": [
+          "metadata",
+          "notification",
+          "completion",
+          "reconciliation"
+        ]
+      },
+      "ProjectWorkspaceSubagentStatusEvidencePrecondition": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "mode"
+            ],
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "absent"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "evidence_kind",
+              "source_revision",
+              "observed_at_ms",
+              "mode"
+            ],
+            "properties": {
+              "evidence_kind": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidenceKind"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "exact"
+                ]
+              },
+              "observed_at_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "source_revision": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          }
+        ],
+        "description": "Optional compare-and-set guard for observations derived from an asynchronous remote read."
+      },
+      "ProjectWorkspaceSubagentUniverse": {
+        "type": "object",
+        "required": [
+          "host_id",
+          "source_epoch",
+          "generation",
+          "root_thread_id"
+        ],
+        "properties": {
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "root_thread_id": {
+            "type": "string"
+          },
+          "source_epoch": {
+            "type": "string"
+          }
+        }
+      },
       "ProjectWorkspaceTaskSummary": {
         "type": "object",
         "required": [
@@ -32449,7 +33193,7 @@
         "required": [
           "thread_id",
           "thread_preview",
-          "model_provider",
+          "backend_binding",
           "execution_host_id",
           "status",
           "archived",
@@ -32480,6 +33224,9 @@
           "archived": {
             "type": "boolean"
           },
+          "backend_binding": {
+            "$ref": "#/components/schemas/AgentBackendBinding"
+          },
           "created_at": {
             "type": "integer",
             "format": "int64"
@@ -32499,12 +33246,6 @@
               "null"
             ]
           },
-          "harness_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "linked_at": {
             "type": "string"
           },
@@ -32519,9 +33260,6 @@
               "string",
               "null"
             ]
-          },
-          "model_provider": {
-            "type": "string"
           },
           "parent_thread_id": {
             "type": [
@@ -32607,7 +33345,7 @@
         "required": [
           "thread_id",
           "thread_preview",
-          "model_provider",
+          "backend_binding",
           "execution_host_id",
           "status",
           "archived",
@@ -32641,6 +33379,9 @@
           "archived": {
             "type": "boolean"
           },
+          "backend_binding": {
+            "$ref": "#/components/schemas/AgentBackendBinding"
+          },
           "created_at": {
             "type": "integer",
             "format": "int64"
@@ -32666,12 +33407,6 @@
               "null"
             ]
           },
-          "harness_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "has_unread_turn": {
             "type": "boolean"
           },
@@ -32689,9 +33424,6 @@
               "string",
               "null"
             ]
-          },
-          "model_provider": {
-            "type": "string"
           },
           "parent_thread_id": {
             "type": [
@@ -32782,6 +33514,31 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "ProjectWorkspaceThreadBackendSession": {
+        "type": "object",
+        "description": "Durable protocol-session identity for a non-native Agent Backend. It is\nseparate from backend instance configuration and may be cleared when a\nbackend can no longer resume the remote session.",
+        "required": [
+          "thread_id",
+          "backend_binding",
+          "backend_session_id",
+          "updated_at"
+        ],
+        "properties": {
+          "backend_binding": {
+            "$ref": "#/components/schemas/AgentBackendBinding"
+          },
+          "backend_session_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -32944,6 +33701,16 @@
               "null"
             ]
           },
+          "backend_binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentBackendBinding"
+              }
+            ]
+          },
           "created_at": {
             "type": [
               "integer",
@@ -32969,12 +33736,6 @@
               "null"
             ]
           },
-          "harness_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "linked_at": {
             "type": [
               "string",
@@ -32988,12 +33749,6 @@
             ]
           },
           "model_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "model_provider": {
             "type": [
               "string",
               "null"
@@ -33182,6 +33937,158 @@
           },
           "status_type": {
             "$ref": "#/components/schemas/CodexThreadStatusType"
+          }
+        }
+      },
+      "ProjectWorkspaceThreadSummary": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "thread_preview",
+          "backend_binding",
+          "execution_host_id",
+          "status",
+          "archived",
+          "created_at",
+          "updated_at",
+          "recency_at",
+          "linked_at"
+        ],
+        "properties": {
+          "agent_nickname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "backend_binding": {
+            "$ref": "#/components/schemas/AgentBackendBinding"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_host_id": {
+            "type": "string"
+          },
+          "forked_from_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "linked_at": {
+            "type": "string"
+          },
+          "managed_worktree_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parent_thread_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projectless_output_directory": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projectless_workspace_browser_root": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recency_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "service_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "service_tier": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "thread_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_preview": {
+            "type": "string"
+          },
+          "thread_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -38436,6 +39343,30 @@
                       {
                         "type": "object",
                         "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "thread_backend_session"
+                            ]
+                          },
+                          "session": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceThreadBackendSession"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "ledger",
                           "kind"
                         ],
@@ -38466,6 +39397,71 @@
                           },
                           "threads": {
                             "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceThreadSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "overview",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "subagent_overview_window"
+                            ]
+                          },
+                          "overview": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceSubagentOverview"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "projection_revision",
+                          "kind"
+                        ],
+                        "properties": {
+                          "item": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceSubagentOverviewItem"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "subagent_overview_item"
+                            ]
+                          },
+                          "projection_revision": {
+                            "type": "integer",
+                            "format": "int64"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "lifecycle",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "subagent_lifecycle_batch"
+                            ]
+                          },
+                          "lifecycle": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycle"
                           }
                         }
                       },

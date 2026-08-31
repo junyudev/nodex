@@ -311,6 +311,7 @@ fn validate_store_semantics_for_view_contract(
     validate_default_draft_sessions(connection)?;
     validate_page_chat_links(connection)?;
     validate_thread_recency(connection)?;
+    validate_subagent_projection(connection)?;
     validate_page_key_invariants(connection)?;
     validate_database_relation_invariants(connection)?;
     validate_database_priority_invariants_for_view_contract(connection, view_contract)?;
@@ -697,6 +698,75 @@ fn validate_thread_recency(connection: &Connection) -> Result<(), StoreError> {
         |row| row.get(0),
     )?;
     expect_zero(invalid, "invalid Thread recency timestamps")
+}
+
+fn validate_subagent_projection(connection: &Connection) -> Result<(), StoreError> {
+    let installed = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema
+         WHERE type = 'table' AND name = 'workspace_subagent_universes')",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? == 1;
+    if !installed {
+        return Ok(());
+    }
+    let invalid: i64 = connection.query_row(
+        "WITH RECURSIVE reachable(
+           host_id, source_epoch, generation, root_thread_id, thread_id
+         ) AS (
+           SELECT descendant.host_id, descendant.source_epoch, descendant.generation,
+             descendant.root_thread_id, descendant.thread_id
+           FROM workspace_subagent_descendants descendant
+           WHERE descendant.parent_thread_id = descendant.root_thread_id
+           UNION
+           SELECT child.host_id, child.source_epoch, child.generation,
+             child.root_thread_id, child.thread_id
+           FROM workspace_subagent_descendants child
+           JOIN reachable parent
+             ON child.host_id = parent.host_id
+            AND child.source_epoch = parent.source_epoch
+            AND child.generation = parent.generation
+            AND child.root_thread_id = parent.root_thread_id
+            AND child.parent_thread_id = parent.thread_id
+         )
+         SELECT
+           (SELECT count(*)
+            FROM workspace_subagent_universes universe
+            JOIN workspace_subagent_descendants descendant
+              ON descendant.host_id = universe.host_id
+             AND descendant.source_epoch = universe.source_epoch
+             AND descendant.generation = universe.generation
+             AND descendant.root_thread_id = universe.root_thread_id
+            LEFT JOIN reachable
+              ON reachable.host_id = descendant.host_id
+             AND reachable.source_epoch = descendant.source_epoch
+             AND reachable.generation = descendant.generation
+             AND reachable.root_thread_id = descendant.root_thread_id
+             AND reachable.thread_id = descendant.thread_id
+            WHERE universe.discovery_complete = 1 AND reachable.thread_id IS NULL)
+           +
+           (SELECT count(*)
+            FROM workspace_subagent_lifecycle_operations operation
+            WHERE NOT EXISTS (
+              SELECT 1 FROM workspace_subagent_lifecycle_members member
+              WHERE member.lifecycle_operation_id = operation.lifecycle_operation_id
+            ))
+           +
+           (SELECT count(*) FROM workspace_subagent_pending_status_evidence pending
+            WHERE pending.evidence_kind = 'completion' AND pending.status <> 'done')
+           +
+           (SELECT COALESCE(sum(excess), 0) FROM (
+              SELECT max(count(*) - 4096, 0) AS excess
+              FROM workspace_subagent_pending_status_evidence
+              GROUP BY library_id
+            ))",
+        [],
+        |row| row.get(0),
+    )?;
+    expect_zero(
+        invalid,
+        "invalid completed Subagent closure, pending evidence, or empty lifecycle operation",
+    )
 }
 
 fn validate_page_key_invariants(connection: &Connection) -> Result<(), StoreError> {

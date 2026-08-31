@@ -235,17 +235,21 @@ export const live: Layer.Layer<
     );
     yield* handlePlainCommand("codex:pending-worktree:resolve-thread", (_, clientThreadId) =>
       validate("resolve-thread", () => requireIdentifier(clientThreadId, "Client thread id")).pipe(
-        Effect.flatMap((validated) =>
-          clientIdentity
+        Effect.flatMap((validated) => {
+          // Identity persistence can finish just before the launch fiber publishes its terminal
+          // state. While the pending owner still exists, its state is the readiness authority.
+          const resolution = pending.resolveThread(validated);
+          if (resolution) return Effect.succeed(resolution);
+          return clientIdentity
             .threadIdFor(validated)
             .pipe(
               Effect.map((threadId) =>
                 threadId
                   ? { state: "succeeded" as const, clientThreadId: validated, threadId }
-                  : pending.resolveThread(validated),
+                  : null,
               ),
-            ),
-        ),
+            );
+        }),
       ),
     );
     yield* handleControl(

@@ -37,7 +37,7 @@ function makeAttachedSession(overrides: Partial<ProjectSession> = {}): ProjectSe
       projectId: "project-1",
       threadId: "thread-1",
       threadPreview: "",
-      modelProvider: "openai",
+      backendBinding: { kind: "codex" },
       executionHostId: "local",
       cwd: "/tmp/project",
       statusType: "idle",
@@ -195,6 +195,29 @@ describe("session context menu model", () => {
     expect(removeFromProject?.type === "separator" ? null : removeFromProject?.iconKey).toBe(
       "folder",
     );
+  });
+
+  test("omits Codex-only movement and transcript export for ACP sessions", () => {
+    const items = buildSessionContextMenuItems({
+      session: makeAttachedSession({
+        thread: {
+          ...makeAttachedSession().thread!,
+          backendBinding: {
+            kind: "acp",
+            agentDefinitionId: "claude-agent-acp",
+            instanceConfigId: "claude-main",
+          },
+        },
+      }),
+      projects: [makeProject("project-1", "Current"), makeProject("project-2", "Destination")],
+    });
+
+    expect(flattenActionIds(items)).not.toContain("session.moveToProject");
+    expect(flattenActionIds(items)).not.toContain(
+      SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown,
+    );
+    expect(flattenActionIds(items)).toContain(SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory);
+    expect(flattenActionIds(items)).toContain(SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink);
   });
 
   test("parses Open in targets and preserves pin state across Project moves", () => {

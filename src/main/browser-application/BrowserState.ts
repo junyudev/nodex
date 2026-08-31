@@ -18,7 +18,7 @@ import {
   type BrowserSidebarCommandResult,
   type BrowserSidebarClonedTabInput,
   type BrowserSidebarDestroyWebviewRequest,
-  type BrowserSidebarHostRouteIdentity,
+  type BrowserSidebarPhysicalHostIdentity,
   type BrowserSidebarLocalServerThumbnailRequest,
   type BrowserSidebarLocalServerThumbnailResult,
   type BrowserSidebarStateSnapshot,
@@ -337,7 +337,10 @@ export class BrowserState {
     this.siteStatus = deps.siteStatus;
   }
 
-  authorizeWebviewAttachment(ownerWebContentsId: number, route: BrowserSidebarHostRouteIdentity) {
+  authorizeWebviewAttachment(
+    ownerWebContentsId: number,
+    route: BrowserSidebarPhysicalHostIdentity,
+  ) {
     return this.runtimeRegistry.authorizeAttachment(ownerWebContentsId, route);
   }
 
@@ -1146,7 +1149,7 @@ export class BrowserState {
           }
           yield* initialColorSchemeSync;
           if (!contents.isDestroyed()) {
-            this.fork(this.syncDeviceEmulation(snapshot, contents));
+            yield* this.syncDeviceEmulation(snapshot, contents);
           }
         }
         this.events.publish({
@@ -1289,8 +1292,17 @@ export class BrowserState {
             return { ok: false, message: "Browser host owner is unavailable" };
           }
           const hostMatch = this.runtimeRegistry.matchHost(context.ownerWebContentsId, command);
-          if (!hostMatch.ok || hostMatch.registration.hostKind !== command.hostKind) {
-            return { ok: true, snapshot: current };
+          if (!hostMatch.ok) {
+            return {
+              ok: false,
+              message: `Browser host sync failed: ${hostMatch.reason}`,
+            };
+          }
+          if (hostMatch.registration.hostKind !== command.hostKind) {
+            return {
+              ok: false,
+              message: "Browser host sync failed: host-kind-mismatch",
+            };
           }
           const hasLiveGuest = current.webContentsId !== null;
           const snapshot = this.updateTab(key, {
@@ -2014,15 +2026,23 @@ export class BrowserState {
     if (!ownership || ownership.ownerWebContentsId !== ownerWebContentsId) {
       return false;
     }
-    return (
+    const physicalHostMatches =
       ownership.identity.browserConversationId === event.browserConversationId &&
       ownership.identity.browserViewScopeId === event.browserViewScopeId &&
       ownership.identity.browserTabId === event.browserTabId &&
       ownership.browserStorageId === event.browserStorageId &&
       (ownership.rendererInstanceId === undefined ||
         (ownership.rendererInstanceId === event.rendererInstanceId &&
-          ownership.hostGeneration === event.hostGeneration))
-    );
+          ownership.hostGeneration === event.hostGeneration));
+    if (!physicalHostMatches) return false;
+    if (event.rendererInstanceId === undefined || event.hostGeneration === undefined) return true;
+    const currentHost = this.runtimeRegistry.matchHost(ownerWebContentsId, {
+      ...browserIdentity(event),
+      rendererInstanceId: event.rendererInstanceId,
+      hostGeneration: event.hostGeneration,
+      mountGeneration: event.mountGeneration,
+    });
+    return currentHost.ok && currentHost.registration.hostKind === event.hostKind;
   }
 
   private attachWebview(event: BrowserSidebarWebviewHostCreated): BrowserSidebarTabSnapshot | null {

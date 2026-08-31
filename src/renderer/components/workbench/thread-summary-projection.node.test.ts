@@ -5,9 +5,7 @@ import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 describe("projectSessionThreadLinkToSummary", () => {
   test("preserves the durable execution profile used by the active thread", () => {
     const executionProfile = {
-      providerId: "openai",
       modelId: "gpt-5.5",
-      harnessId: null,
       reasoningEffort: "high",
       serviceTier: "fast",
     };
@@ -16,7 +14,7 @@ describe("projectSessionThreadLinkToSummary", () => {
       projectId: "project_1",
       threadId: "thread_1",
       threadPreview: "Keep the thread-owned profile.",
-      modelProvider: "openai",
+      backendBinding: { kind: "codex" },
       executionHostId: "local",
       executionProfile,
       statusType: "idle",

@@ -175,6 +175,21 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 147,
         apply: migrate_v146_to_v147,
     },
+    MigrationStep {
+        from_revision: 147,
+        to_revision: 148,
+        apply: migrate_v147_to_v148,
+    },
+    MigrationStep {
+        from_revision: 148,
+        to_revision: 149,
+        apply: migrate_v148_to_v149,
+    },
+    MigrationStep {
+        from_revision: 149,
+        to_revision: 150,
+        apply: migrate_v149_to_v150,
+    },
 ];
 
 fn resolve_migration_path(
@@ -1849,6 +1864,80 @@ fn migrate_v146_to_v147(
     Ok(())
 }
 
+fn migrate_v147_to_v148(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v147_to_v148.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(
+           source_revision, target_revision, source_schema_fingerprint,
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object(
+           'subagent_projection_tables', 6))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v148_to_v149(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v148_to_v149.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(
+           source_revision, target_revision, source_schema_fingerprint,
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object(
+           'removed_thread_runtime_binding_columns', 2,
+           'removed_automation_runtime_binding_columns', 2))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v149_to_v150(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v149_to_v150.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(
+           source_revision, target_revision, source_schema_fingerprint,
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object(
+           'explicit_agent_backend_bindings', 2,
+           'durable_backend_session_tables', 1))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn upgrade_v5_preferences_json(
     encoded: &str,
     property_type: &impl Fn(&str) -> Option<String>,
@@ -2214,6 +2303,16 @@ mod tests {
                     .map(|completed| StorePreparationEvent::MigrationProgress { completed, total }),
             )
             .collect()
+    }
+
+    fn expected_migration_step_count(from_revision: i64) -> i64 {
+        i64::try_from(
+            MIGRATION_STEPS
+                .iter()
+                .filter(|step| step.from_revision >= from_revision)
+                .count(),
+        )
+        .expect("migration count fits i64")
     }
 
     #[test]
@@ -3353,6 +3452,34 @@ mod tests {
         .expect("frozen v136 Store");
     }
 
+    fn install_v148_fixture(home: &Path) {
+        install_v136_fixture(home);
+        let mut connection = open_writer(&home.join("nodex.db")).expect("v136 writer");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            for step in MIGRATION_STEPS
+                .iter()
+                .filter(|step| step.from_revision >= 136 && step.to_revision <= 148)
+            {
+                let source = published_format(step.from_revision)?;
+                let target = published_format(step.to_revision)?;
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        backup_name: "published-v148-fixture.db".to_owned(),
+                        source_schema_fingerprint: source.schema_fingerprint,
+                        target_schema_fingerprint: target.schema_fingerprint,
+                        completed_at_unix_ms: 1,
+                    },
+                )?;
+                validate_schema_identity(transaction, step.to_revision)?;
+            }
+            Ok(())
+        })
+        .expect("published v148 fixture");
+    }
+
     fn profile_secrets(connection: &Connection) -> (Vec<u8>, String) {
         let token = connection
             .query_row(
@@ -3515,7 +3642,11 @@ mod tests {
             .expect("migration history")
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("migration history rows");
-        assert_eq!(history.len(), 17);
+        assert_eq!(
+            history.len(),
+            usize::try_from(expected_migration_step_count(130))
+                .expect("migration count fits usize")
+        );
         assert_eq!((history[0].0, history[0].1), (130, 131));
         assert_eq!((history[1].0, history[1].1), (131, 132));
         assert_eq!((history[2].0, history[2].1), (132, 133));
@@ -3533,6 +3664,9 @@ mod tests {
         assert_eq!((history[14].0, history[14].1), (144, 145));
         assert_eq!((history[15].0, history[15].1), (145, 146));
         assert_eq!((history[16].0, history[16].1), (146, 147));
+        assert_eq!((history[17].0, history[17].1), (147, 148));
+        assert_eq!((history[18].0, history[18].1), (148, 149));
+        assert_eq!((history[19].0, history[19].1), (149, 150));
         assert_eq!(
             history[0].2,
             published_format(130)
@@ -3629,8 +3763,26 @@ mod tests {
                 .expect("v147 format")
                 .schema_fingerprint
         );
+        assert_eq!(
+            history[17].3,
+            published_format(148)
+                .expect("v148 format")
+                .schema_fingerprint
+        );
+        assert_eq!(
+            history[18].3,
+            published_format(149)
+                .expect("v149 format")
+                .schema_fingerprint
+        );
+        assert_eq!(
+            history[19].3,
+            published_format(150)
+                .expect("v150 format")
+                .schema_fingerprint
+        );
         assert!(history.iter().all(|row| row.4 == history[0].4));
-        assert!(history[0].4.starts_with("v130-to-v147-"));
+        assert!(history[0].4.starts_with("v130-to-v150-"));
         assert!(history[0].4.ends_with(".db"));
         assert!(history.iter().all(|row| row.5 > 0));
         let backup_path = directory
@@ -3662,7 +3814,7 @@ mod tests {
                     |row| { row.get::<_, i64>(0) }
                 )
                 .expect("stable history"),
-            17
+            expected_migration_step_count(130)
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -3697,7 +3849,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            17
+            1 + expected_migration_step_count(131)
         );
     }
 
@@ -3727,7 +3879,7 @@ mod tests {
                     |row| row.get::<_, i64>(0)
                 )
                 .expect("migration history"),
-            15
+            expected_migration_step_count(132)
         );
         assert_eq!(
             connection
@@ -3825,8 +3977,8 @@ mod tests {
                 },
             )
             .expect("v136 migration history");
-        assert_eq!((source_revision, target_revision), (146, 147));
-        assert!(backup_name.starts_with("v136-to-v147-"));
+        assert_eq!((source_revision, target_revision), (149, 150));
+        assert!(backup_name.starts_with("v136-to-v150-"));
         let backup_path = directory
             .path()
             .join("backups/core-migrations")
@@ -3846,7 +3998,7 @@ mod tests {
                     |row| row.get::<_, i64>(0),
                 )
                 .expect("stable history"),
-            11
+            expected_migration_step_count(136)
         );
         assert_eq!(
             fs::read_dir(directory.path().join("backups/core-migrations"))
@@ -4091,7 +4243,7 @@ mod tests {
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
         fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(backup_directory.join(".v130-to-v147.pending.db"))
+        fs::create_dir(backup_directory.join(".v130-to-v150.pending.db"))
             .expect("non-file pending candidate");
         let mut connection = open_writer(&non_file.path().join("nodex.db")).expect("writer");
         let error = prepare_profile_store(&mut connection, non_file.path())
@@ -4100,8 +4252,165 @@ mod tests {
     }
 
     #[test]
+    fn v149_removes_user_selected_runtime_bindings_without_losing_codex_settings() {
+        let directory = tempdir().expect("Profile");
+        install_v148_fixture(directory.path());
+        let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
+        connection
+            .execute(
+                "INSERT INTO codex_threads(
+                   thread_id, thread_preview, model_provider, model_id, harness_id,
+                   reasoning_effort, service_tier, status_type, status_active_flags_json,
+                   archived, created_at, updated_at, linked_at
+                 ) VALUES (
+                   'thread:v149', 'kept', 'anthropic', 'gpt-5.6-terra', 'claude-code',
+                   'high', 'fast', 'idle', '[]', 0, 1, 2, 'now'
+                 )",
+                [],
+            )
+            .expect("v148 Thread");
+        connection
+            .execute(
+                "INSERT INTO codex_scheduled_automations(
+                   automation_id, kind, status, name, prompt, rrule, model, model_provider,
+                   harness_id, reasoning_effort, service_tier, cwds_json, execution_environment,
+                   created_at, updated_at
+                 ) VALUES (
+                   'automation:v149', 'cron', 'ACTIVE', 'Daily', 'Run',
+                   'FREQ=DAILY', 'gpt-5.6-terra', 'anthropic', 'claude-code', 'high', 'fast',
+                   '[\"/repo\"]', 'worktree', 1, 2
+                 )",
+                [],
+            )
+            .expect("v148 Automation");
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v148_to_v149(
+                transaction,
+                &MigrationContext {
+                    source_revision: 148,
+                    target_revision: 149,
+                    backup_name: "v148-to-v149-test.db".to_owned(),
+                    source_schema_fingerprint: published_format(148)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(149)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )?;
+            validate_schema_identity(transaction, 149)
+        })
+        .expect("v149 migration");
+
+        for table in ["codex_threads", "codex_scheduled_automations"] {
+            let columns = connection
+                .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
+                .expect("column query")
+                .query_map([], |row| row.get::<_, String>(0))
+                .expect("column rows")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("columns");
+            assert!(!columns.iter().any(|column| column == "model_provider"));
+            assert!(!columns.iter().any(|column| column == "harness_id"));
+        }
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT thread_preview, model_id, reasoning_effort, service_tier
+                     FROM codex_threads WHERE thread_id = 'thread:v149'",
+                    [],
+                    |row| Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?
+                    )),
+                )
+                .expect("migrated Thread"),
+            (
+                "kept".to_owned(),
+                "gpt-5.6-terra".to_owned(),
+                "high".to_owned(),
+                "fast".to_owned()
+            )
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT model, reasoning_effort, service_tier
+                     FROM codex_scheduled_automations WHERE automation_id = 'automation:v149'",
+                    [],
+                    |row| Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?
+                    )),
+                )
+                .expect("migrated Automation"),
+            (
+                "gpt-5.6-terra".to_owned(),
+                "high".to_owned(),
+                "fast".to_owned()
+            )
+        );
+
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v149_to_v150(
+                transaction,
+                &MigrationContext {
+                    source_revision: 149,
+                    target_revision: 150,
+                    backup_name: "v149-to-v150-test.db".to_owned(),
+                    source_schema_fingerprint: published_format(149)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(150)?.schema_fingerprint,
+                    completed_at_unix_ms: 2,
+                },
+            )?;
+            validate_schema_identity(transaction, 150)
+        })
+        .expect("v150 migration");
+
+        for (table, id_column, id) in [
+            ("codex_threads", "thread_id", "thread:v149"),
+            (
+                "codex_scheduled_automations",
+                "automation_id",
+                "automation:v149",
+            ),
+        ] {
+            let binding = connection
+                .query_row(
+                    &format!(
+                        "SELECT agent_backend_kind, agent_backend_definition_id, \
+                                agent_backend_instance_config_id \
+                         FROM {table} WHERE {id_column} = ?1"
+                    ),
+                    [id],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                            row.get::<_, Option<String>>(2)?,
+                        ))
+                    },
+                )
+                .expect("explicit migrated backend binding");
+            assert_eq!(binding, ("codex".to_owned(), None, None));
+        }
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM thread_backend_sessions", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .expect("backend session count"),
+            0
+        );
+    }
+
+    #[test]
     fn migration_registry_is_contiguous_and_forward_only() {
-        assert_eq!(MIGRATION_STEPS.len(), 17);
+        assert_eq!(
+            i64::try_from(MIGRATION_STEPS.len()).expect("migration count fits i64"),
+            CURRENT_STORE_REVISION - BASELINE_STORE_REVISION
+        );
         for (index, step) in MIGRATION_STEPS.iter().enumerate() {
             assert!(step.from_revision < step.to_revision);
             if let Some(next) = MIGRATION_STEPS.get(index + 1) {

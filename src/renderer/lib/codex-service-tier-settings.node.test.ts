@@ -41,6 +41,7 @@ describe("codex-service-tier-settings", () => {
 
     expect(normalizeCodexServiceTier("fast")).toBe("fast");
     expect(normalizeCodexServiceTier(" flex ")).toBe("flex");
+    expect(normalizeCodexServiceTier("default")).toBeNull();
     expect(readCodexServiceTier()).toBe("flex");
   });
 

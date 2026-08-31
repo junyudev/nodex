@@ -5,6 +5,10 @@ import * as Schema from "effect/Schema";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import { APP_INITIALIZATION_STEP_CHANNEL, APP_RESTART_CHANNEL } from "../../../shared/app-startup";
+import {
+  WindowSessionBoundsSchema,
+  WindowSessionSaveLayoutInputSchema,
+} from "../../../shared/schemas/window-session";
 import { MainConfig } from "../../app/MainConfig";
 import { MainShutdown } from "../../app/MainShutdown";
 import { ApplicationInitializationRuntime } from "../../host-runtime/ApplicationInitializationRuntime";
@@ -12,7 +16,7 @@ import { safeSendToWebContents } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { ApplicationWindowShellRuntime } from "../../window-runtime/ApplicationWindowShellRuntime";
-import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import { captureWindowSessionBounds, WindowRuntime } from "../../window-runtime/WindowRuntime";
 
 export class ApplicationBootstrapIpcError extends Schema.TaggedError<ApplicationBootstrapIpcError>()(
   "ApplicationBootstrapIpcError",
@@ -65,6 +69,11 @@ export const live: Layer.Layer<
         catch: (cause) =>
           new ApplicationBootstrapIpcError({ operation: "authorize-renderer", cause }),
       });
+    const parse = <A>(operation: string, decode: () => A) =>
+      Effect.try({
+        try: decode,
+        catch: (cause) => new ApplicationBootstrapIpcError({ operation, cause }),
+      });
 
     yield* ipc.handleQuery("app:await-initialization", (event) =>
       authorize(event, "Application initialization").pipe(
@@ -110,6 +119,39 @@ export const live: Layer.Layer<
           }),
         ),
         Effect.catch(() => Effect.void),
+      ),
+    );
+    yield* ipc.handleQuery("window-sessions:bootstrap", (event) =>
+      authorize(event, "Window Session bootstrap").pipe(
+        Effect.andThen(
+          parse("bootstrap-window-session", () => ({
+            session: windows.bootstrap(event.sender.id),
+          })),
+        ),
+      ),
+    );
+    yield* ipc.handlePlainCommand("window-sessions:save-layout", (event, input: unknown) =>
+      authorize(event, "Window Session layout").pipe(
+        Effect.andThen(
+          parse("parse-window-layout", () => WindowSessionSaveLayoutInputSchema.parse(input)),
+        ),
+        Effect.flatMap((layout) =>
+          parse("save-window-layout", () => {
+            const window = windows.get(event.sender.id);
+            const bounds =
+              window && !window.isDestroyed() ? captureWindowSessionBounds(window) : undefined;
+            return { session: windows.saveLayout(event.sender.id, layout, bounds) };
+          }),
+        ),
+      ),
+    );
+    yield* ipc.handlePlainCommand("window-sessions:update-bounds", (event, input: unknown) =>
+      authorize(event, "Window Session bounds").pipe(
+        Effect.andThen(
+          parse("parse-window-bounds", () => WindowSessionBoundsSchema.strict().parse(input)),
+        ),
+        Effect.tap((bounds) => Effect.sync(() => windows.updateBounds(event.sender.id, bounds))),
+        Effect.asVoid,
       ),
     );
     yield* ipc.handleControl(

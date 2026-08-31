@@ -1,7 +1,15 @@
 #!/usr/bin/env tsx
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -121,9 +129,26 @@ function runDirectly(
   return result.status ?? 1;
 }
 
+function resolveProbeNodeExecutable(arguments_: readonly string[]): string {
+  const resourcesPathIndex = arguments_.indexOf("--resources-path");
+  const resourcesPath = resourcesPathIndex < 0 ? null : arguments_[resourcesPathIndex + 1]?.trim();
+  if (!resourcesPath) return process.execPath;
+
+  const bundledNode = path.join(path.resolve(resourcesPath), "browser-runtime", "bin", "node");
+  if (!existsSync(bundledNode)) {
+    throw new Error(`Browser runtime probe node is missing: ${bundledNode}`);
+  }
+  return bundledNode;
+}
+
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const projectRoot = path.resolve(process.cwd());
-  const invocation = buildBrowserRuntimeProbeInvocation(projectRoot, process.argv.slice(2));
+  const arguments_ = process.argv.slice(2);
+  const invocation = buildBrowserRuntimeProbeInvocation(
+    projectRoot,
+    arguments_,
+    resolveProbeNodeExecutable(arguments_),
+  );
   process.exitCode =
     process.platform === "darwin"
       ? runInDesktopLaunchContext(projectRoot, invocation)

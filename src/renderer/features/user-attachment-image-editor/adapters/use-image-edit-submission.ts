@@ -99,8 +99,8 @@ export function useImageEditSubmission(args: {
     (conversation) => conversation?.executionProfile ?? null,
   );
   const supportsImageInputs = resolveImageInputSupport({
-    catalog: control.agentProviderCatalog,
-    executionProfile: conversationExecutionProfile ?? control.executionProfile,
+    models: control.availableModels,
+    selectedModel: (conversationExecutionProfile ?? control.executionProfile)?.modelId ?? null,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 

@@ -179,7 +179,15 @@ export const queryKeys = {
     apps: () => ["mcp", "apps"] as const,
     statuses: () => ["mcp", "statuses"] as const,
     resource: (params: ProtocolMcpResourceReadParams) =>
-      ["mcp", "resource", normalizeNullable(params.threadId), params.server, params.uri] as const,
+      [
+        "mcp",
+        "resource",
+        normalizeNullable(params.threadId),
+        normalizeNullable(params.originCallId),
+        normalizeNullable(params.connectorId),
+        params.server,
+        params.uri,
+      ] as const,
   },
   codexSidebar: {
     all: () => ["codexSidebar"] as const,
@@ -205,10 +213,6 @@ export const queryKeys = {
   codexComposerChatGptConversations: {
     all: () => ["codexComposerChatGptConversations"] as const,
     list: (query: string) => ["codexComposerChatGptConversations", "list", query] as const,
-  },
-  agentProviderCatalog: {
-    all: () => ["agentProviderCatalog"] as const,
-    current: () => ["agentProviderCatalog", "current"] as const,
   },
   codexExperimentalFeatures: {
     all: () => ["codexExperimentalFeatures"] as const,

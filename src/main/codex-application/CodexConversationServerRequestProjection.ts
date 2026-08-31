@@ -29,7 +29,9 @@ export const buildCodexCanonicalTurnSummary = (
   threadId,
   turnId: turn.protocol.id,
   status: turn.protocol.status,
-  errorMessage: turn.protocol.error?.message ?? undefined,
+  ...(turn.protocol.error?.message === undefined
+    ? {}
+    : { errorMessage: turn.protocol.error.message }),
   ...(turn.sidecar.diff === null ? {} : { diff: turn.sidecar.diff }),
   itemIds: [...itemIds],
   turnStartedAtMs: turn.sidecar.turnStartedAtMs,

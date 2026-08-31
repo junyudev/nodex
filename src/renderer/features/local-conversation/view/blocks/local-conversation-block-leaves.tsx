@@ -60,6 +60,7 @@ import type { ReviewOpenIntent } from "@/features/review/model/review-view-state
 import { resolveCodexThreadDetailLevel } from "../../../../lib/codex-thread-settings";
 import { logAssistantStreamingDebugState } from "../../../../lib/assistant-streaming-debug";
 import { useCodexThreadSettings } from "../../../../lib/use-codex-thread-settings";
+import { useResolvedReducedMotion } from "../../../../lib/use-reduced-motion";
 import { cn } from "../../../../lib/utils";
 import { stripCodexRemarkDirectiveLines } from "../../../../../shared/codex-remark-directives";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
@@ -541,6 +542,7 @@ export function ThreadMultiAgentActionBlock({
 }
 
 const SUBAGENT_ACTIVITY_VISIBLE_CHIP_COUNT = 3;
+const EMPTY_SUBAGENT_ACTIVITY_ROWS: readonly ThreadSubagentActivityInlineRowModel[] = [];
 
 function resolveSubagentActivityStatusLabel(
   rows: readonly ThreadSubagentActivityInlineRowModel[],
@@ -573,9 +575,9 @@ function SubagentActivityInlineChip({
     </>
   );
   const className = cn(
-    "subagent-activity-chip mr-1.5 inline-flex h-7 max-w-48 min-w-0 items-center gap-1.5 rounded-full border border-token-border-light bg-token-main-surface-secondary pr-2 pl-1.5 align-middle first:-ml-1.5",
+    "subagent-activity-chip mr-1.5 inline-flex h-7 max-w-48 min-w-0 items-center gap-1.5 rounded-full bg-token-main-surface-secondary pr-2 pl-1.5 align-middle ring-[0.5px] ring-inset ring-token-border-light first:-ml-1.5",
     onClick &&
-      "cursor-interaction hover:border-token-border hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2 active:bg-token-bg-secondary",
+      "cursor-interaction hover:bg-token-list-hover-background hover:text-token-foreground hover:ring-token-border focus-visible:outline-2 focus-visible:outline-offset-2 active:bg-token-bg-secondary",
   );
 
   if (!onClick) {
@@ -593,6 +595,7 @@ function SubagentActivityInlineChip({
   return (
     <button
       type="button"
+      aria-label={`Open subagent ${row.displayName}`}
       className={className}
       data-animate-entrance={animateEntrance ? "" : undefined}
       onAnimationEnd={animateEntrance ? onAnimationEnd : undefined}
@@ -608,7 +611,10 @@ export function ThreadSubagentActivityInlineGroupBlock({
   onOpenThread,
 }: ThreadLeafBlockProps) {
   const rows =
-    block.type === "subagentActivityInlineGroup" ? (block.subagentActivityRows ?? []) : [];
+    block.type === "subagentActivityInlineGroup"
+      ? (block.subagentActivityRows ?? EMPTY_SUBAGENT_ACTIVITY_ROWS)
+      : EMPTY_SUBAGENT_ACTIVITY_ROWS;
+  const reducedMotion = useResolvedReducedMotion();
   const [seenConversationIds, setSeenConversationIds] = useState<ReadonlySet<string>>(
     () => new Set(rows.map((row) => row.conversationId)),
   );
@@ -621,6 +627,15 @@ export function ThreadSubagentActivityInlineGroupBlock({
     });
   }, []);
 
+  useEffect(() => {
+    if (!reducedMotion) return;
+    setSeenConversationIds((current) => {
+      const next = new Set(current);
+      for (const row of rows) next.add(row.conversationId);
+      return next.size === current.size ? current : next;
+    });
+  }, [reducedMotion, rows]);
+
   if (block.type !== "subagentActivityInlineGroup" || rows.length === 0) return null;
 
   const visibleRows = rows.slice(0, SUBAGENT_ACTIVITY_VISIBLE_CHIP_COUNT);
@@ -630,6 +645,9 @@ export function ThreadSubagentActivityInlineGroupBlock({
   return (
     <div className="min-w-0 text-size-chat relative overflow-visible py-0">
       <div
+        aria-label={`Subagents ${statusLabel}`}
+        aria-live="polite"
+        role="status"
         className="min-w-0 text-sm leading-5 text-token-conversation-body"
         data-testid="subagent-activity-inline-group"
       >
@@ -637,7 +655,7 @@ export function ThreadSubagentActivityInlineGroupBlock({
           <SubagentActivityInlineChip
             key={row.conversationId}
             row={row}
-            animateEntrance={!seenConversationIds.has(row.conversationId)}
+            animateEntrance={!reducedMotion && !seenConversationIds.has(row.conversationId)}
             onAnimationEnd={() => markAnimationComplete(row.conversationId)}
             onClick={
               onOpenThread

@@ -50,7 +50,6 @@ import {
   type BrowserPageFailure,
   type BrowserSidebarTabSnapshot,
   type BrowserSidebarViewport,
-  type BrowserSidebarWebviewHostCreated,
   type BrowserUseCursorState,
 } from "../../../shared/browser-sidebar";
 import type {
@@ -76,6 +75,8 @@ import { useTheme } from "@/lib/use-theme";
 import {
   BROWSER_SIDEBAR_VISIBLE_WEBVIEW_Z_INDEX,
   browserSidebarRendererWebviewManager,
+  type BrowserSidebarHostClaimInput,
+  type BrowserSidebarHostLease,
 } from "./browser-sidebar-webview-manager";
 import { BrowserUseCursorPortal } from "./browser-use-cursor-portal";
 import { useBrowserSidebarRendererState } from "./browser-sidebar-renderer-state-store";
@@ -159,7 +160,6 @@ import { BrowserProfileImportDialog } from "./browser-profile-import-dialog";
 import type { BrowserSettingsDestination } from "./browser-settings-pages";
 import {
   invokeBrowserSidebarCommand,
-  notifyBrowserWebviewHostCreated,
   readBrowserLocalServerPreferences,
   readBrowserLocalServerThumbnail,
   updateBrowserLocalServerPreferences,
@@ -273,6 +273,7 @@ export function BrowserSidebarPanel({
   const { resolved: themeVariant } = useTheme();
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const syncWebviewPresentationRef = useRef<(() => void) | null>(null);
+  const webviewHostLeaseRef = useRef<BrowserSidebarHostLease | null>(null);
   const isVisibleRef = useRef(isVisible);
   const themeVariantRef = useRef(themeVariant);
   isVisibleRef.current = isVisible;
@@ -373,6 +374,8 @@ export function BrowserSidebarPanel({
     (tab.kind === "browser" ? tab.config.browserUseSource?.codexSessionId : null) ??
     fallbackCodexSessionId;
   const shouldMountWebview = !isBlank || activeBrowserUseTab !== null;
+  const browserPagePersistence = exactBrowserUseTab ? "browser-use" : "durable";
+
   const handleOpenNewTab = useEffectEvent((request: BrowserSidebarOpenNewTabRequest) => {
     void onOpenNewTab?.(request);
   });
@@ -751,52 +754,36 @@ export function BrowserSidebarPanel({
     const container = webviewHostRef.current;
     if (!container) return undefined;
 
-    const mountGeneration = browserSidebarRendererWebviewManager.claimMountGeneration({
-      ...browserIdentity,
-    });
-    const hostGeneration = browserSidebarRendererWebviewManager.claimHostGeneration({
-      ...browserIdentity,
-    });
-    const rendererInstanceId = browserSidebarRendererWebviewManager.getRendererInstanceId();
     let disposed = false;
-    let started = false;
-    let lastHostStateKey: string | null = null;
     let animationFrame: number | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-    let unsubscribeBoundsSyncTrigger: (() => void) | undefined;
-    const syncCurrentPresentation = () => {
-      if (!started || disposed) return;
+    const makeClaimInput = (): BrowserSidebarHostClaimInput => {
       const visible = isVisibleRef.current;
-      const bounds = visible ? readWebviewHostBounds(container) : null;
-      const presented = Boolean(visible && bounds && bounds.width > 0 && bounds.height > 0);
-      browserSidebarRendererWebviewManager.syncWebview({
+      return {
         ...browserIdentity,
         browserStorageId,
         projectId: tab.projectId,
         hostKind: "panel",
         initialUrl: initialWebviewUrlRef.current,
-        bounds,
-        mountGeneration,
-        isVisible: visible,
-        shouldPaint: visible,
-        onHostCreated: (event: BrowserSidebarWebviewHostCreated) => {
-          void notifyBrowserWebviewHostCreated(event);
+        title: tabTitle,
+        faviconUrl: tabFaviconUrl,
+        deviceToolbarVisible: tabDeviceToolbarVisible,
+        deviceToolbarState: tabDeviceToolbarStateRef.current,
+        pagePersistence: browserPagePersistence,
+        // The route effect above owns registration and snapshot installation for a panel.
+        tabRegistration: "preestablished",
+        presentation: {
+          bounds: visible ? readWebviewHostBounds(container) : null,
+          isVisible: visible,
+          shouldPaint: visible,
         },
-      });
-      const nextHostStateKey = `${visible}:${presented}:${themeVariantRef.current}`;
-      if (lastHostStateKey === nextHostStateKey) return;
-      lastHostStateKey = nextHostStateKey;
-      void command({
-        type: "sync-host",
-        ...browserIdentity,
-        rendererInstanceId,
-        hostGeneration,
-        mountGeneration,
-        hostKind: "panel",
-        presented,
         themeVariant: themeVariantRef.current,
-        visible,
-      });
+      };
+    };
+    const lease = browserSidebarRendererWebviewManager.claimHost(makeClaimInput());
+    webviewHostLeaseRef.current = lease;
+    const syncCurrentPresentation = () => {
+      if (disposed) return;
+      lease.update(makeClaimInput());
     };
     syncWebviewPresentationRef.current = syncCurrentPresentation;
     const syncBounds = () => {
@@ -807,28 +794,13 @@ export function BrowserSidebarPanel({
       if (animationFrame !== null) return;
       animationFrame = window.requestAnimationFrame(syncBounds);
     };
-    void command({
-      type: "register-host",
-      ...browserIdentity,
-      browserStorageId,
-      rendererInstanceId,
-      hostGeneration,
-      mountGeneration,
-      hostKind: "panel",
-      pagePersistence: "durable",
-      themeVariant: themeVariantRef.current,
-    }).then((result) => {
-      if (!result.ok || disposed) return;
-      started = true;
-      syncCurrentPresentation();
-      resizeObserver =
-        typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleSyncBounds);
-      resizeObserver?.observe(container);
-      unsubscribeBoundsSyncTrigger = boundsSyncTrigger?.on("change", scheduleSyncBounds);
-      window.addEventListener("resize", scheduleSyncBounds);
-      window.addEventListener("scroll", scheduleSyncBounds, true);
-      scheduleSyncBounds();
-    });
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleSyncBounds);
+    resizeObserver?.observe(container);
+    const unsubscribeBoundsSyncTrigger = boundsSyncTrigger?.on("change", scheduleSyncBounds);
+    window.addEventListener("resize", scheduleSyncBounds);
+    window.addEventListener("scroll", scheduleSyncBounds, true);
+    scheduleSyncBounds();
 
     return () => {
       disposed = true;
@@ -842,43 +814,25 @@ export function BrowserSidebarPanel({
       resizeObserver?.disconnect();
       window.removeEventListener("resize", scheduleSyncBounds);
       window.removeEventListener("scroll", scheduleSyncBounds, true);
-      if (!started) return;
-      void command({
-        type: "sync-host",
-        ...browserIdentity,
-        rendererInstanceId,
-        hostGeneration,
-        mountGeneration,
-        hostKind: "panel",
-        presented: false,
-        themeVariant: themeVariantRef.current,
-        visible: false,
-      });
-      browserSidebarRendererWebviewManager.detachWebview(
-        {
-          ...browserIdentity,
-        },
-        mountGeneration,
-      );
+      if (webviewHostLeaseRef.current === lease) webviewHostLeaseRef.current = null;
+      lease.release();
     };
   }, [
     browserIdentity,
     browserIdentityKey,
+    browserPagePersistence,
     browserStorageId,
     boundsSyncTrigger,
     browserRuntimeAvailable,
-    command,
     downloadsOpen,
     profileImportOpen,
     registeredBrowserKey,
     shouldMountWebview,
-    snapshot.deviceToolbarVisible,
     snapshot.failure,
-    snapshot.viewport.height,
-    snapshot.viewport.presetId,
-    snapshot.viewport.width,
-    snapshot.viewport.zoomPercent,
     tab.projectId,
+    tabDeviceToolbarVisible,
+    tabFaviconUrl,
+    tabTitle,
   ]);
 
   useLayoutEffect(() => {

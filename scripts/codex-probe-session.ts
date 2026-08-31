@@ -24,6 +24,7 @@ import {
 import { CodexRpcError } from "../src/main/codex-runtime/CodexRpcError";
 import type { CodexRuntimeError } from "../src/main/codex-runtime/CodexRuntimeError";
 import * as CodexSessionTransport from "../src/main/platform/node/CodexSessionTransport";
+import { standaloneCodexAppServerArgs } from "../src/shared/codex-app-server-launch";
 
 export interface CodexProbeSessionOptions {
   readonly additionalSearchPaths?: readonly string[];
@@ -56,6 +57,7 @@ export interface CodexProbeClient {
 }
 
 export interface CodexProbeSessionLease extends CodexProbeClient {
+  readonly pid: number;
   readonly stop: () => Promise<void>;
 }
 
@@ -87,6 +89,7 @@ class ProbeClientBridge extends EventEmitter implements CodexProbeClient {
   readonly #callbacks: ScopedCallbackRuntime["Service"];
   readonly #requestTimeout: Duration.Input;
   readonly #session: CodexAppServerSession["Service"];
+  readonly pid: number;
 
   constructor(
     session: CodexAppServerSession["Service"],
@@ -97,6 +100,7 @@ class ProbeClientBridge extends EventEmitter implements CodexProbeClient {
     this.#session = session;
     this.#callbacks = callbacks;
     this.#requestTimeout = requestTimeout;
+    this.pid = session.pid;
   }
 
   getInitializeResponse(): V1InitializeResponse {
@@ -142,7 +146,7 @@ const acquireProbeClient = (
         hostId: "probe",
         generation: 1,
         command: options.binaryPath,
-        args: [...(options.args ?? ["app-server", "--listen", "stdio://"])],
+        args: [...(options.args ?? standaloneCodexAppServerArgs())],
         env: withSearchPath(options.env, options.additionalSearchPaths ?? []),
         forceTermination: "2 seconds",
         initializeParams: {
@@ -212,6 +216,7 @@ export const openCodexProbeSession = (
     );
     let closed = false;
     return Object.assign(bridge, {
+      pid: bridge.pid,
       stop: async (): Promise<void> => {
         if (closed) return;
         closed = true;

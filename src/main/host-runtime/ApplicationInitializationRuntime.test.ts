@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { assert, it } from "@effect/vitest";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
+import { layer as mainShutdownLayer } from "../app/MainShutdown";
 import { ApplicationInitializationRuntime, live } from "./ApplicationInitializationRuntime";
 
 it.effect("projects Core migration progress and never regresses after completion", () =>
@@ -20,7 +21,7 @@ it.effect("projects Core migration progress and never regresses after completion
       ],
       markRendererInitialized: () => true,
     } as unknown as WindowRuntimeService;
-    const context = yield* Layer.build(live(windows));
+    const context = yield* Layer.build(live(windows).pipe(Layer.provide(mainShutdownLayer)));
     const runtime = Context.get(context, ApplicationInitializationRuntime);
     yield* runtime.observeCoreStartup({ kind: "migration_started", fromVersion: 1, toVersion: 2 });
     yield* runtime.observeCoreStartup({ kind: "migration_progress", completed: 3, total: 5 });
@@ -54,7 +55,7 @@ it.effect("publishes a terminal failure without opening the initialization gate"
       ],
       markRendererInitialized: () => true,
     } as unknown as WindowRuntimeService;
-    const context = yield* Layer.build(live(windows));
+    const context = yield* Layer.build(live(windows).pipe(Layer.provide(mainShutdownLayer)));
     const runtime = Context.get(context, ApplicationInitializationRuntime);
 
     yield* runtime.markFailed;
@@ -75,7 +76,7 @@ it.effect("admits each renderer readiness report only once", () =>
         return true;
       },
     } as unknown as WindowRuntimeService;
-    const context = yield* Layer.build(live(windows));
+    const context = yield* Layer.build(live(windows).pipe(Layer.provide(mainShutdownLayer)));
     const runtime = Context.get(context, ApplicationInitializationRuntime);
     const report = { durationMs: 12, outcome: "ready" as const };
 

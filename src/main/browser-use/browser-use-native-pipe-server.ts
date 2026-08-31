@@ -5,6 +5,7 @@ import * as Scope from "effect/Scope";
 import fs from "node:fs/promises";
 import net, { type Socket } from "node:net";
 import path from "node:path";
+import { readActionableErrorMessage } from "../actionable-error-message";
 import {
   makeBrowserUseRpcError,
   makeBrowserUseRpcResult,
@@ -69,7 +70,10 @@ interface BrowserUseNativePipeConnection {
 }
 
 function boundedErrorMessage(error: unknown): string {
-  return (error instanceof Error ? error.message : String(error)).slice(0, 2_048);
+  return readActionableErrorMessage(error, {
+    fallback: "Browser Use request failed",
+    maximumLength: 2_048,
+  });
 }
 
 function requestLabel(request: BrowserUseRpcRequest): string {

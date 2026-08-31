@@ -11,7 +11,7 @@ import {
   make as makeInternalThreads,
 } from "./CodexInternalThreadRegistry";
 import { make } from "./CodexNotificationAdmission";
-import { CodexSubagentCatalog } from "./CodexSubagentCatalog";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -66,14 +66,30 @@ const makeHarness = (trace: string[]) =>
     const internalThreads = yield* makeInternalThreads;
     const knownSubagents = new Set<string>();
     const fullFidelitySubagents = new Set<string>();
-    const subagents = CodexSubagentCatalog.of({
-      hydrateBackground: () => Effect.succeed([]),
-      hydratePanel: () => Effect.succeed([]),
-      open: (threadId) =>
+    const subagents = CodexSubagentDirectory.of({
+      readOverview: () => Effect.die("unused"),
+      readKnownOverview: () => Effect.die("unused"),
+      hydrateSelected: ({ rootThreadId, threadId }) =>
         Effect.sync(() => {
           fullFidelitySubagents.add(threadId);
-          return true;
+          return {
+            rootThreadId,
+            threadId,
+            revision: 1,
+            fidelity: "attachedSparse" as const,
+            checkpoint: "1",
+            canInteract: true,
+            outcome: "ready" as const,
+            errorMessage: null,
+          };
         }),
+      observeNotification: () => Effect.void,
+      reconcileAfterReconnect: () => Effect.void,
+      beginLifecycle: () => Effect.die("unused"),
+      reconcileLifecycle: () => Effect.die("unused"),
+      settleInterruptedSubtree: () => Effect.die("unused"),
+      shouldDeferLifecycleNotification: () => Effect.succeed(false),
+      releaseLifecycleQuarantine: () => {},
       observe: (threadId) => {
         trace.push(`subagent:observe:${threadId}`);
         knownSubagents.add(threadId);
@@ -117,7 +133,7 @@ const makeHarness = (trace: string[]) =>
     } as unknown as ConversationEntityMap["Service"]);
     const admission = yield* make.pipe(
       Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-      Effect.provideService(CodexSubagentCatalog, subagents),
+      Effect.provideService(CodexSubagentDirectory, subagents),
       Effect.provideService(CodexTurnAuthority, authority),
       Effect.provideService(ConversationEntityMap, conversations),
     );
@@ -209,7 +225,7 @@ it.effect("inherits parent authority and drops unopened child deltas", () =>
         "authority:inherit:child:child-turn:parent-turn",
       ]);
 
-      yield* subagents.open("child");
+      yield* subagents.hydrateSelected({ rootThreadId: "parent", threadId: "child" });
       assert.strictEqual(
         (yield* admission.decide({ notification: delta("child"), threadId: "child" }))._tag,
         "Admit",

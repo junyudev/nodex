@@ -17,7 +17,7 @@ function thread(cwd: string): ProjectSessionThreadLink {
     threadId: "thread-1",
     threadName: "Thread",
     threadPreview: "Thread",
-    modelProvider: "openai",
+    backendBinding: { kind: "codex" },
     executionHostId: "local",
     cwd,
     statusType: "notLoaded",

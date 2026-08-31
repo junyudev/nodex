@@ -14,17 +14,49 @@ import {
   live as codexPermissionsLive,
 } from "./CodexPermissions";
 
-const makeHarness = (options: { readonly rejectConfigWrite?: boolean } = {}) => {
+const makeHarness = (
+  options: {
+    readonly autoReviewAvailable?: boolean;
+    readonly explicitPermissionChoice?: boolean;
+    readonly failFirstConfigRead?: boolean;
+    readonly rejectConfigWrite?: boolean;
+  } = {},
+) => {
   const config: Record<string, unknown> = {
     sandbox_mode: "workspace-write",
     approval_policy: "on-request",
     approvals_reviewer: "user",
+    ...(options.autoReviewAvailable === false ? { "features.guardian_approval": false } : {}),
   };
+  const origins = options.explicitPermissionChoice
+    ? {
+        approval_policy: {
+          name: { type: "user", file: "/profile/agent/config.toml", profile: null },
+          version: "test",
+        },
+        sandbox_mode: {
+          name: { type: "user", file: "/profile/agent/config.toml", profile: null },
+          version: "test",
+        },
+      }
+    : {};
   const selections = new Map<string | null, CodexPermissionMode>();
   const requests: string[] = [];
+  let configReadCount = 0;
   const requestLocal = ((method: string, params: unknown) => {
     requests.push(method);
-    if (method === "config/read") return Effect.succeed({ config, origins: {} });
+    if (method === "config/read") {
+      configReadCount += 1;
+      if (options.failFirstConfigRead === true && configReadCount === 1) {
+        return Effect.fail(
+          new CodexPermissionsError({
+            operation: "test-config-read",
+            cause: new Error("transient read failure"),
+          }),
+        );
+      }
+      return Effect.succeed({ config, origins });
+    }
     if (method === "configRequirements/read") return Effect.succeed({ requirements: null });
     if (method === "config/batchWrite") {
       if (options.rejectConfigWrite === true) {
@@ -56,7 +88,7 @@ const makeHarness = (options: { readonly rejectConfigWrite?: boolean } = {}) => 
     notifyLocal: unsupported,
     connection: () => unsupported(),
     connectionChanges: () => Stream.empty,
-    awaitReady: () => Effect.void,
+    awaitReady: () => Effect.sync(() => requests.push("awaitReady")),
     reconcileHost: unsupported,
     removeHost: unsupported,
     restartHost: unsupported,
@@ -138,7 +170,9 @@ it.effect("owns permission config, persisted selection, cache, and verification"
     const permissions = Context.get(context, CodexPermissions);
 
     const initial = yield* permissions.snapshot("project:one");
-    assert.strictEqual(initial.mode, "auto");
+    assert.strictEqual(initial.mode, "guardian-approvals");
+    assert.strictEqual(initial.approvalsReviewer, "auto_review");
+    assert.strictEqual(harness.requests[0], "awaitReady");
     assert.deepEqual(
       initial.sandbox?.type === "workspaceWrite" ? initial.sandbox.writableRoots : [],
       ["/workspace/project"],
@@ -183,8 +217,105 @@ it.effect("does not persist a mode when the app-server config write fails", () =
     const permissions = Context.get(context, CodexPermissions);
     const state = yield* permissions.setMode("project:one", "full-access");
 
-    assert.strictEqual(state.mode, "auto");
+    assert.strictEqual(state.mode, "guardian-approvals");
     assert.isFalse(harness.selections.has("project:one"));
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("uses the safe fallback when the fresh Profile default is unavailable", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({ autoReviewAvailable: false });
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(CodexGateway, harness.gateway),
+            Layer.succeed(CoreModules, harness.core),
+          ),
+        ),
+      ),
+      scope,
+    );
+
+    const state = yield* Context.get(context, CodexPermissions).snapshot("project:one");
+    assert.strictEqual(state.mode, "auto");
+    assert.isFalse(state.availableModes.includes("guardian-approvals"));
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("keeps a persisted built-in selection authoritative over the fresh Profile default", () =>
+  Effect.gen(function* () {
+    for (const mode of ["auto", "full-access"] as const) {
+      const harness = makeHarness();
+      harness.selections.set("project:one", mode);
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+          Layer.provide(
+            Layer.merge(
+              Layer.succeed(CodexGateway, harness.gateway),
+              Layer.succeed(CoreModules, harness.core),
+            ),
+          ),
+        ),
+        scope,
+      );
+
+      const state = yield* Context.get(context, CodexPermissions).snapshot("project:one");
+      assert.strictEqual(state.mode, mode);
+      assert.strictEqual(state.effectivePreset, mode);
+      if (mode === "auto") assert.strictEqual(state.approvalsReviewer, "user");
+      if (mode === "full-access") assert.strictEqual(state.sandbox?.type, "dangerFullAccess");
+      yield* Scope.close(scope, Exit.void);
+    }
+  }),
+);
+
+it.effect("preserves an explicit config choice when no Nodex selection exists", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({ explicitPermissionChoice: true });
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(CodexGateway, harness.gateway),
+            Layer.succeed(CoreModules, harness.core),
+          ),
+        ),
+      ),
+      scope,
+    );
+
+    const state = yield* Context.get(context, CodexPermissions).snapshot("project:one");
+    assert.strictEqual(state.mode, "custom");
+    assert.strictEqual(state.approvalsReviewer, "user");
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("does not cache a transient fallback as permission authority", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness({ failFirstConfigRead: true });
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(CodexGateway, harness.gateway),
+            Layer.succeed(CoreModules, harness.core),
+          ),
+        ),
+      ),
+      scope,
+    );
+    const permissions = Context.get(context, CodexPermissions);
+
+    assert.strictEqual((yield* permissions.snapshot("project:one")).mode, "auto");
+    assert.strictEqual((yield* permissions.snapshot("project:one")).mode, "guardian-approvals");
     yield* Scope.close(scope, Exit.void);
   }),
 );

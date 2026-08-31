@@ -926,7 +926,7 @@ describe("buildComposerShellModel", () => {
     expect(row?.recencyAtMs).toBe(190);
   });
 
-  test("treats not-loaded source metadata as completed instead of pending", () => {
+  test("keeps not-loaded source metadata unresolved instead of claiming completion", () => {
     const model = buildComposerShellModel({
       conversation: buildConversationSnapshot(),
       childMemberships: [
@@ -942,6 +942,6 @@ describe("buildComposerShellModel", () => {
       knownConversationsById: {},
     });
 
-    expect(model.backgroundAgentRows[0]?.status).toBe("done");
+    expect(model.backgroundAgentRows[0]?.status).toBe("waiting");
   });
 });

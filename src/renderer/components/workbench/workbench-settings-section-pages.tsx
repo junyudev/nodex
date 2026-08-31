@@ -1,6 +1,8 @@
 import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppUpdateSettingsControl } from "./app-update-settings-control";
+import { AcpAgentSettingsControl } from "./acp-agent-settings-control";
 import { AgentImportSettingsPage } from "./agent-import-settings-page";
+import { ArchivedChatsSettingsPage } from "./archived-chats-settings-page";
 import { ComputerUseSettingsPage } from "./computer-use-settings-page";
 import { KeyboardShortcutsSettingsPage } from "./keyboard-shortcuts-settings-page";
 import { LocalEnvironmentsSettingsPage } from "./local-environments-settings-page";
@@ -423,6 +425,10 @@ export function AgentSettingsPage({ activeProjectId, open }: SettingsSectionPage
         </SettingRow>
       </SectionBlock>
 
+      <SectionBlock title="Agent backends">
+        <AcpAgentSettingsControl open={open} />
+      </SectionBlock>
+
       {error ? <div className="text-sm text-[var(--red-text)]">{error}</div> : null}
     </SettingsPageSurface>
   );
@@ -690,5 +696,6 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
   worktrees: WorktreesSettingsPage,
   "local-environments": LocalEnvironmentsSettingsSectionPage,
   hooks: WorkbenchHooksSettingsPage,
+  "data-controls": ArchivedChatsSettingsPage,
   backups: BackupsSettingsPage,
 };

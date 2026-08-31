@@ -8,7 +8,7 @@ import {
   semanticActivityTextClassName,
 } from "@/lib/semantic-activity-status";
 import { CodexShimmerText } from "../codex-shimmer-text";
-import { ThreadCommandShellBlock } from "./thread-command-shell-block";
+import { ThreadExecShellContainer } from "./thread-command-shell-block";
 import { ThreadActivityDisclosure } from "./tool-primitives";
 
 function WorktreeInitActivityIcon({
@@ -73,13 +73,12 @@ export function WorktreeInitActivityList({
         ) : null;
         const body =
           activity.outputText.length > 0 ? (
-            <ThreadCommandShellBlock
+            <ThreadExecShellContainer
               command=""
               output={activity.outputText}
               isInProgress={activity.status === "running"}
-              embeddedAppearance="plain"
               footer={footer}
-              variant="embedded"
+              surface="plain"
             />
           ) : (
             footer

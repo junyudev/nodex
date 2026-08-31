@@ -1,12 +1,22 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  canonicalBundledAgentRuntimeMetadataJson,
   parseBundledAgentRuntimeMetadata,
   type BundledAgentRuntimeMetadata,
 } from "../src/shared/codex-runtime-metadata";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
+import {
+  readCodexAppServerReleaseLock,
+  type CodexAppServerReleaseLock,
+} from "./agent-runtime-release-lock";
+
+const canonicalRuntimeLockPath = fileURLToPath(
+  new URL("../resources/agent-runtime/codex-app-server.lock.json", import.meta.url),
+);
 
 function readOption(argv: string[], option: string): string | null {
   const index = argv.indexOf(option);
@@ -20,7 +30,7 @@ function readOption(argv: string[], option: string): string | null {
 
 function readMacosTeamIdentifier(artifactPath: string): string {
   const verification = spawnSync(
-    "codesign",
+    "/usr/bin/codesign",
     ["--verify", "--strict", "--verbose=2", artifactPath],
     {
       encoding: "utf8",
@@ -35,7 +45,7 @@ function readMacosTeamIdentifier(artifactPath: string): string {
     );
   }
 
-  const result = spawnSync("codesign", ["-dv", "--verbose=4", artifactPath], {
+  const result = spawnSync("/usr/bin/codesign", ["-dv", "--verbose=4", artifactPath], {
     encoding: "utf8",
   });
   if (result.error) {
@@ -55,7 +65,7 @@ function readMacosTeamIdentifier(artifactPath: string): string {
 }
 
 function readMacosArchitectures(artifactPath: string): string[] {
-  const result = spawnSync("lipo", ["-archs", artifactPath], { encoding: "utf8" });
+  const result = spawnSync("/usr/bin/lipo", ["-archs", artifactPath], { encoding: "utf8" });
   if (result.error) {
     throw new Error(`Could not run lipo for ${artifactPath}: ${result.error.message}`);
   }
@@ -82,6 +92,39 @@ function readRuntimeMetadata(metadataPath: string): BundledAgentRuntimeMetadata 
     throw new Error(`Invalid bundled Agent runtime metadata at ${metadataPath}`);
   }
   return metadata;
+}
+
+export function assertCodexRuntimeMatchesReleaseLock(
+  metadata: BundledAgentRuntimeMetadata,
+  lock: CodexAppServerReleaseLock,
+): void {
+  if (
+    metadata.targetPlatform !== "darwin" ||
+    (metadata.targetArch !== "arm64" && metadata.targetArch !== "x64")
+  ) {
+    throw new Error("Bundled Codex runtime target is unsupported by the release lock");
+  }
+  const build = lock.builds[`darwin-${metadata.targetArch}`];
+  const metadataSha256 = createHash("sha256")
+    .update(canonicalBundledAgentRuntimeMetadataJson(metadata))
+    .digest("hex");
+  const entrypoint = metadata.artifacts.find(({ path }) => path === metadata.entrypoint);
+  const expectedArtifactPaths = [
+    ...lock.requiredArtifacts,
+    "third-party/codex/LICENSE",
+    "third-party/codex/NOTICE",
+  ];
+  const artifactPaths = metadata.artifacts.map(({ path }) => path);
+  if (
+    metadataSha256 !== build.runtimeMetadataSha256 ||
+    entrypoint?.sha256 !== build.entrypointSha256 ||
+    artifactPaths.length !== expectedArtifactPaths.length ||
+    expectedArtifactPaths.some((path) => !artifactPaths.includes(path))
+  ) {
+    throw new Error(
+      `Bundled Codex runtime does not match the canonical ${lock.upstream.tag} release lock`,
+    );
+  }
 }
 
 export function verifyCodexRuntime(input: {
@@ -111,21 +154,23 @@ export function verifyCodexRuntime(input: {
     throw new Error(`Bundled Browser runtime is unavailable: ${runtime.browserRuntime.message}`);
   }
 
+  if (!runtime.metadataPath) {
+    throw new Error("Bundled agent runtime metadata path is unavailable");
+  }
+  const metadata = readRuntimeMetadata(runtime.metadataPath);
+  const lock = readCodexAppServerReleaseLock(canonicalRuntimeLockPath);
+  assertCodexRuntimeMatchesReleaseLock(metadata, lock);
+
   if (input.verifyMacosSignatures) {
-    if (!runtime.metadataPath) {
-      throw new Error("Bundled agent runtime metadata path is unavailable");
-    }
-    const metadata = readRuntimeMetadata(runtime.metadataPath);
-    const appPath = resolve(input.resourcesPath, "..", "..");
-    const appTeamIdentifier = readMacosTeamIdentifier(appPath);
     const runtimeRoot = input.resourcesPath;
     for (const artifact of metadata.artifacts) {
       if (!artifact.executable) continue;
       const artifactPath = join(runtimeRoot, ...artifact.path.split("/"));
       const artifactTeamIdentifier = readMacosTeamIdentifier(artifactPath);
-      if (artifactTeamIdentifier !== appTeamIdentifier) {
+      if (artifactTeamIdentifier !== lock.upstream.signingTeamId) {
         throw new Error(
-          `Expected ${artifactPath} to use the enclosing app team ${appTeamIdentifier}; found ${artifactTeamIdentifier}`,
+          `Expected ${artifactPath} to retain official OpenAI team ${lock.upstream.signingTeamId}; ` +
+            `found ${artifactTeamIdentifier}`,
         );
       }
     }
@@ -163,7 +208,7 @@ export function verifyCodexRuntime(input: {
     }
   }
 
-  process.stdout.write(`Verified Open Interpreter runtime ${runtime.version}\n`);
+  process.stdout.write(`Verified Codex app-server runtime ${runtime.version}\n`);
 }
 
 function main(): void {

@@ -75,7 +75,7 @@ export function parseSparkleRuntimeConfig(value: unknown): SparkleRuntimeConfig 
     throw new Error("Packaged Sparkle feed does not match its architecture and channel.");
   }
   if (
-    value.minimumMacOS !== "12.0" ||
+    value.minimumMacOS !== "15.0" ||
     value.sparkleVersion !== SPARKLE_VERSION ||
     value.sparkleArchiveSha256 !== SPARKLE_ARCHIVE_SHA256 ||
     value.publicKey !== SPARKLE_PUBLIC_KEY ||

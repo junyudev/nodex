@@ -24,9 +24,13 @@ import {
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { allocateCodexPendingWorktreeRequest } from "../codex/codex-pending-worktree-request";
+import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { CodexAttachments } from "./CodexAttachments";
+import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
@@ -106,6 +110,8 @@ export const make: Effect.Effect<
   | CodexTurnCommands
   | CodexTurnPreparation
   | CoreModules
+  | BrowserUseRuntime
+  | DesktopToolRuntime
   | ProjectRuntimeLifecycleRuntime
   | Scope.Scope
 > = Effect.gen(function* () {
@@ -113,6 +119,8 @@ export const make: Effect.Effect<
   const attachments = yield* CodexAttachments;
   const capabilities = yield* CodexAppServerCapabilities;
   const gateway = yield* CodexGateway;
+  const browserUse = yield* BrowserUseRuntime;
+  const desktopTools = yield* DesktopToolRuntime;
   const projectLifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const pendingWorktrees = yield* CodexPendingWorktreeRuntime;
   const directory = yield* CodexThreadDirectory;
@@ -210,7 +218,7 @@ export const make: Effect.Effect<
           cwd: sourceWorkspaceRoot,
           fileAttachments: [],
           addedFiles: [],
-          agentMode: "auto",
+          agentMode: input.permissionMode ?? "auto",
           shouldSendPermissionOverrides: true,
           model: null,
           executionProfile: input.executionProfile ?? null,
@@ -223,6 +231,11 @@ export const make: Effect.Effect<
               ? input.threadSource
               : "user",
           workspaceKind: "project",
+          projectAssignment: {
+            projectKind: "local",
+            projectId: input.projectId,
+            pendingCoreUpdate: false,
+          },
         },
       });
       if (!allocated.result.clientThreadId) {
@@ -272,20 +285,28 @@ export const make: Effect.Effect<
       );
     }
     const executionProfile = input.executionProfile ?? null;
+    const model = executionProfile ? executionProfile.modelId : input.model;
+    const serviceTier = executionProfile ? executionProfile.serviceTier : input.serviceTier;
+    const reasoningEffort = executionProfile
+      ? executionProfile.reasoningEffort
+      : input.reasoningEffort;
+    const desktopToolConfig = yield* desktopTools.threadConfig.pipe(
+      Effect.mapError((cause) => fail("start", input.sessionId, cause)),
+    );
     const request: ThreadStartParams = {
       cwd,
       runtimeWorkspaceRoots: workspaceRoots,
-      model: executionProfile?.modelId ?? input.model ?? null,
-      modelProvider: executionProfile?.providerId ?? null,
-      serviceTier: executionProfile?.serviceTier ?? input.serviceTier ?? null,
+      model: model ?? null,
+      serviceTier: serviceTier ?? null,
       baseInstructions: input.baseInstructions ?? null,
       developerInstructions: input.additionalDeveloperInstructions ?? null,
       threadSource: input.threadSource ?? "user",
       config: {
-        ...(executionProfile?.harnessId ? { harness: executionProfile.harnessId } : {}),
-        ...((executionProfile?.reasoningEffort ?? input.reasoningEffort)
+        ...(desktopToolConfig ?? {}),
+        ...buildCodexThreadConfigOverrides(),
+        ...(reasoningEffort
           ? {
-              model_reasoning_effort: executionProfile?.reasoningEffort ?? input.reasoningEffort,
+              model_reasoning_effort: reasoningEffort,
             }
           : {}),
       },
@@ -299,6 +320,10 @@ export const make: Effect.Effect<
         codexGatewayGenerationFence(capability),
       )) as unknown as ThreadStartResponse;
       startedThreadId = response.thread.id;
+      yield* Effect.try({
+        try: () => requireExactThreadStartProfile(response, executionProfile),
+        catch: (cause) => fail("start", input.sessionId, cause),
+      });
       const entry = yield* directory
         .acceptSessionStart({
           response,
@@ -307,6 +332,7 @@ export const make: Effect.Effect<
           executionProfile,
           runtimeWorkspaceRoots: workspaceRoots,
           fallbackCwd: cwd,
+          managedWorktreePath: null,
           projectlessOutputDirectory: projectless?.outputDirectory ?? null,
           projectlessWorkspaceBrowserRoot: projectless?.workspaceRoot ?? null,
         })
@@ -318,6 +344,26 @@ export const make: Effect.Effect<
           input.sessionId,
           new Error("Thread has no canonical snapshot"),
         );
+      }
+      if (input.browserUsePresentationOrigin) {
+        yield* browserUse
+          .promoteRoute({
+            ...input.browserUsePresentationOrigin,
+            codexSessionId: entry.summary.threadId,
+            projectId: input.projectId,
+          })
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Started Thread after its Browser presentation expired").pipe(
+                Effect.annotateLogs({
+                  browserViewScopeId: input.browserUsePresentationOrigin?.browserViewScopeId,
+                  cause,
+                  sessionId: input.sessionId,
+                  threadId: entry.summary.threadId,
+                }),
+              ),
+            ),
+          );
       }
       const outcome = {
         projectId: input.projectId,
@@ -340,10 +386,10 @@ export const make: Effect.Effect<
             prompt: input.prompt,
             overrides: {
               promptInput: input.promptInput,
-              model: input.model,
-              serviceTier: input.serviceTier,
+              model,
+              serviceTier,
               permissionMode: input.permissionMode,
-              reasoningEffort: input.reasoningEffort,
+              reasoningEffort,
               collaborationMode: input.collaborationMode,
             },
             rendererOwnsState: true,
@@ -370,10 +416,10 @@ export const make: Effect.Effect<
       }
       const turn = yield* turns.start(entry.summary.threadId, input.prompt, {
         promptInput: input.promptInput,
-        model: input.model,
-        serviceTier: input.serviceTier,
+        model,
+        serviceTier,
         permissionMode: input.permissionMode,
-        reasoningEffort: input.reasoningEffort,
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         collaborationMode: input.collaborationMode,
       });
       if (!turn) {

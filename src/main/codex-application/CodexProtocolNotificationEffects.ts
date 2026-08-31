@@ -58,7 +58,7 @@ import {
   CodexThreadDurableProjection,
   isCodexThreadDurableProjectionNotification,
 } from "./CodexThreadDurableProjection";
-import { CodexThreadDirectory } from "./CodexThreadDirectory";
+import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -136,7 +136,7 @@ export const make: Effect.Effect<
   | CodexQueuedFollowUps
   | CodexRendererConversationCoordinator
   | CodexThreadDurableProjection
-  | CodexThreadDirectory
+  | CodexSubagentDirectory
   | CodexThreadGoalRuntime
   | CodexUserInputAutoResolution
   | ConversationEntityMap
@@ -154,7 +154,7 @@ export const make: Effect.Effect<
   const queued = yield* CodexQueuedFollowUps;
   const renderer = yield* CodexRendererConversationCoordinator;
   const durableThreads = yield* CodexThreadDurableProjection;
-  const threadDirectory = yield* CodexThreadDirectory;
+  const subagents = yield* CodexSubagentDirectory;
   const threadGoals = yield* CodexThreadGoalRuntime;
   const autoResolution = yield* CodexUserInputAutoResolution;
   const conversations = yield* ConversationEntityMap;
@@ -230,11 +230,11 @@ export const make: Effect.Effect<
       const aggregate = conversations.current(threadId);
       const canonical = aggregate?.readCanonicalState();
       const snapshot = aggregate?.readSnapshot();
-      const descendants = yield* threadDirectory
-        .descendants({ rootThreadId: threadId, fidelity: "metadata" })
+      const descendantOverview = yield* subagents
+        .readKnownOverview({ rootThreadId: threadId })
         .pipe(
           Effect.catchCause((cause) =>
-            logFailure("resolve-notification-descendants", threadId, cause).pipe(Effect.as([])),
+            logFailure("resolve-notification-descendants", threadId, cause).pipe(Effect.as(null)),
           ),
         );
       const message = lastAgentMessage(threadId, turn);
@@ -262,9 +262,10 @@ export const make: Effect.Effect<
                   (item) => item.type === "collabAgentToolCall" && item.status === "inProgress",
                 ),
               ) ?? false,
-            hasActiveDescendant: descendants.some(
-              (descendant) => descendant.summary.statusType === "active",
-            ),
+            hasActiveDescendant:
+              descendantOverview === null ||
+              descendantOverview.completeness === "incomplete" ||
+              descendantOverview.active.knownCount > 0,
           }),
         },
       });
@@ -353,26 +354,18 @@ export const make: Effect.Effect<
           });
           continue;
         }
-        if (ownerRouted) continue;
         if (effect.type === "hydrateCollabThreads") {
-          yield* Effect.forEach(
-            effect.receiverThreadIds,
-            (receiverThreadId) =>
-              threadDirectory
-                .resolve({ threadId: receiverThreadId, fidelity: "metadata" })
-                .pipe(
-                  Effect.catchCause((cause) =>
-                    logFailure("hydrate-collaboration-thread", receiverThreadId, cause),
-                  ),
-                ),
-            { concurrency: 2, discard: true },
-          );
+          // Relationship projection owns bounded, keyed metadata repair. Publishing the durable
+          // invalidation keeps the notification lane free of app-server reads. This consequence
+          // is application-wide even when the renderer owner receives the protocol notification;
+          // otherwise owner attachment timing makes the child catalog nondeterministic.
           events.publish({
             kind: "conversationRelationshipsInvalidated",
             value: { parentThreadIds: [threadId] },
           });
           continue;
         }
+        if (ownerRouted) continue;
         if (effect.type === "continueGoalIfIdle") {
           yield* activeGoalContinuation.request(threadId);
           continue;
@@ -388,6 +381,7 @@ export const make: Effect.Effect<
 
   const apply = Effect.fn("CodexProtocolNotificationEffects.apply")(function* (
     input: CodexProtocolNotificationInput,
+    deferRootLifecycleNotification: boolean,
   ) {
     // Direct callers must retain the same no-history invariant as the ingress lane.
     const notification = sanitizeCodexLiveLifecycleNotification(
@@ -514,6 +508,16 @@ export const make: Effect.Effect<
         },
       });
     }
+    const durableNotification = isCodexThreadDurableProjectionNotification(notification);
+    if (!durableNotification) {
+      yield* subagents.observeNotification({
+        hostId: input.hostId,
+        generation: input.generation,
+        notification,
+        occurrenceToken: input.occurrenceToken,
+        observedAtMs,
+      });
+    }
     if (notification.method === "turn/started") {
       yield* browserUse.turnStarted({ sessionId: threadId, turnId: notification.params.turn.id });
       yield* conversationProjection.reconcileThreadStatus(threadId);
@@ -535,7 +539,7 @@ export const make: Effect.Effect<
       }
       yield* conversationProjection.reconcileThreadStatus(threadId);
     }
-    if (isCodexThreadDurableProjectionNotification(notification)) {
+    if (durableNotification) {
       const durable = durableThreads.observe({
         hostId: input.hostId,
         generation: input.generation,
@@ -545,6 +549,23 @@ export const make: Effect.Effect<
       });
       if (notification.method !== "thread/archived" && notification.method !== "thread/deleted") {
         yield* durable;
+        yield* subagents.observeNotification({
+          hostId: input.hostId,
+          generation: input.generation,
+          notification,
+          occurrenceToken: input.occurrenceToken,
+          observedAtMs,
+        });
+        return;
+      }
+      if (deferRootLifecycleNotification) {
+        yield* subagents.observeNotification({
+          hostId: input.hostId,
+          generation: input.generation,
+          notification,
+          occurrenceToken: input.occurrenceToken,
+          observedAtMs,
+        });
         return;
       }
       const reason = new Error(
@@ -552,30 +573,55 @@ export const make: Effect.Effect<
       );
       terminalInputBuffers.clearConversation(threadId);
       yield* durable.pipe(Effect.ensuring(lifecycle.close(threadId, reason)));
+      yield* subagents.observeNotification({
+        hostId: input.hostId,
+        generation: input.generation,
+        notification,
+        occurrenceToken: input.occurrenceToken,
+        observedAtMs,
+      });
     }
   });
 
   return CodexProtocolNotificationEffects.of({
     apply: (input) =>
-      apply(input).pipe(
-        Effect.catchCause((cause) =>
-          isInterruptedOnly(cause)
-            ? Effect.interrupt
-            : Effect.fail(
-                new CodexNotificationConsequenceError({
-                  method: input.notification.method,
-                  threadId: codexProtocolNotificationThreadId(input.notification) ?? "unknown",
-                  cause,
-                }),
-              ),
-        ),
-        Effect.as(
-          input.notification.method === "thread/archived" ||
-            input.notification.method === "thread/deleted"
+      Effect.gen(function* () {
+        const method = input.notification.method;
+        const threadId = codexProtocolNotificationThreadId(input.notification);
+        const deferRootLifecycleNotification =
+          threadId !== null && (method === "thread/archived" || method === "thread/deleted")
+            ? yield* subagents.shouldDeferLifecycleNotification(threadId, method).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new CodexNotificationConsequenceError({
+                      method,
+                      threadId,
+                      cause: Cause.fail(cause),
+                    }),
+                ),
+              )
+            : false;
+        const disposition: CodexConversationDisposition =
+          !deferRootLifecycleNotification &&
+          (input.notification.method === "thread/archived" ||
+            input.notification.method === "thread/deleted")
             ? "retire"
-            : "retain",
-        ),
-      ),
+            : "retain";
+        return yield* apply(input, deferRootLifecycleNotification).pipe(
+          Effect.catchCause((cause) =>
+            isInterruptedOnly(cause)
+              ? Effect.interrupt
+              : Effect.fail(
+                  new CodexNotificationConsequenceError({
+                    method: input.notification.method,
+                    threadId: codexProtocolNotificationThreadId(input.notification) ?? "unknown",
+                    cause,
+                  }),
+                ),
+          ),
+          Effect.as(disposition),
+        );
+      }),
   });
 });
 
