@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -30,7 +31,12 @@ import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/Code
 import { projectCodexConversationOlderTurns } from "./CodexConversationHistoryProjection";
 import { CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
 import { placeCodexHistorySearchIsland } from "./CodexPersistedHistorySearchRuntime";
+import {
+  CodexThreadHistoryFeatures,
+  type CodexThreadHistoryFeaturesError,
+} from "./CodexThreadHistoryFeatures";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import type { CodexThreadHistoryFeatureUnavailable } from "../../shared/codex-thread-history-features";
 
 export const CODEX_PROMPT_RAIL_MAX_CACHE_ENTRIES = 32;
 export const CODEX_PROMPT_RAIL_MAX_CACHE_BYTES = 16 * 1024 * 1024;
@@ -92,6 +98,13 @@ export class CodexPromptRailHistoryError extends Schema.TaggedError<CodexPromptR
   },
 ) {}
 
+export class CodexPromptRailHistoryUnavailable extends Data.TaggedError(
+  "CodexPromptRailHistoryUnavailable",
+)<{
+  readonly operation: "index" | "reveal" | "locate";
+  readonly availability: CodexThreadHistoryFeatureUnavailable;
+}> {}
+
 export class CodexPromptRailHistory extends Context.Service<
   CodexPromptRailHistory,
   {
@@ -101,14 +114,23 @@ export class CodexPromptRailHistory extends Context.Service<
         readonly expectedTopologyGeneration: number;
         readonly force?: boolean;
       },
-    ) => Effect.Effect<CodexPromptRailIndex, CodexPromptRailHistoryError>;
+    ) => Effect.Effect<
+      CodexPromptRailIndex,
+      CodexPromptRailHistoryError | CodexPromptRailHistoryUnavailable
+    >;
     readonly reveal: (
       input: CodexPromptRailRevealInput,
-    ) => Effect.Effect<CodexPromptRailReveal, CodexPromptRailHistoryError>;
+    ) => Effect.Effect<
+      CodexPromptRailReveal,
+      CodexPromptRailHistoryError | CodexPromptRailHistoryUnavailable
+    >;
     /** Explicit identity navigation is capped; a direct server identity lookup is not available. */
     readonly revealKnownTurn: (
       input: CodexPromptRailKnownTurnRevealInput,
-    ) => Effect.Effect<CodexPromptRailReveal, CodexPromptRailHistoryError>;
+    ) => Effect.Effect<
+      CodexPromptRailReveal,
+      CodexPromptRailHistoryError | CodexPromptRailHistoryUnavailable
+    >;
   }
 >()("nodex/main/codex-application/CodexPromptRailHistory") {}
 
@@ -141,17 +163,22 @@ const historyError = (input: {
   });
 
 const cacheKey = (snapshot: CodexAppServerCapabilitySnapshot, threadId: string): string =>
-  `${snapshot.hostId}\u0000${snapshot.generation}\u0000${threadId}`;
+  `${snapshot.hostId}\u0000${snapshot.generation}\u0000${snapshot.sourceEpoch ?? ""}\u0000${threadId}`;
 
 export const make = (
   options: CodexPromptRailHistoryOptions = {},
 ): Effect.Effect<
   CodexPromptRailHistory["Service"],
   never,
-  CodexAppServerCapabilities | CodexGateway | CodexHistoryPageAdapter | ConversationEntityMap
+  | CodexAppServerCapabilities
+  | CodexGateway
+  | CodexHistoryPageAdapter
+  | CodexThreadHistoryFeatures
+  | ConversationEntityMap
 > =>
   Effect.gen(function* () {
     const capabilities = yield* CodexAppServerCapabilities;
+    const historyFeatures = yield* CodexThreadHistoryFeatures;
     const gateway = yield* CodexGateway;
     const historyPages = yield* CodexHistoryPageAdapter;
     const conversations = yield* ConversationEntityMap;
@@ -178,6 +205,41 @@ export const make = (
       CODEX_PROMPT_RAIL_MAX_CACHE_ENTRIES,
     );
     const maxCacheBytes = positiveInteger(options.maxCacheBytes, CODEX_PROMPT_RAIL_MAX_CACHE_BYTES);
+
+    const mapFeatureError = (
+      operation: CodexPromptRailHistoryError["operation"],
+      error: CodexThreadHistoryFeaturesError,
+      turnId?: string | null,
+    ): CodexPromptRailHistoryError =>
+      historyError({
+        operation,
+        threadId: error.threadId,
+        turnId,
+        reason:
+          error.reason === "conversation-missing"
+            ? "conversation-missing"
+            : error.reason === "stale-generation"
+              ? "stale-generation"
+              : "request-failed",
+        cause: error,
+      });
+
+    const requireFeature = Effect.fn("CodexPromptRailHistory.requireFeature")(function* (
+      operation: "index" | "reveal" | "locate",
+      threadId: string,
+      turnId?: string | null,
+    ) {
+      const resolution = yield* historyFeatures
+        .resolve(threadId, "prompt-rail")
+        .pipe(Effect.mapError((cause) => mapFeatureError(operation, cause, turnId)));
+      if (resolution.status === "unavailable") {
+        return yield* new CodexPromptRailHistoryUnavailable({
+          operation,
+          availability: resolution,
+        });
+      }
+      return resolution.capability;
+    });
     const now = options.now ?? Date.now;
     const cache = new Map<string, CachedIndex>();
     let cachedBytes = 0;
@@ -210,16 +272,10 @@ export const make = (
         readonly generation: number;
         readonly turnId?: string | null;
       }) {
-        const snapshot = yield* capabilities.forThread(input.threadId).pipe(
-          Effect.mapError((cause) =>
-            historyError({
-              operation: "generation",
-              threadId: input.threadId,
-              turnId: input.turnId,
-              reason: "request-failed",
-              cause,
-            }),
-          ),
+        const snapshot = yield* requireFeature(
+          input.turnId ? "reveal" : "locate",
+          input.threadId,
+          input.turnId,
         );
         if (snapshot.hostId !== input.hostId || snapshot.generation !== input.generation) {
           return yield* historyError({
@@ -228,15 +284,6 @@ export const make = (
             turnId: input.turnId,
             reason: "stale-generation",
             cause: new Error("Prompt rail locator belongs to a stale app-server generation"),
-          });
-        }
-        if (!snapshot.flags.paginatedHistory) {
-          return yield* historyError({
-            operation: "generation",
-            threadId: input.threadId,
-            turnId: input.turnId,
-            reason: "unsupported-capability",
-            cause: new Error("Prompt rail history requires paginated Thread storage"),
           });
         }
         return snapshot;
@@ -565,24 +612,7 @@ export const make = (
       threadId: string,
       loadOptions: { readonly force?: boolean } = {},
     ) {
-      const snapshot = yield* capabilities.forThread(threadId).pipe(
-        Effect.mapError((cause) =>
-          historyError({
-            operation: "index",
-            threadId,
-            reason: "request-failed",
-            cause,
-          }),
-        ),
-      );
-      if (!snapshot.flags.paginatedHistory) {
-        return yield* historyError({
-          operation: "index",
-          threadId,
-          reason: "unsupported-capability",
-          cause: new Error("Prompt rail history requires paginated Thread storage"),
-        });
-      }
+      const snapshot = yield* requireFeature("index", threadId);
       const key = cacheKey(snapshot, threadId);
       const cached = cache.get(key);
       if (!loadOptions.force && cached && now() - cached.index.loadedAtMs < staleMs) {

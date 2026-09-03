@@ -87,6 +87,16 @@ projection materializes the committed result. The optimistic owner must remain
 semantic and identity-keyed; it cannot infer canonical success from elapsed
 time, a broad cursor, or the disappearance of a component.
 
+New-chat admission is the earlier form of the same rule. Before any asynchronous
+Session retarget, workspace preparation, Thread creation, or IPC wait, the
+renderer owns one immutable first-submission projection keyed by `launchId` and
+`clientUserMessageId`. Draft cleanup follows that synchronous publication. The
+identity crosses Main and any pending-worktree request. A matching client identity
+deduplicates the renderer-optimistic row, but only an app-server Turn with a server
+identity may retire the first-submission fallback. Route changes, component remounts,
+delayed progress from a prior attempt, and backend latency
+therefore cannot create an empty or duplicate transcript interval.
+
 Development builds may retain a fixed-capacity causal trace containing only
 semantic keys, hashed operation identities, owner/protocol/scope labels, reason
 codes, and render tokens. It is diagnostic evidence, not settlement authority;

@@ -10,7 +10,7 @@ import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import { summarizeCodexPendingWorktreeLabel } from "../../shared/codex-pending-worktree";
 import { createCodexTextUserInput } from "../../shared/codex-prompt-preparation";
-import { createUuidV7 } from "../../shared/uuid-v7";
+import { assertUuidV7 } from "../../shared/uuid-v7";
 import type {
   CodexConversationSnapshot,
   CodexThreadDetail,
@@ -199,6 +199,7 @@ export const make: Effect.Effect<
       const allocated = allocateCodexPendingWorktreeRequest({
         hostId: gateway.localHostId,
         launchMode: "start-conversation",
+        firstSubmission: input.firstSubmission,
         label: summarizeCodexPendingWorktreeLabel(input.prompt),
         initialThreadTitle: input.threadName ?? null,
         sourceWorkspaceRoot,
@@ -301,6 +302,7 @@ export const make: Effect.Effect<
       baseInstructions: input.baseInstructions ?? null,
       developerInstructions: input.additionalDeveloperInstructions ?? null,
       threadSource: input.threadSource ?? "user",
+      historyMode: "paginated",
       config: {
         ...(desktopToolConfig ?? {}),
         ...buildCodexThreadConfigOverrides(),
@@ -327,6 +329,7 @@ export const make: Effect.Effect<
       const entry = yield* directory
         .acceptSessionStart({
           response,
+          capability,
           sessionId: input.sessionId,
           projectId: input.projectId,
           executionProfile,
@@ -366,6 +369,7 @@ export const make: Effect.Effect<
           );
       }
       const outcome = {
+        launchId: input.firstSubmission.launchId,
         projectId: input.projectId,
         sessionId: input.sessionId,
         threadId: entry.summary.threadId,
@@ -385,6 +389,7 @@ export const make: Effect.Effect<
             threadId: entry.summary.threadId,
             prompt: input.prompt,
             overrides: {
+              clientUserMessageId: input.firstSubmission.clientUserMessageId,
               promptInput: input.promptInput,
               model,
               serviceTier,
@@ -402,9 +407,16 @@ export const make: Effect.Effect<
             new Error("Renderer-owned first Turn has no canonical parameters"),
           );
         }
+        if (plan.clientUserMessageId !== input.firstSubmission.clientUserMessageId) {
+          return yield* fail(
+            "first-turn",
+            input.sessionId,
+            new Error("Renderer-owned first Turn changed its admitted client message identity"),
+          );
+        }
         const freshLaunch = {
           ...outcome,
-          launchId: createUuidV7(),
+          launchId: input.firstSubmission.launchId,
           rendererClientId: context.ownerClientId,
           clientUserMessageId: plan.clientUserMessageId,
           canonicalParams: plan.canonicalParams,
@@ -415,6 +427,7 @@ export const make: Effect.Effect<
         return { kind: "started" as const, detail, freshLaunch };
       }
       const turn = yield* turns.start(entry.summary.threadId, input.prompt, {
+        clientUserMessageId: input.firstSubmission.clientUserMessageId,
         promptInput: input.promptInput,
         model,
         serviceTier,
@@ -433,6 +446,7 @@ export const make: Effect.Effect<
           ? Effect.void
           : Effect.gen(function* () {
               completion.failed({
+                launchId: input.firstSubmission.launchId,
                 projectId: input.projectId,
                 sessionId: input.sessionId,
                 threadId: startedThreadId ?? "",
@@ -458,6 +472,16 @@ export const make: Effect.Effect<
         projectLifecycle.runExclusive(
           input.projectId,
           Effect.gen(function* () {
+            yield* Effect.try({
+              try: () => {
+                assertUuidV7(input.firstSubmission.launchId, "firstSubmission.launchId");
+                assertUuidV7(
+                  input.firstSubmission.clientUserMessageId,
+                  "firstSubmission.clientUserMessageId",
+                );
+              },
+              catch: (cause) => fail("admit", input.sessionId, cause),
+            });
             const project = yield* admit(input);
             const sourceRoots = project?.sources.map((source) => source.root) ?? [];
             if ((input.runInTarget ?? "localProject") === "newWorktree") {

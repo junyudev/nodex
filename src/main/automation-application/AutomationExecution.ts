@@ -962,6 +962,7 @@ export const live = (
             personality: null,
             ephemeral: null,
             threadSource: "automation",
+            historyMode: "paginated",
             dynamicTools: tools,
             experimentalRawEvents: THREAD_START_EXPERIMENTAL_RAW_EVENTS,
             mockExperimentalField: null,
@@ -1005,6 +1006,7 @@ export const live = (
             }) ?? location.cwd;
           const accepted = yield* directory.acceptStandaloneStart({
             response: { ...response, cwd: effectiveCwd },
+            capability,
             projectId: null,
             executionProfile,
             runtimeWorkspaceRoots: writableRoots,

@@ -3,23 +3,15 @@ import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as FiberMap from "effect/FiberMap";
 import type * as Scope from "effect/Scope";
-import { CODEX_FRAME_TEXT_DELTA_FALLBACK_INTERVAL_MS } from "../../shared/codex-conversation-state/codex-frame-text-delta-queue";
 
-export const DEFAULT_CODEX_OWNER_NOTIFICATION_DRAIN_TIMEOUT =
-  CODEX_FRAME_TEXT_DELTA_FALLBACK_INTERVAL_MS * 8;
-
-interface DrainBarrier {
-  readonly sentSequence: number;
-  readonly ackSequence: number;
-  readonly completion: Deferred.Deferred<void, CodexOwnerNotificationDrainTimeout>;
-}
+// This is a cross-process liveness deadline, not a renderer frame/flush budget.
+export const DEFAULT_CODEX_OWNER_NOTIFICATION_DRAIN_TIMEOUT = 30_000;
 
 interface DrainState {
   sentSequence: number;
   ackSequence: number;
-  barrier: DrainBarrier | null;
+  changed: Deferred.Deferred<void, CodexOwnerNotificationDrainOwnerChanged>;
 }
 
 export interface CodexOwnerNotificationDrainRuntimeOptions {
@@ -32,7 +24,23 @@ export class CodexOwnerNotificationDrainTimeout extends Data.TaggedError(
   readonly conversationId: string;
   readonly sentSequence: number;
   readonly ackSequence: number;
-}> {}
+}> {
+  override get message(): string {
+    return "The conversation window did not finish synchronizing. Try the operation again.";
+  }
+}
+
+export class CodexOwnerNotificationDrainOwnerChanged extends Data.TaggedError(
+  "CodexOwnerNotificationDrainOwnerChanged",
+)<{ readonly conversationId: string }> {
+  override get message(): string {
+    return "The conversation window changed before synchronization completed. Try the operation again.";
+  }
+}
+
+export type CodexOwnerNotificationDrainError =
+  | CodexOwnerNotificationDrainTimeout
+  | CodexOwnerNotificationDrainOwnerChanged;
 
 export class CodexOwnerNotificationDrainRuntime extends Context.Service<
   CodexOwnerNotificationDrainRuntime,
@@ -42,7 +50,7 @@ export class CodexOwnerNotificationDrainRuntime extends Context.Service<
     readonly ack: (conversationId: string, sequence: number) => boolean;
     readonly awaitCurrent: (
       conversationId: string,
-    ) => Effect.Effect<void, CodexOwnerNotificationDrainTimeout>;
+    ) => Effect.Effect<void, CodexOwnerNotificationDrainError>;
     readonly resetOwner: (conversationId: string) => void;
     readonly release: (conversationId: string) => void;
     readonly clear: (conversationId: string) => void;
@@ -52,7 +60,7 @@ export class CodexOwnerNotificationDrainRuntime extends Context.Service<
 const emptyState = (): DrainState => ({
   sentSequence: 0,
   ackSequence: 0,
-  barrier: null,
+  changed: Deferred.makeUnsafe<void, CodexOwnerNotificationDrainOwnerChanged>(),
 });
 
 export const make = (
@@ -60,8 +68,6 @@ export const make = (
 ): Effect.Effect<CodexOwnerNotificationDrainRuntime["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
     const states = new Map<string, DrainState>();
-    const deadlines = yield* FiberMap.make<string, void, never>();
-    const runDeadline = yield* FiberMap.runtime(deadlines)();
 
     const stateFor = (conversationId: string): DrainState => {
       const existing = states.get(conversationId);
@@ -71,91 +77,70 @@ export const make = (
       return state;
     };
 
-    const finishBarrier = (
-      conversationId: string,
-      state: DrainState,
-      completion: Effect.Effect<boolean>,
-    ): void => {
-      state.barrier = null;
-      runDeadline(conversationId, completion.pipe(Effect.asVoid));
+    const notifyProgress = (state: DrainState): void => {
+      const changed = state.changed;
+      state.changed = Deferred.makeUnsafe<void, CodexOwnerNotificationDrainOwnerChanged>();
+      Deferred.doneUnsafe(changed, Effect.void);
     };
 
+    const awaitPrefix = Effect.fn("CodexOwnerNotificationDrainRuntime.awaitPrefix")(function* (
+      state: DrainState,
+      sentSequence: number,
+    ) {
+      while (state.ackSequence < sentSequence) yield* Deferred.await(state.changed);
+    });
+
+    // Each caller owns its deadline and immutable prefix. Later notifications and canceled
+    // callers cannot extend or shorten another operation's synchronization boundary.
     const awaitCurrent = (
       conversationId: string,
-    ): Effect.Effect<void, CodexOwnerNotificationDrainTimeout> =>
+    ): Effect.Effect<void, CodexOwnerNotificationDrainError> =>
       Effect.suspend(() => {
-        const state = stateFor(conversationId);
-        if (state.ackSequence >= state.sentSequence) return Effect.void;
-        if (state.barrier) return Deferred.await(state.barrier.completion);
-
-        return Deferred.make<void, CodexOwnerNotificationDrainTimeout>().pipe(
-          Effect.tap((completion) =>
-            Effect.sync(() => {
-              const barrier: DrainBarrier = {
-                sentSequence: state.sentSequence,
-                ackSequence: state.ackSequence,
-                completion,
-              };
-              state.barrier = barrier;
-              runDeadline(
+        const state = states.get(conversationId);
+        if (!state) return Effect.void;
+        const sentSequence = state.sentSequence;
+        if (state.ackSequence >= sentSequence) return Effect.void;
+        return awaitPrefix(state, sentSequence).pipe(
+          Effect.timeoutOrElse({
+            duration: options.timeout ?? DEFAULT_CODEX_OWNER_NOTIFICATION_DRAIN_TIMEOUT,
+            orElse: () => {
+              const timeout = new CodexOwnerNotificationDrainTimeout({
                 conversationId,
-                Effect.sleep(
-                  options.timeout ?? DEFAULT_CODEX_OWNER_NOTIFICATION_DRAIN_TIMEOUT,
-                ).pipe(
-                  Effect.andThen(
-                    Effect.suspend(() => {
-                      if (state.barrier !== barrier) return Effect.void;
-                      state.barrier = null;
-                      const timeout = new CodexOwnerNotificationDrainTimeout({
-                        conversationId,
-                        sentSequence: barrier.sentSequence,
-                        ackSequence: barrier.ackSequence,
-                      });
-                      return Effect.logWarning(
-                        "Timed out waiting for renderer owner text-delta ack before terminal lifecycle",
-                      ).pipe(
-                        Effect.annotateLogs({
-                          conversationId,
-                          sentSequence: barrier.sentSequence,
-                          ackSequence: barrier.ackSequence,
-                        }),
-                        Effect.andThen(Deferred.fail(completion, timeout)),
-                        Effect.asVoid,
-                      );
-                    }),
-                  ),
-                ),
+                sentSequence,
+                ackSequence: state.ackSequence,
+              });
+              return Effect.logWarning(
+                "Timed out waiting for conversation owner synchronization",
+              ).pipe(
+                Effect.annotateLogs({
+                  conversationId,
+                  sentSequence,
+                  ackSequence: state.ackSequence,
+                }),
+                Effect.andThen(Effect.fail(timeout)),
               );
-            }),
-          ),
-          Effect.andThen((completion) => Deferred.await(completion)),
+            },
+          }),
         );
       });
 
     const completeAndDelete = (conversationId: string, interrupt: boolean): void => {
       const state = states.get(conversationId);
       states.delete(conversationId);
-      const barrier = state?.barrier;
-      if (!barrier) {
-        runDeadline(conversationId, Effect.void);
-        return;
-      }
-      runDeadline(
-        conversationId,
-        (interrupt
-          ? Deferred.interrupt(barrier.completion)
-          : Deferred.succeed(barrier.completion, undefined)
-        ).pipe(Effect.asVoid),
+      if (!state) return;
+      Deferred.doneUnsafe(
+        state.changed,
+        interrupt
+          ? Effect.interrupt
+          : Effect.fail(new CodexOwnerNotificationDrainOwnerChanged({ conversationId })),
       );
     };
 
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
-        const barriers = [...states.values()].flatMap((state) =>
-          state.barrier ? [state.barrier] : [],
-        );
+        const completions = [...states.values()].map((state) => state.changed);
         states.clear();
-        yield* Effect.forEach(barriers, (barrier) => Deferred.interrupt(barrier.completion), {
+        yield* Effect.forEach(completions, Deferred.interrupt, {
           discard: true,
         });
       }),
@@ -187,18 +172,19 @@ export const make = (
           return false;
         }
         state.ackSequence = sequence;
-        const barrier = state.barrier;
-        if (!barrier || state.ackSequence < state.sentSequence) return true;
-        finishBarrier(conversationId, state, Deferred.succeed(barrier.completion, undefined));
+        notifyProgress(state);
         return true;
       },
       awaitCurrent,
       resetOwner: (conversationId) => {
-        const state = stateFor(conversationId);
-        state.ackSequence = state.sentSequence;
-        const barrier = state.barrier;
-        if (!barrier) return;
-        finishBarrier(conversationId, state, Deferred.succeed(barrier.completion, undefined));
+        const previous = states.get(conversationId);
+        const baseline = previous?.sentSequence ?? 0;
+        completeAndDelete(conversationId, false);
+        states.set(conversationId, {
+          ...emptyState(),
+          sentSequence: baseline,
+          ackSequence: baseline,
+        });
       },
       release: (conversationId) => completeAndDelete(conversationId, false),
       clear: (conversationId) => completeAndDelete(conversationId, true),

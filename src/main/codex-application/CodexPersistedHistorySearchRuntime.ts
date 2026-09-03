@@ -1,12 +1,14 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Result from "effect/Result";
 import type { CodexCanonicalConversationState } from "../../shared/types";
 import type {
   CodexPersistedHistoryOccurrenceHydrateRequest,
   CodexPersistedHistoryOccurrenceHydrateResult,
   CodexPersistedHistoryOccurrenceResolution,
   CodexPersistedHistorySearchPage,
+  CodexPersistedHistorySearchResult,
 } from "../../shared/codex-persisted-history-search";
 import type { CodexCanonicalHistoryTopology } from "../../shared/codex-conversation-state/codex-history-topology";
 import { createCodexConversationHistoryTurnItemsRef } from "../../shared/codex-conversation-history-page";
@@ -18,6 +20,10 @@ import {
 } from "./CodexHistorySearchAdapter";
 import { projectCodexConversationOlderTurns } from "./CodexConversationHistoryProjection";
 import { CodexConversationHistoryRuntime } from "./CodexConversationHistoryRuntime";
+import {
+  CodexThreadHistoryFeatures,
+  type CodexThreadHistoryFeaturesError,
+} from "./CodexThreadHistoryFeatures";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export interface CodexHistorySearchPlacement {
@@ -46,7 +52,7 @@ export class CodexPersistedHistorySearchRuntime extends Context.Service<
     readonly search: (
       threadId: string,
       query: string,
-    ) => Effect.Effect<CodexPersistedHistorySearchPage, CodexPersistedHistorySearchError>;
+    ) => Effect.Effect<CodexPersistedHistorySearchResult, CodexPersistedHistorySearchError>;
     readonly hydrateOccurrence: (
       input: CodexPersistedHistoryOccurrenceHydrateRequest,
     ) => Effect.Effect<
@@ -243,11 +249,13 @@ export const make: Effect.Effect<
   | CodexAppServerCapabilities
   | CodexConversationHistoryRuntime
   | CodexHistorySearchAdapter
+  | CodexThreadHistoryFeatures
   | ConversationEntityMap
 > = Effect.gen(function* () {
   const capabilities = yield* CodexAppServerCapabilities;
   const historyRuntime = yield* CodexConversationHistoryRuntime;
   const searchAdapter = yield* CodexHistorySearchAdapter;
+  const historyFeatures = yield* CodexThreadHistoryFeatures;
   const conversations = yield* ConversationEntityMap;
   const hydrationRequests = makePersistedHistoryHydrationRequestTracker();
 
@@ -410,13 +418,40 @@ export const make: Effect.Effect<
     threadId: string,
     query: string,
   ) {
-    const page = yield* searchAdapter
-      .search({ threadId, searchTerm: query })
-      .pipe(
-        Effect.mapError((cause) =>
-          runtimeError({ operation: "search", threadId, reason: "request-failed", cause }),
-        ),
-      );
+    const mapFeatureError = (cause: CodexThreadHistoryFeaturesError) =>
+      runtimeError({
+        operation: "search",
+        threadId,
+        reason:
+          cause.reason === "conversation-missing"
+            ? "conversation-missing"
+            : cause.reason === "stale-generation"
+              ? "stale-generation"
+              : "request-failed",
+        cause,
+      });
+    const availability = yield* historyFeatures
+      .resolve(threadId, "persisted-search")
+      .pipe(Effect.mapError(mapFeatureError));
+    if (availability.status === "unavailable") return availability;
+
+    const pageResult = yield* Effect.result(searchAdapter.search({ threadId, searchTerm: query }));
+    if (Result.isFailure(pageResult)) {
+      if (pageResult.failure.reason === "unsupported-capability") {
+        const latest = yield* historyFeatures
+          .resolve(threadId, "persisted-search")
+          .pipe(Effect.mapError(mapFeatureError));
+        if (latest.status === "unavailable") return latest;
+      }
+      return yield* runtimeError({
+        operation: "search",
+        threadId,
+        reason:
+          pageResult.failure.reason === "stale-generation" ? "stale-generation" : "request-failed",
+        cause: pageResult.failure,
+      });
+    }
+    const page = pageResult.success;
     const aggregate = conversations.current(threadId);
     if (!aggregate?.readSnapshot()) {
       return yield* runtimeError({
@@ -427,14 +462,17 @@ export const make: Effect.Effect<
       });
     }
     return {
-      threadId,
-      query,
-      hostId: page.hostId,
-      hostGeneration: page.generation,
-      topologyGeneration: aggregate.readHistoryTopology().generation,
-      occurrences: [...page.occurrences],
-      capped: page.isCapped,
-    } satisfies CodexPersistedHistorySearchPage;
+      status: "completed" as const,
+      page: {
+        threadId,
+        query,
+        hostId: page.hostId,
+        hostGeneration: page.generation,
+        topologyGeneration: aggregate.readHistoryTopology().generation,
+        occurrences: [...page.occurrences],
+        capped: page.isCapped,
+      } satisfies CodexPersistedHistorySearchPage,
+    };
   });
 
   const hydrateOccurrencePhysical = Effect.fn(

@@ -5,7 +5,6 @@ import {
   ConnectedThreadComposerDock,
   ConnectedThreadStage,
   useCodexAppServerControl,
-  useCodexConversationValue,
   useCodexThreadStartProgress,
   type ThreadActionControllerInput,
   type ThreadStageActions,
@@ -52,7 +51,6 @@ import {
   normalizeProjectPrimaryWorkspaceRoot,
   projectWorkspaceRootOrNull,
 } from "@/lib/workbench-workspace-context";
-import { resolvePresentedSessionThread } from "./workbench-session-thread-presentation";
 import {
   readLocalEnvironmentSelections,
   resolveLocalEnvironmentSelection,
@@ -240,15 +238,7 @@ function CodexConnectedSessionThread({
     ? session.projectId
     : (selectedNewThreadProject?.id ?? null);
   const threadStartProgress = useCodexThreadStartProgress(progressProjectId, session.id);
-  const attachedConversationHasVisibleTurn = useCodexConversationValue(
-    attachedSummary?.threadId ?? null,
-    (conversation) => (conversation?.turns.length ?? 0) > 0,
-  );
-  const summary = resolvePresentedSessionThread(attachedSummary, {
-    rendererLaunchPending: threadStartProgress?.rendererLaunchPending ?? false,
-    waitForFirstVisibleTurn: threadStartProgress !== null,
-    hasVisibleFirstTurn: attachedConversationHasVisibleTurn,
-  });
+  const summary = attachedSummary;
   const startInSelectorProject = summary ? project : selectedNewThreadProject;
   const newThreadEnvironmentWorkspaceRoot = projectWorkspaceRootOrNull(startInSelectorProject);
   const effectiveProjectId = summary ? session.projectId : (selectedNewThreadProject?.id ?? null);
@@ -759,6 +749,7 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
   ) : selectedInstance ? (
     <AcpNewConversationStage
       sessionId={props.session.id}
+      projectId={props.session.projectId}
       instanceConfigId={selectedInstance.id}
       agentLabel={instanceLabel(selectedInstance)}
       projectName={props.project?.name ?? null}

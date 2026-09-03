@@ -10,6 +10,7 @@ import type {
 import {
   CodexAppServerCapabilities,
   createCodexAppServerCapabilitySnapshot,
+  type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
@@ -41,6 +42,10 @@ const request = (): Extract<
   localEnvironmentConfigPath: null,
   prompt: "Implement it",
   launchMode: "start-conversation",
+  firstSubmission: {
+    launchId: "01991e60-b800-7000-8000-000000000101",
+    clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+  },
   clientThreadId: "client-new-thread:local:pending-1",
   startConversationParamsInput: {
     input: [],
@@ -84,6 +89,7 @@ it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
   Effect.gen(function* () {
     const requests: Array<{ readonly method: string; readonly scheduling: unknown }> = [];
     const threadStartParams: Record<string, unknown>[] = [];
+    const acceptedCapabilities: CodexAppServerCapabilitySnapshot[] = [];
     const firstTurnOverrides: Record<string, unknown>[] = [];
     const launchEvents: string[] = [];
     const unsupported = () => Effect.die(new Error("unused"));
@@ -102,7 +108,7 @@ it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
             const requestParams = params as Record<string, unknown>;
             threadStartParams.push(requestParams);
             return {
-              thread: { id: "thread-created" },
+              thread: { id: "thread-created", historyMode: "paginated", turns: [] },
               model: requestParams.model,
               modelProvider: requestParams.modelProvider,
               reasoningEffort: (requestParams.config as Record<string, unknown> | undefined)
@@ -170,8 +176,13 @@ it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
       Effect.provideService(
         CodexThreadDirectory,
         CodexThreadDirectory.of({
-          acceptStandaloneStart: () =>
-            Effect.succeed({ summary: { threadId: "thread-created" } } as never),
+          acceptStandaloneStart: (
+            input: Parameters<CodexThreadDirectory["Service"]["acceptStandaloneStart"]>[0],
+          ) =>
+            Effect.sync(() => {
+              acceptedCapabilities.push(input.capability);
+              return { summary: { threadId: "thread-created" } } as never;
+            }),
         } as never),
       ),
       Effect.provideService(
@@ -237,6 +248,7 @@ it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
       },
     ]);
     assert.strictEqual(threadStartParams[0]?.serviceTier, null);
+    assert.strictEqual(threadStartParams[0]?.historyMode, "paginated");
     assert.isUndefined(threadStartParams[0]?.allowProviderModelFallback);
     assert.deepEqual(threadStartParams[0]?.config, {
       "features.js_repl": false,
@@ -247,6 +259,7 @@ it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
       model_reasoning_effort: "max",
     });
     assert.strictEqual(firstTurnOverrides[0]?.serviceTier, null);
+    assert.deepEqual(acceptedCapabilities, [capability]);
     assert.deepEqual(launchEvents, ["turn:accepted", "identity:remembered"]);
   }),
 );

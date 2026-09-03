@@ -15,7 +15,7 @@ import type { AcpBackendSessionPresentation, AcpConversationSnapshot } from "./a
 import type {
   CodexPersistedHistoryOccurrenceHydrateRequest,
   CodexPersistedHistoryOccurrenceHydrateResult,
-  CodexPersistedHistorySearchPage,
+  CodexPersistedHistorySearchResult,
 } from "./codex-persisted-history-search";
 import type {
   CodexHistoryResidencyPinsInput,
@@ -2244,7 +2244,7 @@ export interface IpcApi {
   };
   "codex:thread:history-search": {
     args: [threadId: string, query: string];
-    result: CodexPersistedHistorySearchPage;
+    result: CodexPersistedHistorySearchResult;
   };
   "codex:thread:history-search:hydrate": {
     args: [input: CodexPersistedHistoryOccurrenceHydrateRequest];

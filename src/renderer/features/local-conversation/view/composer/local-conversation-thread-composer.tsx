@@ -260,7 +260,9 @@ import {
   isImageEditComposerAttachmentId,
   registerImageEditComposerChannel,
   removeImageEditComposerAttachment,
+  replaceImageEditComposerDraft,
   subscribeImageEditComposerDraft,
+  type ImageEditComposerDraftSnapshot,
   type ImageEditComposerSubmitRequest,
   type ImageEditComposerSubmitResult,
 } from "@/lib/image-edit-composer-channel";
@@ -2009,28 +2011,82 @@ function HydratedThreadComposer({
     appendPromptToHistoryRef.current(text);
     resetPromptHistorySelectionRef.current();
   }, []);
+  const clearAdmittedSubmission = useCallback(() => {
+    incrementAttachmentGeneration();
+    clearBrowserAnnotationAttachments(browserAnnotationConversationId);
+    clearImageEditComposerDraft(imageEditComposerChannelId);
+    clearSubmittedDraft();
+  }, [
+    browserAnnotationConversationId,
+    clearSubmittedDraft,
+    imageEditComposerChannelId,
+    incrementAttachmentGeneration,
+  ]);
   const completeSuccessfulSubmission = useCallback(
     (text: string) => {
       recordSuccessfulPromptSubmit(text);
-      incrementAttachmentGeneration();
-      clearBrowserAnnotationAttachments(browserAnnotationConversationId);
-      clearImageEditComposerDraft(imageEditComposerChannelId);
-      clearSubmittedDraft();
+      clearAdmittedSubmission();
+    },
+    [clearAdmittedSubmission, recordSuccessfulPromptSubmit],
+  );
+  const restoreAdmittedSubmission = useCallback(
+    (input: {
+      readonly prompt: string;
+      readonly attachments: ComposerAttachmentState;
+      readonly imageEditDraft: ImageEditComposerDraftSnapshot;
+      readonly goalModeActive?: boolean;
+    }) => {
+      setPrompt(input.prompt);
+      setFileAttachments(input.attachments.fileAttachments);
+      setAddedFiles(input.attachments.addedFiles);
+      setImageAttachments(input.attachments.imageAttachments);
+      setAppshotContexts(input.attachments.appshotContexts);
+      setPastedTextAttachments(input.attachments.pastedTextAttachments);
+      replaceReviewCommentAttachments(
+        model.conversation?.threadId ?? model.threadId,
+        input.attachments.commentAttachments,
+      );
+      if (browserAnnotationConversationId) {
+        replaceBrowserAnnotationAttachments(
+          browserAnnotationConversationId,
+          input.attachments.browserAnnotationAttachments,
+        );
+      }
+      replaceImageEditComposerDraft(imageEditComposerChannelId, {
+        attachments: input.imageEditDraft.attachments,
+        mode: input.imageEditDraft.mode,
+      });
+      if (input.goalModeActive) setGoalModeActive(true);
     },
     [
       browserAnnotationConversationId,
-      clearSubmittedDraft,
       imageEditComposerChannelId,
-      incrementAttachmentGeneration,
-      recordSuccessfulPromptSubmit,
+      model.conversation?.threadId,
+      model.threadId,
+      setAddedFiles,
+      setAppshotContexts,
+      setFileAttachments,
+      setGoalModeActive,
+      setImageAttachments,
+      setPastedTextAttachments,
+      setPrompt,
     ],
   );
-  const cleanupSubmittedPastedTextAttachments = useCallback(async () => {
-    const readyAttachments = pastedTextAttachmentsRef.current.flatMap((attachment) =>
-      attachment.status === "ready" ? [attachment.attachment.file] : [],
-    );
-    await Promise.allSettled(readyAttachments.map((file) => removePastedTextAttachment({ file })));
-  }, []);
+  const readSubmittedPastedTextFiles = useCallback(
+    () =>
+      pastedTextAttachmentsRef.current.flatMap((attachment) =>
+        attachment.status === "ready" ? [attachment.attachment.file] : [],
+      ),
+    [],
+  );
+  const cleanupSubmittedPastedTextAttachments = useCallback(
+    async (readyAttachments = readSubmittedPastedTextFiles()) => {
+      await Promise.allSettled(
+        readyAttachments.map((file) => removePastedTextAttachment({ file })),
+      );
+    },
+    [readSubmittedPastedTextFiles],
+  );
 
   const submitThreadGoalDraft = useCallback(
     async (draft: ThreadGoalSubmissionDraft): Promise<boolean> => {
@@ -2075,7 +2131,7 @@ function HydratedThreadComposer({
         }
 
         try {
-          await actions.onStartThreadForSession({
+          const startCompletion = actions.onStartThreadForSession({
             projectId: target.projectId,
             sessionId: target.sessionId,
             projectDraftId: target.projectDraftId,
@@ -2086,9 +2142,20 @@ function HydratedThreadComposer({
             runInEnvironmentPath: target.runInEnvironmentPath,
             worktreeStartingState: target.worktreeStartingState,
           });
-          completeSuccessfulSubmission(draft.objective);
+          clearAdmittedSubmission();
+          await startCompletion;
+          recordSuccessfulPromptSubmit(draft.objective);
           return true;
         } catch (error) {
+          if (threadGoalMaterializedDraft) {
+            await cleanupMaterializedThreadGoalDraft(threadGoalMaterializedDraft);
+          }
+          restoreAdmittedSubmission({
+            prompt: draft.objective,
+            attachments: attachmentState,
+            imageEditDraft,
+            goalModeActive: true,
+          });
           onErrorMessage(error instanceof Error ? error.message : "Could not start thread goal");
           return false;
         } finally {
@@ -2139,10 +2206,15 @@ function HydratedThreadComposer({
     },
     [
       actions,
+      attachmentState,
+      clearAdmittedSubmission,
       completeSuccessfulSubmission,
+      imageEditDraft,
       model.conversation,
       onErrorMessage,
       model.newThreadTarget,
+      recordSuccessfulPromptSubmit,
+      restoreAdmittedSubmission,
     ],
   );
 
@@ -2191,6 +2263,7 @@ function HydratedThreadComposer({
       const effectiveAttachmentState: ComposerAttachmentState = input.imageEditIntent
         ? { ...attachmentState, imageAttachments: effectiveImageAttachments }
         : attachmentState;
+      const submittedPastedTextFiles = readSubmittedPastedTextFiles();
       const nextPrompt =
         input.imageEditIntent?.promptRaw ??
         compileImageEditComposerPrompt({
@@ -2285,7 +2358,7 @@ function HydratedThreadComposer({
             promptInput: sideChatPromptInput,
           });
           await finalizeEditedQueuedFollowUp();
-          await cleanupSubmittedPastedTextAttachments();
+          await cleanupSubmittedPastedTextAttachments(submittedPastedTextFiles);
           completeSuccessfulSubmission(sideChatPrompt);
           return true;
         } catch {
@@ -2321,6 +2394,7 @@ function HydratedThreadComposer({
           : imageEditDraft.attachments.some((attachment) => attachment.imageSource === "generated"))
           ? beginOptimisticGeneratedImageEdit(model.conversation.threadId)
           : null;
+      let completedFirstSubmission = false;
 
       try {
         if (!model.conversation) {
@@ -2330,7 +2404,7 @@ function HydratedThreadComposer({
               onErrorMessage("Session thread creation is not available.");
               return false;
             }
-            await actions.onStartThreadForSession({
+            const startCompletion = actions.onStartThreadForSession({
               projectId: target.projectId,
               sessionId: target.sessionId,
               projectDraftId: target.projectDraftId,
@@ -2340,6 +2414,10 @@ function HydratedThreadComposer({
               runInEnvironmentPath: target.runInEnvironmentPath,
               worktreeStartingState: target.worktreeStartingState,
             });
+            clearAdmittedSubmission();
+            completedFirstSubmission = true;
+            await startCompletion;
+            recordSuccessfulPromptSubmit(nextPrompt);
           } else {
             onErrorMessage("Select a session before starting a new thread.");
             return false;
@@ -2420,7 +2498,7 @@ function HydratedThreadComposer({
           await finalizeEditedQueuedFollowUp();
         }
         if (target?.runInTarget !== "newWorktree") {
-          await cleanupSubmittedPastedTextAttachments();
+          await cleanupSubmittedPastedTextAttachments(submittedPastedTextFiles);
         }
         if (isImageEditFollowUp) {
           if (input.imageEditIntent) {
@@ -2450,10 +2528,22 @@ function HydratedThreadComposer({
             }
           }
         }
-        completeSuccessfulSubmission(nextPrompt);
+        if (!completedFirstSubmission) {
+          completeSuccessfulSubmission(nextPrompt);
+        }
         return true;
       } catch (error) {
         optimisticImageEdit?.rollback();
+        if (completedFirstSubmission) {
+          // Submission admission clears the draft immediately so its presentation can move to the
+          // transcript. A terminal launch failure restores the exact local payload, making the
+          // ordinary Send action the explicit retry path (and therefore a new launch identity).
+          restoreAdmittedSubmission({
+            prompt: input.imageEditIntent ? nextPrompt : input.prompt,
+            attachments: effectiveAttachmentState,
+            imageEditDraft,
+          });
+        }
         onErrorMessage(error instanceof Error ? error.message : "Could not send prompt");
         return false;
       } finally {
@@ -2464,6 +2554,7 @@ function HydratedThreadComposer({
       actions,
       attachmentState,
       canStartNewThread,
+      clearAdmittedSubmission,
       completeSuccessfulSubmission,
       clearQueuedFollowUpEdit,
       finalizeEditedQueuedFollowUp,
@@ -2482,8 +2573,11 @@ function HydratedThreadComposer({
       model.newThreadTarget,
       model.selectedCollaborationMode,
       queuedFollowUpEdit,
+      recordSuccessfulPromptSubmit,
+      readSubmittedPastedTextFiles,
       onErrorMessage,
       cleanupSubmittedPastedTextAttachments,
+      restoreAdmittedSubmission,
       setGoalModeActive,
       submitThreadGoalDraft,
     ],

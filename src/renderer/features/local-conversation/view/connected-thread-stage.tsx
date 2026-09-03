@@ -87,6 +87,12 @@ import {
   codexComposerSkillsListQueryOptions,
   mcpAppsQueryOptions,
 } from "@/lib/query-options";
+import {
+  useAcknowledgeSessionFirstSubmission,
+  useSessionFirstSubmission,
+  useSessionFirstSubmissionTurns,
+} from "../../conversation-launch/use-session-first-submission";
+import type { CodexConversationTurn } from "../../../lib/types";
 
 export type ConnectedThreadStageInput = Omit<
   ThreadStageRouteInput,
@@ -261,6 +267,8 @@ function ConnectedThreadStageBody({
   initialUiState,
   transcriptVisible = true,
   turnDiffHoverPreviewDisabled = false,
+  presentedTurns,
+  firstSubmissionActive = false,
 }: {
   activeThreadId: string | null;
   input: ConnectedThreadStageInput;
@@ -275,8 +283,20 @@ function ConnectedThreadStageBody({
   initialUiState?: ThreadBodyUiStateOverrides;
   transcriptVisible?: boolean;
   turnDiffHoverPreviewDisabled?: boolean;
+  presentedTurns?: CodexConversationTurn[];
+  firstSubmissionActive?: boolean;
 }) {
-  const turns = useConversationTurns(activeThreadId);
+  const canonicalTurns = useConversationTurns(activeThreadId);
+  const turns = presentedTurns ?? canonicalTurns;
+  useAcknowledgeSessionFirstSubmission(
+    {
+      projectId: input.projectId,
+      sessionId: input.sessionId ?? input.newThreadTarget?.sessionId ?? null,
+      threadId: activeThreadId,
+    },
+    canonicalTurns,
+    activeThreadId !== null && !input.isNewThreadTab,
+  );
   const hostId = useCodexAppServerManagerForConversationId(activeThreadId).getHostId();
   const conversationSnapshot = useConversation(activeThreadId);
   const requests = useConversationRequests(activeThreadId);
@@ -329,6 +349,7 @@ function ConnectedThreadStageBody({
           input.isNewThreadTab && input.newThreadTarget?.runInTarget === "cloud",
         ),
         threadStartProgress: input.threadStartProgress,
+        firstSubmissionActive,
       }),
     [
       activeThreadId,
@@ -339,6 +360,7 @@ function ConnectedThreadStageBody({
       input.newThreadTarget,
       input.threadStartProgress,
       parentTurns,
+      firstSubmissionActive,
     ],
   );
 
@@ -820,6 +842,11 @@ export function ConnectedThreadComposerDock({
 }: ConnectedThreadComposerDockProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
+  const firstSubmission = useSessionFirstSubmission({
+    projectId: input.projectId,
+    sessionId: input.sessionId ?? input.newThreadTarget?.sessionId ?? null,
+    threadId: activeThreadId,
+  });
   const resumeState = useConversationResumeState(activeThreadId);
   const attachmentState = useConversationAttachmentState(activeThreadId);
   const streamRole = useConversationStreamRole(activeThreadId);
@@ -871,6 +898,7 @@ export function ConnectedThreadComposerDock({
 
   useEffect(() => {
     if (!input.activeThreadId || input.isNewThreadTab || archived) return;
+    if (firstSubmission) return;
     if (!lifecycleActive || attachmentState.status === "attaching") return;
     if (attachmentState.status === "failed") return;
     if (resumeState === "resumed" && (streamRole === "owner" || streamRole === "follower")) {
@@ -880,6 +908,7 @@ export function ConnectedThreadComposerDock({
   }, [
     archived,
     attachmentState,
+    firstSubmission,
     input.activeThreadId,
     input.isNewThreadTab,
     lifecycleActive,
@@ -930,11 +959,7 @@ export function ConnectedThreadStage({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
   const isSideChat = Boolean(input.sideChatContext);
-  const isNewThreadHome = input.isNewThreadTab && activeThreadId === null && !isSideChat;
-  const showNewThreadHomeBody = Boolean(
-    input.threadStartProgress &&
-    resolveThreadStartProgressPresentation(input.threadStartProgress) === "panel",
-  );
+  const isNewThreadRoute = input.isNewThreadTab && activeThreadId === null && !isSideChat;
   const resumeState = useConversationResumeState(activeThreadId);
   const attachmentState = useConversationAttachmentState(activeThreadId);
   const streamRole = useConversationStreamRole(activeThreadId);
@@ -944,6 +969,21 @@ export function ConnectedThreadStage({
   const statusActiveFlags = useConversationStatusActiveFlags(activeThreadId);
   const primaryRequest = useConversationPrimaryRequest(activeThreadId);
   const turns = useConversationTurns(activeThreadId);
+  const firstSubmissionProjection = useSessionFirstSubmissionTurns(
+    {
+      projectId: input.projectId,
+      sessionId: input.sessionId ?? input.newThreadTarget?.sessionId ?? null,
+      threadId: activeThreadId,
+    },
+    turns,
+  );
+  const presentedTurns = firstSubmissionProjection.turns;
+  const hasFirstSubmission = firstSubmissionProjection.submission !== null;
+  const hasThreadStartProgress = Boolean(
+    input.threadStartProgress &&
+    resolveThreadStartProgressPresentation(input.threadStartProgress) === "panel",
+  );
+  const showNewThreadHome = isNewThreadRoute && !hasFirstSubmission && !hasThreadStartProgress;
   const conversation = useConversation(activeThreadId);
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
   const cwd = useConversationCwd(activeThreadId);
@@ -1102,6 +1142,7 @@ export function ConnectedThreadStage({
     if (!input.activeThreadId || input.isNewThreadTab) {
       return;
     }
+    if (hasFirstSubmission) return;
     if (isActiveThreadArchived) {
       return;
     }
@@ -1122,6 +1163,7 @@ export function ConnectedThreadStage({
   }, [
     isActiveThreadArchived,
     attachmentState,
+    hasFirstSubmission,
     resumeState,
     streamRole,
     input.activeThreadId,
@@ -1133,7 +1175,7 @@ export function ConnectedThreadStage({
   const ownsRemoteHostedPipHost =
     presentation === "primary" && routeActive && !isSideChat && !backgroundAgentDetail;
 
-  if (isNewThreadHome) {
+  if (showNewThreadHome) {
     return (
       <>
         {ownsRemoteHostedPipHost ? (
@@ -1147,27 +1189,7 @@ export function ConnectedThreadStage({
               projectSelector={input.newThreadProjectSelector}
             />
           }
-          body={
-            showNewThreadHomeBody && threadBodyVisible ? (
-              <ConnectedThreadStageBody
-                activeThreadId={activeThreadId}
-                input={input}
-                actions={actions}
-                composerScopeIdentity={composerScopeIdentity}
-                isWorktreeThread={activeThreadIsManagedWorktree}
-                onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
-                onErrorMessage={setErrorMessage}
-                leadingContent={
-                  activeThreadId && activeThreadIsManagedWorktree ? (
-                    <ManagedWorktreeRestoreBannerContainer threadId={activeThreadId} />
-                  ) : null
-                }
-                initialUiState={initialUiState}
-                transcriptVisible={threadBodyVisible}
-                turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-              />
-            ) : null
-          }
+          body={null}
           footer={
             <ConnectedThreadStageFooter
               activeThreadId={activeThreadId}
@@ -1264,6 +1286,8 @@ export function ConnectedThreadStage({
             initialUiState={initialUiState}
             transcriptVisible={threadBodyVisible}
             turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+            presentedTurns={presentedTurns}
+            firstSubmissionActive={hasFirstSubmission}
           />
         }
         floatingContent={

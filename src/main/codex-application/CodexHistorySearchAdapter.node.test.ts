@@ -610,6 +610,39 @@ it.effect("rejects stale generations and unsupported occurrence search", () =>
   }),
 );
 
+it.effect(
+  "classifies an occurrence from an older host generation as stale before capability checks",
+  () =>
+    Effect.gen(function* () {
+      let gatewayCalls = 0;
+      const gateway = CodexGateway.of({
+        requestForThread: () =>
+          Effect.sync(() => {
+            gatewayCalls += 1;
+            return { data: [], nextCursor: null };
+          }) as never,
+      } as unknown as CodexGateway["Service"]);
+      const adapter = yield* provideAdapter(
+        make(),
+        gateway,
+        capabilityService({ searchOccurrences: false, generation: 8 }),
+      );
+
+      const hydration = yield* Effect.result(
+        adapter.hydrateOccurrence({
+          threadId: "thread-a",
+          hostId: "remote-a",
+          generation: 7,
+          occurrence,
+        }),
+      );
+
+      assert(Result.isFailure(hydration));
+      assert.strictEqual(hydration.failure.reason, "stale-generation");
+      assert.strictEqual(gatewayCalls, 0);
+    }),
+);
+
 it.effect("fails closed when the bounded opening-user probe returns a foreign item", () =>
   Effect.gen(function* () {
     const gateway = CodexGateway.of({

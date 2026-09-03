@@ -10,6 +10,7 @@ import * as Scope from "effect/Scope";
 import {
   createCodexCanonicalHydratedConversationState,
   createCodexCanonicalWorkspacePermissionContext,
+  projectCodexCanonicalProtocolThread,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import type { CodexHistoryTurnItemsPagination } from "../../shared/codex-conversation-state/codex-history-topology";
@@ -40,6 +41,8 @@ import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import {
+  acceptCodexResumeInitialTurnsPage,
+  CODEX_HISTORY_TURN_PAGE_SIZE,
   CodexHistoryPageAdapter,
   type CodexHydratedHistoryItemSegment,
 } from "./CodexHistoryPageAdapter";
@@ -161,6 +164,8 @@ export class CodexThreadDirectory extends Context.Service<
     /** Links a newly accepted protocol Thread to its exact Session, then hydrates canonical state. */
     readonly acceptSessionStart: (input: {
       readonly response: ThreadStartResponse;
+      /** Exact endpoint generation that created the Thread. */
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly sessionId: string;
       readonly projectId: string | null;
       readonly executionProfile: CodexExecutionProfile | null;
@@ -173,6 +178,8 @@ export class CodexThreadDirectory extends Context.Service<
     /** Accepts a sessionless Main-owned Thread such as a scheduled Automation run. */
     readonly acceptStandaloneStart: (input: {
       readonly response: ThreadStartResponse;
+      /** Exact endpoint generation that created the Thread. */
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly projectId: string | null;
       readonly executionProfile: CodexExecutionProfile | null;
       readonly runtimeWorkspaceRoots: readonly string[];
@@ -331,6 +338,21 @@ export const make: Effect.Effect<
             ),
           ),
         );
+
+  const requireDurableStartContract = Effect.fn("CodexThreadDirectory.requireDurableStartContract")(
+    function* (input: {
+      readonly threadId: string;
+      readonly thread: Thread;
+      readonly capability: CodexAppServerCapabilitySnapshot;
+      readonly stage: string;
+    }) {
+      yield* requireCapabilityHost(input.threadId, input.capability, gateway.localHostId);
+      yield* requireCurrentCapability(input.threadId, input.capability, input.stage, "materialize");
+      // Version-derived capabilities fence optional follow-up RPCs. The start response itself is
+      // authoritative for the storage contract that this exact, still-current generation accepted.
+      yield* requireMetadataShell("materialize", input.threadId, input.thread, true);
+    },
+  );
 
   const runOwned = <A>(
     operation: Effect.Effect<A, CodexThreadDirectoryError>,
@@ -557,6 +579,149 @@ export const make: Effect.Effect<
     };
   });
 
+  const acceptResumeContract = Effect.fn("CodexThreadDirectory.acceptResumeContract")(
+    function* (input: {
+      readonly expectedThreadId: string;
+      readonly response: ThreadResumeResponse;
+      readonly capability: CodexAppServerCapabilitySnapshot;
+      readonly executionHostId: string;
+      readonly fallbackCwd: string | null;
+      readonly operation: CodexThreadDirectoryError["operation"];
+      readonly stage: string;
+    }): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
+      const rawThread = input.response.thread;
+      yield* requireCapabilityHost(input.expectedThreadId, input.capability, input.executionHostId);
+      yield* requireMetadataShell(
+        input.operation,
+        input.expectedThreadId,
+        rawThread,
+        input.capability.flags.paginatedHistory,
+      );
+      yield* requireCurrentCapability(
+        input.expectedThreadId,
+        input.capability,
+        input.stage,
+        input.operation,
+      );
+      const cwd = input.response.cwd || rawThread.cwd || input.fallbackCwd || "/";
+      const existing = yield* readDurable(input.expectedThreadId);
+      const executionProfile = projectRuntimeExecutionProfile(
+        input.response,
+        existing?.thread.executionProfile ?? null,
+      );
+      const metadataThread = normalizeThread({ ...rawThread, cwd });
+      const durable = yield* persistObservation({
+        thread: metadataThread,
+        executionProfile,
+        executionHostId: input.executionHostId,
+        fallbackCwd: cwd,
+      });
+
+      if (!input.capability.flags.paginatedHistory) {
+        const initialPage = input.response.initialTurnsPage;
+        if (initialPage) {
+          const turns = yield* acceptCodexResumeInitialTurnsPage(
+            input.expectedThreadId,
+            initialPage,
+          ).pipe(Effect.mapError((cause) => error("read", input.expectedThreadId, cause)));
+          const thread = normalizeThread({ ...metadataThread, turns });
+          return yield* hydrate({
+            durable,
+            thread,
+            context: input.response,
+            pagination: {
+              ...fullPagination(thread),
+              // A resume page proves its own contents, not support for subsequent history RPCs.
+              hasLoadedOldest: initialPage.nextCursor === null,
+            },
+          });
+        }
+        const resident = entry(durable, "live", metadataThread.historyMode);
+        const residentThread = resident.canonical
+          ? projectCodexCanonicalProtocolThread(resident.canonical)
+          : null;
+        if (!residentThread?.turns.length) {
+          return yield* error(
+            "read",
+            input.expectedThreadId,
+            new Error(
+              "The app-server did not provide a bounded resume history page; Thread history is unavailable",
+            ),
+          );
+        }
+        const thread = normalizeThread({
+          ...metadataThread,
+          turns: [...(residentThread?.turns ?? [])],
+        });
+        const residentPagination = resident.snapshot?.turnPagination;
+        const residentItemsPagination = resident.snapshot?.turnItemsPaginationById;
+        const itemsPaginationByTurnId = residentItemsPagination
+          ? Object.fromEntries(
+              Object.entries(residentItemsPagination).map(([turnId, pagination]) => [
+                turnId,
+                { ...pagination, olderCursor: null, isLoadingOlder: false },
+              ]),
+            )
+          : undefined;
+        return yield* hydrate({
+          durable,
+          thread,
+          context: input.response,
+          pagination: {
+            olderCursor: null,
+            backwardsCursor: null,
+            oldestLoadedTurnId: thread.turns[0]?.id ?? null,
+            isLoadingOlder: false,
+            hasLoadedOldest: residentPagination?.hasLoadedOldest ?? false,
+            loadedTurnCount: thread.turns.length,
+            itemsView: residentPagination?.itemsView ?? "notLoaded",
+          },
+          itemsPaginationByTurnId,
+        });
+      }
+
+      const paginatedPage = yield* historyPages
+        .loadTurnPage({
+          capability: input.capability,
+          threadId: input.expectedThreadId,
+          cursor: input.response.turnsBackwardsCursor ?? null,
+          initialItemsCursor: input.response.itemsBackwardsCursor ?? null,
+          purpose: "initial",
+        })
+        .pipe(Effect.mapError((cause) => error("read", input.expectedThreadId, cause)));
+      yield* requireCurrentCapability(
+        input.expectedThreadId,
+        input.capability,
+        "loading Thread history",
+      );
+      const thread = normalizeThread({
+        ...metadataThread,
+        turns: [...paginatedPage.turns],
+      });
+      const pagination: CodexConversationTurnPagination = {
+        olderCursor: paginatedPage.nextCursor,
+        backwardsCursor: paginatedPage.backwardsCursor,
+        oldestLoadedTurnId: thread.turns[0]?.id ?? null,
+        isLoadingOlder: false,
+        hasLoadedOldest: paginatedPage.nextCursor === null,
+        loadedTurnCount: thread.turns.length,
+        itemsView: Object.values(paginatedPage.itemsPaginationByTurnId).every(
+          (item) => item.itemsView === "full",
+        )
+          ? "full"
+          : "summary",
+      };
+      return yield* hydrate({
+        durable,
+        thread,
+        context: input.response,
+        pagination,
+        itemsPaginationByTurnId: paginatedPage.itemsPaginationByTurnId,
+        itemSegmentsByTurnId: paginatedPage.itemSegmentsByTurnId,
+      });
+    },
+  );
+
   const readRemote = Effect.fn("CodexThreadDirectory.readRemote")(function* (
     threadId: string,
     fidelity: Exclude<CodexThreadDirectoryResolveFidelity, "durable">,
@@ -587,18 +752,23 @@ export const make: Effect.Effect<
       const capability = yield* capabilities
         .forHost(hostId)
         .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
-      if (!capability.flags.paginatedHistory) {
-        return yield* error(
-          "read",
-          threadId,
-          new Error("Live Thread resume requires bounded paginated history support"),
-        );
-      }
       const gatewayResponse = yield* gateway
         .requestOnHost(
           hostId,
           "thread/resume",
-          { threadId, excludeTurns: true },
+          {
+            threadId,
+            excludeTurns: true,
+            ...(!capability.flags.paginatedHistory
+              ? {
+                  initialTurnsPage: {
+                    limit: CODEX_HISTORY_TURN_PAGE_SIZE,
+                    itemsView: "full" as const,
+                    sortDirection: "desc" as const,
+                  },
+                }
+              : {}),
+          },
           codexGatewayGenerationFence(capability),
         )
         .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
@@ -610,47 +780,14 @@ export const make: Effect.Effect<
           new Error(`Expected Thread '${threadId}' but received '${response.thread.id}'`),
         );
       }
-      yield* requireMetadataShell("read", threadId, response.thread, true);
-      yield* requireCurrentCapability(threadId, capability, "accepting Thread resume metadata");
-      const metadataThread = normalizeThread(response.thread);
-      const durable = yield* persistObservation({
-        thread: metadataThread,
+      return yield* acceptResumeContract({
+        expectedThreadId: threadId,
+        response,
+        capability,
         executionHostId: hostId,
-      });
-      const paginatedPage = yield* historyPages
-        .loadTurnPage({
-          capability,
-          threadId,
-          cursor: response.turnsBackwardsCursor ?? null,
-          initialItemsCursor: response.itemsBackwardsCursor ?? null,
-          purpose: "initial",
-        })
-        .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
-      yield* requireCurrentCapability(threadId, capability, "loading Thread history");
-      const thread = normalizeThread({
-        ...response.thread,
-        turns: [...paginatedPage.turns],
-      });
-      const pagination: CodexConversationTurnPagination = {
-        olderCursor: paginatedPage.nextCursor,
-        backwardsCursor: paginatedPage.backwardsCursor,
-        oldestLoadedTurnId: thread.turns[0]?.id ?? null,
-        isLoadingOlder: false,
-        hasLoadedOldest: paginatedPage.nextCursor === null,
-        loadedTurnCount: thread.turns.length,
-        itemsView: Object.values(paginatedPage.itemsPaginationByTurnId).every(
-          (item) => item.itemsView === "full",
-        )
-          ? "full"
-          : "summary",
-      };
-      return yield* hydrate({
-        durable,
-        thread,
-        context: response,
-        pagination,
-        itemsPaginationByTurnId: paginatedPage?.itemsPaginationByTurnId,
-        itemSegmentsByTurnId: paginatedPage?.itemSegmentsByTurnId,
+        fallbackCwd: null,
+        operation: "read",
+        stage: "accepting Thread resume metadata",
       });
     }
 
@@ -1030,6 +1167,7 @@ export const make: Effect.Effect<
   const acceptSessionStart = Effect.fn("CodexThreadDirectory.acceptSessionStart")(
     function* (input: {
       readonly response: ThreadStartResponse;
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly sessionId: string;
       readonly projectId: string | null;
       readonly executionProfile: CodexExecutionProfile | null;
@@ -1048,7 +1186,12 @@ export const make: Effect.Effect<
           new Error("Thread start did not return a valid Thread id"),
         );
       }
-      yield* requireMetadataShell("materialize", threadId, rawThread, false);
+      yield* requireDurableStartContract({
+        threadId,
+        thread: rawThread,
+        capability: input.capability,
+        stage: "accepting a newly created Session Thread",
+      });
       const thread = normalizeThread(rawThread);
       const cwd = input.response.cwd || thread.cwd || input.fallbackCwd;
       const executionProfile = projectRuntimeExecutionProfile(
@@ -1104,6 +1247,7 @@ export const make: Effect.Effect<
   const acceptStandaloneStart = Effect.fn("CodexThreadDirectory.acceptStandaloneStart")(
     function* (input: {
       readonly response: ThreadStartResponse;
+      readonly capability: CodexAppServerCapabilitySnapshot;
       readonly projectId: string | null;
       readonly executionProfile: CodexExecutionProfile | null;
       readonly runtimeWorkspaceRoots: readonly string[];
@@ -1121,7 +1265,12 @@ export const make: Effect.Effect<
           new Error("Standalone Thread start did not return a valid Thread id"),
         );
       }
-      yield* requireMetadataShell("materialize", threadId, rawThread, false);
+      yield* requireDurableStartContract({
+        threadId,
+        thread: rawThread,
+        capability: input.capability,
+        stage: "accepting a newly created standalone Thread",
+      });
       const cwd = input.response.cwd || rawThread.cwd || input.fallbackCwd;
       const executionProfile = projectRuntimeExecutionProfile(
         input.response,
@@ -1176,68 +1325,14 @@ export const make: Effect.Effect<
           new Error("Thread resume did not return a valid Thread id"),
         );
       }
-      yield* requireCapabilityHost(threadId, input.capability, input.executionHostId);
-      if (!input.capability.flags.paginatedHistory) {
-        return yield* error(
-          "materialize",
-          threadId,
-          new Error("Thread resume requires bounded paginated history support"),
-        );
-      }
-      yield* requireMetadataShell("materialize", threadId, rawThread, true);
-      yield* requireCurrentCapability(
-        threadId,
-        input.capability,
-        "accepting resumed Thread metadata",
-      );
-      const cwd = input.response.cwd || rawThread.cwd || input.fallbackCwd;
-      const metadataThread = normalizeThread({ ...rawThread, cwd });
-      const existing = yield* readDurable(threadId);
-      const executionProfile = projectRuntimeExecutionProfile(
-        input.response,
-        existing?.thread.executionProfile ?? null,
-      );
-      const durable = yield* persistObservation({
-        thread: metadataThread,
-        executionProfile,
+      return yield* acceptResumeContract({
+        expectedThreadId: threadId,
+        response: input.response,
+        capability: input.capability,
         executionHostId: input.executionHostId,
-        fallbackCwd: cwd,
-      });
-      const paginatedPage = yield* historyPages
-        .loadTurnPage({
-          capability: input.capability,
-          threadId,
-          cursor: input.response.turnsBackwardsCursor ?? null,
-          initialItemsCursor: input.response.itemsBackwardsCursor ?? null,
-          purpose: "initial",
-        })
-        .pipe(Effect.mapError((cause) => error("read", threadId, cause)));
-      yield* requireCurrentCapability(threadId, input.capability, "accepting resume history");
-      const resumedThread = normalizeThread({
-        ...metadataThread,
-        cwd,
-        turns: [...paginatedPage.turns],
-      });
-      const pagination: CodexConversationTurnPagination = {
-        olderCursor: paginatedPage.nextCursor,
-        backwardsCursor: paginatedPage.backwardsCursor,
-        oldestLoadedTurnId: resumedThread.turns[0]?.id ?? null,
-        isLoadingOlder: false,
-        hasLoadedOldest: paginatedPage.nextCursor === null,
-        loadedTurnCount: resumedThread.turns.length,
-        itemsView: Object.values(paginatedPage.itemsPaginationByTurnId).every(
-          (item) => item.itemsView === "full",
-        )
-          ? "full"
-          : "summary",
-      };
-      return yield* hydrate({
-        durable,
-        thread: resumedThread,
-        context: input.response,
-        pagination,
-        itemsPaginationByTurnId: paginatedPage?.itemsPaginationByTurnId,
-        itemSegmentsByTurnId: paginatedPage?.itemSegmentsByTurnId,
+        fallbackCwd: input.fallbackCwd,
+        operation: "materialize",
+        stage: "accepting resumed Thread metadata",
       });
     },
   );

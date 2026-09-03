@@ -15,6 +15,11 @@ import type {
 } from "../../../shared/acp-conversation";
 import { AcpConversationOwner, type AcpConversationOwnerPort } from "./acp-conversation-owner";
 import { BudgetedMarkdownRenderer } from "../local-conversation/view/shared/markdown/budgeted-markdown-renderer";
+import {
+  sessionFirstSubmissionOwner,
+  type SessionFirstSubmission,
+} from "../conversation-launch/session-first-submission-owner";
+import { useSessionFirstSubmission } from "../conversation-launch/use-session-first-submission";
 
 export interface AcpConversationStageProps {
   readonly threadId: string;
@@ -25,6 +30,8 @@ export interface AcpConversationStageProps {
 
 interface AcpConversationStageViewProps extends Omit<AcpConversationStageProps, "threadId"> {
   readonly owner: AcpConversationOwnerPort;
+  readonly threadId?: string;
+  readonly firstSubmission?: SessionFirstSubmission | null;
 }
 
 type AcpSessionConfigOption = AcpBackendSessionPresentation["configOptions"][number];
@@ -264,7 +271,10 @@ function AcpTurn({
   return (
     <section className="flex min-w-0 flex-col gap-3" aria-label="Conversation turn">
       {turn.promptText ? (
-        <div className="ml-auto max-w-[85%] rounded-lg bg-text/10 px-3 py-2 text-sm whitespace-pre-wrap text-foreground">
+        <div
+          className="ml-auto max-w-[85%] rounded-lg bg-text/10 px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
+          data-user-message-bubble="true"
+        >
           {turn.promptText}
         </div>
       ) : null}
@@ -391,6 +401,7 @@ function AcpConfigControl({
 
 export function AcpConversationStageView({
   owner,
+  firstSubmission = null,
   agentLabel = "ACP Agent",
   cwd,
   projectWorkspacePath,
@@ -485,7 +496,16 @@ export function AcpConversationStageView({
 
       <div className="min-h-0 flex-1 overflow-y-auto" aria-label={`${agentLabel} conversation`}>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-5">
-          {snapshot.turns.length === 0 ? (
+          {firstSubmission ? (
+            <div
+              className="ml-auto max-w-[85%] rounded-lg bg-text/10 px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
+              data-client-user-message-id={firstSubmission.clientUserMessageId}
+              data-user-message-bubble="true"
+            >
+              {firstSubmission.prompt}
+            </div>
+          ) : null}
+          {snapshot.turns.length === 0 && !firstSubmission ? (
             <div className="py-10 text-center text-sm text-tertiary">
               Start a conversation with {agentLabel}.
             </div>
@@ -557,5 +577,29 @@ export function AcpConversationStage(props: AcpConversationStageProps) {
 
 function AcpConversationStageSession({ threadId, ...props }: AcpConversationStageProps) {
   const [owner] = useState(() => new AcpConversationOwner(threadId));
-  return <AcpConversationStageView owner={owner} {...props} />;
+  const firstSubmission = useSessionFirstSubmission({
+    projectId: null,
+    sessionId: null,
+    threadId,
+  });
+  const snapshot = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot)
+    .presentation?.snapshot;
+  const canonicalFirstSubmissionVisible = Boolean(
+    firstSubmission &&
+    snapshot?.turns.some(
+      (turn) => turn.clientUserMessageId === firstSubmission.clientUserMessageId,
+    ),
+  );
+  useEffect(() => {
+    if (!firstSubmission || !canonicalFirstSubmissionVisible) return;
+    sessionFirstSubmissionOwner.complete(firstSubmission.launchId);
+  }, [canonicalFirstSubmissionVisible, firstSubmission]);
+  return (
+    <AcpConversationStageView
+      owner={owner}
+      threadId={threadId}
+      firstSubmission={canonicalFirstSubmissionVisible ? null : firstSubmission}
+      {...props}
+    />
+  );
 }

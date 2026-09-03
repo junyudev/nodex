@@ -19,6 +19,7 @@ import { captureBrowserUseRoute } from "@/lib/browser-use-route-capture";
 import { cleanupMaterializedThreadGoalDraft } from "./thread-goal-materialization";
 import type { ThreadStageActions } from "./thread-stage-types";
 import type { BrowserSidebarCommandResult } from "../../../shared/browser-sidebar";
+import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
 
 const captureTurnBrowserRouteCommand = defineRendererCommand({
   key: "browser_use.capture_turn_route",
@@ -196,13 +197,25 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
     onQueueingEnabledChange: input.onQueueingEnabledChange,
     onStartThreadForSession: (request) => {
       if (input.newThreadStartBlockedReason) {
-        return Promise.reject(new Error(input.newThreadStartBlockedReason));
+        throw new Error(input.newThreadStartBlockedReason);
       }
       const startKey = request.projectDraftId
         ? `draft:${request.projectId ?? "projectless"}:${request.projectDraftId}`
         : `session:${request.sessionId}`;
       const existing = startsInFlight.get(startKey);
       if (existing) return existing;
+      const firstSubmission = sessionFirstSubmissionOwner.begin({
+        backend: "codex",
+        originProjectId: input.currentSessionProjectId,
+        originSessionId: request.sessionId,
+        prompt: request.prompt,
+        promptInput: request.promptInput,
+      });
+      let failureStage:
+        | "materializingTarget"
+        | "startingThread"
+        | "adoptingOwner"
+        | "startingTurn" = "materializingTarget";
       const operation = (async () => {
         const {
           projectId,
@@ -250,6 +263,11 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
               })
             : undefined;
         const targetSessionId = targetSession?.id ?? sessionId;
+        sessionFirstSubmissionOwner.update(firstSubmission.launchId, {
+          targetProjectId: projectId,
+          targetSessionId,
+          phase: "startingThread",
+        });
         const presentationOrigin = resolveBrowserUsePresentationOrigin(targetSessionId);
         try {
           await captureTurnOrigin(targetSessionId, targetSessionId, projectId);
@@ -259,7 +277,12 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
           );
           throw error;
         }
+        failureStage = "startingThread";
         const result = await input.codexControl.startThreadForSession({
+          firstSubmission: {
+            launchId: firstSubmission.launchId,
+            clientUserMessageId: firstSubmission.clientUserMessageId,
+          },
           projectId,
           sessionId: targetSessionId,
           prompt,
@@ -273,6 +296,17 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
           collaborationMode: input.selectedCollaborationMode,
           ...(presentationOrigin ? { browserUsePresentationOrigin: presentationOrigin } : {}),
         });
+        if (result.kind === "started") {
+          sessionFirstSubmissionOwner.update(firstSubmission.launchId, {
+            threadId: result.detail.threadId,
+            phase: "startingTurn",
+          });
+        } else {
+          sessionFirstSubmissionOwner.update(firstSubmission.launchId, {
+            clientThreadId: result.clientThreadId,
+            phase: "startingThread",
+          });
+        }
         if (projectDraftId && projectId !== null) {
           input.onCommitMaterializedProjectDraft?.({
             projectId,
@@ -288,7 +322,13 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
           return;
         }
         await input.onRefreshProjectSessions(projectId);
-      })();
+      })().catch((error: unknown) => {
+        sessionFirstSubmissionOwner.fail(firstSubmission.launchId, {
+          stage: failureStage,
+          message: error instanceof Error ? error.message : "Message could not be sent.",
+        });
+        throw error;
+      });
       startsInFlight.set(startKey, operation);
       void operation.then(
         () => {

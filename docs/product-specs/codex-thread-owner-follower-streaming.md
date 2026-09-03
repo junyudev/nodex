@@ -247,6 +247,8 @@ Renderer ownership adoption is part of that resume transaction. Main resolves th
 
 Buffer release can advance Main's accepted canonical checkpoint after the initial resume handshake. Owner activation therefore treats a rejected checkpoint with recovery data as a convergence boundary: it adopts the recovered checkpoint, preserves Main-owned standalone unread state, and retries the activation snapshot within the same bounded transaction. A stale handshake checkpoint must not require navigation or a second user action to become usable.
 
+Resume, fork, and history-edit synchronization wait for the fixed prefix of owner notifications already sent when that operation begins waiting. Later notifications cannot extend an earlier operation's prefix, and concurrent or canceled callers cannot share an expiring deadline. The bounded cross-process synchronization deadline is independent of renderer frame cadence: a busy or cold window must not turn successfully restored history into a failure after a few frames. Only messages routed to an existing owner consume acknowledgment sequence numbers. Owner replacement, release, or IPC connection loss invalidates pending old-owner waits; neither ownership changes nor timeout can invent acknowledgment. Reconnecting windows retain a monotonic sequence fence so late pre-disconnection acknowledgments cannot consume new deliveries. Genuine timeout reports the captured target and latest acknowledged sequence in diagnostics and exposes an actionable synchronization error.
+
 Background child-agent summaries are not active child-thread streams. Parent
 thread surfaces consume one revisioned root Subagent overview containing only
 positive graph facts, lightweight metadata, causal status, and bounded windows;

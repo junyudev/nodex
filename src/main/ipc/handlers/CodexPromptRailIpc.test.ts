@@ -11,7 +11,10 @@ import type {
   CodexPromptRailReveal,
 } from "../../../shared/codex-prompt-rail-history";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { CodexPromptRailHistory } from "../../codex-application/CodexPromptRailHistory";
+import {
+  CodexPromptRailHistory,
+  CodexPromptRailHistoryUnavailable,
+} from "../../codex-application/CodexPromptRailHistory";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -309,6 +312,74 @@ it.effect("rejects a forged shell offset before the History and host RPC boundar
 
     assert.isTrue(Exit.isFailure(exit));
     assert.strictEqual(historyCalls, 0);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("returns optional history unavailability as data instead of rejecting Electron IPC", () =>
+  Effect.gen(function* () {
+    const handlers = new Map<string, Handler>();
+    const ipc = makeTestElectronIpc({
+      handle: (channel: string, handler: Handler) =>
+        Effect.acquireRelease(
+          Effect.sync(() => {
+            handlers.set(channel, handler);
+          }),
+          () => Effect.sync(() => handlers.delete(channel)),
+        ),
+      on: () => Effect.die("unused"),
+    });
+    const availability = {
+      status: "unavailable",
+      feature: "prompt-rail",
+      reason: "capability-unproven",
+      threadId: "thread-a",
+      hostId: "host-a",
+      hostGeneration: 7,
+      sourceEpoch: "epoch-a",
+      appServerVersion: "0.0.0",
+      historyMode: "paginated",
+    } as const;
+    const history = CodexPromptRailHistory.of({
+      loadIndex: () =>
+        Effect.fail(new CodexPromptRailHistoryUnavailable({ operation: "index", availability })),
+      reveal: () => Effect.die("unused"),
+      revealKnownTurn: () => Effect.die("unused"),
+    });
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(
+      live({ authorizeSender: () => true }).pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(CodexPromptRailHistory, history),
+            mainConfigLayer(),
+            Layer.succeed(WindowRuntime, {
+              has: () => true,
+            } as unknown as WindowRuntime["Service"]),
+          ),
+        ),
+      ),
+      scope,
+    );
+    const loadIndex = handlers.get("codex:thread:prompt-rail:index");
+    assert.isDefined(loadIndex);
+    const sender = Object.assign(new EventEmitter(), {
+      id: 61,
+      isDestroyed: () => false,
+    });
+
+    const result = yield* loadIndex({ sender } as unknown as IpcMainInvokeEvent, {
+      requestId: "unavailable-index",
+      threadId: "thread-a",
+      expectedTopologyGeneration: 11,
+    });
+
+    assert.deepStrictEqual(result, {
+      status: "unavailable",
+      requestId: "unavailable-index",
+      availability,
+    });
     yield* Scope.close(scope, Exit.void);
   }),
 );

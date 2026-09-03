@@ -72,6 +72,10 @@ describe("codex pending worktree init item", () => {
       localEnvironmentConfigPath: null,
       prompt: "Task",
       launchMode: "start-conversation",
+      firstSubmission: {
+        launchId: "01991e60-b800-7000-8000-000000000101",
+        clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+      },
       clientThreadId: "client-new-thread:1",
       startConversationParamsInput: {
         input: [],

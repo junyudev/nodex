@@ -27,6 +27,7 @@ const buildPresentation = (
     turns: [
       {
         sequence: 1,
+        clientUserMessageId: null,
         promptText: "Inspect the current workspace.",
         stopReason: status === "idle" ? "end_turn" : null,
         updates: [

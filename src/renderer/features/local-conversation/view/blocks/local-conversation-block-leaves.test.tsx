@@ -360,6 +360,19 @@ describe("UserMessageBubble collapse", () => {
     expect(queryByText("Show less") === null).toBe(true);
   });
 
+  test("marks a retained first submission as not sent", () => {
+    const block = buildUserMessageBlock("Retry this exact request.");
+    block.entry.deliveryStatus = "not-sent";
+    block.userMessageActions = { canEdit: false, sentAtMs: null };
+    const { getByRole } = render(
+      <TooltipProvider>
+        <UserMessageBubble block={block} isLatestTurn isStreamingTurn={false} />
+      </TooltipProvider>,
+    );
+
+    expect(getByRole("status").textContent).toBe("Not sent");
+  });
+
   test("labels hook feedback without exposing ordinary edit controls", () => {
     const block = buildUserMessageBlock("Please address the failed check.");
     block.entry.hookFeedback = true;

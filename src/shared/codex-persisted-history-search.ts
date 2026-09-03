@@ -1,5 +1,6 @@
 import type { ThreadSearchOccurrence } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationHistoryMutation } from "./codex-conversation-history-page";
+import type { CodexThreadHistoryFeatureUnavailable } from "./codex-thread-history-features";
 
 export interface CodexPersistedHistorySearchPage {
   readonly threadId: string;
@@ -10,6 +11,13 @@ export interface CodexPersistedHistorySearchPage {
   readonly occurrences: readonly ThreadSearchOccurrence[];
   readonly capped: boolean;
 }
+
+export type CodexPersistedHistorySearchResult =
+  | {
+      readonly status: "completed";
+      readonly page: CodexPersistedHistorySearchPage;
+    }
+  | CodexThreadHistoryFeatureUnavailable;
 
 export interface CodexPersistedHistoryOccurrenceHydrateInput {
   readonly threadId: string;

@@ -186,6 +186,10 @@ function pendingStartInput(input: {
     startingState: { type: "working-tree" },
     localEnvironmentConfigPath: input.environmentPath,
     launchMode: "start-conversation",
+    firstSubmission: {
+      launchId: "01991e60-b800-7000-8000-000000000101",
+      clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+    },
     prompt: "Report the current working directory.",
     projectSessionId: input.projectSessionId,
     startConversationParamsInput: {

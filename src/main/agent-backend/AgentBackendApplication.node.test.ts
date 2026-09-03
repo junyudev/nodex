@@ -12,6 +12,7 @@ import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AgentBackendRegistry } from "./AgentBackendRegistry";
 import {
   AcpBackendSessionManager,
+  type AcpDeferredInitialPrompt,
   type AcpBackendSessionState,
   type AcpBackendSessionHandle,
   type OpenAcpBackendSessionInput,
@@ -44,6 +45,11 @@ const project = {
   primaryWorkspaceRoot: "/workspace",
 };
 
+const firstSubmission = {
+  launchId: "01991e60-b800-7000-8000-000000000011",
+  clientUserMessageId: "01991e60-b800-7000-8000-000000000012",
+} as const;
+
 const makeHandleFor = (input?: {
   readonly threadId?: string;
   readonly prompt?: AcpBackendSessionHandle["prompt"];
@@ -54,7 +60,7 @@ const makeHandleFor = (input?: {
     const snapshot = yield* SubscriptionRef.make(
       emptyAcpConversationSnapshot({ threadId, sessionId: "protocol-session-1" }),
     );
-    const deferredInitialPrompt = yield* Ref.make<string | null>(null);
+    const deferredInitialPrompt = yield* Ref.make<AcpDeferredInitialPrompt | null>(null);
     return {
       threadId,
       agentDefinitionId: binding.agentDefinitionId,
@@ -85,7 +91,8 @@ const makeHandleFor = (input?: {
       snapshot,
       events: Stream.empty,
       authenticate: () => Effect.succeed({} as never),
-      deferInitialPrompt: (prompt: string) => Ref.set(deferredInitialPrompt, prompt),
+      deferInitialPrompt: (prompt: AcpDeferredInitialPrompt) =>
+        Ref.set(deferredInitialPrompt, prompt),
       takeDeferredInitialPrompt: Ref.getAndSet(deferredInitialPrompt, null),
       listSessions: Effect.succeed({ sessions: [] } as never),
       deleteSession: () => Effect.void,
@@ -426,6 +433,7 @@ describe("AgentBackendApplication authority", () => {
               sessionId: "session-1",
               instanceConfigId: binding.instanceConfigId,
               prompt: "Run a slow task",
+              firstSubmission,
             })
             .pipe(Effect.forkChild);
           yield* Deferred.await(promptStarted);
@@ -460,7 +468,7 @@ describe("AgentBackendApplication authority", () => {
             readonly updatedAt: number;
           } | null = null;
           const promptStarted = yield* Deferred.make<void>();
-          const deferredInitialPrompt = yield* Ref.make<string | null>(null);
+          const deferredInitialPrompt = yield* Ref.make<AcpDeferredInitialPrompt | null>(null);
           const status = yield* SubscriptionRef.make<AcpBackendSessionState>({
             kind: "authentication-required",
             error: {} as never,
@@ -531,7 +539,7 @@ describe("AgentBackendApplication authority", () => {
                 ),
                 Effect.as({} as never),
               ),
-            deferInitialPrompt: (value: string) => Ref.set(deferredInitialPrompt, value),
+            deferInitialPrompt: (value) => Ref.set(deferredInitialPrompt, value),
             takeDeferredInitialPrompt: Ref.getAndSet(deferredInitialPrompt, null),
             listSessions: Effect.succeed({ sessions: [] } as never),
             deleteSession: () => Effect.void,
@@ -622,6 +630,7 @@ describe("AgentBackendApplication authority", () => {
             sessionId: "session-1",
             instanceConfigId: binding.instanceConfigId,
             prompt: "Create the requested file",
+            firstSubmission,
           });
           expect(started.presentation.snapshot.status).toBe("authentication-required");
           expect(prompt).not.toHaveBeenCalled();
@@ -633,9 +642,12 @@ describe("AgentBackendApplication authority", () => {
           yield* Deferred.await(promptStarted);
           expect(bindThreadBackendSession).toHaveBeenCalledTimes(1);
           expect(prompt).toHaveBeenCalledTimes(1);
-          expect(prompt).toHaveBeenCalledWith([
-            { type: "text", text: "Create the requested file" },
-          ]);
+          expect(prompt).toHaveBeenCalledWith(
+            [{ type: "text", text: "Create the requested file" }],
+            {
+              clientUserMessageId: firstSubmission.clientUserMessageId,
+            },
+          );
 
           yield* application.authenticateAcpSession({
             threadId: started.thread.threadId,

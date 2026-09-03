@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import type { CodexConversationHistoryMutation } from "../../../../shared/codex-conversation-history-page";
 import type {
   CodexPromptRailIndex,
+  CodexPromptRailIndexRequest,
   CodexPromptRailReveal,
   CodexPromptRailRevealCommandResult,
   CodexPromptRailRevealRequest,
@@ -150,6 +151,111 @@ describe("useLocalConversationPromptRail", () => {
     });
     expect(revealRequests[2]?.target).toEqual({ kind: "knownTurn", turnId: "turn-1001" });
     expect(publishReveal).toHaveBeenCalledTimes(3);
+  });
+
+  test("keeps resident navigation available when persisted prompt history is unavailable", async () => {
+    const residentItem = {
+      id: "resident-user-message",
+      turnId: "turn-resident",
+      label: "Resident prompt",
+    } as ThreadUserMessageNavigationItem;
+    const loadIndex = vi.fn(
+      async (request: CodexPromptRailIndexRequest) =>
+        ({
+          status: "unavailable",
+          requestId: request.requestId,
+          availability: {
+            status: "unavailable",
+            feature: "prompt-rail",
+            reason: "capability-unproven",
+            threadId: "thread-a",
+            hostId: "host-a",
+            hostGeneration: 8,
+            sourceEpoch: "epoch-a",
+            appServerVersion: "0.0.0",
+            historyMode: "paginated",
+          },
+        }) as const,
+    );
+    const client: LocalConversationPromptRailClient = {
+      loadIndex,
+      reveal: vi.fn(async (): Promise<CodexPromptRailRevealCommandResult> => ({
+        status: "cancelled",
+        requestId: "unused",
+      })),
+    };
+    const hook = renderHook(() =>
+      useLocalConversationPromptRail({
+        enabled: true,
+        threadId: "thread-a",
+        topologyGeneration: 12,
+        residentItems: [residentItem],
+        client,
+        publishReveal: vi.fn(async () => undefined),
+      }),
+    );
+
+    await waitFor(() => expect(hook.result.current.loadingIndex).toBe(false));
+    expect(hook.result.current.availability?.reason).toBe("capability-unproven");
+    expect(hook.result.current.error).toBeNull();
+    expect(hook.result.current.items).toEqual([residentItem]);
+    expect(loadIndex).toHaveBeenCalledOnce();
+    expect(client.reveal).not.toHaveBeenCalled();
+  });
+
+  test("re-evaluates unavailable prompt history after the conversation generation changes", async () => {
+    let attempt = 0;
+    const client: LocalConversationPromptRailClient = {
+      loadIndex: async (request) => {
+        attempt += 1;
+        if (attempt === 1) {
+          return {
+            status: "unavailable",
+            requestId: request.requestId,
+            availability: {
+              status: "unavailable",
+              feature: "prompt-rail",
+              reason: "host-unsupported",
+              threadId: "thread-a",
+              hostId: "host-a",
+              hostGeneration: 8,
+              sourceEpoch: "epoch-old",
+              appServerVersion: "0.144.0",
+              historyMode: "paginated",
+            },
+          };
+        }
+        return {
+          status: "completed",
+          requestId: request.requestId,
+          expectedTopologyGeneration: request.expectedTopologyGeneration,
+          index: index(2),
+        };
+      },
+      reveal: vi.fn(async (): Promise<CodexPromptRailRevealCommandResult> => ({
+        status: "cancelled",
+        requestId: "unused",
+      })),
+    };
+    const hook = renderHook(
+      ({ topologyGeneration }) =>
+        useLocalConversationPromptRail({
+          enabled: true,
+          threadId: "thread-a",
+          topologyGeneration,
+          residentItems: [],
+          client,
+          publishReveal: vi.fn(async () => undefined),
+        }),
+      { initialProps: { topologyGeneration: 12 } },
+    );
+
+    await waitFor(() => expect(hook.result.current.availability?.reason).toBe("host-unsupported"));
+    hook.rerender({ topologyGeneration: 13 });
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(2));
+
+    expect(attempt).toBe(2);
+    expect(hook.result.current.availability).toBeNull();
   });
 
   test("rehydrates an evicted hover preview before exact click navigation", async () => {

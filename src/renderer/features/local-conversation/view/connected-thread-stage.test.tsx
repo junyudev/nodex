@@ -19,6 +19,7 @@ import { buildCodexThreadStreamCheckpoint } from "../../../../shared/codex-owner
 import type { CodexThreadStreamStateChangedEvent } from "../app-server-message-bus";
 import type { ThreadStageActions, ThreadStageRouteInput } from "../thread-stage-types";
 import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
+import { sessionFirstSubmissionOwner } from "../../conversation-launch/session-first-submission-owner";
 
 let invokeCalls: Array<{
   channel: string;
@@ -1163,6 +1164,103 @@ describe("ConnectedThreadStage read-state control plane", () => {
 });
 
 describe("ConnectedThreadStage new-chat home", () => {
+  test("replaces the provisional first submission with its canonical row before releasing it", async () => {
+    installAsyncRequestAnimationFrame(20);
+    sessionFirstSubmissionOwner.dispose();
+    const submission = sessionFirstSubmissionOwner.begin({
+      backend: "codex",
+      originProjectId: "project_1",
+      originSessionId: "session_1",
+      prompt: "Keep one row through canonical handoff.",
+    });
+    sessionFirstSubmissionOwner.update(submission.launchId, {
+      threadId: "thread_active",
+      phase: "startingTurn",
+    });
+
+    const view = await renderStage(buildThreadSummary(false));
+    const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
+    try {
+      expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
+
+      const canonical = buildConversation("thread_active");
+      const canonicalUserItem = canonical.turns[0]?.items[0];
+      if (!canonicalUserItem) throw new Error("Expected canonical user item fixture.");
+      await act(async () => {
+        dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
+          hostId: "default",
+          conversationId: "thread_active",
+          version: 1,
+          sourceClientId: "test-owner",
+          change: {
+            type: "snapshot",
+            revision: 1,
+            conversationState: {
+              ...canonical,
+              turns: [
+                {
+                  ...canonical.turns[0]!,
+                  items: [
+                    {
+                      ...canonicalUserItem,
+                      markdownText: "Keep one row through canonical handoff.",
+                      rawItem: {
+                        id: canonicalUserItem.itemId,
+                        type: "userMessage",
+                        clientId: submission.clientUserMessageId,
+                        content: [],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        });
+        await settleAsyncRender();
+      });
+
+      expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
+      expect(textContent(view.container).includes("Keep one row through canonical handoff.")).toBe(
+        true,
+      );
+      expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(1);
+      await waitFor(() =>
+        expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(0),
+      );
+    } finally {
+      view.unmount();
+      sessionFirstSubmissionOwner.dispose();
+    }
+  });
+
+  test("moves an admitted first submission onto the thread surface before a Thread exists", async () => {
+    installAsyncRequestAnimationFrame();
+    sessionFirstSubmissionOwner.dispose();
+    sessionFirstSubmissionOwner.begin({
+      backend: "codex",
+      originProjectId: "project_1",
+      originSessionId: "session_1",
+      prompt: "Keep this prompt visible during startup.",
+    });
+
+    const view = await renderNewThreadHome();
+    try {
+      expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
+      expect(textContent(view.container).includes("Keep this prompt visible during startup.")).toBe(
+        true,
+      );
+      expect(view.container.querySelector("[data-new-thread-home-main='true']")).toBeNull();
+      expect(view.container.querySelector("[data-new-thread-home-hero='true']")).toBeNull();
+      expect(
+        view.container.querySelector("[data-local-conversation-thread-body='true']"),
+      ).not.toBeNull();
+    } finally {
+      view.unmount();
+      sessionFirstSubmissionOwner.dispose();
+    }
+  });
+
   test("renders the new-thread hero, composer, and scoped footer without deferred rows", async () => {
     installAsyncRequestAnimationFrame();
 

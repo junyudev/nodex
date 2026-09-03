@@ -6,6 +6,7 @@ import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcEvents } from "../../../shared/ipc-api";
+import { isUuidV7 } from "../../../shared/uuid-v7";
 import { AgentBackendApplication } from "../../agent-backend/AgentBackendApplication";
 import { MainConfig } from "../../app/MainConfig";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
@@ -24,8 +25,23 @@ const prompt = z
   .min(1)
   .max(256 * 1024);
 const OpenInput = z.object({ threadId: id }).strict();
-const StartInput = z.object({ sessionId: id, instanceConfigId: id, prompt }).strict();
-const PromptInput = z.object({ threadId: id, prompt }).strict();
+const uuidV7 = z.string().refine(isUuidV7, "Expected canonical lowercase UUID-v7");
+const StartInput = z
+  .object({
+    sessionId: id,
+    instanceConfigId: id,
+    prompt,
+    firstSubmission: z
+      .object({
+        launchId: uuidV7,
+        clientUserMessageId: uuidV7,
+      })
+      .strict(),
+  })
+  .strict();
+const PromptInput = z
+  .object({ threadId: id, prompt, clientUserMessageId: uuidV7.optional() })
+  .strict();
 const ModeInput = z.object({ threadId: id, modeId: id }).strict();
 const ConfigInput = z
   .object({ threadId: id, configId: id, value: z.union([z.string().max(16_384), z.boolean()]) })

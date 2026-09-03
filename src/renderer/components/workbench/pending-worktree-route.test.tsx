@@ -49,6 +49,10 @@ function makeEntry(overrides: Partial<StartConversationEntry> = {}): StartConver
     localEnvironmentConfigPath: null,
     prompt: "Create an isolated workspace and implement the task.",
     launchMode: "start-conversation",
+    firstSubmission: {
+      launchId: "01991e60-b800-7000-8000-000000000101",
+      clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+    },
     clientThreadId: CLIENT_THREAD_ID,
     startConversationParamsInput: {
       input: [],
@@ -432,6 +436,13 @@ describe("PendingWorktreeRoute", () => {
       Boolean(view.container.querySelector("[data-local-conversation-thread-body='true']")),
     ).toBe(true);
     expect(Boolean(view.container.querySelector("[data-user-message-bubble='true']"))).toBe(true);
+    expect(
+      Boolean(
+        view.container.querySelector(
+          `[data-client-user-message-id='${entry.firstSubmission.clientUserMessageId}']`,
+        ),
+      ),
+    ).toBe(true);
     expect(Boolean(view.getByRole("button", { name: "Copy message" }))).toBe(true);
     expect(view.queryByRole("heading", { name: entry.label })).toBe(null);
     expect(view.queryByRole("button", { name: "Pin task" })).toBe(null);

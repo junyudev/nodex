@@ -13,6 +13,7 @@ import { CodexAttachments } from "./CodexAttachments";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 
 export interface CodexThreadLaunchOutcome {
+  readonly launchId: string;
   readonly projectId: string | null;
   readonly sessionId: string;
   readonly threadId: string;
@@ -32,7 +33,7 @@ export class CodexThreadLaunchCompletion extends Context.Service<
     readonly failed: (
       outcome: Pick<
         CodexThreadLaunchOutcome,
-        "projectId" | "sessionId" | "threadId" | "runInTarget"
+        "launchId" | "projectId" | "sessionId" | "threadId" | "runInTarget"
       >,
       message?: string,
     ) => void;
@@ -50,7 +51,10 @@ export const make: Effect.Effect<
   const core = yield* CoreModules;
 
   const progress = (
-    outcome: Pick<CodexThreadLaunchOutcome, "projectId" | "sessionId" | "threadId" | "runInTarget">,
+    outcome: Pick<
+      CodexThreadLaunchOutcome,
+      "launchId" | "projectId" | "sessionId" | "threadId" | "runInTarget"
+    >,
     input: {
       readonly phase: "ready" | "failed" | "startingThread";
       readonly message: string;

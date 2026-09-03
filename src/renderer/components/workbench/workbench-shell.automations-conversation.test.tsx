@@ -36,6 +36,20 @@ import {
   setMockInvokeImpl,
   setStartThreadForSessionResult,
 } from "./workbench-testkit/workbench-shell-harness";
+import { isUuidV7 } from "../../../shared/uuid-v7";
+
+function expectFirstSubmissionIdentity(input: unknown): void {
+  const firstSubmission = (
+    input as {
+      readonly firstSubmission?: {
+        readonly launchId?: string;
+        readonly clientUserMessageId?: string;
+      };
+    }
+  ).firstSubmission;
+  expect(isUuidV7(firstSubmission?.launchId ?? "")).toBe(true);
+  expect(isUuidV7(firstSubmission?.clientUserMessageId ?? "")).toBe(true);
+}
 
 describe("workbench session shell / automations-conversation", () => {
   test("surfaces pending heartbeat handoff failure from the app-level coordinator", async () => {
@@ -1408,20 +1422,19 @@ describe("workbench session shell / automations-conversation", () => {
     await settleAsyncRender();
 
     expect(startThreadForSessionCalls.length).toBe(1);
-    expect(JSON.stringify(startThreadForSessionCalls[0])).toBe(
-      JSON.stringify({
-        projectId: "alpha",
-        sessionId: "session:alpha:blank",
-        prompt: "Start from session",
-        runInTarget: "localProject",
-        runInEnvironmentPath: null,
-        collaborationMode: "default",
-        browserUsePresentationOrigin: {
-          browserConversationId: "session:alpha:blank",
-          browserViewScopeId: "window-session:test",
-        },
-      }),
-    );
+    expectFirstSubmissionIdentity(startThreadForSessionCalls[0]);
+    expect(startThreadForSessionCalls[0]).toMatchObject({
+      projectId: "alpha",
+      sessionId: "session:alpha:blank",
+      prompt: "Start from session",
+      runInTarget: "localProject",
+      runInEnvironmentPath: null,
+      collaborationMode: "default",
+      browserUsePresentationOrigin: {
+        browserConversationId: "session:alpha:blank",
+        browserViewScopeId: "window-session:test",
+      },
+    });
     expect(
       invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === "alpha"),
     ).toBe(true);
@@ -1607,20 +1620,19 @@ describe("workbench session shell / automations-conversation", () => {
           rendererCommandPayload(call)?.projectId === "beta",
       ),
     )?.candidateSessionId;
-    expect(JSON.stringify(startThreadForSessionCalls[0])).toBe(
-      JSON.stringify({
-        projectId: "beta",
-        sessionId: betaSessionId,
-        prompt: "Start from session",
-        runInTarget: "localProject",
-        runInEnvironmentPath: null,
-        collaborationMode: "default",
-        browserUsePresentationOrigin: {
-          browserConversationId: betaSessionId,
-          browserViewScopeId: "window-session:test",
-        },
-      }),
-    );
+    expectFirstSubmissionIdentity(startThreadForSessionCalls[0]);
+    expect(startThreadForSessionCalls[0]).toMatchObject({
+      projectId: "beta",
+      sessionId: betaSessionId,
+      prompt: "Start from session",
+      runInTarget: "localProject",
+      runInEnvironmentPath: null,
+      collaborationMode: "default",
+      browserUsePresentationOrigin: {
+        browserConversationId: betaSessionId,
+        browserViewScopeId: "window-session:test",
+      },
+    });
     expect(
       invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === "beta"),
     ).toBe(true);
@@ -1669,20 +1681,19 @@ describe("workbench session shell / automations-conversation", () => {
     await settleAsyncRender();
 
     expect(startThreadForSessionCalls.length).toBe(1);
-    expect(JSON.stringify(startThreadForSessionCalls[0])).toBe(
-      JSON.stringify({
-        projectId: "alpha",
-        sessionId: "session:alpha:blank",
-        prompt: "Start from session",
-        runInTarget: "newWorktree",
-        runInEnvironmentPath: null,
-        collaborationMode: "default",
-        browserUsePresentationOrigin: {
-          browserConversationId: "session:alpha:blank",
-          browserViewScopeId: "window-session:test",
-        },
-      }),
-    );
+    expectFirstSubmissionIdentity(startThreadForSessionCalls[0]);
+    expect(startThreadForSessionCalls[0]).toMatchObject({
+      projectId: "alpha",
+      sessionId: "session:alpha:blank",
+      prompt: "Start from session",
+      runInTarget: "newWorktree",
+      runInEnvironmentPath: null,
+      collaborationMode: "default",
+      browserUsePresentationOrigin: {
+        browserConversationId: "session:alpha:blank",
+        browserViewScopeId: "window-session:test",
+      },
+    });
     expect(screen.getByTestId("pending-worktree-route-shell") !== null).toBe(true);
     expect(
       invokeCalls.filter((call) => call[0] === "project-sessions:list" && call[1] === "alpha")

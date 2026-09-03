@@ -29,6 +29,10 @@ function createStartRequest(
     localEnvironmentConfigPath: "/repo/.codex/environments/environment.toml",
     prompt: "Do the delegated work",
     launchMode: "start-conversation",
+    firstSubmission: {
+      launchId: "01991e60-b800-7000-8000-000000000101",
+      clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+    },
     clientThreadId,
     startConversationParamsInput: {
       input: [],

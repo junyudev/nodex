@@ -67,6 +67,11 @@ export interface OpenAcpBackendSessionInput {
   readonly permissionPolicy: "approve-for-me" | "ask";
 }
 
+export interface AcpDeferredInitialPrompt {
+  readonly prompt: string;
+  readonly clientUserMessageId: string;
+}
+
 export interface AcpBackendSessionHandle {
   readonly threadId: string;
   readonly agentDefinitionId: string;
@@ -80,12 +85,13 @@ export interface AcpBackendSessionHandle {
   readonly events: Stream.Stream<AcpSessionRuntimeEvent>;
   readonly authenticate: (methodId: string) => Effect.Effect<AuthenticateResponse, AcpRuntimeError>;
   /** Holds a not-yet-submitted first prompt only while interactive authentication is pending. */
-  readonly deferInitialPrompt: (prompt: string) => Effect.Effect<void>;
-  readonly takeDeferredInitialPrompt: Effect.Effect<string | null>;
+  readonly deferInitialPrompt: (prompt: AcpDeferredInitialPrompt) => Effect.Effect<void>;
+  readonly takeDeferredInitialPrompt: Effect.Effect<AcpDeferredInitialPrompt | null>;
   readonly listSessions: Effect.Effect<ListSessionsResponse, AcpRuntimeError>;
   readonly deleteSession: (sessionId: string) => Effect.Effect<void, AcpRuntimeError>;
   readonly prompt: (
     prompt: PromptRequest["prompt"],
+    options?: { readonly clientUserMessageId?: string },
   ) => Effect.Effect<PromptResponse, AcpRuntimeError>;
   readonly cancel: Effect.Effect<void, AcpRuntimeError>;
   readonly setMode: (modeId: string) => Effect.Effect<void, AcpRuntimeError>;
@@ -400,7 +406,7 @@ export const make = (
                   }),
             );
             const active = yield* Ref.make(true);
-            const deferredInitialPrompt = yield* Ref.make<string | null>(null);
+            const deferredInitialPrompt = yield* Ref.make<AcpDeferredInitialPrompt | null>(null);
             const projectedEvents = yield* PubSub.sliding<AcpSessionRuntimeEvent>(128);
             const nextTurnSequence = yield* Ref.make(1);
             const promptLane = yield* Semaphore.make(1);
@@ -559,7 +565,7 @@ export const make = (
               listSessions: requireActive("session.list", runtime.listSessions),
               deleteSession: (sessionId) =>
                 requireActive("session.delete", runtime.deleteSession(sessionId)),
-              prompt: (prompt) =>
+              prompt: (prompt, options) =>
                 requireActive(
                   "session.prompt",
                   promptLane.withPermits(1)(
@@ -573,7 +579,12 @@ export const make = (
                       projectedTurns.set(turnSequence, projected);
                       yield* SubscriptionRef.set(status, { kind: "running" });
                       yield* SubscriptionRef.update(conversationSnapshot, (current) =>
-                        beginAcpConversationTurn(current, turnSequence, prompt),
+                        beginAcpConversationTurn(
+                          current,
+                          turnSequence,
+                          prompt,
+                          options?.clientUserMessageId ?? null,
+                        ),
                       );
                       return yield* runtime.prompt(prompt).pipe(
                         Effect.tap(() => Deferred.await(projected)),

@@ -2484,6 +2484,12 @@ export interface CodexProjectlessWorkspace {
   workspaceRoot: string;
 }
 
+/** Renderer-allocated identity for one user-visible pre-Thread submission attempt. */
+export interface ConversationFirstSubmissionIdentity {
+  readonly launchId: string;
+  readonly clientUserMessageId: string;
+}
+
 export interface CodexProjectlessThreadCwdInput {
   prompt?: string | null;
   directoryName?: string | null;
@@ -2491,6 +2497,7 @@ export interface CodexProjectlessThreadCwdInput {
 }
 
 export interface CodexThreadStartForSessionInput {
+  firstSubmission: ConversationFirstSubmissionIdentity;
   projectId: string | null;
   sessionId: string;
   prompt: string;
@@ -4692,6 +4699,7 @@ export type CodexEvent =
   | { type: "userInputResolved"; requestId: CodexAppServerRequestId }
   | {
       type: "threadStartProgress";
+      launchId: string;
       projectId: string | null;
       sessionId: string | null;
       runInTarget: PageRunInTarget;
@@ -4743,6 +4751,7 @@ export type CodexSharedObject =
       objectType: "threadStartProgress";
       objectId: string;
       value: {
+        launchId: string;
         projectId: string | null;
         sessionId: string | null;
         runInTarget: PageRunInTarget;

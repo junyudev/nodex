@@ -69,6 +69,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
   } as unknown as CodexConversationSnapshot;
   aggregates.acquire(identity.threadId).installSnapshot(snapshot);
   let adoptionCalls = 0;
+  const failures: string[] = [];
   const coordinator = CodexRendererConversationCoordinator.of({
     readRendererState: (threadId) => {
       const state = aggregates.current(threadId)?.read();
@@ -116,14 +117,16 @@ const makeHarness = (options: HarnessOptions = {}) => {
   } as unknown as CodexTurnCommands["Service"]);
   const completion = CodexThreadLaunchCompletion.of({
     accepted: () => Effect.void,
-    failed: () => undefined,
+    failed: (_launch, message) => {
+      failures.push(message ?? "failed");
+    },
   });
   const runtime = make.pipe(
     Effect.provideService(CodexRendererConversationCoordinator, coordinator),
     Effect.provideService(CodexThreadLaunchCompletion, completion),
     Effect.provideService(CodexTurnCommands, turns),
   );
-  return { adoptionCalls: () => adoptionCalls, runtime };
+  return { adoptionCalls: () => adoptionCalls, failures, runtime };
 };
 
 it.effect("single-flights renderer adoption and the first Turn start", () =>
@@ -183,5 +186,18 @@ it.effect("interrupts an active first Turn when the owning Scope closes", () =>
     yield* Scope.close(ownerScope, Exit.void);
     assert.strictEqual((yield* Fiber.await(fiber))._tag, "Failure");
     assert.strictEqual(rollbacks, 1);
+  }),
+);
+
+it.effect("releases a prepared launch when its renderer window closes", () =>
+  Effect.gen(function* () {
+    const harness = makeHarness();
+    const service = yield* harness.runtime;
+    service.register(launch());
+
+    service.releaseRenderer(identity.ownerClientId, new Error("window closed"));
+
+    assert.isNull(service.reservation(identity.threadId));
+    assert.deepEqual(harness.failures, ["Message could not be sent because its window closed."]);
   }),
 );

@@ -1,4 +1,9 @@
-import type { SortDirection, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  SortDirection,
+  ThreadItem,
+  Turn,
+  TurnsPage,
+} from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -80,6 +85,7 @@ export class CodexHistoryPageAdapterError extends Schema.TaggedError<CodexHistor
       "foreign-item",
       "page-size-exceeded",
       "item-byte-limit",
+      "incomplete-resume-page",
     ]),
     cause: Schema.Defect(),
   },
@@ -153,6 +159,62 @@ export const estimateCodexHistoryProjectedItemPageBytes = (
   if (singleProjectionBytes > perProjectionLimit) return limit + 1;
   return singleProjectionBytes * 3 + metadataBytes;
 };
+
+/** Admit the bounded inline resume page when independent history RPCs are unproven. */
+export const acceptCodexResumeInitialTurnsPage = Effect.fn("acceptCodexResumeInitialTurnsPage")(
+  function* (threadId: string, page: TurnsPage) {
+    if (page.data.length > CODEX_HISTORY_TURN_PAGE_SIZE) {
+      return yield* error({
+        operation: "turns",
+        threadId,
+        reason: "page-size-exceeded",
+        cause: new Error("Resume history exceeded the requested Turn limit"),
+      });
+    }
+    let remainingItems = CODEX_HISTORY_INITIAL_ITEM_BUDGET;
+    let remainingBytes = CODEX_HISTORY_INITIAL_BYTE_BUDGET;
+    for (const turn of page.data) {
+      if (turn.itemsView !== "full") {
+        return yield* error({
+          operation: "turns",
+          threadId,
+          turnId: turn.id,
+          reason: "incomplete-resume-page",
+          cause: new Error("Resume history must include full items without optional history RPCs"),
+        });
+      }
+      remainingItems -= turn.items.length;
+      if (remainingItems < 0) {
+        return yield* error({
+          operation: "items",
+          threadId,
+          turnId: turn.id,
+          reason: "page-size-exceeded",
+          cause: new Error("Resume history exceeded the resident item budget"),
+        });
+      }
+      remainingBytes -= estimateCodexHistoryProjectedItemPageBytes(turn.items, remainingBytes);
+      if (remainingBytes < 0) {
+        return yield* error({
+          operation: "items",
+          threadId,
+          turnId: turn.id,
+          reason: "item-byte-limit",
+          cause: new Error("Resume history exceeded the resident byte budget"),
+        });
+      }
+    }
+    if (page.data.length === 0 && page.nextCursor !== null) {
+      return yield* error({
+        operation: "turns",
+        threadId,
+        reason: "incomplete-resume-page",
+        cause: new Error("Resume history returned an empty page with unloaded Turns"),
+      });
+    }
+    return page.data.slice().reverse();
+  },
+);
 
 const schedulingForPurpose = (purpose: CodexHistoryPagePurpose) =>
   purpose === "export"

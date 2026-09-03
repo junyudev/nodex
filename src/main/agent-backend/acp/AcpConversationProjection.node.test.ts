@@ -99,13 +99,19 @@ it("enforces the byte budget even when one canonical update is oversized", () =>
   expect(encodedBytes(snapshot.turns)).toBeLessThanOrEqual(ACP_CONVERSATION_MAX_TURN_BYTES);
 });
 
-it("round-trips consecutive bounded deltas and rejects revision gaps", () => {
+it("round-trips first-submission identity through consecutive bounded deltas", () => {
   const initial = emptyAcpConversationSnapshot({ threadId: "thread-1", sessionId: "session-1" });
-  const running = beginAcpConversationTurn(initial, 1, [{ type: "text", text: "hello" }]);
+  const running = beginAcpConversationTurn(
+    initial,
+    1,
+    [{ type: "text", text: "hello" }],
+    "01991e60-b800-7000-8000-000000000012",
+  );
   const firstDelta = diffAcpConversationSnapshots(initial, running);
   expect(firstDelta).not.toBeNull();
   const firstReplica = applyAcpConversationDelta(initial, firstDelta!);
   expect(firstReplica).toEqual(running);
+  expect(firstReplica?.turns[0]?.clientUserMessageId).toBe("01991e60-b800-7000-8000-000000000012");
 
   const streamed = reduceAcpConversationEvent(running, {
     kind: "session_update",

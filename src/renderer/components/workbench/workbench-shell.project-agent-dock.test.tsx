@@ -21,6 +21,10 @@ function pendingWorktree(
 ): ProjectAgentDockPendingWorktreeEntry {
   return {
     launchMode: "start-conversation",
+    firstSubmission: {
+      launchId: "01991e60-b800-7000-8000-000000000101",
+      clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+    },
     id: "pending-1",
     hostId: "host-1",
     clientThreadId: "client-1",

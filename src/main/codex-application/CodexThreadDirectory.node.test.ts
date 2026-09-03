@@ -3,6 +3,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Result from "effect/Result";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -192,6 +193,12 @@ const makeConversations = () => {
 const capabilitySnapshot = createCodexAppServerCapabilitySnapshot({
   hostId: "remote-a",
   generation: 1,
+  userAgent: "nodex/0.147.0 (Mac OS 26.6.1; arm64) unknown (nodex; 0.5.0)",
+});
+
+const localCapabilitySnapshot = createCodexAppServerCapabilitySnapshot({
+  hostId: "local",
+  generation: 1,
   userAgent: "codex-app-server/0.147.0",
 });
 
@@ -267,7 +274,7 @@ it.effect("accepts rollback as one durable and canonical replacement", () =>
   ),
 );
 
-it.effect("rejects inline history from a standalone start before it mutates durable state", () =>
+it.effect("accepts a concrete paginated start contract without trusting the version label", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const threads = new Map<string, CoreThread>();
@@ -335,12 +342,69 @@ it.effect("rejects inline history from a standalone start before it mutates dura
           executionProfile: null,
           runtimeWorkspaceRoots: ["/repo"],
           fallbackCwd: "/fallback",
+          capability: localCapabilitySnapshot,
         }),
       );
 
+      const legacy = yield* Effect.exit(
+        directory.acceptStandaloneStart({
+          response: {
+            cwd: "/repo",
+            thread: { ...appThread("thread-legacy"), historyMode: "legacy", turns: [] },
+            model: "gpt-test",
+            modelProvider: "openai",
+            serviceTier: null,
+            runtimeWorkspaceRoots: ["/repo"],
+            instructionSources: [],
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandbox: { type: "readOnly", networkAccess: false },
+            activePermissionProfile: null,
+            reasoningEffort: "high",
+            multiAgentMode: "explicitRequestOnly",
+          } as never,
+          projectId: "project-a",
+          executionProfile: null,
+          runtimeWorkspaceRoots: ["/repo"],
+          fallbackCwd: "/fallback",
+          capability: localCapabilitySnapshot,
+        }),
+      );
+
+      const unversioned = yield* directory.acceptStandaloneStart({
+        response: {
+          cwd: "/repo",
+          thread: appThread("thread-unversioned"),
+          model: "gpt-test",
+          modelProvider: "openai",
+          serviceTier: null,
+          runtimeWorkspaceRoots: ["/repo"],
+          instructionSources: [],
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandbox: { type: "readOnly", networkAccess: false },
+          activePermissionProfile: null,
+          reasoningEffort: "high",
+          multiAgentMode: "explicitRequestOnly",
+        } as never,
+        projectId: "project-a",
+        executionProfile: null,
+        runtimeWorkspaceRoots: ["/repo"],
+        fallbackCwd: "/fallback",
+        capability: createCodexAppServerCapabilitySnapshot({
+          hostId: "local",
+          generation: 1,
+          userAgent: "codex-app-server/0.0.0",
+        }),
+      });
+
       assert.isTrue(Exit.isFailure(accepted));
-      assert.deepEqual([...threads.keys()], []);
+      assert.isTrue(Exit.isFailure(legacy));
+      assert.strictEqual(unversioned.historyMode, "paginated");
+      assert.deepEqual([...threads.keys()], ["thread-unversioned"]);
       assert.isNull(conversations.current("thread-started"));
+      assert.isNull(conversations.current("thread-legacy"));
+      assert.isNotNull(conversations.current("thread-unversioned"));
     }),
   ),
 );
@@ -1192,6 +1256,295 @@ it.effect("resumes paginated Threads metadata-first and hydrates one bounded tai
       });
     }),
   ),
+);
+
+it.effect("resumes through an unversioned host without replacing resident history", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const threads = new Map([["thread-a", coreThread("thread-a")]]);
+      const core = makeCore(threads);
+      const conversations = makeConversations();
+      const eventHub = CodexApplicationEventHub.of({
+        events: Stream.empty,
+        publish: () => undefined,
+      });
+      const projection = yield* makeConversationProjection.pipe(
+        Effect.provideService(ConversationEntityMap, conversations),
+        Effect.provideService(
+          CodexRendererConversationRegistry,
+          makeCodexRendererConversationRegistryState(),
+        ),
+        Effect.provideService(CodexApplicationEventHub, eventHub),
+        Effect.provideService(CoreModules, core),
+      );
+      const unversionedCapability = createCodexAppServerCapabilitySnapshot({
+        hostId: "remote-a",
+        generation: 2,
+        userAgent: "codex-app-server/0.0.0",
+      });
+      const resumeRequests: Array<{ readonly params: unknown; readonly scheduling: unknown }> = [];
+      const gateway = makeGateway(((hostId, method, params, scheduling) => {
+        assert.strictEqual(hostId, "remote-a");
+        assert.strictEqual(method, "thread/resume");
+        resumeRequests.push({ params, scheduling });
+        return Effect.succeed({
+          thread: appThread("thread-a"),
+          model: "gpt-test",
+          modelProvider: "openai",
+          serviceTier: null,
+          cwd: "/repo",
+          runtimeWorkspaceRoots: ["/repo"],
+          instructionSources: [],
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandbox: { type: "readOnly", networkAccess: false },
+          activePermissionProfile: null,
+          reasoningEffort: "high",
+          multiAgentMode: "explicitRequestOnly",
+          turnsBackwardsCursor: "must-not-page",
+          itemsBackwardsCursor: "must-not-page",
+        } as never);
+      }) as RequestOnHost);
+      const directory = yield* makeDirectory.pipe(
+        Effect.provideService(CodexApplicationEventHub, eventHub),
+        Effect.provideService(CodexConversationProjection, projection),
+        Effect.provideService(CodexGateway, gateway),
+        Effect.provideService(
+          CodexHistoryPageAdapter,
+          CodexHistoryPageAdapter.of({
+            loadTurnPage: () => Effect.die("unversioned resume must remain resident-only"),
+            loadTurnItemsPage: () => Effect.die("unused"),
+          }),
+        ),
+        Effect.provideService(
+          CodexAppServerCapabilities,
+          CodexAppServerCapabilities.of({
+            forHost: () => Effect.succeed(unversionedCapability),
+            forThread: () => Effect.succeed(unversionedCapability),
+            isCurrent: () => Effect.succeed(true),
+          }),
+        ),
+        Effect.provideService(ConversationEntityMap, conversations),
+        Effect.provideService(CoreModules, core),
+      );
+      const residentTurn: Turn = {
+        id: "turn-resident",
+        items: [
+          {
+            type: "userMessage",
+            id: "item-resident",
+            clientId: null,
+            content: [{ type: "text", text: "Keep me resident", text_elements: [] }],
+          },
+        ],
+        itemsView: "full",
+        status: "completed",
+        error: null,
+        startedAt: 1,
+        completedAt: 2,
+        durationMs: 1,
+      };
+      yield* directory.acceptRollbackResult({
+        expectedThreadId: "thread-a",
+        thread: appThread("thread-a", [residentTurn]),
+        pagination: {
+          olderCursor: "cursor:resident-older",
+          backwardsCursor: "cursor:resident-newer",
+          oldestLoadedTurnId: residentTurn.id,
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+          loadedTurnCount: 1,
+          itemsView: "full",
+        },
+      });
+
+      const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
+
+      assert.deepEqual(resumeRequests, [
+        {
+          params: {
+            threadId: "thread-a",
+            excludeTurns: true,
+            initialTurnsPage: { limit: 5, itemsView: "full", sortDirection: "desc" },
+          },
+          scheduling: { expectedHostId: "remote-a", expectedGeneration: 2 },
+        },
+      ]);
+      assert.deepEqual(
+        resolved?.canonical?.turns.map((turn) => turn.protocol.id),
+        ["turn-resident"],
+      );
+      assert.deepEqual(resolved?.snapshot?.turnPagination, {
+        olderCursor: null,
+        backwardsCursor: null,
+        oldestLoadedTurnId: "turn-resident",
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        loadedTurnCount: 1,
+        itemsView: "full",
+      });
+    }),
+  ),
+);
+
+it.effect(
+  "cold resume accepts authoritative inline history and rejects missing or partial history",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const core = makeCore(new Map([["thread-a", coreThread("thread-a")]]));
+        const conversations = makeConversations();
+        const eventHub = CodexApplicationEventHub.of({
+          events: Stream.empty,
+          publish: () => undefined,
+        });
+        const projection = yield* makeConversationProjection.pipe(
+          Effect.provideService(ConversationEntityMap, conversations),
+          Effect.provideService(
+            CodexRendererConversationRegistry,
+            makeCodexRendererConversationRegistryState(),
+          ),
+          Effect.provideService(CodexApplicationEventHub, eventHub),
+          Effect.provideService(CoreModules, core),
+        );
+        const capability = createCodexAppServerCapabilitySnapshot({
+          hostId: "remote-a",
+          generation: 2,
+          userAgent: "nodex/0.0.0",
+        });
+        const gateway = makeGateway((() =>
+          Effect.die("Resume page admission performs no history RPC")) as RequestOnHost);
+        const history = yield* makeHistoryPageAdapter.pipe(
+          Effect.provideService(CodexGateway, gateway),
+        );
+        const directory = yield* makeDirectory.pipe(
+          Effect.provideService(CodexApplicationEventHub, eventHub),
+          Effect.provideService(CodexConversationProjection, projection),
+          Effect.provideService(CodexGateway, gateway),
+          Effect.provideService(CodexHistoryPageAdapter, history),
+          Effect.provideService(
+            CodexAppServerCapabilities,
+            CodexAppServerCapabilities.of({
+              forHost: () => Effect.succeed(capability),
+              forThread: () => Effect.succeed(capability),
+              isCurrent: () => Effect.succeed(true),
+            }),
+          ),
+          Effect.provideService(ConversationEntityMap, conversations),
+          Effect.provideService(CoreModules, core),
+        );
+        const response = {
+          thread: appThread("thread-a"),
+          model: "gpt-test",
+          modelProvider: "openai",
+          serviceTier: null,
+          cwd: "/repo",
+          runtimeWorkspaceRoots: ["/repo"],
+          instructionSources: [],
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandbox: { type: "readOnly", networkAccess: false },
+          activePermissionProfile: null,
+          reasoningEffort: "high",
+          multiAgentMode: "explicitRequestOnly",
+          initialTurnsPage: null,
+          turnsBackwardsCursor: null,
+          itemsBackwardsCursor: null,
+        } satisfies import("@nodex/codex-app-server-protocol/v2").ThreadResumeResponse;
+        const input = { response, capability, executionHostId: "remote-a", fallbackCwd: "/repo" };
+        const missing = yield* directory.acceptResumeResult(input).pipe(Effect.result);
+        assert.isTrue(Result.isFailure(missing));
+        const cold = yield* directory.resolve({ threadId: "thread-a", fidelity: "durable" });
+        assert.strictEqual(cold?.canonical, null);
+
+        const turn = (id: string): Turn => ({
+          id,
+          items: [
+            {
+              type: "userMessage",
+              id: `user-${id}`,
+              clientId: null,
+              content: [{ type: "text", text: id, text_elements: [] }],
+            },
+          ],
+          itemsView: "full",
+          status: "completed",
+          error: null,
+          startedAt: 1,
+          completedAt: 2,
+          durationMs: 1,
+        });
+        const page = {
+          data: [turn("newest"), turn("oldest")],
+          nextCursor: "older-unavailable",
+          backwardsCursor: "newer-unavailable",
+        };
+        const restored = yield* directory.acceptResumeResult({
+          ...input,
+          response: { ...response, initialTurnsPage: page },
+        });
+        assert.deepEqual(
+          restored.canonical?.turns.map((value) => value.protocol.id),
+          ["oldest", "newest"],
+        );
+        assert.strictEqual(restored.snapshot?.resumeState, "resumed");
+        assert.strictEqual(restored.snapshot?.turnPagination?.hasLoadedOldest, false);
+        assert.strictEqual(restored.snapshot?.turnPagination?.olderCursor, null);
+
+        const invalidPages: Array<typeof page> = [
+          { ...page, data: [{ ...turn("missing-items"), items: [], itemsView: "notLoaded" }] },
+          { ...page, data: Array.from({ length: 6 }, (_, index) => turn(`turn-${index}`)) },
+          {
+            ...page,
+            data: [
+              {
+                ...turn("too-many-items"),
+                items: Array.from({ length: 501 }, (_, index) => turn(`item-${index}`).items[0]!),
+              },
+            ],
+          },
+          {
+            ...page,
+            data: [
+              {
+                ...turn("oversized-turn"),
+                items: [
+                  {
+                    type: "agentMessage",
+                    id: "oversized-item",
+                    text: "x".repeat(3 * 1024 * 1024),
+                    phase: null,
+                    memoryCitation: null,
+                    delivery: null,
+                  },
+                ],
+              },
+            ],
+          },
+          { ...page, data: [] },
+        ];
+        for (const initialTurnsPage of invalidPages) {
+          const invalid = yield* directory
+            .acceptResumeResult({ ...input, response: { ...response, initialTurnsPage } })
+            .pipe(Effect.result);
+          assert.isTrue(Result.isFailure(invalid));
+        }
+        const retained = yield* directory.resolve({ threadId: "thread-a", fidelity: "durable" });
+        assert.deepEqual(
+          retained?.canonical?.turns.map((value) => value.protocol.id),
+          ["oldest", "newest"],
+        );
+        const empty = yield* directory.acceptResumeResult({
+          ...input,
+          response: {
+            ...response,
+            initialTurnsPage: { data: [], nextCursor: null, backwardsCursor: null },
+          },
+        });
+        assert.deepEqual(empty.snapshot?.turns, []);
+        assert.strictEqual(empty.snapshot?.turnPagination?.hasLoadedOldest, true);
+      }),
+    ),
 );
 
 it.effect("owner Scope close interrupts an in-flight remote hydration", () =>

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   GIT_ACTION_COMMIT_OR_PUSH_PROMPT,
   GIT_ACTION_CREATE_PR_PROMPT,
@@ -8,6 +8,12 @@ import {
   createThreadStageActions,
   type ThreadActionControllerInput,
 } from "./thread-action-controller";
+import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
+import { isUuidV7 } from "../../../shared/uuid-v7";
+
+afterEach(() => {
+  sessionFirstSubmissionOwner.dispose();
+});
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -292,14 +298,14 @@ describe("createThreadStageActions settings routing", () => {
       }),
     );
 
-    await expect(
+    expect(() =>
       actions.onStartThreadForSession?.({
         projectId: "project_1",
         sessionId: "session_1",
         prompt: "Start again",
         runInTarget: "newWorktree",
       }),
-    ).rejects.toThrow("Worktree setup is already in progress");
+    ).toThrow("Worktree setup is already in progress");
     expect(startThreadForSession).not.toHaveBeenCalled();
   });
 
@@ -338,21 +344,25 @@ describe("createThreadStageActions settings routing", () => {
       runInTarget: "localProject",
     });
 
-    expect(JSON.stringify(startInputs)).toBe(
-      JSON.stringify([
-        {
-          projectId: "project_1",
-          sessionId: "session_1",
-          prompt: "Start locally",
-          threadGoalMaterializedDraft: {
-            objective: "Keep the local goal active",
-            attachmentDirectory: "/tmp/goal-materialized",
-          },
-          runInTarget: "localProject",
-          collaborationMode: "default",
-        },
-      ]),
-    );
+    expect(startInputs).toHaveLength(1);
+    expect(startInputs[0]).toMatchObject({
+      projectId: "project_1",
+      sessionId: "session_1",
+      prompt: "Start locally",
+      threadGoalMaterializedDraft: {
+        objective: "Keep the local goal active",
+        attachmentDirectory: "/tmp/goal-materialized",
+      },
+      runInTarget: "localProject",
+      collaborationMode: "default",
+    });
+    const firstSubmission = (
+      startInputs[0] as {
+        firstSubmission: { launchId: string; clientUserMessageId: string };
+      }
+    ).firstSubmission;
+    expect(isUuidV7(firstSubmission.launchId)).toBe(true);
+    expect(isUuidV7(firstSubmission.clientUserMessageId)).toBe(true);
     expect(JSON.stringify(calls)).toBe(JSON.stringify(["refresh:project_1"]));
   });
 
@@ -469,6 +479,45 @@ describe("createThreadStageActions settings routing", () => {
       codexSessionId: "session-real",
       projectId: "project_1",
     });
+  });
+
+  test("publishes the first submission before target Session materialization settles", async () => {
+    sessionFirstSubmissionOwner.dispose();
+    let releaseTarget: (session: { id: string; projectId: string }) => void = () => undefined;
+    const targetSession = new Promise<{ id: string; projectId: string }>((resolve) => {
+      releaseTarget = resolve;
+    });
+    const actions = createThreadStageActions(
+      buildInput({
+        activeThreadId: null,
+        currentSessionProjectId: "project_1",
+        onEnsureDefaultDraftSessionForProject: async () => (await targetSession) as never,
+        codexControl: {
+          startThreadForSession: async () => ({
+            kind: "started" as const,
+            detail: { threadId: "thread-started" },
+          }),
+        } as unknown as ThreadActionControllerInput["codexControl"],
+      }),
+    );
+
+    const completion = actions.onStartThreadForSession?.({
+      projectId: "project_2",
+      sessionId: "session_1",
+      prompt: "Remain visible before the target Session exists.",
+      runInTarget: "localProject",
+    });
+    const projected = sessionFirstSubmissionOwner.projectTurns(
+      { projectId: "project_1", sessionId: "session_1", threadId: null },
+      [],
+    );
+
+    expect(projected[0]?.items[0]?.markdownText).toBe(
+      "Remain visible before the target Session exists.",
+    );
+    releaseTarget({ id: "session_2", projectId: "project_2" });
+    await completion;
+    sessionFirstSubmissionOwner.dispose();
   });
 
   test("allocates a split workspace before starting a projectless session", async () => {

@@ -183,12 +183,26 @@ export const waitForAgentThreadExecutionProfile = async (
     .toEqual(expectedProfile);
 };
 
-export const sendAgentPrompt = async (
+export interface AgentFirstSubmissionEvidence {
+  readonly submitToFirstVisibleUserMessageMs: number;
+  readonly submitToThreadLinkMs: number;
+  readonly blankFrameCount: number;
+  readonly duplicateFrameCount: number;
+  readonly finalUserMessageCount: number;
+  readonly clientUserMessageIdentityCount: number;
+}
+
+export interface AgentPromptSubmissionResult {
+  readonly threadId: string;
+  readonly firstSubmission: AgentFirstSubmissionEvidence;
+}
+
+export const sendAgentPromptWithEvidence = async (
   page: Page,
   projectSessionId: string,
   prompt: string,
   beforeSend: () => Promise<void> = async () => undefined,
-): Promise<string> => {
+): Promise<AgentPromptSubmissionResult> => {
   const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
   await expect(composer).toBeVisible();
   await expect(async () => {
@@ -200,7 +214,48 @@ export const sendAgentPrompt = async (
   const sendButton = page.getByRole("button", { name: "Send prompt" });
   await expect(sendButton).toBeEnabled();
   await beforeSend();
+  await page.evaluate((expectedPrompt) => {
+    const scope = window as typeof window & {
+      __agentFirstSubmissionFrame?: number;
+      __agentFirstSubmissionBlankFrames?: number;
+      __agentFirstSubmissionDuplicateFrames?: number;
+      __agentFirstSubmissionSubmittedAt?: number;
+      __agentFirstSubmissionFirstUserAt?: number | null;
+    };
+    if (scope.__agentFirstSubmissionFrame !== undefined) {
+      cancelAnimationFrame(scope.__agentFirstSubmissionFrame);
+    }
+    scope.__agentFirstSubmissionBlankFrames = 0;
+    scope.__agentFirstSubmissionDuplicateFrames = 0;
+    scope.__agentFirstSubmissionSubmittedAt = performance.now();
+    scope.__agentFirstSubmissionFirstUserAt = null;
+    const sample = () => {
+      const composerContainsPrompt = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-codex-composer='true']"),
+      ).some((element) => element.textContent?.includes(expectedPrompt) === true);
+      const matchingRows = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-user-message-bubble='true']"),
+      ).filter((element) => element.textContent?.includes(expectedPrompt) === true);
+      if (matchingRows.length > 0 && scope.__agentFirstSubmissionFirstUserAt === null) {
+        scope.__agentFirstSubmissionFirstUserAt = performance.now();
+      }
+      if (!composerContainsPrompt && matchingRows.length === 0) {
+        scope.__agentFirstSubmissionBlankFrames =
+          (scope.__agentFirstSubmissionBlankFrames ?? 0) + 1;
+      }
+      if (matchingRows.length > 1) {
+        scope.__agentFirstSubmissionDuplicateFrames =
+          (scope.__agentFirstSubmissionDuplicateFrames ?? 0) + 1;
+      }
+      scope.__agentFirstSubmissionFrame = requestAnimationFrame(sample);
+    };
+    scope.__agentFirstSubmissionFrame = requestAnimationFrame(sample);
+  }, prompt);
   await sendButton.click();
+
+  await expect(page.locator("[data-user-message-bubble='true']", { hasText: prompt })).toBeVisible({
+    timeout: 10_000,
+  });
 
   let threadId: string | null = null;
   let launchFailure: string | null = null;
@@ -230,8 +285,52 @@ export const sendAgentPrompt = async (
     throw error;
   }
   if (!threadId) throw new Error("Agent smoke turn returned no Thread id");
-  return threadId;
+  const firstSubmission = await page.evaluate((expectedPrompt) => {
+    const scope = window as typeof window & {
+      __agentFirstSubmissionFrame?: number;
+      __agentFirstSubmissionBlankFrames?: number;
+      __agentFirstSubmissionDuplicateFrames?: number;
+      __agentFirstSubmissionSubmittedAt?: number;
+      __agentFirstSubmissionFirstUserAt?: number | null;
+    };
+    if (scope.__agentFirstSubmissionFrame !== undefined) {
+      cancelAnimationFrame(scope.__agentFirstSubmissionFrame);
+    }
+    const rows = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-user-message-bubble='true']"),
+    ).filter((element) => element.textContent?.includes(expectedPrompt) === true);
+    const identities = new Set(
+      rows.flatMap((row) =>
+        row.dataset.clientUserMessageId ? [row.dataset.clientUserMessageId] : [],
+      ),
+    );
+    const submittedAt = scope.__agentFirstSubmissionSubmittedAt ?? performance.now();
+    const firstUserAt = scope.__agentFirstSubmissionFirstUserAt ?? performance.now();
+    return {
+      submitToFirstVisibleUserMessageMs: firstUserAt - submittedAt,
+      submitToThreadLinkMs: performance.now() - submittedAt,
+      blankFrameCount: scope.__agentFirstSubmissionBlankFrames ?? 0,
+      duplicateFrameCount: scope.__agentFirstSubmissionDuplicateFrames ?? 0,
+      finalUserMessageCount: rows.length,
+      clientUserMessageIdentityCount: identities.size,
+    };
+  }, prompt);
+  const evidence: AgentFirstSubmissionEvidence = firstSubmission;
+  expect(evidence.submitToFirstVisibleUserMessageMs).toBeLessThan(1_000);
+  expect(evidence.blankFrameCount).toBe(0);
+  expect(evidence.duplicateFrameCount).toBe(0);
+  expect(evidence.finalUserMessageCount).toBe(1);
+  expect(evidence.clientUserMessageIdentityCount).toBe(1);
+  return { threadId, firstSubmission: evidence };
 };
+
+export const sendAgentPrompt = async (
+  page: Page,
+  projectSessionId: string,
+  prompt: string,
+  beforeSend: () => Promise<void> = async () => undefined,
+): Promise<string> =>
+  (await sendAgentPromptWithEvidence(page, projectSessionId, prompt, beforeSend)).threadId;
 
 export const waitForFinalMarker = async (
   page: Page,

@@ -77,7 +77,11 @@ The result contains Playwright trace-on-failure data plus a final screenshot,
 an independent bounded `runtime.log`, and `evidence.json`. The JSON evidence includes only
 allowlisted execution facts: case, sanitized account type/plan, expected and resolved profile,
 thread identities, expected topology, duration, tool/status facts, and
-case-owned hashes or topology. Failure evidence also includes a bounded,
+case-owned hashes or topology. First-submission evidence records only timing,
+blank/duplicate frame counts, final row count, and distinct client-identity count;
+it never records prompt text. Every paid case requires a visible user row before
+waiting for Session-to-Thread binding and requires zero blank or duplicate frames.
+Failure evidence also includes a bounded,
 allowlisted rollout summary when a Thread exists. It does not copy authentication,
 full rollout files, or user Profile data. The screenshot, trace, or runtime log may contain
 the synthetic canary prompt and its random markers; treat the artifact folder

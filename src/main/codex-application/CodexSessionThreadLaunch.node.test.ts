@@ -7,7 +7,6 @@ import * as Scope from "effect/Scope";
 import type {
   CodexConversationSnapshot,
   CodexThreadStartForSessionInput,
-  CodexTurnStartOptions,
 } from "../../shared/types";
 import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
 import type { CodexPendingWorktreeRequest } from "../../shared/codex-pending-worktree";
@@ -28,7 +27,7 @@ import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
-import { CodexTurnCommands } from "./CodexTurnCommands";
+import { CodexTurnCommands, type CodexTurnStartOverrides } from "./CodexTurnCommands";
 import { CodexTurnPreparation } from "./CodexTurnPreparation";
 
 const context: CodexSessionThreadLaunchContext = {
@@ -36,10 +35,16 @@ const context: CodexSessionThreadLaunchContext = {
   ownerClientId: null,
 };
 
-const input = (sessionId = "session-a") => ({
+const firstSubmission = {
+  launchId: "01991e60-b800-7000-8000-000000000001",
+  clientUserMessageId: "01991e60-b800-7000-8000-000000000002",
+} as const;
+
+const input = (sessionId = "session-a"): CodexThreadStartForSessionInput => ({
   projectId: "project-a",
   sessionId,
   prompt: "Ship it",
+  firstSubmission,
 });
 
 const snapshot = (threadId: string) =>
@@ -65,17 +70,20 @@ const harness = (
     readonly start?: Effect.Effect<unknown>;
     readonly commitFails?: boolean;
     readonly desktopToolConfig?: Record<string, unknown> | null;
+    readonly preparedClientUserMessageId?: string;
     readonly promoteFails?: boolean;
     readonly responseOverrides?: Readonly<Record<string, unknown>>;
   } = {},
 ) => {
   const events: string[] = [];
   const threadStartParams: Array<Record<string, unknown>> = [];
-  const firstTurnOverrides: CodexTurnStartOptions[] = [];
+  const firstTurnOverrides: CodexTurnStartOverrides[] = [];
   const preparationInputs: Parameters<CodexTurnPreparation["Service"]["start"]>[0][] = [];
+  const freshLaunches: Parameters<CodexFreshThreadLaunchRuntime["Service"]["register"]>[0][] = [];
   const pendingWorktreeRequests: CodexPendingWorktreeRequest[] = [];
   const requestScheduling: unknown[] = [];
   const browserPromotions: unknown[] = [];
+  const acceptedCapabilities: unknown[] = [];
   let attempt = 0;
   const capability = createCodexAppServerCapabilitySnapshot({
     hostId: "local",
@@ -95,7 +103,7 @@ const harness = (
       events.push(`start:${attempt}`);
       return (options.start ?? Effect.void).pipe(
         Effect.as({
-          thread: { id: `thread-${attempt}` },
+          thread: { id: `thread-${attempt}`, historyMode: "paginated", turns: [] },
           model: params.model,
           modelProvider: params.modelProvider,
           reasoningEffort:
@@ -137,6 +145,7 @@ const harness = (
       options.commitFails
         ? Effect.fail({ _tag: "commit-failed" } as never)
         : Effect.sync(() => {
+            acceptedCapabilities.push(request.capability);
             events.push(`commit:${request.response.thread.id}`);
             const conversation = snapshot(request.response.thread.id);
             return {
@@ -146,7 +155,7 @@ const harness = (
           }),
   } as unknown as CodexThreadDirectory["Service"]);
   const turns = CodexTurnCommands.of({
-    start: (threadId: string, _prompt: string, overrides?: CodexTurnStartOptions) =>
+    start: (threadId: string, _prompt: string, overrides?: CodexTurnStartOverrides) =>
       Effect.sync(() => {
         events.push(`turn:${threadId}`);
         firstTurnOverrides.push(overrides ?? {});
@@ -160,7 +169,10 @@ const harness = (
         return {
           canonicalParams: {},
           request: {},
-          clientUserMessageId: "client-user-message-a",
+          clientUserMessageId:
+            options.preparedClientUserMessageId ??
+            preparationInput.overrides?.clientUserMessageId ??
+            "unexpected-generated-message-id",
           verifiedBuiltinFullAccess: false,
         } as never;
       }),
@@ -170,9 +182,12 @@ const harness = (
     failed: () => undefined,
   });
   return {
+    capability,
     events,
+    acceptedCapabilities,
     firstTurnOverrides,
     preparationInputs,
+    freshLaunches,
     pendingWorktreeRequests,
     requestScheduling,
     browserPromotions,
@@ -237,7 +252,11 @@ const harness = (
       Effect.provideService(
         CodexFreshThreadLaunchRuntime,
         CodexFreshThreadLaunchRuntime.of({
-          register: () => undefined,
+          register: (
+            launch: Parameters<CodexFreshThreadLaunchRuntime["Service"]["register"]>[0],
+          ) => {
+            freshLaunches.push(launch);
+          },
         } as unknown as CodexFreshThreadLaunchRuntime["Service"]),
       ),
       Effect.provideService(CodexTurnPreparation, preparation),
@@ -262,6 +281,8 @@ it.effect("commits the Session link before admitting its first Turn", () =>
       "complete:thread-1",
     ]);
     assert.deepEqual(test.requestScheduling, [{ expectedHostId: "local", expectedGeneration: 19 }]);
+    assert.strictEqual(test.threadStartParams[0]?.historyMode, "paginated");
+    assert.strictEqual(test.acceptedCapabilities[0], test.capability);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -370,6 +391,7 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
       baseInstructions: null,
       developerInstructions: null,
       threadSource: "user",
+      historyMode: "paginated",
       config: {
         "features.js_repl": false,
         "mcp_servers.node_repl": { command: "/runtime/node" },
@@ -380,6 +402,7 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
       },
     });
     assert.deepEqual(test.preparationInputs[0]?.overrides, {
+      clientUserMessageId: firstSubmission.clientUserMessageId,
       promptInput: undefined,
       model: "gpt-5.6-luna",
       serviceTier: null,
@@ -387,6 +410,11 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
       reasoningEffort: "max",
       collaborationMode: undefined,
     });
+    assert.strictEqual(test.freshLaunches[0]?.launchId, firstSubmission.launchId);
+    assert.strictEqual(
+      test.freshLaunches[0]?.clientUserMessageId,
+      firstSubmission.clientUserMessageId,
+    );
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -400,6 +428,7 @@ it.effect("uses the same execution profile for a Main-owned first Turn", () =>
     yield* service.start(conflictingLaunchInput(), context);
 
     assert.deepEqual(test.firstTurnOverrides[0], {
+      clientUserMessageId: firstSubmission.clientUserMessageId,
       promptInput: undefined,
       model: "gpt-5.6-luna",
       serviceTier: null,
@@ -407,6 +436,23 @@ it.effect("uses the same execution profile for a Main-owned first Turn", () =>
       reasoningEffort: "max",
       collaborationMode: undefined,
     });
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects a renderer-owned first Turn that changes its admitted message identity", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const test = harness(scope, { preparedClientUserMessageId: "substituted-message-id" });
+    const service = yield* test.effect;
+
+    const result = yield* Effect.exit(
+      service.start(input(), { ...context, ownerClientId: "renderer-a" }),
+    );
+
+    assert.isTrue(Exit.isFailure(result));
+    assert.deepEqual(test.freshLaunches, []);
+    assert.deepEqual(test.events, ["start:1", "commit:thread-1"]);
     yield* Scope.close(scope, Exit.void);
   }),
 );

@@ -94,6 +94,7 @@ export type AcpCanonicalSessionUpdate =
 
 export interface AcpConversationTurn {
   readonly sequence: number | null;
+  readonly clientUserMessageId: string | null;
   readonly promptText: string | null;
   readonly updates: readonly AcpCanonicalSessionUpdate[];
   readonly stopReason: string | null;
@@ -111,6 +112,7 @@ export interface AcpConversationSnapshot {
 
 export interface AcpConversationTurnDelta {
   readonly sequence: number | null;
+  readonly clientUserMessageId: string | null;
   readonly promptText: string | null;
   readonly stopReason: string | null;
   readonly removedUpdateKeys: readonly string[];
@@ -169,6 +171,7 @@ const updateSnapshotTurn = (
   if (new Set(updates.map(({ key }) => key)).size !== updates.length) return null;
   return {
     sequence: delta.sequence,
+    clientUserMessageId: delta.clientUserMessageId,
     promptText: delta.promptText,
     updates,
     stopReason: delta.stopReason,

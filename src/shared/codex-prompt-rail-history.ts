@@ -1,6 +1,7 @@
 import type { ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexConversationHistoryMutation } from "./codex-conversation-history-page";
 import type { CodexHistoryTurnItemsPagination } from "./codex-conversation-state/codex-history-topology";
+import type { CodexThreadHistoryFeatureUnavailable } from "./codex-thread-history-features";
 
 export const CODEX_PROMPT_RAIL_PAGE_SIZE = 100;
 export const CODEX_PROMPT_RAIL_MAX_PAGES = 10;
@@ -92,6 +93,11 @@ export type CodexPromptRailIndexCommandResult =
   | {
       readonly status: "cancelled";
       readonly requestId: string;
+    }
+  | {
+      readonly status: "unavailable";
+      readonly requestId: string;
+      readonly availability: CodexThreadHistoryFeatureUnavailable;
     };
 
 export type CodexPromptRailRevealCommandResult =
@@ -104,6 +110,11 @@ export type CodexPromptRailRevealCommandResult =
   | {
       readonly status: "cancelled";
       readonly requestId: string;
+    }
+  | {
+      readonly status: "unavailable";
+      readonly requestId: string;
+      readonly availability: CodexThreadHistoryFeatureUnavailable;
     };
 
 type CodexPromptRailUserContent = Extract<ThreadItem, { readonly type: "userMessage" }>["content"];

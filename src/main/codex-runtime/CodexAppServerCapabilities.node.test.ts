@@ -13,6 +13,19 @@ import { CodexEndpointMap } from "./CodexEndpointMap";
 import { CodexThreadHostResolver } from "./CodexGateway";
 
 describe("Codex app-server capability policy", () => {
+  test("recognizes the server version after the initialize client's originator prefix", () => {
+    for (const originator of ["nodex", "codex_vscode", "my_remote_client"]) {
+      const snapshot = createCodexAppServerCapabilitySnapshot({
+        hostId: "local",
+        generation: 1,
+        userAgent: `${originator}/0.147.0 (Mac OS 26.6.1; arm64) unknown (${originator}; 0.5.0)`,
+      });
+      expect(snapshot.version).toBe("0.147.0");
+      expect(snapshot.flags.paginatedHistory).toBe(true);
+      expect(snapshot.flags.threadRevert).toBe(false);
+    }
+  });
+
   test("extracts a strict SemVer from supported app-server user-agent forms", () => {
     expect(
       extractCodexAppServerVersion("Codex Desktop/0.147.0 (Mac OS 26.6.1; arm64) ghostty/1.3.1"),

@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import type { ThreadStartResponse } from "@nodex/codex-app-server-protocol/v2";
 import { ScopedCallbackRuntime } from "../src/main/app/ScopedCallbackRuntime";
 import { CodexRpcError } from "../src/main/codex-runtime/CodexRpcError";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
@@ -32,6 +33,7 @@ export type AgentRuntimeConformanceReport = {
     initialize: "pass";
     invalidMethod: "pass";
     modelList: "pass";
+    paginatedThreadStart: "pass";
   };
   generatedAt: string;
   initialize: {
@@ -102,6 +104,13 @@ async function probeAgentRuntimePromise(
       "model/list",
     );
     if (models.length === 0) throw new Error("Codex app-server returned an empty model catalog");
+    const started = await client.request<ThreadStartResponse>("thread/start", {
+      cwd: projectRoot,
+      historyMode: "paginated",
+    });
+    if (started.thread.historyMode !== "paginated" || started.thread.turns.length !== 0) {
+      throw new Error("Codex app-server did not honor the paginated Thread metadata contract");
+    }
     const threads = readData(
       await client.request("thread/list", {
         archived: false,
@@ -144,6 +153,7 @@ async function probeAgentRuntimePromise(
       initialize: "pass",
       invalidMethod: "pass",
       modelList: "pass",
+      paginatedThreadStart: "pass",
     },
     generatedAt: new Date().toISOString(),
     initialize: {

@@ -34,7 +34,7 @@ import { CODEX_THREAD_STREAM_FOLLOWER_RECONNECT_GRACE_MS } from "../codex/codex-
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import {
   CodexOwnerNotificationDrainRuntime,
-  type CodexOwnerNotificationDrainTimeout,
+  type CodexOwnerNotificationDrainError,
 } from "./CodexOwnerNotificationDrainRuntime";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
@@ -122,7 +122,7 @@ export interface CodexRendererConversationCoordinatorService {
   readonly resetTransport: (conversationIds: readonly string[]) => void;
   readonly awaitOwnerNotificationDrain: (
     conversationId: string,
-  ) => Effect.Effect<void, CodexOwnerNotificationDrainTimeout>;
+  ) => Effect.Effect<void, CodexOwnerNotificationDrainError>;
   readonly clearConversation: (conversationId: string) => Effect.Effect<void>;
 }
 
@@ -173,9 +173,13 @@ export const make: Effect.Effect<
   const aggregate = (conversationId: string) => conversations.current(conversationId);
   const acceptedReplica = (conversationId: string) =>
     aggregate(conversationId)?.read().acceptedReplica ?? null;
-  const emitOwnerMessage = (conversationId: string, message: CodexHostMessage): boolean => {
+  const emitOwnerMessage = (
+    conversationId: string,
+    makeMessage: (sequence: number) => CodexHostMessage,
+  ): boolean => {
     const targetClientId = registry.getOwnerClientId(conversationId);
     if (!targetClientId) return false;
+    const message = makeMessage(ownerNotificationDrain.next(conversationId));
     events.publish({ kind: "rendererOwnerHostMessage", value: { targetClientId, message } });
     return true;
   };
@@ -290,12 +294,12 @@ export const make: Effect.Effect<
     const targetClientId = registry.getOwnerClientId(conversationId);
     if (!targetClientId) return false;
     if (registry.hasRequestDelivery(conversationId, request, targetClientId)) return true;
-    const delivered = emitOwnerMessage(conversationId, {
+    const delivered = emitOwnerMessage(conversationId, (sequence) => ({
       type: "threadOwnerRequest",
       hostId: DEFAULT_CODEX_HOST_ID,
       request,
-      sequence: ownerNotificationDrain.next(conversationId),
-    });
+      sequence,
+    }));
     if (delivered) registry.recordRequestDelivery(conversationId, request, targetClientId);
     return delivered;
   };
@@ -304,12 +308,12 @@ export const make: Effect.Effect<
     notification: CodexServerNotification,
   ): boolean => {
     if (!isCodexThreadOwnerNotification(notification)) return false;
-    return emitOwnerMessage(conversationId, {
+    return emitOwnerMessage(conversationId, (sequence) => ({
       type: "threadOwnerNotification",
       hostId: DEFAULT_CODEX_HOST_ID,
-      sequence: ownerNotificationDrain.next(conversationId),
+      sequence,
       notification,
-    });
+    }));
   };
 
   const service: CodexRendererConversationCoordinatorService = {
@@ -441,7 +445,16 @@ export const make: Effect.Effect<
     handleClientConnected: (clientId) =>
       Effect.sync(() => emitActions(registry.handleClientConnected(clientId))),
     handleClientDeliveryFailure: (clientIds) =>
-      Effect.sync(() => emitActions(registry.handleClientDeliveryFailure(clientIds))),
+      Effect.sync(() => {
+        const actions = registry.handleClientDeliveryFailure(clientIds);
+        for (const action of actions) {
+          if (action.type !== "transport-reset") continue;
+          // A reconnect may reuse the client identity; retain its sequence fence.
+          for (const conversationId of action.conversationIds)
+            ownerNotificationDrain.resetOwner(conversationId);
+        }
+        emitActions(actions);
+      }),
     handleClientDisposed: (clientId) =>
       Effect.gen(function* () {
         const result = registry.handleClientDisposed(clientId);

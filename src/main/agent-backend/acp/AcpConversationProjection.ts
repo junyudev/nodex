@@ -473,6 +473,7 @@ export const beginAcpConversationTurn = (
   snapshot: AcpConversationSnapshot,
   sequence: number,
   prompt: PromptRequest["prompt"],
+  clientUserMessageId: string | null = null,
 ): AcpConversationSnapshot => {
   if (snapshot.status === "closed") return snapshot;
   return {
@@ -482,7 +483,13 @@ export const beginAcpConversationTurn = (
     revision: snapshot.revision + 1,
     turns: boundTurns([
       ...snapshot.turns.filter(({ sequence: candidate }) => candidate !== sequence),
-      { sequence, promptText: promptText(prompt), updates: [], stopReason: null },
+      {
+        sequence,
+        clientUserMessageId,
+        promptText: promptText(prompt),
+        updates: [],
+        stopReason: null,
+      },
     ]),
   };
 };
@@ -549,6 +556,7 @@ export const reduceAcpConversationEvent = (
   const existingIndex = snapshot.turns.findIndex(({ sequence }) => sequence === event.turnSequence);
   const fallback: AcpConversationTurn = {
     sequence: event.turnSequence,
+    clientUserMessageId: null,
     promptText: null,
     updates: [],
     stopReason: null,
@@ -618,12 +626,14 @@ export const diffAcpConversationSnapshots = (
     });
     const scalarChanged =
       existing === undefined ||
+      existing.clientUserMessageId !== turn.clientUserMessageId ||
       existing.promptText !== turn.promptText ||
       existing.stopReason !== turn.stopReason;
     if (!scalarChanged && removedUpdateKeys.length === 0 && updates.length === 0) return [];
     return [
       {
         sequence: turn.sequence,
+        clientUserMessageId: turn.clientUserMessageId,
         promptText: turn.promptText,
         stopReason: turn.stopReason,
         removedUpdateKeys,

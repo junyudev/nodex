@@ -26,6 +26,7 @@ import {
   CODEX_PENDING_WORKTREE_SETUP_REPAIR_LABEL,
 } from "../../shared/codex-pending-worktree";
 import type { CodexAgentMode } from "../../shared/types";
+import { createCodexFirstSubmissionIdentity } from "../../shared/codex-first-submission";
 import { expandCodexDynamicCreateConfigProfile } from "../codex/codex-dynamic-create-config";
 import { allocateCodexPendingWorktreeRequest } from "../codex/codex-pending-worktree-request";
 import { persistCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
@@ -652,6 +653,7 @@ export const make: Effect.Effect<
       startingState: entry.startingState,
       localEnvironmentConfigPath: null,
       launchMode: "start-conversation",
+      firstSubmission: createCodexFirstSubmissionIdentity(),
       prompt,
       startConversationParamsInput,
       sourceConversationId: null,

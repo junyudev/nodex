@@ -458,9 +458,9 @@ export function LocalConversationThreadBodyOwner({
   }, [actions, threadId]);
   const conversation = useMemo<CodexConversationSnapshot | null>(
     () =>
-      threadId
+      threadId || turns.length > 0
         ? {
-            threadId,
+            threadId: threadId ?? turns[0]?.threadId ?? "unattached",
             projectId: null,
             source: null,
             threadName: null,
@@ -839,24 +839,30 @@ export function LocalConversationThreadBodyOwner({
           return { query, matches: [], totalMatches: 0, capped: false };
         }
         const persistedThreadId = threadId ?? body.threadId;
-        if (persistedThreadId && capabilityFlags.canSearch) {
+        if (persistedThreadId) {
           try {
-            const page = await searchCodexPersistedHistory(persistedThreadId, literalQuery);
+            const result = await searchCodexPersistedHistory(persistedThreadId, literalQuery);
             if (options?.signal.aborted) {
               return { query, matches: [], totalMatches: 0, capped: false };
             }
-            persistedSearchSessionRef.current = {
-              threadId: page.threadId,
-              hostId: page.hostId,
-              hostGeneration: page.hostGeneration,
-              topologyGeneration: page.topologyGeneration,
-            };
-            persistedSearchTargetsRef.current.clear();
-            return projectLocalConversationPersistedSearchResult({
-              page,
-              contextId: searchSource.routeContextId,
-              limit,
-            });
+            if (result.status === "unavailable") {
+              persistedSearchSessionRef.current = null;
+              persistedSearchTargetsRef.current.clear();
+            } else {
+              const page = result.page;
+              persistedSearchSessionRef.current = {
+                threadId: page.threadId,
+                hostId: page.hostId,
+                hostGeneration: page.hostGeneration,
+                topologyGeneration: page.topologyGeneration,
+              };
+              persistedSearchTargetsRef.current.clear();
+              return projectLocalConversationPersistedSearchResult({
+                page,
+                contextId: searchSource.routeContextId,
+                limit,
+              });
+            }
           } catch {
             if (options?.signal.aborted) {
               return { query, matches: [], totalMatches: 0, capped: false };
@@ -994,7 +1000,7 @@ export function LocalConversationThreadBodyOwner({
         clearContentSearchMarks(contentRootRef.current);
       },
     }),
-    [body.threadId, capabilityFlags.canSearch, searchSource, threadId],
+    [body.threadId, searchSource, threadId],
   );
   useRegisterContentSearchSource(contentSearchSource);
 

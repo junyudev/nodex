@@ -2,6 +2,7 @@ import { describe, expect, vi, test } from "vite-plus/test";
 import { createElement, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { act } from "@testing-library/react";
 import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-up-state";
+import { createCodexFirstSubmissionIdentity } from "../../../shared/codex-first-submission";
 import type {
   CodexConnectionState,
   CodexConversationStateUpdate,
@@ -873,6 +874,46 @@ function ensureCanonicalResumeFixture(
   return withCanonicalState(candidate as CodexConversationSnapshot);
 }
 
+function buildFreshLaunchCanonicalParams(input: {
+  readonly conversation: CodexConversationSnapshot;
+  readonly threadId: string;
+  readonly clientUserMessageId: string;
+  readonly prompt: string;
+}): CodexCanonicalLiveTurnParams {
+  const hydration = input.conversation.canonicalState?.sidecar.hydrationContext;
+  if (!hydration) {
+    throw new Error("Expected canonical fresh-thread hydration");
+  }
+  return {
+    threadId: input.threadId,
+    clientUserMessageId: input.clientUserMessageId,
+    input: [
+      {
+        type: "text",
+        text: input.prompt,
+        text_elements: [],
+      },
+    ],
+    cwd: hydration.cwd,
+    approvalPolicy: hydration.currentPermissions.approvalPolicy,
+    approvalsReviewer: hydration.currentPermissions.approvalsReviewer,
+    sandboxPolicy: hydration.currentPermissions.sandboxPolicy,
+    permissions: hydration.currentPermissions.activePermissionProfile?.id ?? null,
+    runtimeWorkspaceRoots: [...hydration.currentPermissions.runtimeWorkspaceRoots],
+    useAppServerPermissionDefault: false,
+    model: hydration.latestModel,
+    serviceTier: null,
+    effort: hydration.latestReasoningEffort,
+    multiAgentMode: "explicitRequestOnly",
+    summary: "none",
+    personality: null,
+    outputSchema: null,
+    collaborationMode: null,
+    attachments: [],
+    commentAttachments: [],
+  };
+}
+
 function buildExactOlderHistoryPageFixture(input: {
   readonly partial: CodexConversationSnapshot;
   readonly loaded: CodexConversationSnapshot;
@@ -1453,6 +1494,7 @@ describe("local-conversation-store", () => {
 
     const manager = new CodexAppServerManager("default");
     await manager.startThreadForSession({
+      firstSubmission: createCodexFirstSubmissionIdentity(),
       projectId: "project-1",
       sessionId: "session-1",
       prompt: "ignored raw prompt",
@@ -1501,6 +1543,7 @@ describe("local-conversation-store", () => {
 
     const manager = new CodexAppServerManager("default");
     await manager.startThreadForSession({
+      firstSubmission: createCodexFirstSubmissionIdentity(),
       projectId: "project-1",
       sessionId: "session-1",
       prompt: "Build title parity",
@@ -1544,6 +1587,7 @@ describe("local-conversation-store", () => {
     const manager = new CodexAppServerManager("default");
     try {
       await manager.startThreadForSession({
+        firstSubmission: createCodexFirstSubmissionIdentity(),
         projectId: "project-1",
         sessionId: "session-1",
         prompt: "Build direct handoff",
@@ -1606,45 +1650,20 @@ describe("local-conversation-store", () => {
     hostMessageListener = null;
     threadListByProject = {};
     const threadId = "thread-fresh-owner";
-    const clientUserMessageId = "client-first-message";
+    const launchId = "01991e60-b800-7000-8000-000000000011";
+    const clientUserMessageId = "01991e60-b800-7000-8000-000000000012";
     const adoptedConversation = withCanonicalState(buildConversation(threadId, "project-1"));
-    const hydration = adoptedConversation.canonicalState?.sidecar.hydrationContext;
-    if (!hydration) {
-      throw new Error("Expected canonical fresh-thread hydration");
-    }
-    const canonicalParams: CodexCanonicalLiveTurnParams = {
+    const canonicalParams = buildFreshLaunchCanonicalParams({
+      conversation: adoptedConversation,
       threadId,
       clientUserMessageId,
-      input: [
-        {
-          type: "text",
-          text: "Start without a blank transcript",
-          text_elements: [],
-        },
-      ],
-      cwd: hydration.cwd,
-      approvalPolicy: hydration.currentPermissions.approvalPolicy,
-      approvalsReviewer: hydration.currentPermissions.approvalsReviewer,
-      sandboxPolicy: hydration.currentPermissions.sandboxPolicy,
-      permissions: hydration.currentPermissions.activePermissionProfile?.id ?? null,
-      runtimeWorkspaceRoots: [...hydration.currentPermissions.runtimeWorkspaceRoots],
-      useAppServerPermissionDefault: false,
-      model: hydration.latestModel,
-      serviceTier: null,
-      effort: hydration.latestReasoningEffort,
-      multiAgentMode: "explicitRequestOnly",
-      summary: "none",
-      personality: null,
-      outputSchema: null,
-      collaborationMode: null,
-      attachments: [],
-      commentAttachments: [],
-    };
+      prompt: "Start without a blank transcript",
+    });
     startThreadForSessionResult = {
       kind: "started",
       detail: adoptedConversation,
       freshLaunch: {
-        launchId: "launch-first-message",
+        launchId,
         threadId,
         clientUserMessageId,
         canonicalParams,
@@ -1715,7 +1734,6 @@ describe("local-conversation-store", () => {
         () => {
           const progress = manager.readThreadStartProgress("project-1", "session-1");
           if (progress?.phase !== "ready") return null;
-          if (progress.rendererLaunchPending) return null;
           return progress.threadId ?? null;
         },
       );
@@ -1737,6 +1755,7 @@ describe("local-conversation-store", () => {
       let startPromise: ReturnType<typeof manager.startThreadForSession> | null = null;
       await act(async () => {
         startPromise = manager.startThreadForSession({
+          firstSubmission: { launchId, clientUserMessageId },
           projectId: "project-1",
           sessionId: "session-1",
           prompt: "Start without a blank transcript",
@@ -1756,9 +1775,6 @@ describe("local-conversation-store", () => {
       expect(optimistic?.canonicalState?.turns[0]?.sidecar.params.clientUserMessageId).toBe(
         clientUserMessageId,
       );
-      expect(manager.readThreadStartProgress("project-1", "session-1")?.rendererLaunchPending).toBe(
-        false,
-      );
       expect(invokeRecords.some((record) => record.channel === "codex:thread:resume:request")).toBe(
         false,
       );
@@ -1777,16 +1793,16 @@ describe("local-conversation-store", () => {
         ),
       ).toBe(true);
 
-      if (!startPromise) {
-        throw new Error("Expected fresh-thread start promise");
-      }
-      await expect(startPromise).resolves.toMatchObject({
-        kind: "started",
-      });
       expect(manager.readConversation(threadId)?.canonicalState?.turns[0]?.protocol.id).toBe(null);
 
       await act(async () => {
         releaseTurnStart();
+        if (!startPromise) {
+          throw new Error("Expected fresh-thread start promise");
+        }
+        await expect(startPromise).resolves.toMatchObject({
+          kind: "started",
+        });
         for (let index = 0; index < 20; index += 1) {
           await settleAsyncRender();
           if (
@@ -1816,6 +1832,85 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("keeps fresh first-turn failure observable by the submission caller", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    threadListByProject = {};
+    const threadId = "thread-fresh-owner-failure";
+    const adoptedConversation = withCanonicalState(buildConversation(threadId, "project-1"));
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { sessionFirstSubmissionOwner } =
+      await import("../conversation-launch/session-first-submission-owner");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    sessionFirstSubmissionOwner.dispose();
+    const submission = sessionFirstSubmissionOwner.begin({
+      backend: "codex",
+      originProjectId: "project-1",
+      originSessionId: "session-1",
+      prompt: "Keep a failed first submission recoverable",
+    });
+    const canonicalParams = buildFreshLaunchCanonicalParams({
+      conversation: adoptedConversation,
+      threadId,
+      clientUserMessageId: submission.clientUserMessageId,
+      prompt: "Keep a failed first submission recoverable",
+    });
+    startThreadForSessionResult = {
+      kind: "started",
+      detail: adoptedConversation,
+      freshLaunch: {
+        launchId: submission.launchId,
+        threadId,
+        clientUserMessageId: submission.clientUserMessageId,
+        canonicalParams,
+      },
+    };
+    freshThreadAdoptionResult = adoptedConversation;
+    freshThreadAdoptionRevision = 2;
+    ownerTurnStartError = new Error("first turn was rejected");
+
+    const manager = new CodexAppServerManager("default");
+    try {
+      await expect(
+        manager.startThreadForSession({
+          firstSubmission: submission,
+          projectId: "project-1",
+          sessionId: "session-1",
+          prompt: "Keep a failed first submission recoverable",
+          runInTarget: "localProject",
+        }),
+      ).rejects.toThrow("first turn was rejected");
+      await flushAsyncWork(3);
+
+      expect(
+        sessionFirstSubmissionOwner
+          .getSnapshot()
+          .submissions.find((candidate) => candidate.launchId === submission.launchId),
+      ).toMatchObject({
+        threadId,
+        phase: "failed",
+        failure: {
+          stage: "startingTurn",
+          message: "first turn was rejected",
+        },
+      });
+      expect(manager.readThreadStartProgress("project-1", "session-1")).toMatchObject({
+        launchId: submission.launchId,
+        threadId,
+        phase: "failed",
+      });
+      expect(manager.readConversation(threadId)?.turns[0]?.status).toBe("failed");
+    } finally {
+      freshThreadAdoptionResult = null;
+      freshThreadAdoptionRevision = 0;
+      ownerTurnStartError = null;
+      sessionFirstSubmissionOwner.dispose();
+      manager.destroy();
+    }
+  });
+
   test("returns pending worktree identity without requesting a thread snapshot or seeding direct progress", async () => {
     invokeCalls = [];
     invokeRecords = [];
@@ -1833,6 +1928,7 @@ describe("local-conversation-store", () => {
     const manager = new CodexAppServerManager("default");
     try {
       const result = await manager.startThreadForSession({
+        firstSubmission: createCodexFirstSubmissionIdentity(),
         projectId: "project-1",
         sessionId: "session-1",
         prompt: "Build in a retained worktree",
@@ -1872,6 +1968,7 @@ describe("local-conversation-store", () => {
 
     const manager = new CodexAppServerManager("default");
     const startPromise = manager.startThreadForSession({
+      firstSubmission: createCodexFirstSubmissionIdentity(),
       projectId: "project-1",
       sessionId: "session-1",
       prompt: "Start immediately",
@@ -1925,6 +2022,7 @@ describe("local-conversation-store", () => {
           objectType: "threadStartProgress",
           objectId: "project-1:session-1",
           value: {
+            launchId: "01991e60-b800-7000-8000-000000000101",
             projectId: "project-1",
             sessionId: "session-1",
             runInTarget: "newWorktree",
@@ -1939,6 +2037,57 @@ describe("local-conversation-store", () => {
     await settleAsyncRender();
 
     expect(textContent(container)).toBe("newWorktree:thread-1:startingThread");
+  });
+
+  test("ignores delayed progress from a superseded first submission", async () => {
+    invokeCalls = [];
+    hostMessageListener = null;
+    threadListByProject = {};
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    const { sessionFirstSubmissionOwner } =
+      await import("../conversation-launch/session-first-submission-owner");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = new CodexAppServerManager("default");
+    const active = sessionFirstSubmissionOwner.begin({
+      backend: "codex",
+      originProjectId: "project-1",
+      originSessionId: "session-1",
+      prompt: "Newest attempt",
+    });
+
+    const publishProgress = (launchId: string, phase: "startingThread" | "failed") => {
+      dispatchCodexAppServerMessage("shared-object-updated", {
+        hostId: "default",
+        object: {
+          objectType: "threadStartProgress",
+          objectId: "project-1:session-1",
+          value: {
+            launchId,
+            projectId: "project-1",
+            sessionId: "session-1",
+            runInTarget: "localProject",
+            threadId: null,
+            phase,
+            message: phase === "failed" ? "Old failure" : "Sending message…",
+            updatedAt: Date.now(),
+          },
+        },
+      });
+    };
+
+    try {
+      publishProgress("01991e60-b800-7000-8000-000000000199", "failed");
+      expect(manager.readThreadStartProgress("project-1", "session-1")).toBeNull();
+      publishProgress(active.launchId, "startingThread");
+      expect(manager.readThreadStartProgress("project-1", "session-1")?.phase).toBe(
+        "startingThread",
+      );
+    } finally {
+      sessionFirstSubmissionOwner.dispose();
+      manager.destroy();
+    }
   });
 
   test("hydrates account and connection through the external store bootstrap", async () => {
@@ -19490,6 +19639,7 @@ describe("local-conversation-store", () => {
           objectType: "threadStartProgress",
           objectId: "project-1:session-1",
           value: {
+            launchId: "01991e60-b800-7000-8000-000000000101",
             projectId: "project-1",
             sessionId: "session-1",
             runInTarget: "newWorktree",
@@ -19514,6 +19664,7 @@ describe("local-conversation-store", () => {
           objectType: "threadStartProgress",
           objectId: "project-1:session-1",
           value: {
+            launchId: "01991e60-b800-7000-8000-000000000101",
             projectId: "project-1",
             sessionId: "session-1",
             runInTarget: "newWorktree",
@@ -19537,6 +19688,7 @@ describe("local-conversation-store", () => {
           objectType: "threadStartProgress",
           objectId: "project-1:session-1",
           value: {
+            launchId: "01991e60-b800-7000-8000-000000000101",
             projectId: "project-1",
             sessionId: "session-1",
             runInTarget: "newWorktree",

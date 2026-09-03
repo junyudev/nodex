@@ -17,6 +17,7 @@ import {
   CODEX_APP_TOOL_NAMESPACE,
   isCodexAppDynamicTool,
 } from "../../shared/codex-dynamic-tool-identity";
+import { createCodexFirstSubmissionIdentity } from "../../shared/codex-first-submission";
 import {
   AUTOMATION_UPDATE_TOOL_NAME,
   buildCodexAppDynamicToolFailure,
@@ -1201,6 +1202,7 @@ export const make: Effect.Effect<
             : undefined;
           const launch = yield* sessionLaunch.start(
             {
+              firstSubmission: createCodexFirstSubmissionIdentity(),
               projectId,
               sessionId,
               prompt: input.prompt,

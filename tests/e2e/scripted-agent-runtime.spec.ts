@@ -7,6 +7,7 @@ import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import {
   responses,
   type ScriptedModelRequest,
@@ -65,6 +66,149 @@ non_code_mode_only = true
 [agents]
 enabled = true
 `;
+
+for (const { rendererCpuRate, unversioned } of [
+  { rendererCpuRate: 1, unversioned: false },
+  { rendererCpuRate: 12, unversioned: false },
+  { rendererCpuRate: 1, unversioned: true },
+]) {
+  test(`restores a durable Thread after quitting Electron and continues the same conversation (CPU ×${rendererCpuRate}${unversioned ? ", unversioned host" : ""})`, async ({}, testInfo) => {
+    test.setTimeout(150_000);
+    const token = randomUUID();
+    const firstPrompt = `Remember the restart marker ${token}`;
+    const firstReply = `Saved restart marker ${token}`;
+    const nextPrompt = `Continue the restored conversation ${token}`;
+    const nextReply = `Restored conversation continued ${token}`;
+
+    await withScriptedModelServer(
+      {
+        exchanges: [
+          {
+            name: "first durable turn",
+            match: (request) => request.hasInputText(firstPrompt),
+            respond: responses.stream([
+              responses.created(`response_before_${token}`),
+              responses.assistantMessage(`message_before_${token}`, firstReply, "final_answer"),
+              responses.completed(`response_before_${token}`, true),
+            ]),
+          },
+          {
+            name: "follow-up retains the conversation across process restart",
+            match: (request) => request.hasInputText(nextPrompt),
+            respond: (request) => {
+              expect(request.hasInputText(firstPrompt)).toBe(true);
+              expect(request.hasInputText(firstReply)).toBe(true);
+              return responses.stream([
+                responses.created(`response_after_${token}`),
+                responses.assistantMessage(`message_after_${token}`, nextReply, "final_answer"),
+                responses.completed(`response_after_${token}`, true),
+              ]);
+            },
+          },
+        ],
+      },
+      async (modelServer) => {
+        const harness = await ElectronScenarioHarness.create({
+          label: `scripted-thread-restart-${rendererCpuRate}`,
+          ...(unversioned ? {} : { cwd: repositoryRoot }),
+          prepareAgentRuntime: false,
+          environment: {
+            ...modelServer.loopbackEnvironment(),
+            NODEX_LOG_CONSOLE: "0",
+            NODEX_LOG_FILE: "1",
+            NODEX_LOG_FILE_LEVEL: "debug",
+            OPENAI_API_KEY: "nodex-scripted-model-test-key",
+            ...(unversioned
+              ? {
+                  NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
+                  NODEX_TEST_NATIVE_CODEX_EXECUTABLE: path.join(
+                    repositoryRoot,
+                    ".generated/codex-runtime/agent-runtime/bin/codex-app-server",
+                  ),
+                }
+              : {}),
+          },
+        });
+        if (unversioned) {
+          prepareScenarioCodexAppServerRuntimeSync(
+            harness.profile.runRoot,
+            path.join(repositoryRoot, "tests/e2e/fixtures/codex-unversioned-proxy.mjs"),
+          );
+        }
+        fs.writeFileSync(
+          path.join(harness.profile.codexHome, "config.toml"),
+          scriptedCodexConfig(modelServer.baseUrl),
+          { encoding: "utf8", mode: 0o600 },
+        );
+        try {
+          const page = await harness.launch();
+          await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
+          const draft = await createAgentSmokeDraft(
+            page,
+            harness.profile.initialProjectsDirectory,
+            "Thread restart",
+          );
+          const threadId = await sendAgentPrompt(page, draft.projectSessionId, firstPrompt);
+          await waitForCompletedAgentTurn(page, threadId);
+          await waitForFinalMarker(page, firstReply);
+          if (rendererCpuRate > 1) {
+            await page.getByRole("button", { name: "New chat", exact: true }).first().click();
+            await expect(page.locator("[data-new-thread-home-main='true']")).toBeVisible();
+          }
+
+          const previousPid = harness.application.process().pid;
+          const reopened = await harness.restart();
+          expect(harness.application.process().pid).not.toBe(previousPid);
+          if (rendererCpuRate > 1) {
+            await expect(reopened.locator("[data-new-thread-home-main='true']")).toBeVisible();
+            const cdp = await reopened.context().newCDPSession(reopened);
+            try {
+              // Cold renderer scheduling must not turn successful history hydration into failure.
+              await cdp.send("Emulation.setCPUThrottlingRate", { rate: rendererCpuRate });
+              await reopened.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
+              await expect(reopened.getByText(firstReply, { exact: true }).last()).toBeVisible({
+                timeout: 30_000,
+              });
+            } finally {
+              await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+              await cdp.detach();
+            }
+          }
+          await expect(reopened.getByText(firstReply, { exact: true }).last()).toBeVisible({
+            timeout: 30_000,
+          });
+          await expect(
+            reopened.getByText("Thread could not be restored", { exact: true }),
+          ).toHaveCount(0);
+          const composer = reopened.locator("[data-codex-composer='true']").first();
+          await expect(composer).toBeEditable();
+          await composer.fill(nextPrompt);
+          await composer.press("Enter");
+          await waitForFinalMarker(reopened, nextReply, 30_000);
+          const session = await invokeIpc(reopened, "project-sessions:get", draft.projectSessionId);
+          expect(session).toMatchObject({ thread: { threadId } });
+          const snapshot = await waitForCompletedAgentTurn(reopened, threadId);
+          expect(isRecord(snapshot) ? snapshot.turns : null).toHaveLength(2);
+        } finally {
+          try {
+            const screenshotPath = testInfo.outputPath("thread-restart.png");
+            await harness.page.screenshot({ path: screenshotPath });
+            await testInfo.attach("thread-restart.png", {
+              path: screenshotPath,
+              contentType: "image/png",
+            });
+            await testInfo.attach("thread-restart-runtime.log", {
+              body: await readBoundedElectronRuntimeLogs(harness.profile, 256_000),
+              contentType: "text/plain",
+            });
+          } finally {
+            await harness.close();
+          }
+        }
+      },
+    );
+  });
+}
 
 test("runs a real shell tool through the scripted model boundary", async () => {
   test.setTimeout(120_000);

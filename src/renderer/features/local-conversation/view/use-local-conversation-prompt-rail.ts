@@ -9,6 +9,7 @@ import type {
   CodexPromptRailRevealRequest,
   CodexPromptRailRevealTarget,
 } from "../../../../shared/codex-prompt-rail-history";
+import type { CodexThreadHistoryFeatureUnavailable } from "../../../../shared/codex-thread-history-features";
 import { loadCodexPromptRailIndex, revealCodexPromptRailTurn } from "../../../lib/api";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
 import {
@@ -67,6 +68,7 @@ export interface LocalConversationPromptRailController {
   readonly items: LocalConversationPromptRailItem[];
   readonly index: CodexPromptRailIndex | null;
   readonly loadingIndex: boolean;
+  readonly availability: CodexThreadHistoryFeatureUnavailable | null;
   readonly error: string | null;
   readonly previewItem: (item: ThreadUserMessageNavigationItem) => void;
   readonly revealItem: (
@@ -120,6 +122,22 @@ const currentIndexResult = (input: {
   return input.result.index;
 };
 
+const currentUnavailableResult = (input: {
+  readonly result: CodexPromptRailIndexCommandResult | CodexPromptRailRevealCommandResult;
+  readonly requestId: string;
+  readonly threadId: string;
+}): CodexThreadHistoryFeatureUnavailable | null => {
+  if (input.result.status !== "unavailable") return null;
+  if (
+    input.result.requestId !== input.requestId ||
+    input.result.availability.threadId !== input.threadId ||
+    input.result.availability.feature !== "prompt-rail"
+  ) {
+    return null;
+  }
+  return input.result.availability;
+};
+
 const currentRevealResult = (input: {
   readonly result: CodexPromptRailRevealCommandResult;
   readonly requestId: string;
@@ -168,6 +186,9 @@ export function useLocalConversationPromptRail(
     ReadonlyMap<string, readonly CodexPromptRailPreview[]>
   >(() => new Map());
   const [loadingIndex, setLoadingIndex] = useState(false);
+  const [availability, setAvailability] = useState<CodexThreadHistoryFeatureUnavailable | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [reloadOrdinal, setReloadOrdinal] = useState(0);
   const contextKey = `${threadId ?? ""}\u0000${topologyGeneration ?? -1}`;
@@ -191,6 +212,7 @@ export function useLocalConversationPromptRail(
     revealCacheRef.current = null;
     setIndex(null);
     setPreviewsByTurnId(new Map());
+    setAvailability(null);
     setError(null);
 
     if (!enabled || !threadId || topologyGeneration === null) {
@@ -208,9 +230,17 @@ export function useLocalConversationPromptRail(
       )
       .then((result) => {
         if (controller.signal.aborted || activeContextRef.current !== contextKey) return;
+        const unavailable = currentUnavailableResult({ result, requestId, threadId });
+        if (unavailable) {
+          setAvailability(unavailable);
+          return;
+        }
         const next = currentIndexResult({ result, requestId, threadId, topologyGeneration });
         if (!next) return;
-        startTransition(() => setIndex(next));
+        startTransition(() => {
+          setAvailability(null);
+          setIndex(next);
+        });
       })
       .catch((cause: unknown) => {
         if (controller.signal.aborted || activeContextRef.current !== contextKey) return;
@@ -274,6 +304,16 @@ export function useLocalConversationPromptRail(
           { signal: controller.signal },
         )
         .then(async (result) => {
+          const unavailable = currentUnavailableResult({ result, requestId, threadId });
+          if (unavailable) {
+            if (!controller.signal.aborted && activeContextRef.current === contextKey) {
+              startTransition(() => {
+                setAvailability(unavailable);
+                setIndex(null);
+              });
+            }
+            return null;
+          }
           const reveal = currentRevealResult({
             result,
             requestId,
@@ -414,6 +454,7 @@ export function useLocalConversationPromptRail(
     items,
     index: effectiveIndex,
     loadingIndex,
+    availability,
     error,
     previewItem,
     revealItem,

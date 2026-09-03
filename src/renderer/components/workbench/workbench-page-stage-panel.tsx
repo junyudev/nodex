@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import { createCodexFirstSubmissionIdentity } from "../../../shared/codex-first-submission";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
 import { PageStageContentSkeleton } from "@/components/board/page-stage/content-skeleton";
 import { PageStageToolbar } from "@/components/board/page-stage/toolbar";
@@ -289,6 +290,7 @@ export function PageStageSessionTab({
         sessionId: targetSessionId,
       });
       const result = await codexControl.startThreadForSession({
+        firstSubmission: createCodexFirstSubmissionIdentity(),
         projectId: input.projectId,
         sessionId: targetSessionId,
         prompt: input.prompt,

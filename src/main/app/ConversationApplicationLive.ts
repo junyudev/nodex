@@ -57,6 +57,10 @@ import {
   make as makeCodexPromptRailHistory,
 } from "../codex-application/CodexPromptRailHistory";
 import {
+  CodexThreadHistoryFeatures,
+  make as makeCodexThreadHistoryFeatures,
+} from "../codex-application/CodexThreadHistoryFeatures";
+import {
   CodexConversationHistoryExport,
   make as makeCodexConversationHistoryExport,
 } from "../codex-application/CodexConversationHistoryExport";
@@ -421,8 +425,12 @@ const history = Layer.effect(
   CodexConversationHistoryRuntime,
   makeCodexConversationHistoryRuntime,
 ).pipe(Layer.provideMerge(titlePersistence));
+const threadHistoryFeatures = Layer.effect(
+  CodexThreadHistoryFeatures,
+  makeCodexThreadHistoryFeatures,
+).pipe(Layer.provideMerge(history));
 const promptRailHistory = Layer.effect(CodexPromptRailHistory, makeCodexPromptRailHistory()).pipe(
-  Layer.provideMerge(history),
+  Layer.provideMerge(threadHistoryFeatures),
 );
 const historyExport = Layer.effect(
   CodexConversationHistoryExport,

@@ -3,6 +3,7 @@ import { describe, test, expect, vi } from "vite-plus/test";
 import { settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { splitWorkbenchPanelLeaf } from "../../../shared/workbench-panel-layout";
+import { isUuidV7 } from "../../../shared/uuid-v7";
 import {
   makeAttachedSession,
   makeBlankSession,
@@ -687,17 +688,21 @@ describe("workbench session shell / pages-shell-navigation", () => {
             JSON.stringify({ pageAccessProjectId: "alpha", pageId: "card-1" }),
       ),
     ).toBe(true);
-    expect(JSON.stringify(startThreadForSessionCalls[0])).toBe(
-      JSON.stringify({
-        projectId: "alpha",
-        sessionId: "session:alpha:card-empty",
-        prompt: "Send selected blocks",
-        promptInput: undefined,
-        threadName: undefined,
-        skipAutoTitleGeneration: false,
-        runInTarget: "localProject",
-      }),
-    );
+    const startInput = startThreadForSessionCalls[0] as {
+      readonly firstSubmission?: {
+        readonly launchId?: string;
+        readonly clientUserMessageId?: string;
+      };
+    };
+    expect(isUuidV7(startInput.firstSubmission?.launchId ?? "")).toBe(true);
+    expect(isUuidV7(startInput.firstSubmission?.clientUserMessageId ?? "")).toBe(true);
+    expect(startInput).toMatchObject({
+      projectId: "alpha",
+      sessionId: "session:alpha:card-empty",
+      prompt: "Send selected blocks",
+      skipAutoTitleGeneration: false,
+      runInTarget: "localProject",
+    });
     expect(invokeCalls.some((call) => call[0] === "project-sessions:create")).toBe(false);
   });
 

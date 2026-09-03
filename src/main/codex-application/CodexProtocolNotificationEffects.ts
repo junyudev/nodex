@@ -9,7 +9,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
-  isCodexCanonicalProtocolItem,
+  projectCodexCanonicalProtocolThread,
   type CodexCanonicalConversationState,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexConversationReducerEffect } from "../../shared/codex-conversation-state/codex-conversation-reducer";
@@ -171,22 +171,7 @@ export const make: Effect.Effect<
 
   const loadedProtocolThread = (state: CodexCanonicalConversationState | null): Thread | null => {
     if (!state) return null;
-    return {
-      ...state.protocol,
-      turns: state.turns.flatMap((turn): Thread["turns"] =>
-        turn.protocol.id === null
-          ? []
-          : [
-              {
-                ...turn.protocol,
-                id: turn.protocol.id,
-                items: turn.items.filter(isCodexCanonicalProtocolItem),
-                startedAt: turn.sidecar.turnStartedAtMs,
-                completedAt: turn.sidecar.completedAtMs ?? null,
-              },
-            ],
-      ),
-    };
+    return projectCodexCanonicalProtocolThread(state);
   };
 
   const conversationFacts = (threadId: string): CodexNotificationConversationFacts => {

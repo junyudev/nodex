@@ -1380,7 +1380,7 @@ describe("ThreadComposer speed menu", () => {
     await waitFor(() => expect(readComposerText(view)).toBe(""));
   });
 
-  test("Enter clears a New Chat draft after its Session attaches to the new Thread", async () => {
+  test("Enter clears a New Chat draft as soon as its submission is admitted", async () => {
     resetStorage();
     const { view, completeStart } = await renderNewThreadComposerThatAttachesBeforeStartCompletes();
 
@@ -1394,12 +1394,65 @@ describe("ThreadComposer speed menu", () => {
         ),
       ).not.toBeNull();
     });
+    await waitFor(() => expect(readComposerText(view)).toBe(""));
 
     await act(async () => {
       completeStart();
       await Promise.resolve();
     });
+  });
 
+  test("restores a failed New Chat submission for an explicit retry", async () => {
+    resetStorage();
+    let rejectStart!: (error: Error) => void;
+    const firstStart = new Promise<void>((_resolve, reject) => {
+      rejectStart = reject;
+    });
+    let startCount = 0;
+    const errors: string[] = [];
+    const view = await renderComposer(
+      {
+        threadId: null,
+        conversation: null,
+        isNewThreadTab: true,
+        newThreadTarget: {
+          projectId: "project_1",
+          projectName: "Nodex",
+          sessionId: "session_1",
+          threadTitle: "New thread",
+          runInTarget: "localProject",
+        },
+        composerIntent: {
+          prompt: "Retry the retained first submission",
+          focusNonce: 1,
+        },
+      },
+      {
+        onStartThreadForSession: async () => {
+          startCount += 1;
+          if (startCount === 1) await firstStart;
+        },
+      },
+      undefined,
+      (message) => {
+        if (message) errors.push(message);
+      },
+    );
+
+    await waitFor(() => expect(readComposerText(view)).toBe("Retry the retained first submission"));
+    await keyDownComposer(view, { key: "Enter" });
+    await waitFor(() => expect(readComposerText(view)).toBe(""));
+
+    await act(async () => {
+      rejectStart(new Error("Thread start failed"));
+      await firstStart.catch(() => undefined);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(readComposerText(view)).toBe("Retry the retained first submission"));
+    expect(errors).toContain("Thread start failed");
+
+    await submitCurrentComposerDraft(view);
+    await waitFor(() => expect(startCount).toBe(2));
     await waitFor(() => expect(readComposerText(view)).toBe(""));
   });
 
@@ -3448,6 +3501,58 @@ describe("ThreadComposer speed menu", () => {
     );
     expect(setGoalCalls.length).toBe(0);
     expect(sentPrompts.length).toBe(0);
+  });
+
+  test("restores a failed New Chat goal admission for an explicit retry", async () => {
+    resetStorage();
+    let rejectStart!: (error: Error) => void;
+    const firstStart = new Promise<void>((_resolve, reject) => {
+      rejectStart = reject;
+    });
+    let startCount = 0;
+    const errors: string[] = [];
+    const view = await renderComposer(
+      {
+        threadId: null,
+        conversation: null,
+        isNewThreadTab: true,
+        newThreadTarget: {
+          projectId: "project_1",
+          projectName: "Nodex",
+          sessionId: "session_1",
+          threadTitle: "New thread",
+          runInTarget: "localProject",
+        },
+        composerIntent: {
+          prompt: "/goal Keep retry semantics explicit",
+          focusNonce: 1,
+        },
+      },
+      {
+        onStartThreadForSession: async () => {
+          startCount += 1;
+          if (startCount === 1) await firstStart;
+        },
+      },
+      undefined,
+      (message) => {
+        if (message) errors.push(message);
+      },
+    );
+
+    await submitCurrentComposerDraft(view);
+    await waitFor(() => expect(readComposerText(view)).toBe(""));
+
+    await act(async () => {
+      rejectStart(new Error("Goal start failed"));
+      await firstStart.catch(() => undefined);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(readComposerText(view)).toBe("Keep retry semantics explicit"));
+    expect(errors).toContain("Goal start failed");
+
+    await submitCurrentComposerDraft(view);
+    await waitFor(() => expect(startCount).toBe(2));
   });
 
   test("new-worktree Goal keeps pasted text and images raw until the pending worktree is ready", async () => {

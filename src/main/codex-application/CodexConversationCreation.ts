@@ -247,6 +247,7 @@ export const make: Effect.Effect<
       baseInstructions: params.baseInstructions ?? null,
       developerInstructions: params.additionalDeveloperInstructions ?? null,
       threadSource: params.threadSource,
+      historyMode: "paginated",
       config: {
         ...(desktopToolConfig ?? {}),
         ...buildCodexThreadConfigOverrides(),
@@ -276,6 +277,7 @@ export const make: Effect.Effect<
       const accepted = entry.projectSessionId
         ? yield* directory.acceptSessionStart({
             response,
+            capability,
             sessionId: entry.projectSessionId,
             projectId,
             executionProfile,
@@ -285,6 +287,7 @@ export const make: Effect.Effect<
           })
         : yield* directory.acceptStandaloneStart({
             response,
+            capability,
             projectId,
             executionProfile,
             runtimeWorkspaceRoots: location.workspaceRoots,
@@ -304,6 +307,7 @@ export const make: Effect.Effect<
         ? `/goal ${materializedGoal.objective}`
         : extractCodexUserRequestSection(entry.prompt);
       const turn = yield* turns.start(threadId, prompt, {
+        clientUserMessageId: entry.firstSubmission.clientUserMessageId,
         preparedPrompt: preparedPrompt(entry, prompt),
         model: executionProfile?.modelId ?? params.collaborationMode?.settings.model ?? undefined,
         serviceTier: executionProfile ? executionProfile.serviceTier : params.serviceTier,
@@ -356,6 +360,7 @@ export const make: Effect.Effect<
         yield* bestEffort(
           "complete-launch",
           completion.accepted({
+            launchId: entry.firstSubmission.launchId,
             projectId,
             sessionId: entry.projectSessionId,
             threadId,

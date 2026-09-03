@@ -25,6 +25,12 @@ const reconnectReadDelayMs = Number.parseInt(
 );
 const reconnectNotificationEnabled =
   process.env.NODEX_FAKE_SUBAGENT_RECONNECT_NOTIFICATION === "1";
+const threadStartDelayMs = Number.parseInt(
+  process.env.NODEX_FAKE_CODEX_THREAD_START_DELAY_MS ?? "",
+  10,
+);
+const initialUserAgent = process.env.NODEX_FAKE_CODEX_USER_AGENT ?? "codex-app-server/0.152.0";
+const reconnectUserAgent = process.env.NODEX_FAKE_CODEX_RECONNECT_USER_AGENT ?? initialUserAgent;
 const selectedDeleteDelayMs = Number.parseInt(
   process.env.NODEX_FAKE_SUBAGENT_DELETE_SELECTED_MS ?? "",
   10,
@@ -556,7 +562,7 @@ const handle = (message) => {
   switch (method) {
     case "initialize":
       respond(id, {
-        userAgent: "codex-app-server/0.152.0",
+        userAgent: processInstance.ordinal === 1 ? initialUserAgent : reconnectUserAgent,
         codexHome: process.env.CODEX_HOME ?? process.cwd(),
         platformFamily: os.platform() === "win32" ? "windows" : "unix",
         platformOs: os.platform() === "darwin" ? "macos" : os.platform(),
@@ -627,6 +633,14 @@ const handle = (message) => {
       respond(id, { data: [], nextCursor: null });
       return;
     case "thread/start":
+      if (Number.isFinite(threadStartDelayMs) && threadStartDelayMs >= 0) {
+        setTimeout(() => {
+          state.rootStarted = true;
+          persist();
+          respond(id, threadResponse(rootThread()));
+        }, threadStartDelayMs);
+        return;
+      }
       state.rootStarted = true;
       persist();
       respond(id, threadResponse(rootThread()));

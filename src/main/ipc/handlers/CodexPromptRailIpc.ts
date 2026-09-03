@@ -17,6 +17,7 @@ import { MainConfig } from "../../app/MainConfig";
 import {
   CodexPromptRailHistory,
   type CodexPromptRailHistoryError,
+  type CodexPromptRailHistoryUnavailable,
 } from "../../codex-application/CodexPromptRailHistory";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -34,6 +35,12 @@ export class CodexPromptRailIpcError extends Schema.TaggedError<CodexPromptRailI
 type PromptRailCancelled = {
   readonly status: "cancelled";
   readonly requestId: string;
+};
+
+type PromptRailUnavailable = {
+  readonly status: "unavailable";
+  readonly requestId: string;
+  readonly availability: CodexPromptRailHistoryUnavailable["availability"];
 };
 
 const requestKey = (event: IpcMainInvokeEvent, requestId: string): string =>
@@ -128,11 +135,14 @@ export const live = (
         readonly event: IpcMainInvokeEvent;
         readonly requestId: string;
         readonly operation: string;
-        readonly task: Effect.Effect<A, CodexPromptRailHistoryError>;
+        readonly task: Effect.Effect<
+          A,
+          CodexPromptRailHistoryError | CodexPromptRailHistoryUnavailable
+        >;
         readonly completed: (value: A) => B;
         /** A semantic commit wins over a concurrent cancel even if task cleanup has not returned. */
         readonly committed?: () => A | undefined;
-      }): Effect.Effect<B | PromptRailCancelled, CodexPromptRailIpcError> =>
+      }): Effect.Effect<B | PromptRailCancelled | PromptRailUnavailable, CodexPromptRailIpcError> =>
         Effect.gen(function* () {
           const key = requestKey(input.event, input.requestId);
           const cancelled = yield* Deferred.make<void>();
@@ -152,6 +162,13 @@ export const live = (
             input.event,
             input.task.pipe(
               Effect.map(input.completed),
+              Effect.catchTag("CodexPromptRailHistoryUnavailable", (cause) =>
+                Effect.succeed({
+                  status: "unavailable" as const,
+                  requestId: input.requestId,
+                  availability: cause.availability,
+                }),
+              ),
               Effect.mapError(
                 (cause) => new CodexPromptRailIpcError({ operation: input.operation, cause }),
               ),

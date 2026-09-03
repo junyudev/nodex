@@ -359,7 +359,16 @@ export const make = Effect.gen(function* () {
     const handle = yield* requireHandle(input.threadId);
     const response = yield* Effect.uninterruptibleMask((restore) =>
       setThreadStatus(input.threadId, "active").pipe(
-        Effect.andThen(restore(handle.prompt([{ type: "text", text }]))),
+        Effect.andThen(
+          restore(
+            handle.prompt(
+              [{ type: "text", text }],
+              input.clientUserMessageId
+                ? { clientUserMessageId: input.clientUserMessageId }
+                : undefined,
+            ),
+          ),
+        ),
         Effect.onExit((exit) =>
           Effect.uninterruptible(
             setThreadStatus(
@@ -378,9 +387,9 @@ export const make = Effect.gen(function* () {
     return { stopReason: response.stopReason, snapshot };
   });
 
-  const launchInitialPrompt = (threadId: string, prompt: string) =>
+  const launchInitialPrompt = (threadId: string, prompt: string, clientUserMessageId: string) =>
     Effect.yieldNow.pipe(
-      Effect.andThen(promptAcpSession({ threadId, prompt })),
+      Effect.andThen(promptAcpSession({ threadId, prompt, clientUserMessageId })),
       Effect.catchCause((cause) =>
         isInterruptedOnly(cause)
           ? Effect.void
@@ -447,9 +456,12 @@ export const make = Effect.gen(function* () {
     // The first prompt remains process-owned and single-consume. Interactive authentication may
     // defer its first submission, but a Main restart never replays it and risks a duplicate.
     if (opened.snapshot.status === "authentication-required") {
-      yield* handle.deferInitialPrompt(input.prompt);
+      yield* handle.deferInitialPrompt({
+        prompt: input.prompt,
+        clientUserMessageId: input.firstSubmission.clientUserMessageId,
+      });
     } else {
-      yield* launchInitialPrompt(threadId, input.prompt);
+      yield* launchInitialPrompt(threadId, input.prompt, input.firstSubmission.clientUserMessageId);
     }
     return result;
   });
@@ -535,7 +547,13 @@ export const make = Effect.gen(function* () {
             });
           }
           const initialPrompt = yield* handle.takeDeferredInitialPrompt;
-          if (initialPrompt !== null) yield* launchInitialPrompt(input.threadId, initialPrompt);
+          if (initialPrompt !== null) {
+            yield* launchInitialPrompt(
+              input.threadId,
+              initialPrompt.prompt,
+              initialPrompt.clientUserMessageId,
+            );
+          }
           return { snapshot: yield* SubscriptionRef.get(handle.snapshot) };
         }),
         { threadId: input.threadId },

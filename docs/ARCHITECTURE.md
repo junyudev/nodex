@@ -597,6 +597,18 @@ Codex has four distinct authorities that must not collapse into one another:
   presentation remain renderer concerns; Main retains only a validated relay and recovery replica,
   and followers render validated copies.
 
+Main's Thread-history feature Module derives optional persisted-history availability from that
+canonical Entity's concrete history mode together with the exact current endpoint-generation
+capabilities. Optional consumers receive typed availability data and degrade to resident history;
+they do not infer support from renderer state or turn absence. Durable Thread creation instead
+requires an explicit paginated start contract and validates its empty metadata shell from the exact
+current endpoint generation before Core Session/Thread identity is committed. The concrete mutation
+response proves that storage contract; version-derived flags only authorize separate history RPCs.
+On resume, a generation without those optional RPCs bootstraps history from a bounded inline
+resume page, or retains existing resident history when that page is unavailable. Metadata alone
+never proves an empty transcript. The visible fallback and first-submit guarantees are defined by
+[Codex Thread Transcript Behavior](product-specs/codex-thread-transcript-behavior.md).
+
 Sidebar Sections are a Profile-wide organization projection owned by Core Workspace, independent
 of Project execution ownership. Direct placement uses stable Project or Session identities; a
 Session may otherwise inherit its Project's effective Section. Main projects only attached Threads

@@ -30,6 +30,7 @@ export interface ThreadBodyModelInput {
     outputText: string;
     updatedAt: number;
   } | null;
+  firstSubmissionActive?: boolean;
 }
 
 export type ThreadStartProgressPresentation = "hidden" | "panel";
@@ -98,6 +99,17 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
   }
 
   if (!conversation) {
+    if (input.firstSubmissionActive) {
+      return {
+        threadId: input.activeThreadId,
+        turnCount: 1,
+        isThreadRunning: true,
+        activeTurnId: null,
+        latestTurnId: null,
+        showThreadStartProgressPanel: false,
+        emptyState: { type: "none" },
+      };
+    }
     if (input.activeThreadId && resumeState) {
       if (attachmentState.status === "failed") {
         return {

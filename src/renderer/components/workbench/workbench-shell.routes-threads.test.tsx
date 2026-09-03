@@ -515,7 +515,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(props?.composerEnterBehavior).toBe("cmdIfMultiline");
   });
 
-  test("keeps session start progress on the new-thread surface until a turn is visible", async () => {
+  test("moves session start progress onto the thread surface before a turn is visible", async () => {
     setMockConversationHasVisibleTurn(false);
     setMockThreadStartProgress({
       projectId: "alpha",
@@ -540,8 +540,8 @@ describe("workbench session shell / routes-threads", () => {
     expect(JSON.stringify(props?.threadStartProgress)).toBe(
       JSON.stringify(mockThreadStartProgress),
     );
-    expect(props?.isNewThreadTab).toBe(true);
-    expect(props?.activeThreadId).toBe(null);
+    expect(props?.isNewThreadTab).toBe(false);
+    expect(props?.activeThreadId).toBe("thread-alpha");
   });
 
   test("uses the global app header as the only top title row", async () => {

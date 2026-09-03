@@ -603,6 +603,27 @@ export interface CodexCanonicalConversationState {
   readonly sidecar: CodexCanonicalConversationSidecar;
 }
 
+/** Reconstructs the loaded generated-protocol Thread without app-only placeholder occurrences. */
+export function projectCodexCanonicalProtocolThread(
+  state: CodexCanonicalConversationState,
+): Thread {
+  return {
+    ...state.protocol,
+    turns: state.turns.flatMap((turn): Thread["turns"] => {
+      if (turn.protocol.id === null) return [];
+      return [
+        {
+          ...turn.protocol,
+          id: turn.protocol.id,
+          items: turn.items.filter(isCodexCanonicalProtocolItem),
+          startedAt: turn.sidecar.turnStartedAtMs,
+          completedAt: turn.sidecar.completedAtMs ?? null,
+        },
+      ];
+    }),
+  };
+}
+
 export interface CodexCanonicalConversationSidecar {
   readonly hasUnreadTurn: boolean;
   readonly hydrationContext: CodexCanonicalHydrationContext | null;

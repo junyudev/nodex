@@ -29,6 +29,11 @@ import {
   type PendingWorktreeRouteTransport,
 } from "@/lib/pending-worktree-runtime";
 import { cn } from "@/lib/utils";
+import {
+  sessionFirstSubmissionOwner,
+  type SessionFirstSubmission,
+} from "@/features/conversation-launch/session-first-submission-owner";
+import { useSessionFirstSubmission } from "@/features/conversation-launch/use-session-first-submission";
 import type {
   CodexPendingWorktreeEntry,
   CodexPendingWorktreeThreadResolution,
@@ -75,6 +80,7 @@ function findPendingWorktreeEntry(
 
 export interface PendingWorktreeRouteViewProps {
   entry: CodexPendingWorktreeEntry;
+  firstSubmission?: SessionFirstSubmission | null;
   resolution: CodexPendingWorktreeThreadResolution | null;
   busyAction?: PendingWorktreeRouteAction | null;
   actionError?: string | null;
@@ -121,6 +127,7 @@ function PendingWorktreeActionButton({
 
 export function PendingWorktreeRouteView({
   entry,
+  firstSubmission = null,
   resolution,
   busyAction = null,
   actionError = null,
@@ -198,7 +205,16 @@ export function PendingWorktreeRouteView({
         <LocalConversationThreadScrollLayout>
           <div className="flex flex-col gap-4">
             <div className="group flex flex-col items-end gap-2">
-              <div data-user-message-bubble="true" className={THREAD_VISUAL_TOKENS.userBubble}>
+              <div
+                data-client-user-message-id={
+                  firstSubmission?.clientUserMessageId ??
+                  (entry.launchMode === "start-conversation"
+                    ? entry.firstSubmission.clientUserMessageId
+                    : undefined)
+                }
+                data-user-message-bubble="true"
+                className={THREAD_VISUAL_TOKENS.userBubble}
+              >
                 <UserMessageText text={entry.prompt} />
               </div>
               <ThreadMessageActionRow align="end" className="opacity-100">
@@ -211,6 +227,36 @@ export function PendingWorktreeRouteView({
               actions={actionButtons}
               actionError={actionError}
             />
+          </div>
+        </LocalConversationThreadScrollLayout>
+      </EnsureLocalConversationThreadScrollController>
+    </div>
+  );
+}
+
+function PendingWorktreeFirstSubmissionSurface({
+  submission,
+}: {
+  readonly submission: SessionFirstSubmission;
+}) {
+  return (
+    <div className="h-full min-h-0 bg-token-main-surface-primary">
+      <EnsureLocalConversationThreadScrollController>
+        <LocalConversationThreadScrollLayout>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col items-end gap-2">
+              <div
+                data-client-user-message-id={submission.clientUserMessageId}
+                data-user-message-bubble="true"
+                className={THREAD_VISUAL_TOKENS.userBubble}
+              >
+                <UserMessageText text={submission.prompt} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-tertiary" role="status">
+              <ActivitySpinnerIcon className="icon-sm" />
+              Preparing worktree…
+            </div>
           </div>
         </LocalConversationThreadScrollLayout>
       </EnsureLocalConversationThreadScrollController>
@@ -291,6 +337,12 @@ export function PendingWorktreeRoute({
   const [busyAction, setBusyAction] = useState<PendingWorktreeRouteAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [workLocallyHidden, setWorkLocallyHidden] = useState(false);
+  const firstSubmission = useSessionFirstSubmission({
+    projectId: null,
+    sessionId: null,
+    threadId: null,
+    clientThreadId,
+  });
   const loadSequenceRef = useRef(0);
   const openingThreadIdRef = useRef<string | null>(null);
 
@@ -347,6 +399,11 @@ export function PendingWorktreeRoute({
     if (pendingWorktreeId === null) return;
     clearAttentionOnRouteEntry();
   }, [pendingWorktreeId]);
+
+  useEffect(() => {
+    if (!snapshot.entry || !firstSubmission) return;
+    sessionFirstSubmissionOwner.complete(firstSubmission.launchId);
+  }, [firstSubmission, snapshot.entry]);
 
   const openResolvedThread = useCallback(
     (threadId: string) => {
@@ -435,6 +492,9 @@ export function PendingWorktreeRoute({
 
   if (workLocallyHidden && actionError === null) return null;
   if (snapshot.status === "loading") {
+    if (firstSubmission) {
+      return <PendingWorktreeFirstSubmissionSurface submission={firstSubmission} />;
+    }
     return <PendingWorktreeRouteStatusSurface error={null} onClose={onClose} />;
   }
   if (snapshot.status === "error") {
@@ -471,6 +531,9 @@ export function PendingWorktreeRoute({
       return <PendingWorktreeRouteStatusSurface error={actionError} onClose={onClose} />;
     }
     if (snapshot.resolution?.state === "waiting" || snapshot.resolution?.state === "starting") {
+      if (firstSubmission) {
+        return <PendingWorktreeFirstSubmissionSurface submission={firstSubmission} />;
+      }
       return <PendingWorktreeRouteStatusSurface error={null} onClose={onClose} />;
     }
     if (snapshot.resolution?.state === "failed") {
@@ -496,6 +559,7 @@ export function PendingWorktreeRoute({
   return (
     <PendingWorktreeRouteView
       entry={snapshot.entry}
+      firstSubmission={firstSubmission}
       resolution={snapshot.resolution}
       busyAction={busyAction}
       actionError={actionError}

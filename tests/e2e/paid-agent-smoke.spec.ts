@@ -24,7 +24,8 @@ import {
   isRecord,
   requireRecord,
   selectCodexExecutionProfile,
-  sendAgentPrompt,
+  sendAgentPromptWithEvidence,
+  type AgentFirstSubmissionEvidence,
   waitForCompletedAgentTurn,
   waitForFinalMarker as waitForAgentFinalMarker,
 } from "./support/agent-smoke-harness";
@@ -134,8 +135,10 @@ const capturedEvents = async (
     };
   });
 
-const sendPrompt = async (page: Page, projectSessionId: string, prompt: string): Promise<string> =>
-  await sendAgentPrompt(page, projectSessionId, prompt, async () => beginEventCapture(page));
+const sendPrompt = async (page: Page, projectSessionId: string, prompt: string) =>
+  await sendAgentPromptWithEvidence(page, projectSessionId, prompt, async () =>
+    beginEventCapture(page),
+  );
 
 const summarizeCodexEvent = (value: unknown): Record<string, unknown> => {
   if (!isRecord(value)) return { type: typeof value };
@@ -299,6 +302,7 @@ const runPaidCase = async (
   let threadId: string | null = null;
   let result: Record<string, unknown> = {};
   let runtimePreflight: Record<string, unknown> | null = null;
+  let firstSubmissionEvidence: AgentFirstSubmissionEvidence | null = null;
   let failure: unknown;
   try {
     page = await harness.launch();
@@ -325,7 +329,9 @@ const runPaidCase = async (
     const preflight = await preflightExecutionProfile(page, caseId);
     const selectedProfile = await selectExecutionProfile(page, preflight);
     await beforeSend({ page });
-    threadId = await sendPrompt(page, draft.projectSessionId, prompt);
+    const submission = await sendPrompt(page, draft.projectSessionId, prompt);
+    threadId = submission.threadId;
+    firstSubmissionEvidence = submission.firstSubmission;
     if (caseId === "browser") {
       const threadPage = page;
       const skills = (await invokeIpc(page, "codex:composer-skills:list", {
@@ -394,6 +400,7 @@ const runPaidCase = async (
       permissionMode: permissionState.mode,
       projectSessionId: draft.projectSessionId,
       threadId,
+      firstSubmission: firstSubmissionEvidence,
       rollout,
       ...(await verify({
         codexHome: harness.profile.codexHome,

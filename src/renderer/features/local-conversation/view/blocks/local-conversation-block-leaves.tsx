@@ -148,6 +148,14 @@ function UserMessageGoalStatus() {
   );
 }
 
+function UserMessageDeliveryFailureStatus() {
+  return (
+    <span className="mr-1 text-xs text-danger" role="status">
+      Not sent
+    </span>
+  );
+}
+
 function UserMessageHookFeedbackStatus({ href, onOpen }: { href: string; onOpen?: () => void }) {
   return (
     <a
@@ -705,6 +713,7 @@ export function UserMessageBubble({
   const content = block.entry.markdownText ?? "";
   const userActions = block.userMessageActions;
   const canEdit = userActions?.canEdit ?? false;
+  const isNotSent = block.entry.deliveryStatus === "not-sent";
   const isGoalMessage = block.entry.goal === true;
   const isHookFeedback = block.entry.hookFeedback === true;
   const hookSettingsNavigation = useHookFeedbackSettingsNavigation();
@@ -720,10 +729,17 @@ export function UserMessageBubble({
   });
   const hasMessageContent = content.trim().length > 0;
   const shouldRenderFooter =
-    isGoalMessage || isHookFeedback || (hasMessageContent && !compactUserMessageActions);
+    isNotSent ||
+    isGoalMessage ||
+    isHookFeedback ||
+    (hasMessageContent && !compactUserMessageActions);
   const [isEditing, setIsEditing] = useState(false);
   const [draftMessage, setDraftMessage] = useState(content);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const clientUserMessageId =
+    block.entry.rawItem && typeof block.entry.rawItem === "object"
+      ? ((block.entry.rawItem as { readonly clientId?: unknown }).clientId ?? null)
+      : null;
 
   const openInlineEditor = useCallback(() => {
     setDraftMessage(content);
@@ -762,6 +778,9 @@ export function UserMessageBubble({
   const messageBubble = (
     <div
       data-user-message-bubble="true"
+      data-client-user-message-id={
+        typeof clientUserMessageId === "string" ? clientUserMessageId : undefined
+      }
       data-thread-selected-text-target="true"
       className={THREAD_VISUAL_TOKENS.userBubble}
     >
@@ -842,6 +861,7 @@ export function UserMessageBubble({
         )}
         {shouldRenderFooter ? (
           <div className="flex flex-row-reverse items-center gap-1">
+            {isNotSent ? <UserMessageDeliveryFailureStatus /> : null}
             {isGoalMessage ? <UserMessageGoalStatus /> : null}
             {isHookFeedback ? (
               <UserMessageHookFeedbackStatus

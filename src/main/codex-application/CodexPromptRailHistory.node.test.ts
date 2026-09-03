@@ -15,7 +15,12 @@ import {
   CodexHistoryPageAdapter,
   type CodexHydratedHistoryTurnPage,
 } from "./CodexHistoryPageAdapter";
-import { make } from "./CodexPromptRailHistory";
+import {
+  make,
+  type CodexPromptRailHistoryError,
+  type CodexPromptRailHistoryUnavailable,
+} from "./CodexPromptRailHistory";
+import { CodexThreadHistoryFeatures } from "./CodexThreadHistoryFeatures";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import type { ConversationEntityState } from "./internal/ConversationEntityState";
 
@@ -88,7 +93,7 @@ const mutation = {
 } satisfies CodexConversationHistoryMutation;
 
 const currentCanonical = createCodexCanonicalHydratedConversationState(
-  { id: "thread-a", turns: [] } as unknown as Thread,
+  { id: "thread-a", historyMode: "paginated", turns: [] } as unknown as Thread,
   {
     model: "gpt-test",
     reasoningEffort: "high",
@@ -126,11 +131,26 @@ const unusedHistoryPages = CodexHistoryPageAdapter.of({
   loadTurnItemsPage: () => Effect.die("Unexpected prompt rail item page"),
 });
 
+const historyFeatures = CodexThreadHistoryFeatures.of({
+  resolve: (threadId, feature) =>
+    Effect.succeed({
+      status: "available",
+      feature,
+      threadId,
+      historyMode: "paginated",
+      capability: snapshot,
+    }),
+});
+
 const provide = <A, E>(
   effect: Effect.Effect<
     A,
     E,
-    CodexAppServerCapabilities | CodexGateway | CodexHistoryPageAdapter | ConversationEntityMap
+    | CodexAppServerCapabilities
+    | CodexGateway
+    | CodexHistoryPageAdapter
+    | ConversationEntityMap
+    | CodexThreadHistoryFeatures
   >,
   gateway: CodexGateway["Service"],
   pages: CodexHistoryPageAdapter["Service"] = unusedHistoryPages,
@@ -140,8 +160,19 @@ const provide = <A, E>(
     Effect.provideService(CodexGateway, gateway),
     Effect.provideService(CodexAppServerCapabilities, capabilities),
     Effect.provideService(CodexHistoryPageAdapter, pages),
+    Effect.provideService(CodexThreadHistoryFeatures, historyFeatures),
     Effect.provideService(ConversationEntityMap, conversations),
   );
+
+const failureReason = (
+  failure: CodexPromptRailHistoryError | CodexPromptRailHistoryUnavailable,
+): CodexPromptRailHistoryError["reason"] => {
+  assert.strictEqual(failure._tag, "CodexPromptRailHistoryError");
+  if (failure._tag !== "CodexPromptRailHistoryError") {
+    throw new Error("Expected an operational prompt rail failure");
+  }
+  return failure.reason;
+};
 
 it.effect("builds and caches a bounded chronological shell index without Turn items", () =>
   Effect.gen(function* () {
@@ -221,7 +252,7 @@ it.effect("rejects a shell page that exceeds its exact physical request limit", 
       .loadIndex("thread-a", { expectedTopologyGeneration: 11 })
       .pipe(Effect.flip);
 
-    assert.strictEqual(failure.reason, "page-size-exceeded");
+    assert.strictEqual(failureReason(failure), "page-size-exceeded");
   }),
 );
 
@@ -252,7 +283,7 @@ it.effect("rejects a forged shell offset before issuing a host request", () =>
       })
       .pipe(Effect.flip);
 
-    assert.strictEqual(failure.reason, "invalid-reveal");
+    assert.strictEqual(failureReason(failure), "invalid-reveal");
     assert.strictEqual(hostRequests, 0);
   }),
 );
@@ -465,7 +496,7 @@ it.effect("rejects a reveal whose topology changes during physical hydration", (
       })
       .pipe(Effect.flip);
 
-    assert.strictEqual(failure.reason, "stale-topology");
+    assert.strictEqual(failureReason(failure), "stale-topology");
     assert.isFalse(inserted);
   }),
 );
@@ -564,7 +595,7 @@ it.effect("stops a fast known-Turn identity seek at its physical page budget", (
       })
       .pipe(Effect.flip);
 
-    assert.strictEqual(failure.reason, "seek-budget-exhausted");
+    assert.strictEqual(failureReason(failure), "seek-budget-exhausted");
     assert.deepStrictEqual(cursors, [null, "cursor:1"]);
   }),
 );
@@ -591,7 +622,7 @@ it.effect("interrupts a shell-index read at the bounded background deadline", ()
     yield* TestClock.adjust(25);
     const failure = yield* Fiber.join(load);
 
-    assert.strictEqual(failure.reason, "deadline-exceeded");
+    assert.strictEqual(failureReason(failure), "deadline-exceeded");
     assert.isTrue(released);
   }),
 );
@@ -627,7 +658,7 @@ it.effect("interrupts an identity seek at the same bounded rail deadline", () =>
     yield* TestClock.adjust(25);
     const failure = yield* Fiber.join(locate);
 
-    assert.strictEqual(failure.reason, "deadline-exceeded");
+    assert.strictEqual(failureReason(failure), "deadline-exceeded");
     assert.isTrue(released);
   }),
 );

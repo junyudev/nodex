@@ -8,6 +8,7 @@ import type {
 } from "@/features/local-conversation";
 import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/thread-stage-types";
 import { CODEX_CLIENT_THREAD_ID_PREFIX } from "../../shared/codex-client-thread";
+import { createCodexFirstSubmissionIdentity } from "../../shared/codex-first-submission";
 import {
   createCommandKeymapState,
   matchesKeyboardEventToCommand,
@@ -374,6 +375,7 @@ export function useWorkbenchSessionCommands({
           },
           startThread: async ({ projectId, sessionId, context }) =>
             await workbenchCodexControl.startThreadForSession({
+              firstSubmission: createCodexFirstSubmissionIdentity(),
               projectId,
               sessionId,
               prompt: context.promptInput.text,
@@ -482,6 +484,7 @@ export function useWorkbenchSessionCommands({
       setSettingsPath(null);
       setAutomationsPath(null);
       const result = await workbenchCodexControl.startThreadForSession({
+        firstSubmission: createCodexFirstSubmissionIdentity(),
         projectId: targetProject.id,
         sessionId: session.id,
         prompt,

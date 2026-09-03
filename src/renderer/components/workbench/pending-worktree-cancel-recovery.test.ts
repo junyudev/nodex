@@ -20,6 +20,10 @@ function makeEntry(): StartConversationEntry {
     localEnvironmentConfigPath: null,
     prompt: "Generated context\n## My request for Codex:\n  Restore this request  ",
     launchMode: "start-conversation",
+    firstSubmission: {
+      launchId: "01991e60-b800-7000-8000-000000000101",
+      clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+    },
     clientThreadId: "client-new-thread:cancel",
     startConversationParamsInput: {
       input: [],

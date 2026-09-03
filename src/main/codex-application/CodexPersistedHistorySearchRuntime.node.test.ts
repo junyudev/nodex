@@ -20,8 +20,13 @@ import {
 } from "../../shared/codex-conversation-state/codex-history-topology";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexConversationHistoryRuntime } from "./CodexConversationHistoryRuntime";
-import { CodexHistorySearchAdapter } from "./CodexHistorySearchAdapter";
 import {
+  CodexHistorySearchAdapter,
+  CodexHistorySearchAdapterError,
+} from "./CodexHistorySearchAdapter";
+import { CodexThreadHistoryFeatures } from "./CodexThreadHistoryFeatures";
+import {
+  CodexPersistedHistorySearchRuntime,
   make as makePersistedHistorySearchRuntime,
   makePersistedHistoryHydrationRequestTracker,
   placeCodexHistorySearchIsland,
@@ -321,14 +326,45 @@ const runtimeSearchAdapter = (input: {
       }),
   });
 
+const availableHistoryFeatures = CodexThreadHistoryFeatures.of({
+  resolve: (threadId, feature) =>
+    Effect.succeed({
+      status: "available",
+      feature,
+      threadId,
+      historyMode: "paginated",
+      capability: {
+        hostId: "host-search",
+        generation: 4,
+        userAgent: "Codex Desktop/test",
+        version: "test",
+        flags: {
+          forkLastTurnId: true,
+          paginatedHistory: true,
+          searchOccurrences: true,
+          ephemeralFork: true,
+          multiAgentV2Protocol: false,
+          sideConversation: true,
+          subagentAncestorFilter: false,
+          threadRevert: true,
+        },
+      },
+    }),
+});
+
 const makeRuntime = (input: {
   readonly conversations: ConversationEntityMap["Service"];
   readonly searchAdapter: CodexHistorySearchAdapter["Service"];
+  readonly historyFeatures?: CodexThreadHistoryFeatures["Service"];
   readonly onItemPage?: () => void;
 }) =>
   makePersistedHistorySearchRuntime.pipe(
     Effect.provideService(ConversationEntityMap, input.conversations),
     Effect.provideService(CodexHistorySearchAdapter, input.searchAdapter),
+    Effect.provideService(
+      CodexThreadHistoryFeatures,
+      input.historyFeatures ?? availableHistoryFeatures,
+    ),
     Effect.provideService(
       CodexConversationHistoryRuntime,
       CodexConversationHistoryRuntime.of({
@@ -342,6 +378,79 @@ const makeRuntime = (input: {
     ),
     Effect.provideService(CodexAppServerCapabilities, runtimeCapabilities),
   );
+
+const completedSearch = Effect.fn("CodexPersistedHistorySearchRuntimeTest.completedSearch")(
+  function* (runtime: CodexPersistedHistorySearchRuntime["Service"], query: string) {
+    const result = yield* runtime.search(runtimeThreadId, query);
+    assert.strictEqual(result.status, "completed");
+    if (result.status !== "completed") return yield* Effect.die("Expected completed search");
+    return result.page;
+  },
+);
+
+it.effect("returns persisted-search unavailability without calling the physical adapter", () =>
+  Effect.gen(function* () {
+    const installed = installRuntimeConversation({ turns: [rawTurn("turn-tail", 100)] });
+    let physicalSearches = 0;
+    const unavailable = {
+      status: "unavailable",
+      feature: "persisted-search",
+      reason: "capability-unproven",
+      threadId: runtimeThreadId,
+      hostId: "host-search",
+      hostGeneration: 4,
+      sourceEpoch: "epoch-search",
+      appServerVersion: "0.0.0",
+      historyMode: "paginated",
+    } as const;
+    const runtime = yield* makeRuntime({
+      conversations: installed.conversations,
+      searchAdapter: CodexHistorySearchAdapter.of({
+        search: () =>
+          Effect.sync(() => {
+            physicalSearches += 1;
+            return {} as never;
+          }),
+        hydrateOccurrence: () => Effect.die("unused"),
+      }),
+      historyFeatures: CodexThreadHistoryFeatures.of({
+        resolve: () => Effect.succeed(unavailable),
+      }),
+    });
+
+    const result = yield* runtime.search(runtimeThreadId, "needle");
+
+    assert.deepStrictEqual(result, unavailable);
+    assert.strictEqual(physicalSearches, 0);
+  }),
+);
+
+it.effect("preserves physical search failures instead of disguising them as unavailability", () =>
+  Effect.gen(function* () {
+    const installed = installRuntimeConversation({ turns: [rawTurn("turn-tail", 100)] });
+    const runtime = yield* makeRuntime({
+      conversations: installed.conversations,
+      searchAdapter: CodexHistorySearchAdapter.of({
+        search: () =>
+          Effect.fail(
+            new CodexHistorySearchAdapterError({
+              operation: "search",
+              threadId: runtimeThreadId,
+              turnId: null,
+              reason: "request-failed",
+              cause: new Error("transport closed"),
+            }),
+          ),
+        hydrateOccurrence: () => Effect.die("unused"),
+      }),
+    });
+
+    const failure = yield* runtime.search(runtimeThreadId, "needle").pipe(Effect.flip);
+
+    assert.strictEqual(failure.reason, "request-failed");
+    assert.strictEqual(failure.operation, "search");
+  }),
+);
 
 it("aligns an overlapping search window relative to the first resident anchor", () => {
   const [turnA, turnB, turnC] = canonicalTurns([
@@ -460,7 +569,7 @@ it.effect("returns the committed topology generation with a bounded search islan
       }),
     });
 
-    const page = yield* runtime.search(runtimeThreadId, "needle");
+    const page = yield* completedSearch(runtime, "needle");
     const hydrated = yield* runtime.hydrateOccurrence({
       requestId: "hydrate-committed",
       threadId: runtimeThreadId,
@@ -497,7 +606,7 @@ it.effect("rejects a stale topology before the physical search hydration", () =>
         },
       }),
     });
-    const page = yield* runtime.search(runtimeThreadId, "needle");
+    const page = yield* completedSearch(runtime, "needle");
     installed.aggregate.initializeHistory(installed.pagination, 1);
 
     const stale = yield* Effect.result(
@@ -531,7 +640,7 @@ it.effect("rejects a topology replacement that races the physical search hydrati
         },
       }),
     });
-    const page = yield* runtime.search(runtimeThreadId, "needle");
+    const page = yield* completedSearch(runtime, "needle");
 
     const stale = yield* Effect.result(
       runtime.hydrateOccurrence({
@@ -574,7 +683,7 @@ it.effect("rejects a stale resident-item retry before loading its next physical 
         itemPageReads += 1;
       },
     });
-    const page = yield* runtime.search(runtimeThreadId, "needle");
+    const page = yield* completedSearch(runtime, "needle");
     installed.aggregate.initializeHistory(installed.pagination, 1, {
       [partialTurn.id]: partialPagination,
     });
@@ -626,7 +735,7 @@ it.effect("does not commit a hydration that finishes after a newer navigation", 
       conversations: installed.conversations,
       searchAdapter,
     });
-    const page = yield* runtime.search(runtimeThreadId, "needle");
+    const page = yield* completedSearch(runtime, "needle");
     const request = (requestId: string) => ({
       requestId,
       threadId: runtimeThreadId,

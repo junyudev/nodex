@@ -337,18 +337,23 @@ export const make = (
         return response;
       });
 
-    const capabilityForThread = Effect.fn("CodexHistorySearchAdapter.capabilityForThread")(
-      function* (threadId: string) {
-        const snapshot = yield* capabilities.forThread(threadId).pipe(
-          Effect.mapError((cause) =>
-            adapterError({
-              operation: "generation",
-              threadId,
-              reason: "request-failed",
-              cause,
-            }),
-          ),
-        );
+    const snapshotForThread = Effect.fn("CodexHistorySearchAdapter.snapshotForThread")(function* (
+      threadId: string,
+    ) {
+      return yield* capabilities.forThread(threadId).pipe(
+        Effect.mapError((cause) =>
+          adapterError({
+            operation: "generation",
+            threadId,
+            reason: "request-failed",
+            cause,
+          }),
+        ),
+      );
+    });
+
+    const requireSearchCapability = Effect.fn("CodexHistorySearchAdapter.requireSearchCapability")(
+      function* (snapshot: CodexAppServerCapabilitySnapshot, threadId: string) {
         if (snapshot.flags.searchOccurrences) return snapshot;
         return yield* adapterError({
           operation: "search",
@@ -752,7 +757,9 @@ export const make = (
           cause: new Error("Persisted-history search term must be non-empty and byte-bounded"),
         });
       }
-      const snapshot = yield* capabilityForThread(input.threadId);
+      const snapshot = yield* snapshotForThread(input.threadId).pipe(
+        Effect.flatMap((snapshot) => requireSearchCapability(snapshot, input.threadId)),
+      );
       const response = yield* fencedRequest({
         snapshot,
         threadId: input.threadId,
@@ -818,7 +825,7 @@ export const make = (
           cause: invalidOccurrence,
         });
       }
-      const snapshot = yield* capabilityForThread(input.threadId);
+      const snapshot = yield* snapshotForThread(input.threadId);
       if (snapshot.hostId !== input.hostId || snapshot.generation !== input.generation) {
         return yield* adapterError({
           operation: "generation",
@@ -827,6 +834,7 @@ export const make = (
           cause: new Error("Persisted-history occurrence belongs to a stale Codex session"),
         });
       }
+      yield* requireSearchCapability(snapshot, input.threadId);
       yield* failIfStale(snapshot, input.threadId);
 
       const [descending, ascending] = yield* Effect.all(

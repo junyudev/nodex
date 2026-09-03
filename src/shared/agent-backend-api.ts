@@ -5,6 +5,7 @@ import type {
   AcpSessionConfigOption,
 } from "./acp-conversation";
 import type { ProjectSessionThreadLink } from "./types";
+import type { ConversationFirstSubmissionIdentity } from "./types";
 
 export interface AcpBackendSessionOpenInput {
   readonly threadId: string;
@@ -14,6 +15,7 @@ export interface AcpBackendThreadStartInput {
   readonly sessionId: string;
   readonly instanceConfigId: string;
   readonly prompt: string;
+  readonly firstSubmission: ConversationFirstSubmissionIdentity;
 }
 
 export interface AcpBackendThreadStartResult {
@@ -24,6 +26,7 @@ export interface AcpBackendThreadStartResult {
 export interface AcpBackendPromptInput {
   readonly threadId: string;
   readonly prompt: string;
+  readonly clientUserMessageId?: string;
 }
 
 export interface AcpBackendModeInput {

@@ -5,6 +5,7 @@ import type { ThreadStartParams } from "@nodex/codex-app-server-protocol/v2/Thre
 import type { CodexCanonicalWorktreeInitItem } from "./codex-conversation-state/codex-conversation-state";
 import type {
   CodexAgentMode,
+  ConversationFirstSubmissionIdentity,
   CodexLiveFileAttachment,
   CodexReviewDiffCommentAttachment,
   CodexReasoningEffort,
@@ -69,6 +70,7 @@ export interface CodexPendingForkConversationRequest extends CodexPendingWorktre
 
 export interface CodexPendingStartConversationRequest extends CodexPendingWorktreeRequestBase {
   readonly launchMode: "start-conversation";
+  readonly firstSubmission: ConversationFirstSubmissionIdentity;
   readonly clientThreadId: string;
   readonly localEnvironmentConfigPath: string | null;
   readonly startConversationParamsInput: CodexPendingStartConversationParamsInput;

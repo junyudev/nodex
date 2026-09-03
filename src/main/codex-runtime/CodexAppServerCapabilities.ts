@@ -13,6 +13,12 @@ const BUILD = "[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*";
 const SEMANTIC_VERSION = `${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}(?:-${PRERELEASE})?(?:\\+${BUILD})?`;
 
 const EXACT_SEMANTIC_VERSION = new RegExp(`^(${SEMANTIC_VERSION})$`, "u");
+// initialize.userAgent is generated as originator/server-version, where originator is the
+// client's name, not a fixed Codex product name. Only inspect its leading product token.
+const ORIGINATOR_USER_AGENT_VERSION = new RegExp(
+  `^[^/();\\r\\n]+/v?(${SEMANTIC_VERSION})(?=$|[\\s;)])`,
+  "u",
+);
 const CODEX_USER_AGENT_VERSION = new RegExp(
   `(?:^|[\\s;(])(?:Codex Desktop|codex-cli|codex_cli_rs|codex-app-server)[/\\s]+v?(${SEMANTIC_VERSION})(?=$|[\\s;)])`,
   "iu",
@@ -171,7 +177,11 @@ export function extractCodexAppServerVersion(userAgent: string | null | undefine
   const exact = EXACT_SEMANTIC_VERSION.exec(normalized);
   if (exact?.[1]) return exact[1];
 
-  return CODEX_USER_AGENT_VERSION.exec(normalized)?.[1] ?? null;
+  return (
+    ORIGINATOR_USER_AGENT_VERSION.exec(normalized)?.[1] ??
+    CODEX_USER_AGENT_VERSION.exec(normalized)?.[1] ??
+    null
+  );
 }
 
 const capabilityFlagsForVersion = (version: string | null): CodexAppServerCapabilityFlags => {

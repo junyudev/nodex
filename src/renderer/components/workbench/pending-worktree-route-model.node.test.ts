@@ -23,6 +23,10 @@ function makeEntry(overrides: Partial<StartConversationEntry> = {}): StartConver
     localEnvironmentConfigPath: null,
     prompt: "Create an isolated workspace",
     launchMode: "start-conversation",
+    firstSubmission: {
+      launchId: "01991e60-b800-7000-8000-000000000101",
+      clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
+    },
     clientThreadId: "client-new-thread:11111111-1111-4111-8111-111111111111",
     startConversationParamsInput: {
       input: [],

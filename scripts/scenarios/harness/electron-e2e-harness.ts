@@ -106,13 +106,17 @@ export interface NodexElectronLaunchInput {
 export async function launchNodexElectronApplication(
   input: NodexElectronLaunchInput,
 ): Promise<ElectronApplication> {
+  // Exercise the app's initialize identity, not an inherited host-client override.
+  const inheritedEnvironment = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => key !== "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"),
+  );
   return await electron.launch({
     ...(input.executablePath
       ? { executablePath: input.executablePath }
       : { args: [repositoryRoot] }),
     cwd: input.cwd ?? repositoryRoot,
     env: {
-      ...process.env,
+      ...inheritedEnvironment,
       ...input.environment,
       ...(input.codexHome ? { CODEX_HOME: input.codexHome } : {}),
       NODEX_HOME: input.nodexHome,
