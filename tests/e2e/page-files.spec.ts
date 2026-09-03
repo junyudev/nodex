@@ -20,7 +20,7 @@ const revealQuietPageProperties = async (stage: Locator): Promise<void> => {
   await moreProperties.click();
 };
 
-test("pastes an image and refreshes Files only for body placement changes", async () => {
+test("previews a pasted image above editor chrome and refreshes Files only for placement changes", async () => {
   test.setTimeout(180_000);
   await withElectronScenario(
     {
@@ -90,9 +90,34 @@ test("pastes an image and refreshes Files only for body placement changes", asyn
         .last();
       const pastedImage = pastedImageBlock.locator("img");
       await expect(pastedImage).toBeVisible({ timeout: 15_000 });
-      await expect(pastedImage).toHaveAttribute("src", /^data:image\/png;base64,/u);
+      await expect(pastedImage).toHaveAttribute("src", /^blob:/u);
       await expect(stage.getByText("Add image", { exact: true })).toHaveCount(0);
       await expect(stage.locator('[data-page-file-chip="true"]')).toHaveCount(0);
+
+      await pastedImageBlock.click();
+      const imageToolbar = page.locator('[role="toolbar"]').filter({
+        has: page.getByRole("button", { name: "Download image" }),
+      });
+      await expect(imageToolbar).toBeVisible();
+      const toolbarBounds = await imageToolbar.boundingBox();
+      if (!toolbarBounds) throw new Error("Image toolbar has no visible geometry");
+
+      await pastedImageBlock.dblclick();
+      const imagePreview = page.getByRole("dialog", { name: "Image preview" });
+      await expect(imagePreview).toBeVisible();
+      const previewOwnsToolbarPoint = await page.evaluate(
+        ({ x, y }) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest('[data-slot="codex-dialog-content"], [data-slot="codex-dialog-overlay"]') !==
+          null,
+        {
+          x: toolbarBounds.x + toolbarBounds.width / 2,
+          y: toolbarBounds.y + toolbarBounds.height / 2,
+        },
+      );
+      expect(previewOwnsToolbarPoint).toBe(true);
+      await imagePreview.getByRole("button", { name: "Close image preview" }).click();
 
       const inPageSummary = stage.getByRole("button", {
         name: "Open 1 File shown in Page",

@@ -216,6 +216,11 @@ uses local state and a submit-time guard.
   local clipping or ownership boundary requires otherwise. Fix pointer/focus
   ownership at the responsible DOM layer; do not mask it with arbitrary z-index
   escalation or full-surface pointer overlays.
+- Shared dialogs own the named modal layer above editor chrome and establish a
+  `NodexFloatingLayerProvider` for their content. Their portalled Dropdown,
+  Popover, ContextMenu, HoverCard, and Tooltip descendants derive the next
+  layer from that owner; feature dialogs and editor extensions do not compete
+  with the modal using one-off z-index values.
 - A floating owner above the ordinary app-shell floating layer establishes a
   `NodexFloatingLayerProvider`. Shared Dropdown and Popover primitives derive
   each portalled descendant's next layer through React context, including

@@ -7,6 +7,7 @@ import { PropertyOptionPicker } from "@/components/database/property-option-pick
 import { NFM_EDITOR_FLOATING_UI_Z_INDEX } from "@/components/board/editor/nfm-blocknote-floating-ui";
 import { Circle } from "@/components/shared/icons/generic-icons";
 import { openNodexMenu } from "@/test/dom";
+import { APP_SHELL_MODAL_LAYER_INDEX, APP_SHELL_TOAST_LAYER_INDEX } from "@/lib/app-shell-layers";
 import {
   NodexDropdownButtonTrigger,
   NodexDropdownItem,
@@ -35,18 +36,33 @@ function DialogPopoverEscapeProbe() {
 
   return (
     <NodexDialog open={dialogOpen} onOpenChange={setDialogOpen}>
-      <NodexDialogContent initialFocus={false}>
+      <NodexDialogContent data-testid="outer-dialog" initialFocus={false}>
         <NodexDialogTitle>Outer dialog</NodexDialogTitle>
         <NodexPopover open={popoverOpen} onOpenChange={setPopoverOpen}>
           <NodexPopoverAnchor>
             <button type="button">Filter trigger</button>
           </NodexPopoverAnchor>
-          <NodexPopoverContent finalFocus={false}>
+          <NodexPopoverContent data-testid="dialog-popover" finalFocus={false}>
             <button type="button" disabled={actionDisabled} onClick={() => setActionDisabled(true)}>
               Nested filter action
             </button>
           </NodexPopoverContent>
         </NodexPopover>
+      </NodexDialogContent>
+    </NodexDialog>
+  );
+}
+
+function NestedDialogLayerProbe() {
+  return (
+    <NodexDialog open onOpenChange={() => undefined}>
+      <NodexDialogContent data-testid="parent-dialog" initialFocus={false}>
+        <NodexDialogTitle>Parent dialog</NodexDialogTitle>
+        <NodexDialog open onOpenChange={() => undefined}>
+          <NodexDialogContent data-testid="child-dialog" initialFocus={false}>
+            <NodexDialogTitle>Child dialog</NodexDialogTitle>
+          </NodexDialogContent>
+        </NodexDialog>
       </NodexDialogContent>
     </NodexDialog>
   );
@@ -73,6 +89,34 @@ describe("shared floating UI in Chromium", () => {
 
     expect(view.queryByRole("button", { name: "Nested filter action" })).toBeNull();
     expect(view.getByRole("dialog", { name: "Outer dialog" })).toBeTruthy();
+  });
+
+  test("stacks dialogs above editor chrome and their floating descendants above the dialog", async () => {
+    const view = render(<DialogPopoverEscapeProbe />);
+    await act(settleFloatingSurface);
+
+    const overlay = document.querySelector<HTMLElement>('[data-slot="codex-dialog-overlay"]');
+    const dialog = view.getByTestId("outer-dialog");
+    const nestedPopover = view.getByTestId("dialog-popover");
+    if (!overlay) throw new Error("Expected the dialog overlay.");
+
+    const overlayLayer = Number(getComputedStyle(overlay).zIndex);
+    const dialogLayer = Number(getComputedStyle(dialog).zIndex);
+    const popoverLayer = Number(getComputedStyle(nestedPopover).zIndex);
+    expect(overlayLayer).toBe(APP_SHELL_MODAL_LAYER_INDEX);
+    expect(dialogLayer).toBe(APP_SHELL_MODAL_LAYER_INDEX);
+    expect(dialogLayer).toBeGreaterThan(NFM_EDITOR_FLOATING_UI_Z_INDEX);
+    expect(popoverLayer).toBe(dialogLayer + 1);
+  });
+
+  test("increments the modal layer for a nested dialog", async () => {
+    const view = render(<NestedDialogLayerProbe />);
+    await act(settleFloatingSurface);
+
+    const parentLayer = Number(getComputedStyle(view.getByTestId("parent-dialog")).zIndex);
+    const childLayer = Number(getComputedStyle(view.getByTestId("child-dialog")).zIndex);
+    expect(parentLayer).toBe(APP_SHELL_MODAL_LAYER_INDEX);
+    expect(childLayer).toBe(parentLayer + 1);
   });
 
   test("keeps actionable toasts outside the window drag region on one visual axis", async () => {
@@ -107,6 +151,12 @@ describe("shared floating UI in Chromium", () => {
       expect(Math.abs(rect.top + rect.height / 2 - surfaceCenter)).toBeLessThanOrEqual(1);
     }
     expect(getComputedStyle(alert).getPropertyValue("-webkit-app-region")).toBe("no-drag");
+    const toastLayer = alert.closest('[data-slot="toast-viewport"]')?.parentElement;
+    if (!toastLayer) throw new Error("Expected the toast layer.");
+    expect(Number(getComputedStyle(toastLayer).zIndex)).toBe(APP_SHELL_TOAST_LAYER_INDEX);
+    expect(Number(getComputedStyle(toastLayer).zIndex)).toBeGreaterThan(
+      APP_SHELL_MODAL_LAYER_INDEX,
+    );
   });
 
   test("renders compact property-chip and menu leading icons at 16 pixels", async () => {

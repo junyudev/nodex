@@ -7,6 +7,7 @@ import {
   TASK_SHORTHAND_PAGE_PROMOTION_CHANGE_EVENT,
 } from "../../../lib/page-promotion-preference";
 import { previewTaskShorthandTextRun } from "../../../lib/task-shorthand-preview";
+import { APP_SHELL_TOOLTIP_LAYER_CLASS } from "../../../lib/app-shell-layers";
 import { NFM_EDITOR_FLOATING_SURFACE_CHROME_CLASS } from "./nfm-editor-floating-surface";
 
 interface TaskShorthandDecorationState {
@@ -104,7 +105,7 @@ const createTooltip = (): HTMLDivElement => {
   const tooltip = document.createElement("div");
   tooltip.setAttribute("role", "tooltip");
   tooltip.dataset.taskShorthandTooltip = "true";
-  tooltip.className = `pointer-events-none fixed z-[1000] hidden max-w-[320px] rounded-md px-2.5 py-1.5 text-xs text-token-text-secondary ${NFM_EDITOR_FLOATING_SURFACE_CHROME_CLASS}`;
+  tooltip.className = `pointer-events-none fixed hidden max-w-[320px] rounded-md px-2.5 py-1.5 text-xs text-token-text-secondary ${APP_SHELL_TOOLTIP_LAYER_CLASS} ${NFM_EDITOR_FLOATING_SURFACE_CHROME_CLASS}`;
   document.body.append(tooltip);
   return tooltip;
 };

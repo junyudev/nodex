@@ -3,6 +3,10 @@ import { TextSelection } from "@tiptap/pm/state";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import "../../../globals.css";
 import { writeTaskShorthandPagePromotionEnabled } from "../../../lib/page-promotion-preference";
+import {
+  APP_SHELL_MODAL_LAYER_INDEX,
+  APP_SHELL_TOOLTIP_LAYER_INDEX,
+} from "../../../lib/app-shell-layers";
 import { nfmTaskShorthandPreviewExtension } from "./nfm-task-shorthand-preview-extension";
 
 const mountedEditors: BlockNoteEditor[] = [];
@@ -55,6 +59,8 @@ describe("task shorthand authoring feedback in Chromium", () => {
     expect(tooltip?.classList.contains("hidden")).toBe(false);
     expect(tooltip?.textContent).toBe("P1 · XL · ui · unclear");
     expect(getComputedStyle(tooltip!).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(Number(getComputedStyle(tooltip!).zIndex)).toBe(APP_SHELL_TOOLTIP_LAYER_INDEX);
+    expect(Number(getComputedStyle(tooltip!).zIndex)).toBeLessThan(APP_SHELL_MODAL_LAYER_INDEX);
 
     const view = editor.prosemirrorView;
     if (!view) throw new Error("Expected a mounted editor view");

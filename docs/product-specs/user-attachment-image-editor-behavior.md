@@ -7,7 +7,7 @@ Nodex gives uploaded and generated images one shared preview and editing system.
 ## Opening images
 
 - Clicking a Composer thumbnail opens the right-panel editor directly. Clicking an image in the transcript opens the preview dialog; its explicit `Edit image` action then opens the editor. Generated galleries keep separate open, Edit, and Canvas actions.
-- The preview dialog supports download, adjacent-image keyboard navigation, zoom, pan, Escape dismissal, and focus restoration.
+- The preview dialog supports download, adjacent-image keyboard navigation, zoom, pan, Escape dismissal, and focus restoration. While open, its modal backdrop and content fully occlude background editor chrome, including Block toolbars; preview-owned menus and tooltips remain above the preview.
 - An explicit edit opens a right-panel preview tab. Opening another image in the same panel leaf replaces only the prior unpinned image preview.
 - Double-clicking the tab label or interacting with its non-exempt body pins it as a durable `image_editor` Scene surface. Pinned image tabs can be reordered, moved, split, closed, cloned into a new window, and restored with the Window Session. Close, local Open, and download controls are pin-exempt.
 - A durable tab persists only bounded image metadata, stable managed/local/pointer/remote locators, its active image, view, and tool. It never persists bitmap masks, comments in progress, object/data URLs, callbacks, DOM geometry, or undo history. A locator that cannot be made durable leaves the preview open and reports a recoverable failure.

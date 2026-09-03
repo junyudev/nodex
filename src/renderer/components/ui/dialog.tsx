@@ -1,7 +1,9 @@
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { CloseIcon } from "@/components/shared/icons";
+import { APP_SHELL_MODAL_LAYER_CLASS, APP_SHELL_MODAL_LAYER_INDEX } from "@/lib/app-shell-layers";
 import { cn } from "@/lib/utils";
+import { NodexFloatingLayerProvider, useNodexFloatingLayerIndex } from "./floating-layer";
 import { hasOpenNodexFloatingEscapeLayer } from "./floating-surface";
 
 export type NodexDialogSize = "narrow" | "compact" | "default" | "wide" | "large";
@@ -126,12 +128,23 @@ export function NodexDialogClose({
   return <DialogPrimitive.Close data-slot="codex-dialog-close" render={children} {...props} />;
 }
 
-export function NodexDialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) {
+export function NodexDialogOverlay({ className, style, ...props }: DialogPrimitive.Backdrop.Props) {
+  const layerIndex = useNodexFloatingLayerIndex(undefined, APP_SHELL_MODAL_LAYER_INDEX);
+  const layeredStyle =
+    typeof style === "function"
+      ? (state: DialogPrimitive.Backdrop.State) => ({ ...style(state), zIndex: layerIndex })
+      : { ...style, zIndex: layerIndex };
+
   return (
     <DialogPrimitive.Backdrop
-      data-slot="codex-dialog-overlay"
-      className={cn("codex-dialog-overlay fixed inset-0 z-50 bg-[#00000022]", className)}
       {...props}
+      data-slot="codex-dialog-overlay"
+      className={cn(
+        "codex-dialog-overlay fixed inset-0 bg-[#00000022]",
+        APP_SHELL_MODAL_LAYER_CLASS,
+        className,
+      )}
+      style={layeredStyle}
     />
   );
 }
@@ -146,6 +159,7 @@ export function NodexDialogContent({
   closeIconClassName,
   size = "default",
   unstyledContent = false,
+  style,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
@@ -156,13 +170,20 @@ export function NodexDialogContent({
   size?: NodexDialogSize;
   unstyledContent?: boolean;
 }) {
+  const layerIndex = useNodexFloatingLayerIndex(undefined, APP_SHELL_MODAL_LAYER_INDEX);
+  const layeredStyle =
+    typeof style === "function"
+      ? (state: DialogPrimitive.Popup.State) => ({ ...style(state), zIndex: layerIndex })
+      : { ...style, zIndex: layerIndex };
+
   return (
     <NodexDialogPortal>
       <NodexDialogOverlay className={overlayClassName} />
       <DialogPrimitive.Popup
         data-slot="codex-dialog-content"
         className={cn(
-          "codex-dialog fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 outline-none",
+          "codex-dialog fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 outline-none",
+          APP_SHELL_MODAL_LAYER_CLASS,
           !unstyledContent && [
             "max-w-[92vw] rounded-3xl bg-token-dropdown-background/90 text-token-foreground",
             "shadow-[0px_4px_8px_-2px_#0000001a] ring-[0.5px] ring-token-border backdrop-blur-xl",
@@ -171,21 +192,24 @@ export function NodexDialogContent({
           ],
           className,
         )}
+        style={layeredStyle}
         {...props}
         data-nodex-keyboard-scope="local"
       >
-        {children}
-        {showCloseButton ? (
-          <DialogPrimitive.Close
-            className={cn(
-              "no-drag absolute top-4 right-4 cursor-interaction rounded p-1 leading-none text-token-foreground/80 hover:bg-token-toolbar-hover-background focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
-              closeButtonClassName,
-            )}
-            aria-label={closeButtonAriaLabel}
-          >
-            <CloseIcon className={closeIconClassName ?? "icon-xs"} />
-          </DialogPrimitive.Close>
-        ) : null}
+        <NodexFloatingLayerProvider zIndex={layerIndex}>
+          {children}
+          {showCloseButton ? (
+            <DialogPrimitive.Close
+              className={cn(
+                "no-drag absolute top-4 right-4 cursor-interaction rounded p-1 leading-none text-token-foreground/80 hover:bg-token-toolbar-hover-background focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
+                closeButtonClassName,
+              )}
+              aria-label={closeButtonAriaLabel}
+            >
+              <CloseIcon className={closeIconClassName ?? "icon-xs"} />
+            </DialogPrimitive.Close>
+          ) : null}
+        </NodexFloatingLayerProvider>
       </DialogPrimitive.Popup>
     </NodexDialogPortal>
   );
