@@ -8,7 +8,7 @@ import { createReactBlockSpec } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { ShowSelectionExtension } from "@blocknote/core/extensions";
 import type { Node } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
@@ -286,15 +286,18 @@ describe("selected Block presentation in Chromium", () => {
       extensions: [selectedBlockDecorationsExtension()],
     });
     const view = render(
-      <BlockNoteView
-        editor={editor}
-        className="nfm-editor"
-        formattingToolbar={false}
-        linkToolbar={false}
-        slashMenu={false}
-        sideMenu={false}
-        tableHandles={false}
-      />,
+      <>
+        <button type="button">Outside retained selection</button>
+        <BlockNoteView
+          editor={editor}
+          className="nfm-editor"
+          formattingToolbar={false}
+          linkToolbar={false}
+          slashMenu={false}
+          sideMenu={false}
+          tableHandles={false}
+        />
+      </>,
     );
 
     try {
@@ -365,6 +368,15 @@ describe("selected Block presentation in Chromium", () => {
       expect(getComputedStyle(firstInline, "::selection").backgroundColor).toBe("rgba(0, 0, 0, 0)");
       expect(getComputedStyle(retainedInlineDecoration).backgroundColor).toBe("rgba(0, 0, 0, 0)");
       expect(getComputedStyle(retainedInlineDecoration).paddingTop).toBe("0px");
+
+      await act(async () => {
+        await userEvent.click(view.getByRole("button", { name: "Outside retained selection" }));
+        await settleEditor();
+      });
+
+      expect(mountedView.dom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
+      expect(getComputedStyle(firstContent, "::after").opacity).toBe("1");
+      expect(getComputedStyle(secondContent, "::after").opacity).toBe("1");
 
       await act(async () => {
         blockPresentation.showSelectionAsBlocks(false, "block-action-owner");
@@ -564,15 +576,18 @@ describe("selected Block presentation in Chromium", () => {
       extensions: [selectedBlockDecorationsExtension()],
     });
     const view = render(
-      <BlockNoteView
-        editor={editor}
-        className="nfm-editor"
-        formattingToolbar={false}
-        linkToolbar={false}
-        slashMenu={false}
-        sideMenu={false}
-        tableHandles={false}
-      />,
+      <>
+        <button type="button">Outside editor</button>
+        <BlockNoteView
+          editor={editor}
+          className="nfm-editor"
+          formattingToolbar={false}
+          linkToolbar={false}
+          slashMenu={false}
+          sideMenu={false}
+          tableHandles={false}
+        />
+      </>,
     );
 
     try {
@@ -604,6 +619,20 @@ describe("selected Block presentation in Chromium", () => {
         "rgba(35, 131, 226, 0.14)",
       );
       expect(getComputedStyle(imageWrapper, "::after").opacity).toBe("1");
+      expect(imageNodeView.getBoundingClientRect().width).toBeGreaterThan(
+        imageWrapper.getBoundingClientRect().width,
+      );
+      expect(getComputedStyle(imageNodeView).outlineStyle).toBe("none");
+
+      await act(async () => {
+        await userEvent.click(view.getByRole("button", { name: "Outside editor" }));
+        await settleEditor();
+      });
+
+      expect(editor.prosemirrorState.selection).toBeInstanceOf(NodeSelection);
+      expect(imageContainer.classList.contains("nodex-selected-block")).toBe(true);
+      expect(mountedView.dom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
+      expect(getComputedStyle(imageWrapper, "::after").opacity).toBe("0");
 
       await act(async () => {
         const doc = editor.prosemirrorState.doc;
@@ -910,15 +939,18 @@ describe("selected Block presentation in Chromium", () => {
       extensions: [selectedBlockDecorationsExtension()],
     });
     const view = render(
-      <BlockNoteView
-        editor={outerEditor}
-        className="nfm-editor"
-        formattingToolbar={false}
-        linkToolbar={false}
-        slashMenu={false}
-        sideMenu={false}
-        tableHandles={false}
-      />,
+      <>
+        <button type="button">Outside nested editor</button>
+        <BlockNoteView
+          editor={outerEditor}
+          className="nfm-editor"
+          formattingToolbar={false}
+          linkToolbar={false}
+          slashMenu={false}
+          sideMenu={false}
+          tableHandles={false}
+        />
+      </>,
     );
 
     try {
@@ -980,6 +1012,15 @@ describe("selected Block presentation in Chromium", () => {
       expect(getComputedStyle(secondImageWrapper, "::after").content).toBe("none");
       expect(getComputedStyle(pageFrame, "::after").borderColor).toBe("rgb(243, 221, 203)");
       expect(getComputedStyle(pageFrame, "::after").opacity).toBe("1");
+
+      await act(async () => {
+        await userEvent.click(view.getByRole("button", { name: "Outside nested editor" }));
+        await settleEditor();
+        await new Promise<void>((resolve) => setTimeout(resolve, 225));
+      });
+      expect(innerView.dom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
+      expect(getComputedStyle(firstImageWrapper, "::after").opacity).toBe("0");
+      expect(getComputedStyle(pageFrame, "::after").opacity).toBe("0");
 
       await act(async () => {
         innerEditor.setTextCursorPosition("inner-text");

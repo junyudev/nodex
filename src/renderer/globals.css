@@ -205,6 +205,12 @@
   --nfm-native-selection-background: var(--color-background-editor-text-selection);
   --nfm-retained-inline-selection-background: var(--color-background-editor-text-selection);
   --nfm-retained-inline-selection-padding: 2px 0;
+  --nfm-block-selection-opacity: 0;
+}
+
+[data-nodex-editor-selection-surface][data-nodex-active-editor-selection-surface],
+[data-nodex-editor-selection-surface][data-nodex-block-action-selection] {
+  --nfm-block-selection-opacity: 1;
 }
 
 [data-nodex-editor-selection-surface]:has([data-show-selection]),
@@ -1227,14 +1233,7 @@
   pointer-events: none;
   background: rgba(35, 131, 226, 0.14);
   border-radius: 4px;
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-[data-nodex-block-selection-presentation][data-nodex-active-editor-selection-surface]
-  .bn-block-outer.nodex-selected-block[data-nodex-selected-block-scope="subtree"]
-  > .bn-block::after {
-  opacity: 1;
+  opacity: var(--nfm-block-selection-opacity);
 }
 
 [data-nodex-block-selection-presentation]
@@ -1259,17 +1258,7 @@
   pointer-events: none;
   background: rgba(35, 131, 226, 0.14);
   border-radius: 4px;
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-[data-nodex-block-selection-presentation][data-nodex-active-editor-selection-surface]
-  :is(
-    .bn-block-content[data-nodex-selected-block-content]:not([data-content-type="image"]),
-    .bn-react-node-view-renderer[data-nodex-selected-block-content]
-      > .bn-block-content:not([data-content-type="image"])
-  )::after {
-  opacity: 1;
+  opacity: var(--nfm-block-selection-opacity);
 }
 
 [data-nodex-block-selection-presentation]
@@ -1298,18 +1287,7 @@
   pointer-events: none;
   background: rgba(35, 131, 226, 0.14);
   border-radius: 4px;
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-
-[data-nodex-block-selection-presentation][data-nodex-active-editor-selection-surface]
-  :is(
-    .bn-block-content[data-nodex-selected-block-content][data-content-type="image"],
-    .bn-react-node-view-renderer[data-nodex-selected-block-content]
-      > .bn-block-content[data-content-type="image"]
-  )
-  > :is(.bn-file-block-content-wrapper, .nfm-image-file-block-content-wrapper)::after {
-  opacity: 1;
+  opacity: var(--nfm-block-selection-opacity);
 }
 
 [data-page-outliner-target] {

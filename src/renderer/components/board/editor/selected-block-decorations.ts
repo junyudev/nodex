@@ -2,14 +2,7 @@ import { createExtension } from "@blocknote/core";
 import type { Node } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type Selection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import {
-  ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE,
-  claimEditorSelectionSurface,
-  clearActiveEditorSelectionSurface,
-  EDITOR_SELECTION_SURFACE_ATTRIBUTE,
-  EMBEDDED_EDITOR_SELECTION_CONTEXT_ATTRIBUTE,
-  releaseEditorSelectionSurface,
-} from "@/lib/editor-selection-presentation";
+import { registerEditorSelectionSurface } from "@/lib/editor-selection-presentation";
 import { resolveTopLevelDraggedBlocks } from "./dragged-block-roots";
 
 const BLOCK_CONTAINER_TYPE = "blockContainer";
@@ -20,9 +13,6 @@ export const SELECTED_BLOCK_CONTENT_ATTRIBUTE = "data-nodex-selected-block-conte
 export const SELECTED_BLOCK_SCOPE_ATTRIBUTE = "data-nodex-selected-block-scope";
 export const BLOCK_SELECTION_PRESENTATION_ATTRIBUTE = "data-nodex-block-selection-presentation";
 export const BLOCK_ACTION_SELECTION_PRESENTATION_ATTRIBUTE = "data-nodex-block-action-selection";
-
-const EDITOR_SELECTION_SURFACE_SELECTOR = `[${EDITOR_SELECTION_SURFACE_ATTRIBUTE}]`;
-const EMBEDDED_EDITOR_SELECTION_CONTEXT_SELECTOR = `[${EMBEDDED_EDITOR_SELECTION_CONTEXT_ATTRIBUTE}]`;
 
 export type SelectedBlockDecorationKind = "structural" | "atomic-range" | "block-action";
 
@@ -174,39 +164,13 @@ export const SelectedBlockDecorationsExtension = createExtension(({ editor }) =>
     mount({ dom }) {
       mountedEditorDoms.add(dom);
       dom.setAttribute(BLOCK_SELECTION_PRESENTATION_ATTRIBUTE, "");
-      dom.setAttribute(EDITOR_SELECTION_SURFACE_ATTRIBUTE, "");
       syncMountedPresentation();
-      const root = dom.getRootNode();
-
-      const handleSelectionPresentationIntent = (event: Event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) return;
-        if (target.closest(EDITOR_SELECTION_SURFACE_SELECTOR) !== dom) return;
-
-        const embeddedContext = target.closest(EMBEDDED_EDITOR_SELECTION_CONTEXT_SELECTOR);
-        if (embeddedContext && dom.contains(embeddedContext)) {
-          clearActiveEditorSelectionSurface(dom);
-          return;
-        }
-
-        claimEditorSelectionSurface(dom);
-      };
-
-      dom.addEventListener("focusin", handleSelectionPresentationIntent);
-      dom.addEventListener("pointerdown", handleSelectionPresentationIntent);
-
-      if ("activeElement" in root && root.activeElement === dom) {
-        claimEditorSelectionSurface(dom);
-      }
+      const unregisterSelectionSurface = registerEditorSelectionSurface(dom);
 
       return () => {
         mountedEditorDoms.delete(dom);
-        dom.removeEventListener("focusin", handleSelectionPresentationIntent);
-        dom.removeEventListener("pointerdown", handleSelectionPresentationIntent);
-        releaseEditorSelectionSurface(dom);
+        unregisterSelectionSurface();
         dom.removeAttribute(BLOCK_ACTION_SELECTION_PRESENTATION_ATTRIBUTE);
-        dom.removeAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE);
-        dom.removeAttribute(EDITOR_SELECTION_SURFACE_ATTRIBUTE);
         dom.removeAttribute(BLOCK_SELECTION_PRESENTATION_ATTRIBUTE);
       };
     },

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import { fireEvent } from "@testing-library/react";
 
 import {
   ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE,
   claimEditorSelectionSurface,
   clearActiveEditorSelectionSurface,
   EDITOR_SELECTION_SURFACE_ATTRIBUTE,
+  registerEditorSelectionSurface,
   releaseEditorSelectionSurface,
 } from "./editor-selection-presentation";
 
@@ -52,5 +54,34 @@ describe("editor selection presentation ownership", () => {
     claimEditorSelectionSurface(secondSurface);
     releaseEditorSelectionSurface(firstSurface);
     expect(secondSurface.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(true);
+  });
+
+  test("follows the deepest registered editor and clears ownership outside every editor", () => {
+    const outerSurface = createSurface();
+    const innerSurface = createSurface();
+    const outside = document.createElement("button");
+    outerSurface.append(innerSurface);
+    document.body.append(outside);
+    mounted.push(outside);
+
+    const unregisterOuter = registerEditorSelectionSurface(outerSurface);
+    const unregisterInner = registerEditorSelectionSurface(innerSurface);
+    try {
+      fireEvent.pointerDown(outerSurface);
+      expect(outerSurface.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(true);
+      expect(innerSurface.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
+
+      fireEvent.pointerDown(innerSurface);
+      expect(outerSurface.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
+      expect(innerSurface.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(true);
+
+      fireEvent.pointerDown(outside);
+      expect(
+        document.querySelectorAll(`[${ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE}]`),
+      ).toHaveLength(0);
+    } finally {
+      unregisterInner();
+      unregisterOuter();
+    }
   });
 });

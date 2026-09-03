@@ -1,7 +1,7 @@
 # NFM Editor Structural Editing Behavior
 
 Status: Active
-Last updated: 2026-08-29
+Last updated: 2026-09-03
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Purely ordinary text and Block-content edits use the editor's local collaborativ
 
 A Block selection remains authoritative whether it was created by pointer drag, the side menu, keyboard navigation, or an atomic Block node selection. A single selected owner never falls back to the last text cursor merely because the editor's text-selection API has no range for that atomic node.
 
-Whole-Block selection visuals follow that authoritative editor selection and use a translucent blue fill rather than a focus ring. Ordinary leaf Blocks fill the available Block row; a structurally selected parent presents its complete visible subtree, including children, as one continuous selection surface. Image Blocks limit the fill to their own media width. While a Block selection surface is visible, native text-range paint inside it is suppressed so the same selection is never represented twice. Only the active editor surface presents its Block selection, so an outer editor's retained selection cannot tint Blocks inside a nested editor. Side-menu selection keeps its owning editor active while the menu is open. An atomic Block is highlighted during a text-range selection only when the range fully contains it; a nearby Block, a range that merely ends at its boundary, or stale browser selection presentation must not appear selected.
+Whole-Block selection visuals follow that authoritative editor selection and use a translucent blue fill rather than a focus ring. Ordinary leaf Blocks fill the available Block row; a structurally selected parent presents its complete visible subtree, including children, as one continuous selection surface. Image Blocks limit the fill to their own media width. While a Block selection surface is visible, native text-range paint inside it is suppressed so the same selection is never represented twice. Only the active editor surface presents its Block selection, so an outer editor's retained selection cannot tint Blocks inside a nested editor. Pointer or focus movement outside every editor hides ordinary Block-selection presentation without rewriting the editor's authoritative selection; an open Block action keeps its frozen target visible through its own explicit presentation lifetime. Side-menu selection keeps its owning editor active while the menu is open. An atomic Block is highlighted during a text-range selection only when the range fully contains it; a nearby Block, a range that merely ends at its boundary, or stale browser selection presentation must not appear selected.
 
 While the Block actions menu owns DOM focus, Copy and Cut continue to target the same highlighted Block roots through the editor's structured-clipboard pipeline. The `Search actions…` input accepts filtering and Paste, but focus alone never replaces the active Block clipboard target. A handled Copy or Cut closes the Block actions menu and restores editor keyboard focus to that same selection, so the visible highlight remains an immediately actionable command target. If the editor declines the command without consuming the clipboard event, the menu stays open and native input behavior remains available.
 
