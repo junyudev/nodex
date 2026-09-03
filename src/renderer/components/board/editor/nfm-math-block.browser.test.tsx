@@ -305,7 +305,7 @@ describe("NFM Equation surface in Chromium", () => {
   });
 
   test("inserts or converts an Inline Equation with Mod-Shift-E and selects its source", async () => {
-    const { editor } = await mountParagraph("x^2");
+    const { editor, host } = await mountParagraph("x^2");
     const view = editor.prosemirrorView!;
     const selectionStart = view.state.selection.from - 3;
     view.dispatch(
@@ -332,6 +332,12 @@ describe("NFM Equation surface in Chromium", () => {
     ]);
     expect(await screen.findByLabelText("Equation (LaTeX)")).toBeVisible();
     expect(document.getSelection()?.toString()).toBe("x^2");
+    const inlinePreview = host.querySelector<HTMLElement>(".bn-preview-with-source-popup");
+    if (!inlinePreview) throw new Error("Expected the selected Inline Equation preview");
+    expect(getComputedStyle(inlinePreview, "::after").content).toBe('""');
+    expect(getComputedStyle(inlinePreview, "::after").backgroundColor).toBe(
+      "rgba(100, 160, 255, 0.08)",
+    );
   });
 
   test("opens a new empty Inline Equation from Mod-Shift-E", async () => {
@@ -370,6 +376,12 @@ describe("NFM Equation surface in Chromium", () => {
     const sourceEditor = await screen.findByLabelText("Equation (LaTeX)");
     expect(sourceEditor.closest("pre")?.getAttribute("aria-hidden")).toBeNull();
     expect(document.getSelection()?.toString()).toBe(source);
+    const blockPreview = preview.closest<HTMLElement>(".bn-preview-with-source-popup");
+    if (!blockPreview) throw new Error("Expected the selected Block Equation preview");
+    expect(getComputedStyle(blockPreview, "::after").content).toBe('""');
+    expect(getComputedStyle(blockPreview, "::after").backgroundColor).toBe(
+      "rgba(100, 160, 255, 0.08)",
+    );
   });
 
   test("keeps invalid TeX editable and prevents committing it from Done", async () => {

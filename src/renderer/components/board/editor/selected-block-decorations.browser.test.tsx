@@ -15,6 +15,7 @@ import { useState } from "react";
 import { describe, expect, test } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
+import "@blocknote/shadcn/style.css";
 import "../../../globals.css";
 import { PageOutlinerFrame } from "@/components/block-documents/page-outliner-surface";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
@@ -55,6 +56,17 @@ const testSchema = BlockNoteSchema.create({
     testPage: testPageBlockSpec(),
   },
 });
+
+const selectionImageProps = {
+  url: `data:image/svg+xml,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><rect width="320" height="200" fill="#aac0d4"/></svg>',
+  )}`,
+  previewWidth: 160,
+  sourceWidth: 320,
+  sourceHeight: 200,
+  caption: "",
+  showPreview: true,
+};
 
 const settleEditor = async () => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -565,10 +577,8 @@ describe("selected Block presentation in Chromium", () => {
           id: "image",
           type: "image",
           props: {
-            url: "data:image/png;base64,YQ==",
-            caption: "",
+            ...selectionImageProps,
             name: "fixture.png",
-            showPreview: true,
           },
         },
         { id: "after", type: "paragraph", content: "after" },
@@ -623,6 +633,8 @@ describe("selected Block presentation in Chromium", () => {
         imageWrapper.getBoundingClientRect().width,
       );
       expect(getComputedStyle(imageNodeView).outlineStyle).toBe("none");
+      expect(getComputedStyle(imageNodeView, "::after").content).toBe("none");
+      expect(getComputedStyle(imageWrapper, "::after").boxShadow).toBe("none");
 
       await act(async () => {
         await userEvent.click(view.getByRole("button", { name: "Outside editor" }));
@@ -881,7 +893,7 @@ describe("selected Block presentation in Chromium", () => {
     }
   });
 
-  test("gives nested editors exclusive Block highlight ownership inside a Page context", async () => {
+  test("gives nested editors exclusive Block highlight ownership inside a dark Page context", async () => {
     const innerEditor = BlockNoteEditor.create({
       schema: nfmSchema,
       initialContent: [
@@ -889,22 +901,19 @@ describe("selected Block presentation in Chromium", () => {
           id: "image-one",
           type: "image",
           props: {
-            url: "data:image/png;base64,YQ==",
-            caption: "",
+            ...selectionImageProps,
             name: "one.png",
-            showPreview: true,
           },
         },
         {
           id: "image-two",
           type: "image",
           props: {
-            url: "data:image/png;base64,Yg==",
-            caption: "",
+            ...selectionImageProps,
             name: "two.png",
-            showPreview: true,
           },
         },
+        { id: "divider", type: "divider" },
         { id: "inner-text", type: "paragraph", content: "inner text" },
       ],
       extensions: [selectedBlockDecorationsExtension()],
@@ -914,6 +923,7 @@ describe("selected Block presentation in Chromium", () => {
         <PageOutlinerFrame targetBlockId="nested-page" expanded active>
           <BlockNoteView
             editor={innerEditor}
+            theme="dark"
             className="nfm-editor"
             formattingToolbar={false}
             linkToolbar={false}
@@ -943,7 +953,8 @@ describe("selected Block presentation in Chromium", () => {
         <button type="button">Outside nested editor</button>
         <BlockNoteView
           editor={outerEditor}
-          className="nfm-editor"
+          theme="dark"
+          className="nfm-editor dark bg-[var(--background)]"
           formattingToolbar={false}
           linkToolbar={false}
           slashMenu={false}
@@ -1004,14 +1015,37 @@ describe("selected Block presentation in Chromium", () => {
       expect(innerView.hasFocus()).toBe(true);
       expect(outerView.dom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
       expect(innerView.dom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(true);
+      const firstImageNodeView = firstImageWrapper.closest<HTMLElement>(
+        ".bn-react-node-view-renderer",
+      );
+      if (!firstImageNodeView) throw new Error("Expected the nested Image NodeView");
+      expect(getComputedStyle(firstImageNodeView, "::after").content).toBe("none");
+      expect(getComputedStyle(firstImageNodeView).outlineStyle).toBe("none");
+      const firstImageContent = firstImageWrapper.parentElement;
+      if (!firstImageContent) throw new Error("Expected nested Image content");
+      expect(getComputedStyle(firstImageContent, "::after").content).toBe("none");
+      expect(firstImageNodeView.getBoundingClientRect().width).toBeGreaterThan(
+        firstImage.getBoundingClientRect().width,
+      );
+      await waitFor(() => expect(firstImage.naturalWidth).toBe(selectionImageProps.sourceWidth));
+      const imageWidth = firstImage.getBoundingClientRect().width;
+      expect(imageWidth).toBe(selectionImageProps.previewWidth);
+      expect(firstImageWrapper.getBoundingClientRect().width).toBe(imageWidth);
+      expect(Number.parseFloat(getComputedStyle(firstImageWrapper, "::after").width)).toBe(
+        imageWidth,
+      );
+      expect(getComputedStyle(firstImageWrapper, "::after").boxShadow).toBe("none");
       expect(getComputedStyle(pageContent, "::after").opacity).toBe("0");
       expect(getComputedStyle(firstImageWrapper, "::after").backgroundColor).toBe(
         "rgba(35, 131, 226, 0.14)",
       );
       expect(getComputedStyle(firstImageWrapper, "::after").opacity).toBe("1");
       expect(getComputedStyle(secondImageWrapper, "::after").content).toBe("none");
-      expect(getComputedStyle(pageFrame, "::after").borderColor).toBe("rgb(243, 221, 203)");
+      expect(getComputedStyle(pageFrame, "::after").borderColor).toBe("rgb(83, 54, 31)");
       expect(getComputedStyle(pageFrame, "::after").opacity).toBe("1");
+      expect(getComputedStyle(pageFrame, "::after").content).toBe('""');
+      expect(getComputedStyle(pageFrame, "::after").backgroundColor).toBe("rgba(0, 0, 0, 0)");
+      expect(getComputedStyle(pageFrame, "::after").boxShadow).toBe("none");
 
       await act(async () => {
         await userEvent.click(view.getByRole("button", { name: "Outside nested editor" }));
@@ -1020,7 +1054,30 @@ describe("selected Block presentation in Chromium", () => {
       });
       expect(innerView.dom.hasAttribute(ACTIVE_EDITOR_SELECTION_SURFACE_ATTRIBUTE)).toBe(false);
       expect(getComputedStyle(firstImageWrapper, "::after").opacity).toBe("0");
+      expect(getComputedStyle(firstImageNodeView, "::after").content).toBe("none");
       expect(getComputedStyle(pageFrame, "::after").opacity).toBe("0");
+
+      await act(async () => {
+        await userEvent.click(innerInline);
+        await settleEditor();
+      });
+      expect(getComputedStyle(firstImageWrapper, "::after").content).toBe("none");
+      expect(getComputedStyle(firstImageNodeView, "::after").content).toBe("none");
+
+      // Non-React atomic Blocks must not acquire the ancestor's default ring either.
+      await act(async () => {
+        innerEditor.setTextCursorPosition("divider");
+        await settleEditor();
+      });
+      const dividerContent = innerView.dom.querySelector<HTMLElement>(
+        '.bn-block-content[data-content-type="divider"]',
+      );
+      if (!dividerContent) throw new Error("Expected the nested Divider");
+      expect(innerEditor.prosemirrorState.selection).toBeInstanceOf(NodeSelection);
+      expect(getComputedStyle(dividerContent, "::after").backgroundColor).toBe(
+        "rgba(35, 131, 226, 0.14)",
+      );
+      expect(getComputedStyle(dividerContent, "::after").boxShadow).toBe("none");
 
       await act(async () => {
         innerEditor.setTextCursorPosition("inner-text");

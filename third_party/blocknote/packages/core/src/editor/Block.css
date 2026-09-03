@@ -23,8 +23,9 @@ BASIC STYLES
 .bn-block-content.ProseMirror-selectednode > *,
 /* Case for node view renderers */
 .ProseMirror-selectednode > .bn-block-content > *,
-/* Case for blocks/inline content where class is set manually */
-.bn-block-content .ProseMirror-selectednode,
+/* Manually selected block previews are direct children. A descendant selector
+   would also paint full-width NodeViews inside an embedded editor. */
+.bn-block-content > .ProseMirror-selectednode,
 .bn-inline-content .ProseMirror-selectednode {
   /* Anchor for the `::after` highlight overlay below. */
   position: relative;
@@ -34,7 +35,7 @@ BASIC STYLES
    top of the element's content */
 .bn-block-content.ProseMirror-selectednode > *::after,
 .ProseMirror-selectednode > .bn-block-content > *::after,
-.bn-block-content .ProseMirror-selectednode::after,
+.bn-block-content > .ProseMirror-selectednode::after,
 .bn-inline-content .ProseMirror-selectednode::after {
   content: "";
   position: absolute;

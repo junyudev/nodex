@@ -1215,6 +1215,9 @@
     .ProseMirror-selectednode > .bn-block-content > *
   )::after {
   content: none;
+  /* Nodex's media and Page overlays reuse this pseudo-element without default paint. */
+  background: none;
+  box-shadow: none;
 }
 
 [data-nodex-block-selection-presentation]
@@ -1296,6 +1299,11 @@
 
 .dark [data-page-outliner-target] {
   --nodex-page-context-halo: #53361f;
+}
+
+/* A retained Page NodeSelection must not suppress its independently owned context halo. */
+[data-nodex-block-selection-presentation] .bn-block-content > [data-page-outliner-target]::after {
+  content: "";
 }
 
 [data-page-outliner-target]::after {
