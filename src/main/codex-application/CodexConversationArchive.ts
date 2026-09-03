@@ -36,6 +36,7 @@ import { buildWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 import { NodexAgentAuthorizationRuntime } from "./NodexAgentAuthorizationRuntime";
+import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 
 export class CodexConversationArchiveError extends Data.TaggedError(
   "CodexConversationArchiveError",
@@ -102,6 +103,7 @@ export const make: Effect.Effect<
   | ManagedWorktreeRuntime
   | NodexAgentAuthorizationRuntime
   | ProjectWorkspace
+  | RemoteHostedPipRuntime
 > = Effect.gen(function* () {
   const automation = yield* AutomationApplication;
   const automationRouting = yield* AutomationRoutingIndex;
@@ -114,6 +116,7 @@ export const make: Effect.Effect<
   const managedWorktrees = yield* ManagedWorktreeRuntime;
   const authorizations = yield* NodexAgentAuthorizationRuntime;
   const workspace = yield* ProjectWorkspace;
+  const remoteHostedPip = yield* RemoteHostedPipRuntime;
 
   const fail = (
     operation: ArchiveOperation,
@@ -184,7 +187,22 @@ export const make: Effect.Effect<
         }),
       );
     }
+    return reconciled;
   });
+
+  const retireRemoteHostedPip = Effect.fn("CodexConversationArchive.retireRemoteHostedPip")(
+    function* (action: "archive" | "delete", threadIds: readonly string[]) {
+      yield* remoteHostedPip
+        .retireCodexThreads({ action, threadIds })
+        .pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Persisted Thread lifecycle with incomplete PiP retirement").pipe(
+              Effect.annotateLogs({ action, threadCount: threadIds.length, cause }),
+            ),
+          ),
+        );
+    },
+  );
 
   const resolveRootThreadId = Effect.fn("CodexConversationArchive.resolveRootThreadId")(function* (
     thread: DesktopProjectWorkspaceThread,
@@ -411,7 +429,7 @@ export const make: Effect.Effect<
               onSuccess: () => null,
             }),
           );
-        yield* reconcilePhysicalLifecycle({
+        const reconciled = yield* reconcilePhysicalLifecycle({
           action: "archive",
           threadId: normalizedThreadId,
           operationId: subagentLifecycle.operationId,
@@ -424,6 +442,7 @@ export const make: Effect.Effect<
           normalizedThreadId,
           workspace.setThreadArchived(normalizedThreadId, true),
         );
+        yield* retireRemoteHostedPip("archive", reconciled.settledThreadIds);
         conversations.current(normalizedThreadId)?.setHasUnreadTurn(false, true);
         if (thread.hasUnreadTurn) {
           events.publish({
@@ -504,7 +523,7 @@ export const make: Effect.Effect<
               onSuccess: () => null,
             }),
           );
-        yield* reconcilePhysicalLifecycle({
+        const reconciled = yield* reconcilePhysicalLifecycle({
           action: "delete",
           threadId: normalizedThreadId,
           operationId: lifecycle.operationId,
@@ -513,6 +532,7 @@ export const make: Effect.Effect<
         subagents.releaseLifecycleQuarantine(normalizedThreadId, "delete");
         yield* authorizations.revokeRoot(normalizedThreadId);
         yield* project("delete", normalizedThreadId, workspace.deleteThread(normalizedThreadId));
+        yield* retireRemoteHostedPip("delete", reconciled.settledThreadIds);
         conversations.current(normalizedThreadId)?.setHasUnreadTurn(false, true);
         events.publish({
           kind: "codex",

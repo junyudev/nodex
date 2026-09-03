@@ -325,8 +325,9 @@ const main = async (): Promise<void> => {
     return;
   }
   if (command === "publish-browser-runtime") {
-    publishBrowserRuntime({
+    await publishBrowserRuntime({
       arm64Path: required(flags, "arm64"),
+      lockPath: required(flags, "lock"),
       repo: required(flags, "repo"),
       tag: required(flags, "tag"),
       x64Path: required(flags, "x64"),

@@ -57,6 +57,10 @@ import {
   live as computerUseRuntimeLive,
 } from "../host-runtime/ComputerUseRuntime";
 import {
+  ChromeControlRuntime,
+  live as chromeControlRuntimeLive,
+} from "../host-runtime/ChromeControlRuntime";
+import {
   DesktopToolRuntime,
   live as desktopToolRuntimeLive,
 } from "../host-runtime/DesktopToolRuntime";
@@ -75,6 +79,10 @@ import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import * as ElectronNet from "../platform/electron/ElectronNet";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
+import {
+  RemoteHostedPipNativePlatform,
+  live as remoteHostedPipNativePlatformLive,
+} from "../platform/electron/RemoteHostedPipNativePlatform";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { MainConfig } from "./MainConfig";
 import { CodexPlatform } from "./CodexApplicationLive";
@@ -107,6 +115,19 @@ const browserProfile = Layer.unwrap(
     });
   }),
 ).pipe(Layer.provideMerge(browserApplication));
+const chromeControl = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const codex = yield* CodexPlatform;
+    return chromeControlRuntimeLive({
+      browserRuntime: codex.runtime.browserRuntime,
+      homeDirectory: config.homeDirectory,
+      peerAuthorizationMode: codex.runtime.source === "bundled" ? "packaged" : "development",
+      platform: config.platform as NodeJS.Platform,
+      runtimeStateHome: codex.runtimeStateHome,
+    });
+  }),
+);
 const browserUse = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -119,7 +140,7 @@ const browserUse = Layer.unwrap(
       platform: config.platform as NodeJS.Platform,
     });
   }),
-).pipe(Layer.provideMerge(browserProfile));
+).pipe(Layer.provideMerge(Layer.merge(browserProfile, chromeControl)));
 const browserPresentation = browserPresentationRuntimeLive.pipe(Layer.provideMerge(browserUse));
 const externalSuggestions = composerExternalSuggestionsLive.pipe(Layer.provideMerge(chatGpt));
 
@@ -135,6 +156,22 @@ const computerUse = Layer.unwrap(
       platform: config.platform as NodeJS.Platform,
       runtimeConfig: () => ({ locale }),
       runtimeStateHome: codex.runtimeStateHome,
+    });
+  }),
+);
+const remoteHostedPipNative = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const codex = yield* CodexPlatform;
+    const browserRuntime = codex.runtime.browserRuntime;
+    return remoteHostedPipNativePlatformLive({
+      expectedExports:
+        browserRuntime.status === "available"
+          ? browserRuntime.bundle.manifest.capabilities.nativePip.exports.expectedExports
+          : [],
+      platform: config.platform as NodeJS.Platform,
+      verifiedAddonPath:
+        browserRuntime.status === "available" ? browserRuntime.bundle.paths.skyNativeAddon : null,
     });
   }),
 );
@@ -197,6 +234,8 @@ export const live: Layer.Layer<
   | BrowserUseRuntime
   | BrowserPresentationRuntime
   | ComputerUseRuntime
+  | RemoteHostedPipNativePlatform
+  | ChromeControlRuntime
   | DesktopToolRuntime
   | WorktreeWorkerRuntime
   | ExecutionHostConfiguration
@@ -223,4 +262,11 @@ export const live: Layer.Layer<
   | ElectronWindowHost
   | FileSystem.FileSystem
   | BrowserProfileHelperPlatform
-> = Layer.mergeAll(desktopTools, managedWorktrees, gitActions, externalSuggestions);
+> = Layer.mergeAll(
+  chromeControl,
+  remoteHostedPipNative,
+  desktopTools,
+  managedWorktrees,
+  gitActions,
+  externalSuggestions,
+);

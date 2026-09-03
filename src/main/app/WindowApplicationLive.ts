@@ -1,5 +1,9 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import {
+  AvatarOverlayRuntime,
+  live as avatarOverlayRuntimeLive,
+} from "../avatar/AvatarOverlayRuntime";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ChatGptDesktop } from "../codex-application/ChatGptDesktop";
 import { CodexAccount } from "../codex-application/CodexAccount";
@@ -7,13 +11,16 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { CodexConnection } from "../codex-application/CodexConnection";
 import { CodexRendererConversationCoordinator } from "../codex-application/CodexRendererConversationCoordinator";
 import { CodexMedia, live as codexMediaLive } from "../codex-application/CodexMedia";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { resolveBundledElectronPreload } from "../electron-preload-path";
 import {
   ComputerUseSettingsRuntime,
   live as computerUseSettingsRuntimeLive,
 } from "../host-runtime/ComputerUseSettingsRuntime";
+import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
+import { ChromeControlRuntime } from "../host-runtime/ChromeControlRuntime";
+import { ComputerUseRuntime } from "../host-runtime/ComputerUseRuntime";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import {
   StructuralClipboardRuntime,
@@ -48,6 +55,7 @@ import {
   RemoteHostedPipRuntime,
   live as remoteHostedPipRuntimeLive,
 } from "../host-runtime/RemoteHostedPipRuntime";
+import * as RemoteHostedPipIntegration from "../host-runtime/RemoteHostedPipIntegration";
 import {
   RendererClientRuntime,
   live as rendererClientRuntimeLive,
@@ -70,6 +78,7 @@ import { ElectronPrivacy, live as electronPrivacyLive } from "../platform/electr
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import * as ElectronNet from "../platform/electron/ElectronNet";
 import { ElectronWindowHost } from "../platform/electron/ElectronWindowHost";
+import { RemoteHostedPipNativePlatform } from "../platform/electron/RemoteHostedPipNativePlatform";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import {
   ApplicationWindowRuntime,
@@ -127,6 +136,23 @@ const remoteHostedPip = Layer.unwrap(
 );
 const computerUseSettings = computerUseSettingsRuntimeLive.pipe(
   Layer.provideMerge(remoteHostedPip),
+);
+const avatarOverlay = Layer.unwrap(
+  Effect.gen(function* () {
+    const callbacks = yield* ScopedCallbackRuntime;
+    const config = yield* MainConfig;
+    const remoteHostedPip = yield* RemoteHostedPipRuntime;
+    return avatarOverlayRuntimeLive({
+      onHostLayout: (window, layout) => {
+        callbacks.fork(remoteHostedPip.reportHostLayout(window.webContents.id, layout));
+      },
+      platform: config.platform as NodeJS.Platform,
+      ...(config.rendererUrl ? { rendererUrl: config.rendererUrl } : {}),
+    });
+  }),
+).pipe(Layer.provideMerge(remoteHostedPip));
+const remoteHostedPipIntegration = RemoteHostedPipIntegration.live.pipe(
+  Layer.provideMerge(avatarOverlay),
 );
 
 const applicationWindows = Layer.unwrap(
@@ -208,6 +234,7 @@ const deepLinks = Layer.unwrap(
 /** Physical Window resources and their bounded, scope-owned shutdown policy. */
 export const live: Layer.Layer<
   | AppUpdateRuntime
+  | AvatarOverlayRuntime
   | ApplicationHostRuntime
   | ApplicationMenuRuntime
   | ApplicationWindowRuntime
@@ -232,14 +259,18 @@ export const live: Layer.Layer<
   | ApplicationSettings
   | ApplicationWindowShellRuntime
   | BrowserApplication
+  | BrowserUseRuntime
   | ChatGptDesktop
   | CodexAccount
   | CodexApplicationEventHub
   | CodexConnection
   | CodexGateway
+  | CodexThreadHostResolver
   | CodexRendererConversationCoordinator
   | CoreAuthority
   | DesktopToolRuntime
+  | ChromeControlRuntime
+  | ComputerUseRuntime
   | ElectronApp
   | ElectronDesktop
   | ElectronIpc
@@ -251,12 +282,14 @@ export const live: Layer.Layer<
   | MainConfig
   | NodexAgentResourceAccess
   | ProjectWorkspace
+  | RemoteHostedPipNativePlatform
   | ScopedCallbackRuntime
   | WindowRuntime
 > = Layer.mergeAll(
   applicationHostRuntimeLive(),
   applicationMenu,
   computerUseSettings,
+  remoteHostedPipIntegration,
   codexMedia,
   databaseNotifier,
   deepLinks,

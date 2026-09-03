@@ -61,6 +61,27 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("buildComposerSlashCommands", () => {
+  test("delegates Pet visibility to the native avatar overlay owner", async () => {
+    let toggles = 0;
+    const commands = buildComposerSlashCommands({
+      model: buildModel(),
+      actions: buildActions(),
+      serviceTier: null,
+      setServiceTier: () => undefined,
+      openExpandedDialog: () => undefined,
+      onPetToggle: () => {
+        toggles += 1;
+      },
+      activateGoalMode: () => undefined,
+    });
+    const pet = commands.find((command) => command.id === "pet");
+    if (!pet?.onSelect) throw new Error("Expected selectable Pet command");
+
+    await pet.onSelect({ source: "dialog" });
+
+    expect(toggles).toBe(1);
+  });
+
   test("keeps capabilities in the context provider instead of duplicating plugin slash commands", () => {
     const commands = buildComposerSlashCommands({
       model: {

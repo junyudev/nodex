@@ -141,6 +141,13 @@ function resolveProbeNodeExecutable(arguments_: readonly string[]): string {
   return bundledNode;
 }
 
+export function shouldUseDesktopLaunchContext(
+  platform: NodeJS.Platform,
+  arguments_: readonly string[],
+): boolean {
+  return platform === "darwin" && arguments_.includes("--conformance");
+}
+
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const projectRoot = path.resolve(process.cwd());
   const arguments_ = process.argv.slice(2);
@@ -149,8 +156,7 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
     arguments_,
     resolveProbeNodeExecutable(arguments_),
   );
-  process.exitCode =
-    process.platform === "darwin"
-      ? runInDesktopLaunchContext(projectRoot, invocation)
-      : runDirectly(projectRoot, invocation);
+  process.exitCode = shouldUseDesktopLaunchContext(process.platform, arguments_)
+    ? runInDesktopLaunchContext(projectRoot, invocation)
+    : runDirectly(projectRoot, invocation);
 }

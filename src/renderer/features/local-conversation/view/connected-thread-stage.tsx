@@ -63,6 +63,7 @@ import { EnsureLocalConversationThreadScrollController } from "./local-conversat
 import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
 import { LocalConversationNewThreadHomeScreen } from "./local-conversation-new-thread-home-screen";
 import { LocalConversationStageScreen } from "./local-conversation-stage-screen";
+import { RemoteHostedPipHostLayoutReporter } from "./remote-hosted-pip-host-layout-reporter";
 import { ThreadStageHeader } from "./local-conversation-stage-header";
 import { LocalConversationThreadBody } from "./local-conversation-thread-body";
 import {
@@ -1129,74 +1130,82 @@ export function ConnectedThreadStage({
     worktreeRuntimeAvailable,
   ]);
 
+  const ownsRemoteHostedPipHost =
+    presentation === "primary" && routeActive && !isSideChat && !backgroundAgentDetail;
+
   if (isNewThreadHome) {
     return (
-      <LocalConversationNewThreadHomeScreen
-        hero={
-          <NewThreadHomeHero
-            actions={actions}
-            projectName={input.newThreadTarget?.projectName ?? "this project"}
-            projectSelector={input.newThreadProjectSelector}
-          />
-        }
-        body={
-          showNewThreadHomeBody && threadBodyVisible ? (
-            <ConnectedThreadStageBody
+      <>
+        {ownsRemoteHostedPipHost ? (
+          <RemoteHostedPipHostLayoutReporter isCodexHomeAvailable={summaryPanelMounted} />
+        ) : null}
+        <LocalConversationNewThreadHomeScreen
+          hero={
+            <NewThreadHomeHero
+              actions={actions}
+              projectName={input.newThreadTarget?.projectName ?? "this project"}
+              projectSelector={input.newThreadProjectSelector}
+            />
+          }
+          body={
+            showNewThreadHomeBody && threadBodyVisible ? (
+              <ConnectedThreadStageBody
+                activeThreadId={activeThreadId}
+                input={input}
+                actions={actions}
+                composerScopeIdentity={composerScopeIdentity}
+                isWorktreeThread={activeThreadIsManagedWorktree}
+                onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
+                onErrorMessage={setErrorMessage}
+                leadingContent={
+                  activeThreadId && activeThreadIsManagedWorktree ? (
+                    <ManagedWorktreeRestoreBannerContainer threadId={activeThreadId} />
+                  ) : null
+                }
+                initialUiState={initialUiState}
+                transcriptVisible={threadBodyVisible}
+                turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+              />
+            ) : null
+          }
+          footer={
+            <ConnectedThreadStageFooter
               activeThreadId={activeThreadId}
               input={input}
               actions={actions}
               composerScopeIdentity={composerScopeIdentity}
-              isWorktreeThread={activeThreadIsManagedWorktree}
-              onForkFromTurnIntoWorktree={onForkFromTurnIntoWorktree}
+              errorMessage={errorMessage}
               onErrorMessage={setErrorMessage}
-              leadingContent={
-                activeThreadId && activeThreadIsManagedWorktree ? (
-                  <ManagedWorktreeRestoreBannerContainer threadId={activeThreadId} />
-                ) : null
-              }
-              initialUiState={initialUiState}
-              transcriptVisible={threadBodyVisible}
+              variant="newThreadHome"
+              rightPanelComposerOverlayEnabled={false}
+              rightPanelComposerOverlayTarget={null}
               turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+              worktreeRuntimeAvailable={worktreeRuntimeAvailable}
             />
-          ) : null
-        }
-        footer={
-          <ConnectedThreadStageFooter
-            activeThreadId={activeThreadId}
-            input={input}
-            actions={actions}
-            composerScopeIdentity={composerScopeIdentity}
-            errorMessage={errorMessage}
-            onErrorMessage={setErrorMessage}
-            variant="newThreadHome"
-            rightPanelComposerOverlayEnabled={false}
-            rightPanelComposerOverlayTarget={null}
-            turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-            worktreeRuntimeAvailable={worktreeRuntimeAvailable}
-          />
-        }
-        floatingContent={
-          <ThreadSummaryPanelRenderBoundary
-            renderFallback={({ resetError }) => (
-              <ThreadSummaryPanelRenderErrorFallback
+          }
+          floatingContent={
+            <ThreadSummaryPanelRenderBoundary
+              renderFallback={({ resetError }) => (
+                <ThreadSummaryPanelRenderErrorFallback
+                  hideImmediately={summaryPanelHideImmediately}
+                  mounted={summaryPanelMounted}
+                  onRetry={resetError}
+                  open={summaryPanelOpen}
+                />
+              )}
+              resetKey={activeThreadId}
+            >
+              <ThreadFloatingSummaryPanel
                 hideImmediately={summaryPanelHideImmediately}
                 mounted={summaryPanelMounted}
-                onRetry={resetError}
                 open={summaryPanelOpen}
+                {...summaryPanelContentProps}
               />
-            )}
-            resetKey={activeThreadId}
-          >
-            <ThreadFloatingSummaryPanel
-              hideImmediately={summaryPanelHideImmediately}
-              mounted={summaryPanelMounted}
-              open={summaryPanelOpen}
-              {...summaryPanelContentProps}
-            />
-          </ThreadSummaryPanelRenderBoundary>
-        }
-        contentShiftX={summaryPanelContentShift}
-      />
+            </ThreadSummaryPanelRenderBoundary>
+          }
+          contentShiftX={summaryPanelContentShift}
+        />
+      </>
     );
   }
 
@@ -1212,6 +1221,9 @@ export function ConnectedThreadStage({
 
   return (
     <>
+      {ownsRemoteHostedPipHost ? (
+        <RemoteHostedPipHostLayoutReporter isCodexHomeAvailable={summaryPanelMounted} />
+      ) : null}
       {ownsAppShellHeader ? <AppShellHeaderContentRegistrar content={threadHeaderContent} /> : null}
       <LocalConversationStageScreen
         onReadInteraction={() => markActiveConversationAsRead(false)}

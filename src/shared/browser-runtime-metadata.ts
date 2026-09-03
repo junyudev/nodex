@@ -1,6 +1,8 @@
 export const BROWSER_RUNTIME_BUNDLE_DIRECTORY = "browser-runtime";
 export const BROWSER_RUNTIME_MANIFEST_FILENAME = "browser-runtime-manifest.json";
-export const BROWSER_RUNTIME_SCHEMA_VERSION = 5;
+export const BROWSER_RUNTIME_SCHEMA_VERSION = 6;
+const LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION = 5;
+export const BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION = "15.0";
 export const BROWSER_PLUGIN_NODE_MODULE_DIR = "marketplace/plugins/browser/node_modules";
 
 export type BrowserRuntimeArtifactArchitecture = "any" | "arm64" | "universal" | "x64";
@@ -26,20 +28,135 @@ export type BrowserRuntimeComputerUseCapability =
   | {
       appBundle: string;
       appBundleIdentifier: string;
+      artifactMinimumMacOSVersion: "14.4";
       client: string;
-      ipcProtocol: "CodexComputerUseIPC-2";
-      minimumMacOSVersion: "14.4";
+      ipcProtocol: "CodexComputerUseIPC-5";
       plugin: BrowserRuntimeBundledPlugin;
+      productMinimumMacOSVersion: typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
       rpcService: string;
       serviceExecutable: string;
       signingTeamId: string;
       status: "available";
     };
 
+export const BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS = {
+  computerUseService: [
+    "computerUseServiceProcessMatchesExecutablePath",
+    "connectRemoteHostedPIPContentHost",
+    "spawnComputerUseService",
+  ],
+  hostLayout: [
+    "getRemoteHostedPIPContentLayoutState",
+    "registerRemoteHostedPIPContentHost",
+    "setRemoteHostedPIPContentLayoutStateChangedHandler",
+    "setRemoteHostedPIPContentMaxDisplaySize",
+    "setRemoteHostedPIPContentMaxDisplaySizeChangedHandler",
+    "startRemoteHostedPIPContentHost",
+    "stopRemoteHostedPIPContentHost",
+    "unregisterRemoteHostedPIPContentHost",
+  ],
+  interaction: [
+    "isPrivacySettingsTerminationRequest",
+    "setBrowserUsePIPContentClickHandler",
+    "setRemoteHostedPIPContentComputerUseCursorLocationHandler",
+    "setRemoteHostedPIPContentPetWakeRequestHandler",
+    "setRemoteHostedPIPContentShouldShowTaskHandler",
+    "setRemoteHostedPIPContentVisibilityRequestHandler",
+  ],
+  presentation: [
+    "completeRemoteHostedPIPContentThread",
+    "getRemoteHostedPIPContentActiveTaskIDs",
+    "hasRemoteHostedPIPContentAnyPresentation",
+    "invalidateBrowserUsePIPContent",
+    "invalidateRemoteHostedPIPContentTurn",
+    "refreshRemoteHostedPIPContentVisibility",
+    "setRemoteHostedPIPContentActiveThreadID",
+    "setRemoteHostedPIPContentSuppressedThreadIDs",
+    "upsertBrowserUsePIPContent",
+  ],
+} as const;
+
+export const BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS = [
+  "completeRemoteHostedPIPContentThread",
+  "computerUseServiceProcessMatchesExecutablePath",
+  "connectRemoteHostedPIPContentHost",
+  "createStatusItem",
+  "destroyStatusItem",
+  "finishWindowDrag",
+  "frontmostWindow",
+  "getRemoteHostedPIPContentActiveTaskIDs",
+  "getRemoteHostedPIPContentLayoutState",
+  "hasRemoteHostedPIPContentAnyPresentation",
+  "iconMediumForAppPath",
+  "iconSmallForAppPath",
+  "invalidateBrowserUsePIPContent",
+  "invalidateRemoteHostedPIPContentTurn",
+  "isPrivacySettingsTerminationRequest",
+  "isWindowDragActive",
+  "performWindowDrag",
+  "refreshRemoteHostedPIPContentVisibility",
+  "registerRemoteHostedPIPContentHost",
+  "setBrowserUsePIPContentClickHandler",
+  "setRemoteHostedPIPContentActiveThreadID",
+  "setRemoteHostedPIPContentComputerUseCursorLocationHandler",
+  "setRemoteHostedPIPContentLayoutStateChangedHandler",
+  "setRemoteHostedPIPContentMaxDisplaySize",
+  "setRemoteHostedPIPContentMaxDisplaySizeChangedHandler",
+  "setRemoteHostedPIPContentPetWakeRequestHandler",
+  "setRemoteHostedPIPContentShouldShowTaskHandler",
+  "setRemoteHostedPIPContentSuppressedThreadIDs",
+  "setRemoteHostedPIPContentVisibilityRequestHandler",
+  "setWindowDragTarget",
+  "spawnComputerUseService",
+  "startFileDrag",
+  "startRemoteHostedPIPContentHost",
+  "stopRemoteHostedPIPContentHost",
+  "unregisterRemoteHostedPIPContentHost",
+  "updateStatusItemMenuState",
+  "updateStatusItemState",
+  "upsertBrowserUsePIPContent",
+] as const;
+
 export type BrowserRuntimeNativePipCapability = {
   addon: string;
+  artifactMinimumMacOSVersion: "13.0";
   controlAssets: string[];
-  minimumMacOSVersion: "13.0";
+  exports: {
+    expectedExportCount: number;
+    expectedExports: string[];
+    groups: typeof BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS;
+  };
+  productMinimumMacOSVersion: typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
+  status: "available";
+};
+
+export type BrowserRuntimeChromeCapability =
+  | { reason: "not-bundled"; status: "unavailable" }
+  | {
+      extensionIds: string[];
+      familyDescriptor: string;
+      installManifest: string;
+      nativeHost: {
+        artifactMinimumMacOSVersion: string;
+        hostName: "com.openai.codexextension";
+        path: string;
+        productMinimumMacOSVersion: typeof BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
+        signingTeamId: string;
+      };
+      plugin: {
+        id: "chrome@openai-bundled";
+        manifest: string;
+        root: string;
+        version: string;
+      };
+      status: "available";
+    };
+
+export type BrowserRuntimeBrowserUseCapability = {
+  backends: {
+    chrome: BrowserRuntimeChromeCapability;
+    iab: { status: "available" };
+  };
 };
 
 export type BrowserRuntimeArtifact = {
@@ -66,6 +183,7 @@ export type BrowserRuntimeManifest = {
     version: string;
   };
   capabilities: {
+    browserUse: BrowserRuntimeBrowserUseCapability;
     computerUse: BrowserRuntimeComputerUseCapability;
     nativePip: BrowserRuntimeNativePipCapability;
   };
@@ -249,8 +367,29 @@ function parseComputerUsePlugin(value: unknown): BrowserRuntimeBundledPlugin | n
   };
 }
 
-function parseNativePipCapability(value: unknown): BrowserRuntimeNativePipCapability | null {
-  if (!isObject(value) || value.minimumMacOSVersion !== "13.0") return null;
+function hasExactStringArray(value: unknown, expected: readonly string[]): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((entry, index) => entry === expected[index])
+  );
+}
+
+function parseNativePipCapability(
+  value: unknown,
+  schemaVersion: number,
+): BrowserRuntimeNativePipCapability | null {
+  if (!isObject(value)) return null;
+  const isLegacy = schemaVersion === LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION;
+  if (
+    isLegacy
+      ? value.minimumMacOSVersion !== "13.0"
+      : value.status !== "available" ||
+        value.artifactMinimumMacOSVersion !== "13.0" ||
+        value.productMinimumMacOSVersion !== BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION
+  ) {
+    return null;
+  }
   const addon = parseNonEmptyString(value.addon);
   if (!addon || !isSafeBrowserRuntimeRelativePath(addon)) return null;
   if (!Array.isArray(value.controlAssets) || value.controlAssets.length !== 2) return null;
@@ -263,20 +402,61 @@ function parseNativePipCapability(value: unknown): BrowserRuntimeNativePipCapabi
   ) {
     return null;
   }
-  return { addon, controlAssets: parsedControlAssets, minimumMacOSVersion: "13.0" };
+  let expectedExports: string[];
+  if (isLegacy) {
+    expectedExports = [...BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS];
+  } else {
+    if (!isObject(value.exports) || !Array.isArray(value.exports.expectedExports)) return null;
+    expectedExports = value.exports.expectedExports.map((entry) =>
+      typeof entry === "string" ? entry : "",
+    );
+    if (
+      expectedExports.length === 0 ||
+      value.exports.expectedExportCount !== expectedExports.length ||
+      new Set(expectedExports).size !== expectedExports.length ||
+      !expectedExports.every((entry) => /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(entry)) ||
+      expectedExports.some((entry, index) => index > 0 && entry <= expectedExports[index - 1]!)
+    ) {
+      return null;
+    }
+    if (!isObject(value.exports.groups)) return null;
+    for (const [group, expected] of Object.entries(BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS)) {
+      if (!hasExactStringArray(value.exports.groups[group], expected)) return null;
+      if (!expected.every((exportName) => expectedExports.includes(exportName))) return null;
+    }
+  }
+  return {
+    addon,
+    artifactMinimumMacOSVersion: "13.0",
+    controlAssets: parsedControlAssets,
+    exports: {
+      expectedExportCount: expectedExports.length,
+      expectedExports,
+      groups: BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS,
+    },
+    productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+    status: "available",
+  };
 }
 
-function parseComputerUseCapability(value: unknown): BrowserRuntimeComputerUseCapability | null {
+function parseComputerUseCapability(
+  value: unknown,
+  schemaVersion: number,
+): BrowserRuntimeComputerUseCapability | null {
   if (!isObject(value)) return null;
   if (value.status === "unavailable") {
     return value.reason === "architecture-unsupported"
       ? { reason: value.reason, status: value.status }
       : null;
   }
+  const isLegacy = schemaVersion === LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION;
+  if (value.status !== "available") return null;
   if (
-    value.status !== "available" ||
-    value.minimumMacOSVersion !== "14.4" ||
-    value.ipcProtocol !== "CodexComputerUseIPC-2"
+    isLegacy
+      ? value.minimumMacOSVersion !== "14.4" || value.ipcProtocol !== "CodexComputerUseIPC-2"
+      : value.artifactMinimumMacOSVersion !== "14.4" ||
+        value.productMinimumMacOSVersion !== BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION ||
+        value.ipcProtocol !== "CodexComputerUseIPC-5"
   ) {
     return null;
   }
@@ -307,14 +487,122 @@ function parseComputerUseCapability(value: unknown): BrowserRuntimeComputerUseCa
   return {
     appBundle,
     appBundleIdentifier,
+    artifactMinimumMacOSVersion: "14.4",
     client,
-    ipcProtocol: value.ipcProtocol,
-    minimumMacOSVersion: value.minimumMacOSVersion,
+    ipcProtocol: "CodexComputerUseIPC-5",
     plugin,
+    productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
     rpcService,
     serviceExecutable,
     signingTeamId,
     status: value.status,
+  };
+}
+
+function parseBrowserUseCapability(
+  value: unknown,
+  supportedBackends: readonly BrowserRuntimeBackend[],
+  schemaVersion: number,
+): BrowserRuntimeBrowserUseCapability | null {
+  if (schemaVersion === LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION) {
+    return supportedBackends.includes("iab")
+      ? {
+          backends: {
+            chrome: { reason: "not-bundled", status: "unavailable" },
+            iab: { status: "available" },
+          },
+        }
+      : null;
+  }
+  if (!isObject(value) || !isObject(value.backends)) return null;
+  if (!isObject(value.backends.iab) || value.backends.iab.status !== "available") return null;
+  const chrome = value.backends.chrome;
+  if (!isObject(chrome)) return null;
+  if (chrome.status === "unavailable") {
+    if (chrome.reason !== "not-bundled") return null;
+    return {
+      backends: {
+        chrome: { reason: "not-bundled", status: "unavailable" },
+        iab: { status: "available" },
+      },
+    };
+  }
+  if (chrome.status !== "available" || !isObject(chrome.plugin) || !isObject(chrome.nativeHost)) {
+    return null;
+  }
+  const pluginRoot = parseNonEmptyString(chrome.plugin.root);
+  const pluginManifest = parseNonEmptyString(chrome.plugin.manifest);
+  const pluginVersion = parseNonEmptyString(chrome.plugin.version);
+  const familyDescriptor = parseNonEmptyString(chrome.familyDescriptor);
+  const installManifest = parseNonEmptyString(chrome.installManifest);
+  const nativeHostPath = parseNonEmptyString(chrome.nativeHost.path);
+  const signingTeamId = parseNonEmptyString(chrome.nativeHost.signingTeamId);
+  const artifactMinimumMacOSVersion = parseNonEmptyString(
+    chrome.nativeHost.artifactMinimumMacOSVersion,
+  );
+  if (
+    chrome.plugin.id !== "chrome@openai-bundled" ||
+    chrome.nativeHost.hostName !== "com.openai.codexextension" ||
+    chrome.nativeHost.productMinimumMacOSVersion !==
+      BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION ||
+    !pluginRoot ||
+    !pluginManifest ||
+    !pluginVersion ||
+    !familyDescriptor ||
+    !installManifest ||
+    !nativeHostPath ||
+    !signingTeamId ||
+    !artifactMinimumMacOSVersion
+  ) {
+    return null;
+  }
+  const ownedPaths = [
+    pluginRoot,
+    pluginManifest,
+    familyDescriptor,
+    installManifest,
+    nativeHostPath,
+  ];
+  if (!ownedPaths.every(isSafeBrowserRuntimeRelativePath)) return null;
+  if (
+    ![pluginManifest, familyDescriptor, installManifest, nativeHostPath].every((ownedPath) =>
+      ownedPath.startsWith(`${pluginRoot}/`),
+    )
+  ) {
+    return null;
+  }
+  if (!Array.isArray(chrome.extensionIds) || chrome.extensionIds.length === 0) return null;
+  const extensionIds = chrome.extensionIds.map(parseNonEmptyString);
+  if (
+    extensionIds.some((extensionId) => extensionId === null) ||
+    new Set(extensionIds).size !== extensionIds.length ||
+    !(extensionIds as string[]).every((extensionId) => /^[a-p]{32}$/u.test(extensionId))
+  ) {
+    return null;
+  }
+  return {
+    backends: {
+      chrome: {
+        extensionIds: extensionIds as string[],
+        familyDescriptor,
+        installManifest,
+        nativeHost: {
+          artifactMinimumMacOSVersion,
+          hostName: chrome.nativeHost.hostName,
+          path: nativeHostPath,
+          productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+          signingTeamId,
+        },
+        plugin: {
+          id: chrome.plugin.id,
+          manifest: pluginManifest,
+          root: pluginRoot,
+          version: pluginVersion,
+        },
+        status: "available",
+      },
+      iab: { status: "available" },
+    },
   };
 }
 
@@ -348,7 +636,13 @@ function parseSupportedBackends(value: unknown): BrowserRuntimeBackend[] | null 
 
 export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManifest | null {
   if (!isObject(value)) return null;
-  if (value.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION) return null;
+  if (
+    value.schemaVersion !== BROWSER_RUNTIME_SCHEMA_VERSION &&
+    value.schemaVersion !== LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION
+  ) {
+    return null;
+  }
+  const sourceSchemaVersion = value.schemaVersion;
   if (value.targetArch !== "arm64" && value.targetArch !== "x64") return null;
   if (!["darwin", "linux", "win32"].includes(String(value.targetPlatform))) return null;
 
@@ -368,19 +662,29 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
 
   const entrypoints = parseEntrypoints(value.entrypoints);
   const browserPlugin = parseBrowserPlugin(value.browserPlugin);
+  const supportedBackends = parseSupportedBackends(value.supportedBackends);
+  if (!supportedBackends) return null;
   const capabilities = isObject(value.capabilities)
     ? {
-        computerUse: parseComputerUseCapability(value.capabilities.computerUse),
-        nativePip: parseNativePipCapability(value.capabilities.nativePip),
+        browserUse: parseBrowserUseCapability(
+          value.capabilities.browserUse,
+          supportedBackends,
+          sourceSchemaVersion,
+        ),
+        computerUse: parseComputerUseCapability(
+          value.capabilities.computerUse,
+          sourceSchemaVersion,
+        ),
+        nativePip: parseNativePipCapability(value.capabilities.nativePip, sourceSchemaVersion),
       }
     : null;
   const peerAuthorization = parsePeerAuthorization(value.peerAuthorization);
   const runtimeVersions = parseRuntimeVersions(value.runtimeVersions);
-  const supportedBackends = parseSupportedBackends(value.supportedBackends);
   if (
     !entrypoints ||
     !browserPlugin ||
-    !capabilities?.computerUse ||
+    !capabilities?.browserUse ||
+    !capabilities.computerUse ||
     !capabilities.nativePip ||
     !peerAuthorization ||
     !runtimeVersions ||
@@ -422,6 +726,21 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
   ];
   if (pluginArtifacts.some((artifact) => artifact?.kind !== "data")) return null;
 
+  const chrome = capabilities.browserUse.backends.chrome;
+  if (chrome.status === "available") {
+    const chromeArtifacts = [
+      artifactsByPath.get(chrome.plugin.manifest),
+      artifactsByPath.get(chrome.familyDescriptor),
+      artifactsByPath.get(chrome.installManifest),
+    ];
+    if (chromeArtifacts.some((artifact) => artifact?.kind !== "data")) return null;
+    const nativeHost = artifactsByPath.get(chrome.nativeHost.path);
+    if (!isCompatibleBinary(nativeHost) || nativeHost?.kind !== "executable") return null;
+    if (!supportedBackends.includes("chrome")) return null;
+  } else if (supportedBackends.includes("chrome")) {
+    return null;
+  }
+
   const nativePipAddon = artifactsByPath.get(capabilities.nativePip.addon);
   if (!isCompatibleBinary(nativePipAddon) || nativePipAddon?.kind !== "native-addon") return null;
   if (
@@ -460,6 +779,7 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
     browserPlugin,
     buildFlavor,
     capabilities: {
+      browserUse: capabilities.browserUse,
       computerUse: capabilities.computerUse,
       nativePip: capabilities.nativePip,
     },
@@ -469,8 +789,8 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
     entrypoints,
     peerAuthorization,
     runtimeVersions,
-    schemaVersion: value.schemaVersion,
-    supportedBackends,
+    schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
+    supportedBackends: chrome.status === "available" ? ["iab", "chrome"] : ["iab"],
     targetArch,
     targetPlatform: value.targetPlatform as BrowserRuntimeManifest["targetPlatform"],
   };

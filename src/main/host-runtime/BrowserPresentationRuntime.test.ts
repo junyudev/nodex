@@ -63,6 +63,7 @@ it.effect(
                       Effect.sync(() => {
                         capturedSessions.push(route.codexSessionId);
                       }),
+                    focusPresentation: () => Effect.succeed(false),
                     promoteRoute: () => Effect.void,
                     releaseSession: () => Effect.void,
                     turnEnded: () => Effect.void,

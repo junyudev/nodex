@@ -49,8 +49,22 @@ export type ComputerUsePluginReconcileResult =
       status: "unavailable";
     };
 
+export type ChromePluginReconcileResult =
+  | {
+      enabled: boolean;
+      installedVersion: string;
+      pluginRoot: string;
+      status: "ready";
+    }
+  | {
+      message: string;
+      reason: "backend-unavailable" | "capability-unavailable" | "reconciliation-failed";
+      status: "unavailable";
+    };
+
 export type BrowserPluginReconcileResult =
   | {
+      chrome: ChromePluginReconcileResult;
       computerUse: ComputerUsePluginReconcileResult;
       enabled: boolean;
       installedVersion: string | null;
@@ -79,6 +93,7 @@ export interface BrowserPluginReconcilerOptions {
 type BrowserPluginDesiredState =
   | {
       browserAvailable: boolean;
+      chromeAvailable: boolean;
       computerUseAvailable: boolean;
       key: string;
       status: "available";
@@ -92,6 +107,8 @@ type BrowserPluginDesiredState =
 
 type MarketplacePlugin =
   ClientRequestResponsesByMethod["plugin/list"]["marketplaces"][number]["plugins"][number];
+
+type DesktopToolPluginName = "browser" | "chrome" | "computer-use";
 
 type BundledMarketplaceSnapshot = {
   marketplacePath: string;
@@ -136,11 +153,12 @@ function resolveDesiredState(
       status: "unavailable",
     };
   }
-  const browserAvailable =
-    resolveAvailableBrowserUseBackends(
-      browserRuntime.bundle.manifest.supportedBackends,
-      requestedBackends,
-    ).length > 0;
+  const resolvedBackends = resolveAvailableBrowserUseBackends(
+    browserRuntime.bundle.manifest.supportedBackends,
+    requestedBackends,
+  );
+  const browserAvailable = resolvedBackends.length > 0;
+  const chromeAvailable = resolvedBackends.includes("chrome");
   if (!browserAvailable && !computerUseReady) {
     return {
       key: "backend-unavailable",
@@ -151,8 +169,9 @@ function resolveDesiredState(
   }
   return {
     browserAvailable,
+    chromeAvailable,
     computerUseAvailable: computerUseReady,
-    key: `available:browser=${String(browserAvailable)};computer-use=${String(computerUseReady)}`,
+    key: `available:browser=${String(browserAvailable)};chrome=${String(chromeAvailable)};computer-use=${String(computerUseReady)}`,
     status: "available",
   };
 }
@@ -174,7 +193,7 @@ const reconcileError = (operation: string, cause: unknown) =>
 
 const findPlugin = (
   marketplace: BundledMarketplaceSnapshot,
-  pluginName: "browser" | "computer-use",
+  pluginName: DesktopToolPluginName,
 ): MarketplacePlugin | null =>
   marketplace.plugins.find((candidate) => candidate.name === pluginName) ?? null;
 
@@ -217,7 +236,7 @@ function reconcilePlugin(
     current: MarketplacePlugin | null;
     desired: boolean;
     marketplacePath: string;
-    pluginName: "browser" | "computer-use";
+    pluginName: DesktopToolPluginName;
     version: string | null;
   },
 ): Effect.Effect<boolean, BrowserPluginReconcileError> {
@@ -259,7 +278,7 @@ function removeInstalledPlugins(
     const current = yield* readBundledMarketplace(environment);
     if (!current) return;
     let changed = false;
-    for (const pluginName of ["browser", "computer-use"] as const) {
+    for (const pluginName of ["browser", "chrome", "computer-use"] as const) {
       const plugin = findPlugin(current, pluginName);
       if (!plugin?.installed && !plugin?.enabled) continue;
       yield* environment.client.request("plugin/uninstall", { pluginId: plugin.id });
@@ -269,8 +288,8 @@ function removeInstalledPlugins(
     yield* environment.client.request("skills/list", { forceReload: true });
     const reconciled = yield* readBundledMarketplace(environment);
     if (!reconciled) return;
-    const retained = ["browser", "computer-use"].some((pluginName) => {
-      const plugin = findPlugin(reconciled, pluginName as "browser" | "computer-use");
+    const retained = ["browser", "chrome", "computer-use"].some((pluginName) => {
+      const plugin = findPlugin(reconciled, pluginName as DesktopToolPluginName);
       return plugin?.installed || plugin?.enabled;
     });
     if (retained) {
@@ -282,6 +301,42 @@ function removeInstalledPlugins(
       );
     }
   });
+}
+
+function resolveChromeResult(input: {
+  capabilityAvailable: boolean;
+  desired: boolean;
+  materialized: MaterializedDesktopToolMarketplace;
+  plugin: MarketplacePlugin | null;
+  version: string | null;
+}): ChromePluginReconcileResult {
+  if (!input.capabilityAvailable || !input.materialized.chromePluginRoot || !input.version) {
+    return {
+      message: "Chrome runtime capability is unavailable",
+      reason: "capability-unavailable",
+      status: "unavailable",
+    };
+  }
+  if (!input.desired) {
+    return {
+      message: "Chrome provider backend is unavailable",
+      reason: "backend-unavailable",
+      status: "unavailable",
+    };
+  }
+  if (!isPluginReady(input.plugin, input.version)) {
+    return {
+      message: "Chrome plugin reconciliation did not produce the verified enabled version",
+      reason: "reconciliation-failed",
+      status: "unavailable",
+    };
+  }
+  return {
+    enabled: true,
+    installedVersion: input.version,
+    pluginRoot: input.materialized.chromePluginRoot,
+    status: "ready",
+  };
 }
 
 function resolveComputerUseResult(input: {
@@ -371,6 +426,15 @@ function reconcile(
         pluginName: "browser",
         version: bundle.manifest.browserPlugin.version,
       })) || changed;
+    const chromeCapability = bundle.manifest.capabilities.browserUse.backends.chrome;
+    changed =
+      (yield* reconcilePlugin(environment, {
+        current: findPlugin(marketplace, "chrome"),
+        desired: desiredState.chromeAvailable,
+        marketplacePath: marketplace.marketplacePath,
+        pluginName: "chrome",
+        version: chromeCapability.status === "available" ? chromeCapability.plugin.version : null,
+      })) || changed;
     const computerUseCapability = bundle.manifest.capabilities.computerUse;
     changed =
       (yield* reconcilePlugin(environment, {
@@ -401,6 +465,17 @@ function reconcile(
       );
     }
 
+    const chrome = resolveChromeResult({
+      capabilityAvailable: chromeCapability.status === "available",
+      desired: desiredState.chromeAvailable,
+      materialized,
+      plugin: findPlugin(marketplace, "chrome"),
+      version: chromeCapability.status === "available" ? chromeCapability.plugin.version : null,
+    });
+    if (desiredState.chromeAvailable && chrome.status === "unavailable") {
+      return reconciliationFailure(chrome.message);
+    }
+
     const computerUse = resolveComputerUseResult({
       desired: desiredState.computerUseAvailable,
       materialized,
@@ -417,6 +492,7 @@ function reconcile(
     }
 
     return {
+      chrome,
       computerUse,
       enabled: desiredState.browserAvailable,
       installedVersion: desiredState.browserAvailable

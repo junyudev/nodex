@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS,
+  BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS,
+  BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+  BROWSER_RUNTIME_SCHEMA_VERSION,
   parseBrowserRuntimeManifest,
   type BrowserRuntimeManifest,
 } from "./browser-runtime-metadata";
@@ -109,6 +113,38 @@ function makeManifest(): BrowserRuntimeManifest {
         architecture: "any",
         executable: false,
         kind: "data",
+        path: "marketplace/plugins/chrome/.codex-plugin/plugin.json",
+        sha256: HASH,
+        size: 1,
+      },
+      {
+        architecture: "any",
+        executable: false,
+        kind: "data",
+        path: "marketplace/plugins/chrome/scripts/installManifest.mjs",
+        sha256: HASH,
+        size: 1,
+      },
+      {
+        architecture: "any",
+        executable: false,
+        kind: "data",
+        path: "marketplace/plugins/chrome/scripts/extension-ids.json",
+        sha256: HASH,
+        size: 1,
+      },
+      {
+        architecture: "arm64",
+        executable: true,
+        kind: "executable",
+        path: "marketplace/plugins/chrome/extension-host/macos/arm64/ChatGPT for Chrome",
+        sha256: HASH,
+        size: 1,
+      },
+      {
+        architecture: "any",
+        executable: false,
+        kind: "data",
         path: "runtime/lib/node_modules/@oai/sky/dist/project/cua/sky_js/src/service.js",
         sha256: HASH,
         size: 1,
@@ -160,12 +196,36 @@ function makeManifest(): BrowserRuntimeManifest {
     },
     buildFlavor: "test",
     capabilities: {
+      browserUse: {
+        backends: {
+          chrome: {
+            extensionIds: ["hehggadaopoacecdllhhajmbjkdcmajg", "odlomjlbamekndcpllcnffbgeohgkmjh"],
+            familyDescriptor: "marketplace/plugins/chrome/scripts/extension-ids.json",
+            installManifest: "marketplace/plugins/chrome/scripts/installManifest.mjs",
+            nativeHost: {
+              artifactMinimumMacOSVersion: "13.0",
+              hostName: "com.openai.codexextension",
+              path: "marketplace/plugins/chrome/extension-host/macos/arm64/ChatGPT for Chrome",
+              productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+              signingTeamId: "TESTTEAM",
+            },
+            plugin: {
+              id: "chrome@openai-bundled",
+              manifest: "marketplace/plugins/chrome/.codex-plugin/plugin.json",
+              root: "marketplace/plugins/chrome",
+              version: "1.0.0",
+            },
+            status: "available",
+          },
+          iab: { status: "available" },
+        },
+      },
       computerUse: {
         appBundle: "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app",
         appBundleIdentifier: "com.openai.CodexComputerUse",
+        artifactMinimumMacOSVersion: "14.4",
         client: "marketplace/plugins/computer-use/client.mjs",
-        ipcProtocol: "CodexComputerUseIPC-2",
-        minimumMacOSVersion: "14.4",
+        ipcProtocol: "CodexComputerUseIPC-5",
         plugin: {
           docs: "marketplace/plugins/computer-use/docs/SKILL.md",
           id: "computer-use@openai-bundled",
@@ -176,6 +236,7 @@ function makeManifest(): BrowserRuntimeManifest {
           root: "marketplace/plugins/computer-use",
           version: "1.0.1000550",
         },
+        productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
         rpcService: "runtime/lib/node_modules/@oai/sky/dist/project/cua/sky_js/src/service.js",
         serviceExecutable:
           "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
@@ -184,11 +245,18 @@ function makeManifest(): BrowserRuntimeManifest {
       },
       nativePip: {
         addon: "native/sky.node",
+        artifactMinimumMacOSVersion: "13.0",
         controlAssets: [
           "native/remote-hosted-pip/pop-in-window-egg@3x.png",
           "native/remote-hosted-pip/pop-out-window-egg@3x.png",
         ],
-        minimumMacOSVersion: "13.0",
+        exports: {
+          expectedExportCount: BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS.length,
+          expectedExports: [...BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS],
+          groups: BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS,
+        },
+        productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+        status: "available",
       },
     },
     codexCompatibilityVersion: "0.144.6",
@@ -210,7 +278,7 @@ function makeManifest(): BrowserRuntimeManifest {
       node: "24.0.0",
       peerAuthorization: "test",
     },
-    schemaVersion: 5,
+    schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
     supportedBackends: ["iab", "chrome"],
     targetArch: "arm64",
     targetPlatform: "darwin",
@@ -234,6 +302,71 @@ describe("parseBrowserRuntimeManifest", () => {
     client.executable = true;
 
     expect(parseBrowserRuntimeManifest(manifest)).toEqual(manifest);
+  });
+
+  test("upgrades archived schema-v5 metadata to the verified schema-v6 contract", () => {
+    const current = makeManifest();
+    const computerUse = current.capabilities.computerUse;
+    if (computerUse.status !== "available") throw new Error("Computer Use fixture is unavailable");
+    const legacy = {
+      ...current,
+      capabilities: {
+        computerUse: {
+          ...computerUse,
+          artifactMinimumMacOSVersion: undefined,
+          ipcProtocol: "CodexComputerUseIPC-2",
+          minimumMacOSVersion: "14.4",
+          productMinimumMacOSVersion: undefined,
+        },
+        nativePip: {
+          addon: current.capabilities.nativePip.addon,
+          controlAssets: current.capabilities.nativePip.controlAssets,
+          minimumMacOSVersion: "13.0",
+        },
+      },
+      schemaVersion: 5,
+      supportedBackends: ["iab"],
+    };
+
+    const parsed = parseBrowserRuntimeManifest(legacy);
+    expect(parsed?.schemaVersion).toBe(6);
+    expect(parsed?.capabilities.computerUse).toMatchObject({
+      artifactMinimumMacOSVersion: "14.4",
+      ipcProtocol: "CodexComputerUseIPC-5",
+      productMinimumMacOSVersion: "15.0",
+    });
+    expect(parsed?.capabilities.nativePip.exports.expectedExportCount).toBe(38);
+    expect(parsed?.capabilities.nativePip.exports.expectedExports).toEqual(
+      BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS,
+    );
+  });
+
+  test("rejects a native add-on contract without its exact export set", () => {
+    const manifest = structuredClone(makeManifest()) as unknown as {
+      capabilities: { nativePip: { exports: { expectedExports?: string[] } } };
+    };
+    delete manifest.capabilities.nativePip.exports.expectedExports;
+
+    expect(parseBrowserRuntimeManifest(manifest)).toBeNull();
+  });
+
+  test("rejects a native add-on contract whose count or order differs from the exact set", () => {
+    const wrongCount = structuredClone(makeManifest());
+    wrongCount.capabilities.nativePip.exports.expectedExportCount += 1;
+    expect(parseBrowserRuntimeManifest(wrongCount)).toBeNull();
+
+    const wrongOrder = structuredClone(makeManifest());
+    wrongOrder.capabilities.nativePip.exports.expectedExports.reverse();
+    expect(parseBrowserRuntimeManifest(wrongOrder)).toBeNull();
+  });
+
+  test("rejects a native add-on contract with an incomplete capability group", () => {
+    const manifest = structuredClone(makeManifest());
+    (
+      manifest.capabilities.nativePip.exports.groups as unknown as { presentation: string[] }
+    ).presentation = [];
+
+    expect(parseBrowserRuntimeManifest(manifest)).toBeNull();
   });
 
   test("rejects paths that escape the bundle root", () => {

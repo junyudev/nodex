@@ -21,6 +21,11 @@ import {
   NodexSettingsSection,
 } from "@/components/ui/settings";
 import { cn } from "@/lib/utils";
+import { readChromeControlSettings } from "@/lib/chrome-control-settings";
+import {
+  isChromeControlRuntimeSnapshot,
+  type ChromeControlRuntimeSnapshot,
+} from "../../../shared/chrome-control-settings";
 import type {
   BrowserDownloadAction,
   BrowserDownloadRecord,
@@ -147,6 +152,7 @@ function BrowserSettingsOverview({
   open: boolean;
 }) {
   const [capabilities, setCapabilities] = useState<BrowserProfileCapabilities>(EMPTY_CAPABILITIES);
+  const [chromeControl, setChromeControl] = useState<ChromeControlRuntimeSnapshot | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [usePolicyOwner] = useState(createBrowserUsePolicyOwner);
   const usePolicySnapshot = useSyncExternalStore(
@@ -157,10 +163,22 @@ function BrowserSettingsOverview({
   const [status, setStatus] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
-    void Promise.all([readBrowserProfileCapabilities(), usePolicyOwner.readCanonical()]).then(
-      ([nextCapabilities]) => setCapabilities(nextCapabilities),
-    );
+    void Promise.all([
+      readBrowserProfileCapabilities(),
+      usePolicyOwner.readCanonical(),
+      readChromeControlSettings().catch(() => null),
+    ]).then(([nextCapabilities, _policy, nextChromeControl]) => {
+      setCapabilities(nextCapabilities);
+      setChromeControl(nextChromeControl);
+    });
   }, [open, usePolicyOwner]);
+
+  useEffect(() => {
+    if (!open) return;
+    return window.api?.on("chrome-control-settings-changed", (snapshot) => {
+      if (isChromeControlRuntimeSnapshot(snapshot)) setChromeControl(snapshot);
+    });
+  }, [open]);
 
   useLayoutEffect(() => {
     if (usePolicySnapshot.renderToken === null) return;
@@ -275,6 +293,7 @@ function BrowserSettingsOverview({
       </BrowserOverviewSection>
       <BrowserOverviewSection anchor="extensions" title="Extensions">
         <CapabilityRow label="Extension manager" capability={capabilities.extensions} />
+        <ChromeControlReadiness snapshot={chromeControl} />
         <NodexSettingsRow
           label="Manage extensions"
           description="Load and remove unpacked extensions from the shared Browser Profile."
@@ -318,6 +337,43 @@ function BrowserSettingsOverview({
       {status ? <SettingsStatus>{status}</SettingsStatus> : null}
       <BrowserProfileImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </NodexSettingsPageSurface>
+  );
+}
+
+const CHROME_CONTROL_STATUS_LABELS: Record<ChromeControlRuntimeSnapshot["status"], string> = {
+  "extension-disconnected": "Waiting for extension",
+  faulted: "Needs repair",
+  ready: "Ready",
+  "runtime-unavailable": "Unavailable",
+};
+
+function ChromeControlReadiness({
+  snapshot,
+}: {
+  readonly snapshot: ChromeControlRuntimeSnapshot | null;
+}) {
+  const ready = snapshot?.providerReady === true;
+  const label = snapshot ? CHROME_CONTROL_STATUS_LABELS[snapshot.status] : "Checking…";
+  const description =
+    snapshot?.reason ??
+    (ready
+      ? "Nodex can control tabs in a connected supported browser profile."
+      : "Checking the signed browser-control runtime and extension connection.");
+
+  return (
+    <NodexSettingsRow label="Control existing browsers" description={description}>
+      <span className="inline-flex items-center gap-2 text-sm text-token-text-secondary">
+        <span
+          aria-hidden="true"
+          className={
+            ready
+              ? "size-2 rounded-full bg-[var(--color-icon-success)]"
+              : "size-2 rounded-full bg-token-text-tertiary"
+          }
+        />
+        {label}
+      </span>
+    </NodexSettingsRow>
   );
 }
 

@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type {
-  CodexDesktopMessageFromView,
-  RemoteHostedPipHiddenThreadIdsRequestedMessage,
-  RemoteHostedPipStreamStateChangedMessage,
-} from "../../../../shared/remote-hosted-pip";
+import type { RemoteHostedPipTaskStateSnapshot } from "../../../../shared/remote-hosted-pip";
 import type {
   ThreadStageActions,
   ThreadSummaryPanelComputerUsePipState,
@@ -14,121 +10,83 @@ interface RemoteHostedPipSummaryControl {
   summaryComputerUsePip: ThreadSummaryPanelComputerUsePipState | null;
 }
 
-type ActiveConversationMap = ReadonlyMap<string, boolean>;
-
-function isRemoteHostedPipStreamStateChangedMessage(
-  value: unknown,
-): value is RemoteHostedPipStreamStateChangedMessage {
-  if (typeof value !== "object" || value === null) return false;
-
-  const message = value as Partial<RemoteHostedPipStreamStateChangedMessage>;
-  return (
-    message.type === "remote-hosted-pip-stream-state-changed" &&
-    typeof message.conversationId === "string" &&
-    typeof message.isActive === "boolean" &&
-    typeof message.isAnyActive === "boolean"
-  );
-}
-
-function isRemoteHostedPipHiddenThreadIdsRequestedMessage(
-  value: unknown,
-): value is RemoteHostedPipHiddenThreadIdsRequestedMessage {
-  if (typeof value !== "object" || value === null) return false;
-
-  const message = value as Partial<RemoteHostedPipHiddenThreadIdsRequestedMessage>;
-  return (
-    message.type === "remote-hosted-pip-hidden-thread-ids-requested" &&
-    Array.isArray(message.hiddenThreadIds) &&
-    message.hiddenThreadIds.every((threadId) => typeof threadId === "string")
-  );
-}
-
-function publishRemoteHostedPipMessageFromView(message: CodexDesktopMessageFromView): void {
-  void window.electronBridge?.sendMessageFromView?.(message).catch(() => undefined);
+function selectNewerSnapshot(
+  current: RemoteHostedPipTaskStateSnapshot | null,
+  candidate: RemoteHostedPipTaskStateSnapshot,
+): RemoteHostedPipTaskStateSnapshot {
+  if (!current || candidate.revision > current.revision) return candidate;
+  if (
+    candidate.revision === current.revision &&
+    JSON.stringify(candidate) !== JSON.stringify(current)
+  ) {
+    console.warn("[remote-hosted-pip] conflicting snapshots share one revision", {
+      revision: candidate.revision,
+    });
+  }
+  return current;
 }
 
 export function useRemoteHostedPipSummaryControl(
   activeThreadId: string | null,
 ): RemoteHostedPipSummaryControl {
-  const [hiddenThreadIds, setHiddenThreadIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [activeByConversationId, setActiveByConversationId] = useState<ActiveConversationMap>(
-    () => new Map(),
-  );
+  const [snapshot, setSnapshot] = useState<RemoteHostedPipTaskStateSnapshot | null>(null);
 
   useEffect(() => {
-    publishRemoteHostedPipMessageFromView({
-      type: "remote-hosted-pip-active-thread-changed",
-      conversationId: activeThreadId,
-    });
-
-    return () => {
-      publishRemoteHostedPipMessageFromView({
-        type: "remote-hosted-pip-active-thread-changed",
-        conversationId: null,
-      });
+    let accepting = true;
+    const refresh = async (): Promise<void> => {
+      const next = (await window.api?.invoke("remote-hosted-pip:snapshot").catch(() => null)) as
+        | RemoteHostedPipTaskStateSnapshot
+        | null
+        | undefined;
+      if (!accepting || !next) return;
+      setSnapshot((current) => selectNewerSnapshot(current, next));
     };
-  }, [activeThreadId]);
-
-  useEffect(() => {
-    const unsubscribeStreamState = window.api?.on(
-      "remote-hosted-pip-stream-state-changed",
-      (payload) => {
-        if (!isRemoteHostedPipStreamStateChangedMessage(payload)) return;
-
-        setActiveByConversationId((current) => {
-          const next = new Map(current);
-          if (payload.isActive) {
-            next.set(payload.conversationId, true);
-            return next;
-          }
-
-          next.delete(payload.conversationId);
-          return next;
-        });
-      },
-    );
-
-    const unsubscribeHiddenThreadIds = window.api?.on(
-      "remote-hosted-pip-hidden-thread-ids-requested",
-      (payload) => {
-        if (!isRemoteHostedPipHiddenThreadIdsRequestedMessage(payload)) return;
-        setHiddenThreadIds(new Set(payload.hiddenThreadIds));
-      },
-    );
-
+    void refresh();
+    const unsubscribe = window.api?.on("remote-hosted-pip:revision", (value) => {
+      const event = value as { readonly revision?: unknown };
+      if (!Number.isSafeInteger(event.revision)) return;
+      setSnapshot((current) => {
+        if (current && (event.revision as number) <= current.revision) return current;
+        void refresh();
+        return current;
+      });
+    });
     return () => {
-      unsubscribeStreamState?.();
-      unsubscribeHiddenThreadIds?.();
+      accepting = false;
+      unsubscribe?.();
     };
   }, []);
 
   const summaryComputerUsePip = useMemo<ThreadSummaryPanelComputerUsePipState | null>(() => {
-    if (!activeThreadId) return null;
-    if (activeByConversationId.get(activeThreadId) !== true) return null;
-
-    return { visible: !hiddenThreadIds.has(activeThreadId) };
-  }, [activeByConversationId, activeThreadId, hiddenThreadIds]);
+    if (
+      !activeThreadId ||
+      !snapshot?.taskVisibilityActionAvailable ||
+      !snapshot.activeTaskIds.includes(activeThreadId)
+    ) {
+      return null;
+    }
+    return {
+      visible: !snapshot.alwaysHidden && snapshot.taskVisibilities[activeThreadId] !== "hidden",
+    };
+  }, [activeThreadId, snapshot]);
 
   const onToggleSummaryComputerUsePip = useCallback(
     (nextVisible: boolean) => {
       if (!activeThreadId) return;
-      const nextHiddenThreadIds = new Set(hiddenThreadIds);
-      if (nextVisible) {
-        nextHiddenThreadIds.delete(activeThreadId);
-      } else {
-        nextHiddenThreadIds.add(activeThreadId);
-      }
-      setHiddenThreadIds(nextHiddenThreadIds);
-      publishRemoteHostedPipMessageFromView({
-        type: "remote-hosted-pip-hidden-thread-ids-changed",
-        hiddenThreadIds: [...nextHiddenThreadIds].sort(),
-      });
+      void window.api
+        ?.invoke("remote-hosted-pip:task-visibility:set", {
+          taskId: activeThreadId,
+          visibility: nextVisible ? "shown" : "hidden",
+        })
+        .then((next) =>
+          setSnapshot((current) =>
+            selectNewerSnapshot(current, next as RemoteHostedPipTaskStateSnapshot),
+          ),
+        )
+        .catch(() => undefined);
     },
-    [activeThreadId, hiddenThreadIds],
+    [activeThreadId],
   );
 
-  return {
-    onToggleSummaryComputerUsePip,
-    summaryComputerUsePip,
-  };
+  return { onToggleSummaryComputerUsePip, summaryComputerUsePip };
 }

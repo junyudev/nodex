@@ -1,10 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
+import type { BrowserRuntimeArtifact } from "../../shared/browser-runtime-metadata";
 import type { VerifiedBrowserRuntimeBundle } from "./browser-runtime-bundle";
 
 const MARKETPLACE_NAME = "openai-bundled";
-const MATERIALIZATION_SCHEMA_VERSION = 1;
+const MATERIALIZATION_SCHEMA_VERSION = 2;
 const MATERIALIZATION_KEY_FILENAME = ".materialization-key";
 const COMPUTER_USE_VARIANT_SOURCE = path.join(".codex-plugin", "computer-use-node-repl.md");
 const COMPUTER_USE_SKILL_TARGET = path.join("skills", "computer-use", "SKILL.md");
@@ -20,6 +21,7 @@ type MarketplaceManifest = {
 
 export type MaterializedDesktopToolMarketplace = {
   browserPluginRoot: string;
+  chromePluginRoot: string | null;
   computerUsePluginRoot: string | null;
   materializationKey: string;
   rootPath: string;
@@ -29,6 +31,13 @@ type MaterializeDesktopToolMarketplaceOptions = {
   bundle: VerifiedBrowserRuntimeBundle;
   includeComputerUse: boolean;
   runtimeStateHome: string;
+};
+
+type MaterializedChromeArtifact = Pick<
+  BrowserRuntimeArtifact,
+  "executable" | "kind" | "sha256" | "size"
+> & {
+  relativePath: string;
 };
 
 function parseRecord(value: unknown, label: string): Record<string, unknown> {
@@ -66,8 +75,11 @@ function materializationKey(
   includeComputerUse: boolean,
 ): string {
   const computerUse = bundle.manifest.capabilities.computerUse;
+  const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
   return JSON.stringify({
     browserPluginVersion: bundle.manifest.browserPlugin.version,
+    chromePluginClosure: chromePluginClosure(bundle),
+    chromePluginVersion: chrome.status === "available" ? chrome.plugin.version : null,
     computerUsePluginVersion:
       includeComputerUse && computerUse.status === "available" ? computerUse.plugin.version : null,
     desktopBuild: bundle.manifest.desktopBuild,
@@ -77,9 +89,57 @@ function materializationKey(
   });
 }
 
+function chromePluginClosure(bundle: VerifiedBrowserRuntimeBundle): MaterializedChromeArtifact[] {
+  const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
+  if (chrome.status === "unavailable") return [];
+  const rootPrefix = `${chrome.plugin.root}/`;
+  return bundle.manifest.artifacts
+    .filter((artifact) => artifact.path.startsWith(rootPrefix))
+    .map((artifact) => ({
+      executable: artifact.executable,
+      kind: artifact.kind,
+      relativePath: artifact.path.slice(rootPrefix.length),
+      sha256: artifact.sha256,
+      size: artifact.size,
+    }))
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+}
+
+async function sha256(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function isCurrentChromeClosure(
+  rootPath: string,
+  closure: readonly MaterializedChromeArtifact[],
+): Promise<boolean> {
+  for (const artifact of closure) {
+    const artifactPath = path.join(rootPath, "plugins", "chrome", artifact.relativePath);
+    let stats;
+    try {
+      stats = await fs.lstat(artifactPath);
+    } catch {
+      return false;
+    }
+    if (
+      !stats.isFile() ||
+      stats.isSymbolicLink() ||
+      stats.size !== artifact.size ||
+      (artifact.executable && (stats.mode & 0o111) === 0)
+    ) {
+      return false;
+    }
+    if ((await sha256(artifactPath)) !== artifact.sha256) return false;
+  }
+  return true;
+}
+
 async function isCurrentMaterialization(
   rootPath: string,
   key: string,
+  chromeClosure: readonly MaterializedChromeArtifact[],
   includeComputerUse: boolean,
 ): Promise<boolean> {
   try {
@@ -87,6 +147,9 @@ async function isCurrentMaterialization(
     if (storedKey.trim() !== key) return false;
     await fs.access(path.join(rootPath, ".agents", "plugins", "marketplace.json"));
     await fs.access(path.join(rootPath, "plugins", "browser", ".codex-plugin", "plugin.json"));
+    if (chromeClosure.length > 0 && !(await isCurrentChromeClosure(rootPath, chromeClosure))) {
+      return false;
+    }
     if (!includeComputerUse) return true;
     await fs.access(path.join(rootPath, "plugins", "computer-use", COMPUTER_USE_SKILL_TARGET));
     return true;
@@ -140,9 +203,12 @@ async function materializeFresh(
 ): Promise<MaterializedDesktopToolMarketplace> {
   const { bundle } = options;
   const computerUse = bundle.manifest.capabilities.computerUse;
+  const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
   const includeComputerUse = options.includeComputerUse && computerUse.status === "available";
+  const includeChrome = chrome.status === "available";
   const stagingPath = `${targetPath}.staging-${randomUUID()}`;
   const browserPluginTarget = path.join(stagingPath, "plugins", "browser");
+  const chromePluginTarget = includeChrome ? path.join(stagingPath, "plugins", "chrome") : null;
   const computerUsePluginTarget = includeComputerUse
     ? path.join(stagingPath, "plugins", "computer-use")
     : null;
@@ -153,6 +219,14 @@ async function materializeFresh(
     await fs.cp(bundle.browserPluginRoot, browserPluginTarget, {
       recursive: true,
     });
+    if (chromePluginTarget) {
+      if (!bundle.paths.chromePluginRoot) {
+        throw new Error("Verified Chrome plugin path is unavailable");
+      }
+      await fs.cp(bundle.paths.chromePluginRoot, chromePluginTarget, {
+        recursive: true,
+      });
+    }
     if (computerUsePluginTarget) {
       if (!bundle.paths.computerUsePluginRoot) {
         throw new Error("Verified Computer Use plugin path is unavailable");
@@ -170,9 +244,11 @@ async function materializeFresh(
       "marketplace.json",
     );
     const marketplaceManifest = parseMarketplaceManifest(await readJson(sourceManifestPath));
-    const selectedPluginNames = new Set(
-      includeComputerUse ? ["browser", "computer-use"] : ["browser"],
-    );
+    const selectedPluginNames = new Set([
+      "browser",
+      ...(includeChrome ? ["chrome"] : []),
+      ...(includeComputerUse ? ["computer-use"] : []),
+    ]);
     const plugins = marketplaceManifest.plugins.filter((plugin) =>
       selectedPluginNames.has(plugin.name),
     );
@@ -195,6 +271,7 @@ async function materializeFresh(
 
   return {
     browserPluginRoot: path.join(targetPath, "plugins", "browser"),
+    chromePluginRoot: includeChrome ? path.join(targetPath, "plugins", "chrome") : null,
     computerUsePluginRoot: includeComputerUse
       ? path.join(targetPath, "plugins", "computer-use")
       : null,
@@ -215,10 +292,13 @@ export async function materializeBundledDesktopToolMarketplace(
   const includeComputerUse =
     options.includeComputerUse &&
     options.bundle.manifest.capabilities.computerUse.status === "available";
+  const chromeClosure = chromePluginClosure(options.bundle);
   const key = materializationKey(options.bundle, includeComputerUse);
-  if (await isCurrentMaterialization(targetPath, key, includeComputerUse)) {
+  if (await isCurrentMaterialization(targetPath, key, chromeClosure, includeComputerUse)) {
     return {
       browserPluginRoot: path.join(targetPath, "plugins", "browser"),
+      chromePluginRoot:
+        chromeClosure.length > 0 ? path.join(targetPath, "plugins", "chrome") : null,
       computerUsePluginRoot: includeComputerUse
         ? path.join(targetPath, "plugins", "computer-use")
         : null,

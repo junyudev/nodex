@@ -9,12 +9,14 @@ import * as ComposerAppshotIpc from "../ipc/handlers/ComposerAppshotIpc";
 import * as CodexApplicationIpc from "../ipc/handlers/CodexApplicationIpc";
 import * as CodexRendererIpc from "../ipc/handlers/CodexRendererIpc";
 import * as CodexPermissionsIpc from "../ipc/handlers/CodexPermissionsIpc";
+import * as ChromeControlSettingsIpc from "../ipc/handlers/ChromeControlSettingsIpc";
 import * as ComputerUseSettingsIpc from "../ipc/handlers/ComputerUseSettingsIpc";
 import * as CoreAuthorityIpc from "../ipc/handlers/CoreAuthorityIpc";
 import * as ApplicationLocalStateIpc from "../ipc/handlers/ApplicationLocalStateIpc";
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
+import * as AvatarOverlayIpc from "../ipc/handlers/AvatarOverlayIpc";
 import * as CodexPendingWorktreeIpc from "../ipc/handlers/CodexPendingWorktreeIpc";
 import * as CodexPromptRailIpc from "../ipc/handlers/CodexPromptRailIpc";
 import * as CodexWorkspaceIpc from "../ipc/handlers/CodexWorkspaceIpc";
@@ -47,8 +49,10 @@ const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProject
 /** Electron callback ingress that translates platform events into typed application capabilities. */
 export const live = Layer.mergeAll(
   AppUpdateIpc.live,
+  AvatarOverlayIpc.live,
   SessionPolicyRuntime.live,
   RemoteHostedPipIpc.live,
+  ChromeControlSettingsIpc.live,
   ComputerUseSettingsIpc.live,
   GitWorkerIpc.live,
   DictationIpc.live(),

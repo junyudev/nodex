@@ -1,6 +1,30 @@
 export const REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID = "codex-main-thread";
 export const REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE = "data-pip-anchor-host";
+export const REMOTE_HOSTED_PIP_HOME_SURFACE_ATTRIBUTE = "data-pip-home-surface";
 export const REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE = "data-pip-obstacle";
+
+export type RemoteHostedPipActivitySource = "browser-use" | "computer-use";
+export type RemoteHostedPipTaskVisibility = "hidden" | "shown";
+
+/** Canonical, bounded Main-owned state consumed by every renderer window. */
+export interface RemoteHostedPipTaskStateSnapshot {
+  readonly activeTaskIds: readonly string[];
+  readonly alwaysHidden: boolean;
+  readonly retainedPresentationCount: number;
+  readonly revision: number;
+  /** Main-derived capability; activity alone never promises a working native action. */
+  readonly taskVisibilityActionAvailable: boolean;
+  readonly taskVisibilities: Readonly<Record<string, RemoteHostedPipTaskVisibility>>;
+}
+
+export interface RemoteHostedPipRevisionEvent {
+  readonly revision: number;
+}
+
+export interface RemoteHostedPipTaskVisibilityInput {
+  readonly taskId: string;
+  readonly visibility: RemoteHostedPipTaskVisibility;
+}
 
 export type RemoteHostedPipPresentationScope = "thread" | "all";
 export type RemoteHostedPipAnchorAlignment =
@@ -26,56 +50,32 @@ export interface RemoteHostedPipAnchor {
   point: RemoteHostedPipPoint;
 }
 
+export interface RemoteHostedPipAnimationSpring {
+  damping: number;
+  initialVelocity: number;
+  mass: number;
+  stiffness: number;
+}
+
 export interface RemoteHostedPipHostLayout {
   anchors: RemoteHostedPipAnchor[] | null;
   anchorRect: RemoteHostedPipViewportRect | null;
   animated: boolean;
+  animationSpring?: RemoteHostedPipAnimationSpring;
   hostId: string;
+  interactionPassthroughRect?: RemoteHostedPipViewportRect | null;
+  isCodexHomeAvailable?: boolean;
   presentationScope: RemoteHostedPipPresentationScope;
 }
 
 export interface RemoteHostedPipHostLayoutInput {
+  homeSurfaceRect?: RemoteHostedPipViewportRect | null;
   hostId?: string;
   hostRect: RemoteHostedPipViewportRect;
+  isCodexHomeAvailable?: boolean;
   obstacleRects: RemoteHostedPipViewportRect[];
   presentationScope?: RemoteHostedPipPresentationScope;
 }
-
-export interface RemoteHostedPipHostLayoutChangedMessage {
-  type: "remote-hosted-pip-host-layout-changed";
-  layout: RemoteHostedPipHostLayout;
-}
-
-export interface RemoteHostedPipActiveThreadChangedMessage {
-  type: "remote-hosted-pip-active-thread-changed";
-  conversationId: string | null;
-}
-
-export interface RemoteHostedPipHiddenThreadIdsChangedMessage {
-  type: "remote-hosted-pip-hidden-thread-ids-changed";
-  hiddenThreadIds: string[];
-}
-
-export interface RemoteHostedPipStreamStateChangedMessage {
-  type: "remote-hosted-pip-stream-state-changed";
-  conversationId: string;
-  isActive: boolean;
-  isAnyActive: boolean;
-}
-
-export interface RemoteHostedPipHiddenThreadIdsRequestedMessage {
-  type: "remote-hosted-pip-hidden-thread-ids-requested";
-  hiddenThreadIds: string[];
-}
-
-export type CodexDesktopMessageFromView =
-  | RemoteHostedPipActiveThreadChangedMessage
-  | RemoteHostedPipHostLayoutChangedMessage
-  | RemoteHostedPipHiddenThreadIdsChangedMessage;
-
-export type CodexDesktopMessageForView =
-  | RemoteHostedPipStreamStateChangedMessage
-  | RemoteHostedPipHiddenThreadIdsRequestedMessage;
 
 interface RemoteHostedPipRelativeRect {
   bottom: number;
@@ -121,25 +121,40 @@ export function buildRemoteHostedPipHiddenHostLayout({
     anchorRect: null,
     animated: false,
     hostId,
+    interactionPassthroughRect: null,
+    isCodexHomeAvailable: false,
     presentationScope,
   };
 }
 
 export function buildRemoteHostedPipHostLayout({
+  homeSurfaceRect = null,
   hostId = REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
   hostRect,
+  isCodexHomeAvailable = false,
   obstacleRects,
   presentationScope = "thread",
 }: RemoteHostedPipHostLayoutInput): RemoteHostedPipHostLayout {
   const paddedObstacleRects = obstacleRects.map((rect) => buildPaddedObstacleRect(hostRect, rect));
+  const homeTopRightRect =
+    isCodexHomeAvailable && homeSurfaceRect !== null
+      ? buildHomeTopRightContentRect(hostRect, homeSurfaceRect)
+      : null;
 
   return {
     anchorRect: hostRect,
     anchors: REMOTE_HOSTED_PIP_ANCHOR_ALIGNMENTS.map((alignment) =>
-      buildRemoteHostedPipAnchor(alignment, hostRect, paddedObstacleRects),
+      buildRemoteHostedPipAnchor(
+        alignment,
+        hostRect,
+        paddedObstacleRects,
+        alignment === "top-right" ? homeTopRightRect : null,
+      ),
     ),
     animated: false,
     hostId,
+    interactionPassthroughRect: null,
+    isCodexHomeAvailable,
     presentationScope,
   };
 }
@@ -151,6 +166,7 @@ export function serializeRemoteHostedPipHostLayoutIdentity(
     anchors: layout.anchors,
     anchorRect: layout.anchorRect,
     hostId: layout.hostId,
+    isCodexHomeAvailable: layout.isCodexHomeAvailable,
     presentationScope: layout.presentationScope,
   });
 }
@@ -159,8 +175,12 @@ function buildRemoteHostedPipAnchor(
   alignment: RemoteHostedPipAnchorAlignment,
   hostRect: RemoteHostedPipViewportRect,
   obstacleRects: RemoteHostedPipRelativeRect[],
+  preferredSourceRect: RemoteHostedPipRelativeRect | null,
 ): RemoteHostedPipAnchor {
-  const sourceRect = getDefaultAnchorContentRect(alignment, hostRect);
+  const sourceRect = clampRelativeRectToHost(
+    preferredSourceRect ?? getDefaultAnchorContentRect(alignment, hostRect),
+    hostRect,
+  );
   let currentRect = sourceRect;
 
   for (let index = 0; index < REMOTE_HOSTED_PIP_MAX_ADJUSTMENTS; index += 1) {
@@ -181,6 +201,20 @@ function buildRemoteHostedPipAnchor(
     alignment,
     point: getAnchorPoint(alignment, hostRect, currentRect),
   };
+}
+
+function buildHomeTopRightContentRect(
+  hostRect: RemoteHostedPipViewportRect,
+  homeSurfaceRect: RemoteHostedPipViewportRect,
+): RemoteHostedPipRelativeRect {
+  const homeRight = homeSurfaceRect.x - hostRect.x + homeSurfaceRect.width;
+  const homeBottom = homeSurfaceRect.y - hostRect.y + homeSurfaceRect.height;
+
+  return createRelativeRect(
+    homeRight - REMOTE_HOSTED_PIP_DEFAULT_CONTENT_RECT.width,
+    homeBottom + REMOTE_HOSTED_PIP_OBSTACLE_MARGIN_PX,
+    REMOTE_HOSTED_PIP_DEFAULT_CONTENT_RECT,
+  );
 }
 
 function getDefaultAnchorContentRect(

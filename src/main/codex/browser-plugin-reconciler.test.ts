@@ -54,7 +54,7 @@ function makeRuntime() {
 function plugin(input: {
   enabled: boolean;
   installed: boolean;
-  name?: "browser" | "computer-use";
+  name?: "browser" | "chrome" | "computer-use";
   version: string;
 }) {
   const name = input.name ?? "browser";
@@ -106,6 +106,11 @@ describe("BrowserPluginReconciler", () => {
           runtimeStateHome: fixture.runtimeStateHome,
         });
         expect(yield* reconciler.ensureInstalled).toEqual({
+          chrome: {
+            message: "Chrome provider backend is unavailable",
+            reason: "backend-unavailable",
+            status: "unavailable",
+          },
           computerUse: {
             message: "Computer Use runtime capability is unavailable",
             reason: "capability-unavailable",
@@ -479,6 +484,11 @@ describe("BrowserPluginReconciler", () => {
 
         availableBackends = ["iab"];
         expect(yield* reconciler.ensureInstalled).toEqual({
+          chrome: {
+            message: "Chrome provider backend is unavailable",
+            reason: "backend-unavailable",
+            status: "unavailable",
+          },
           computerUse: {
             message: "Computer Use runtime capability is unavailable",
             reason: "capability-unavailable",
@@ -499,5 +509,109 @@ describe("BrowserPluginReconciler", () => {
         fs.rmSync(fixture.root, { force: true, recursive: true });
       }
     }),
+  );
+
+  it.effect(
+    "installs Chrome only while its live backend is available and leaves Browser installed",
+    () =>
+      Effect.gen(function* () {
+        const fixture = makeRuntime();
+        let availableBackends: Array<"chrome" | "iab"> = ["iab"];
+        const installed = new Set<string>();
+        const request = vi.fn(async (method: string, params?: unknown) => {
+          if (method === "plugin/list") {
+            return {
+              featuredPluginIds: [],
+              marketplaceLoadErrors: [],
+              marketplaces: [
+                {
+                  interface: null,
+                  name: "openai-bundled",
+                  path: fixture.marketplaceRoot,
+                  plugins: [
+                    plugin({
+                      enabled: installed.has("browser"),
+                      installed: installed.has("browser"),
+                      version: "1.0.0-test",
+                    }),
+                    plugin({
+                      enabled: installed.has("chrome"),
+                      installed: installed.has("chrome"),
+                      name: "chrome",
+                      version: "1.0.0-test",
+                    }),
+                  ],
+                },
+              ],
+            };
+          }
+          if (method === "plugin/install") {
+            installed.add((params as { pluginName: string }).pluginName);
+            return { appsNeedingAuth: [], authPolicy: "ON_INSTALL" };
+          }
+          if (method === "plugin/uninstall") {
+            const pluginId = (params as { pluginId: string }).pluginId;
+            installed.delete(pluginId.split("@")[0]!);
+            return {};
+          }
+          if (method === "skills/list") return { data: [] };
+          throw new Error(`Unexpected request: ${method}`);
+        });
+
+        try {
+          const reconciler = yield* makeTestBrowserPluginReconciler({
+            availableBackends: () => availableBackends,
+            browserRuntime: fixture.browserRuntime,
+            client: { request },
+            runtimeStateHome: fixture.runtimeStateHome,
+          });
+
+          expect(yield* reconciler.ensureInstalled).toMatchObject({
+            chrome: {
+              reason: "backend-unavailable",
+              status: "unavailable",
+            },
+            enabled: true,
+            status: "ready",
+          });
+          expect(installed).toEqual(new Set(["browser"]));
+
+          availableBackends = ["iab", "chrome"];
+          expect(yield* reconciler.ensureInstalled).toMatchObject({
+            chrome: {
+              enabled: true,
+              installedVersion: "1.0.0-test",
+              pluginRoot: path.join(fixture.marketplaceRoot, "plugins", "chrome"),
+              status: "ready",
+            },
+            enabled: true,
+            status: "ready",
+          });
+          expect(installed).toEqual(new Set(["browser", "chrome"]));
+
+          availableBackends = ["iab"];
+          expect(yield* reconciler.ensureInstalled).toMatchObject({
+            chrome: {
+              reason: "backend-unavailable",
+              status: "unavailable",
+            },
+            enabled: true,
+            status: "ready",
+          });
+          expect(installed).toEqual(new Set(["browser"]));
+          expect(
+            request.mock.calls
+              .filter(([method]) => method === "plugin/install")
+              .map(([, params]) => (params as { pluginName: string }).pluginName),
+          ).toEqual(["browser", "chrome"]);
+          expect(
+            request.mock.calls
+              .filter(([method]) => method === "plugin/uninstall")
+              .map(([, params]) => (params as { pluginId: string }).pluginId),
+          ).toEqual(["chrome@openai-bundled"]);
+        } finally {
+          fs.rmSync(fixture.root, { force: true, recursive: true });
+        }
+      }),
   );
 });

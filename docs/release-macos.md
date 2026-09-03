@@ -494,14 +494,17 @@ It must never become the app Latest release. Publish it only through:
 vp run browser-runtime:publish -- \
   --repo junyudev/nodex \
   --tag browser-runtime-v<build> \
+  --lock <reviewed-candidate-lock.json> \
   --arm64 <arm64-archive> \
   --x64 <x64-archive>
 ```
 
-That Interface validates both archives, invokes `gh release create` with
-`--verify-tag --latest=false`, and asserts Latest is unchanged. Create and push
-the runtime tag at an exact reviewed Nodex source commit first; do not use a
-bare `gh release create` for runtime releases.
+That Interface requires the reviewed release lock, proves both archives' names,
+sizes, hashes, manifests, target architectures, and complete artifact closures,
+then creates or resumes an exact draft, uploads only missing assets, publishes
+only after creating against `--verify-tag`, forces `--latest=false`, and asserts
+Latest is unchanged. Create and push the runtime tag at an exact reviewed Nodex
+source commit first; do not use a bare `gh release create` for runtime releases.
 
 The primary Agent runtime's canonical lock binds the official Codex tag and
 peeled source commit, official checksum manifest, dual-architecture

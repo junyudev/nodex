@@ -147,8 +147,11 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   Bundle source SHA. The App Team ID is pinned to `8HGUT3HC4Z`, and appcast XML
   enclosure URLs, sizes, signatures, versions, and delta sources must exactly
   match each architecture update manifest.
-- Browser runtime publishing forces `--latest=false` and verifies that the
-  stable app Latest tag remains unchanged.
+- Browser runtime publishing requires a reviewed release lock, proves both
+  architecture archives' names, sizes, digests, manifests, target identities,
+  and complete artifact closures before upload, resumes only drafts whose
+  existing assets exactly match that lock, forces `--latest=false`, and verifies
+  that the stable app Latest tag remains unchanged.
 
 ### Application and runtime controls
 
@@ -316,7 +319,40 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   than applying the Nodex identity to nested Codex, Node, native addons, or
   Computer Use artifacts. Verification binds every declared artifact and checks
   the Browser peer authorizer and Computer Use helper against their manifest
-  signing teams, not the outer app's team.
+  signing teams, not the outer app's team. The native PiP and Computer Use
+  Platforms accept only the verified absolute addon path and require its actual
+  complete export set to equal the sorted manifest contract before exposing any
+  capability; ambient resource, generated-output, or home-directory candidates
+  are never searched. Native callbacks and window/service registrations are
+  scoped and removed before the verified closure is released. The materialized
+  local marketplace preserves Browser and Chrome as distinct descriptors even
+  though they share the attested Browser client/service. Chrome copies only the
+  manifest-selected plugin root and revalidates every declared closure artifact
+  before reuse; current provider availability separately controls whether that
+  descriptor is installed, and disconnect removes Chrome without removing
+  Browser.
+- Chrome native messaging installs only the declared host for one of the
+  attested browser families and extension IDs. Installation writes the signed
+  host plus its bounded versioned registry atomically, preserves unrelated
+  registry owners, and refuses malformed or unsafe existing registry files.
+  The extension reverse-pipe directory may be current-user private or
+  current-user-owned sticky shared storage; every candidate must still be a
+  non-symlink Unix socket owned by the current user with no group/world write
+  permission, then match the exact attested native-host signing team and
+  identifier. The pipe rejects frames above 8 MiB, malformed host-endian
+  lengths, and a different extension instance from the one selected for an
+  operation. PiP click focus resolves a live Main-owned descriptor before
+  targeting the exact instance, session, and numeric tab within one total
+  deadline; family-level fallback is not an authorization path.
+- Remote Hosted PiP renderer IPC is limited to trusted primary windows owned by
+  `WindowRuntime`. Renderers can query a bounded revisioned snapshot, submit one
+  task-visibility intent, and report finite bounded geometry; they cannot write
+  active-task truth, replace the complete visibility map, register native
+  callbacks, or address auxiliary windows. Browser screenshot data remains in
+  Main/native boundaries and must pass raster MIME, canonical base64, header,
+  dimension, pixel, and process/thread/session retention budgets before native
+  decode. Control-surface diagnostics contain no screenshot, URL, prompt,
+  title, or raw extension payload.
 - Computer Use is fail-closed and architecture-gated. On supported Apple
   silicon macOS, Main copies the verified helper with `ditto --noqtn` into a
   canonical Codex-home location, verifies its deep strict signature, bundle ID,

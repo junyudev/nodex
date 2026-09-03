@@ -494,9 +494,10 @@ import type {
   CodexPendingWorktreesChangedEvent,
 } from "./codex-pending-worktree";
 import type {
-  CodexDesktopMessageFromView,
-  RemoteHostedPipHiddenThreadIdsRequestedMessage,
-  RemoteHostedPipStreamStateChangedMessage,
+  RemoteHostedPipHostLayout,
+  RemoteHostedPipRevisionEvent,
+  RemoteHostedPipTaskStateSnapshot,
+  RemoteHostedPipTaskVisibilityInput,
 } from "./remote-hosted-pip";
 import type {
   WindowSessionBootstrap,
@@ -576,6 +577,7 @@ import type {
   BrowserUsePolicySnapshot,
 } from "./browser-use-policy";
 import type { ComputerUseSettingsSnapshot, ComputerUseSoundMode } from "./computer-use-settings";
+import type { ChromeControlRuntimeSnapshot } from "./chrome-control-settings";
 import type {
   FeedbackUploadParams,
   FeedbackUploadResponse,
@@ -695,6 +697,20 @@ export interface RendererDiagnosticsLogInput {
 }
 
 export interface IpcApi {
+  "avatar-overlay:event": {
+    args: [event: import("./avatar-overlay").AvatarOverlayRendererEvent];
+    result: boolean;
+  };
+  "avatar-overlay:toggle": { args: []; result: boolean };
+  "remote-hosted-pip:host-layout:report": {
+    args: [layout: RemoteHostedPipHostLayout | null];
+    result: boolean;
+  };
+  "remote-hosted-pip:snapshot": { args: []; result: RemoteHostedPipTaskStateSnapshot };
+  "remote-hosted-pip:task-visibility:set": {
+    args: [input: RemoteHostedPipTaskVisibilityInput];
+    result: RemoteHostedPipTaskStateSnapshot;
+  };
   "app:runtime-capabilities:get": {
     args: [];
     result: AppRuntimeCapabilities;
@@ -921,10 +937,6 @@ export interface IpcApi {
   };
   "diagnostics:renderer-log": {
     args: [input: RendererDiagnosticsLogInput];
-    result: void;
-  };
-  "codex-desktop:message-from-view": {
-    args: [message: CodexDesktopMessageFromView];
     result: void;
   };
   "persisted-atom:sync-request": { args: []; result: PersistedAtomSnapshot };
@@ -1575,6 +1587,10 @@ export interface IpcApi {
   "computer-use-settings-get": {
     args: [];
     result: ComputerUseSettingsSnapshot;
+  };
+  "chrome-control-settings-get": {
+    args: [];
+    result: ChromeControlRuntimeSnapshot;
   };
   "computer-use-settings-remove-app-approval": {
     args: [bundleIdentifier: string];
@@ -2560,8 +2576,8 @@ export interface IpcEvents {
   "browser-annotation-selection": BrowserAnnotationRoutedSelectionEvent;
   "browser-annotation-anchor-update": BrowserAnnotationRoutedAnchorUpdateEvent;
   "browser-local-server-preferences-changed": BrowserLocalServerPreferences;
-  "remote-hosted-pip-stream-state-changed": RemoteHostedPipStreamStateChangedMessage;
-  "remote-hosted-pip-hidden-thread-ids-requested": RemoteHostedPipHiddenThreadIdsRequestedMessage;
+  "remote-hosted-pip:revision": RemoteHostedPipRevisionEvent;
+  "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
   "desktop-notification:action": DesktopNotificationActionInvocation;
   "electron-window:focus-changed": { isFocused: boolean };
   "electron-window-opaque-surface-changed": {

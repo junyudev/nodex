@@ -2582,10 +2582,103 @@ it.effect("reconciles a durable delete closure by operation id after the root is
         processedCount: 2,
         unresolvedCount: 0,
         complete: true,
+        settledThreadIds: ["deleted-root", "deleted-child"],
       });
       assert.deepEqual(readThreadIds, ["deleted-root", "deleted-child"]);
       assert.deepEqual(locallyDeletedThreadIds, ["deleted-child"]);
       assert.strictEqual(rootResolveCount, 0);
+    }),
+  ),
+);
+
+it.effect("returns the complete durable archive cohort after settlement", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      let settled = false;
+      const archiveCapability = {
+        ...capability,
+        flags: { ...capability.flags, subagentAncestorFilter: true },
+      };
+      const lifecycle = (includeSettled = false): Lifecycle =>
+        ({
+          universe: {
+            host_id: "remote-a",
+            source_epoch: "remote-a:codex-app-server/0.150.0-alpha.12",
+            generation: 7,
+            root_thread_id: "archived-root",
+          },
+          lifecycle_operation_id: "archive-operation-a",
+          action: "archive",
+          members: {
+            items:
+              settled && !includeSettled
+                ? []
+                : ["archived-root", "archived-child"].map((threadId) => ({
+                    thread_id: threadId,
+                    outcome: settled ? ("settled" as const) : ("pending" as const),
+                    attempt_count: settled ? 1 : 0,
+                    last_reason: null,
+                    observed_at_ms: settled ? 10 : null,
+                  })),
+            next_cursor: null,
+            authority: { projection_revision: settled ? 5 : 4 },
+          },
+          expected_count: 2,
+          processed_count: settled ? 2 : 0,
+          unresolved_count: settled ? 0 : 2,
+          complete: settled,
+          projection_revision: settled ? 5 : 4,
+        }) as unknown as Lifecycle;
+      const read: CoreModuleClients["workspace"]["read"] = (input) => {
+        if (input.kind !== "subagent_lifecycle_batch") {
+          return assert.fail(`Unexpected read ${input.kind}`) as never;
+        }
+        return Effect.succeed({
+          commit_head: settled ? 5 : 4,
+          value: {
+            kind: "subagent_lifecycle_batch",
+            lifecycle: lifecycle(input.include_settled),
+          },
+        } as unknown as ProjectWorkspaceReadSnapshot);
+      };
+      const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
+        Effect.sync(() => {
+          if (input.intent.kind !== "observe_subagent_lifecycle_outcomes") {
+            return assert.fail(`Unexpected intent ${input.intent.kind}`) as never;
+          }
+          assert.deepEqual(
+            input.intent.observations.map((observation) => observation.thread_id),
+            ["archived-root", "archived-child"],
+          );
+          settled = true;
+          return {} as never;
+        });
+      const requestOnHost = ((hostId: string, method: string) => {
+        assert.strictEqual(hostId, "remote-a");
+        assert.strictEqual(method, "thread/list");
+        return Effect.succeed({
+          data: [{ id: "archived-child" }],
+          nextCursor: null,
+        } as never);
+      }) as unknown as RequestOnHost;
+      const service = yield* buildDirectory({
+        capability: archiveCapability,
+        read,
+        apply,
+        requestOnHost,
+      });
+
+      const result = yield* service.reconcileLifecycle({ operationId: "archive-operation-a" });
+
+      assert.deepEqual(result, {
+        operationId: "archive-operation-a",
+        action: "archive",
+        expectedCount: 2,
+        processedCount: 2,
+        unresolvedCount: 0,
+        complete: true,
+        settledThreadIds: ["archived-root", "archived-child"],
+      });
     }),
   ),
 );
@@ -2697,6 +2790,7 @@ it.effect("cleans the complete durable delete cohort across reconciliation round
       });
 
       assert.isFalse(partial.complete);
+      assert.deepEqual(partial.settledThreadIds, []);
       assert.strictEqual(outcomes.get("deleted-child-a"), "settled");
       assert.strictEqual(outcomes.get("deleted-child-b"), "unresolved");
       assert.deepEqual(locallyDeletedThreadIds, []);
@@ -2709,6 +2803,11 @@ it.effect("cleans the complete durable delete cohort across reconciliation round
       });
 
       assert.isTrue(complete.complete);
+      assert.deepEqual(complete.settledThreadIds, [
+        "deleted-root",
+        "deleted-child-a",
+        "deleted-child-b",
+      ]);
       assert.deepEqual(locallyDeletedThreadIds.sort(), ["deleted-child-a", "deleted-child-b"]);
     }),
   ),
@@ -2842,6 +2941,11 @@ it.effect(
         });
 
         assert.isTrue(recovered.complete);
+        assert.deepEqual(recovered.settledThreadIds, [
+          "deleted-root",
+          "deleted-child-a",
+          "deleted-child-b",
+        ]);
         assert.deepEqual([...locallyDeletedThreadIds].sort(), [
           "deleted-child-a",
           "deleted-child-b",

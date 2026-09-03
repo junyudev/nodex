@@ -41,6 +41,7 @@ import {
 } from "../../shared/types";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
+import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexActiveGoalContinuation } from "./CodexActiveGoalContinuation";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
@@ -141,6 +142,7 @@ export const make: Effect.Effect<
   | CodexUserInputAutoResolution
   | ConversationEntityMap
   | BrowserUseRuntime
+  | RemoteHostedPipRuntime
 > = Effect.gen(function* () {
   const activeGoalContinuation = yield* CodexActiveGoalContinuation;
   const events = yield* CodexApplicationEventHub;
@@ -159,6 +161,7 @@ export const make: Effect.Effect<
   const autoResolution = yield* CodexUserInputAutoResolution;
   const conversations = yield* ConversationEntityMap;
   const browserUse = yield* BrowserUseRuntime;
+  const remoteHostedPip = yield* RemoteHostedPipRuntime;
   const terminalInputBuffers = new CodexTerminalInteractionAccumulator();
 
   const logFailure = (method: string, threadId: string, cause: unknown): Effect.Effect<void> =>
@@ -479,6 +482,9 @@ export const make: Effect.Effect<
     const hasTerminalQueueRecoveryEffect =
       committed?.effects.some((effect) => effect.type === "restoreUnacceptedSteers") ?? false;
     if (committed) yield* consumeReducerEffects(threadId, ownerRouted, committed.effects);
+    if (notification.method === "item/started" || notification.method === "item/completed") {
+      yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
+    }
     if (committed?.stateChanged && !ownerRouted) {
       const after = aggregate?.readCanonicalState();
       for (const [turnIndex, turn] of after?.turns.entries() ?? []) {
@@ -508,6 +514,9 @@ export const make: Effect.Effect<
         },
       });
     }
+    if (notification.method === "thread/closed") {
+      yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
+    }
     const durableNotification = isCodexThreadDurableProjectionNotification(notification);
     if (!durableNotification) {
       yield* subagents.observeNotification({
@@ -524,6 +533,7 @@ export const make: Effect.Effect<
     }
     if (notification.method === "turn/completed") {
       yield* browserUse.turnEnded({ sessionId: threadId, turnId: notification.params.turn.id });
+      yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
       yield* automation.complete(threadId, notification.params.turn);
       yield* publishTurnCompleted(threadId, notification.params.turn);
       if (notification.params.turn.status === "interrupted") {
@@ -573,6 +583,7 @@ export const make: Effect.Effect<
       );
       terminalInputBuffers.clearConversation(threadId);
       yield* durable.pipe(Effect.ensuring(lifecycle.close(threadId, reason)));
+      yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
       yield* subagents.observeNotification({
         hostId: input.hostId,
         generation: input.generation,

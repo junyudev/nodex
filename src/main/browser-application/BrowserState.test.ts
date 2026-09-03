@@ -600,6 +600,34 @@ describe("BrowserState semantic capability", () => {
     }),
   );
 
+  it.effect("scopes presented Browser Use surfaces to their exact Electron owner", () =>
+    Effect.gen(function* () {
+      const { state } = yield* makeFixture();
+      yield* registerTab(state);
+      state.registerAttachedWebviewOwnership(7, 101, identity, "browser:durable");
+      yield* hostCreated(state, 7);
+      yield* state.handleCommand({
+        type: "browser-use-upsert-tab",
+        tab: {
+          ...identity,
+          codexSessionId: "thread-1",
+          projectId: "project-1",
+          title: "Browser",
+          url: "https://example.com",
+          webContentsId: 101,
+          viewport: { width: 1280, height: 720, zoomPercent: 100, presetId: "browser-use" },
+          captureActive: true,
+          released: false,
+          updatedAt: 1,
+        },
+      });
+
+      assert.isTrue(state.hasPresentedBrowserUseSurfaceForThread("thread-1", 7));
+      assert.isFalse(state.hasPresentedBrowserUseSurfaceForThread("thread-1", 8));
+      assert.isTrue(state.hasPresentedBrowserUseSurfaceForThread("thread-1"));
+    }),
+  );
+
   it.effect("releases physical guest listeners with the owning Scope", () =>
     Effect.gen(function* () {
       const parent = yield* Scope.Scope;

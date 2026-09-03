@@ -52,4 +52,16 @@ describe("Browser and app-server compatibility", () => {
 
     expect(projectBundledAppServerRuntimeIdentity(metadata)).toEqual(pair.appServer);
   });
+
+  test("admits the conformance-tested latest Browser peer on both macOS architectures", () => {
+    const latestPairs = TESTED_BROWSER_APP_SERVER_PAIRS.filter(
+      (pair) => pair.browser.browserPluginVersion === "26.901.20858",
+    );
+
+    expect(latestPairs.map((pair) => pair.browser.targetArch).sort()).toEqual(["arm64", "x64"]);
+    for (const pair of latestPairs) {
+      expect(pair.browser.peerCliVersion).toBe("0.153.0-alpha.5");
+      expect(isTestedBrowserAppServerPair(pair.appServer, pair.browser)).toBe(true);
+    }
+  });
 });

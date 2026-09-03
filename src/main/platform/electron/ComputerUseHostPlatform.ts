@@ -322,8 +322,14 @@ function isLiveProcess(pid: number): boolean {
 }
 
 export interface ComputerUseHostPlatformOptions {
+  readonly loadAddon?: (
+    verifiedAddonPath: string,
+    verifiedExports: readonly string[],
+  ) => SkyNativeAddon | null;
   readonly macOSRelease?: string;
   readonly platform: NodeJS.Platform;
+  readonly verifiedSkyNativeAddonPath: string | null;
+  readonly verifiedSkyNativeExports?: readonly string[] | null;
 }
 
 export function makeComputerUseHostPlatform(
@@ -342,7 +348,13 @@ export function makeComputerUseHostPlatform(
         }),
       }).pipe(Effect.mapError((cause) => platformError("native-pipe.acquire", cause))),
     isProcessAlive: isLiveProcess,
-    loadAddon: Effect.sync(() => loadSkyNativeAddon()),
+    loadAddon: Effect.sync(() => {
+      if (!options.verifiedSkyNativeAddonPath || !options.verifiedSkyNativeExports) return null;
+      return (options.loadAddon ?? loadSkyNativeAddon)(
+        options.verifiedSkyNativeAddonPath,
+        options.verifiedSkyNativeExports,
+      );
+    }),
     macOSRelease: options.macOSRelease ?? process.getSystemVersion?.() ?? "0",
     materializeApp: (input) => new ComputerUseAppMaterializer(input).materialize(),
     platform: options.platform,

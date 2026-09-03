@@ -9,6 +9,10 @@ import {
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import {
+  RemoteHostedPipRuntime,
+  type RemoteHostedPipCodexLifecycleSettlement,
+} from "../host-runtime/RemoteHostedPipRuntime";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import {
@@ -85,11 +89,15 @@ const makeArchive = (input: {
   readonly archivedMessages?: unknown[];
   readonly historyPages?: CodexHistoryPageAdapter["Service"];
   readonly localTranscript?: readonly CodexTranscriptEntry[];
+  readonly pipSettlements?: RemoteHostedPipCodexLifecycleSettlement[];
+  readonly settledThreadIds?: readonly string[];
   readonly reconcileComplete?: boolean;
   readonly reconcileFailure?: unknown;
   readonly reconciledOperationIds?: string[];
   readonly archiveTransportFailure?: unknown;
   readonly deleteTransportFailure?: unknown;
+  readonly archivePersistenceFailure?: unknown;
+  readonly deletePersistenceFailure?: unknown;
 }) => {
   const unsupported = () => Effect.die(new Error("unused"));
   const gateway = CodexGateway.of({
@@ -151,6 +159,17 @@ const makeArchive = (input: {
     ),
     Effect.provideService(CodexGateway, gateway),
     Effect.provideService(
+      RemoteHostedPipRuntime,
+      RemoteHostedPipRuntime.of({
+        retireCodexThreads: (settlement: RemoteHostedPipCodexLifecycleSettlement) =>
+          Effect.sync(() => {
+            if (!input.pipSettlements) return;
+            input.pipSettlements.push(settlement);
+            input.events.push(`pip:${settlement.action}:${settlement.threadIds.join(",")}`);
+          }),
+      } as unknown as RemoteHostedPipRuntime["Service"]),
+    ),
+    Effect.provideService(
       CodexHistoryPageAdapter,
       input.historyPages ??
         CodexHistoryPageAdapter.of({
@@ -197,6 +216,7 @@ const makeArchive = (input: {
             processedCount: complete ? 1 : 0,
             unresolvedCount: complete ? 0 : 1,
             complete,
+            settledThreadIds: complete ? (input.settledThreadIds ?? [current.threadId]) : [],
           });
         },
         releaseLifecycleQuarantine: (_rootThreadId: string, action: "archive" | "delete") => {
@@ -235,15 +255,21 @@ const makeArchive = (input: {
           projects: [],
         }),
         setThreadArchived: () =>
-          Effect.sync(() => {
-            input.events.push("core:archive");
-            return { threads: [] };
-          }),
+          Effect.sync(() => input.events.push("core:archive")).pipe(
+            Effect.andThen(
+              input.archivePersistenceFailure
+                ? Effect.fail(input.archivePersistenceFailure as never)
+                : Effect.succeed({ threads: [] }),
+            ),
+          ),
         deleteThread: () =>
-          Effect.sync(() => {
-            input.events.push("core:delete");
-            return { threads: [] };
-          }),
+          Effect.sync(() => input.events.push("core:delete")).pipe(
+            Effect.andThen(
+              input.deletePersistenceFailure
+                ? Effect.fail(input.deletePersistenceFailure as never)
+                : Effect.succeed({ threads: [] }),
+            ),
+          ),
       } as never),
     ),
   );
@@ -295,6 +321,60 @@ it.effect("writes a shared worktree replacement owner before archiving the Threa
     assert.isTrue(yield* archive.archive("thread-a"));
     assert.deepEqual(events, [
       "owner:thread-b",
+      "gateway:thread/archive",
+      "release-quarantine:archive",
+      "revoke",
+      "core:archive",
+    ]);
+  }),
+);
+
+it.effect("retires the exact deferred archive cohort after durable persistence", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      pipSettlements,
+      settledThreadIds: ["thread-a", "thread-child"],
+    });
+
+    assert.isTrue(yield* archive.archive("thread-a"));
+    assert.deepEqual(pipSettlements, [
+      { action: "archive", threadIds: ["thread-a", "thread-child"] },
+    ]);
+    assert.deepEqual(events, [
+      "gateway:thread/archive",
+      "release-quarantine:archive",
+      "revoke",
+      "core:archive",
+      "pip:archive:thread-a,thread-child",
+    ]);
+  }),
+);
+
+it.effect("does not retire deferred archive PiP before durable persistence succeeds", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      pipSettlements,
+      settledThreadIds: ["thread-a", "thread-child"],
+      archivePersistenceFailure: new Error("archive persistence failed"),
+    });
+
+    const exit = yield* Effect.exit(archive.archive("thread-a"));
+
+    assert.isTrue(exit._tag === "Failure");
+    assert.deepEqual(pipSettlements, []);
+    assert.deepEqual(events, [
       "gateway:thread/archive",
       "release-quarantine:archive",
       "revoke",
@@ -526,10 +606,11 @@ it.effect("keeps delete recovery quarantined when transport fails after partial 
   }),
 );
 
-it.effect("uses durable postconditions rather than a delete request error as authority", () =>
+it.effect("retires the exact deferred delete cohort after durable postconditions", () =>
   Effect.gen(function* () {
     const events: string[] = [];
     const reconciledOperationIds: string[] = [];
+    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
     const currentThread = thread({
       archived: true,
       cwd: "/repo",
@@ -541,6 +622,8 @@ it.effect("uses durable postconditions rather than a delete request error as aut
       lifecycleConsumers: [currentThread],
       reconcileComplete: true,
       reconciledOperationIds,
+      pipSettlements,
+      settledThreadIds: ["thread-a", "thread-child"],
       deleteTransportFailure: lifecycleRequestFailure(
         "thread/delete",
         -32_601,
@@ -550,6 +633,41 @@ it.effect("uses durable postconditions rather than a delete request error as aut
 
     assert.isTrue(yield* archive.deleteArchived("thread-a"));
     assert.deepEqual(reconciledOperationIds, ["lifecycle-a"]);
+    assert.deepEqual(pipSettlements, [
+      { action: "delete", threadIds: ["thread-a", "thread-child"] },
+    ]);
+    assert.deepEqual(events, [
+      "gateway:thread/delete",
+      "release-quarantine:delete",
+      "revoke",
+      "core:delete",
+      "pip:delete:thread-a,thread-child",
+    ]);
+  }),
+);
+
+it.effect("does not retire deferred delete PiP before durable deletion succeeds", () =>
+  Effect.gen(function* () {
+    const events: string[] = [];
+    const pipSettlements: RemoteHostedPipCodexLifecycleSettlement[] = [];
+    const currentThread = thread({
+      archived: true,
+      cwd: "/repo",
+      managedWorktreePath: null,
+    });
+    const archive = yield* makeArchive({
+      events,
+      currentThread,
+      lifecycleConsumers: [currentThread],
+      pipSettlements,
+      settledThreadIds: ["thread-a", "thread-child"],
+      deletePersistenceFailure: new Error("delete persistence failed"),
+    });
+
+    const exit = yield* Effect.exit(archive.deleteArchived("thread-a"));
+
+    assert.isTrue(exit._tag === "Failure");
+    assert.deepEqual(pipSettlements, []);
     assert.deepEqual(events, [
       "gateway:thread/delete",
       "release-quarantine:delete",

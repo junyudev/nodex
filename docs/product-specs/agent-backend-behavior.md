@@ -41,6 +41,12 @@ presented as ACP capabilities. The Claude Agent can use Nodex-owned client files
 callbacks. Those callbacks are limited to the Thread's canonical Project workspace, reuse the
 supervised Terminal runtime, retain bounded output, and terminate with the ACP session.
 
+Native Browser, Chrome, Computer Use, and Picture-in-Picture control surfaces are available only to
+an admitted local Codex execution generation. ACP tool names or unknown extension metadata never
+activate those surfaces. An ACP backend may gain a control surface only through a future explicitly
+negotiated capability with its own host, identity, lifecycle, and trust contract; Nodex does not infer
+one from superficially similar tools.
+
 When session opening requires one unambiguous Agent-owned authentication method, Main authenticates
 and retries the open request once. When several Agent-owned methods are advertised, the initialized
 process stays alive and the conversation surface asks the user to choose one; only then does Main

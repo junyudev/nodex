@@ -216,14 +216,25 @@ The native Adapter owns only helper execution, screen metadata, and Electron
 capture calls; it has no scheduler or application state. Renderer IPC borrows
 the runtime and never owns a second cache or scheduler.
 
-Remote Hosted PiP keeps its native presentation poll in one scoped Effect fiber. The same runtime
-acquires a synchronous controller whose closure owns native host state, native callback registrations,
-and every window focus/closed and WebContents destroyed listener. Window removal releases its exact
-registration; Main Scope release first closes callback admission, removes all remaining listeners,
-unregisters every native host and presentation, clears the five native handlers, and stops the native
-content host. The controller has no public `dispose()` or independent lifecycle. Gateway notifications
-and Browser Use refresh signals enter through scoped Stream consumers. Preference file access is a
-stateless synchronous Adapter required by the native resize callback, not a cached service owner.
+Remote Hosted PiP is one Main-owned, revisioned Effect Module. Generated Codex notifications enter
+through the existing per-Thread causal consequence path, and local connection retirement fences the
+captured host generation; observational Gateway streams and transcript residency are not activity
+authority. The Module owns source-aware task activity, durable Profile-local visibility, Browser
+presentation identities and bounded raster leases. Renderer windows consume a bounded snapshot after
+a revision invalidation and can send only visibility intent or observed host geometry; they never own
+active or hidden task sets.
+
+The native Platform loads `sky.node` only from the verified Desktop Tool bundle and requires the
+addon's complete export set to match the manifest before exposing typed presentation, host-layout,
+interaction, and Computer Use service capabilities. Its callback admission, native content host,
+window registrations, presentations, and service connection share the Main Scope. A private host
+coordinator derives eligibility and active Session ownership from `WindowRuntime`, starts native
+presentation only while an admitted task and eligible host both exist, and stops it when either
+disappears. Native click, layout, cursor, pet-wake, visibility, and service-loss events converge through
+one integration into Browser Use, Chrome Control, Computer Use, and the restricted avatar overlay;
+no renderer or ambient filesystem search can acquire the raw addon.
+
+User-visible availability, placement, focus, visibility, lifecycle, and privacy behavior is specified in [Desktop control surfaces](product-specs/desktop-control-surfaces.md).
 
 Browser Use sessions are a process-scoped keyed resource family. An infinite-idle
 `LayerMap` owns one IAB API, native pipe server, CDP listener, and turn sequencer per
@@ -776,6 +787,8 @@ The complete user-visible and recovery contracts are [Dictation Behavior](produc
 A Window Session owns one restorable Workbench layout with owner-scoped Scenes. A Scene owner is a Project, Session, or the window-local Pages context. Project and Session owners have semantic primary surfaces; Pages has no protected primary. Right and bottom split trees are the only surface placement and ordering source.
 
 Live Scene changes are pure renderer transitions. Main persists validated, revisioned snapshots and manages open/closed window lifecycle and restore policy. Core stores no panel tree, tab geometry, active surface, or BrowserWindow attachment.
+
+`WindowRuntime` owns one live physical-window registry and publishes a bounded typed snapshot plus lifecycle Stream. Primary entries alone attach to the durable Window Session catalog and retain the existing application-window authorization/broadcast semantics; explicitly registered auxiliary entries share lifecycle and focus ordering without acquiring a Window Session or entering restore state. The active Session projection is derived from the persisted Workbench location, including Settings and Automations return locations, rather than from the renderer document URL.
 
 Surface descriptors contain stable resource or runtime references, not live Query observers, Documents, editors, Browser WebContents, PTYs, DOM nodes, or Promises. Browser and Terminal lifetimes remain with their Main-owned aggregates when a React surface unmounts.
 

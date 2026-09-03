@@ -4,7 +4,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
 import type * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -30,10 +29,10 @@ import {
   testLayer as computerUseRuntimeLayer,
 } from "../src/main/host-runtime/ComputerUseRuntime";
 import { makeComputerUseHostPlatform } from "../src/main/platform/electron/ComputerUseHostPlatform";
-import type { SkyNativeAddon } from "../src/main/sky-native";
 import { runCodexProbeMain, withCodexProbeSession } from "./codex-probe-session";
 
-type BrowserRuntimeProbeReport = {
+export type BrowserRuntimeConformanceReport = {
+  mode: "conformance";
   appServerRuntimeVersion: string;
   browserPluginVersion: string;
   browserRuntimeVersions: {
@@ -51,8 +50,118 @@ type BrowserRuntimeProbeReport = {
   targetPlatform: string;
 };
 
+export type BrowserRuntimeStaticInspectionReport = {
+  appServerRuntimeVersion: string;
+  backends: {
+    chrome: "available" | "unavailable";
+    iab: "available";
+  };
+  browserPluginVersion: string;
+  browserRuntimeVersions: BrowserRuntimeConformanceReport["browserRuntimeVersions"];
+  computerUse: {
+    artifactMinimumMacOSVersion: string | null;
+    ipcProtocol: string | null;
+    productMinimumMacOSVersion: string | null;
+    status: "available" | "unavailable";
+  };
+  exactPair: "verified";
+  manifestSchemaVersion: number;
+  mode: "static";
+  nativeAddon: {
+    artifactArchitecture: string;
+    artifactMinimumMacOSVersion: string;
+    capabilityGroups: Record<string, readonly string[]>;
+    expectedExportCount: number;
+    expectedExports: readonly string[];
+    nodeApiVersion: string;
+    path: string;
+    productMinimumMacOSVersion: string;
+    sha256: string;
+    signature: "verified";
+    signingTeamId: string;
+  };
+  targetArch: string;
+  targetPlatform: string;
+};
+
+export type BrowserRuntimeProbeReport =
+  | BrowserRuntimeConformanceReport
+  | BrowserRuntimeStaticInspectionReport;
+
 export interface BrowserRuntimeProbeOptions {
   readonly resourcesPath?: string;
+}
+
+function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeProbeOptions) {
+  const resourcesPath = options.resourcesPath?.trim();
+  return resolveCodexRuntime({
+    isPackaged: Boolean(resourcesPath),
+    ...(resourcesPath
+      ? { resourcesPath: path.resolve(resourcesPath) }
+      : { projectRootPath: projectRoot }),
+  });
+}
+
+export function inspectBrowserRuntime(
+  projectRoot: string,
+  options: BrowserRuntimeProbeOptions = {},
+): BrowserRuntimeStaticInspectionReport {
+  const runtime = resolveProbeRuntime(projectRoot, options);
+  if (runtime.browserRuntime.status === "unavailable") {
+    throw new Error(runtime.browserRuntime.message);
+  }
+  if (!runtime.appServerRuntimeVersion) {
+    throw new Error("Agent runtime is missing its app-server runtime version");
+  }
+  const bundle = runtime.browserRuntime.bundle;
+  const nativeCapability = bundle.manifest.capabilities.nativePip;
+  const nativeArtifact = bundle.manifest.artifacts.find(
+    (artifact) => artifact.path === nativeCapability.addon,
+  );
+  if (!nativeArtifact) throw new Error("Verified Browser runtime is missing sky.node metadata");
+  const computerUse = bundle.manifest.capabilities.computerUse;
+  const chrome = bundle.manifest.capabilities.browserUse.backends.chrome;
+  return {
+    appServerRuntimeVersion: runtime.appServerRuntimeVersion,
+    backends: {
+      chrome: chrome.status,
+      iab: "available",
+    },
+    browserPluginVersion: bundle.manifest.browserPlugin.version,
+    browserRuntimeVersions: bundle.manifest.runtimeVersions,
+    computerUse:
+      computerUse.status === "available"
+        ? {
+            artifactMinimumMacOSVersion: computerUse.artifactMinimumMacOSVersion,
+            ipcProtocol: computerUse.ipcProtocol,
+            productMinimumMacOSVersion: computerUse.productMinimumMacOSVersion,
+            status: "available",
+          }
+        : {
+            artifactMinimumMacOSVersion: null,
+            ipcProtocol: null,
+            productMinimumMacOSVersion: null,
+            status: "unavailable",
+          },
+    exactPair: "verified",
+    manifestSchemaVersion: bundle.manifest.schemaVersion,
+    mode: "static",
+    nativeAddon: {
+      artifactArchitecture: nativeArtifact.architecture,
+      artifactMinimumMacOSVersion: nativeCapability.artifactMinimumMacOSVersion,
+      capabilityGroups: nativeCapability.exports.groups,
+      expectedExportCount: nativeCapability.exports.expectedExportCount,
+      expectedExports: nativeCapability.exports.expectedExports,
+      nodeApiVersion: bundle.manifest.peerAuthorization.nodeApiVersion,
+      path: bundle.paths.skyNativeAddon,
+      productMinimumMacOSVersion: nativeCapability.productMinimumMacOSVersion,
+      sha256: nativeArtifact.sha256,
+      signature: "verified",
+      signingTeamId: bundle.manifest.peerAuthorization.signingTeamId,
+    },
+    targetArch: bundle.manifest.targetArch,
+    targetPlatform: bundle.manifest.targetPlatform,
+  };
 }
 
 interface BrowserRuntimeCleanupDependencies {
@@ -130,7 +239,7 @@ function parseComputerUseProbeResult(text: string): { appCount?: unknown } {
 export function classifyComputerUseProbeResponse(
   text: string,
   isError: boolean,
-): BrowserRuntimeProbeReport["computerUse"] {
+): BrowserRuntimeConformanceReport["computerUse"] {
   if (isError && text.includes("The Mac is locked") && text.toLowerCase().includes("unlock")) {
     return { reason: "mac-locked", status: "unavailable" };
   }
@@ -190,18 +299,13 @@ async function probeBrowserRuntimePromise(
   projectRoot: string,
   options: BrowserRuntimeProbeOptions,
   callbacks: ScopedCallbackRuntime["Service"],
-): Promise<BrowserRuntimeProbeReport> {
+): Promise<BrowserRuntimeConformanceReport> {
   const resourcesPath = options.resourcesPath?.trim();
   const isPackaged = Boolean(resourcesPath);
   const peerAuthorizationMode: BrowserUsePeerAuthorizationMode = isPackaged
     ? "packaged"
     : "disabled";
-  const runtime = resolveCodexRuntime({
-    isPackaged,
-    ...(resourcesPath
-      ? { resourcesPath: path.resolve(resourcesPath) }
-      : { projectRootPath: projectRoot }),
-  });
+  const runtime = resolveProbeRuntime(projectRoot, options);
   if (runtime.browserRuntime.status === "unavailable") {
     throw new Error(runtime.browserRuntime.message);
   }
@@ -258,21 +362,19 @@ async function probeBrowserRuntimePromise(
       }),
     }).pipe(Scope.provide(nativePipeScope)),
   );
-  const requireForProbe = createRequire(import.meta.url);
   const computerUseScope = await callbacks.runPromise(Scope.make());
   const macOSRelease = execFileSync("/usr/bin/sw_vers", ["-productVersion"], {
     encoding: "utf8",
   }).trim();
-  const computerUseHost = {
-    ...makeComputerUseHostPlatform({ macOSRelease, platform: process.platform }, callbacks),
-    loadAddon: Effect.sync(
-      () =>
-        requireForProbe(bundle.paths.skyNativeAddon) as Pick<
-          SkyNativeAddon,
-          "computerUseServiceProcessMatchesExecutablePath" | "spawnComputerUseService"
-        >,
-    ),
-  };
+  const computerUseHost = makeComputerUseHostPlatform(
+    {
+      macOSRelease,
+      platform: process.platform,
+      verifiedSkyNativeAddonPath: bundle.paths.skyNativeAddon,
+      verifiedSkyNativeExports: bundle.manifest.capabilities.nativePip.exports.expectedExports,
+    },
+    callbacks,
+  );
   const computerUseContext = await callbacks.runPromise(
     Layer.buildWithScope(
       computerUseRuntimeLayer(
@@ -384,7 +486,7 @@ async function probeBrowserRuntimePromise(
             throw new Error("Browser client did not reach the native-pipe Browser backend");
           }
 
-          let computerUse: BrowserRuntimeProbeReport["computerUse"];
+          let computerUse: BrowserRuntimeConformanceReport["computerUse"];
           if (
             computerUseRuntimeResult.status === "available" &&
             reconciliation.computerUse.status === "ready"
@@ -435,6 +537,7 @@ async function probeBrowserRuntimePromise(
             browserPluginVersion: bundle.manifest.browserPlugin.version,
             browserRuntimeVersions: bundle.manifest.runtimeVersions,
             computerUse,
+            mode: "conformance",
             nativePipeMethods: [...new Set(nativePipeMethods)],
             nodeReplResult,
             targetArch: bundle.manifest.targetArch,
@@ -459,7 +562,7 @@ async function probeBrowserRuntimePromise(
   }
 }
 
-export const probeBrowserRuntime = (
+export const probeBrowserRuntimeConformance = (
   projectRoot: string,
   options: BrowserRuntimeProbeOptions = {},
 ): Effect.Effect<BrowserRuntimeProbeReport, Cause.UnknownError, ScopedCallbackRuntime> =>
@@ -469,6 +572,15 @@ export const probeBrowserRuntime = (
       probeBrowserRuntimePromise(projectRoot, options, callbacks),
     );
   });
+
+export const probeBrowserRuntimeStatic = (
+  projectRoot: string,
+  options: BrowserRuntimeProbeOptions = {},
+): Effect.Effect<BrowserRuntimeStaticInspectionReport, Cause.UnknownError> =>
+  Effect.try(() => inspectBrowserRuntime(projectRoot, options));
+
+/** The ordinary probe is deliberately side-effect-free; conformance is explicit. */
+export const probeBrowserRuntime = probeBrowserRuntimeStatic;
 
 function isDirectExecution(): boolean {
   const scriptPath = process.argv[1];
@@ -481,6 +593,7 @@ function isDirectExecution(): boolean {
 if (isDirectExecution()) {
   const projectRoot = path.resolve(process.cwd());
   const arguments_ = process.argv.slice(2);
+  const conformance = arguments_.includes("--conformance");
   const resourcesPathIndex = arguments_.indexOf("--resources-path");
   const resourcesPath = resourcesPathIndex < 0 ? undefined : arguments_[resourcesPathIndex + 1];
   if (resourcesPathIndex >= 0 && (!resourcesPath || resourcesPath.startsWith("--"))) {
@@ -488,10 +601,9 @@ if (isDirectExecution()) {
   }
   runCodexProbeMain(
     Effect.gen(function* () {
-      const report = yield* probeBrowserRuntime(
-        projectRoot,
-        resourcesPath ? { resourcesPath } : {},
-      );
+      const report = yield* conformance
+        ? probeBrowserRuntimeConformance(projectRoot, resourcesPath ? { resourcesPath } : {})
+        : probeBrowserRuntimeStatic(projectRoot, resourcesPath ? { resourcesPath } : {});
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     }),
   );

@@ -27,7 +27,9 @@ const sparkleCodeObjectRelativePaths = [
   "Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app",
   "Contents/Frameworks/Sparkle.framework",
 ];
-const browserRuntimeSchemaVersion = 5;
+// Keep this release boundary exact. The signing tests construct their fixture from the canonical
+// TypeScript manifest version, so any future schema bump fails closed until resealing is audited.
+const browserRuntimeSchemaVersion = 6;
 const expectedBinaryPaths = new Map([
   ["nodex", "Resources/bin/nodex"],
   ["nodex-appshot-helper", "Resources/bin/nodex-appshot-helper"],

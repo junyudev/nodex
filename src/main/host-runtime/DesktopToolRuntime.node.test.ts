@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import { ComputerUseRuntime } from "./ComputerUseRuntime";
 import { DesktopToolRuntime, testLayer } from "./DesktopToolRuntime";
@@ -29,12 +30,20 @@ it.effect("owns desktop plugin readiness and derives one coherent snapshot", () 
         computerUse: ComputerUseRuntime.of({
           current: () => computerUse,
           ensureReady: Effect.succeed(computerUse),
+          managedServiceChanges: Stream.empty,
+          managedServiceSnapshot: () => ({ generation: 0, status: "pending" }),
+          reconcileManagedService: () => Effect.succeed({ generation: 0, status: "pending" }),
         }),
         plugins: (availableBackends) =>
           Effect.succeed({
             ensureInstalled: Effect.sync(() => {
               requestedBackends = availableBackends();
               pluginResult = {
+                chrome: {
+                  message: "Chrome provider backend is unavailable",
+                  reason: "backend-unavailable",
+                  status: "unavailable",
+                },
                 computerUse: {
                   message: "Computer Use runtime capability is unavailable",
                   reason: "capability-unavailable",

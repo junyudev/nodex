@@ -1,6 +1,6 @@
 import { createRequire } from "node:module";
-import fs from "node:fs";
 import path from "node:path";
+import { BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS } from "../shared/browser-runtime-metadata";
 import type {
   RemoteHostedPipAnchor,
   RemoteHostedPipPresentationScope,
@@ -14,21 +14,31 @@ export interface SkyRemoteHostedPipHostRegistration {
   contentBounds: RemoteHostedPipViewportRect;
   id: string;
   isCodexHomeAvailable: boolean;
+  interactionPassthroughRect?: RemoteHostedPipViewportRect | null;
   nativeWindowHandle: Buffer | null;
   presentationScope: RemoteHostedPipPresentationScope;
   title: string;
+  animationSpring?: {
+    damping: number;
+    initialVelocity: number;
+    mass: number;
+    stiffness: number;
+  } | null;
 }
 
 export interface SkyNativeAddon {
   completeRemoteHostedPIPContentThread(threadId: string): boolean;
   computerUseServiceProcessMatchesExecutablePath(pid: number, executablePath: string): boolean;
+  connectRemoteHostedPIPContentHost(pid: number): boolean;
   getRemoteHostedPIPContentActiveTaskIDs(): string[];
+  getRemoteHostedPIPContentLayoutState(): unknown;
   hasRemoteHostedPIPContentAnyPresentation(): boolean;
   invalidateBrowserUsePIPContent(presentationId: string): boolean;
   invalidateRemoteHostedPIPContentTurn(threadId: string, turnId: string): boolean;
   isPrivacySettingsTerminationRequest(): boolean;
   refreshRemoteHostedPIPContentVisibility(threadIds?: string[]): boolean;
   registerRemoteHostedPIPContentHost(input: SkyRemoteHostedPipHostRegistration): boolean;
+  setBrowserUsePIPContentClickHandler(handler: ((presentationId: string) => void) | null): boolean;
   setRemoteHostedPIPContentActiveThreadID(threadId: string | null): boolean;
   setRemoteHostedPIPContentComputerUseCursorLocationHandler(
     handler: ((point: { x: number; y: number } | null) => void) | null,
@@ -36,6 +46,9 @@ export interface SkyNativeAddon {
   setRemoteHostedPIPContentMaxDisplaySize(size: number): boolean;
   setRemoteHostedPIPContentMaxDisplaySizeChangedHandler(
     handler: ((size: number) => void) | null,
+  ): boolean;
+  setRemoteHostedPIPContentLayoutStateChangedHandler(
+    handler: ((layoutState: unknown) => void) | null,
   ): boolean;
   setRemoteHostedPIPContentPetWakeRequestHandler(handler: (() => void) | null): boolean;
   setRemoteHostedPIPContentShouldShowTaskHandler(
@@ -48,8 +61,11 @@ export interface SkyNativeAddon {
   spawnComputerUseService(executablePath: string): Promise<number | null>;
   startRemoteHostedPIPContentHost(
     tooltips: {
+      closeTooltip: string;
       hide: string;
-      placement: string;
+      hideForAllActiveTasks: string;
+      hideForTask: string;
+      placementTooltip: string;
     },
     onServiceConnectionLost?: () => void,
   ): boolean;
@@ -65,89 +81,46 @@ export interface SkyNativeAddon {
 
 const requireFromMain = createRequire(import.meta.url);
 
-function resolveElectronAppPath(): string {
-  try {
-    const electronModule = requireFromMain("electron") as {
-      app?: { getAppPath?: () => string };
-    };
-    return electronModule.app?.getAppPath?.() ?? process.cwd();
-  } catch {
-    return process.cwd();
-  }
-}
-const REQUIRED_REMOTE_HOSTED_PIP_EXPORTS = [
-  "completeRemoteHostedPIPContentThread",
-  "getRemoteHostedPIPContentActiveTaskIDs",
-  "hasRemoteHostedPIPContentAnyPresentation",
-  "invalidateBrowserUsePIPContent",
-  "invalidateRemoteHostedPIPContentTurn",
-  "isPrivacySettingsTerminationRequest",
-  "refreshRemoteHostedPIPContentVisibility",
-  "registerRemoteHostedPIPContentHost",
-  "setRemoteHostedPIPContentActiveThreadID",
-  "setRemoteHostedPIPContentMaxDisplaySize",
-  "setRemoteHostedPIPContentMaxDisplaySizeChangedHandler",
-  "setRemoteHostedPIPContentPetWakeRequestHandler",
-  "setRemoteHostedPIPContentShouldShowTaskHandler",
-  "setRemoteHostedPIPContentSuppressedThreadIDs",
-  "setRemoteHostedPIPContentVisibilityRequestHandler",
-  "startRemoteHostedPIPContentHost",
-  "stopRemoteHostedPIPContentHost",
-  "unregisterRemoteHostedPIPContentHost",
-  "upsertBrowserUsePIPContent",
-] as const;
+export type SkyNativeCapabilityGroup = keyof typeof BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS;
 
-function hasRequiredExports(value: unknown): value is SkyNativeAddon {
+export function inspectSkyNativeCapabilities(
+  value: unknown,
+): Readonly<Record<SkyNativeCapabilityGroup, boolean>> {
+  const candidate =
+    typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  return Object.fromEntries(
+    Object.entries(BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS).map(([group, exportNames]) => [
+      group,
+      exportNames.every((exportName) => typeof candidate[exportName] === "function"),
+    ]),
+  ) as unknown as Readonly<Record<SkyNativeCapabilityGroup, boolean>>;
+}
+
+function hasRequiredExports(
+  value: unknown,
+  expectedExportContract: readonly string[],
+): value is SkyNativeAddon {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-  return REQUIRED_REMOTE_HOSTED_PIP_EXPORTS.every(
-    (exportName) => typeof candidate[exportName] === "function",
+  const actualExports = Object.keys(value).sort();
+  const expectedExports = [...expectedExportContract].sort();
+  return (
+    actualExports.length === expectedExports.length &&
+    actualExports.every((exportName, index) => exportName === expectedExports[index]) &&
+    Object.values(inspectSkyNativeCapabilities(value)).every(Boolean)
   );
 }
 
-export function resolveSkyNativeAddonPath({
-  appPath = resolveElectronAppPath(),
-  resourcesPath = process.resourcesPath,
-}: {
-  appPath?: string;
-  resourcesPath?: string;
-} = {}): string | null {
-  const candidates = [
-    path.join(resourcesPath, "native", "sky.node"),
-    path.join(resourcesPath, "browser-runtime", "native", "sky.node"),
-    path.join(
-      appPath,
-      ".generated",
-      "codex-runtime",
-      "agent-runtime",
-      "browser-runtime",
-      "native",
-      "sky.node",
-    ),
-    path.join(
-      appPath,
-      ".generated",
-      "native-probe-runtime",
-      "browser-runtime",
-      "native",
-      "sky.node",
-    ),
-  ];
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
-}
-
+/** Loads only the absolute path admitted by BrowserRuntimeBundle verification. */
 export function loadSkyNativeAddon(
-  options: {
-    appPath?: string;
-    resourcesPath?: string;
-  } = {},
+  verifiedAddonPath?: string,
+  expectedExports?: readonly string[],
 ): SkyNativeAddon | null {
   if (process.platform !== "darwin") return null;
-  const addonPath = resolveSkyNativeAddonPath(options);
-  if (!addonPath) return null;
+  if (!verifiedAddonPath || !path.isAbsolute(verifiedAddonPath)) return null;
+  if (!expectedExports || expectedExports.length === 0) return null;
   try {
-    const addon = requireFromMain(addonPath) as unknown;
-    return hasRequiredExports(addon) ? addon : null;
+    const addon = requireFromMain(verifiedAddonPath) as unknown;
+    return hasRequiredExports(addon, expectedExports) ? addon : null;
   } catch {
     return null;
   }

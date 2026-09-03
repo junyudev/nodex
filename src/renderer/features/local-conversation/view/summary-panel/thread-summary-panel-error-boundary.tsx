@@ -1,6 +1,10 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { CODEX_SUMMARY_PANEL_WIDTH } from "../../../../lib/codex-panel-motion";
 import { cn } from "../../../../lib/utils";
+import {
+  REMOTE_HOSTED_PIP_HOME_SURFACE_ATTRIBUTE,
+  REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE,
+} from "../../../../../shared/remote-hosted-pip";
 
 type ThreadSummaryPanelRenderBoundaryFallbackProps = {
   resetError: () => void;
@@ -74,7 +78,10 @@ export function ThreadSummaryPanelRenderErrorFallback({
       <div className="relative flex max-h-full">
         <div className={cn("max-h-full min-h-0 pe-4", hideImmediately && "invisible")}>
           <div
-            data-pip-obstacle="thread-summary-panel"
+            {...{
+              [REMOTE_HOSTED_PIP_HOME_SURFACE_ATTRIBUTE]: "thread-summary-panel",
+              [REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE]: "thread-summary-panel",
+            }}
             className="pointer-events-auto rounded-lg border border-token-border bg-token-main-surface-primary px-4 py-3 text-sm text-token-text-secondary shadow-lg"
             style={{ width: CODEX_SUMMARY_PANEL_WIDTH }}
           >

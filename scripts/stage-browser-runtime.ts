@@ -151,6 +151,30 @@ function normalizeBrowserRuntimeManifest(
   };
 }
 
+function serializedActiveManifest(sourceRoot: string, manifest: BrowserRuntimeManifest): Buffer {
+  const sourcePath = path.join(sourceRoot, BROWSER_RUNTIME_MANIFEST_FILENAME);
+  const sourceBytes = fs.readFileSync(sourcePath);
+  try {
+    const sourceValue = JSON.parse(sourceBytes.toString("utf8")) as {
+      browserPlugin?: { nodeModuleDirs?: unknown };
+      schemaVersion?: unknown;
+    };
+    const nodeModuleDirs = sourceValue.browserPlugin?.nodeModuleDirs;
+    if (
+      sourceValue.schemaVersion === 5 &&
+      Array.isArray(nodeModuleDirs) &&
+      !nodeModuleDirs.includes(LEGACY_BROWSER_PLUGIN_NODE_MODULE_DIR)
+    ) {
+      // Published v5 archives retain their signed exact-pair identity while the
+      // compatibility decoder projects the in-memory schema-v6 contract.
+      return sourceBytes;
+    }
+  } catch {
+    // readBrowserRuntimeSourceManifest already owns the validation error.
+  }
+  return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
 export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): BrowserRuntimeManifest {
   const sourceRoot = path.resolve(options.sourceRoot);
   const runtimeRoot = path.resolve(options.runtimeRoot);
@@ -168,6 +192,7 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
   }
   assertBrowserRuntimeSourceClosure(sourceRoot, sourceManifest);
   const manifest = normalizeBrowserRuntimeManifest(sourceRoot, sourceManifest);
+  const activeManifestBytes = serializedActiveManifest(sourceRoot, manifest);
 
   fs.mkdirSync(runtimeRoot, { recursive: true });
   const runtimeRootStats = fs.lstatSync(runtimeRoot);
@@ -176,11 +201,10 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
   }
   const activeRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   try {
-    const normalizedManifest = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     const activeManifest = fs.readFileSync(
       path.join(activeRoot, BROWSER_RUNTIME_MANIFEST_FILENAME),
     );
-    if (normalizedManifest.equals(activeManifest)) {
+    if (activeManifestBytes.equals(activeManifest)) {
       assertBrowserRuntimeSourceClosure(activeRoot, manifest);
       const verification = resolveBrowserRuntimeBundle({
         appServerIdentity: options.appServerIdentity,
@@ -220,10 +244,7 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
       fs.mkdirSync(path.join(stagedRoot, ...nodeModuleDir.split("/")), { recursive: true });
     }
     const manifestPath = path.join(stagedRoot, BROWSER_RUNTIME_MANIFEST_FILENAME);
-    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: REGULAR_RUNTIME_MODE,
-    });
+    fs.writeFileSync(manifestPath, activeManifestBytes, { mode: REGULAR_RUNTIME_MODE });
     fs.chmodSync(manifestPath, REGULAR_RUNTIME_MODE);
 
     const verification = resolveBrowserRuntimeBundle({

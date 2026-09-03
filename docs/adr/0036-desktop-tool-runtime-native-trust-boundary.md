@@ -26,17 +26,22 @@ Use service discovery.
 
 ### One verified Desktop Tool closure
 
-The sealed runtime contains the signed Codex CLI, Node, Node REPL, Browser
-plugin and client, native peer authorizer, native PiP bridge, and, when the
-target supports it, the Computer Use plugin, `sky.node`, and signed helper app.
-The release lock and schema-v4 inner manifest bind every file, capability,
-architecture, minimum operating-system version, and signing-team expectation.
+The sealed runtime contains the signed Codex CLI, Node, Node REPL, Browser and
+Chrome plugins, their shared client and service, the Browser peer authorizer,
+Chrome native-messaging host, native PiP bridge, and, when the target supports
+it, the Computer Use plugin, `sky.node`, and signed helper app. The release lock
+and schema-v6 inner manifest bind every file, backend, capability, architecture,
+artifact and product operating-system minimum, signing-team expectation, and
+the exact sorted native-addon export set. Runtime loading requires that complete
+set, not only a compatible subset.
 
-Browser and Computer Use remain independently gated. Browser is available on
-supported arm64 and x64 macOS closures. Computer Use is installed and configured
-only when its architecture and operating-system capability verifies. A missing
-Computer Use capability does not degrade Browser Use, and a failed native host
-cannot leave a visible Computer Use skill behind.
+Browser, Chrome, native PiP, and Computer Use remain independently gated.
+Browser is available on supported arm64 and x64 macOS closures. Chrome is
+advertised only while its attested native host and an allowed exact extension
+instance are ready. Computer Use is installed and configured only when its
+architecture and operating-system capability verifies. One unavailable
+capability does not weaken another, and a failed native host cannot leave its
+skill or backend advertised.
 
 Packaging signs Nodex-owned artifacts, restores the entire vendor-signed Desktop
 Tool closure, refreshes the enclosing manifests, and reseals the outer app. It
@@ -77,13 +82,30 @@ visible request may select the owning task and Browser surface. A background or
 hide request may create or retain the shell, but cannot expand a panel, replace
 the active tab, change split/maximized state, or perturb global MRU ordering.
 
-Main and the operating-system native bridge own Computer Use PiP. It may present
-the active completed Computer Use output while the Browser surface stays
-backgrounded, and it is suppressed while that surface is visibly presented.
-Turn completion, privacy termination, Browser release, window teardown, and app
-shutdown are idempotent teardown boundaries. Only maximum display size and the
-global always-hide setting are durable user preferences; per-task hiding,
-placement, active content, and activity are ephemeral projections.
+Main and the operating-system native bridge own Browser, Chrome, and Computer
+Use PiP. Main derives activity from the admitted local Codex notification
+generation, retains bounded latest Browser presentations, and connects only a
+verified Computer Use service. A native Browser presentation can focus its
+exact in-app tab or exact Chrome extension instance and numeric tab. PiP is
+suppressed while the same Browser surface is visibly presented without changing
+the user's visibility preference.
+
+All renderer windows read one bounded, revisioned Main snapshot. Renderer IPC
+can submit visibility intent and observed host geometry, but cannot replace the
+active-task set, hidden-task map, window registry, or native callback state.
+Per-task visibility, maximum display size, and global always-hide are
+Profile-local durable preferences. Archiving or closing a task preserves its
+visibility choice; permanent deletion removes it. Activity sources,
+presentations, suppression, placement, and window attachments are ephemeral.
+Turn completion, connection-generation retirement, Browser or Chrome release,
+window teardown, and app shutdown are idempotent teardown boundaries.
+
+`WindowRuntime` is the physical-window registry. Primary windows keep their
+Window Session identity; the avatar overlay is a restricted, non-restorable
+auxiliary window. Native hosts use Main-owned window handles plus renderer-
+observed anchors, obstacles, Home availability, and passthrough geometry. The
+verified native Platform owns callback registration and loads no addon from an
+ambient candidate path.
 
 Computer Use operating-system settings remain Main-owned. A typed service reads
 and revokes the helper's App and Messages approvals, controls its declared click
@@ -99,12 +121,18 @@ reimplemented as renderer state.
 - Browser and Computer Use have one fail-closed native trust chain from plugin
   through signed Node/Codex/REPL ancestry and the host-services pipe to the
   canonical helper.
+- Chrome reuses the attested Browser client and service but has an independent
+  plugin descriptor, readiness lifecycle, native-messaging installation, and
+  exact extension-instance focus boundary.
 - Intel builds can ship complete Browser support without carrying or advertising
   an unsupported Computer Use implementation.
 - Native PiP can remain visible independently of React panel mount state but
   cannot become durable task or Scene authority.
+- ACP and remote Codex execution do not acquire local native control surfaces
+  without an explicitly negotiated, independently verified capability.
 - Release verification must validate mixed signing identities and exercise the
-  actual plugin/host/helper chain, not only file presence.
+  actual plugin/host/helper chain and exact native-addon ABI, not only file
+  presence.
 
 ## Rejected alternatives
 

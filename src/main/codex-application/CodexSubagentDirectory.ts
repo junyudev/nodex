@@ -220,6 +220,11 @@ export interface CodexSubagentLifecycleSnapshot {
   readonly complete: boolean;
 }
 
+export interface CodexSubagentLifecycleReconciliationSnapshot extends CodexSubagentLifecycleSnapshot {
+  /** Exact durable lifecycle cohort; populated only after every member has settled. */
+  readonly settledThreadIds: readonly string[];
+}
+
 export interface CodexSubagentInterruptSnapshot {
   /** False when discovery has not reached an authoritative end for this host generation. */
   readonly discoveryComplete: boolean;
@@ -271,7 +276,7 @@ export class CodexSubagentDirectory extends Context.Service<
     /** Reconciles the durable expected closure without requiring the root Thread to still exist. */
     readonly reconcileLifecycle: (input: {
       readonly operationId: string;
-    }) => Effect.Effect<CodexSubagentLifecycleSnapshot, CodexSubagentDirectoryError>;
+    }) => Effect.Effect<CodexSubagentLifecycleReconciliationSnapshot, CodexSubagentDirectoryError>;
     readonly settleInterruptedSubtree: (
       rootThreadId: string,
       options?: { readonly deadlineAtMs: number },
@@ -662,6 +667,14 @@ const projectLifecycleSnapshot = (
   processedCount: lifecycle.processed_count,
   unresolvedCount: lifecycle.unresolved_count,
   complete: lifecycle.complete,
+});
+
+const projectLifecycleReconciliationSnapshot = (
+  lifecycle: CoreSubagentLifecycle,
+  settledThreadIds: readonly string[] = [],
+): CodexSubagentLifecycleReconciliationSnapshot => ({
+  ...projectLifecycleSnapshot(lifecycle),
+  settledThreadIds,
 });
 
 const discoveryKey = (context: RootContext): string =>
@@ -2635,7 +2648,10 @@ export const make: Effect.Effect<
   const reconcileLifecycleAttempt = Effect.fn("CodexSubagentDirectory.reconcileLifecycleAttempt")(
     function* (input: {
       readonly operationId: string;
-    }): Effect.fn.Return<CodexSubagentLifecycleSnapshot, CodexSubagentDirectoryError> {
+    }): Effect.fn.Return<
+      CodexSubagentLifecycleReconciliationSnapshot,
+      CodexSubagentDirectoryError
+    > {
       const operationId = input.operationId.trim();
       if (!operationId) {
         return yield* error(
@@ -2851,10 +2867,10 @@ export const make: Effect.Effect<
         );
         const lifecycleMembers: CoreSubagentLifecycle["members"]["items"] = lifecycle.members.items;
         if (lifecycleMembers.length === 0 && lifecycle.members.next_cursor === null) {
-          // A completed durable delete can still have unfinished local Core cleanup from an earlier
-          // process. Continue to the includeSettled cohort below so retries remain idempotent.
-          if (initial.action === "delete" && lifecycle.complete) break;
-          return projectLifecycleSnapshot(lifecycle);
+          // A completed lifecycle can still need local cleanup and process-local retirement after
+          // a restart. Continue to the complete durable cohort so retries remain idempotent.
+          if (lifecycle.complete) break;
+          return projectLifecycleReconciliationSnapshot(lifecycle);
         }
         const observedAtMs = yield* Clock.currentTimeMillis;
         const observations = yield* Effect.forEach(
@@ -2925,9 +2941,14 @@ export const make: Effect.Effect<
         );
       }
       const finalLifecycle = yield* readLifecyclePage(universe.root_thread_id, operationId, null);
-      if (initial.action === "delete" && finalLifecycle.complete) {
-        // Cleanup is derived from the complete durable cohort, not only members settled during
-        // this process. That keeps a restarted or multi-pass delete from stranding earlier rows.
+      if (!finalLifecycle.complete) {
+        return projectLifecycleReconciliationSnapshot(finalLifecycle);
+      }
+
+      // Settlement consequences are derived from the complete durable cohort, not only members
+      // settled during this process. That keeps restarted and multi-pass lifecycles idempotent.
+      const settledThreadIds = new Set<string>();
+      {
         let cohortAfter: string | null = null;
         for (let page = 0; page < LIFECYCLE_MAX_PAGES; page += 1) {
           const cohort: CoreSubagentLifecycle = yield* readLifecyclePage(
@@ -2940,38 +2961,41 @@ export const make: Effect.Effect<
             return yield* error(
               "lifecycle",
               universe.root_thread_id,
-              new Error("Complete Subagent delete lifecycle contains an unresolved member"),
+              new Error("Complete Subagent lifecycle contains an unresolved member"),
             );
           }
-          yield* Effect.forEach(
-            cohort.members.items.filter((member) => member.thread_id !== universe.root_thread_id),
-            (member) => {
-              const threadId = member.thread_id;
-              return core.workspace
-                .apply(
-                  {
-                    operationId: createOperationId("subagent-directory.lifecycle.delete-local"),
-                    intent: { kind: "delete_thread", thread_id: threadId },
-                  },
-                  { class: "background", deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
-                )
-                .pipe(
-                  Effect.catch((cause) =>
-                    isCoreNotFound(cause) ? Effect.void : Effect.fail(cause),
-                  ),
-                  Effect.tap(() =>
-                    Effect.sync(() => {
-                      events.publish({
-                        kind: "codex",
-                        value: { type: "threadDeleted", threadId },
-                      });
-                    }),
-                  ),
-                  Effect.mapError((cause) => error("lifecycle", universe.root_thread_id, cause)),
-                );
-            },
-            { concurrency: 2, discard: true },
-          );
+          for (const member of cohort.members.items) settledThreadIds.add(member.thread_id);
+          if (initial.action === "delete") {
+            yield* Effect.forEach(
+              cohort.members.items.filter((member) => member.thread_id !== universe.root_thread_id),
+              (member) => {
+                const threadId = member.thread_id;
+                return core.workspace
+                  .apply(
+                    {
+                      operationId: createOperationId("subagent-directory.lifecycle.delete-local"),
+                      intent: { kind: "delete_thread", thread_id: threadId },
+                    },
+                    { class: "background", deadlineMs: DISCOVERY_PAGE_TIMEOUT_MS },
+                  )
+                  .pipe(
+                    Effect.catch((cause) =>
+                      isCoreNotFound(cause) ? Effect.void : Effect.fail(cause),
+                    ),
+                    Effect.tap(() =>
+                      Effect.sync(() => {
+                        events.publish({
+                          kind: "codex",
+                          value: { type: "threadDeleted", threadId },
+                        });
+                      }),
+                    ),
+                    Effect.mapError((cause) => error("lifecycle", universe.root_thread_id, cause)),
+                  );
+              },
+              { concurrency: 2, discard: true },
+            );
+          }
           cohortAfter = cohort.members.next_cursor ?? null;
           if (cohortAfter === null) break;
         }
@@ -2979,11 +3003,18 @@ export const make: Effect.Effect<
           return yield* error(
             "lifecycle",
             universe.root_thread_id,
-            new Error("Complete Subagent delete cohort exceeds its bounded cleanup pass"),
+            new Error("Complete Subagent lifecycle cohort exceeds its bounded settlement pass"),
           );
         }
       }
-      return projectLifecycleSnapshot(finalLifecycle);
+      if (settledThreadIds.size !== finalLifecycle.expected_count) {
+        return yield* error(
+          "lifecycle",
+          universe.root_thread_id,
+          new Error("Complete Subagent lifecycle cohort does not match its expected count"),
+        );
+      }
+      return projectLifecycleReconciliationSnapshot(finalLifecycle, [...settledThreadIds]);
     },
   );
 

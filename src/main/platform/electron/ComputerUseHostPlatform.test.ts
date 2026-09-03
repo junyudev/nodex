@@ -7,7 +7,9 @@ import { afterEach, vi } from "vite-plus/test";
 import {
   ComputerUseAppMaterializer,
   ComputerUseHostPlatformError,
+  makeComputerUseHostPlatform,
 } from "./ComputerUseHostPlatform";
+import type { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 
 const temporaryRoots: string[] = [];
 
@@ -22,6 +24,59 @@ afterEach(() => {
     fs.rmSync(root, { force: true, recursive: true });
   }
 });
+
+it.effect("loads sky.node only from the verified Browser runtime path", () =>
+  Effect.gen(function* () {
+    const seen: string[] = [];
+    const addon = {
+      computerUseServiceProcessMatchesExecutablePath: () => true,
+      spawnComputerUseService: () => Promise.resolve(123),
+    };
+    const callbacks = {
+      fork: () => null,
+      runPromise: () => Promise.reject(new Error("callback runtime is unused in this test")),
+    } as ScopedCallbackRuntime["Service"];
+    const platform = makeComputerUseHostPlatform(
+      {
+        loadAddon: (verifiedPath, verifiedExports) => {
+          seen.push(verifiedPath);
+          assert.deepEqual(verifiedExports, ["spawnComputerUseService"]);
+          return addon as never;
+        },
+        platform: "darwin",
+        verifiedSkyNativeAddonPath: "/verified/browser-runtime/native/sky.node",
+        verifiedSkyNativeExports: ["spawnComputerUseService"],
+      },
+      callbacks,
+    );
+
+    assert.strictEqual(yield* platform.loadAddon, addon);
+    assert.deepEqual(seen, ["/verified/browser-runtime/native/sky.node"]);
+  }),
+);
+
+it.effect("fails closed when the verified Browser runtime has no exact export contract", () =>
+  Effect.gen(function* () {
+    const loadAddon = vi.fn(() => {
+      throw new Error("must not load without an ABI contract");
+    });
+    const callbacks = {
+      fork: () => null,
+      runPromise: () => Promise.reject(new Error("callback runtime is unused in this test")),
+    } as ScopedCallbackRuntime["Service"];
+    const platform = makeComputerUseHostPlatform(
+      {
+        loadAddon,
+        platform: "darwin",
+        verifiedSkyNativeAddonPath: "/verified/browser-runtime/native/sky.node",
+      },
+      callbacks,
+    );
+
+    assert.isNull(yield* platform.loadAddon);
+    assert.strictEqual(loadAddon.mock.calls.length, 0);
+  }),
+);
 
 const copyDirectory = (source: string, target: string) =>
   Effect.tryPromise({

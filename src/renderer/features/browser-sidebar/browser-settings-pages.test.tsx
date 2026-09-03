@@ -37,6 +37,18 @@ function configureInvokeMock() {
     if (channel === "browser-use-policy-get") return DEFAULT_BROWSER_USE_POLICY;
     if (channel === "browser-use-policy-update-modes") return DEFAULT_BROWSER_USE_POLICY;
     if (channel === "browser-use-policy-update-origin-rule") return DEFAULT_BROWSER_USE_POLICY;
+    if (channel === "chrome-control-settings-get") {
+      return {
+        bundleSupported: true,
+        extensionConnected: false,
+        nativeHostInstalled: true,
+        providerReady: false,
+        reason: "Waiting for a supported browser extension",
+        requested: true,
+        revision: 1,
+        status: "extension-disconnected",
+      };
+    }
     if (channel === "browser-credentials-list-all") return [];
     if (channel === "browser-contact-info-list") return [];
     if (channel === "browser-history-list") return { entries: [] };
@@ -75,6 +87,8 @@ describe("Browser settings information architecture", () => {
     expect(screen.getByRole("heading", { name: "General" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Autofill and passwords" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Permissions" })).toBeTruthy();
+    expect(screen.getByText("Control existing browsers")).toBeTruthy();
+    expect(screen.getByText("Waiting for extension")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Manage Password manager" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Passwords" })).toBeNull();
 

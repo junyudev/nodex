@@ -3,10 +3,11 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { BrowserUsePeerAuthorizationMode } from "../../shared/browser-use-host-capability";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
@@ -20,7 +21,7 @@ import {
 } from "../platform/electron/ComputerUseHostPlatform";
 import { isMacOSVersionAtLeast } from "../sky-native";
 
-type ComputerUseRuntimeUnavailableReason =
+export type ComputerUseRuntimeUnavailableReason =
   | "architecture-unsupported"
   | "helper-invalid"
   | "helper-materialization-failed"
@@ -43,6 +44,32 @@ export type ComputerUseRuntimeResult =
       readonly status: "unavailable";
     };
 
+export type ComputerUseManagedServiceSnapshot =
+  | { readonly generation: number; readonly status: "pending" }
+  | {
+      readonly generation: number;
+      readonly message: string;
+      readonly reason: ComputerUseRuntimeUnavailableReason;
+      readonly status: "unavailable";
+    }
+  | {
+      readonly executablePath: string;
+      readonly generation: number;
+      readonly status: "ready";
+    }
+  | {
+      readonly executablePath: string;
+      readonly generation: number;
+      readonly pid: number;
+      readonly status: "running";
+    }
+  | { readonly generation: number; readonly status: "closed" };
+
+export interface ComputerUseManagedServiceIdentity {
+  readonly generation: number;
+  readonly pid: number;
+}
+
 export class ComputerUseRuntimeError extends Schema.TaggedError<ComputerUseRuntimeError>()(
   "ComputerUseRuntimeError",
   { operation: Schema.String, cause: Schema.Defect() },
@@ -53,6 +80,11 @@ export class ComputerUseRuntime extends Context.Service<
   {
     readonly current: () => ComputerUseRuntimeResult | null;
     readonly ensureReady: Effect.Effect<ComputerUseRuntimeResult, ComputerUseRuntimeError>;
+    readonly managedServiceChanges: Stream.Stream<ComputerUseManagedServiceSnapshot>;
+    readonly managedServiceSnapshot: () => ComputerUseManagedServiceSnapshot;
+    readonly reconcileManagedService: (
+      expected: ComputerUseManagedServiceIdentity,
+    ) => Effect.Effect<ComputerUseManagedServiceSnapshot, ComputerUseRuntimeError>;
   }
 >()("nodex/main/host-runtime/ComputerUseRuntime") {}
 
@@ -69,6 +101,7 @@ export interface ComputerUseRuntimeOptions {
 interface ComputerUseRuntimeState {
   readonly addon: ComputerUseServiceAddon | null;
   readonly closed: boolean;
+  readonly generation: number;
   readonly managedPid: number | null;
   readonly result: ComputerUseRuntimeResult | null;
   readonly serviceExecutablePath: string | null;
@@ -87,6 +120,7 @@ interface ComputerUseRuntimeStart {
 const initialState: ComputerUseRuntimeState = {
   addon: null,
   closed: false,
+  generation: 0,
   managedPid: null,
   result: null,
   serviceExecutablePath: null,
@@ -108,10 +142,38 @@ const unavailable = (
   message: string,
 ): ComputerUseRuntimeResult => ({ message, reason, status: "unavailable" });
 
+function projectManagedService(state: ComputerUseRuntimeState): ComputerUseManagedServiceSnapshot {
+  if (state.closed) return { generation: state.generation, status: "closed" };
+  if (state.managedPid !== null && state.serviceExecutablePath) {
+    return {
+      executablePath: state.serviceExecutablePath,
+      generation: state.generation,
+      pid: state.managedPid,
+      status: "running",
+    };
+  }
+  if (state.result?.status === "unavailable") {
+    return {
+      generation: state.generation,
+      message: state.result.message,
+      reason: state.result.reason,
+      status: "unavailable",
+    };
+  }
+  if (state.result?.status === "available" && state.serviceExecutablePath) {
+    return {
+      executablePath: state.serviceExecutablePath,
+      generation: state.generation,
+      status: "ready",
+    };
+  }
+  return { generation: state.generation, status: "pending" };
+}
+
 const make = (options: ComputerUseRuntimeLayerOptions) =>
   Effect.gen(function* () {
     const ownerScope = yield* Scope.Scope;
-    const state = yield* Ref.make(initialState);
+    const state = yield* SubscriptionRef.make(initialState);
     const readinessGate = yield* Semaphore.make(1);
     const serviceGate = yield* Semaphore.make(1);
 
@@ -142,7 +204,7 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
     };
 
     const clearManagedService = serviceGate.withPermits(1)(
-      Ref.modify(
+      SubscriptionRef.modify(
         state,
         (current) =>
           [
@@ -161,71 +223,103 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
       ),
     );
 
+    const ensureServiceUnlocked = Effect.fn("ComputerUseRuntime.ensureServiceUnlocked")(function* (
+      addon: ComputerUseServiceAddon,
+      executablePath: string,
+    ): Effect.fn.Return<{ readonly pid: number }, ComputerUseRuntimeError> {
+      const current = yield* SubscriptionRef.get(state);
+      if (current.closed) {
+        return yield* runtimeError("service.closed", new Error("Computer Use runtime is closed"));
+      }
+      if (
+        current.managedPid !== null &&
+        validateManagedProcess(addon, current.managedPid, executablePath)
+      ) {
+        return { pid: current.managedPid };
+      }
+
+      yield* SubscriptionRef.update(state, (latest) => ({ ...latest, managedPid: null }));
+      const pid = yield* options.host
+        .spawnService(addon, executablePath)
+        .pipe(Effect.mapError((error) => runtimeError("service.spawn", error)));
+      if (pid === null || !Number.isSafeInteger(pid) || pid <= 0) {
+        return yield* runtimeError(
+          "service.spawn",
+          new Error("Computer Use native host did not return a valid process ID"),
+        );
+      }
+
+      const startedAt = yield* Clock.currentTimeMillis;
+      const deadline = startedAt + 2_000;
+      let now = startedAt;
+      while (now < deadline) {
+        if (validateManagedProcess(addon, pid, executablePath)) {
+          const committed = yield* SubscriptionRef.modify(state, (latest) => {
+            if (latest.closed) return [false, latest] as const;
+            return [
+              true,
+              {
+                ...latest,
+                addon,
+                generation: latest.generation + 1,
+                managedPid: pid,
+                serviceExecutablePath: executablePath,
+              },
+            ] as const;
+          });
+          if (committed) return { pid };
+          yield* terminateIfOwned(addon, pid, executablePath);
+          return yield* runtimeError("service.closed", new Error("Computer Use runtime is closed"));
+        }
+        yield* Effect.sleep("50 millis");
+        now = yield* Clock.currentTimeMillis;
+      }
+
+      return yield* runtimeError(
+        "service.validate",
+        new Error("Computer Use service did not become a valid managed process"),
+      );
+    });
+
     const ensureService = (
       addon: ComputerUseServiceAddon,
       executablePath: string,
     ): Effect.Effect<{ readonly pid: number }, ComputerUseRuntimeError> =>
-      serviceGate.withPermits(1)(
-        Effect.gen(function* () {
-          const current = yield* Ref.get(state);
-          if (current.closed) {
-            return yield* runtimeError(
-              "service.closed",
-              new Error("Computer Use runtime is closed"),
-            );
-          }
-          if (
-            current.managedPid !== null &&
-            validateManagedProcess(addon, current.managedPid, executablePath)
-          ) {
-            return { pid: current.managedPid };
-          }
+      serviceGate.withPermits(1)(ensureServiceUnlocked(addon, executablePath));
 
-          yield* Ref.update(state, (latest) => ({ ...latest, managedPid: null }));
-          const pid = yield* options.host
-            .spawnService(addon, executablePath)
-            .pipe(Effect.mapError((error) => runtimeError("service.spawn", error)));
-          if (pid === null || !Number.isSafeInteger(pid) || pid <= 0) {
-            return yield* runtimeError(
-              "service.spawn",
-              new Error("Computer Use native host did not return a valid process ID"),
-            );
-          }
-
-          const startedAt = yield* Clock.currentTimeMillis;
-          const deadline = startedAt + 2_000;
-          let now = startedAt;
-          while (now < deadline) {
-            if (validateManagedProcess(addon, pid, executablePath)) {
-              const committed = yield* Ref.modify(state, (latest) => {
-                if (latest.closed) return [false, latest] as const;
-                return [
-                  true,
-                  {
-                    ...latest,
-                    addon,
-                    managedPid: pid,
-                    serviceExecutablePath: executablePath,
-                  },
-                ] as const;
-              });
-              if (committed) return { pid };
-              yield* terminateIfOwned(addon, pid, executablePath);
+    const reconcileManagedService = Effect.fn("ComputerUseRuntime.reconcileManagedService")(
+      function* (
+        expected: ComputerUseManagedServiceIdentity,
+      ): Effect.fn.Return<ComputerUseManagedServiceSnapshot, ComputerUseRuntimeError> {
+        return yield* serviceGate.withPermits(1)(
+          Effect.gen(function* () {
+            const current = yield* SubscriptionRef.get(state);
+            if (current.closed) {
               return yield* runtimeError(
-                "service.closed",
+                "service.reconcile.closed",
                 new Error("Computer Use runtime is closed"),
               );
             }
-            yield* Effect.sleep("50 millis");
-            now = yield* Clock.currentTimeMillis;
-          }
+            if (current.generation !== expected.generation) {
+              return projectManagedService(current);
+            }
+            if (current.managedPid !== null && current.managedPid !== expected.pid) {
+              return projectManagedService(current);
+            }
+            if (
+              current.result?.status !== "available" ||
+              !current.addon ||
+              !current.serviceExecutablePath
+            ) {
+              return projectManagedService(current);
+            }
 
-          return yield* runtimeError(
-            "service.validate",
-            new Error("Computer Use service did not become a valid managed process"),
-          );
-        }),
-      );
+            yield* ensureServiceUnlocked(current.addon, current.serviceExecutablePath);
+            return projectManagedService(SubscriptionRef.getUnsafe(state));
+          }),
+        );
+      },
+    );
 
     const start: Effect.Effect<ComputerUseRuntimeStart> = Effect.gen(function* () {
       if (options.host.platform !== "darwin") {
@@ -257,12 +351,14 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
           serviceExecutablePath: null,
         };
       }
-      if (!isMacOSVersionAtLeast(capability.minimumMacOSVersion, options.host.macOSRelease)) {
+      if (
+        !isMacOSVersionAtLeast(capability.productMinimumMacOSVersion, options.host.macOSRelease)
+      ) {
         return {
           addon: null,
           result: unavailable(
             "macos-version-unsupported",
-            `Computer Use requires macOS ${capability.minimumMacOSVersion} or later`,
+            `Computer Use requires macOS ${capability.productMinimumMacOSVersion} or later`,
           ),
           serviceExecutablePath: null,
         };
@@ -389,7 +485,7 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
 
     const ensureReady = readinessGate.withPermits(1)(
       Effect.gen(function* () {
-        const current = yield* Ref.get(state);
+        const current = yield* SubscriptionRef.get(state);
         if (current.closed) {
           return yield* runtimeError(
             "ensure-ready.closed",
@@ -399,7 +495,7 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
         if (current.result?.status === "available") return current.result;
 
         const started = yield* start;
-        const committed = yield* Ref.modify(state, (latest) => {
+        const committed = yield* SubscriptionRef.modify(state, (latest) => {
           if (latest.closed) return [false, latest] as const;
           return [
             true,
@@ -423,10 +519,10 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
 
     yield* Effect.addFinalizer(() =>
       Effect.gen(function* () {
-        yield* Ref.update(state, (current) => ({ ...current, closed: true }));
+        yield* SubscriptionRef.update(state, (current) => ({ ...current, closed: true }));
         const resources = yield* readinessGate.withPermits(1)(
           serviceGate.withPermits(1)(
-            Ref.modify(
+            SubscriptionRef.modify(
               state,
               (current) =>
                 [
@@ -467,8 +563,14 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
     );
 
     return ComputerUseRuntime.of({
-      current: () => Ref.getUnsafe(state).result,
+      current: () => SubscriptionRef.getUnsafe(state).result,
       ensureReady,
+      managedServiceChanges: SubscriptionRef.changes(state).pipe(
+        Stream.map(projectManagedService),
+        Stream.changes,
+      ),
+      managedServiceSnapshot: () => projectManagedService(SubscriptionRef.getUnsafe(state)),
+      reconcileManagedService,
     });
   });
 
@@ -482,7 +584,19 @@ export const live = (
       return yield* make({
         ...options,
         host: makeComputerUseHostPlatform(
-          { macOSRelease: options.macOSRelease, platform: options.platform },
+          {
+            macOSRelease: options.macOSRelease,
+            platform: options.platform,
+            verifiedSkyNativeAddonPath:
+              options.browserRuntime.status === "available"
+                ? options.browserRuntime.bundle.paths.skyNativeAddon
+                : null,
+            verifiedSkyNativeExports:
+              options.browserRuntime.status === "available"
+                ? options.browserRuntime.bundle.manifest.capabilities.nativePip.exports
+                    .expectedExports
+                : null,
+          },
           callbacks,
         ),
       });

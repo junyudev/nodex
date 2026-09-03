@@ -1,6 +1,9 @@
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
-import { buildBrowserRuntimeProbeInvocation } from "./run-browser-runtime-probe";
+import {
+  buildBrowserRuntimeProbeInvocation,
+  shouldUseDesktopLaunchContext,
+} from "./run-browser-runtime-probe";
 
 describe("Browser runtime probe launcher", () => {
   test("uses absolute runtime paths when relaunching in a desktop app context", () => {
@@ -21,4 +24,10 @@ describe("Browser runtime probe launcher", () => {
       command: "/opt/node/bin/node",
     });
   });
+});
+
+test("keeps static inspection direct and desktop relaunch explicit", () => {
+  expect(shouldUseDesktopLaunchContext("darwin", [])).toBe(false);
+  expect(shouldUseDesktopLaunchContext("darwin", ["--conformance"])).toBe(true);
+  expect(shouldUseDesktopLaunchContext("linux", ["--conformance"])).toBe(false);
 });

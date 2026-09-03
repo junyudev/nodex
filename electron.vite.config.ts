@@ -153,6 +153,7 @@ export default defineConfig({
       sourcemap: sentrySourcemapSetting,
       rollupOptions: {
         input: {
+          "avatar-overlay": resolve(__dirname, "src/preload/avatar-overlay.ts"),
           "browser-guest": resolve(__dirname, "src/preload/browser-guest.ts"),
           "global-dictation": resolve(__dirname, "src/preload/global-dictation.ts"),
           index: resolve(__dirname, "src/preload/index.ts"),

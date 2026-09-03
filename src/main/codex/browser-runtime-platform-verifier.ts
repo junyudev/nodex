@@ -1,36 +1,35 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION } from "../../shared/browser-runtime-metadata";
+import { parseMachOMinimumMacosVersion } from "../../shared/mach-o-minimum-macos";
 import type { BrowserRuntimePlatformArtifactVerifier } from "./browser-runtime-bundle";
 
 type CommandReader = (command: string, args: string[]) => string;
 
-const PRODUCT_MINIMUM_MACOS = "15.0";
+const PRODUCT_MINIMUM_MACOS = BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
+
+function declaredArtifactMinimumMacos(
+  artifactPath: string,
+  manifest: Parameters<BrowserRuntimePlatformArtifactVerifier>[0]["manifest"],
+): string | null {
+  const nativePip = manifest.capabilities.nativePip;
+  if (nativePip && artifactPath === nativePip.addon) {
+    return nativePip.artifactMinimumMacOSVersion;
+  }
+  const computerUse = manifest.capabilities.computerUse;
+  if (computerUse.status === "available" && artifactPath === computerUse.serviceExecutable) {
+    return computerUse.artifactMinimumMacOSVersion;
+  }
+  const chrome = manifest.capabilities.browserUse?.backends.chrome;
+  return chrome?.status === "available" && artifactPath === chrome.nativeHost.path
+    ? chrome.nativeHost.artifactMinimumMacOSVersion
+    : null;
+}
 
 const parseVersion = (value: string): readonly number[] | null =>
   /^\d+(?:\.\d+){0,2}$/u.test(value) ? value.split(".").map(Number) : null;
 
-export function parseMachOMinimumMacosVersion(output: string): string | null {
-  const versions: string[] = [];
-  let command: "build-version" | "version-min" | null = null;
-  for (const line of output.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("cmd ")) {
-      command = trimmed === "cmd LC_BUILD_VERSION" ? "build-version" : null;
-      if (trimmed === "cmd LC_VERSION_MIN_MACOSX") command = "version-min";
-      continue;
-    }
-    const match =
-      command === "build-version"
-        ? /^minos\s+(\d+(?:\.\d+){0,2})$/u.exec(trimmed)
-        : command === "version-min"
-          ? /^version\s+(\d+(?:\.\d+){0,2})$/u.exec(trimmed)
-          : null;
-    if (!match?.[1]) continue;
-    versions.push(match[1]);
-    command = null;
-  }
-  return versions.length === 1 ? versions[0]! : null;
-}
+export { parseMachOMinimumMacosVersion } from "../../shared/mach-o-minimum-macos";
 
 const compareVersions = (left: string, right: string): number | null => {
   const leftParts = parseVersion(left);
@@ -125,6 +124,13 @@ export function createBrowserRuntimePlatformArtifactVerifier(
       minimumMacos = null;
     }
     if (!minimumMacos) return "could not inspect Mach-O minimum macOS version";
+    const declaredMinimumMacos = declaredArtifactMinimumMacos(artifact.path, manifest);
+    if (declaredMinimumMacos && compareVersions(minimumMacos, declaredMinimumMacos) !== 0) {
+      return (
+        `Mach-O artifact minimum macOS ${minimumMacos} does not match manifest declaration ` +
+        declaredMinimumMacos
+      );
+    }
     if (compareVersions(minimumMacos, PRODUCT_MINIMUM_MACOS) === 1) {
       return (
         `Mach-O artifact requires macOS ${minimumMacos}, newer than the product minimum ` +
@@ -138,10 +144,14 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     }
     const teamIdentifier = readTeamIdentifier(artifactPath, run);
     const computerUse = manifest.capabilities.computerUse;
+    const chrome = manifest.capabilities.browserUse?.backends.chrome;
     const expectedTeamIdentifier =
-      computerUse.status === "available" && artifact.path.startsWith(`${computerUse.appBundle}/`)
-        ? computerUse.signingTeamId
-        : manifest.peerAuthorization.signingTeamId;
+      chrome?.status === "available" && artifact.path === chrome.nativeHost.path
+        ? chrome.nativeHost.signingTeamId
+        : computerUse.status === "available" &&
+            artifact.path.startsWith(`${computerUse.appBundle}/`)
+          ? computerUse.signingTeamId
+          : manifest.peerAuthorization.signingTeamId;
     if (teamIdentifier !== expectedTeamIdentifier) {
       return "desktop tool runtime signing Team ID does not match the manifest";
     }

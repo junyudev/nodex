@@ -118,7 +118,7 @@ export interface BrowserProjection {
   readonly getState: () => BrowserSidebarStateSnapshot;
   readonly getTab: (identity: BrowserSidebarTabIdentity) => BrowserSidebarTabSnapshot | null;
   readonly getWebContents: (identity: BrowserSidebarTabIdentity) => BrowserWebContentsLike | null;
-  readonly hasPresentedSurfaceForThread: (threadId: string) => boolean;
+  readonly hasPresentedSurfaceForThread: (threadId: string, ownerWebContentsId?: number) => boolean;
   readonly isBrowserUseIdentity: (identity: BrowserSidebarTabIdentity) => boolean;
   readonly listPendingPresentations: (
     browserViewScopeId: string,
@@ -258,8 +258,8 @@ export const live = (
         getState: () => state.getStateSnapshot(),
         getTab: (identity) => state.getTabSnapshot(identity),
         getWebContents: (identity) => state.getWebContentsForTab(identity),
-        hasPresentedSurfaceForThread: (threadId) =>
-          state.hasPresentedBrowserUseSurfaceForThread(threadId),
+        hasPresentedSurfaceForThread: (threadId, ownerWebContentsId) =>
+          state.hasPresentedBrowserUseSurfaceForThread(threadId, ownerWebContentsId),
         isBrowserUseIdentity: (identity) => state.isBrowserUseIdentity(identity),
         listPendingPresentations: (browserViewScopeId) =>
           state.listPendingBrowserUsePresentationRequests(browserViewScopeId),

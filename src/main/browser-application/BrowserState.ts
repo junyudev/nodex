@@ -934,9 +934,16 @@ export class BrowserState {
     };
   }
 
-  hasPresentedBrowserUseSurfaceForThread(threadId: string): boolean {
+  hasPresentedBrowserUseSurfaceForThread(threadId: string, ownerWebContentsId?: number): boolean {
     for (const browserUseTab of this.browserUseTabs.values()) {
       if (browserUseTab.codexSessionId !== threadId) continue;
+      if (
+        ownerWebContentsId !== undefined &&
+        (browserUseTab.webContentsId === null ||
+          this.getOwnerWebContentsIdForGuest(browserUseTab.webContentsId) !== ownerWebContentsId)
+      ) {
+        continue;
+      }
       const snapshot = this.tabs.get(browserTabKey(browserUseTab));
       if (snapshot?.presented === true && snapshot.visible === true) return true;
     }

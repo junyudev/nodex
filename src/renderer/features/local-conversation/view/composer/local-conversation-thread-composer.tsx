@@ -140,6 +140,7 @@ import {
   buildComposerSlashCommands,
   canUseComposerGoal,
 } from "./slash-command-menu/slash-command-registry";
+import { toggleAvatarOverlay } from "@/lib/avatar-overlay-control";
 import {
   filterComposerSlashCommands,
   groupComposerSlashCommandMatches,
@@ -1583,7 +1584,6 @@ function HydratedThreadComposer({
     });
   const [nestedSlashCommand, setNestedSlashCommand] = useState<ComposerSlashCommand | null>(null);
   const [slashDialogOpen, setSlashDialogOpen] = useState(false);
-  const [desktopPetVisible, setDesktopPetVisible] = useState(false);
   const [planKeywordSuggestionDismissed, setPlanKeywordSuggestionDismissed] = useState(false);
   const [goalModeActive, setGoalModeActive] = useScopedAtom(composerGoalModeActiveAtom);
   const [goalReplacementConfirmation, setGoalReplacementConfirmation] =
@@ -2524,7 +2524,9 @@ function HydratedThreadComposer({
   }, []);
 
   const handleToggleDesktopPet = useCallback(() => {
-    setDesktopPetVisible((current) => !current);
+    void toggleAvatarOverlay().catch(() => {
+      toast.danger("Could not open the desktop pet");
+    });
   }, []);
 
   const activateGoalMode = useCallback(() => {
@@ -4301,20 +4303,6 @@ function HydratedThreadComposer({
         onClearQueue={() => handlePausedQueueSendDecision("clear")}
         onSendMessage={() => handlePausedQueueSendDecision("resume")}
       />
-      {desktopPetVisible ? (
-        <NodexTooltip tooltipContent="Hide desktop pet">
-          <button
-            type="button"
-            className="fixed right-5 bottom-5 z-50 flex size-14 items-center justify-center rounded-full bg-token-dropdown-background/95 text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border/50 backdrop-blur-sm hover:bg-token-list-hover-background"
-            aria-label="Hide desktop pet"
-            onClick={() => setDesktopPetVisible(false)}
-          >
-            <span className="text-lg" aria-hidden="true">
-              Nodex
-            </span>
-          </button>
-        </NodexTooltip>
-      ) : null}
     </>
   );
 }

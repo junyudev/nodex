@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { CodexConnectionState } from "../../shared/types";
+import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
 import { CodexConnection } from "./CodexConnection";
 import { make } from "./CodexConnectionLifecycle";
@@ -88,6 +89,12 @@ it.effect("settles a lost generation and marks loaded conversations before recon
           },
         } as unknown as ConversationEntityMap["Service"]),
       ),
+      Effect.provideService(
+        RemoteHostedPipRuntime,
+        RemoteHostedPipRuntime.of({
+          retireLocalCodexHost: () => Effect.sync(() => trace.push("pip-retire")),
+        } as unknown as RemoteHostedPipRuntime["Service"]),
+      ),
     );
 
     const connected = (retries: number): CodexConnectionState => ({
@@ -100,6 +107,7 @@ it.effect("settles a lost generation and marks loaded conversations before recon
     yield* Effect.yieldNow;
 
     assert.deepEqual(trace, [
+      "pip-retire",
       "auto-resolution",
       "serverRequest/resolved:7",
       "mark-needs-resume",

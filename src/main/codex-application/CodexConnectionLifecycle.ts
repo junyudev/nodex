@@ -14,6 +14,7 @@ import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 
 export class CodexConnectionLifecycle extends Context.Service<
   CodexConnectionLifecycle,
@@ -37,6 +38,7 @@ export const make: Effect.Effect<
   | CodexSubagentDirectory
   | CodexUserInputAutoResolution
   | ConversationEntityMap
+  | RemoteHostedPipRuntime
   | Scope.Scope
 > = Effect.gen(function* () {
   const ownerScope = yield* Scope.Scope;
@@ -49,6 +51,7 @@ export const make: Effect.Effect<
   const subagents = yield* CodexSubagentDirectory;
   const autoResolution = yield* CodexUserInputAutoResolution;
   const conversations = yield* ConversationEntityMap;
+  const remoteHostedPip = yield* RemoteHostedPipRuntime;
   // The endpoint may already be ready before this dependent Layer subscribes. Seed the transition
   // fence from the current stable-host state so its first observed disconnect cannot be mistaken
   // for startup and leave loaded renderer roles attached to a dead generation.
@@ -93,6 +96,7 @@ export const make: Effect.Effect<
     previousStatus = connection.status;
 
     if (wasConnected && connection.status !== "connected") {
+      yield* remoteHostedPip.retireLocalCodexHost("connection-lost");
       yield* autoResolution.handleDisconnect;
       yield* settleDisconnectedRequests();
     }

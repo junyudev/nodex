@@ -28,7 +28,6 @@ import {
   type ThreadScrollMode,
   THREAD_NEAR_BOTTOM_THRESHOLD_PX,
 } from "./local-conversation-turn-virtualization";
-import { useRemoteHostedPipHostLayoutReporter } from "./remote-hosted-pip-host-layout-reporter";
 import type { LocalConversationThreadRestoreSnapshot } from "./local-conversation-thread-view-state";
 
 const USER_SCROLL_WHEEL_DELTA_THRESHOLD_PX = 12;
@@ -712,8 +711,6 @@ export const LocalConversationThreadScrollLayout = forwardRef<
   const preserveScrollPositionForNextLayout = controller.preserveScrollPositionForNextLayout;
   const scrollElement = controller.scrollElement;
   const restoredElementRef = useRef<HTMLDivElement | null>(null);
-  useRemoteHostedPipHostLayoutReporter();
-
   useLayoutEffect(() => {
     if (!scrollElement || restoredElementRef.current === scrollElement) return;
     restoredElementRef.current = scrollElement;

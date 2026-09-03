@@ -132,6 +132,7 @@ type CdpEventListener = (event: BrowserUseCdpEvent) => void;
 export interface BrowserUseIabApi {
   readonly addCdpEventListener: (listener: CdpEventListener) => () => void;
   readonly dispatch: (method: string, rawParams: unknown) => Promise<unknown>;
+  readonly focusControlledTab: (tabId: number) => boolean;
   readonly getInfo: (rawParams: unknown) => Record<string, unknown>;
   readonly hasActiveControl: () => boolean;
   readonly notifyCursorArrived: (moveSequence: number) => void;
@@ -340,7 +341,7 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     if (method === "getUserHistory") return this.getUserHistory(rawParams);
     if (method === "createTab") return await this.createTab(rawParams);
     if (method === "claimUserTab") return await this.claimUserTab(rawParams);
-    if (method === "focusTab") return this.focusTab(rawParams);
+    if (method === "focusTab") return this.focusTabRequest(rawParams);
     if (method === "nameSession") return this.nameSession(rawParams);
     if (method === "attach") return await this.attach(rawParams);
     if (method === "detach") return await this.detach(rawParams);
@@ -522,16 +523,22 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
     return this.serializeTab(tab);
   }
 
-  private focusTab(rawParams: unknown): void {
+  focusControlledTab(tabId: number): boolean {
+    const tab = this.requireControlledTab(tabId);
+    this.selectedTabId = tab.id;
+    this.browser.setActiveTab(this.route, tab.browserTabId);
+    this.browser.setVisible(this.route, tab.browserTabId, true);
+    return true;
+  }
+
+  private focusTabRequest(rawParams: unknown): boolean {
     const params = z
       .object({
         tabId: BrowserUseTabIdSchema,
       })
       .strict()
       .parse(rawParams);
-    const tab = this.requireControlledTab(params.tabId);
-    this.selectedTabId = tab.id;
-    this.browser.setActiveTab(this.route, tab.browserTabId);
+    return this.focusControlledTab(params.tabId);
   }
 
   private nameSession(rawParams: unknown): void {

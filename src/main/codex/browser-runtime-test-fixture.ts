@@ -4,6 +4,10 @@ import path from "node:path";
 import {
   BROWSER_PLUGIN_NODE_MODULE_DIR,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
+  BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS,
+  BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS,
+  BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+  BROWSER_RUNTIME_SCHEMA_VERSION,
   type BrowserRuntimeArtifact,
   type BrowserRuntimeManifest,
 } from "../../shared/browser-runtime-metadata";
@@ -76,6 +80,30 @@ const FIXTURE_FILES = [
     executable: false,
     kind: "data",
     path: "marketplace/plugins/browser/.codex-plugin/plugin.json",
+  },
+  {
+    architecture: "any",
+    executable: false,
+    kind: "data",
+    path: "marketplace/plugins/chrome/.codex-plugin/plugin.json",
+  },
+  {
+    architecture: "any",
+    executable: false,
+    kind: "data",
+    path: "marketplace/plugins/chrome/scripts/installManifest.mjs",
+  },
+  {
+    architecture: "any",
+    executable: false,
+    kind: "data",
+    path: "marketplace/plugins/chrome/scripts/extension-ids.json",
+  },
+  {
+    architecture: "arm64",
+    executable: true,
+    kind: "executable",
+    path: "marketplace/plugins/chrome/extension-host/macos/arm64/ChatGPT for Chrome",
   },
   {
     architecture: "any",
@@ -181,6 +209,10 @@ function fixtureContent(relativePath: string): string {
             name: "computer-use",
             source: { path: "./plugins/computer-use", source: "local" },
           },
+          {
+            name: "chrome",
+            source: { path: "./plugins/chrome", source: "local" },
+          },
         ],
       },
       null,
@@ -188,7 +220,11 @@ function fixtureContent(relativePath: string): string {
     )}\n`;
   }
   if (relativePath.endsWith("/.codex-plugin/plugin.json")) {
-    const name = relativePath.includes("/computer-use/") ? "computer-use" : "browser";
+    const name = relativePath.includes("/computer-use/")
+      ? "computer-use"
+      : relativePath.includes("/chrome/")
+        ? "chrome"
+        : "browser";
     return `${JSON.stringify({ name, version: "1.0.0-test" }, null, 2)}\n`;
   }
   if (relativePath.endsWith("/computer-use-node-repl.md")) {
@@ -208,14 +244,19 @@ export function writeBrowserRuntimeFixture(
   const definitions =
     targetArch === "arm64" ? [...FIXTURE_FILES, ...COMPUTER_USE_FIXTURE_FILES] : FIXTURE_FILES;
   const artifacts: BrowserRuntimeArtifact[] = definitions.map((definition) => {
-    const content = fixtureContent(definition.path);
-    const artifactPath = path.join(bundleRoot, ...definition.path.split("/"));
+    const relativePath = definition.path.replace(
+      "extension-host/macos/arm64/",
+      `extension-host/macos/${targetArch}/`,
+    );
+    const content = fixtureContent(relativePath);
+    const artifactPath = path.join(bundleRoot, ...relativePath.split("/"));
     fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
     fs.writeFileSync(artifactPath, content);
     if (definition.executable) fs.chmodSync(artifactPath, 0o755);
     return {
       ...definition,
       architecture: definition.architecture === "arm64" ? targetArch : definition.architecture,
+      path: relativePath,
       sha256: sha256(content),
       size: Buffer.byteLength(content),
     };
@@ -245,14 +286,38 @@ export function writeBrowserRuntimeFixture(
     },
     buildFlavor: "test",
     capabilities: {
+      browserUse: {
+        backends: {
+          chrome: {
+            extensionIds: ["hehggadaopoacecdllhhajmbjkdcmajg", "odlomjlbamekndcpllcnffbgeohgkmjh"],
+            familyDescriptor: "marketplace/plugins/chrome/scripts/extension-ids.json",
+            installManifest: "marketplace/plugins/chrome/scripts/installManifest.mjs",
+            nativeHost: {
+              artifactMinimumMacOSVersion: "13.0",
+              hostName: "com.openai.codexextension",
+              path: `marketplace/plugins/chrome/extension-host/macos/${targetArch}/ChatGPT for Chrome`,
+              productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+              signingTeamId: "TESTTEAM",
+            },
+            plugin: {
+              id: "chrome@openai-bundled",
+              manifest: "marketplace/plugins/chrome/.codex-plugin/plugin.json",
+              root: "marketplace/plugins/chrome",
+              version: "1.0.0-test",
+            },
+            status: "available",
+          },
+          iab: { status: "available" },
+        },
+      },
       computerUse:
         targetArch === "arm64"
           ? {
               appBundle: "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app",
               appBundleIdentifier: "com.openai.CodexComputerUse",
+              artifactMinimumMacOSVersion: "14.4",
               client: "marketplace/plugins/computer-use/client.mjs",
-              ipcProtocol: "CodexComputerUseIPC-2",
-              minimumMacOSVersion: "14.4",
+              ipcProtocol: "CodexComputerUseIPC-5",
               plugin: {
                 docs: "marketplace/plugins/computer-use/docs/SKILL.md",
                 id: "computer-use@openai-bundled",
@@ -263,6 +328,7 @@ export function writeBrowserRuntimeFixture(
                 root: "marketplace/plugins/computer-use",
                 version: "1.0.0-test",
               },
+              productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
               rpcService:
                 "runtime/lib/node_modules/@oai/sky/dist/project/cua/sky_js/src/service.js",
               serviceExecutable:
@@ -273,11 +339,18 @@ export function writeBrowserRuntimeFixture(
           : { reason: "architecture-unsupported", status: "unavailable" },
       nativePip: {
         addon: "native/sky.node",
+        artifactMinimumMacOSVersion: "13.0",
         controlAssets: [
           "native/remote-hosted-pip/pop-in-window-egg@3x.png",
           "native/remote-hosted-pip/pop-out-window-egg@3x.png",
         ],
-        minimumMacOSVersion: "13.0",
+        exports: {
+          expectedExportCount: BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS.length,
+          expectedExports: [...BROWSER_RUNTIME_LEGACY_SKY_NATIVE_EXPORTS],
+          groups: BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS,
+        },
+        productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+        status: "available",
       },
     },
     codexCompatibilityVersion: options.codexCompatibilityVersion ?? "0.144.6",
@@ -299,7 +372,7 @@ export function writeBrowserRuntimeFixture(
       node: "24.0.0",
       peerAuthorization: "test",
     },
-    schemaVersion: 5,
+    schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
     supportedBackends: ["iab", "chrome"],
     targetArch,
     targetPlatform: options.targetPlatform ?? "darwin",

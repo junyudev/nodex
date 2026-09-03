@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
+import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexActiveGoalContinuation } from "./CodexActiveGoalContinuation";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
@@ -27,6 +28,7 @@ it.effect("drains frame text before terminal turn consequences", () =>
   Effect.gen(function* () {
     const trace: string[] = [];
     const forwarded: CodexServerNotification[] = [];
+    let deferLifecycle = false;
     const service = yield* make.pipe(
       Effect.provideService(
         CodexActiveGoalContinuation,
@@ -127,6 +129,7 @@ it.effect("drains frame text before terminal turn consequences", () =>
               done: { rows: [], knownCount: 0, totalCount: 0, continuation: null },
             }),
           observeNotification: () => Effect.void,
+          shouldDeferLifecycleNotification: () => Effect.succeed(deferLifecycle),
         } as unknown as CodexSubagentDirectory["Service"]),
       ),
       Effect.provideService(
@@ -148,6 +151,12 @@ it.effect("drains frame text before terminal turn consequences", () =>
         BrowserUseRuntime.of({
           turnEnded: () => Effect.sync(() => trace.push("browser")),
         } as unknown as BrowserUseRuntime["Service"]),
+      ),
+      Effect.provideService(
+        RemoteHostedPipRuntime,
+        RemoteHostedPipRuntime.of({
+          observeCodexOccurrence: () => Effect.sync(() => trace.push("pip")),
+        } as unknown as RemoteHostedPipRuntime["Service"]),
       ),
     );
     const notification = {
@@ -174,7 +183,14 @@ it.effect("drains frame text before terminal turn consequences", () =>
       occurrenceToken: 91,
     });
 
-    assert.deepEqual(trace, ["drain", "browser", "automation", "queue", "durable:remote-a:7"]);
+    assert.deepEqual(trace, [
+      "drain",
+      "browser",
+      "pip",
+      "automation",
+      "queue",
+      "durable:remote-a:7",
+    ]);
 
     trace.length = 0;
     yield* service.apply({
@@ -202,6 +218,7 @@ it.effect("drains frame text before terminal turn consequences", () =>
     assert.deepEqual(trace, [
       "drain",
       "browser",
+      "pip",
       "automation",
       "queue-terminal:true:0",
       "durable:remote-a:7",
@@ -248,5 +265,34 @@ it.effect("drains frame text before terminal turn consequences", () =>
       forwardedItem.params.item.text,
       "Live output exceeded the resident Turn limit. Additional output was omitted from memory; the persisted transcript remains authoritative.",
     );
+
+    trace.length = 0;
+    deferLifecycle = true;
+    const archivedDisposition = yield* service.apply({
+      hostId: "remote-a",
+      generation: 7,
+      notification: {
+        method: "thread/archived",
+        params: { threadId: "thread-a" },
+      } as CodexServerNotification,
+      occurrenceId: "remote-a:7:inbox-a:94",
+      occurrenceToken: 94,
+    });
+    assert.strictEqual(archivedDisposition, "retain");
+    assert.notInclude(trace, "pip");
+
+    trace.length = 0;
+    const deletedDisposition = yield* service.apply({
+      hostId: "remote-a",
+      generation: 7,
+      notification: {
+        method: "thread/deleted",
+        params: { threadId: "thread-a" },
+      } as CodexServerNotification,
+      occurrenceId: "remote-a:7:inbox-a:95",
+      occurrenceToken: 95,
+    });
+    assert.strictEqual(deletedDisposition, "retain");
+    assert.notInclude(trace, "pip");
   }),
 );

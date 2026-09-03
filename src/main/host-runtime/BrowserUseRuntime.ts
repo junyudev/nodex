@@ -24,6 +24,7 @@ import {
 import type { BrowserRuntimeAvailability } from "../codex/browser-runtime-bundle";
 import { getLogger } from "../logging/logger";
 import { BrowserProfileRuntime } from "./BrowserProfileRuntime";
+import { ChromeControlRuntime } from "./ChromeControlRuntime";
 
 export class BrowserUseRuntimeError extends Schema.TaggedError<BrowserUseRuntimeError>()(
   "BrowserUseRuntimeError",
@@ -37,6 +38,10 @@ export class BrowserUseRuntime extends Context.Service<
     readonly captureRoute: (
       input: BrowserUseRouteCapture,
     ) => Effect.Effect<void, BrowserUseRuntimeError>;
+    readonly focusPresentation: (input: {
+      readonly sessionId: string;
+      readonly tabId: number;
+    }) => Effect.Effect<boolean, BrowserUseRuntimeError>;
     readonly promoteRoute: (input: {
       readonly browserConversationId: string;
       readonly browserViewScopeId: string;
@@ -60,6 +65,10 @@ interface BrowserUseRegistryPort {
   readonly captureRoute: (
     input: BrowserUseRouteCapture,
   ) => Effect.Effect<unknown, BrowserUseRuntimeError>;
+  readonly focusPresentation: (input: {
+    readonly sessionId: string;
+    readonly tabId: number;
+  }) => Effect.Effect<boolean, BrowserUseRuntimeError>;
   readonly notifyCursorArrived: (
     input: BrowserUseCursorArrivalInput,
   ) => Effect.Effect<void, BrowserUseRuntimeError>;
@@ -79,6 +88,7 @@ interface BrowserUseRegistryPort {
 
 export interface BrowserUseRuntimePorts {
   readonly browserEvents: Stream.Stream<BrowserSidebarEvent>;
+  readonly chromeProviderReady?: () => boolean;
   readonly makeRegistry: Effect.Effect<BrowserUseRegistryPort, BrowserUseRuntimeError, Scope.Scope>;
   readonly releaseCredentialOwner: (ownerWebContentsId: number) => Effect.Effect<void>;
 }
@@ -91,6 +101,7 @@ const adaptSessionRuntime = (runtime: BrowserUseSessionRuntime): BrowserUseRegis
   return {
     availableBackends: runtime.availableBackends,
     captureRoute: (input) => adapt(runtime.captureRoute(input)),
+    focusPresentation: (input) => adapt(runtime.focusPresentation(input)),
     notifyCursorArrived: (input) => adapt(runtime.notifyCursorArrived(input)),
     releaseOwner: (ownerWebContentsId) => adapt(runtime.releaseOwner(ownerWebContentsId)),
     releaseSession: (sessionId) => adapt(runtime.releaseSession(sessionId)),
@@ -186,9 +197,16 @@ const make = (
       Effect.forkScoped({ startImmediately: true }),
     );
 
+    const availableBackends = (): readonly BrowserRuntimeBackend[] => {
+      const backends = registry.availableBackends().filter((backend) => backend !== "chrome");
+      if (ports.chromeProviderReady?.()) return [...backends, "chrome"];
+      return backends;
+    };
+
     return BrowserUseRuntime.of({
-      availableBackends: registry.availableBackends,
+      availableBackends,
       captureRoute,
+      focusPresentation: registry.focusPresentation,
       promoteRoute,
       releaseSession: registry.releaseSession,
       turnEnded: registry.turnEnded,
@@ -209,12 +227,13 @@ export const live = (
 ): Layer.Layer<
   BrowserUseRuntime,
   BrowserUseRuntimeError,
-  BrowserApplication | BrowserProfileRuntime | ScopedCallbackRuntime
+  BrowserApplication | BrowserProfileRuntime | ChromeControlRuntime | ScopedCallbackRuntime
 > =>
   Layer.effect(
     BrowserUseRuntime,
     Effect.gen(function* () {
       const browser = yield* BrowserApplication;
+      const chrome = yield* ChromeControlRuntime;
       const profile = yield* BrowserProfileRuntime;
       const callbacks = yield* ScopedCallbackRuntime;
       const capability = resolveBrowserUseHostCapability({
@@ -241,6 +260,7 @@ export const live = (
       });
       return yield* make({
         browserEvents: browser.events.events,
+        chromeProviderReady: chrome.available,
         releaseCredentialOwner: profile.credentials.releaseOwner,
         makeRegistry: (() => {
           const appSessionId = randomUUID();

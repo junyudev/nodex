@@ -6,11 +6,14 @@ import { fileURLToPath } from "node:url";
 import {
   BROWSER_PLUGIN_NODE_MODULE_DIR,
   BROWSER_RUNTIME_MANIFEST_FILENAME,
+  BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS,
+  BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
   BROWSER_RUNTIME_SCHEMA_VERSION,
   parseBrowserRuntimeManifest,
   type BrowserRuntimeArtifact,
   type BrowserRuntimeManifest,
 } from "../src/shared/browser-runtime-metadata";
+import { parseMachOMinimumMacosVersion } from "../src/shared/mach-o-minimum-macos";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 
 const EXECUTABLE_MODE = 0o755;
@@ -90,6 +93,24 @@ function readNodeApiVersion(nodePath: string): string {
 function readArchitectures(filePath: string): string[] {
   const output = readCommand("/usr/bin/lipo", ["-archs", filePath]);
   return output.split(/\s+/u).filter(Boolean);
+}
+
+type CommandReader = (command: string, args: string[]) => string;
+
+/** Records the selected architecture's actual deployment target instead of release folklore. */
+export function readMachOMinimumMacosVersion(
+  filePath: string,
+  targetArch: "arm64" | "x64",
+  run: CommandReader = readCommand,
+): string {
+  const architecture = targetArch === "x64" ? "x86_64" : "arm64";
+  const minimum = parseMachOMinimumMacosVersion(
+    run("/usr/bin/otool", ["-arch", architecture, "-l", filePath]),
+  );
+  if (!minimum) {
+    throw new Error(`Could not inspect Browser runtime minimum macOS version: ${filePath}`);
+  }
+  return minimum;
 }
 
 function assertArchitecture(filePath: string, targetArch: "arm64" | "x64"): void {
@@ -251,6 +272,18 @@ function writeBrowserMarketplaceManifest(
         },
         category: "Engineering",
       },
+      {
+        name: "chrome",
+        source: {
+          source: "local",
+          path: "./plugins/chrome",
+        },
+        policy: {
+          installation: "AVAILABLE",
+          authentication: "ON_INSTALL",
+        },
+        category: "Productivity",
+      },
       ...(includeComputerUse
         ? [
             {
@@ -283,6 +316,44 @@ function assertPeerAddonLoads(nodePath: string, addonPath: string): void {
       "if(typeof addon.authorizeSocketPeer!=='function')process.exit(2)",
     addonPath,
   ]);
+}
+
+/**
+ * Loads sky.node with the bundled Node that will consume it in production and records the
+ * complete enumerable function ABI. Capability groups remain the semantic minimum, while this
+ * exact set prevents a different native build from being accepted under the same manifest.
+ */
+export function readSkyNativeExports(nodePath: string, addonPath: string): string[] {
+  const output = readCommand(nodePath, [
+    "-e",
+    "const addon=require(process.argv[1]);" +
+      "if(typeof addon!=='object'||addon===null)process.exit(2);" +
+      "const names=Object.keys(addon).sort();" +
+      "if(names.length===0||names.some((name)=>typeof addon[name]!=='function'))process.exit(3);" +
+      "process.stdout.write(JSON.stringify(names));",
+    addonPath,
+  ]);
+  const value = JSON.parse(output) as unknown;
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some(
+      (entry, index) =>
+        typeof entry !== "string" ||
+        !/^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(entry) ||
+        (index > 0 && entry <= value[index - 1]!),
+    )
+  ) {
+    throw new Error("sky.node returned an invalid export contract");
+  }
+  const exports = value as string[];
+  const missingRequiredExports = Object.values(BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS)
+    .flat()
+    .filter((exportName) => !exports.includes(exportName));
+  if (missingRequiredExports.length > 0) {
+    throw new Error(`sky.node is missing required exports: ${missingRequiredExports.join(", ")}`);
+  }
+  return exports;
 }
 
 function isMachO(filePath: string): boolean {
@@ -347,6 +418,20 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
   const skyAddonPath = path.join(resourcesPath, "native", "sky.node");
   const remoteHostedPipAssetsPath = path.join(resourcesPath, "native", "remote-hosted-pip");
   const pluginRoot = path.join(resourcesPath, "plugins", "openai-bundled", "plugins", PLUGIN_NAME);
+  const chromePluginRoot = path.join(
+    resourcesPath,
+    "plugins",
+    "openai-bundled",
+    "plugins",
+    "chrome",
+  );
+  const chromeNativeHostRelativePath = path.join(
+    "extension-host",
+    "macos",
+    options.targetArch,
+    "ChatGPT for Chrome",
+  );
+  const chromeNativeHostPath = path.join(chromePluginRoot, chromeNativeHostRelativePath);
   const computerUsePluginRoot = path.join(
     resourcesPath,
     "plugins",
@@ -373,10 +458,32 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
   );
   const cuaManifest = readJsonFile(path.join(cuaRoot, "manifest.json"));
   const pluginManifest = readJsonFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"));
+  const chromePluginManifest = readJsonFile(
+    path.join(chromePluginRoot, ".codex-plugin", "plugin.json"),
+  );
+  const chromeFamilyDescriptor = readJsonFile(
+    path.join(chromePluginRoot, "scripts", "extension-ids.json"),
+  );
+  const extensionIds = [
+    ...new Set(
+      (Array.isArray(chromeFamilyDescriptor.browserExtensions)
+        ? chromeFamilyDescriptor.browserExtensions
+        : []
+      ).flatMap((entry) =>
+        typeof entry === "object" && entry !== null && Array.isArray(entry.extensionIds)
+          ? entry.extensionIds.filter((extensionId: unknown): extensionId is string =>
+              /^[a-p]{32}$/u.test(String(extensionId)),
+            )
+          : [],
+      ),
+    ),
+  ];
+  if (extensionIds.length === 0) throw new Error("Chrome plugin has no attested extension IDs");
 
   for (const binaryPath of [codexPath, nodePath, nodeReplPath, peerAddonPath, skyAddonPath]) {
     assertArchitecture(binaryPath, options.targetArch);
   }
+  assertArchitecture(chromeNativeHostPath, options.targetArch);
   if (computerUseAvailable) assertArchitecture(computerUseServicePath, options.targetArch);
   if (
     computerUseAvailable &&
@@ -387,6 +494,11 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
     );
   }
   assertPeerAddonLoads(nodePath, peerAddonPath);
+  const skyNativeExports = readSkyNativeExports(nodePath, skyAddonPath);
+  const chromeNativeHostMinimumMacos = readMachOMinimumMacosVersion(
+    chromeNativeHostPath,
+    options.targetArch,
+  );
 
   const outputPath = path.resolve(options.outputPath);
   const desktopBuild = readPlistValue(plistPath, "CFBundleShortVersionString");
@@ -419,6 +531,11 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
       existing.desktopBuild === desktopBuild &&
       existing.desktopBuildNumber === desktopBuildNumber &&
       existing.browserPlugin.version === pluginVersion &&
+      existing.capabilities.browserUse.backends.chrome.status === "available" &&
+      existing.capabilities.browserUse.backends.chrome.nativeHost.artifactMinimumMacOSVersion ===
+        chromeNativeHostMinimumMacos &&
+      JSON.stringify(existing.capabilities.nativePip.exports.expectedExports) ===
+        JSON.stringify(skyNativeExports) &&
       existing.peerAuthorization.signingTeamId === peerSigningTeamId &&
       existing.targetArch === options.targetArch &&
       JSON.stringify(existing.runtimeVersions) === JSON.stringify(runtimeVersions)
@@ -443,6 +560,13 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
     copyTree(skyAddonPath, path.join(preparedRoot, "native", "sky.node"));
     copyTree(remoteHostedPipAssetsPath, path.join(preparedRoot, "native", "remote-hosted-pip"));
     copyTree(pluginRoot, path.join(preparedRoot, "marketplace", "plugins", PLUGIN_NAME));
+    copyTree(chromePluginRoot, path.join(preparedRoot, "marketplace", "plugins", "chrome"));
+    for (const sharedEntrypoint of ["browser-client.mjs", "browser-service.mjs"]) {
+      fs.rmSync(
+        path.join(preparedRoot, "marketplace", "plugins", "chrome", "scripts", sharedEntrypoint),
+        { force: true },
+      );
+    }
     if (computerUseAvailable) {
       copyTree(
         computerUsePluginRoot,
@@ -476,6 +600,30 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
       },
       buildFlavor: "production",
       capabilities: {
+        browserUse: {
+          backends: {
+            chrome: {
+              extensionIds,
+              familyDescriptor: "marketplace/plugins/chrome/scripts/extension-ids.json",
+              installManifest: "marketplace/plugins/chrome/scripts/installManifest.mjs",
+              nativeHost: {
+                artifactMinimumMacOSVersion: chromeNativeHostMinimumMacos,
+                hostName: "com.openai.codexextension",
+                path: `marketplace/plugins/chrome/extension-host/macos/${options.targetArch}/ChatGPT for Chrome`,
+                productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+                signingTeamId: readSigningTeamId(chromeNativeHostPath),
+              },
+              plugin: {
+                id: "chrome@openai-bundled",
+                manifest: "marketplace/plugins/chrome/.codex-plugin/plugin.json",
+                root: "marketplace/plugins/chrome",
+                version: readNonEmptyString(chromePluginManifest.version, "Chrome plugin version"),
+              },
+              status: "available",
+            },
+            iab: { status: "available" },
+          },
+        },
         computerUse: computerUseAvailable
           ? {
               appBundle: "runtime/lib/node_modules/@oai/sky/Codex Computer Use.app",
@@ -483,9 +631,9 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
                 path.join(computerUseAppPath, "Contents", "Info.plist"),
                 "CFBundleIdentifier",
               ),
+              artifactMinimumMacOSVersion: "14.4",
               client: `marketplace/plugins/computer-use/${computerUseClientRelativePath}`,
-              ipcProtocol: "CodexComputerUseIPC-2",
-              minimumMacOSVersion: "14.4",
+              ipcProtocol: "CodexComputerUseIPC-5",
               plugin: {
                 docs: "marketplace/plugins/computer-use/skills/computer-use/SKILL.md",
                 id: "computer-use@openai-bundled",
@@ -500,6 +648,7 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
                   "Computer Use plugin version",
                 ),
               },
+              productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
               rpcService:
                 "runtime/lib/node_modules/@oai/sky/dist/project/cua/sky_js/src/service.js",
               serviceExecutable:
@@ -513,11 +662,18 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
             },
         nativePip: {
           addon: "native/sky.node",
+          artifactMinimumMacOSVersion: "13.0",
           controlAssets: [
             "native/remote-hosted-pip/pop-in-window-egg@3x.png",
             "native/remote-hosted-pip/pop-out-window-egg@3x.png",
           ],
-          minimumMacOSVersion: "13.0",
+          exports: {
+            expectedExportCount: skyNativeExports.length,
+            expectedExports: skyNativeExports,
+            groups: BROWSER_RUNTIME_NATIVE_PIP_EXPORT_GROUPS,
+          },
+          productMinimumMacOSVersion: BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION,
+          status: "available",
         },
       },
       codexCompatibilityVersion: options.codexCompatibilityVersion,
@@ -535,7 +691,7 @@ export function vendorBrowserRuntime(options: VendorBrowserRuntimeOptions): Brow
       },
       runtimeVersions,
       schemaVersion: BROWSER_RUNTIME_SCHEMA_VERSION,
-      supportedBackends: ["iab"],
+      supportedBackends: ["iab", "chrome"],
       targetArch: options.targetArch,
       targetPlatform: "darwin",
     };

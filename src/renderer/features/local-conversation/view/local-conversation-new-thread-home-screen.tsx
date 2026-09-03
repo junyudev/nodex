@@ -2,6 +2,11 @@ import type { ReactNode } from "react";
 import { motion } from "motion/react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { CODEX_SHELL_PANEL_TRANSITION } from "../../../lib/codex-panel-motion";
+import {
+  REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE,
+  REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
+  REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE,
+} from "../../../../shared/remote-hosted-pip";
 import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 
 interface LocalConversationNewThreadHomeScreenProps {
@@ -35,6 +40,9 @@ export function LocalConversationNewThreadHomeScreen({
               className="[container-type:size] relative min-h-[43.75rem] w-full flex-1 overflow-y-auto [container-name:home-main-content]"
               role="main"
               data-new-thread-home-main="true"
+              {...{
+                [REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE]: REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
+              }}
             >
               <div
                 className="absolute top-[calc(50%-8rem)] left-1/2 flex w-[min(calc(100%-2.5rem),48rem)] min-w-0 -translate-x-1/2 flex-col items-center"
@@ -45,6 +53,7 @@ export function LocalConversationNewThreadHomeScreen({
               <div
                 className="absolute bottom-4 left-1/2 z-10 flex w-[min(calc(100%-2.5rem),46rem)] min-w-0 -translate-x-1/2 flex-col gap-2 electron:bg-token-main-surface-primary"
                 data-new-thread-home-composer="true"
+                {...{ [REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE]: "new-thread-home-composer" }}
               >
                 {footer}
               </div>

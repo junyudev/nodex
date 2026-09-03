@@ -55,6 +55,29 @@ describe("remote-hosted PiP layout", () => {
     expect(bottomRight?.point.y ?? 0).toBe(718);
   });
 
+  test("places the top-right presentation below the available Home surface", () => {
+    const layout = buildRemoteHostedPipHostLayout({
+      homeSurfaceRect: {
+        height: 300,
+        width: 320,
+        x: 740,
+        y: 80,
+      },
+      hostRect: {
+        height: 800,
+        width: 1_000,
+        x: 100,
+        y: 50,
+      },
+      isCodexHomeAvailable: true,
+      obstacleRects: [],
+    });
+
+    const topRight = layout.anchors?.find((anchor) => anchor.alignment === "top-right");
+    expect(topRight?.point).toEqual({ x: 1_060, y: 392 });
+    expect(layout.isCodexHomeAvailable).toBe(true);
+  });
+
   test("hidden layout clears the native host without anchors", () => {
     const layout = buildRemoteHostedPipHiddenHostLayout();
 

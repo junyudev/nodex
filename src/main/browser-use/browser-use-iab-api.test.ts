@@ -313,6 +313,22 @@ const withApi = <A>(
 ) => makeApi(policyStore).pipe(Effect.flatMap((context) => Effect.promise(() => run(context))));
 
 describe("BrowserUseIabApi", () => {
+  it.effect("focuses the exact controlled tab and makes its embedded page visible", () =>
+    withApi(async ({ api, service }) => {
+      const tab = (await api.dispatch("createTab", {
+        session_id: "thread-1",
+        turn_id: "turn-1",
+      })) as { id: number };
+      const browserTabId = service.activeTabs.at(-1);
+      expect(browserTabId).toEqual(expect.any(String));
+
+      expect(api.focusControlledTab(tab.id)).toBe(true);
+      expect(service.activeTabs.at(-1)).toBe(browserTabId);
+      expect(service.visibilityChanges).toEqual([{ browserTabId, visible: true }]);
+      expect(() => api.focusControlledTab(tab.id + 1)).toThrow("Unknown tab");
+    }),
+  );
+
   it.effect("filters backend discovery by exact Codex session and keeps history unavailable", () =>
     withApi(async ({ api }) => {
       expect(api.getInfo({ session_id: "thread-1" })).toMatchObject({

@@ -8,6 +8,7 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { assert, it } from "@effect/vitest";
 import { afterEach, vi } from "vite-plus/test";
@@ -148,6 +149,7 @@ it.effect("owns readiness, native requests, managed service, and release in one 
     const fixture = makeRuntimeFixture();
     const harness = makeHost();
     const { runtime, scope } = yield* buildRuntime({ ...fixture, host: harness.host });
+    assert.deepEqual(runtime.managedServiceSnapshot(), { generation: 0, status: "pending" });
 
     const expected = {
       appPath: "/runtime/Codex Computer Use.app",
@@ -160,6 +162,11 @@ it.effect("owns readiness, native requests, managed service, and release in one 
     });
     assert.deepEqual(results, [expected, expected]);
     assert.deepEqual(runtime.current(), expected);
+    assert.deepEqual(runtime.managedServiceSnapshot(), {
+      executablePath: expected.serviceExecutablePath,
+      generation: 0,
+      status: "ready",
+    });
     assert.strictEqual(harness.acquire.mock.calls.length, 1);
     assert.strictEqual(harness.writeConfig.mock.calls.length, 1);
 
@@ -169,17 +176,55 @@ it.effect("owns readiness, native requests, managed service, and release in one 
       request("ensureService", { service: "computer-use" }),
     ]);
     assert.strictEqual(harness.spawn.mock.calls.length, 1);
+    assert.deepEqual(runtime.managedServiceSnapshot(), {
+      executablePath: expected.serviceExecutablePath,
+      generation: 1,
+      pid: 8123,
+      status: "running",
+    });
     const rejected = yield* Effect.exit(request("ensureService", { service: "browser" }));
     assert.isTrue(Exit.isFailure(rejected));
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(harness.release.mock.calls.length, 1);
     assert.isNull(runtime.current());
+    assert.deepEqual(runtime.managedServiceSnapshot(), { generation: 1, status: "closed" });
     assert.isTrue(Exit.isFailure(yield* Effect.exit(runtime.ensureReady)));
   }),
 );
 
-it.effect("respawns only after the exact managed process becomes invalid", () =>
+it.effect("publishes generation-fenced managed-service transitions", () =>
+  Effect.gen(function* () {
+    const fixture = makeRuntimeFixture();
+    const harness = makeHost();
+    const { runtime, scope } = yield* buildRuntime({ ...fixture, host: harness.host });
+    const transitions = yield* Effect.forkChild(
+      runtime.managedServiceChanges.pipe(Stream.take(3), Stream.runCollect),
+    );
+    yield* Effect.yieldNow;
+
+    yield* runtime.ensureReady;
+    yield* harness.request()("ensureService", { service: "computer-use" });
+
+    assert.deepEqual(yield* Fiber.join(transitions), [
+      { generation: 0, status: "pending" },
+      {
+        executablePath: "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+        generation: 0,
+        status: "ready",
+      },
+      {
+        executablePath: "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+        generation: 1,
+        pid: 8123,
+        status: "running",
+      },
+    ]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("respawns an invalid exact process and fences stale loss reconciliation", () =>
   Effect.gen(function* () {
     const fixture = makeRuntimeFixture();
     const livePids = new Set([5001, 5002]);
@@ -197,7 +242,18 @@ it.effect("respawns only after the exact managed process becomes invalid", () =>
     yield* request("ensureService", { service: "computer-use" });
     assert.deepEqual(pids, [5002]);
     livePids.delete(5001);
-    yield* request("ensureService", { service: "computer-use" });
+    const reconciled = yield* runtime.reconcileManagedService({ generation: 1, pid: 5001 });
+    assert.deepEqual(pids, []);
+    assert.deepEqual(reconciled, {
+      executablePath: "/runtime/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService",
+      generation: 2,
+      pid: 5002,
+      status: "running",
+    });
+    assert.deepEqual(
+      yield* runtime.reconcileManagedService({ generation: 1, pid: 5001 }),
+      reconciled,
+    );
     assert.deepEqual(pids, []);
 
     yield* Scope.close(scope, Exit.void);

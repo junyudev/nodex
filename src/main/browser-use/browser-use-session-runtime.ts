@@ -90,6 +90,10 @@ export interface BrowserUseSessionRuntime {
     BrowserUseSessionRuntimeSnapshot,
     BrowserUseSessionRuntimeError
   >;
+  readonly focusPresentation: (input: {
+    readonly sessionId: string;
+    readonly tabId: number;
+  }) => Effect.Effect<boolean, BrowserUseSessionRuntimeError>;
   readonly notifyCursorArrived: (
     input: BrowserUseCursorArrivalInput,
   ) => Effect.Effect<void, BrowserUseSessionRuntimeError>;
@@ -121,6 +125,9 @@ interface RegistryState {
 }
 
 interface BrowserUseSessionService {
+  readonly focusPresentation: (
+    tabId: number,
+  ) => Effect.Effect<boolean, BrowserUseSessionRuntimeError>;
   readonly hasActiveControl: Effect.Effect<boolean>;
   readonly markDisposeAfterSessionActivity: Effect.Effect<void>;
   readonly notifyCursorArrived: (moveSequence: number) => Effect.Effect<void>;
@@ -279,6 +286,11 @@ const sessionLayer = (
       );
 
       return BrowserUseSession.of({
+        focusPresentation: (tabId) =>
+          Effect.try({
+            try: () => api.focusControlledTab(tabId),
+            catch: (cause) => runtimeError("focus-presentation", sessionId, cause),
+          }),
         hasActiveControl: Effect.sync(() => api.hasActiveControl()),
         markDisposeAfterSessionActivity: Ref.set(disposeAfterSessionActivity, true),
         notifyCursorArrived: (moveSequence) =>
@@ -569,6 +581,12 @@ export const makeBrowserUseSessionRuntime = (
           ),
         ),
       ),
+      focusPresentation: (input) => {
+        if (!Number.isSafeInteger(input.tabId) || input.tabId <= 0) return Effect.succeed(false);
+        return useSession(input.sessionId, (session) =>
+          session.focusPresentation(input.tabId),
+        ).pipe(Effect.map((focused) => focused === true));
+      },
       notifyCursorArrived: (input) =>
         Ref.get(state).pipe(
           Effect.flatMap((current) => {

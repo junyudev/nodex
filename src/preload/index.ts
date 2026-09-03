@@ -33,7 +33,6 @@ import {
   type StructuralClipboardWriteResult,
 } from "../shared/clipboard-paste";
 import type { ClipboardPasteInspectionResult, ClipboardPastePayload } from "../shared/types";
-import type { CodexDesktopMessageFromView } from "../shared/remote-hosted-pip";
 import {
   FILE_PATH_INSPECT_SYNC_CHANNEL,
   MANAGED_ASSET_RESOLVE_PATH_SYNC_CHANNEL,
@@ -294,8 +293,6 @@ contextBridge.exposeInMainWorld("api", {
 });
 
 contextBridge.exposeInMainWorld("electronBridge", {
-  sendMessageFromView: (message: CodexDesktopMessageFromView) =>
-    ipcRenderer.invoke("codex-desktop:message-from-view", message).then(() => undefined),
   showContextMenu: (items: unknown[], options?: unknown) =>
     ipcRenderer.invoke("native-context-menu:show", items, options),
 });

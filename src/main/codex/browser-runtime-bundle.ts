@@ -39,6 +39,11 @@ export type VerifiedBrowserRuntimeBundle = {
     browserPluginDocs: string;
     browserPluginManifest: string;
     browserPluginService: string;
+    chromeFamilyDescriptor: string | null;
+    chromeInstallManifest: string | null;
+    chromeNativeHost: string | null;
+    chromePluginManifest: string | null;
+    chromePluginRoot: string | null;
     codexCli: string;
     computerUseApp: string | null;
     computerUseClient: string | null;
@@ -269,6 +274,7 @@ export function resolveBrowserRuntimeBundle(
   }
 
   const resolve = (relativePath: string): string => resolveRelativePath(rootPath, relativePath);
+  const chrome = manifest.capabilities.browserUse.backends.chrome;
   return {
     status: "available",
     bundle: {
@@ -290,6 +296,14 @@ export function resolveBrowserRuntimeBundle(
         browserPluginDocs: resolve(manifest.browserPlugin.docs),
         browserPluginManifest: resolve(manifest.browserPlugin.manifest),
         browserPluginService: resolve(manifest.browserPlugin.service),
+        chromeFamilyDescriptor:
+          chrome.status === "available" ? resolve(chrome.familyDescriptor) : null,
+        chromeInstallManifest:
+          chrome.status === "available" ? resolve(chrome.installManifest) : null,
+        chromeNativeHost: chrome.status === "available" ? resolve(chrome.nativeHost.path) : null,
+        chromePluginManifest:
+          chrome.status === "available" ? resolve(chrome.plugin.manifest) : null,
+        chromePluginRoot: chrome.status === "available" ? resolve(chrome.plugin.root) : null,
         codexCli: resolve(manifest.entrypoints.codexCli),
         computerUseApp:
           manifest.capabilities.computerUse.status === "available"

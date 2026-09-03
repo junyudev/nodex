@@ -13,11 +13,17 @@ it.effect("owns Browser Use routing, turn lifecycle, and physical registry with 
   Effect.gen(function* () {
     const events: string[] = [];
     let registryReleased = 0;
+    let chromeProviderReady = false;
     const browserEvents = yield* PubSub.unbounded<BrowserSidebarEvent>();
     const registry = {
       availableBackends: () => ["iab"] as const,
       captureRoute: (route: { codexSessionId: string }) =>
         Effect.sync(() => void events.push(`capture:${route.codexSessionId}`)),
+      focusPresentation: ({ tabId }: { tabId: number }) =>
+        Effect.sync(() => {
+          events.push(`focus:${tabId}`);
+          return true;
+        }),
       notifyCursorArrived: () => Effect.sync(() => void events.push("cursor")),
       releaseOwner: () => Effect.sync(() => void events.push("release-owner")),
       releaseSession: (sessionId: string) =>
@@ -31,6 +37,7 @@ it.effect("owns Browser Use routing, turn lifecycle, and physical registry with 
     const context = yield* Layer.buildWithScope(
       testLayer({
         browserEvents: Stream.fromPubSub(browserEvents),
+        chromeProviderReady: () => chromeProviderReady,
         makeRegistry: Effect.addFinalizer(() =>
           Effect.sync(() => {
             registryReleased += 1;
@@ -44,6 +51,9 @@ it.effect("owns Browser Use routing, turn lifecycle, and physical registry with 
     const runtime = Context.get(context, BrowserUseRuntime);
 
     assert.deepEqual(runtime.availableBackends(), ["iab"]);
+    chromeProviderReady = true;
+    assert.deepEqual(runtime.availableBackends(), ["iab", "chrome"]);
+    chromeProviderReady = false;
     yield* runtime.captureRoute({
       browserConversationId: "conversation",
       browserViewScopeId: "scope",
@@ -57,6 +67,7 @@ it.effect("owns Browser Use routing, turn lifecycle, and physical registry with 
       codexSessionId: "promoted-session",
       projectId: "project",
     });
+    assert.isTrue(yield* runtime.focusPresentation({ sessionId: "promoted-session", tabId: 7 }));
     yield* runtime.turnStarted({ sessionId: "promoted-session", turnId: "turn-1" });
     yield* runtime.turnEnded({ sessionId: "promoted-session", turnId: "turn-1" });
     yield* runtime.releaseSession("promoted-session");
@@ -78,6 +89,7 @@ it.effect("owns Browser Use routing, turn lifecycle, and physical registry with 
     assert.includeMembers(events, [
       "capture:session",
       "capture:promoted-session",
+      "focus:7",
       "cursor",
       "release-credential-owner",
       "release-owner",

@@ -155,10 +155,15 @@ status and action behavior remain summarized in
 
 ## Computer Use and Browser
 
-Computer Use is a headerless row rendered only while the desktop host reports a
-real toggleable PiP stream. Its action shows or hides that stream; a placeholder
-row is never rendered without a working host action. The host owns stream truth,
-placement, and teardown.
+Computer Use is a headerless row rendered only while the canonical Main
+control-surface snapshot reports the current task active and the native host
+action is available. Its action changes that task's shown/hidden preference; a
+placeholder row is never rendered without a working host action. The preference
+survives reload, archive, and close, and is removed with permanent task deletion.
+Main owns activity sources, placement, native presentation, and teardown; the
+renderer only projects the latest bounded revision.
+
+The complete cross-backend behavior is specified in [Desktop control surfaces](desktop-control-surfaces.md).
 
 Browser rows come from the Browser summary model. A row shows title, display URL,
 favicon or Browser fallback, and the Browser Use working state. Its native title
@@ -167,6 +172,10 @@ While Browser Use is active, the title/URL may use the explicit classic working
 shimmer and the overlaid Browser-use pointer remains static. Settled rows render
 neither working shimmer nor a spinner overlay.
 
-The thread scroll viewport, sticky footer, and floating summary report their
-anchor and obstacle geometry to the remote-hosted PiP owner. Unmount clears that
-host geometry so a stale Chat cannot continue positioning the native layer.
+The thread scroll viewport, sticky footer, Home surface, and floating summary
+report observed anchor, obstacle, passthrough, and animation geometry to the
+remote-hosted PiP owner. Geometry never asserts task activity or visibility.
+Unmount clears that host geometry so a stale task cannot continue positioning
+the native layer. Native Browser presentations can focus their exact source tab;
+the same stack can move between an eligible primary window and the auxiliary
+desktop-pet host without changing task truth.

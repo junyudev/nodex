@@ -113,6 +113,21 @@ describe("resolveBrowserRuntimeBundle", () => {
         "service.js",
       ),
     );
+    expect(result.bundle.paths.chromeNativeHost).toBe(
+      path.join(
+        bundleRoot,
+        "marketplace",
+        "plugins",
+        "chrome",
+        "extension-host",
+        "macos",
+        "arm64",
+        "ChatGPT for Chrome",
+      ),
+    );
+    expect(result.bundle.paths.chromeInstallManifest).toBe(
+      path.join(bundleRoot, "marketplace", "plugins", "chrome", "scripts", "installManifest.mjs"),
+    );
     expect(result.bundle.browserPluginRoot).toBe(
       path.join(bundleRoot, "marketplace", "plugins", "browser"),
     );

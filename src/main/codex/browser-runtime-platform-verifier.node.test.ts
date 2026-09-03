@@ -77,4 +77,17 @@ describe("Browser runtime macOS product contract", () => {
       "newer than the product minimum 15.0",
     );
   });
+
+  test("distinguishes an artifact deployment target from the product minimum", () => {
+    const artifactPath = machOFixture();
+    const input = verificationInput(artifactPath);
+    input.artifact.path = "native/sky.node";
+    input.manifest.capabilities.nativePip = {
+      addon: "native/sky.node",
+      artifactMinimumMacOSVersion: "13.0",
+    } as never;
+
+    expect(verifierForMinimum("13.0")(input)).toBeNull();
+    expect(verifierForMinimum("14.0")(input)).toContain("does not match manifest declaration 13.0");
+  });
 });

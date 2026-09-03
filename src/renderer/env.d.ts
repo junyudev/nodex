@@ -10,7 +10,6 @@ import type {
   NativeContextMenuItem,
   NativeContextMenuOptions,
 } from "../shared/native-context-menu";
-import type { CodexDesktopMessageFromView } from "../shared/remote-hosted-pip";
 import type { WorkbenchCommandInvocation } from "../shared/workbench-commands";
 import type {
   StructuralClipboardAwaitInput,
@@ -27,6 +26,10 @@ import type {
   GlobalDictationRendererEvent,
 } from "../shared/global-dictation";
 import type { ContentAccessContext } from "../shared/content-access-context";
+import type {
+  AvatarOverlayRendererCommand,
+  AvatarOverlayRendererEvent,
+} from "../shared/avatar-overlay";
 
 declare module "*.css";
 
@@ -99,7 +102,6 @@ declare global {
       ) => () => void;
     };
     electronBridge?: {
-      sendMessageFromView?: (message: CodexDesktopMessageFromView) => Promise<void>;
       showContextMenu: (
         items: NativeContextMenuItem[],
         options?: NativeContextMenuOptions,
@@ -110,6 +112,10 @@ declare global {
       onCommand: (callback: (command: GlobalDictationRendererCommand) => void) => () => void;
       sendEvent: (event: GlobalDictationRendererEvent) => Promise<boolean>;
       showContextMenu: () => Promise<GlobalDictationContextMenuAction>;
+    };
+    avatarOverlay?: {
+      onCommand: (callback: (command: AvatarOverlayRendererCommand) => void) => () => void;
+      sendEvent: (event: AvatarOverlayRendererEvent) => Promise<boolean>;
     };
   }
 }

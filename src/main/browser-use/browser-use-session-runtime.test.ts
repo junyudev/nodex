@@ -17,6 +17,7 @@ class FakeApi {
   disposed = false;
   readonly endedTurns: string[] = [];
   maxActiveDispatches = 0;
+  readonly focusedTabIds: number[] = [];
   private releaseBlockedDispatch: (() => void) | null = null;
   private releaseBlockedTurnEnd: (() => void) | null = null;
   private resolveBlockedTurnEndStarted: (() => void) | null = null;
@@ -45,6 +46,11 @@ class FakeApi {
 
   getInfo(): Record<string, unknown> {
     return {};
+  }
+
+  focusControlledTab(tabId: number): boolean {
+    this.focusedTabIds.push(tabId);
+    return true;
   }
 
   hasActiveControl(): boolean {
@@ -165,6 +171,20 @@ it.effect("reuses one scoped backend for an exact route", () =>
     yield* Scope.close(scope, Exit.void);
     assert.isTrue(apis[0]!.disposed);
     assert.isTrue(servers[0]!.released);
+  }),
+);
+
+it.effect("focuses a presentation through the exact Browser Use session", () =>
+  Effect.gen(function* () {
+    const { apis, runtime, scope } = yield* makeTestRuntime;
+    yield* runtime.captureRoute(capture());
+
+    assert.isTrue(yield* runtime.focusPresentation({ sessionId: "thread-1", tabId: 7 }));
+    assert.deepEqual(apis[0]!.focusedTabIds, [7]);
+    assert.isFalse(yield* runtime.focusPresentation({ sessionId: "missing", tabId: 7 }));
+    assert.isFalse(yield* runtime.focusPresentation({ sessionId: "thread-1", tabId: 0 }));
+
+    yield* Scope.close(scope, Exit.void);
   }),
 );
 

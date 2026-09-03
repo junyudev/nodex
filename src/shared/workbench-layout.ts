@@ -350,6 +350,14 @@ export function getWorkbenchSceneReturnLocation(
   return location.returnTo;
 }
 
+/** Resolves the active Agent Session from the canonical Window Session location projection. */
+export function getWorkbenchActiveSessionId(
+  layout: Pick<WorkbenchLayoutSnapshotV7, "location">,
+): string | null {
+  const location = getWorkbenchSceneReturnLocation(layout.location);
+  return location.kind === "session" ? location.sessionId : null;
+}
+
 export function getRestorableWorkbenchLocationV4(
   location: WorkbenchLocationV4,
 ): WorkbenchLayoutSnapshotV4["location"] {

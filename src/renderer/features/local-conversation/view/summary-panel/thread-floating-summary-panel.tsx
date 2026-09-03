@@ -117,6 +117,10 @@ import {
   resolveMcpEmbeddedRenderableResource,
   resolveMcpRenderableResource,
 } from "../shared/tools/mcp-tool-call-resource-utils";
+import {
+  REMOTE_HOSTED_PIP_HOME_SURFACE_ATTRIBUTE,
+  REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE,
+} from "../../../../../shared/remote-hosted-pip";
 
 const EMPTY_CHILD_MEMBERSHIPS: readonly CodexConversationChildMembership[] = [];
 const EMPTY_KNOWN_CONVERSATIONS_BY_ID: Record<string, CodexConversationSnapshot> = {};
@@ -1328,6 +1332,12 @@ export function ThreadSummaryPanelSurface({
     <>
       <div
         data-testid="thread-summary-panel"
+        {...{
+          [REMOTE_HOSTED_PIP_HOME_SURFACE_ATTRIBUTE]: isVisible
+            ? "thread-summary-panel"
+            : undefined,
+          [REMOTE_HOSTED_PIP_OBSTACLE_ATTRIBUTE]: isVisible ? "thread-summary-panel" : undefined,
+        }}
         className="relative flex max-h-full min-h-0 flex-col overflow-hidden rounded-3xl bg-token-dropdown-background pt-3 electron:elevation-prominent extension:border extension:border-token-border-default extension:shadow-md"
       >
         <div className="flex h-fit max-h-full min-h-0 flex-col gap-3 overflow-y-auto pb-3">

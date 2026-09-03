@@ -11,6 +11,9 @@ const stagedBrowserRuntimePath = [
 ];
 const packagedBrowserRuntimePath = ["Contents", "Resources", "browser-runtime"];
 const electronBuilderSkippedBasenames = new Set([".gitkeep"]);
+// The restore tests construct their fixture from the canonical TypeScript manifest version, so a
+// future schema bump cannot silently restore artifacts under stale packaging semantics.
+const browserRuntimeSchemaVersion = 6;
 
 const sha256File = (filePath) => createHash("sha256").update(readFileSync(filePath)).digest("hex");
 
@@ -71,7 +74,10 @@ export const restorePackagedBrowserRuntimeClosure = ({
   }
 
   const manifest = JSON.parse(sourceManifestBytes.toString("utf8"));
-  if (manifest.schemaVersion !== 5 || !Array.isArray(manifest.artifacts)) {
+  if (
+    manifest.schemaVersion !== browserRuntimeSchemaVersion ||
+    !Array.isArray(manifest.artifacts)
+  ) {
     throw new Error(`Unsupported Browser runtime manifest: ${sourceManifestPath}`);
   }
 

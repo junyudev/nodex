@@ -11,6 +11,7 @@ function browserNotification(overrides: Record<string, unknown> = {}): unknown {
             "codex/toolSurface": {
               backend: "iab",
               browserId: "browser-1",
+              browserFamily: "chrome",
               kind: "browserUse",
               openTabIds: ["tab-1"],
               screenshot: {
@@ -35,6 +36,7 @@ describe("parseRemoteHostedPipNotification", () => {
       kind: "browser-use",
       surface: {
         backend: "iab",
+        browserFamily: "chrome",
         browserId: "browser-1",
         openTabIds: ["tab-1"],
         screenshot: {
@@ -66,6 +68,32 @@ describe("parseRemoteHostedPipNotification", () => {
         }),
       ),
     ).toBeNull();
+    expect(
+      parseRemoteHostedPipNotification(browserNotification({ browserId: "browser\0forged" })),
+    ).toBeNull();
+  });
+
+  test("requires an exact extension instance and family only for Chrome surfaces", () => {
+    expect(
+      parseRemoteHostedPipNotification(
+        browserNotification({ backend: "chrome", extensionInstanceId: "profile-a" }),
+      ),
+    ).not.toBeNull();
+    expect(
+      parseRemoteHostedPipNotification(
+        browserNotification({ backend: "chrome", browserFamily: undefined }),
+      ),
+    ).toBeNull();
+    expect(
+      parseRemoteHostedPipNotification(
+        browserNotification({ backend: "chrome", extensionInstanceId: undefined }),
+      ),
+    ).toBeNull();
+    expect(
+      parseRemoteHostedPipNotification(
+        browserNotification({ backend: "cdp", extensionInstanceId: "profile-a" }),
+      ),
+    ).toBeNull();
   });
 
   test("parses thread and turn terminal lifecycle", () => {
@@ -85,6 +113,32 @@ describe("parseRemoteHostedPipNotification", () => {
         method: "thread/archived",
         params: { threadId: "thread-1" },
       }),
-    ).toEqual({ kind: "thread-ended", threadId: "thread-1" });
+    ).toEqual({ deleted: false, kind: "thread-ended", threadId: "thread-1" });
+  });
+
+  test("identifies direct and node_repl Computer Use activity", () => {
+    expect(
+      parseRemoteHostedPipNotification({
+        method: "item/started",
+        params: {
+          item: { id: "computer-1", server: "computer-use", type: "mcpToolCall" },
+          threadId: "thread-1",
+        },
+      }),
+    ).toEqual({ active: true, itemId: "computer-1", kind: "computer-use", threadId: "thread-1" });
+    expect(
+      parseRemoteHostedPipNotification({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "node-1",
+            result: { _meta: { "codex/toolSurface": { app: null, kind: "computerUse" } } },
+            server: "node_repl",
+            type: "mcpToolCall",
+          },
+          threadId: "thread-1",
+        },
+      }),
+    ).toEqual({ active: true, itemId: "node-1", kind: "computer-use", threadId: "thread-1" });
   });
 });
