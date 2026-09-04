@@ -1,3 +1,4 @@
+import { documentSyncRecoveryScenario } from "./scenarios/document-sync-recovery";
 import type { ScenarioDomainRecipe } from "./contracts";
 import { boardDenseScenario } from "./scenarios/board-dense";
 import { databaseContextMenuPerformanceScenario } from "./scenarios/database-context-menu-performance";
@@ -9,6 +10,7 @@ import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-a
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
+  [documentSyncRecoveryScenario.id, documentSyncRecoveryScenario],
   [boardDenseScenario.id, boardDenseScenario],
   [databaseContextMenuPerformanceScenario.id, databaseContextMenuPerformanceScenario],
   [databaseSettingsConfigurationScenario.id, databaseSettingsConfigurationScenario],

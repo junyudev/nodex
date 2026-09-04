@@ -21,6 +21,8 @@ export const DEFAULT_BLOCK_DOCUMENT_SYNC_INDICATOR_THRESHOLDS = {
 export type BlockDocumentSyncIndicatorTone = "neutral" | "warning" | "danger";
 
 export type BlockDocumentSyncIndicatorAction =
+  | { readonly kind: "review"; readonly label: "Review" | "Review edits" }
+  | { readonly kind: "cancel"; readonly label: "Cancel" }
   | { readonly kind: "retry"; readonly label: "Retry" }
   | { readonly kind: "reload"; readonly label: "Reload Page" };
 
@@ -37,6 +39,7 @@ export interface BlockDocumentSyncIndicatorModel {
 }
 
 export interface ResolveBlockDocumentSyncIndicatorInput {
+  readonly structuralWaitAgeMs?: number;
   readonly status: NodexYProviderStatus;
   /** Time since the current provider phase began. */
   readonly phaseAgeMs: number;
@@ -91,12 +94,24 @@ const reloadAction = {
   label: "Reload Page",
 } as const satisfies BlockDocumentSyncIndicatorAction;
 
+const recoveryAction = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorAction | null => {
+  if (status.error?.code === "unauthorized") return null;
+  if (status.recovery) return { kind: "review", label: "Review" };
+  return reloadAction;
+};
+const recoveryDetail = (status: NodexYProviderStatus): string =>
+  status.recovery?.phase === "protected"
+    ? "These edits are kept on this device. Review them or reopen the saved document to continue editing."
+    : "Unsaved edits are only in this window. Export recovery before closing it.";
+
 const resetIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorModel => ({
   phase: status.phase,
   label: "Reload required",
-  detail: "The local store or this Page document changed. Reload before continuing to edit.",
+  detail: status.recovery
+    ? recoveryDetail(status)
+    : "The local store or this Page document changed. Reload before continuing to edit.",
   tone: "danger",
-  action: reloadAction,
+  action: recoveryAction(status),
   editingBlocked: true,
   pendingUpdateCount: status.pendingUpdateCount,
   announce: "assertive",
@@ -105,9 +120,11 @@ const resetIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicato
 const fatalIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorModel => ({
   phase: status.phase,
   label: "Couldn’t save changes",
-  detail: status.error?.message ?? "This Page document can no longer be saved.",
+  detail: status.recovery
+    ? `${status.error?.message ?? "Couldn’t save changes."} ${recoveryDetail(status)}`
+    : (status.error?.message ?? "This Page document can no longer be saved."),
   tone: "danger",
-  action: status.error?.retryable ? retryAction : reloadAction,
+  action: status.error?.retryable ? retryAction : recoveryAction(status),
   editingBlocked: !status.error?.retryable,
   pendingUpdateCount: status.pendingUpdateCount,
   announce: "assertive",
@@ -118,7 +135,12 @@ const offlineIndicator = (status: NodexYProviderStatus): BlockDocumentSyncIndica
   label: "Offline",
   detail:
     status.pendingUpdateCount > 0
-      ? "Changes are kept on this device and will sync after reconnecting."
+      ? status.checkpoint.localVersion !== undefined &&
+        status.checkpoint.protectedVersion !== undefined &&
+        status.checkpoint.protectedVersion >= status.checkpoint.localVersion &&
+        status.checkpoint.phase === "ready"
+        ? "Changes are kept on this device. Sync will resume after reconnecting."
+        : "Latest changes are only in this window. Keep it open while local recovery is being saved."
       : "Reconnect to continue syncing this Page.",
   tone: "warning",
   action: retryAction,
@@ -137,6 +159,7 @@ export const resolveBlockDocumentSyncIndicator = ({
   phaseAgeMs,
   pendingAgeMs = phaseAgeMs,
   hasEverSynced,
+  structuralWaitAgeMs,
   thresholds: thresholdOverrides,
 }: ResolveBlockDocumentSyncIndicatorInput): BlockDocumentSyncIndicatorModel | null => {
   const phaseAge = readDuration(phaseAgeMs, "phaseAgeMs");
@@ -149,7 +172,36 @@ export const resolveBlockDocumentSyncIndicator = ({
   if (status.phase === "error") {
     return fatalIndicator(status);
   }
-  if (status.phase === "destroyed" || status.phase === "synced") {
+  if (status.phase === "destroyed") return null;
+  if (
+    structuralWaitAgeMs !== undefined &&
+    readDuration(structuralWaitAgeMs, "structuralWaitAgeMs") >= thresholds.savingDelayMs
+  ) {
+    return {
+      phase: status.phase,
+      label: "Waiting for save…",
+      detail:
+        "The structural edit will continue after changes are saved. You can cancel this operation.",
+      tone: "neutral",
+      action: { kind: "cancel", label: "Cancel" },
+      editingBlocked: false,
+      pendingUpdateCount: status.pendingUpdateCount,
+      announce: "polite",
+    };
+  }
+  if (status.phase === "synced") {
+    if ((status.recoveredDraftCount ?? 0) > 0)
+      return {
+        phase: status.phase,
+        label: "Unsaved edits",
+        detail:
+          "Some earlier edits were not saved. Review them while the current document continues syncing.",
+        tone: "warning",
+        action: { kind: "review", label: "Review" },
+        editingBlocked: false,
+        pendingUpdateCount: 0,
+        announce: "polite",
+      };
     return null;
   }
 

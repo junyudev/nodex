@@ -30,6 +30,8 @@ pub(crate) struct ChangeLogRow {
 #[serde(rename_all = "camelCase")]
 struct DocumentEventMetadata {
     module: String,
+    #[serde(default)]
+    detached: bool,
     kind: String,
     document_id: String,
     generation: i64,
@@ -75,7 +77,10 @@ pub(crate) fn reconstruct_document_event(
         || metadata.document_id.len() > 512
         || metadata.generation < 1
         || metadata.head_seq < 0
-        || (metadata.kind != "document_invalidated" && metadata.head_seq < 1)
+        || (!matches!(
+            metadata.kind.as_str(),
+            "document_invalidated" | "recovery_changed"
+        ) && metadata.head_seq < 1)
     {
         return Err(corrupt("Owned Document event metadata is inconsistent"));
     }
@@ -94,6 +99,10 @@ pub(crate) fn reconstruct_document_event(
         validate_page_file_reference_change(change)?;
     }
     let payload = match metadata.kind.as_str() {
+        "recovery_changed" => OwnedDocumentEvent::RecoveryChanged {
+            document_id: metadata.document_id,
+            detached: metadata.detached,
+        },
         "document_initialized" | "document_updated" => {
             let update_id = metadata
                 .update_id

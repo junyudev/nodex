@@ -22,6 +22,7 @@ import {
 } from "../../shared/block-documents/canvas-scene-maintenance";
 import { decodeCanvasSceneSseEvent } from "../../shared/block-documents/canvas-scene-http-contract";
 import { CoreModuleResponseError } from "./core-client";
+import { documentSessionError, unwrapDocumentSessionFailure } from "./document-session-error";
 import {
   contentAccessContextKey,
   type ContentAccessContext,
@@ -31,6 +32,7 @@ import {
   findCoreModulePayload,
   rendererLocalCommitApply,
   type CoreClientPort,
+  type CoreRequestOptions,
   type CoreEventEnvelope,
 } from "./types";
 
@@ -80,6 +82,7 @@ export interface CoreCanvasSceneCommands {
 export const createCoreCanvasSceneCommands = (
   client: CoreClientPort,
   binding: CoreCanvasSceneAdapterBinding,
+  options?: CoreRequestOptions,
 ): CoreCanvasSceneCommands => {
   const bindingAccessKey = contentAccessContextKey(binding.accessContext);
 
@@ -91,7 +94,7 @@ export const createCoreCanvasSceneCommands = (
   return {
     sync: async (request) => {
       assertBoundAccess(request.accessContext);
-      const response = await client.documentCanvasSync(request);
+      const response = await client.documentCanvasSync(request, options);
       if (response.documentId !== request.documentId) {
         throw new CanvasSceneAdapterContractError("Core Canvas sync escaped its Document boundary");
       }
@@ -290,7 +293,8 @@ export const mapCoreCanvasSceneFailure = (error: unknown, mutationId?: string): 
   error: canvasCommandError(error, mutationId),
 });
 
-const canvasCommandError = (error: unknown, mutationId?: string): CanvasSceneMutationError => {
+const canvasCommandError = (failure: unknown, mutationId?: string): CanvasSceneMutationError => {
+  const error = unwrapDocumentSessionFailure(failure);
   if (error instanceof CoreModuleResponseError) {
     const code = error.coreError.code;
     return {
@@ -298,6 +302,7 @@ const canvasCommandError = (error: unknown, mutationId?: string): CanvasSceneMut
       message: error.message,
       retryable: error.coreError.retryable,
       resetRequired: code === "stale_store_epoch" || code === "generation_conflict",
+      core: { code, recovery: error.coreError.recovery },
       ...(mutationId ? { mutationId } : {}),
     };
   }
@@ -314,10 +319,20 @@ const canvasCommandError = (error: unknown, mutationId?: string): CanvasSceneMut
       ...(mutationId ? { mutationId } : {}),
     };
   }
+  const documentError = documentSessionError(error);
+  const code = documentError.code === "unauthorized" ? "access_scope_mismatch" : documentError.code;
   return {
-    code: "unknown",
-    message: error instanceof Error ? error.message : String(error),
-    retryable: true,
+    code:
+      code === "transport_unavailable" ||
+      code === "request_cancelled" ||
+      code === "request_timeout" ||
+      code === "service_busy" ||
+      code === "invalid_response" ||
+      code === "access_scope_mismatch"
+        ? code
+        : "unknown",
+    message: documentError.message,
+    retryable: documentError.retryable,
     resetRequired: false,
     ...(mutationId ? { mutationId } : {}),
   };

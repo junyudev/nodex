@@ -1,3 +1,5 @@
+import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
+import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { startTransition, useCallback, useEffect, useState } from "react";
 import { AppUpdateSettingsControl } from "./app-update-settings-control";
 import { AcpAgentSettingsControl } from "./acp-agent-settings-control";
@@ -672,11 +674,20 @@ export function LocalEnvironmentsSettingsSectionPage({
 }
 
 export function BackupsSettingsPage({ open }: SettingsSectionPageProps) {
+  const library = useLibraryMetadata(open);
   return (
     <SettingsPageSurface
       title="Backups"
       subtitle="Snapshot cadence, retention, and restore operations."
     >
+      {library.data?.libraryId ? (
+        <div className="mb-5">
+          <RecoveryEntry
+            scope={{ libraryId: library.data.libraryId, accessContext: { kind: "library" } }}
+            alwaysVisible
+          />
+        </div>
+      ) : null}
       <BackupSettingsControl open={open} />
     </SettingsPageSurface>
   );

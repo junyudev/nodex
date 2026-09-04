@@ -257,6 +257,8 @@ export class EditorSurfaceLease {
 export class DocumentSessionRegistry {
   private readonly surfaces = new Map<string, EditorSurfaceLease>();
   private readonly documents = new Map<string, DocumentSession>();
+  /** Includes a retiring session if its only draft could not be made durable. */
+  private readonly retainedDocuments = new Set<DocumentSession>();
 
   acquire(input: {
     readonly key: string;
@@ -315,7 +317,7 @@ export class DocumentSessionRegistry {
   }
 
   async persistAll(): Promise<void> {
-    await Promise.all([...this.documents.values()].map((entry) => persistRuntime(entry.runtime)));
+    await Promise.all([...this.retainedDocuments].map((entry) => persistRuntime(entry.runtime)));
   }
 
   async disposeProjectSession(projectSessionId: string): Promise<void> {
@@ -351,6 +353,7 @@ export class DocumentSessionRegistry {
       closePromise: null,
     };
     this.documents.set(input.identity, entry);
+    this.retainedDocuments.add(entry);
     return entry;
   }
 
@@ -416,8 +419,17 @@ export class DocumentSessionRegistry {
     const closePromise = entry.connectBarrier
       .catch(() => undefined)
       .then(() => entry.runtime.close())
-      .then(() => undefined);
+      .then(() => {
+        if (entry.runtime.getStatus().phase !== "closed")
+          throw new Error("The document still has an unsaved recovery copy in this window");
+      });
     entry.closePromise = closePromise.finally(() => {
+      if (entry.runtime.getStatus().phase !== "closed") {
+        entry.closing = false;
+        entry.closePromise = null;
+        return;
+      }
+      this.retainedDocuments.delete(entry);
       if (this.documents.get(entry.identity) === entry) {
         this.documents.delete(entry.identity);
       }

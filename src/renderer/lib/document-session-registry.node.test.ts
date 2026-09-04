@@ -31,6 +31,7 @@ function createRuntime(input: {
   readonly close?: () => Promise<void>;
   readonly ready?: boolean;
   readonly status?: Partial<BlockDocumentSurfaceStatus>;
+  readonly retainDraftOnClose?: boolean;
 }) {
   const runtimeDescriptor = input.descriptor ?? descriptor();
   const document = new Y.Doc({ guid: runtimeDescriptor.documentId });
@@ -43,6 +44,7 @@ function createRuntime(input: {
   }));
   const close = vi.fn(async () => {
     await input.close?.();
+    if (!input.retainDraftOnClose) status = { ...status, phase: "closed", ready: false };
     return {
       timedOut: false,
       flush: "completed" as const,
@@ -51,10 +53,11 @@ function createRuntime(input: {
   });
   const connect = vi.fn(input.connect ?? (async () => undefined));
   const ready = input.ready ?? true;
-  const status: BlockDocumentSurfaceStatus = {
+  let status: BlockDocumentSurfaceStatus = {
     phase: ready ? "ready" : "connecting",
     ready,
     reloadRequired: false,
+    structuralWaitStartedAt: null,
     descriptor: runtimeDescriptor,
     provider: {
       phase: ready ? "synced" : "connecting",
@@ -83,6 +86,28 @@ function createRuntime(input: {
 }
 
 describe("DocumentSessionRegistry", () => {
+  test("reopens the retained replica after closing could not protect its pending edits", async () => {
+    const registry = new DocumentSessionRegistry();
+    const retained = createRuntime({ retainDraftOnClose: true });
+    const key = makeEditorSurfaceKey("session", "page");
+    const first = registry.acquire({
+      key,
+      descriptor: descriptor(),
+      createRuntime: () => retained.runtime,
+    });
+    await expect(registry.dispose(key, first)).rejects.toThrow("unsaved recovery copy");
+    expect(registry.canonicalDocumentSize).toBe(1);
+    await registry.persistAll();
+    expect(retained.persist).toHaveBeenCalledOnce();
+    const reopened = registry.acquire({
+      key,
+      descriptor: descriptor(),
+      createRuntime: () => {
+        throw new Error("Must retain the pending replica");
+      },
+    });
+    expect(reopened.runtime).toBe(retained.runtime);
+  });
   test("replaces a terminal runtime when the same surface is acquired again", async () => {
     const registry = new DocumentSessionRegistry();
     const terminal = createRuntime({

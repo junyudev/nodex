@@ -68,11 +68,25 @@ The renderer coalesces observations and persists each pending local scene
 mutation to a bounded active outbox before transport. Response loss retries the
 same mutation. Deterministic rejection quarantines that mutation, repairs from
 canonical state, and allows later work to continue. Store-epoch or Document-
-generation changes invalidate stale pending rows. Active and quarantined rows
+generation changes quarantine stale pending rows before retiring the old replica.
+Local preservation failure keeps the window copy available for explicit export. Active and quarantined rows
 are partitioned by the complete authorized Document identity, so one Library or
 access context can never replay or clear another boundary's pending work.
 
-Subscriptions begin before canonical synchronization. Missing or out-of-order
+The active outbox is capped at 256 intents and 32 MiB per authorized document;
+quarantine holds up to 32 intents. Capacity failures preserve existing records
+and stop the affected replica; they never evict another unconfirmed edit.
+Quarantine retains the observed scene alongside the exact rejected intent.
+`Unsaved edits · Review` previews those edits, safely merges compatible intents,
+or creates an independent complete copy. Discard is reversible; export alone does
+not resolve a draft. Conflict previews preserve the intended values even when
+normal scene convergence would choose newer canonical elements. The shared
+[Document recovery contract](document-sync-and-recovery-behavior.md) owns resolution,
+cross-window convergence and retention.
+
+Subscriptions begin before canonical synchronization. Main owns physical
+reconnection and reports terminal lease failures explicitly; connected state is
+backed by host or canonical-sync evidence. Missing or out-of-order
 heads, reconnect, and completed write leases repair through one bounded full
 scene. Remote updates do not enter local Excalidraw undo.
 

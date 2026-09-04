@@ -112,6 +112,12 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   }
 
   async createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void> {
+    const parent = input.parentPageId
+      ? requireSuccess(
+          await this.#invoke("block-document:owned:prepare", input.projectId, input.parentPageId),
+          "Prepare parent Page",
+        )
+      : null;
     const metadata = requireSuccess(
       await this.#invoke(
         "library-module:read",
@@ -132,11 +138,53 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
             pageId: input.pageId,
             documentId: input.documentId,
             title: input.title,
-            parent: { kind: "library" },
+            parent:
+              parent && input.parentPageId
+                ? {
+                    kind: "page",
+                    pageId: input.parentPageId,
+                    expectedDocumentGeneration: parent.generation,
+                    expectedDocumentHeadSeq: parent.headSeq,
+                    insertion: input.beforeBlockId
+                      ? { kind: "before", anchorBlockId: input.beforeBlockId }
+                      : { kind: "append" },
+                  }
+                : { kind: "library" },
           },
         },
       ),
       `Create standalone ${input.title}`,
+    );
+  }
+
+  async createStandaloneCanvas(
+    input: Parameters<ScenarioSeedPort["createStandaloneCanvas"]>[0],
+  ): Promise<void> {
+    const metadata = requireSuccess(
+      await this.#invoke(
+        "library-module:read",
+        { kind: "library" },
+        { read: { mode: "metadata" } },
+      ),
+      "Read Library metadata",
+    );
+    requireSuccess(
+      await this.#invoke(
+        "library-module:apply",
+        { kind: "library" },
+        {
+          operationId: createUuidV7(),
+          storeEpoch: metadata.storeEpoch,
+          operation: {
+            kind: "create_canvas",
+            canvasId: input.canvasId,
+            documentId: input.documentId,
+            displayName: input.name,
+            destination: { kind: "library" },
+          },
+        },
+      ),
+      "Create Canvas",
     );
   }
 
@@ -170,7 +218,7 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
 
   async replaceOwnedDocument(
     input: ScenarioDocumentReplacement,
-  ): Promise<{ readonly commitSeq: number }> {
+  ): Promise<{ readonly commitSeq: number; readonly createdBlockIds: readonly string[] }> {
     const descriptor = requireSuccess(
       await this.#invoke("block-document:owned:prepare", input.projectId, input.pageId),
       `Prepare ${input.pageId}`,
@@ -189,7 +237,7 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       }),
       `Replace ${input.pageId}`,
     );
-    return { commitSeq: mutation.commitSeq };
+    return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
   }
 
   async readPage(

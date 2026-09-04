@@ -190,7 +190,7 @@ describe("Board Card Block transfer drop", () => {
             { id: "page", type: "page" },
           ],
         },
-        {
+        () => ({
           ...structuralPreparation,
           surfaceId: "surface-page",
           projectId: "project-a",
@@ -202,7 +202,7 @@ describe("Board Card Block transfer drop", () => {
           transfer,
           structuralTransfer,
           reportError: vi.fn(),
-        },
+        }),
       );
       const values = new Map<string, string>();
       const types: string[] = [];
@@ -280,23 +280,19 @@ describe("Board Card Block transfer drop", () => {
   test("removes active drop feedback when the target is replaced", () => {
     const container = document.createElement("div");
     document.body.append(container);
-    const cleanup = setupBlockTransferDocumentDrop(
-      container,
-      { document: [] },
-      {
-        ...structuralPreparation,
-        surfaceId: "surface-target",
-        projectId: "project-a",
-        documentId: "document-host",
-        storeEpoch: "epoch-a",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-a",
-        transfer: async () => {
-          throw new Error("The test does not drop");
-        },
-        reportError: vi.fn(),
+    const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
+      ...structuralPreparation,
+      surfaceId: "surface-target",
+      projectId: "project-a",
+      documentId: "document-host",
+      storeEpoch: "epoch-a",
+      ancestorPageIds: [],
+      createOperationId: () => "operation-a",
+      transfer: async () => {
+        throw new Error("The test does not drop");
       },
-    );
+      reportError: vi.fn(),
+    }));
     const registration = dropTargetHarness.registration as ElementDropTargetArgs;
     const self = { element: container, data: {}, dropEffect: "move" as const };
     registration.onDrag?.({
@@ -357,22 +353,18 @@ describe("Board Card Block transfer drop", () => {
         },
       };
     });
-    const cleanup = setupBlockTransferDocumentDrop(
-      container,
-      { document: [] },
-      {
-        ...structuralPreparation,
-        surfaceId: "surface-target",
-        projectId: "project-a",
-        documentId: "document-host",
-        storeEpoch: "epoch-a",
-        hostPageId: "card-host",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-a",
-        transfer,
-        reportError: vi.fn(),
-      },
-    );
+    const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
+      ...structuralPreparation,
+      surfaceId: "surface-target",
+      projectId: "project-a",
+      documentId: "document-host",
+      storeEpoch: "epoch-a",
+      hostPageId: "card-host",
+      ancestorPageIds: [],
+      createOperationId: () => "operation-a",
+      transfer,
+      reportError: vi.fn(),
+    }));
     const registration = dropTargetHarness.registration as ElementDropTargetArgs;
     const self = { element: container, data: {}, dropEffect: mode };
     const event = {
@@ -418,23 +410,19 @@ describe("Board Card Block transfer drop", () => {
       generation: 1,
       expectedHeadSeq: 0,
     }));
-    const cleanup = setupBlockTransferDocumentDrop(
-      container,
-      { document: [] },
-      {
-        surfaceId: "surface-target",
-        projectId: "project-a",
-        documentId: "document-target",
-        storeEpoch: "epoch-a",
-        ancestorPageIds: [],
-        prepareAndFence,
-        prepareSourceAndFence,
-        createOperationId: () => "operation-editor",
-        transfer,
-        structuralTransfer,
-        reportError: vi.fn(),
-      },
-    );
+    const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
+      surfaceId: "surface-target",
+      projectId: "project-a",
+      documentId: "document-target",
+      storeEpoch: "epoch-a",
+      ancestorPageIds: [],
+      prepareAndFence,
+      prepareSourceAndFence,
+      createOperationId: () => "operation-editor",
+      transfer,
+      structuralTransfer,
+      reportError: vi.fn(),
+    }));
     const values = new Map<string, string>();
     const types: string[] = [];
     const dataTransfer = {
@@ -479,7 +467,13 @@ describe("Board Card Block transfer drop", () => {
         target: { parentBlockId: null, beforeBlockId: null },
       });
       expect(prepareAndFence).toHaveBeenCalledOnce();
-      expect(prepareSourceAndFence).toHaveBeenCalledWith("surface-source");
+      expect(prepareSourceAndFence).toHaveBeenCalledWith(
+        "surface-source",
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+          deadlineAt: expect.any(Number),
+        }),
+      );
     } finally {
       cleanup();
       endLocalBlockDragSession();
@@ -495,7 +489,7 @@ describe("Board Card Block transfer drop", () => {
     const cleanup = setupBlockTransferDocumentDrop(
       container,
       { document: [{ id: "canvas-1" }, { id: "paragraph-1" }] },
-      {
+      () => ({
         ...structuralPreparation,
         surfaceId: "surface-page",
         projectId: "project-a",
@@ -507,7 +501,7 @@ describe("Board Card Block transfer drop", () => {
         transfer,
         structuralTransfer,
         reportError: vi.fn(),
-      },
+      }),
     );
     const values = new Map<string, string>();
     const types: string[] = [];
@@ -573,7 +567,7 @@ describe("Board Card Block transfer drop", () => {
           { id: "3333" },
         ],
       },
-      {
+      () => ({
         ...structuralPreparation,
         surfaceId: "surface-page",
         projectId: "project-a",
@@ -585,7 +579,7 @@ describe("Board Card Block transfer drop", () => {
         transfer,
         structuralTransfer,
         reportError: vi.fn(),
-      },
+      }),
     );
     const values = new Map<string, string>();
     const types: string[] = [];
@@ -658,7 +652,7 @@ describe("Board Card Block transfer drop", () => {
         document: [],
         getExtension: () => ({ clearDropCursor: clearOuterDropCursor }),
       },
-      {
+      () => ({
         ...structuralPreparation,
         surfaceId: "surface-outer",
         projectId: "project-a",
@@ -669,24 +663,20 @@ describe("Board Card Block transfer drop", () => {
         transfer: outerTransfer,
         structuralTransfer: outerStructuralTransfer,
         reportError: vi.fn(),
-      },
+      }),
     );
-    const innerCleanup = setupBlockTransferDocumentDrop(
-      inner,
-      { document: [] },
-      {
-        ...structuralPreparation,
-        surfaceId: "surface-inner",
-        projectId: "project-a",
-        documentId: "document-inner",
-        storeEpoch: "epoch-a",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-inner",
-        transfer: innerTransfer,
-        structuralTransfer: innerStructuralTransfer,
-        reportError: vi.fn(),
-      },
-    );
+    const innerCleanup = setupBlockTransferDocumentDrop(inner, { document: [] }, () => ({
+      ...structuralPreparation,
+      surfaceId: "surface-inner",
+      projectId: "project-a",
+      documentId: "document-inner",
+      storeEpoch: "epoch-a",
+      ancestorPageIds: [],
+      createOperationId: () => "operation-inner",
+      transfer: innerTransfer,
+      structuralTransfer: innerStructuralTransfer,
+      reportError: vi.fn(),
+    }));
     const values = new Map<string, string>();
     const types: string[] = [];
     const dataTransfer = {
@@ -778,36 +768,28 @@ describe("Board Card Block transfer drop", () => {
       },
     }));
     const registrationStart = dropTargetHarness.registrations.length;
-    const outerCleanup = setupBlockTransferDocumentDrop(
-      outer,
-      { document: [] },
-      {
-        ...structuralPreparation,
-        surfaceId: "surface-outer-pragmatic",
-        projectId: "project-a",
-        documentId: "document-outer",
-        storeEpoch: "epoch-a",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-outer-pragmatic",
-        transfer: outerTransfer,
-        reportError: vi.fn(),
-      },
-    );
-    const innerCleanup = setupBlockTransferDocumentDrop(
-      inner,
-      { document: [] },
-      {
-        ...structuralPreparation,
-        surfaceId: "surface-inner-pragmatic",
-        projectId: "project-a",
-        documentId: "document-inner",
-        storeEpoch: "epoch-a",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-inner-pragmatic",
-        transfer: innerTransfer,
-        reportError: vi.fn(),
-      },
-    );
+    const outerCleanup = setupBlockTransferDocumentDrop(outer, { document: [] }, () => ({
+      ...structuralPreparation,
+      surfaceId: "surface-outer-pragmatic",
+      projectId: "project-a",
+      documentId: "document-outer",
+      storeEpoch: "epoch-a",
+      ancestorPageIds: [],
+      createOperationId: () => "operation-outer-pragmatic",
+      transfer: outerTransfer,
+      reportError: vi.fn(),
+    }));
+    const innerCleanup = setupBlockTransferDocumentDrop(inner, { document: [] }, () => ({
+      ...structuralPreparation,
+      surfaceId: "surface-inner-pragmatic",
+      projectId: "project-a",
+      documentId: "document-inner",
+      storeEpoch: "epoch-a",
+      ancestorPageIds: [],
+      createOperationId: () => "operation-inner-pragmatic",
+      transfer: innerTransfer,
+      reportError: vi.fn(),
+    }));
     const [outerRegistration, innerRegistration] = dropTargetHarness.registrations.slice(
       registrationStart,
     ) as [ElementDropTargetArgs, ElementDropTargetArgs];

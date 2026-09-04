@@ -63,6 +63,15 @@ does not fall back to project or user configuration. The supported `vp run dev`
 launcher supplies an isolated Profile under `runs.local/`; this prevents a
 direct low-level development launch from opening the user's default Profile.
 
+The development launcher persists each home's renderer origin in
+`renderer-origin.json` and starts Vite with `strictPort`. An occupied saved port
+fails visibly instead of moving IndexedDB to another origin. New homes receive
+an available port; an existing home with one localhost IndexedDB origin reuses
+it. If several older origins exist, `--renderer-port <port>` explicitly selects
+which cache to reopen and persists that choice. No existing origin is deleted.
+The port can also be explicitly selected when setting up a new home. Built
+Desktop runs continue to use the packaged application origin.
+
 ## Main setting groups
 
 The `[server]` table currently owns these product setting families:

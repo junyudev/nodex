@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { createBoundedOperationId } from "../../shared/operation-identity";
 import {
   Awareness,
   applyAwarenessUpdate,
@@ -32,9 +33,11 @@ import {
   hasDocumentUpdateContent,
   restoreDocumentLocalCheckpoint,
   type DocumentLocalCheckpoint,
+  type DocumentRecoverySnapshot,
   type DocumentLocalCheckpointStore,
 } from "./document-local-checkpoint";
 import { BoundedBurstScheduler } from "./bounded-burst-scheduler";
+import { waitForDocumentOperation, type DocumentWaitOptions } from "./document-wait";
 
 export type NodexYProviderPhase =
   | "idle"
@@ -51,6 +54,9 @@ export type DocumentCheckpointPhase = "idle" | "saving" | "ready" | "degraded" |
 export interface DocumentCheckpointStatus {
   readonly phase: DocumentCheckpointPhase;
   readonly failureCount: number;
+  /** Completed cache transactions cover this surface through localVersion. */
+  readonly localVersion?: number;
+  readonly protectedVersion?: number;
   readonly lastFailureMessage?: string;
 }
 
@@ -65,6 +71,11 @@ export interface NodexYProviderStatus {
   readonly pendingUpdateCount: number;
   readonly inFlightUpdateId?: string;
   readonly checkpoint: DocumentCheckpointStatus;
+  readonly recoveredDraftCount?: number;
+  readonly recovery?: {
+    readonly phase: "saving" | "protected" | "memory";
+    readonly recoveryId: string;
+  };
   readonly error?: DocumentSyncCommandError;
 }
 
@@ -96,6 +107,7 @@ export interface NodexYProviderOptions {
 interface PendingDurableUpdate {
   readonly request: DocumentSyncApplyRequest;
   attempt: number;
+  journaled?: boolean;
 }
 
 interface FlushWaiter {
@@ -188,8 +200,9 @@ const makeClientSessionId = (): string => {
   return `document-client:${Date.now().toString(36)}:${fallbackSessionSequence.toString(36)}`;
 };
 
-const defaultUpdateId = (clientSessionId: string, sequence: number): string =>
-  `${clientSessionId}:update:${sequence.toString(36)}`;
+// Allocate at submission, not at session creation: an editor may remain open
+// beyond Core's receipt window. The frozen in-flight request owns exact retries.
+const defaultUpdateId = (): string => createBoundedOperationId("document.update");
 
 const defaultRetryScheduler: NodexYProviderRetryScheduler = (callback, attempt) => {
   const delayMs = Math.min(5_000, 100 * 2 ** Math.min(attempt - 1, 6));
@@ -294,6 +307,7 @@ export class NodexYProvider {
   private status: NodexYProviderStatus;
   private unsubscribeRealtime: (() => void) | null = null;
   private connected = false;
+  private connectionVersion = 0;
   private syncing = false;
   private syncAgain = false;
   private syncPromise: Promise<void> | null = null;
@@ -327,6 +341,12 @@ export class NodexYProvider {
   private checkpointFailureCount = 0;
   private checkpointLastFailureMessage: string | undefined;
   private localUpdateSequence = 0;
+  private protectedLocalVersion = 0;
+  private recoveredDraftCount = 0;
+  private recoverySnapshot: DocumentRecoverySnapshot | null = null;
+  private recoveryPhase: "saving" | "protected" | "memory" = "memory";
+  private recoveryPromise: Promise<void> | null = null;
+  private readonly documentSchema: NonNullable<NodexYProviderOptions["documentSchema"]>;
 
   private readonly handleDocumentUpdate = (update: Uint8Array, origin: unknown): void => {
     if (
@@ -342,6 +362,23 @@ export class NodexYProvider {
     const localUpdate = copyBytes(update);
     this.queuedUpdates.push(localUpdate);
     this.checkpointUpdates.push(localUpdate);
+    if (this.queuedUpdates.length >= 64)
+      this.queuedUpdates = [copyBytes(Y.mergeUpdates(this.queuedUpdates))];
+    if (this.checkpointUpdates.length >= 64)
+      this.checkpointUpdates = [copyBytes(Y.mergeUpdates(this.checkpointUpdates))];
+    const pendingBytes = this.queuedUpdates.reduce(
+      (sum, value) => sum + value.byteLength,
+      this.inFlight?.request.update.byteLength ?? 0,
+    );
+    if (pendingBytes > this.documentSchemaAdapter.limits.maxStateBytes) {
+      this.enterFatal({
+        code: "invalid_document_update",
+        message: "Unsaved changes reached the document limit. Export recovery before continuing.",
+        retryable: false,
+        resetRequired: false,
+      });
+      return;
+    }
     this.checkpointRetryBlocked = false;
     this.scheduleBatch();
     this.queueLocalCheckpointBestEffort();
@@ -400,9 +437,8 @@ export class NodexYProvider {
         ? createDefaultDocumentLocalCheckpointStore()
         : options.localCheckpointStore;
     this.checkpointPhase = this.localCheckpointStore ? "idle" : "disabled";
-    this.documentSchemaAdapter = getYjsDocumentSchemaAdapter(
-      options.documentSchema ?? DEFAULT_PAGE_DOCUMENT_SCHEMA,
-    );
+    this.documentSchema = options.documentSchema ?? DEFAULT_PAGE_DOCUMENT_SCHEMA;
+    this.documentSchemaAdapter = getYjsDocumentSchemaAdapter(this.documentSchema);
     this.durableBatchScheduler = new BoundedBurstScheduler({
       quietMs: DOCUMENT_UPDATE_BATCH_QUIET_MS,
       maxMs: DOCUMENT_UPDATE_BATCH_MAX_MS,
@@ -439,7 +475,6 @@ export class NodexYProvider {
       return;
     }
 
-    this.connected = true;
     if (!this.unsubscribeRealtime) {
       let unsubscribe: (() => void) | undefined;
       try {
@@ -465,10 +500,6 @@ export class NodexYProvider {
       this.unsubscribeRealtime = unsubscribe;
     }
     this.refreshStatus();
-    if (!this.connected) {
-      return;
-    }
-
     this.cancelRetry();
     await this.requestSync();
   };
@@ -479,13 +510,27 @@ export class NodexYProvider {
     }
 
     this.clearRealtimeSubscription();
+    this.connectionVersion += 1;
     this.connected = false;
     this.cancelRetry();
     this.removeRemoteAwarenessStates();
     this.refreshStatus();
   };
 
-  flush = (): Promise<void> => {
+  flush = (options: DocumentWaitOptions = {}): Promise<void> => {
+    let waiter: FlushWaiter | undefined;
+    return waitForDocumentOperation(
+      () =>
+        this.waitForDurableIdle((value) => {
+          waiter = value;
+        }),
+      options,
+    ).finally(() => {
+      if (waiter) this.flushWaiters.delete(waiter);
+    });
+  };
+
+  private waitForDurableIdle = (onWaiter: (waiter: FlushWaiter) => void): Promise<void> => {
     if (this.destroyed) {
       return Promise.reject(providerDestroyedError());
     }
@@ -506,13 +551,19 @@ export class NodexYProvider {
     }
 
     return new Promise<void>((resolve, reject) => {
-      this.flushWaiters.add({ resolve, reject });
+      const waiter = { resolve, reject };
+      this.flushWaiters.add(waiter);
+      onWaiter(waiter);
     });
   };
 
   checkpoint = async (): Promise<void> => {
     if (this.destroyed) {
       throw providerDestroyedError();
+    }
+    if (this.terminalError) {
+      await this.preserveRecovery();
+      return;
     }
     this.checkpointRetryBlocked = false;
     this.checkpointScheduler.cancel();
@@ -528,7 +579,9 @@ export class NodexYProvider {
     // awaits checkpoint(); this is only the best-effort crash-recovery fallback.
     this.checkpointRetryBlocked = false;
     this.checkpointScheduler.cancel();
-    void this.queueLocalCheckpoint().catch(() => undefined);
+    void (this.terminalError ? this.preserveRecovery() : this.queueLocalCheckpoint()).catch(
+      () => undefined,
+    );
     if (this.awareness.getLocalState() !== null) {
       this.awareness.setLocalState(null);
     }
@@ -564,6 +617,10 @@ export class NodexYProvider {
       return;
     }
 
+    if (event.kind === "terminated") {
+      this.handleCommandError({ ...event.error, retryable: false, resetRequired: false }, "sync");
+      return;
+    }
     if (event.kind === "connection") {
       this.handleConnectionEvent(event.state);
       return;
@@ -605,6 +662,17 @@ export class NodexYProvider {
     }
     if (this.syncing || !this.storeEpoch || this.generation === undefined) {
       this.bufferedDocumentEvents.push(event);
+      const bytes = this.bufferedDocumentEvents.reduce(
+        (total, value) => total + value.update.byteLength,
+        0,
+      );
+      if (
+        this.bufferedDocumentEvents.length > 128 ||
+        bytes > this.documentSchemaAdapter.limits.maxStateBytes
+      ) {
+        this.bufferedDocumentEvents = [];
+        this.syncAgain = true;
+      }
       return;
     }
 
@@ -613,6 +681,7 @@ export class NodexYProvider {
 
   private handleConnectionEvent(state: "connected" | "disconnected"): void {
     if (state === "disconnected") {
+      this.connectionVersion += 1;
       this.connected = false;
       this.cancelRetry();
       this.removeRemoteAwarenessStates();
@@ -636,7 +705,12 @@ export class NodexYProvider {
       return;
     }
     if (!this.storeEpoch || this.generation === undefined) {
-      this.bufferedAwarenessEvents.push(event);
+      this.bufferedAwarenessEvents = [
+        ...this.bufferedAwarenessEvents
+          .filter((value) => value.clientSessionId !== event.clientSessionId)
+          .slice(-127),
+        event,
+      ];
       return;
     }
     if (!this.assertBoundary(event.storeEpoch, event.generation)) {
@@ -663,7 +737,7 @@ export class NodexYProvider {
   }
 
   private requestSync(): Promise<void> {
-    if (this.destroyed || this.terminalError || !this.connected || this.retryCancel) {
+    if (this.destroyed || this.terminalError || !this.unsubscribeRealtime || this.retryCancel) {
       return Promise.resolve();
     }
     if (this.syncPromise) {
@@ -682,8 +756,7 @@ export class NodexYProvider {
       const shouldSyncAgain = this.syncAgain;
       this.syncAgain = false;
       if (shouldSyncAgain && !this.destroyed && !this.terminalError && this.connected) {
-        void this.requestSync();
-        return;
+        return this.requestSync();
       }
       this.resolveFlushWaitersIfIdle();
       this.pumpDurableQueue();
@@ -693,6 +766,7 @@ export class NodexYProvider {
   }
 
   private async performSync(): Promise<void> {
+    const connectionVersion = this.connectionVersion;
     let result: DocumentSyncCommandResult<DocumentSyncResponse>;
     try {
       result = await this.adapter.sync({
@@ -704,7 +778,7 @@ export class NodexYProvider {
       this.handleCommandError(thrownTransportError(error), "sync");
       return;
     }
-    if (this.destroyed || this.terminalError || !this.connected) {
+    if (this.destroyed || this.terminalError || connectionVersion !== this.connectionVersion) {
       return;
     }
     if (!result.ok) {
@@ -730,6 +804,7 @@ export class NodexYProvider {
       return;
     }
 
+    this.connected = true;
     this.headSeq = response.headSeq;
     this.transientError = undefined;
     this.syncRetryAttempt = 0;
@@ -973,6 +1048,18 @@ export class NodexYProvider {
 
     let result: DocumentSyncCommandResult<DocumentSyncApplyAck>;
     try {
+      if (!pending.journaled && this.localCheckpointStore && !this.checkpointDisabled) {
+        try {
+          await waitForDocumentOperation(
+            () => this.localCheckpointStore!.recordSubmission(pending.request, this.headSeq),
+            { deadlineAt: Date.now() + 2000 },
+          );
+          pending.journaled = true;
+        } catch (error) {
+          this.recordCheckpointFailure(error);
+        }
+      }
+      if (this.inFlight !== pending || this.destroyed || this.terminalError) return;
       result = await this.adapter.applyUpdate(pending.request);
     } catch (error) {
       this.handleCommandError(thrownTransportError(error), "apply");
@@ -989,6 +1076,17 @@ export class NodexYProvider {
       return;
     }
 
+    if (pending.journaled && this.localCheckpointStore) {
+      try {
+        await waitForDocumentOperation(
+          () => this.localCheckpointStore!.acknowledgeSubmission(pending.request),
+          { deadlineAt: Date.now() + 2000 },
+        );
+      } catch (error) {
+        this.recordCheckpointFailure(error);
+      }
+    }
+    if (this.inFlight !== pending || this.destroyed || this.terminalError) return;
     const previousHeadSeq = this.headSeq;
     const ack = result.value;
     this.inFlight = null;
@@ -1043,8 +1141,15 @@ export class NodexYProvider {
         return;
       }
       if (!checkpoint) return;
-      if (checkpoint.headSeq > response.headSeq) {
-        await this.localCheckpointStore.clearDocument(this.documentId);
+      if (
+        checkpoint.headSeq > response.headSeq ||
+        checkpoint.submissions?.some((value) => value.clientSessionId !== this.clientSessionId)
+      ) {
+        await this.quarantineCheckpoint(
+          checkpoint,
+          "A previous save has an unknown outcome. Export recovery to inspect the retained edits.",
+          false,
+        );
         return;
       }
 
@@ -1061,13 +1166,52 @@ export class NodexYProvider {
         this.refreshStatus();
       }
     } catch (error) {
-      try {
-        await this.localCheckpointStore.clearDocument(this.documentId);
-      } catch {
-        // A failed best-effort cleanup does not change durable authority.
-      }
+      const checkpoint = await this.localCheckpointStore.read(
+        {
+          documentId: this.documentId,
+          storeEpoch: response.storeEpoch,
+          generation: response.generation,
+        },
+        this.documentSchemaAdapter.limits,
+      );
+      if (checkpoint)
+        await this.quarantineCheckpoint(
+          checkpoint,
+          "The local draft could not be merged safely. Export recovery to inspect it.",
+        );
       throw error;
     }
+  }
+
+  private async quarantineCheckpoint(
+    checkpoint: DocumentLocalCheckpoint,
+    message: string,
+    terminate = true,
+  ): Promise<void> {
+    const error: DocumentSyncCommandError = {
+      code: "recovery_required",
+      message,
+      retryable: false,
+      resetRequired: false,
+    };
+    const snapshot: DocumentRecoverySnapshot = {
+      ...checkpoint,
+      recoveryId: makeClientSessionId(),
+      schema: this.documentSchema,
+      error,
+      state: Y.encodeStateAsUpdate(this.document),
+      unintegratedUpdates: [checkpoint.state],
+    };
+    if (!terminate && this.localCheckpointStore) {
+      await this.localCheckpointStore.quarantine(snapshot, this.documentSchemaAdapter.limits);
+      this.recoveredDraftCount += 1;
+      this.refreshStatus();
+      return;
+    }
+    this.recoverySnapshot = snapshot;
+    this.enterFatal(error);
+    // Hydration is itself on checkpointChain; preservation must run after it settles.
+    void this.preserveRecovery().catch(() => undefined);
   }
 
   private startLocalCheckpointHydration(response: DocumentSyncResponse): void {
@@ -1078,7 +1222,15 @@ export class NodexYProvider {
     this.checkpointPhase = "saving";
     this.refreshStatus();
     const hydration = this.checkpointChain
-      .then(() => this.hydrateLocalCheckpoint(response))
+      .then(async () => {
+        const recoveries = await this.localCheckpointStore?.readRecovery({
+          documentId: this.documentId,
+          storeEpoch: response.storeEpoch,
+          generation: response.generation,
+        });
+        this.recoveredDraftCount = recoveries?.length ?? 0;
+        await this.hydrateLocalCheckpoint(response);
+      })
       .then(() => {
         if (this.checkpointDisabled) return;
         this.checkpointPhase = "ready";
@@ -1127,6 +1279,7 @@ export class NodexYProvider {
       return this.checkpointChain;
     }
 
+    const coveredVersion = this.localUpdateSequence;
     const checkpointUpdates = this.checkpointUpdates;
     this.checkpointUpdates = [];
     const checkpoint: DocumentLocalCheckpoint = {
@@ -1135,6 +1288,7 @@ export class NodexYProvider {
       generation: this.generation,
       headSeq: this.headSeq,
       state: copyBytes(Y.mergeUpdates(checkpointUpdates)),
+      coverage: { [this.clientSessionId]: coveredVersion },
       updatedAt: new Date(this.now()).toISOString(),
     };
     this.checkpointPhase = "saving";
@@ -1150,6 +1304,7 @@ export class NodexYProvider {
           return;
         }
         await this.localCheckpointStore.write(checkpoint, this.documentSchemaAdapter.limits);
+        this.protectedLocalVersion = Math.max(this.protectedLocalVersion, coveredVersion);
       })
       .then(() => {
         if (this.checkpointDisabled) return;
@@ -1177,19 +1332,123 @@ export class NodexYProvider {
     return write;
   }
 
-  private clearLocalCheckpoints(): void {
-    if (this.checkpointDisabled) return;
-    this.checkpointDisabled = true;
-    this.checkpointUpdates = [];
-    this.checkpointRetryBlocked = false;
-    this.checkpointScheduler.cancel();
-    this.checkpointPhase = "disabled";
+  /** Stop this replica without discarding its unconfirmed edits. */
+  isolate = (error: DocumentSyncCommandError): void => {
+    this.enterFatal(error);
+  };
+
+  exportRecovery = async (): Promise<string> => {
+    if (this.terminalError?.code === "unauthorized")
+      throw new Error("Document access is required to export recovery");
+    const boundary = {
+      documentId: this.documentId,
+      storeEpoch: this.storeEpoch ?? this.expectedStoreEpoch ?? "unknown",
+      generation: this.generation ?? this.expectedGeneration ?? 1,
+    };
+    const stored = this.localCheckpointStore
+      ? await waitForDocumentOperation(() => this.localCheckpointStore!.readRecovery(boundary), {
+          deadlineAt: Date.now() + 2000,
+        }).catch(() => [])
+      : [];
+    const snapshots =
+      this.recoverySnapshot &&
+      !stored.some((value) => value.recoveryId === this.recoverySnapshot?.recoveryId)
+        ? [...stored, this.recoverySnapshot]
+        : [...stored];
+    if (snapshots.length === 0) {
+      snapshots.push({
+        ...boundary,
+        headSeq: this.headSeq,
+        state: Y.encodeStateAsUpdate(this.document),
+        updatedAt: new Date(this.now()).toISOString(),
+        recoveryId: makeClientSessionId(),
+        schema: this.documentSchema,
+        error: this.terminalError ?? {
+          code: "unknown",
+          message: "Explicit local export",
+          retryable: false,
+          resetRequired: false,
+        },
+        submissions: this.inFlight ? [this.inFlight.request] : [],
+        coverage: { [this.clientSessionId]: this.localUpdateSequence },
+      });
+    }
+    const readable = snapshots.map((snapshot) => {
+      const document = new Y.Doc();
+      try {
+        Y.applyUpdate(document, snapshot.state);
+        const materialization = this.documentSchemaAdapter.inspect(document).materialization;
+        return {
+          recoveryId: snapshot.recoveryId,
+          nfm: materialization.nfm,
+          plainText: materialization.plainText,
+        };
+      } catch {
+        return {
+          recoveryId: snapshot.recoveryId,
+          note: "Use the encoded snapshot for recovery; this replica could not be materialized safely.",
+        };
+      } finally {
+        document.destroy();
+      }
+    });
+    return JSON.stringify(
+      { format: "nodex-document-recovery", version: 1, readable, snapshots },
+      (_key, value: unknown) => (value instanceof Uint8Array ? Array.from(value) : value),
+      2,
+    );
+  };
+
+  private preserveRecovery(): Promise<void> {
+    if (this.recoveryPromise) return this.recoveryPromise;
+    if (!this.recoverySnapshot) return Promise.resolve();
+    this.recoveryPhase = "saving";
+    const snapshot = this.recoverySnapshot;
+    const promise = this.checkpointChain
+      .then(async () => {
+        if (!this.localCheckpointStore)
+          throw new Error("Recovery is only in this window. Export it before reloading.");
+        await this.localCheckpointStore.quarantine(snapshot, this.documentSchemaAdapter.limits);
+        this.recoveryPhase = "protected";
+        this.protectedLocalVersion = this.localUpdateSequence;
+      })
+      .catch((error: unknown) => {
+        this.recoveryPhase = "memory";
+        this.recordCheckpointFailure(error);
+        throw error;
+      })
+      .finally(() => {
+        if (this.recoveryPhase !== "protected") this.recoveryPromise = null;
+        this.refreshStatus();
+      });
+    this.recoveryPromise = promise;
     this.refreshStatus();
-    if (!this.localCheckpointStore) return;
-    this.checkpointChain = this.checkpointChain
-      .then(() => this.localCheckpointStore?.clearDocument(this.documentId))
-      .then(() => undefined)
-      .catch(() => undefined);
+    return promise;
+  }
+
+  private isolateLocalWork(error: DocumentSyncCommandError): void {
+    this.checkpointDisabled = true;
+    this.checkpointScheduler.cancel();
+    this.durableBatchScheduler.cancel();
+    if (
+      !this.recoverySnapshot &&
+      (this.localUpdateSequence > 0 || this.inFlight || this.queuedUpdates.length > 0)
+    ) {
+      this.recoverySnapshot = {
+        recoveryId: makeClientSessionId(),
+        documentId: this.documentId,
+        storeEpoch: this.storeEpoch ?? this.expectedStoreEpoch ?? "unknown",
+        generation: this.generation ?? this.expectedGeneration ?? 1,
+        headSeq: this.headSeq,
+        state: Y.encodeStateAsUpdate(this.document),
+        updatedAt: new Date(this.now()).toISOString(),
+        coverage: { [this.clientSessionId]: this.localUpdateSequence },
+        submissions: this.inFlight ? [this.inFlight.request] : [],
+        schema: this.documentSchema,
+        error,
+      };
+    }
+    void this.preserveRecovery().catch(() => undefined);
   }
 
   private recordCheckpointFailure(error: unknown): void {
@@ -1241,7 +1500,6 @@ export class NodexYProvider {
       if (this.destroyed || this.terminalError) {
         return;
       }
-      this.connected = true;
       this.refreshStatus();
       if (!this.unsubscribeRealtime) {
         void this.connect();
@@ -1319,11 +1577,9 @@ export class NodexYProvider {
     this.resetRequired = true;
     this.terminalError = error;
     this.connected = false;
-    this.clearLocalCheckpoints();
+    this.isolateLocalWork(error);
     this.cancelRetry();
     this.clearRealtimeSubscription();
-    this.queuedUpdates = [];
-    this.inFlight = null;
     this.bufferedDocumentEvents = [];
     this.bufferedAwarenessEvents = [];
     this.rejectFlushWaiters(new Error(error.message));
@@ -1341,6 +1597,7 @@ export class NodexYProvider {
     }
     this.terminalError = error;
     this.connected = false;
+    this.isolateLocalWork(error);
     this.cancelRetry();
     this.clearRealtimeSubscription();
     this.bufferedDocumentEvents = [];
@@ -1359,6 +1616,8 @@ export class NodexYProvider {
       phase = "reset-required";
     } else if (this.terminalError) {
       phase = "error";
+    } else if (this.syncing) {
+      phase = "connecting";
     } else if (!this.unsubscribeRealtime && !this.connected) {
       phase = "idle";
     } else if (!this.connected) {
@@ -1381,7 +1640,13 @@ export class NodexYProvider {
       headSeq: this.headSeq,
       pendingUpdateCount,
       inFlightUpdateId: this.inFlight?.request.updateId,
+      recoveredDraftCount: this.recoveredDraftCount,
+      recovery: this.recoverySnapshot
+        ? { phase: this.recoveryPhase, recoveryId: this.recoverySnapshot.recoveryId }
+        : undefined,
       checkpoint: {
+        localVersion: this.localUpdateSequence,
+        protectedVersion: this.protectedLocalVersion,
         phase: this.checkpointPhase,
         failureCount: this.checkpointFailureCount,
         ...(this.checkpointLastFailureMessage
@@ -1403,6 +1668,11 @@ export class NodexYProvider {
       current.headSeq === next.headSeq &&
       current.pendingUpdateCount === next.pendingUpdateCount &&
       current.inFlightUpdateId === next.inFlightUpdateId &&
+      current.recoveredDraftCount === next.recoveredDraftCount &&
+      current.recovery?.phase === next.recovery?.phase &&
+      current.recovery?.recoveryId === next.recovery?.recoveryId &&
+      current.checkpoint.localVersion === next.checkpoint.localVersion &&
+      current.checkpoint.protectedVersion === next.checkpoint.protectedVersion &&
       current.checkpoint.phase === next.checkpoint.phase &&
       current.checkpoint.failureCount === next.checkpoint.failureCount &&
       current.checkpoint.lastFailureMessage === next.checkpoint.lastFailureMessage &&

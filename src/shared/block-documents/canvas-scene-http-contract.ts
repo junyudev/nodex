@@ -1,3 +1,4 @@
+import { parseCoreFailureEvidence } from "../core-failure-evidence";
 import {
   MAX_CANVAS_SCENE_MUTATION_BYTES,
   MAX_CANVAS_SCENE_SNAPSHOT_BYTES,
@@ -68,9 +69,14 @@ const requireStringArray = (value: unknown, field: string): readonly string[] =>
   throw new TypeError(`${field} is invalid`);
 };
 
-const requireError = (value: unknown): CanvasSceneMutationError => {
+export const requireCanvasSceneError = (value: unknown): CanvasSceneMutationError => {
   if (!isRecord(value)) throw new TypeError("Canvas scene error is invalid");
   const codes = new Set([
+    "transport_unavailable",
+    "request_cancelled",
+    "request_timeout",
+    "service_busy",
+    "invalid_response",
     "invalid_canvas_scene_mutation",
     "store_epoch_mismatch",
     "access_scope_mismatch",
@@ -92,6 +98,7 @@ const requireError = (value: unknown): CanvasSceneMutationError => {
   )
     throw new TypeError("Canvas scene error is invalid");
   return {
+    ...(value.core === undefined ? {} : { core: parseCoreFailureEvidence(value.core) }),
     code: value.code as CanvasSceneMutationError["code"],
     message: value.message,
     retryable: value.retryable,
@@ -104,14 +111,29 @@ const requireError = (value: unknown): CanvasSceneMutationError => {
   };
 };
 
-const parseRealtimeValue = (value: unknown): CanvasSceneRealtimeEvent => {
+export const parseCanvasSceneRealtimeEvent = (value: unknown): CanvasSceneRealtimeEvent => {
   if (!isRecord(value)) {
     throw new TypeError("Canvas scene realtime event is invalid");
   }
-  const common = {
+  const identity = {
     libraryId: requireCanvasSceneIdentity(value.libraryId, "libraryId"),
     accessContext: parseContentAccessContext(value.accessContext),
     documentId: requireCanvasSceneIdentity(value.documentId, "documentId"),
+  };
+  if (value.type === "canvas_scene_session") {
+    const session = {
+      ...identity,
+      type: value.type,
+      clientSessionId: requireCanvasSceneIdentity(value.clientSessionId, "clientSessionId"),
+    } as const;
+    if (value.state === "terminated")
+      return { ...session, state: value.state, error: requireCanvasSceneError(value.error) };
+    if (value.state === "connected" || value.state === "disconnected")
+      return { ...session, state: value.state };
+    throw new TypeError("Canvas scene session state is invalid");
+  }
+  const common = {
+    ...identity,
     storeEpoch: requireCanvasSceneIdentity(value.storeEpoch, "storeEpoch"),
     generation: requireInteger(value.generation, "generation", 1),
     headSeq: requireInteger(value.headSeq, "headSeq"),
@@ -240,7 +262,7 @@ export const decodeCanvasSceneSyncResultHttp = (
     parseBoundedJson(serialized, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES),
     "Canvas scene sync result",
   );
-  if (envelope.ok === false) return { ok: false, error: requireError(envelope.error) };
+  if (envelope.ok === false) return { ok: false, error: requireCanvasSceneError(envelope.error) };
   if (!isRecord(envelope.value)) throw new TypeError("Canvas scene sync result is invalid");
   const common = {
     syncRequestId: requireCanvasSceneIdentity(envelope.value.syncRequestId, "syncRequestId"),
@@ -282,7 +304,7 @@ export const decodeCanvasSceneMutationResultHttp = (
     parseBoundedJson(serialized, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES),
     "Canvas scene mutation result",
   );
-  if (envelope.ok === false) return { ok: false, error: requireError(envelope.error) };
+  if (envelope.ok === false) return { ok: false, error: requireCanvasSceneError(envelope.error) };
   if (!isRecord(envelope.value)) throw new TypeError("Canvas scene mutation result is invalid");
   const result: CanvasSceneMutationCommandResult = {
     ok: true,
@@ -290,7 +312,7 @@ export const decodeCanvasSceneMutationResultHttp = (
     value: canonicalizeCanvasSceneMutationResult(envelope.value),
   };
   if (envelope.event !== undefined) {
-    const event = parseRealtimeValue(envelope.event);
+    const event = parseCanvasSceneRealtimeEvent(envelope.event);
     if (event.type !== "canvas_scene_committed") {
       throw new TypeError("Canvas mutation event must be a committed event");
     }
@@ -303,5 +325,7 @@ export const encodeCanvasSceneSseEvent = (event: CanvasSceneRealtimeEvent): stri
   encodeBoundedJson(event, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES);
 
 export const decodeCanvasSceneSseEvent = (serialized: string): CanvasSceneRealtimeEvent => {
-  return parseRealtimeValue(parseBoundedJson(serialized, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES));
+  return parseCanvasSceneRealtimeEvent(
+    parseBoundedJson(serialized, MAX_CANVAS_SCENE_HTTP_RESPONSE_BYTES),
+  );
 };

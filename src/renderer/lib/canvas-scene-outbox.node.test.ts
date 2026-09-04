@@ -4,6 +4,8 @@ import {
   CANVAS_SCENE_OUTBOX_DATABASE_NAME,
   IndexedDbCanvasSceneOutbox,
   MemoryCanvasSceneOutbox,
+  MAX_CANVAS_OUTBOX_MUTATIONS,
+  MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT,
   type CanvasSceneOutbox,
 } from "./canvas-scene-outbox";
 import type { CanvasSceneMutationIntent } from "../../shared/block-documents";
@@ -238,6 +240,40 @@ const openVersionThreeDatabase = (
   });
 
 describe("CanvasSceneOutbox", () => {
+  test.each(["memory", "indexeddb"] as const)(
+    "%s capacity failures retain active and quarantined edits",
+    async (kind) => {
+      const outbox =
+        kind === "memory"
+          ? new MemoryCanvasSceneOutbox(libraryId)
+          : new IndexedDbCanvasSceneOutbox(new IDBFactory(), libraryId);
+      for (let index = 0; index < MAX_CANVAS_OUTBOX_MUTATIONS; index++)
+        await outbox.put(intent(`mutation-${index}`, index + 1));
+      await expect(outbox.put(intent("overflow", 300))).rejects.toThrow("local limit");
+      expect(await outbox.list(projectAccessContext, "document-1")).toHaveLength(
+        MAX_CANVAS_OUTBOX_MUTATIONS,
+      );
+      const error = {
+        code: "document_generation_mismatch",
+        message: "Document replaced",
+        retryable: false,
+        resetRequired: true,
+      } as const;
+      for (let index = 0; index < MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT; index++)
+        await outbox.quarantine(intent(`mutation-${index}`, index + 1), error, index);
+      await expect(outbox.quarantine(intent("mutation-32", 33), error, 33)).rejects.toThrow(
+        "storage is full",
+      );
+      expect(await outbox.listQuarantined(projectAccessContext, "document-1")).toHaveLength(
+        MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT,
+      );
+      expect(
+        (await outbox.list(projectAccessContext, "document-1")).some(
+          (value) => value.mutationId === "mutation-32",
+        ),
+      ).toBe(true);
+    },
+  );
   test("memory storage preserves enqueue order and duplicate position", async () => {
     await verifyFifoAndIdempotence(new MemoryCanvasSceneOutbox(libraryId));
   });

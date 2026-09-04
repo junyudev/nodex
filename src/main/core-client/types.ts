@@ -296,11 +296,21 @@ export interface CoreClientPort {
     input: OwnedDocumentApplyInput,
     options?: CoreRequestOptions,
   ): Promise<OwnedDocumentApplyResult>;
-  documentSync(input: DocumentSyncRequest): Promise<DocumentSyncResponse>;
-  documentCanvasSync(input: CanvasSceneSyncRequest): Promise<CanvasSceneSyncResponse>;
-  documentApplyUpdate(input: DocumentSyncApplyRequest): Promise<DocumentSyncApplyAck>;
+  documentSync(
+    input: DocumentSyncRequest,
+    options?: CoreRequestOptions,
+  ): Promise<DocumentSyncResponse>;
+  documentCanvasSync(
+    input: CanvasSceneSyncRequest,
+    options?: CoreRequestOptions,
+  ): Promise<CanvasSceneSyncResponse>;
+  documentApplyUpdate(
+    input: DocumentSyncApplyRequest,
+    options?: CoreRequestOptions,
+  ): Promise<DocumentSyncApplyAck>;
   documentPublishAwareness(
     input: DocumentAwarenessPublishRequest,
+    options?: CoreRequestOptions,
   ): Promise<DocumentAwarenessPublishAck>;
   openDocumentEventStream(
     input: {

@@ -15,12 +15,29 @@ closes the physical stream and requires a fresh barrier plus canonical sync.
 Awareness uses a separate ephemeral addressed channel and cannot crowd the
 durable repair lane.
 
+Main retains the logical lease across physical reconnection and consumes Core's
+`reconnect_document_subscription` recovery evidence. Concurrent failures share
+one reconnect; late failures from older connection versions cannot retire the
+replacement. Core assigns each physical subscription a lease identity and
+releases it conditionally, even when streams share a logical client session.
+Terminal failures carry typed evidence to the renderer and settle its waiters.
+
 ## Page and Block Documents
 
 A Page/Block Document writer applies bounded idempotent Yjs updates against the
 current generation and durable head. The writer validates schema, application
 Block identity, dependencies, projections, and receipts before commit. The
 mounted surface receives acknowledgement only after durable transaction commit.
+
+Document update and Canvas mutation identities are allocated when a submission
+is frozen, using the shared bounded-operation factory. A long-lived client
+session, sequence counter, entity creation time, or content hash cannot supply
+the operation's issue time. Local journals and outboxes retain that exact
+identity through response loss; expiry never mints a replacement automatically.
+Manual checkpoint requests likewise carry a caller-owned operation identity
+through IPC and Core. Regression coverage exercises the real producers against
+a Profile whose legacy receipt overlap has ended, in addition to fresh-Profile
+scenarios.
 
 Each writable surface owns its client identity, local undo origins, selection,
 and Awareness contribution. Another surface's or remote transactions converge
@@ -50,8 +67,9 @@ proof is not part of idempotent identity.
 Yjs invokes editor observers synchronously while applying remote updates. An
 observer may fail after the Y.Doc has already integrated the update, leaving
 the editor projection and provider head behind the CRDT state. This boundary is
-`recovery_required`: the surface discards that replica and synchronizes a fresh
-one. It must not retry on the same Y.Doc or misclassify a local editor
+`recovery_required`: the provider isolates that replica, preserves recovery
+material, and only then permits a fresh replica. A failed local preservation
+never triggers automatic destruction of the only copy. It must not retry on the same Y.Doc or misclassify a local editor
 projection failure as malformed Core content. Collaborative selection restore
 falls back to a nearby valid selection when a remotely removed Node selection
 no longer has a selectable node at its relative anchor.
@@ -60,6 +78,22 @@ Cross-Document transfer and copy prepare against isolated clones, then recheck
 all captured heads and ownership facts under the writer. Each affected Document
 advances at most once. Failure leaves canonical state and reusable base caches
 unchanged.
+
+Local checkpoints carry per-surface coverage; completed writes never imply
+coverage of newer edits. Exact submitted requests are journaled before send
+when local storage is available and retired after verified ACK. Unresolved
+previous-session requests become retained drafts for review, not replayed
+with new identity. Terminal preservation atomically retains the exact boundary's
+cached bytes before removing its active checkpoint. Other generations remain.
+Yjs local queues compact incrementally and stop admission at the schema's state
+byte budget; bounded realtime overflow requests canonical synchronization and
+presence is replaceable. Recovery storage refuses overflow rather than evicting
+unconfirmed work.
+
+Structural preparation uses one absolute deadline and cancellation scope;
+cancelling a waiter leaves the durable queue and independent waiters intact.
+The product states and recovery/export contract live in
+[Document Sync and Recovery](../product-specs/document-sync-and-recovery-behavior.md).
 
 ## Canvas Documents
 
@@ -72,6 +106,32 @@ later edits proceed.
 Scene generation, head, file identity, and portable snapshot validation remain
 separate. Remote repair never guesses a scene or enters local undo. Product
 behavior is specified in [Canvas Behavior](../product-specs/canvas-behavior.md).
+
+## Retained drafts
+
+Owned Document owns durable recovery packages and their revisioned resolutions.
+Renderer IndexedDB is staging until Core acknowledges the exact immutable package;
+Main provides a typed Adapter and never writes a recovery database. Recovery
+metadata publishes through LocalCommit independently of live document streams.
+Packages survive source deletion and remain discoverable in their Library.
+
+A draft is pending or resolved as already saved, restored, copied, or discarded.
+Restore/copy and resolution share one transaction and receipt. Retrying an uncertain
+user choice keeps its persisted identity; stale draft revisions and preview heads
+fail before mutation. Discard is soft and reversible for 30 days. Export and
+closing a review do not change durable resolution.
+
+Yjs analysis uses isolated engine snapshots, including delete sets and unresolved
+dependencies. Canvas analysis checks every intended winning value and any retained
+full scene. No renderer error label, state vector, age, or partial receipt is a
+proof that the whole package was committed. Capability checks fail closed for
+unavailable schemas, resource closures, changed ownership and structural barriers.
+
+Recovery roots retain known source/owned Blocks and referenced immutable asset
+hashes. Pending packages never expire. Bounded maintenance removes only handled
+packages older than 30 days and releases their roots in the same transaction.
+The package, aggregate storage, record count and summary page all have independent
+bounds. Refusing new capture never deletes unacknowledged renderer staging.
 
 ## Semantic history
 

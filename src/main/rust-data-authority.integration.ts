@@ -574,6 +574,7 @@ describe("Electron native data authority", () => {
         },
       });
       const checkpointRequest = {
+        operationId: createOperationId("document.checkpoint"),
         projectId,
         storeEpoch: runtime.rootClient.handshake.store_epoch,
         documentId: nativeSourceDocumentId,

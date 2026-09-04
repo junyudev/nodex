@@ -3,6 +3,11 @@ import type {
   DocumentHeadFence,
 } from "@/lib/block-document-surface-runtime";
 import {
+  DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+  assertDocumentWaitActive,
+  type DocumentWaitOptions,
+} from "@/lib/document-wait";
+import {
   finalizeSideMenuBlockDrag,
   type SideMenuDragCleanupEditor,
 } from "./side-menu-drag-lifecycle";
@@ -86,8 +91,15 @@ export const prepareNfmEditorStructuralMutation = async (
   editor: NfmEditorStructuralMutationRuntime,
   container: HTMLElement,
   barrier: BlockDocumentMutationBarrier,
+  input: DocumentWaitOptions = {},
 ): Promise<DocumentHeadFence> => {
+  const options = {
+    ...input,
+    deadlineAt: input.deadlineAt ?? Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+  };
+  assertDocumentWaitActive(options);
   finalizeSideMenuBlockDrag(editor);
   await prepareNfmEditorForMutation(editor, container);
-  return await barrier.flushAndFence();
+  assertDocumentWaitActive(options);
+  return await barrier.flushAndFence(options);
 };

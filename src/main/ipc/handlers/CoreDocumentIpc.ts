@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import type { IpcApi } from "../../../shared/ipc-api";
 import { documentSyncApplyCommandResult } from "../../../shared/block-documents/document-sync";
+import type { CanvasSceneMutationError } from "../../../shared/block-documents/canvas-scene-sync";
 import { MainConfig } from "../../app/MainConfig";
 import { DesktopDocumentSessionRuntime } from "../../core-client";
 import { DatabaseModule } from "../../database-application/DatabaseModule";
@@ -53,13 +54,7 @@ const canvasUnauthorized = (
   mutationId?: string,
 ): {
   readonly ok: false;
-  readonly error: {
-    readonly code: "access_scope_mismatch";
-    readonly message: string;
-    readonly retryable: false;
-    readonly resetRequired: false;
-    readonly mutationId?: string;
-  };
+  readonly error: CanvasSceneMutationError;
 } => ({
   ok: false,
   error: {

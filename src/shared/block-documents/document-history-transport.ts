@@ -142,6 +142,7 @@ export const parseCreateDocumentVersionCheckpoint = (
     record,
     label,
     [
+      "operationId",
       "projectId",
       "storeEpoch",
       "documentId",
@@ -192,6 +193,7 @@ export const parseCreateDocumentVersionCheckpoint = (
     );
   }
   return {
+    operationId: readString(record, "operationId", label),
     projectId: readString(record, "projectId", label),
     storeEpoch: readString(record, "storeEpoch", label),
     documentId: readString(record, "documentId", label),

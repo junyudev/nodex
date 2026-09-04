@@ -73,6 +73,7 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "document-recovery:read"
   | "agent-backend:acp:session:read"
   | "agent-import:scan"
   | "agent-import:scan-picked-home"
@@ -311,6 +312,7 @@ type ControlEndpointPolicy =
   | "workspace-file-watch:stop";
 
 type CoreLocalCommitCommandEndpointPolicy =
+  | "document-recovery:apply"
   | "block-documents:command"
   | "block-documents:history:restore"
   | "block-documents:mutate"

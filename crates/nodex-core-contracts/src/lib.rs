@@ -101,6 +101,13 @@ pub enum CoreErrorRecovery {
         head_seq: i64,
     },
     ReconnectDocumentSubscription,
+    DocumentRecoveryArtifact {
+        artifact_id: String,
+        document_id: String,
+        store_epoch: StoreEpoch,
+        generation: i64,
+        update_id: String,
+    },
     SupportedSchema {
         minimum: u32,
         maximum: u32,

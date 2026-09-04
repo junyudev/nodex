@@ -1,3 +1,4 @@
+import { parseCoreFailureEvidence } from "../core-failure-evidence";
 import {
   MAX_BLOCK_ID_LENGTH,
   MAX_PAGE_DOCUMENT_STATE_BYTES,
@@ -39,6 +40,8 @@ export const DOCUMENT_HTTP_CONTENT_TYPE = "application/vnd.nodex.document-sync.v
 const DOCUMENT_SYNC_ERROR_CODES = new Set<DocumentSyncCommandError["code"]>([
   "transport_unavailable",
   "request_cancelled",
+  "request_timeout",
+  "service_busy",
   "unauthorized",
   "store_not_initialized",
   "store_epoch_mismatch",
@@ -986,6 +989,14 @@ export const decodeDocumentRealtimeSseEvent = (serialized: string): DocumentSync
   readEventVersion(record);
   const kind = readString(record, "kind");
   const documentId = readString(record, "documentId");
+  if (kind === "terminated") {
+    return {
+      kind,
+      documentId,
+      clientSessionId: readString(record, "clientSessionId"),
+      error: decodeDocumentHttpError(JSON.stringify({ ok: false, error: record.error })),
+    };
+  }
   if (kind === "connection") {
     const state = readString(record, "state");
     if (state !== "connected" && state !== "disconnected") {
@@ -1074,6 +1085,7 @@ export const decodeDocumentHttpError = (serialized: string): DocumentSyncCommand
   const relocationId = readOptionalString(error, "relocationId");
   const recoveryArtifactId = readOptionalString(error, "recoveryArtifactId");
   return {
+    ...(error.core === undefined ? {} : { core: parseCoreFailureEvidence(error.core) }),
     code,
     message: readString(error, "message"),
     retryable: readBoolean(error, "retryable"),

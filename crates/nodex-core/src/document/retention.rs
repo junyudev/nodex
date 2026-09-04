@@ -261,6 +261,7 @@ struct RetentionEvidenceIndex {
     immutable_rows: Vec<ImmutableRetentionEvidence>,
     relocations: Vec<RelocationRetentionEvidence>,
     recovery_artifacts: Vec<RecoveryRetentionEvidence>,
+    recovery_block_roots: BTreeMap<String, BTreeSet<String>>,
     structural_members: Vec<StructuralRetentionEvidence>,
     unknown_inbound_foreign_keys: Vec<UnknownInboundForeignKey>,
     newest_deleted_blocks: BTreeMap<String, BTreeSet<String>>,
@@ -295,6 +296,18 @@ impl RetentionEvidenceIndex {
         let immutable_rows = load_immutable_retention_evidence(connection, excluded_library)?;
         let relocations = load_relocation_retention_evidence(connection)?;
         let recovery_artifacts = load_recovery_retention_evidence(connection)?;
+        let mut recovery_block_roots: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut statement =
+            connection.prepare("SELECT library_id, block_id FROM document_recovery_block_roots")?;
+        for row in statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })? {
+            let (library_id, block_id) = row?;
+            recovery_block_roots
+                .entry(library_id)
+                .or_default()
+                .insert(block_id);
+        }
         let structural_members = load_structural_retention_evidence(connection)?;
         let unknown_inbound_foreign_keys = load_unknown_inbound_foreign_keys(connection)?;
         let newest_deleted_blocks = load_newest_deleted_blocks(
@@ -307,6 +320,7 @@ impl RetentionEvidenceIndex {
             immutable_rows,
             relocations,
             recovery_artifacts,
+            recovery_block_roots,
             structural_members,
             unknown_inbound_foreign_keys,
             newest_deleted_blocks,
@@ -1528,7 +1542,11 @@ fn analyze_candidate(
     let document_ids_json = identities_json(&closure.document_ids)?;
     let database_view_ids = read_database_view_ids(connection, &block_ids_json)?;
     let database_view_ids_json = identities_json(&database_view_ids)?;
-    if evidence.has_unknown_inbound_reference(connection, closure)?
+    if evidence
+        .recovery_block_roots
+        .get(&closure.library_id)
+        .is_some_and(|roots| sets_intersect(roots, &closure.block_ids))
+        || evidence.has_unknown_inbound_reference(connection, closure)?
         || evidence.has_current_authority_reference(closure, &database_view_ids)
         || has_current_projection_reference(connection, closure)?
         || has_external_page_file_placement(connection, &block_ids_json, &document_ids_json)?
@@ -3254,6 +3272,21 @@ mod tests {
                 Ok(())
             })
             .expect("retain Relation target");
+    }
+
+    #[test]
+    fn retained_draft_roots_protect_deleted_owners_until_the_package_is_collected() {
+        let fixture = Fixture::new();
+        fixture.insert_owned_page_closure("deleted");
+        fixture.kernel.writer().call(|connection| {
+            connection.execute("INSERT INTO document_recovery_drafts(library_id, draft_id, document_id, source_store_epoch, generation, created_at, received_at, payload_json, payload_hash, byte_length) VALUES (?1, 'draft:protected', 'document:owned-page', 'epoch:test', 1, '2000-01-01', '2000-01-01', '{}', ?2, 2)", params![LIBRARY_ID, "0".repeat(64)])?;
+            connection.execute("INSERT INTO document_recovery_block_roots VALUES (?1, 'draft:protected', ?2)", params![LIBRARY_ID, OWNED_CHILD_ID])?;
+            assert_eq!(run_block_retention_pass(connection, 0)?.collected_candidates, 0);
+            connection.execute("DELETE FROM document_recovery_drafts WHERE draft_id = 'draft:protected'", [])?;
+            connection.execute("UPDATE block_retention_deferrals SET retry_after_ms = 0", [])?;
+            assert_eq!(run_block_retention_pass(connection, 0)?.collected_candidates, 1);
+            Ok(())
+        }).expect("draft retention protects the entire ownership closure");
     }
 
     #[test]

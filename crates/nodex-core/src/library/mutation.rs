@@ -2510,6 +2510,17 @@ fn create_page_records_and_genesis(
     commit: &CommitContext,
 ) -> Result<LibraryPageCreateResult, StoreError> {
     let prepared = match genesis {
+        PageGenesisInput::Retained { rich_title, nfm } => {
+            let rich_title: Vec<crate::domain::rich_text::RichTextItem> =
+                serde_json::from_value(rich_title.clone())
+                    .map_err(|_| invalid("Invalid retained title"))?;
+            let mut ordinal = 0_u64;
+            prepare_page_yjs_genesis_with_content(document_id, &rich_title, nfm, &mut || {
+                let id = stable_uuid_v7(operation_id, "page_body_block", &ordinal.to_string());
+                ordinal += 1;
+                id
+            })?
+        }
         PageGenesisInput::PlainTitle(title) => {
             let root_block_id = deterministic_block_id(operation_id);
             prepare_page_yjs_genesis(document_id, title, &root_block_id)?
@@ -2668,7 +2679,7 @@ fn create_page(
     validate_id("page_id", page_id)?;
     validate_id("document_id", document_id)?;
     validate_id("operation_id", operation_id)?;
-    if genesis.title().len() > MAX_PAGE_TITLE_LENGTH {
+    if genesis.title_len() > MAX_PAGE_TITLE_LENGTH {
         return Err(invalid("Page title exceeds its bound"));
     }
     let resolved_parent =
@@ -2703,8 +2714,9 @@ fn create_page(
             context,
         },
         |scope| {
-            let page_create = create_page_records_and_genesis(
+            let effects = execute_page_create(
                 connection,
+                context,
                 store_epoch,
                 library_id,
                 operation_id,
@@ -2713,108 +2725,11 @@ fn create_page(
                 genesis,
                 parent,
                 &resolved_parent,
-                &project_id,
-                &now,
-                scope.evidence(),
-            )?;
-
-            let parent_insertion = match parent {
-                LibraryWriteParent::Page { insertion, .. } => insertion.as_ref(),
-                LibraryWriteParent::Library { .. } => None,
-            };
-            let parent_head_seq = resolved_parent
-                .document
-                .as_ref()
-                .map(|parent| {
-                    let write = ParentDocumentWriteContext {
-                        actor_project_id: &project_id,
-                        store_epoch,
-                        operation_id,
-                        commit: scope.evidence(),
-                    };
-                    if let Some(insertion) = parent_insertion {
-                        return persist_parent_insert_with_insertion(
-                            connection,
-                            write,
-                            parent,
-                            insertion,
-                            embedded_resource_block(page_id, "page"),
-                        );
-                    }
-                    persist_parent_insert(
-                        connection,
-                        write,
-                        parent,
-                        embedded_resource_block(page_id, "page"),
-                        resolved_parent.before_block_id.clone(),
-                    )
-                })
-                .transpose()?;
-            seal_mutation(
+                project_id,
+                now.clone(),
                 scope,
-                context,
-                operation_id,
-                MutationEffects {
-                    project_id,
-                    operation_kind: "create_page",
-                    change_kind: "library.changed",
-                    did_mutate: true,
-                    created_target: Some(LibraryResourceTarget::Page {
-                        page_id: page_id.to_owned(),
-                    }),
-                    affected_parent_keys: vec![resolved_parent.parent_key.clone()],
-                    affected_block_ids: Vec::new(),
-                    affected_page_ids: std::iter::once(page_id.to_owned())
-                        .chain(resolved_parent.page_id.clone())
-                        .collect(),
-                    affected_database_ids: Vec::new(),
-                    affected_view_ids: Vec::new(),
-                    affected_document_ids: std::iter::once(document_id.to_owned())
-                        .chain(
-                            resolved_parent
-                                .document
-                                .as_ref()
-                                .map(|parent| parent.authority.head.id.clone()),
-                        )
-                        .collect(),
-                    committed_revisions: BTreeMap::from_iter(
-                        [
-                            (format!("blockLocation:{page_id}"), 1),
-                            (format!("blockMetadata:{page_id}"), 1),
-                            (
-                                format!("documentHead:{document_id}"),
-                                page_create.document_head_seq,
-                            ),
-                        ]
-                        .into_iter()
-                        .chain(
-                            parent_head_seq.zip(resolved_parent.document.as_ref()).map(
-                                |(commit, parent)| {
-                                    (
-                                        format!("documentHead:{}", parent.authority.head.id),
-                                        commit.head_seq,
-                                    )
-                                },
-                            ),
-                        ),
-                    ),
-                    page_create: Some(page_create),
-                    page_copy: None,
-                    page_files: None,
-                    canvas_mutation: None,
-                    block_transfer: None,
-                    block_transfer_undo: None,
-                    page_relocation_undo: None,
-                    structural_edit: None,
-                    page_lifecycle: None,
-                    block_property_mutation: None,
-                    agent_page_copy: None,
-                    agent_create_pages: None,
-                    agent_move_pages: None,
-                    change_payload: None,
-                    committed_at: now.clone(),
-                },
-            )
+            )?;
+            seal_mutation(scope, context, operation_id, effects)
         },
     )?;
     library_commit_result(connection, commit_result)
@@ -3301,6 +3216,10 @@ pub(super) fn create_page_from_nfm(
 }
 
 enum PageGenesisInput<'a> {
+    Retained {
+        rich_title: &'a serde_json::Value,
+        nfm: &'a str,
+    },
     PlainTitle(&'a str),
     NestedMarkdown {
         title_markdown: &'a str,
@@ -3351,10 +3270,11 @@ pub(crate) fn insert_creator_resource_grant(
 }
 
 impl PageGenesisInput<'_> {
-    fn title(&self) -> &str {
+    fn title_len(&self) -> usize {
         match self {
-            Self::PlainTitle(title) => title,
-            Self::NestedMarkdown { title_markdown, .. } => title_markdown,
+            Self::PlainTitle(title) => title.len(),
+            Self::Retained { rich_title, .. } => rich_title.to_string().len(),
+            Self::NestedMarkdown { title_markdown, .. } => title_markdown.len(),
         }
     }
 }
@@ -8846,4 +8766,175 @@ mod tests {
             })
             .expect("embedded Database authority is restored with Page");
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_page_create(
+    connection: &Connection,
+    _context: &BoundModuleContext,
+    store_epoch: &str,
+    library_id: &str,
+    operation_id: &str,
+    page_id: &str,
+    document_id: &str,
+    genesis: PageGenesisInput<'_>,
+    parent: &LibraryWriteParent,
+    resolved_parent: &ResolvedWriteParent,
+    project_id: String,
+    now: String,
+    scope: &DurableMutationScope<'_>,
+) -> Result<MutationEffects, StoreError> {
+    let page_create = create_page_records_and_genesis(
+        connection,
+        store_epoch,
+        library_id,
+        operation_id,
+        page_id,
+        document_id,
+        genesis,
+        parent,
+        &resolved_parent,
+        &project_id,
+        &now,
+        scope.evidence(),
+    )?;
+
+    let parent_insertion = match parent {
+        LibraryWriteParent::Page { insertion, .. } => insertion.as_ref(),
+        LibraryWriteParent::Library { .. } => None,
+    };
+    let parent_head_seq = resolved_parent
+        .document
+        .as_ref()
+        .map(|parent| {
+            let write = ParentDocumentWriteContext {
+                actor_project_id: &project_id,
+                store_epoch,
+                operation_id,
+                commit: scope.evidence(),
+            };
+            if let Some(insertion) = parent_insertion {
+                return persist_parent_insert_with_insertion(
+                    connection,
+                    write,
+                    parent,
+                    insertion,
+                    embedded_resource_block(page_id, "page"),
+                );
+            }
+            persist_parent_insert(
+                connection,
+                write,
+                parent,
+                embedded_resource_block(page_id, "page"),
+                resolved_parent.before_block_id.clone(),
+            )
+        })
+        .transpose()?;
+    Ok(MutationEffects {
+        project_id,
+        operation_kind: "create_page",
+        change_kind: "library.changed",
+        did_mutate: true,
+        created_target: Some(LibraryResourceTarget::Page {
+            page_id: page_id.to_owned(),
+        }),
+        affected_parent_keys: vec![resolved_parent.parent_key.clone()],
+        affected_block_ids: Vec::new(),
+        affected_page_ids: std::iter::once(page_id.to_owned())
+            .chain(resolved_parent.page_id.clone())
+            .collect(),
+        affected_database_ids: Vec::new(),
+        affected_view_ids: Vec::new(),
+        affected_document_ids: std::iter::once(document_id.to_owned())
+            .chain(
+                resolved_parent
+                    .document
+                    .as_ref()
+                    .map(|parent| parent.authority.head.id.clone()),
+            )
+            .collect(),
+        committed_revisions: BTreeMap::from_iter(
+            [
+                (format!("blockLocation:{page_id}"), 1),
+                (format!("blockMetadata:{page_id}"), 1),
+                (
+                    format!("documentHead:{document_id}"),
+                    page_create.document_head_seq,
+                ),
+            ]
+            .into_iter()
+            .chain(parent_head_seq.zip(resolved_parent.document.as_ref()).map(
+                |(commit, parent)| {
+                    (
+                        format!("documentHead:{}", parent.authority.head.id),
+                        commit.head_seq,
+                    )
+                },
+            )),
+        ),
+        page_create: Some(page_create),
+        page_copy: None,
+        page_files: None,
+        canvas_mutation: None,
+        block_transfer: None,
+        block_transfer_undo: None,
+        page_relocation_undo: None,
+        structural_edit: None,
+        page_lifecycle: None,
+        block_property_mutation: None,
+        agent_page_copy: None,
+        agent_create_pages: None,
+        agent_move_pages: None,
+        change_payload: None,
+        committed_at: now.clone(),
+    })
+}
+
+/// Create a recovered Page through the same identity, placement, genesis and projection rules as normal creation.
+pub(super) fn create_recovery_page(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    page_id: &str,
+    document_id: &str,
+    rich_title: &serde_json::Value,
+    nfm: &str,
+) -> Result<(), StoreError> {
+    let connection = scope.connection();
+    let parent = LibraryWriteParent::Library { before: None };
+    let resolved =
+        resolve_write_parent_for_context(connection, context, &context.library_id.0, &parent)?;
+    let effects = execute_page_create(
+        connection,
+        context,
+        scope.store_epoch(),
+        &context.library_id.0,
+        scope.evidence().operation_id(),
+        page_id,
+        document_id,
+        PageGenesisInput::Retained { rich_title, nfm },
+        &parent,
+        &resolved,
+        resolved.actor_project_id.clone(),
+        scope.committed_at().to_owned(),
+        scope,
+    )?;
+    record_recovery_creation(scope, context, effects)
+}
+
+pub(super) fn record_recovery_creation(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    effects: MutationEffects,
+) -> Result<(), StoreError> {
+    build_mutation_result(
+        scope.connection(),
+        context,
+        scope.store_epoch(),
+        scope.evidence().operation_id(),
+        effects,
+        scope.evidence(),
+        &scope.authorization_before()?,
+    )?;
+    Ok(())
 }

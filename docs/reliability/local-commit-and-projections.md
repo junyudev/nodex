@@ -76,9 +76,17 @@ lease-bound reset; a replacement lease carries forward every in-flight floor
 before retiring old delivery IDs. ACK and retry tasks are keyed child fibers,
 not ambient timers. Quiet reset failure uses bounded exponential full-jitter
 retry capped at one minute and at most 20 sends per ten-minute window. Renderer
-release interrupts every task, rejects late ACKs, removes unused lease grants,
-and publishes the new canonical desired-scope set before the physical broker
-reconciles.
+release interrupts every task, rejects late ACKs, and publishes the new canonical
+desired-scope set before the physical broker reconciles. Core lease grants belong
+to that physical stream and survive temporary audience removal; only a replacement
+Core barrier retires them. This lets a returning window subscribe when scope churn
+returns to the active stream before its replacement opens.
+
+Scoped live packets carry authorized metadata atoms alongside projection and
+visibility effects, including recovery resolution and exact File invalidation.
+They omit document update resources, which remain on the document stream. Atom
+observers retain their own scoped audience and re-read after a delivery reset;
+an apply response in one window cannot stand in for delivery to another window.
 
 The multiplexed Projection live connection is one Main-scoped resource. Audience
 changes publish only the latest desired scope set. A replacement opens in its

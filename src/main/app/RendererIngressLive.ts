@@ -21,6 +21,7 @@ import * as CodexPendingWorktreeIpc from "../ipc/handlers/CodexPendingWorktreeIp
 import * as CodexPromptRailIpc from "../ipc/handlers/CodexPromptRailIpc";
 import * as CodexWorkspaceIpc from "../ipc/handlers/CodexWorkspaceIpc";
 import * as CoreDocumentIpc from "../ipc/handlers/CoreDocumentIpc";
+import * as DocumentRecoveryIpc from "../ipc/handlers/DocumentRecoveryIpc";
 import * as CoreMutationIpc from "../ipc/handlers/CoreMutationIpc";
 import * as DatabaseProjectionIpc from "../ipc/handlers/DatabaseProjectionIpc";
 import * as DictationIpc from "../ipc/handlers/DictationIpc";
@@ -79,6 +80,7 @@ export const live = Layer.mergeAll(
   CodexWorkspaceIpc.live,
   CoreDocumentIpc.live,
   CoreMutationIpc.live,
+  DocumentRecoveryIpc.live,
   DatabaseProjectionIpc.live,
   GitApplicationIpc.live,
   ManagedMediaIpc.live,

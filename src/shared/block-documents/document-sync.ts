@@ -1,5 +1,6 @@
 import type { ApplyDocumentUpdate, DocumentId } from "./contracts";
 import type { LocalCommitApply, LocalCommitCommandSuccess } from "../local-commit-delivery";
+import type { CoreFailureEvidence } from "../core-failure-evidence";
 
 export const MAX_DOCUMENT_AWARENESS_UPDATE_BYTES = 64 * 1024;
 
@@ -11,6 +12,8 @@ export const MAX_DOCUMENT_AWARENESS_UPDATE_BYTES = 64 * 1024;
 export type DocumentSyncErrorCode =
   | "transport_unavailable"
   | "request_cancelled"
+  | "request_timeout"
+  | "service_busy"
   | "unauthorized"
   | "store_not_initialized"
   | "store_epoch_mismatch"
@@ -31,6 +34,7 @@ export type DocumentSyncErrorCode =
   | "unknown";
 
 export interface DocumentSyncCommandError {
+  readonly core?: CoreFailureEvidence;
   readonly code: DocumentSyncErrorCode;
   readonly message: string;
   /** The exact same durable command may be attempted again. */
@@ -241,6 +245,12 @@ export interface DocumentAwarenessPublishAck {
 }
 
 export type DocumentSyncRealtimeEvent =
+  | {
+      readonly kind: "terminated";
+      readonly documentId: DocumentId;
+      readonly clientSessionId: string;
+      readonly error: DocumentSyncCommandError;
+    }
   | {
       readonly kind: "connection";
       readonly documentId: DocumentId;

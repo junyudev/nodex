@@ -250,22 +250,32 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
           ),
         ),
         sync: Effect.fn("CoreModules.document.sync")((input, projectId) =>
-          access.use("document.sync", (client) => client.documentSync(input), { projectId }),
+          access.use("document.sync", (client, signal) => client.documentSync(input, { signal }), {
+            projectId,
+          }),
         ),
         canvasSync: Effect.fn("CoreModules.document.canvasSync")((input, projectId) =>
-          access.use("document.canvasSync", (client) => client.documentCanvasSync(input), {
-            projectId,
-          }),
+          access.use(
+            "document.canvasSync",
+            (client, signal) => client.documentCanvasSync(input, { signal }),
+            {
+              projectId,
+            },
+          ),
         ),
         applyUpdate: Effect.fn("CoreModules.document.applyUpdate")((input, projectId) =>
-          access.use("document.applyUpdate", (client) => client.documentApplyUpdate(input), {
-            projectId,
-          }),
+          access.use(
+            "document.applyUpdate",
+            (client, signal) => client.documentApplyUpdate(input, { signal }),
+            {
+              projectId,
+            },
+          ),
         ),
         publishAwareness: Effect.fn("CoreModules.document.publishAwareness")((input, projectId) =>
           access.use(
             "document.publishAwareness",
-            (client) => client.documentPublishAwareness(input),
+            (client, signal) => client.documentPublishAwareness(input, { signal }),
             { projectId, replayAfterRecovery: false },
           ),
         ),

@@ -1,8 +1,9 @@
-import { describe, expect, test } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { createRef, type RefObject } from "react";
 import { DropCursorExtension, SideMenuExtension } from "@blocknote/core/extensions";
 import { render, settleAsyncRender } from "@/test/dom";
+import type { BlockTransferDropBoundary } from "./block-transfer-drop";
 import { useEditorDragBehaviors } from "./use-editor-drag-behaviors";
 import {
   beginLocalBlockDragSession,
@@ -50,10 +51,12 @@ function DragBehaviorHarness({
   editor,
   containerRef,
   crossSurface = false,
+  dropBoundary,
 }: {
   editor: DragBehaviorEditor;
   containerRef: RefObject<HTMLDivElement | null>;
   crossSurface?: boolean;
+  dropBoundary?: Partial<BlockTransferDropBoundary>;
 }) {
   useEditorDragBehaviors({
     editor,
@@ -67,7 +70,7 @@ function DragBehaviorHarness({
             storeEpoch: "epoch-a",
             blockTransferDrop: {
               surfaceId: "surface-a",
-              projectId: "project-1",
+              projectId: "project-a",
               documentId: "document-a",
               storeEpoch: "epoch-a",
               hostPageId: "card-host",
@@ -96,6 +99,7 @@ function DragBehaviorHarness({
               }),
               structuralTransfer: async () => undefined,
               reportError: () => undefined,
+              ...dropBoundary,
             },
           },
         }
@@ -105,6 +109,109 @@ function DragBehaviorHarness({
 }
 
 describe("useEditorDragBehaviors", () => {
+  test("keeps a dropped transfer waiting across rebinding and cancels it only on teardown", async () => {
+    const editor = makeEditor(() => undefined);
+    const containerRef = createRef<HTMLDivElement>();
+    const pending: Array<{
+      signal: AbortSignal;
+      finish: () => void;
+    }> = [];
+    const prepareAndFence: BlockTransferDropBoundary["prepareAndFence"] = (options) =>
+      new Promise((resolve) => {
+        pending.push({
+          signal: options!.signal!,
+          finish: () =>
+            resolve({
+              documentId: "document-a",
+              storeEpoch: "epoch-a",
+              generation: 1,
+              expectedHeadSeq: 3,
+            }),
+        });
+      });
+    const transfer = vi.fn(async () => undefined);
+    const nextTransfer = vi.fn(async () => undefined);
+    const reportError = vi.fn();
+    const view = render(
+      <DragBehaviorHarness
+        editor={editor}
+        containerRef={containerRef}
+        crossSurface
+        dropBoundary={{ prepareAndFence, structuralTransfer: transfer, reportError }}
+      />,
+    );
+    await settleAsyncRender();
+    const container = view.getByTestId("editor-container");
+    container.classList.add("nfm-editor");
+    const drop = async () => {
+      const values = new Map<string, string>();
+      const dataTransfer = {
+        get types() {
+          return [...values.keys()];
+        },
+        effectAllowed: "uninitialized",
+        setData: (type: string, value: string) => values.set(type, value),
+        getData: (type: string) => values.get(type) ?? "",
+      } as unknown as DataTransfer;
+      beginLocalBlockDragSession(
+        {
+          sourceSurfaceId: "surface-b",
+          projectId: "project-a",
+          storeEpoch: "epoch-a",
+          source: { kind: "document", documentId: "document-b" },
+          rootBlockIds: ["block-b"],
+          displayHints: ["paragraph"],
+        },
+        dataTransfer,
+      );
+      await act(async () => {
+        fireEvent.drop(container, { dataTransfer, clientX: 0, clientY: 0 });
+        await Promise.resolve();
+      });
+    };
+    try {
+      await drop();
+      await waitFor(() => expect(pending).toHaveLength(1));
+      view.rerender(
+        <DragBehaviorHarness
+          editor={editor}
+          containerRef={containerRef}
+          crossSurface
+          dropBoundary={{ prepareAndFence, structuralTransfer: nextTransfer, reportError }}
+        />,
+      );
+      await settleAsyncRender();
+      expect(pending[0]!.signal.aborted).toBe(false);
+      await act(async () => {
+        pending[0]!.finish();
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(transfer).toHaveBeenCalledOnce());
+      expect(reportError).not.toHaveBeenCalled();
+
+      await drop();
+      await waitFor(() => expect(pending).toHaveLength(2));
+      await act(async () => {
+        pending[1]!.finish();
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(nextTransfer).toHaveBeenCalledOnce());
+
+      await drop();
+      await waitFor(() => expect(pending).toHaveLength(3));
+      view.unmount();
+      await settleAsyncRender();
+      expect(pending[2]!.signal.aborted).toBe(true);
+      expect(nextTransfer).toHaveBeenCalledOnce();
+      await waitFor(() =>
+        expect(reportError).toHaveBeenCalledWith("The structural edit was cancelled."),
+      );
+    } finally {
+      endLocalBlockDragSession();
+      view.unmount();
+    }
+  });
+
   test("keeps side-menu drag state across ordinary editor rerenders", async () => {
     let blockDragEndCount = 0;
     const editor = makeEditor(() => {

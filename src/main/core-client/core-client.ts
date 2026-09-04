@@ -508,12 +508,16 @@ export class CoreClient implements CoreClientPort {
     throw new CoreModuleResponseError(response.payload);
   }
 
-  async documentSync(input: DocumentSyncRequest): Promise<DocumentSyncResponse> {
+  async documentSync(
+    input: DocumentSyncRequest,
+    options?: CoreRequestOptions,
+  ): Promise<DocumentSyncResponse> {
     const response = await this.#transport.requestDocumentFrame<OwnedDocumentReadResponse>(
       "/core/v1/modules/document/read",
       encodeDocumentSyncHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_PAGE_DOCUMENT_STATE_BYTES,
+      options,
     );
     if (response.kind === "binary") {
       return decodeDocumentSyncHttpResponse(response.bytes);
@@ -524,12 +528,16 @@ export class CoreClient implements CoreClientPort {
     throw new Error("Core returned JSON for a successful binary Document sync");
   }
 
-  async documentCanvasSync(input: CanvasSceneSyncRequest): Promise<CanvasSceneSyncResponse> {
+  async documentCanvasSync(
+    input: CanvasSceneSyncRequest,
+    options?: CoreRequestOptions,
+  ): Promise<CanvasSceneSyncResponse> {
     const response = await this.#transport.requestDocumentFrame<OwnedDocumentReadResponse>(
       "/core/v1/modules/document/read",
       encodeCanvasSceneSyncHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_CANVAS_SCENE_SNAPSHOT_BYTES,
+      options,
     );
     if (response.kind === "binary") {
       return decodeCanvasSceneSyncHttpResponse(response.bytes);
@@ -540,12 +548,16 @@ export class CoreClient implements CoreClientPort {
     throw new Error("Core returned JSON for a successful binary Canvas sync");
   }
 
-  async documentApplyUpdate(input: DocumentSyncApplyRequest): Promise<DocumentSyncApplyAck> {
+  async documentApplyUpdate(
+    input: DocumentSyncApplyRequest,
+    options?: CoreRequestOptions,
+  ): Promise<DocumentSyncApplyAck> {
     const response = await this.#transport.requestDocumentFrame<OwnedDocumentApplyResponse>(
       "/core/v1/modules/document/apply",
       encodeDocumentApplyHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_PAGE_DOCUMENT_STATE_BYTES,
+      options,
     );
     if (response.kind === "binary") {
       return decodeDocumentApplyHttpAck(response.bytes);
@@ -558,6 +570,7 @@ export class CoreClient implements CoreClientPort {
 
   async documentPublishAwareness(
     input: DocumentAwarenessPublishRequest,
+    options?: CoreRequestOptions,
   ): Promise<DocumentAwarenessPublishAck> {
     const response = await this.#transport.requestDocumentFrame<
       DocumentAwarenessPublishAck | OwnedDocumentApplyResponse
@@ -566,6 +579,7 @@ export class CoreClient implements CoreClientPort {
       encodeDocumentAwarenessHttpRequest(input),
       this.#documentHeaders(input.clientSessionId, input.documentId),
       DOCUMENT_FRAME_OVERHEAD_BYTES + MAX_DOCUMENT_AWARENESS_UPDATE_BYTES,
+      options,
     );
     if (response.kind === "binary") {
       throw new Error("Core returned a binary Awareness acknowledgement");

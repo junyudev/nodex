@@ -2570,6 +2570,7 @@ async fn document_live_events(
                 update,
             });
     let disconnect = DocumentSubscriptionGuard {
+        lease_id: subscription.lease_id,
         adapter: state.document_realtime.clone(),
         connection_id: context.connection_id.clone(),
         client_session_id,
@@ -3142,6 +3143,7 @@ fn response_envelope<T>(result: Result<T, CoreError>) -> ResponseEnvelope<T> {
 }
 
 struct DocumentSubscriptionGuard {
+    lease_id: u64,
     adapter: OwnedDocumentRealtimeAdapter,
     connection_id: String,
     client_session_id: String,
@@ -3150,9 +3152,9 @@ struct DocumentSubscriptionGuard {
 
 impl Drop for DocumentSubscriptionGuard {
     fn drop(&mut self) {
-        let Ok(publication) = self
-            .adapter
-            .unsubscribe(&self.connection_id, &self.client_session_id)
+        let Ok(publication) =
+            self.adapter
+                .release_lease(&self.connection_id, &self.client_session_id, self.lease_id)
         else {
             return;
         };

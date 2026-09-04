@@ -1,7 +1,10 @@
 import { getBlockInfo, getNodeById, type BlockNoteEditor } from "@blocknote/core";
 import { TextSelection } from "@tiptap/pm/state";
 
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import {
+  contentAccessContextKey,
+  type ContentAccessContext,
+} from "../../../../shared/content-access-context";
 import type {
   NodexClipboardEnvelopeV1,
   NodexStructuralClipboardDescriptorV1,
@@ -30,6 +33,12 @@ import { NfmHistoryLane, resolveNfmUndoManager } from "./nfm-editor-history";
 import { planBackspaceAcrossAtomicBlocks } from "./atomic-block-backspace";
 import { getNfmBlockSelectionIds } from "./nfm-block-selection";
 import { setNfmClipboardPastePending } from "./nfm-clipboard-paste-pending-extension";
+import {
+  DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+  assertDocumentWaitActive,
+  waitForDocumentOperation,
+  DocumentWaitError,
+} from "../../../lib/document-wait";
 
 export const NFM_CLIPBOARD_PASTE_PENDING_DELAY_MS = 150;
 
@@ -275,6 +284,11 @@ export class NfmStructuralEditingSession {
   private readonly detachHistory: () => void;
   private disposed = false;
   private currentOperation: Promise<void> = Promise.resolve();
+  private readonly preparationLifetime = new AbortController();
+  private readonly preparationWaits = new Set<AbortController>();
+  private cancellationVersion = 0;
+  private activeOperationVersion: number | undefined;
+  private operationDeadlineAt: number | undefined;
   private historyReplayFocusChanged = false;
   private operationFocusChanged = false;
   private backwardMergePending = false;
@@ -286,7 +300,19 @@ export class NfmStructuralEditingSession {
 
   constructor(options: NfmStructuralEditingSessionOptions) {
     this.editor = options.editor as StructuralEditor;
-    this.apply = options.apply ?? applyLibraryModule;
+    const apply = options.apply ?? applyLibraryModule;
+    this.apply = async (...args) => {
+      assertDocumentWaitActive({
+        signal: this.preparationLifetime.signal,
+        deadlineAt: this.operationDeadlineAt,
+      });
+      if (
+        this.activeOperationVersion !== undefined &&
+        this.activeOperationVersion !== this.cancellationVersion
+      )
+        throw new DocumentWaitError("cancelled");
+      return await apply(...args);
+    };
     this.beginClipboard = options.beginClipboard ?? beginStructuralClipboard;
     this.publishClipboard = options.publishClipboard ?? publishStructuralClipboard;
     this.settleClipboard = options.settleClipboard ?? settleStructuralClipboard;
@@ -322,6 +348,13 @@ export class NfmStructuralEditingSession {
     ) {
       throw new Error("A structural editing session cannot change its Document authority.");
     }
+    if (
+      this.runtime &&
+      (this.runtime.libraryId !== runtime.libraryId ||
+        contentAccessContextKey(this.runtime.accessContext) !==
+          contentAccessContextKey(runtime.accessContext))
+    )
+      this.cancelPreparations();
     this.runtime = runtime;
   }
 
@@ -583,6 +616,7 @@ export class NfmStructuralEditingSession {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.preparationLifetime.abort();
     this.preparedPasteIntent = null;
     this.detachHistory();
     if (this.ownsHistory) this.history.dispose();
@@ -719,7 +753,7 @@ export class NfmStructuralEditingSession {
     document?.addEventListener("pointerdown", markInteraction, true);
     document?.addEventListener("keydown", markInteraction, true);
     try {
-      const head = await this.boundRuntime.participant.prepareAndFence();
+      const head = await this.prepareAndFence();
       this.assertSourceHead(head);
       return {
         structuralEdit: applyResult(
@@ -862,41 +896,84 @@ export class NfmStructuralEditingSession {
     this.runtime?.onFileOwnershipMoves?.(result.fileOwnershipMoves);
   }
 
+  cancelPreparations = (): void => {
+    this.cancellationVersion += 1;
+    this.preparationWaits.forEach((controller) => controller.abort());
+  };
+
   private start(operation: () => Promise<void>): boolean {
-    if (this.disposed) return false;
+    if (this.disposed || !this.runtime) return false;
+    const runtime = this.runtime;
+    const cancellationVersion = this.cancellationVersion;
+    const deadlineAt = Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS;
     const run = async (): Promise<void> => {
-      const container = this.boundRuntime.getContainer();
+      if (this.disposed || cancellationVersion !== this.cancellationVersion) return;
+      const container = runtime.getContainer();
       const document = container?.ownerDocument;
       let userMovedFocus = false;
       this.operationFocusChanged = false;
       this.historyReplayFocusChanged = false;
-      const markInteraction = (): void => {
+      const markInteraction = (event: Event): void => {
+        if (event.type === "keydown" && (event as KeyboardEvent).key === "Escape") {
+          this.cancelPreparations();
+        }
         userMovedFocus = true;
         this.operationFocusChanged = true;
       };
       document?.addEventListener("pointerdown", markInteraction, true);
       document?.addEventListener("keydown", markInteraction, true);
       try {
+        this.operationDeadlineAt = deadlineAt;
+        this.activeOperationVersion = cancellationVersion;
+        assertDocumentWaitActive({ signal: this.preparationLifetime.signal, deadlineAt });
         await operation();
       } catch (error: unknown) {
-        this.boundRuntime.onError?.(
+        runtime.onError?.(
           error instanceof Error ? error.message : "The structural edit could not be completed.",
         );
       } finally {
+        this.operationDeadlineAt = undefined;
+        this.activeOperationVersion = undefined;
         document?.removeEventListener("pointerdown", markInteraction, true);
         document?.removeEventListener("keydown", markInteraction, true);
-        if (!userMovedFocus) this.restoreFocusIfUnclaimed();
+        if (!userMovedFocus && !this.disposed && this.cancellationVersion === cancellationVersion)
+          this.restoreFocusIfUnclaimed();
       }
     };
     this.currentOperation = this.currentOperation.then(run);
     return true;
   }
 
+  private async prepareAndFence() {
+    if (
+      this.activeOperationVersion !== undefined &&
+      this.activeOperationVersion !== this.cancellationVersion
+    )
+      throw new DocumentWaitError("cancelled");
+    const controller = new AbortController();
+    const options = {
+      signal: AbortSignal.any([controller.signal, this.preparationLifetime.signal]),
+      deadlineAt: this.operationDeadlineAt ?? Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+    };
+    this.preparationWaits.add(controller);
+    try {
+      const head = await waitForDocumentOperation(
+        () => this.boundRuntime.participant.prepareAndFence(options),
+        options,
+      );
+      if (this.disposed) throw new DocumentWaitError("cancelled");
+      assertDocumentWaitActive(options);
+      return head;
+    } finally {
+      this.preparationWaits.delete(controller);
+    }
+  }
+
   private async pasteEnvelope(
     envelope: NodexClipboardEnvelopeV1,
     intent: NfmStructuralPasteIntent,
   ): Promise<void> {
-    const head = await this.boundRuntime.participant.prepareAndFence();
+    const head = await this.prepareAndFence();
     this.assertSourceHead(head);
     const command =
       intent.kind === "replace"
@@ -997,7 +1074,7 @@ export class NfmStructuralEditingSession {
   }
 
   private async prepareSelection(roots: readonly StructuralEditorBlock[]) {
-    const head = await this.boundRuntime.participant.prepareAndFence();
+    const head = await this.prepareAndFence();
     this.assertSourceHead(head);
     return this.selectionFromHead(roots, head);
   }
@@ -1083,7 +1160,7 @@ export class NfmStructuralEditingSession {
     const siblings = parent?.children ?? this.editor.document;
     const rootIndex = siblings.findIndex((block) => block.id === lastRoot.id);
     if (rootIndex < 0) throw new Error("The duplicate target is no longer available.");
-    const head = await this.boundRuntime.participant.prepareAndFence();
+    const head = await this.prepareAndFence();
     this.assertSourceHead(head);
     return {
       selection: this.selectionFromHead(roots, head),
@@ -1191,6 +1268,7 @@ export class NfmStructuralEditingController {
   }
 
   deactivate(session: NfmStructuralEditingSession): void {
+    session.cancelPreparations();
     if (this.activeSession !== session) return;
     this.activeSession = null;
   }

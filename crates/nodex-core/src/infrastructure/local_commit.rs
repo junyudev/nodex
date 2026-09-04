@@ -135,7 +135,6 @@ impl CommitContext {
         &self.store_epoch
     }
 
-    #[cfg(test)]
     pub(crate) fn operation_id(&self) -> &str {
         &self.operation_id
     }

@@ -15,6 +15,7 @@ import {
 import type {
   DocumentLocalCheckpoint,
   DocumentLocalCheckpointStore,
+  DocumentRecoverySnapshot,
 } from "./document-local-checkpoint";
 import type {
   DocumentSyncAdapter,
@@ -26,6 +27,7 @@ import {
   type BlockDocumentSurfaceProvider,
 } from "./block-document-surface-runtime";
 import { BlockDocumentSurfaceError } from "./block-document-surface-failure";
+import { DocumentWaitError } from "./document-wait";
 
 const descriptor = (overrides: Partial<OwnedDocumentDescriptor> = {}): OwnedDocumentDescriptor => ({
   libraryId: "library-1",
@@ -126,6 +128,9 @@ class FakeSurfaceProvider implements BlockDocumentSurfaceProvider {
     return this.flushPromise;
   };
 
+  isolate = (): void => {};
+  exportRecovery = async (): Promise<string> => "{}";
+
   checkpoint = (): Promise<void> => {
     this.events.push("checkpoint");
     return this.checkpointPromise;
@@ -165,8 +170,11 @@ class MemoryCheckpointStore implements DocumentLocalCheckpointStore {
       : checkpoint;
   };
 
-  clearDocument = async (): Promise<void> => {
-    this.clears += 1;
+  recordSubmission: DocumentLocalCheckpointStore["recordSubmission"] = async () => undefined;
+  acknowledgeSubmission: DocumentLocalCheckpointStore["acknowledgeSubmission"] = async () =>
+    undefined;
+  readRecovery: DocumentLocalCheckpointStore["readRecovery"] = async () => [];
+  quarantine = async (_snapshot: DocumentRecoverySnapshot): Promise<void> => {
     this.checkpoint = null;
   };
 }
@@ -178,6 +186,48 @@ const createFactory =
     providers.push(provider);
     return provider;
   };
+
+test("cancels one structural waiter while another can still obtain the durable fence", async () => {
+  const providers: FakeSurfaceProvider[] = [];
+  const runtime = new BlockDocumentSurfaceRuntime({
+    descriptor: descriptor(),
+    adapter: unusedAdapter,
+    createProvider: createFactory(providers, []),
+    localCheckpointStore: null,
+  });
+  const provider = providers[0]!;
+  let save: () => void = () => undefined;
+  provider.flushPromise = new Promise<void>((resolve) => {
+    save = resolve;
+  });
+  provider.emit({
+    phase: "saving",
+    connected: true,
+    generation: 1,
+    storeEpoch: "store-1",
+    headSeq: 1,
+    pendingUpdateCount: 1,
+  });
+  const controller = new AbortController();
+  const cancelled = runtime.flushAndFence({ signal: controller.signal }).catch((error) => error);
+  const surviving = runtime.flushAndFence();
+  try {
+    controller.abort();
+    expect(await cancelled).toBeInstanceOf(DocumentWaitError);
+    expect(runtime.getStatus().structuralWaitStartedAt).not.toBeNull();
+    applyServerDocument(provider.document, provider.options.documentId);
+    provider.emit({ phase: "synced", headSeq: 2, pendingUpdateCount: 0 });
+    save();
+    expect(await surviving).toMatchObject({
+      documentId: descriptor().documentId,
+      expectedHeadSeq: 2,
+    });
+    expect(runtime.getStatus().structuralWaitStartedAt).toBeNull();
+  } finally {
+    save();
+    await runtime.close();
+  }
+});
 
 const applyServerDocument = (document: Y.Doc, documentId: string): void => {
   const server = createPageDocument({
@@ -373,10 +423,10 @@ describe("BlockDocumentSurfaceRuntime", () => {
     expect(reloads.length).toBe(0);
     await runtime.reload();
     expect(reloads.join(",")).toBe("reset-required");
-    expect(checkpoints.clears).toBe(1);
+    expect(checkpoints.clears).toBe(0);
   });
 
-  test("bounds offline close and destroys the provider before its Y.Doc", async () => {
+  test("bounds offline close while retaining the only draft until a retry makes it durable", async () => {
     const events: string[] = [];
     const providers: FakeSurfaceProvider[] = [];
     const runtime = new BlockDocumentSurfaceRuntime({
@@ -399,12 +449,20 @@ describe("BlockDocumentSurfaceRuntime", () => {
     if (!provider) throw new Error("Expected provider");
     provider.flushPromise = never();
     provider.checkpointPromise = never();
-    provider.emit({ phase: "offline", connected: false });
+    provider.emit({ phase: "offline", connected: false, pendingUpdateCount: 1 });
 
     const result = await runtime.close();
     expect(result.timedOut).toBe(true);
     expect(result.flush).toBe("timed-out");
     expect(result.checkpoint).toBe("timed-out");
+    expect(events).not.toContain("provider-destroy");
+    expect(events).not.toContain("document-destroy");
+    expect(runtime.getStatus().phase).not.toBe("closed");
+    provider.checkpointPromise = Promise.resolve();
+    provider.emit({
+      checkpoint: { phase: "ready", failureCount: 0, localVersion: 1, protectedVersion: 1 },
+    });
+    await runtime.close();
     expect(events.indexOf("provider-destroy") < events.indexOf("document-destroy")).toBe(true);
     expect(runtime.getStatus().phase).toBe("closed");
   });
@@ -459,7 +517,7 @@ describe("BlockDocumentSurfaceRuntime", () => {
     await runtime.close();
   });
 
-  test("isolates fatal checkpoints and invokes the reload seam only once", async () => {
+  test("delegates recovery to the provider and invokes the reload seam only once", async () => {
     const providers: FakeSurfaceProvider[] = [];
     const checkpoints = new MemoryCheckpointStore();
     const reloads: string[] = [];
@@ -511,7 +569,7 @@ describe("BlockDocumentSurfaceRuntime", () => {
       error: providerError("invalid_document_update", false),
     });
     await providerCheckpointStore.write(checkpoint);
-    expect(checkpoints.writes).toBe(1);
+    expect(checkpoints.writes).toBe(2);
     expect(runtime.getReadyDocument()).toBe(null);
     expect(runtime.getStatus().phase).toBe("error");
     expect(runtime.getStatus().error).toBeInstanceOf(BlockDocumentSurfaceError);
@@ -521,8 +579,8 @@ describe("BlockDocumentSurfaceRuntime", () => {
     expect(reloads.length).toBe(0);
 
     await Promise.all([runtime.reload(), runtime.reload()]);
-    expect(checkpoints.clears).toBe(1);
-    expect(checkpoints.checkpoint).toBe(null);
+    expect(checkpoints.clears).toBe(0);
+    expect(checkpoints.checkpoint).not.toBe(null);
     expect(reloads.join(",")).toBe("fatal");
   });
 });

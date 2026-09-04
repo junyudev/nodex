@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Page and Canvas unsaved edits can now be reviewed, restored or saved as a separate copy, with reversible discard, automatic confirmation of already saved drafts, and recovery across restarts and windows.
 - New tasks can run through enabled local ACP Agents with durable session recovery, negotiated controls, bounded transcripts, cancellation, and explicit local-code trust settings, while Codex remains the full-fidelity default backend.
 - Added custom Sidebar Sections for organizing Projects and chats in one durable mixed order, with drag-and-drop, context menus, bulk archive, Undoable deletion, agent tools, and multi-host Codex synchronization.
 - Database Views now have independent Board or List identities, direct tab actions and durable drag ordering, inline typed Filter and Sort rules with personal publishing, plus a settings rail for View presentation, typed Source Properties, recoverable Property removal, conditional colors, and Page Property layouts.
@@ -32,6 +33,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Fixed Page, Canvas, and manual version saves failing in Profiles used for more than a week.
+
+- Fixed Page and Canvas sync getting stuck after a lost subscription; structural edits now have cancellable save waits, and rejected or uncertain edits remain available as explicit recovery exports with accurate local-save status.
 - Fixed copying or cutting a nested Block range ending in consecutive Images flattening the copied hierarchy when pasted; complete Block forests now retain their parent-child boundaries through every rich clipboard path.
 - Fixed Page Stage returning to the top or drifting after tab switches when images, equations, diagrams, or other Blocks changed height; Page tabs now restore a semantic content anchor, continuously absorb delayed layout, and keep image geometry stable throughout loading and failure states.
 - Fixed Page and Canvas content links opening in an unrelated split group; source-relative navigation now stays in the invoking tab group across Project, Session, and Pages scenes.

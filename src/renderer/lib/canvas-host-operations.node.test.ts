@@ -56,6 +56,7 @@ function makeRuntime(
       phase: "ready",
       ready: true,
       reloadRequired: false,
+      structuralWaitStartedAt: null,
       writeFrozen: false,
       descriptor: {
         libraryId: "library-1",

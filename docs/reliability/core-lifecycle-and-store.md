@@ -39,7 +39,11 @@ callback ingress is bounded to 512 queued items and delivered serially. A repair
 first marks the lease disconnected and closes the physical stream before the
 repair reaches consumers; retry/backoff uses the Effect clock and is interrupted
 with the owner Scope. Transport compatibility and Store-identity failures are
-terminal and release the renderer binding instead of entering a retry loop.
+terminal and deliver a typed terminal event before releasing the renderer
+binding. Logical lease recovery consumes explicit missing-subscription evidence;
+Core releases physical subscriptions only when their lease identity still
+matches. Older physical cleanup cannot revoke a replacement stream. Binary
+Document calls propagate the owning Effect scope's AbortSignal to HTTP.
 
 Reads and writes with stable idempotency identity may retry once with their
 original input. Ephemeral Awareness triggers recovery but is never replayed.

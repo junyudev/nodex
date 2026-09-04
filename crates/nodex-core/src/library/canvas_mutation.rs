@@ -140,78 +140,18 @@ fn create_internal(
             context,
         },
         |scope| {
-            connection.execute(
-                "INSERT INTO blocks(\
-           id, library_id, type, lifecycle, placement_revision, metadata_revision, \
-           created_at, updated_at\
-         ) VALUES (?1, ?2, 'canvas', 'active', 1, 1, ?3, ?3)",
-                params![canvas_id, library_id, now],
+            let document_head_seq = create_canvas_records(
+                connection,
+                library_id,
+                canvas_id,
+                document_id,
+                display_name,
+                &resolved,
+                source,
+                None,
+                assets_root,
+                &now,
             )?;
-            connection.execute(
-                "INSERT INTO block_properties(\
-           block_id, library_id, property_key, value_type, value_json, revision, updated_at\
-         ) VALUES (?1, ?2, 'document.display_name', 'string', ?3, 1, ?4)",
-                params![
-                    canvas_id,
-                    library_id,
-                    serde_json::to_string(display_name)
-                        .map_err(|_| internal("Canvas display name JSON"))?,
-                    now,
-                ],
-            )?;
-            connection.execute(
-                "INSERT INTO documents(\
-           id, library_id, generation, head_seq, schema_key, schema_version, state_vector, \
-           state_hash, readiness, authority, created_at, updated_at, sync_engine\
-         ) VALUES (?1, ?2, 1, 0, ?3, ?4, X'', ?5, 'ready', 'ydoc_primary', ?6, ?6, \
-           'canvas_scene')",
-                params![
-                    document_id,
-                    library_id,
-                    CANVAS_SCHEMA_KEY,
-                    CANVAS_SCHEMA_VERSION,
-                    "0".repeat(64),
-                    now,
-                ],
-            )?;
-            connection.execute(
-                "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
-         VALUES (?1, ?2, ?3, ?4)",
-                params![canvas_id, document_id, library_id, now],
-            )?;
-            connection.execute(
-                "INSERT INTO canvas_owners(block_id, library_id, created_at, updated_at) \
-         VALUES (?1, ?2, ?3, ?3)",
-                params![canvas_id, library_id, now],
-            )?;
-
-            if resolved.parent.document.is_none() {
-                insert_library_placement(
-                    connection,
-                    library_id,
-                    canvas_id,
-                    resolved.library_before.as_ref(),
-                    &now,
-                )?;
-                if let Some(project_id) = resolved.parent.creator_project_id.as_deref() {
-                    insert_creator_resource_grant(
-                        connection, project_id, library_id, "canvas", canvas_id, &now,
-                    )?;
-                }
-            }
-            let authority = read_document_authority(connection, document_id)?
-                .ok_or_else(|| corrupt("Created Canvas has no Document authority"))?;
-            let document_head_seq = if let Some(source) = source {
-                let source_authority = read_document_authority(connection, &source.document_id)?
-                    .ok_or_else(|| corrupt("Source Canvas lost its Document authority"))?;
-                clone_canvas_genesis(connection, &source_authority, &authority, assets_root)?
-            } else {
-                let (_, created) = ensure_canvas_scene(connection, &authority, assets_root)?;
-                if !created {
-                    return Err(corrupt("Created Canvas reused scene authority"));
-                }
-                0
-            };
 
             let parent_commit = resolved
                 .parent
@@ -1108,64 +1048,19 @@ fn seal_canvas_mutation(
     now: String,
 ) -> Result<SealedOutcome<crate::ModuleWriterResult<LibraryCommitValue, LibraryReceipt>>, StoreError>
 {
-    let affected_document_ids = std::iter::once(document_id.to_owned())
-        .chain(
-            document_commits
-                .iter()
-                .map(|commit| commit.document_id.clone()),
-        )
-        .collect::<Vec<_>>();
-    let canvas_mutation = LibraryCanvasMutationResult {
-        operation_kind: operation_kind.to_owned(),
-        canvas_id: canvas_id.to_owned(),
-        document_id: document_id.to_owned(),
+    let effects = canvas_mutation_effects(
+        operation_kind,
+        canvas_id,
+        document_id,
         source_canvas_id,
         location_revision,
         metadata_revision,
+        resolved,
+        document_head_seq,
         document_commits,
-    };
-    seal_mutation(
-        scope,
-        context,
-        operation_id,
-        MutationEffects {
-            project_id: resolved.parent.actor_project_id.clone(),
-            operation_kind,
-            change_kind: "library.changed",
-            did_mutate: true,
-            created_target: matches!(operation_kind, "create_canvas" | "duplicate_canvas").then(
-                || LibraryResourceTarget::Canvas {
-                    canvas_id: canvas_id.to_owned(),
-                },
-            ),
-            affected_parent_keys: vec![resolved.parent.parent_key.clone()],
-            affected_block_ids: vec![canvas_id.to_owned()],
-            affected_page_ids: resolved.parent.page_id.clone().into_iter().collect(),
-            affected_database_ids: Vec::new(),
-            affected_view_ids: Vec::new(),
-            affected_document_ids,
-            committed_revisions: BTreeMap::from([
-                (format!("blockLocation:{canvas_id}"), location_revision),
-                (format!("blockMetadata:{canvas_id}"), metadata_revision),
-                (format!("documentHead:{document_id}"), document_head_seq),
-            ]),
-            page_create: None,
-            page_copy: None,
-            page_files: None,
-            canvas_mutation: Some(canvas_mutation),
-            block_transfer: None,
-            block_transfer_undo: None,
-            page_relocation_undo: None,
-            structural_edit: None,
-            page_lifecycle: None,
-            block_property_mutation: None,
-            agent_page_copy: None,
-            agent_create_pages: None,
-            agent_move_pages: None,
-            change_payload: None,
-            committed_at: now,
-        },
-    )
+        now,
+    );
+    seal_mutation(scope, context, operation_id, effects)
 }
 
 fn validate_display_name(value: &str) -> Result<&str, StoreError> {
@@ -1217,4 +1112,203 @@ fn corrupt(message: &str) -> StoreError {
 
 fn internal(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Internal, message, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_canvas_records(
+    connection: &Connection,
+    library_id: &str,
+    canvas_id: &str,
+    document_id: &str,
+    display_name: &str,
+    resolved: &ResolvedCanvasDestination,
+    source: Option<&CanvasAuthority>,
+    captured_scene: Option<crate::document::CanvasScene>,
+    assets_root: &Path,
+    now: &str,
+) -> Result<i64, StoreError> {
+    connection.execute(
+        "INSERT INTO blocks(\
+           id, library_id, type, lifecycle, placement_revision, metadata_revision, \
+           created_at, updated_at\
+         ) VALUES (?1, ?2, 'canvas', 'active', 1, 1, ?3, ?3)",
+        params![canvas_id, library_id, now],
+    )?;
+    connection.execute(
+        "INSERT INTO block_properties(\
+           block_id, library_id, property_key, value_type, value_json, revision, updated_at\
+         ) VALUES (?1, ?2, 'document.display_name', 'string', ?3, 1, ?4)",
+        params![
+            canvas_id,
+            library_id,
+            serde_json::to_string(display_name)
+                .map_err(|_| internal("Canvas display name JSON"))?,
+            now,
+        ],
+    )?;
+    connection.execute(
+        "INSERT INTO documents(\
+           id, library_id, generation, head_seq, schema_key, schema_version, state_vector, \
+           state_hash, readiness, authority, created_at, updated_at, sync_engine\
+         ) VALUES (?1, ?2, 1, 0, ?3, ?4, X'', ?5, 'ready', 'ydoc_primary', ?6, ?6, \
+           'canvas_scene')",
+        params![
+            document_id,
+            library_id,
+            CANVAS_SCHEMA_KEY,
+            CANVAS_SCHEMA_VERSION,
+            "0".repeat(64),
+            now,
+        ],
+    )?;
+    connection.execute(
+        "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
+         VALUES (?1, ?2, ?3, ?4)",
+        params![canvas_id, document_id, library_id, now],
+    )?;
+    connection.execute(
+        "INSERT INTO canvas_owners(block_id, library_id, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, ?3)",
+        params![canvas_id, library_id, now],
+    )?;
+
+    if resolved.parent.document.is_none() {
+        insert_library_placement(
+            connection,
+            library_id,
+            canvas_id,
+            resolved.library_before.as_ref(),
+            &now,
+        )?;
+        if let Some(project_id) = resolved.parent.creator_project_id.as_deref() {
+            insert_creator_resource_grant(
+                connection, project_id, library_id, "canvas", canvas_id, &now,
+            )?;
+        }
+    }
+    let authority = read_document_authority(connection, document_id)?
+        .ok_or_else(|| corrupt("Created Canvas has no Document authority"))?;
+    let document_head_seq = if let Some(scene) = captured_scene {
+        crate::document::clone_canvas_scene_genesis(connection, scene, &authority, assets_root)?
+    } else if let Some(source) = source {
+        let source_authority = read_document_authority(connection, &source.document_id)?
+            .ok_or_else(|| corrupt("Source Canvas lost its Document authority"))?;
+        clone_canvas_genesis(connection, &source_authority, &authority, assets_root)?
+    } else {
+        let (_, created) = ensure_canvas_scene(connection, &authority, assets_root)?;
+        if !created {
+            return Err(corrupt("Created Canvas reused scene authority"));
+        }
+        0
+    };
+    Ok(document_head_seq)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn canvas_mutation_effects(
+    operation_kind: &'static str,
+    canvas_id: &str,
+    document_id: &str,
+    source_canvas_id: Option<String>,
+    location_revision: i64,
+    metadata_revision: i64,
+    resolved: &ResolvedCanvasDestination,
+    document_head_seq: i64,
+    document_commits: Vec<nodex_core_contracts::library::LibraryBlockTransferDocumentCommit>,
+    now: String,
+) -> MutationEffects {
+    let affected_document_ids = std::iter::once(document_id.to_owned())
+        .chain(
+            document_commits
+                .iter()
+                .map(|commit| commit.document_id.clone()),
+        )
+        .collect::<Vec<_>>();
+    let canvas_mutation = LibraryCanvasMutationResult {
+        operation_kind: operation_kind.to_owned(),
+        canvas_id: canvas_id.to_owned(),
+        document_id: document_id.to_owned(),
+        source_canvas_id,
+        location_revision,
+        metadata_revision,
+        document_commits,
+    };
+    MutationEffects {
+        project_id: resolved.parent.actor_project_id.clone(),
+        operation_kind,
+        change_kind: "library.changed",
+        did_mutate: true,
+        created_target: matches!(operation_kind, "create_canvas" | "duplicate_canvas").then(|| {
+            LibraryResourceTarget::Canvas {
+                canvas_id: canvas_id.to_owned(),
+            }
+        }),
+        affected_parent_keys: vec![resolved.parent.parent_key.clone()],
+        affected_block_ids: vec![canvas_id.to_owned()],
+        affected_page_ids: resolved.parent.page_id.clone().into_iter().collect(),
+        affected_database_ids: Vec::new(),
+        affected_view_ids: Vec::new(),
+        affected_document_ids,
+        committed_revisions: BTreeMap::from([
+            (format!("blockLocation:{canvas_id}"), location_revision),
+            (format!("blockMetadata:{canvas_id}"), metadata_revision),
+            (format!("documentHead:{document_id}"), document_head_seq),
+        ]),
+        page_create: None,
+        page_copy: None,
+        page_files: None,
+        canvas_mutation: Some(canvas_mutation),
+        block_transfer: None,
+        block_transfer_undo: None,
+        page_relocation_undo: None,
+        structural_edit: None,
+        page_lifecycle: None,
+        block_property_mutation: None,
+        agent_page_copy: None,
+        agent_create_pages: None,
+        agent_move_pages: None,
+        change_payload: None,
+        committed_at: now,
+    }
+}
+
+pub(super) fn create_recovery_canvas(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    canvas_id: &str,
+    document_id: &str,
+    scene: crate::document::CanvasScene,
+    assets_root: &Path,
+) -> Result<(), StoreError> {
+    let resolved = resolve_destination(
+        scope.connection(),
+        context,
+        &context.library_id.0,
+        &LibraryCanvasDestination::Library { before: None },
+    )?;
+    let head = create_canvas_records(
+        scope.connection(),
+        &context.library_id.0,
+        canvas_id,
+        document_id,
+        "Recovered Canvas",
+        &resolved,
+        None,
+        Some(scene),
+        assets_root,
+        scope.committed_at(),
+    )?;
+    let effects = canvas_mutation_effects(
+        "create_canvas",
+        canvas_id,
+        document_id,
+        None,
+        1,
+        1,
+        &resolved,
+        head,
+        Vec::new(),
+        scope.committed_at().to_owned(),
+    );
+    super::mutation::record_recovery_creation(scope, context, effects)
 }

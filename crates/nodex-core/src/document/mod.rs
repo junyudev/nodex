@@ -110,3 +110,5 @@ pub(crate) use semantic::{
     mint_document_projection_etags, mint_document_semantic_etags, mint_etag,
     parse_inline_markdown_title,
 };
+
+pub(crate) use canvas_scene::parse_canvas_scene as parse_recovery_canvas;

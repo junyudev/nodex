@@ -1,5 +1,7 @@
 export interface ExactRemoteSubscriptionLifecycle<Result> {
   ensure(): Promise<Result>;
+  /** Main has retired this logical session; an in-flight open is no longer evidence. */
+  invalidate(): void;
   releaseIfIdle(): void;
 }
 
@@ -16,15 +18,18 @@ export const createExactRemoteSubscriptionLifecycle = <Result>(input: {
   let remoteOpen = false;
   let opening: Promise<Result> | null = null;
   let closing: Promise<void> | null = null;
+  let version = 0;
 
   const ensure = (): Promise<Result> => {
     if (disposed) return Promise.resolve(input.inactiveResult());
     if (closing) return closing.then(ensure);
     if (remoteOpen) return Promise.resolve(input.alreadyOpenResult());
     if (opening) return opening;
+    const openingVersion = version;
     const command = input
       .open()
       .then((result) => {
+        if (openingVersion !== version) return input.inactiveResult();
         if (input.isOpenResult(result)) remoteOpen = true;
         return result;
       })
@@ -55,5 +60,10 @@ export const createExactRemoteSubscriptionLifecycle = <Result>(input: {
     });
   };
 
-  return { ensure, releaseIfIdle };
+  const invalidate = (): void => {
+    version += 1;
+    remoteOpen = false;
+  };
+
+  return { ensure, releaseIfIdle, invalidate };
 };

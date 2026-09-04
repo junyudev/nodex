@@ -26,6 +26,20 @@ const TEST_THRESHOLDS = {
 } as const;
 
 describe("Block Document sync indicator", () => {
+  test("a failed submission journal removes the claim of device protection", () => {
+    const indicator = resolveBlockDocumentSyncIndicator({
+      status: status({
+        phase: "offline",
+        pendingUpdateCount: 1,
+        checkpoint: { phase: "degraded", failureCount: 1, localVersion: 2, protectedVersion: 2 },
+      }),
+      phaseAgeMs: 2000,
+      hasEverSynced: true,
+    });
+    expect(indicator?.detail).toBe(
+      "Latest changes are only in this window. Keep it open while local recovery is being saved.",
+    );
+  });
   test("keeps synced and normal fast saves completely quiet", () => {
     expect(
       resolveBlockDocumentSyncIndicator({
@@ -107,7 +121,7 @@ describe("Block Document sync indicator", () => {
     });
     expect(offline?.label).toBe("Offline");
     expect(offline?.detail).toBe(
-      "Changes are kept on this device and will sync after reconnecting.",
+      "Latest changes are only in this window. Keep it open while local recovery is being saved.",
     );
     expect(offline?.action?.kind).toBe("retry");
     expect(offline?.editingBlocked).toBe(false);

@@ -217,13 +217,39 @@ it.effect("wakes a disconnected retry when recovery is explicitly requested", ()
     yield* waitUntil("first opening", () => harness.openings.length === 1);
     yield* harness.activate(harness.openings[0]!);
     yield* lease.ready;
+    const connectionVersion = yield* lease.waitUntilConnected;
     yield* Deferred.succeed(harness.openings[0]!.done, undefined);
     yield* waitUntil("disconnected", () => harness.observations.includes("disconnected"));
-
-    const reconnected = yield* Effect.forkChild(lease.reconnectAfterSubscriptionLoss);
+    const reconnected = yield* Effect.forkChild(
+      lease.reconnectAfterSubscriptionLoss(connectionVersion),
+    );
     yield* waitUntil("explicit retry opening", () => harness.openings.length === 2);
     yield* harness.activate(harness.openings[1]!);
     yield* Fiber.join(reconnected);
+    yield* lease.close;
+    yield* Scope.close(harness.ownerScope, Exit.void);
+  }),
+);
+
+it.effect("does not retire a replacement for a late failure from an older connection", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness;
+    const lease = yield* harness.runtime.subscribe(harness.input);
+    yield* waitUntil("first opening", () => harness.openings.length === 1);
+    yield* harness.activate(harness.openings[0]!);
+    const oldVersion = yield* lease.waitUntilConnected;
+    const first = yield* Effect.forkChild(lease.reconnectAfterSubscriptionLoss(oldVersion));
+    const concurrent = yield* Effect.forkChild(lease.reconnectAfterSubscriptionLoss(oldVersion));
+    yield* waitUntil("disconnected", () => harness.observations.includes("disconnected"));
+    yield* TestClock.adjust("10 millis");
+    yield* waitUntil("replacement", () => harness.openings.length === 2);
+    yield* harness.activate(harness.openings[1]!);
+    yield* Fiber.join(first);
+    yield* Fiber.join(concurrent);
+    yield* lease.reconnectAfterSubscriptionLoss(oldVersion);
+    assert.strictEqual(harness.openings.length, 2);
+    assert.strictEqual(harness.openings[1]!.closeCount, 0);
+    assert.isAbove(yield* lease.waitUntilConnected, oldVersion);
     yield* lease.close;
     yield* Scope.close(harness.ownerScope, Exit.void);
   }),

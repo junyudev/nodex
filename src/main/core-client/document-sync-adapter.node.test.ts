@@ -414,6 +414,7 @@ describe("Core Document sync adapter", () => {
     const client = new FakeCoreClient();
     const adapter = createCoreDocumentSyncAdapter(client);
     const checkpointRequest = {
+      operationId: "checkpoint:one",
       projectId: "project:one",
       storeEpoch: "epoch:test",
       documentId: "document:one",
@@ -461,7 +462,7 @@ describe("Core Document sync adapter", () => {
       },
     });
     expect(apply).toHaveBeenCalledWith({
-      operationId: expect.stringMatching(/^electron:document-checkpoint:[a-f0-9]{64}$/u),
+      operationId: checkpointRequest.operationId,
       clientSessionId: "electron:document-history",
       intent: {
         kind: "create_checkpoint",

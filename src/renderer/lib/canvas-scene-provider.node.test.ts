@@ -757,7 +757,7 @@ describe("CanvasSceneProvider", () => {
     await expect(provider.submit({ elementCandidates: [element(2)] })).rejects.toThrow(
       "durable request boundary",
     );
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(1);
+    expect(await outbox.listQuarantined(accessContext, "document-1")).toHaveLength(1);
     expect(provider.getStatus().phase).toBe("error");
   });
 
@@ -818,4 +818,73 @@ describe("CanvasSceneProvider", () => {
     expect(adapter.listener).toBeNull();
     expect(provider.getStatus().phase).toBe("closed");
   });
+});
+
+test("Canvas follows host reconnects and preserves terminal pending work", async () => {
+  const adapter = new MemoryAdapter();
+  const outbox = new MemoryCanvasSceneOutbox(libraryId);
+  const provider = makeProvider({ adapter, outbox });
+  try {
+    await provider.connect();
+    const session = {
+      type: "canvas_scene_session" as const,
+      libraryId,
+      accessContext,
+      documentId: "document-1",
+      clientSessionId: "window-1",
+    };
+    adapter.listener?.({ ...session, state: "disconnected" });
+    expect(provider.getStatus().connected).toBe(false);
+    adapter.listener?.({ ...session, state: "connected" });
+    await expect.poll(() => provider.getStatus().phase).toBe("ready");
+    adapter.applyError = new Error("temporary transport failure");
+    const submission = provider.enqueue({
+      elementCandidates: [element(2)],
+      appStateIntents: {},
+      fileAdditions: {},
+    });
+    await submission.durable;
+    const rejected = submission.committed.catch((error) => error);
+    adapter.listener?.({
+      ...session,
+      state: "terminated",
+      error: {
+        code: "canvas_scene_corrupt",
+        message: "Terminal stream failure",
+        retryable: false,
+        resetRequired: false,
+      },
+    });
+    expect(await rejected).toBeInstanceOf(Error);
+    await provider.checkpointRecovery();
+    expect(provider.getStatus().phase).toBe("error");
+    expect(await outbox.listQuarantined(accessContext, "document-1")).toHaveLength(1);
+  } finally {
+    await provider.close({ requireCommitted: false }).catch(() => undefined);
+  }
+});
+
+test("connect resolves after the first physical connection's canonical resync", async () => {
+  const adapter = new MemoryAdapter();
+  adapter.syncImplementation = async (request) => {
+    await Promise.resolve();
+    adapter.syncImplementation = null;
+    adapter.listener?.({
+      type: "canvas_scene_session",
+      libraryId,
+      accessContext,
+      documentId: "document-1",
+      clientSessionId: "window-1",
+      state: "connected",
+    });
+    return await adapter.sync(request);
+  };
+  const provider = makeProvider({ adapter });
+  try {
+    await provider.connect();
+    expect(provider.getStatus()).toMatchObject({ phase: "ready", connected: true });
+    expect(provider.getScene()).toEqual(adapter.currentScene);
+  } finally {
+    await provider.close({ requireCommitted: false });
+  }
 });

@@ -643,6 +643,7 @@ export interface components {
                 readonly mutation_effect?: null | components["schemas"]["DocumentMutationEffect"];
                 readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                 readonly owner_effect?: null | components["schemas"]["DocumentOwnerEffect"];
+                readonly recovery?: null | components["schemas"]["RecoveryDraftSummary"];
                 readonly semantic_block_etags?: {
                     readonly [key: string]: components["schemas"]["DocumentSemanticBlockEtags"];
                 } | null;
@@ -675,6 +676,7 @@ export interface components {
                 readonly mutation_effect?: null | components["schemas"]["DocumentMutationEffect"];
                 readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                 readonly owner_effect?: null | components["schemas"]["DocumentOwnerEffect"];
+                readonly recovery?: null | components["schemas"]["RecoveryDraftSummary"];
                 readonly semantic_block_etags?: {
                     readonly [key: string]: components["schemas"]["DocumentSemanticBlockEtags"];
                 } | null;
@@ -721,6 +723,11 @@ export interface components {
             readonly reference: components["schemas"]["DocumentEffectRef"];
         };
         readonly AuthorizedOwnedDocumentEvent: {
+            readonly detached: boolean;
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "recovery_changed";
+        } | {
             readonly change: components["schemas"]["PageFileReferenceChange"];
             readonly document_id: string;
             /** Format: int64 */
@@ -1723,6 +1730,15 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "reconnect_document_subscription";
+        } | {
+            readonly artifact_id: string;
+            readonly document_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            /** @enum {string} */
+            readonly kind: "document_recovery_artifact";
+            readonly store_epoch: components["schemas"]["StoreEpoch"];
+            readonly update_id: string;
         } | {
             /** Format: int32 */
             readonly actual: number;
@@ -3256,6 +3272,22 @@ export interface components {
             /** Format: int64 */
             readonly metadata_revision: number;
             readonly owner_block_id: string;
+        };
+        /** @description Exact rejected input, retained separately from committed content. It is not a full document backup. */
+        readonly DocumentRecoveryArtifact: {
+            readonly artifact_id: string;
+            /** Format: int64 */
+            readonly base_head_seq: number;
+            readonly client_session_id: string;
+            readonly created_at: string;
+            readonly document_id: string;
+            readonly expires_at: string;
+            /** Format: int64 */
+            readonly generation: number;
+            readonly store_epoch: components["schemas"]["StoreEpoch"];
+            readonly update: readonly number[];
+            readonly update_hash: string;
+            readonly update_id: string;
         };
         /** @enum {string} */
         readonly DocumentRevisionKind: "automatic" | "manual" | "operation" | "restore" | "safety";
@@ -6000,6 +6032,14 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
+                readonly capture: components["schemas"]["RecoveryDraftCapture"];
+                /** @enum {string} */
+                readonly kind: "capture_recovery";
+            } | {
+                /** @enum {string} */
+                readonly kind: "resolve_recovery";
+                readonly resolve: components["schemas"]["RecoveryDraftResolve"];
+            } | {
                 /** @enum {string} */
                 readonly kind: "prepare_owner";
                 readonly owner_block_id: string;
@@ -7128,6 +7168,18 @@ export interface components {
             readonly contract_version: number;
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "recovery";
+                readonly read: components["schemas"]["RecoveryRead"];
+            } | {
+                readonly artifact_id: string;
+                readonly document_id: string;
+                /** Format: int64 */
+                readonly generation: number;
+                /** @enum {string} */
+                readonly kind: "recovery_artifact";
+                readonly store_epoch: components["schemas"]["StoreEpoch"];
+            } | {
+                /** @enum {string} */
                 readonly kind: "descriptor";
                 readonly owner_block_id: string;
             } | {
@@ -7407,6 +7459,11 @@ export interface components {
             readonly version: number;
         };
         readonly OwnedDocumentEvent: {
+            readonly detached: boolean;
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "recovery_changed";
+        } | {
             readonly document_id: string;
             /** Format: int64 */
             readonly generation: number;
@@ -8309,6 +8366,131 @@ export interface components {
             /** Format: int64 */
             readonly version?: number | null;
         };
+        readonly RecoveryChoice: {
+            /** @enum {string} */
+            readonly kind: "reconcile";
+        } | {
+            /** @enum {string} */
+            readonly kind: "restore";
+        } | {
+            /** @enum {string} */
+            readonly kind: "copy";
+        } | {
+            /** @enum {string} */
+            readonly kind: "discard";
+        } | {
+            /** @enum {string} */
+            readonly kind: "reopen";
+        };
+        readonly RecoveryDraftCapture: {
+            /** Format: int64 */
+            readonly base_head_seq: number;
+            readonly content: components["schemas"]["RecoveryDraftContent"];
+            readonly created_at: string;
+            readonly document_id: string;
+            readonly draft_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            readonly schema_key: string;
+            /** Format: int64 */
+            readonly schema_version: number;
+            /** @description Lossless source envelope, including original request identities. Never replayed with new IDs. */
+            readonly source: unknown;
+            readonly source_store_epoch: string;
+        };
+        readonly RecoveryDraftContent: {
+            /** @enum {string} */
+            readonly kind: "yjs";
+            readonly state: readonly number[];
+            readonly unintegrated_updates: readonly (readonly number[])[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "canvas";
+            readonly mutations: readonly unknown[];
+            readonly scene?: unknown;
+        };
+        readonly RecoveryDraftInspection: {
+            readonly already_saved: boolean;
+            readonly can_copy: boolean;
+            readonly can_restore: boolean;
+            readonly capture: components["schemas"]["RecoveryDraftCapture"];
+            readonly current?: null | components["schemas"]["RecoveryPreview"];
+            /** Format: int64 */
+            readonly current_generation?: number | null;
+            /** Format: int64 */
+            readonly current_head_seq?: number | null;
+            readonly explanation?: string | null;
+            readonly restored?: null | components["schemas"]["RecoveryPreview"];
+            readonly retained?: null | components["schemas"]["RecoveryPreview"];
+            readonly summary: components["schemas"]["RecoveryDraftSummary"];
+        };
+        readonly RecoveryDraftPage: {
+            readonly drafts: readonly components["schemas"]["RecoveryDraftSummary"][];
+            readonly next_cursor?: string | null;
+            /** Format: int32 */
+            readonly pending_count: number;
+        };
+        readonly RecoveryDraftResolve: {
+            readonly choice: components["schemas"]["RecoveryChoice"];
+            readonly draft_id: string;
+            /** Format: int64 */
+            readonly expected_generation?: number | null;
+            /** Format: int64 */
+            readonly expected_head_seq?: number | null;
+            /** Format: int64 */
+            readonly revision: number;
+        };
+        readonly RecoveryDraftSummary: {
+            /** Format: int64 */
+            readonly byte_length: number;
+            readonly created_at: string;
+            readonly document_id: string;
+            readonly draft_id: string;
+            readonly payload_hash: string;
+            readonly received_at: string;
+            readonly resolution?: null | components["schemas"]["RecoveryResolution"];
+            readonly resolved_at?: string | null;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly source_title?: string | null;
+            readonly target_document_id?: string | null;
+            readonly target_owner_id?: string | null;
+        };
+        readonly RecoveryPreview: {
+            /** @enum {string} */
+            readonly kind: "document";
+            readonly nfm: string;
+            readonly rich_title: unknown;
+            readonly title: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "canvas";
+            readonly scene: unknown;
+        };
+        readonly RecoveryRead: {
+            readonly before?: string | null;
+            readonly document_id?: string | null;
+            readonly include_resolved: boolean;
+            /** @enum {string} */
+            readonly kind: "list";
+            /** Format: int32 */
+            readonly limit: number;
+        } | {
+            readonly draft_id: string;
+            /** @enum {string} */
+            readonly kind: "inspect";
+        };
+        readonly RecoveryReadValue: {
+            /** @enum {string} */
+            readonly kind: "list";
+            readonly page: components["schemas"]["RecoveryDraftPage"];
+        } | {
+            readonly inspection: components["schemas"]["RecoveryDraftInspection"];
+            /** @enum {string} */
+            readonly kind: "inspect";
+        };
+        /** @enum {string} */
+        readonly RecoveryResolution: "already_saved" | "restored" | "copied" | "discarded";
         readonly ReminderLease: {
             /** Format: int32 */
             readonly attempt: number;
@@ -8621,6 +8803,7 @@ export interface components {
                     readonly mutation_effect?: null | components["schemas"]["DocumentMutationEffect"];
                     readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                     readonly owner_effect?: null | components["schemas"]["DocumentOwnerEffect"];
+                    readonly recovery?: null | components["schemas"]["RecoveryDraftSummary"];
                     readonly semantic_block_etags?: {
                         readonly [key: string]: components["schemas"]["DocumentSemanticBlockEtags"];
                     } | null;
@@ -8653,6 +8836,7 @@ export interface components {
                     readonly mutation_effect?: null | components["schemas"]["DocumentMutationEffect"];
                     readonly outcome: components["schemas"]["DocumentCommitOutcome"];
                     readonly owner_effect?: null | components["schemas"]["DocumentOwnerEffect"];
+                    readonly recovery?: null | components["schemas"]["RecoveryDraftSummary"];
                     readonly semantic_block_etags?: {
                         readonly [key: string]: components["schemas"]["DocumentSemanticBlockEtags"];
                     } | null;
@@ -9158,6 +9342,14 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "recovery";
+                    readonly value: components["schemas"]["RecoveryReadValue"];
+                } | {
+                    readonly artifact: components["schemas"]["DocumentRecoveryArtifact"];
+                    /** @enum {string} */
+                    readonly kind: "recovery_artifact";
+                } | {
                     readonly descriptor: components["schemas"]["OwnedDocumentDescriptor"];
                     /** @enum {string} */
                     readonly kind: "descriptor";

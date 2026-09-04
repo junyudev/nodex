@@ -1,4 +1,8 @@
 import {
+  parseCanvasSceneRealtimeEvent,
+  requireCanvasSceneError,
+} from "../../shared/block-documents/canvas-scene-http-contract";
+import {
   canonicalizeCanvasPresenceRealtimeEvent,
   type CanvasPresenceCommandResult,
   type CanvasPresencePublishRequest,
@@ -24,9 +28,16 @@ import { canvasSceneMutationCommand } from "./canvas-local-scene-commands";
 import { invokeLocalCommitCommandResultThrough } from "./renderer-command";
 
 const transportFailure = (error: unknown): CanvasSceneMutationError => ({
-  code: "unknown",
+  code: "transport_unavailable",
   message: error instanceof Error ? error.message : String(error),
   retryable: true,
+  resetRequired: false,
+});
+
+const accessFailure = (): CanvasSceneMutationError => ({
+  code: "access_scope_mismatch",
+  message: "Canvas operation crossed its access boundary",
+  retryable: false,
   resetRequired: false,
 });
 
@@ -52,10 +63,40 @@ export const createElectronCanvasSceneSyncAdapter = (
     channel: string,
     request: CanvasSceneSubscribeRequest,
   ): Promise<CanvasSceneSubscriptionCommandResult> => {
+    let result: unknown;
     try {
-      return await invoke(channel, request);
+      result = await bridge.invoke(channel, request);
     } catch (error) {
       return { ok: false, error: transportFailure(error) };
+    }
+    try {
+      if (!result || typeof result !== "object" || !("ok" in result))
+        throw new TypeError("Canvas subscription response is invalid");
+      if (result.ok === false && "error" in result)
+        return { ok: false, error: requireCanvasSceneError(result.error) };
+      if (
+        result.ok === true &&
+        "value" in result &&
+        result.value &&
+        typeof result.value === "object"
+      ) {
+        if ("subscribed" in result.value && result.value.subscribed === true)
+          return { ok: true, value: { subscribed: true } };
+        if ("unsubscribed" in result.value && result.value.unsubscribed === true)
+          return { ok: true, value: { unsubscribed: true } };
+      }
+      throw new TypeError("Canvas subscription response is invalid");
+    } catch (error) {
+      return {
+        ok: false,
+        error: {
+          code: "invalid_response",
+          message:
+            error instanceof Error ? error.message : "Canvas subscription response is invalid",
+          retryable: false,
+          resetRequired: false,
+        },
+      };
     }
   };
   const ensureRemoteSubscription = (
@@ -99,14 +140,24 @@ export const createElectronCanvasSceneSyncAdapter = (
           if (
             !event ||
             (event.type !== "canvas_scene_committed" &&
-              event.type !== "canvas_scene_resync_required") ||
+              event.type !== "canvas_scene_resync_required" &&
+              event.type !== "canvas_scene_session") ||
             event.libraryId !== identity.libraryId ||
-            contentAccessContextKey(event.accessContext) !== accessKey ||
             event.documentId !== request.documentId
           ) {
             return;
           }
-          subscribers.forEach((subscriber) => subscriber.listener(event));
+          try {
+            const parsed = parseCanvasSceneRealtimeEvent(event);
+            if (contentAccessContextKey(parsed.accessContext) !== accessKey) return;
+            if (parsed.type === "canvas_scene_session") {
+              if (parsed.clientSessionId !== request.clientSessionId) return;
+              if (parsed.state === "terminated") subscriptions.get(key)?.lifecycle.invalidate();
+            }
+            subscribers.forEach((subscriber) => subscriber.listener(parsed));
+          } catch {
+            // Malformed host events cannot alter an authorized Canvas replica.
+          }
         });
         const lifecycle =
           createExactRemoteSubscriptionLifecycle<CanvasSceneSubscriptionCommandResult>({
@@ -161,7 +212,7 @@ export const createElectronCanvasSceneSyncAdapter = (
     async sync(request): Promise<CanvasSceneSyncCommandResult> {
       try {
         if (contentAccessContextKey(request.accessContext) !== accessKey) {
-          throw new TypeError("Canvas sync crossed its access boundary");
+          return { ok: false, error: accessFailure() };
         }
         const entry = subscriptions.get(
           JSON.stringify([request.documentId, request.clientSessionId]),
@@ -186,7 +237,7 @@ export const createElectronCanvasSceneSyncAdapter = (
     async applyMutation(request): Promise<CanvasSceneMutationCommandResult> {
       try {
         if (contentAccessContextKey(request.accessContext) !== accessKey) {
-          throw new TypeError("Canvas mutation crossed its access boundary");
+          return { ok: false, error: { ...accessFailure(), mutationId: request.mutationId } };
         }
         const entry = subscriptions.get(
           JSON.stringify([request.documentId, request.clientSessionId]),

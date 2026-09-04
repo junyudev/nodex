@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import type { RefObject } from "react";
 import { DropCursorExtension, SideMenuExtension } from "@blocknote/core/extensions";
 import {
@@ -32,6 +32,12 @@ export function useEditorDragBehaviors({
   crossSurface,
 }: UseEditorDragBehaviorsOptions) {
   const latestOptionsRef = useRef({ editor, crossSurface });
+  const hasCrossSurface = crossSurface !== undefined;
+  const { surfaceId, projectId, documentId, storeEpoch } = crossSurface ?? {};
+  const readDropBoundary = useEffectEvent(() => {
+    if (!crossSurface) throw new Error("The editor has no Block transfer boundary.");
+    return crossSurface.blockTransferDrop;
+  });
 
   useEffect(() => {
     latestOptionsRef.current = { editor, crossSurface };
@@ -98,7 +104,7 @@ export function useEditorDragBehaviors({
   }, [containerRef]);
 
   useEffect(() => {
-    if (!editor || !crossSurface) return;
+    if (!editor || !hasCrossSurface) return;
     const element = containerRef.current;
     if (!element) return;
     const extensionRuntime = editor as unknown as {
@@ -120,12 +126,14 @@ export function useEditorDragBehaviors({
       releaseDropCursorOwnership();
       releaseSideMenuOwnership();
     };
-  }, [containerRef, crossSurface, editor]);
+  }, [containerRef, hasCrossSurface, editor]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !editor) return;
-    if (!crossSurface) return setupToggleDrop(el, editor);
-    return setupBlockTransferDocumentDrop(el, editor, crossSurface.blockTransferDrop);
-  }, [containerRef, crossSurface, editor]);
+    if (!hasCrossSurface) return setupToggleDrop(el, editor);
+    // Only leaving this semantic surface cancels an in-flight save wait. Ordinary
+    // renders refresh callbacks without destroying the native drop owner.
+    return setupBlockTransferDocumentDrop(el, editor, readDropBoundary);
+  }, [containerRef, hasCrossSurface, editor, surfaceId, projectId, documentId, storeEpoch]);
 }

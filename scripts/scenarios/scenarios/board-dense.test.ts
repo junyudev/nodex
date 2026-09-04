@@ -43,6 +43,10 @@ class RecordingSeedPort implements ScenarioSeedPort {
     return { documentId: `document:${input.key}` };
   }
 
+  async createStandaloneCanvas(): Promise<void> {
+    throw new Error("Canvas seeding is not part of this scenario");
+  }
+
   async createStandalonePage(): Promise<void> {
     throw new Error("Standalone Page seeding is not part of this scenario");
   }
@@ -60,9 +64,9 @@ class RecordingSeedPort implements ScenarioSeedPort {
 
   async replaceOwnedDocument(
     input: ScenarioDocumentReplacement,
-  ): Promise<{ readonly commitSeq: number }> {
+  ): Promise<{ readonly commitSeq: number; readonly createdBlockIds: readonly string[] }> {
     this.replacements.push(input);
-    return { commitSeq: 12 };
+    return { commitSeq: 12, createdBlockIds: [] };
   }
 
   async readPage(_projectId: string, pageId: string): Promise<ScenarioPageObservation> {

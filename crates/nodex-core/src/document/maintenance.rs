@@ -72,6 +72,7 @@ pub(crate) fn has_document_compaction_work(connection: &Connection) -> Result<bo
 pub(crate) fn has_document_history_retention_work(
     connection: &Connection,
 ) -> Result<bool, StoreError> {
+    if connection.query_row("SELECT EXISTS(SELECT 1 FROM document_recovery_drafts WHERE resolution IS NOT NULL AND julianday(resolved_at) < julianday('now','-30 days'))", [], |row| row.get::<_, bool>(0))? { return Ok(true); }
     let now = connection.query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')", [], |row| {
         row.get::<_, String>(0)
     })?;
@@ -311,7 +312,7 @@ pub(crate) fn prune_document_history_pass(
             "Document history maintenance exceeds its Document bound",
         ));
     }
-    let mut deleted = 0usize;
+    let mut deleted = transaction.execute("DELETE FROM document_recovery_drafts WHERE (library_id, draft_id) IN (SELECT library_id, draft_id FROM document_recovery_drafts WHERE resolution IS NOT NULL AND julianday(resolved_at) < julianday('now','-30 days') ORDER BY resolved_at LIMIT 32)", [])?;
     for document_id in document_ids {
         deleted = deleted
             .checked_add(prune_document_history(&transaction, &document_id, &now)?)

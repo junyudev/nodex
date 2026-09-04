@@ -171,9 +171,14 @@ pub(crate) fn payload_claims(
             claims.insert(ResourceKey::Library {
                 library_id: library_id.clone(),
             });
-            claims.insert(ResourceKey::Document {
-                document_id: owned_document_id(event).to_owned(),
-            });
+            if !matches!(
+                event,
+                AuthorizedOwnedDocumentEvent::RecoveryChanged { detached: true, .. }
+            ) {
+                claims.insert(ResourceKey::Document {
+                    document_id: owned_document_id(event).to_owned(),
+                });
+            }
             if let Some(canvas_id) = canvas_id {
                 claims.insert(ResourceKey::Canvas {
                     canvas_id: canvas_id.clone(),
@@ -510,6 +515,29 @@ fn compile_owned_document(
         page_file_body_usage_changed,
         page_file_reference_change,
     ) = match event {
+        nodex_core_contracts::document::OwnedDocumentEvent::RecoveryChanged {
+            document_id,
+            detached,
+        } => {
+            let mut resources = vec![library(library_id)];
+            if !detached {
+                resources.push(ResourceKey::Document {
+                    document_id: document_id.clone(),
+                });
+            }
+            return Ok(vec![atom(
+                DeliveryAtomKind::OwnedDocumentChanged,
+                resources,
+                DeliveryAtomPayload::OwnedDocument {
+                    library_id: library_id.to_owned(),
+                    canvas_id: None,
+                    event: AuthorizedOwnedDocumentEvent::RecoveryChanged {
+                        document_id,
+                        detached,
+                    },
+                },
+            )]);
+        }
         nodex_core_contracts::document::OwnedDocumentEvent::DocumentUpdated {
             document_id,
             generation,
@@ -892,7 +920,8 @@ fn owned_document_id(event: &AuthorizedOwnedDocumentEvent) -> &str {
         | AuthorizedOwnedDocumentEvent::DocumentResyncRequired { document_id, .. }
         | AuthorizedOwnedDocumentEvent::CanvasUpdated { document_id, .. }
         | AuthorizedOwnedDocumentEvent::CanvasGenerationChanged { document_id, .. }
-        | AuthorizedOwnedDocumentEvent::DocumentInvalidated { document_id, .. } => document_id,
+        | AuthorizedOwnedDocumentEvent::DocumentInvalidated { document_id, .. }
+        | AuthorizedOwnedDocumentEvent::RecoveryChanged { document_id, .. } => document_id,
     }
 }
 

@@ -1,3 +1,4 @@
+import { documentSessionError, rethrowCoreTransportFailure } from "./document-session-error";
 import { createHash } from "node:crypto";
 import type { components } from "@nodex/core-protocol";
 
@@ -13,7 +14,6 @@ import {
   type AdditionalDocumentHeadRevision,
   type AdditionalDocumentLibraryPlacement,
 } from "../../shared/additional-document-commands";
-import { stableStringifyBlockPropertyJson } from "../../shared/block-property-mutations";
 import type {
   CreateDocumentVersionCheckpoint,
   CreatedDocumentVersionSummary,
@@ -252,7 +252,7 @@ const additionalDocumentErrorCode = (
   error: unknown,
 ): { readonly code: AdditionalDocumentCommandErrorCode; readonly retryable: boolean } => {
   if (!(error instanceof CoreModuleResponseError)) {
-    return { code: "unknown", retryable: true };
+    return { code: "unknown", retryable: documentSessionError(error).retryable };
   }
   const message = error.message.toLowerCase();
   switch (error.coreError.code) {
@@ -289,7 +289,7 @@ const additionalDocumentErrorCode = (
     case "store_corrupt":
       return { code: "document_state_corrupt", retryable: false };
     case "maintenance_in_progress":
-      return { code: "unknown", retryable: true };
+      return { code: "unknown", retryable: documentSessionError(error).retryable };
     case "core_unavailable":
       if (
         message.includes("identity already exists") ||
@@ -298,7 +298,7 @@ const additionalDocumentErrorCode = (
       ) {
         return { code: "identity_conflict", retryable: false };
       }
-      return { code: "unknown", retryable: true };
+      return { code: "unknown", retryable: documentSessionError(error).retryable };
     default:
       return { code: "unknown", retryable: error.coreError.retryable };
   }
@@ -339,7 +339,7 @@ const historyFailure = <Value>(
       error: documentHistoryFailure(
         "unknown",
         error instanceof Error ? error.message : String(error),
-        { retryable: true },
+        { retryable: documentSessionError(error).retryable },
       ),
     };
   }
@@ -430,7 +430,7 @@ const documentMutationAdapterFailure = (
       error: documentMutationFailure(
         "unknown",
         error instanceof Error ? error.message : String(error),
-        { mutationId: request.mutationId, retryable: true },
+        { mutationId: request.mutationId, retryable: documentSessionError(error).retryable },
       ),
     };
   }
@@ -625,6 +625,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
     try {
       return success(await client.documentSync(request));
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return failure(error);
     }
   };
@@ -635,6 +636,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
     try {
       return success(await client.documentApplyUpdate(request));
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return failure(error);
     }
   };
@@ -714,6 +716,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
         update,
       });
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return failure(error);
     }
   };
@@ -746,6 +749,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
     try {
       request = parseDocumentMutationRequest(rawRequest);
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return {
         ok: false,
         error: documentMutationFailure(
@@ -868,6 +872,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
         localCommit: rendererLocalCommitApply(committed),
       };
     } catch (error) {
+      rethrowCoreTransportFailure(error);
       return documentMutationAdapterFailure(request, error);
     }
   };
@@ -899,6 +904,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
         }
         return success(descriptor);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return failure(error);
       }
     },
@@ -907,6 +913,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
       try {
         request = parseAdditionalDocumentCommandRequest(rawRequest);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return additionalDocumentFailure(rawRequest, error);
       }
       try {
@@ -959,13 +966,12 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
           },
         });
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return additionalDocumentFailure(request, error);
       }
     },
     createCheckpoint: async (request) => {
-      const operationId = `electron:document-checkpoint:${createHash("sha256")
-        .update(stableStringifyBlockPropertyJson(request))
-        .digest("hex")}`;
+      const { operationId } = request;
       try {
         const committed = await client.documentApply({
           operationId,
@@ -1005,6 +1011,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
           },
         };
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return historyFailure(error, {
           generation: request.expectedGeneration,
           headSeq: request.expectedHeadSeq,
@@ -1051,6 +1058,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
           value: items,
         };
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return historyFailure(error);
       }
     },
@@ -1075,6 +1083,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
         }
         return { ok: true, value: detail };
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return historyFailure(error);
       }
     },
@@ -1086,6 +1095,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
       try {
         return success(await client.documentPublishAwareness(request));
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return failure(error);
       }
     },
@@ -1194,54 +1204,5 @@ const commandError = (error: unknown): DocumentSyncCommandError => {
       resetRequired: true,
     };
   }
-  if (error instanceof CoreModuleResponseError) {
-    const code = error.coreError.code;
-    return {
-      code: mapCoreErrorCode(code),
-      message: error.message,
-      retryable: error.coreError.retryable,
-      resetRequired:
-        code === "stale_store_epoch" ||
-        code === "generation_conflict" ||
-        code === "protected_owner_deletion",
-    };
-  }
-  return {
-    code: "transport_unavailable",
-    message: error instanceof Error ? error.message : String(error),
-    retryable: true,
-    resetRequired: false,
-  };
-};
-
-const mapCoreErrorCode = (
-  code: CoreModuleResponseError["coreError"]["code"],
-): DocumentSyncCommandError["code"] => {
-  switch (code) {
-    case "unauthorized":
-      return "unauthorized";
-    case "not_found":
-      return "document_not_found";
-    case "stale_store_epoch":
-      return "store_epoch_mismatch";
-    case "generation_conflict":
-      return "document_generation_mismatch";
-    case "head_conflict":
-      return "future_base_head";
-    case "document_update_missing_dependencies":
-      return "document_update_missing_dependencies";
-    case "protected_owner_deletion":
-      return "protected_owner_mutation";
-    case "idempotency_key_reused":
-      return "update_id_collision";
-    case "invalid_document_schema":
-    case "schema_unsupported":
-      return "unsupported_document_schema";
-    case "store_corrupt":
-      return "document_state_corrupt";
-    case "invalid_input":
-      return "invalid_document_update";
-    default:
-      return "unknown";
-  }
+  return documentSessionError(error);
 };

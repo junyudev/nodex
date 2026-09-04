@@ -714,14 +714,6 @@ export const make = (
           const draft = draftFrom(current);
           const detached = yield* detachLease(draft, existing, false);
           draft.subscriptions.delete(detached.key);
-          const activeAddresses = new Set(
-            [...draft.subscriptions.values()].map((subscription) =>
-              deliveryAddressKey(subscription.address),
-            ),
-          );
-          for (const addressKey of draft.leaseGrants.keys()) {
-            if (!activeAddresses.has(addressKey)) draft.leaseGrants.delete(addressKey);
-          }
           yield* commit(draft);
           yield* publishScopes(draft);
         }),
@@ -812,6 +804,9 @@ export const make = (
           const current = yield* Ref.get(state);
           if (current.closed) return;
           const draft = draftFrom(current);
+          // Grants belong to the active Core stream, not individual windows. Keep
+          // them through audience churn until this replacement barrier supersedes
+          // them; the broker may retain the same stream when scopes return.
           draft.leaseGrants.clear();
           for (const lease of leases) {
             draft.leaseGrants.set(deliveryAddressKey(lease.delivery_address), { lease, floor });
@@ -950,14 +945,6 @@ export const make = (
             if (subscription.sender.id !== senderId) continue;
             yield* detachLease(draft, subscription, false);
             draft.subscriptions.delete(key);
-          }
-          const activeAddresses = new Set(
-            [...draft.subscriptions.values()].map((subscription) =>
-              deliveryAddressKey(subscription.address),
-            ),
-          );
-          for (const addressKey of draft.leaseGrants.keys()) {
-            if (!activeAddresses.has(addressKey)) draft.leaseGrants.delete(addressKey);
           }
           yield* commit(draft);
           yield* publishScopes(draft);

@@ -714,3 +714,133 @@ describe("NFM structural editing session", () => {
     expect(installedCallback()).toBeNull();
   });
 });
+
+test("cancelling a structural preparation releases the queue and prevents late submission", async () => {
+  const document = new Y.Doc();
+  const undoManager = new Y.UndoManager(document.getArray("history"));
+  const owner = { id: "page", type: "page" };
+  const editor = {
+    document: [owner],
+    getBlock: () => owner,
+    getParentBlock: () => undefined,
+    focus: () => undefined,
+    prosemirrorState: { plugins: [{ key: "y-undo$cancel", getState: () => ({ undoManager }) }] },
+  } as unknown as BlockNoteEditor<any, any, any>;
+  let complete: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  let preparations = 0;
+  let submissions = 0;
+  const errors: string[] = [];
+  const session = new NfmStructuralEditingSession({
+    editor,
+    runtime: {
+      accessContext: { kind: "library" },
+      libraryId: "library:test",
+      source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
+      getContainer: () => null,
+      onError: (message) => errors.push(message),
+      participant: {
+        prepareAndFence: async () => {
+          preparations += 1;
+          if (preparations === 1) await pending;
+          return {
+            documentId: "document:test",
+            storeEpoch: "epoch:test",
+            generation: 1,
+            expectedHeadSeq: 1,
+          };
+        },
+      },
+    },
+    apply: async () => {
+      submissions += 1;
+      throw new Error("submitted after preparation");
+    },
+  });
+  try {
+    expect(session.duplicateBlocks(["page"])).toBe(true);
+    await Promise.resolve();
+    session.cancelPreparations();
+    await session.whenIdle();
+    expect(submissions).toBe(0);
+    complete();
+    await pending;
+    await Promise.resolve();
+    expect(submissions).toBe(0);
+    expect(session.duplicateBlocks(["page"])).toBe(true);
+    await session.whenIdle();
+    expect(submissions).toBe(1);
+    expect(errors).toEqual(["The structural edit was cancelled.", "submitted after preparation"]);
+  } finally {
+    complete();
+    session.dispose();
+    undoManager.destroy();
+    document.destroy();
+  }
+});
+
+test("refreshing an equivalent view binding preserves queued and active structural waits", async () => {
+  const document = new Y.Doc();
+  const undoManager = new Y.UndoManager(document.getArray("history"));
+  const owner = { id: "page", type: "page" };
+  const editor = {
+    document: [owner],
+    getBlock: () => owner,
+    getParentBlock: () => undefined,
+    focus: () => undefined,
+    prosemirrorState: { plugins: [{ key: "y-undo$rebind", getState: () => ({ undoManager }) }] },
+  } as unknown as BlockNoteEditor<any, any, any>;
+  let complete = () => {};
+  const pending = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  let preparations = 0;
+  let submissions = 0;
+  const errors: string[] = [];
+  const runtime = {
+    accessContext: { kind: "library" as const },
+    libraryId: "library:test",
+    source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
+    getContainer: () => null,
+    onError: (message: string) => errors.push(message),
+    participant: {
+      prepareAndFence: async () => {
+        preparations += 1;
+        await pending;
+        return {
+          documentId: "document:test",
+          storeEpoch: "epoch:test",
+          generation: 1,
+          expectedHeadSeq: 1,
+        };
+      },
+    },
+  };
+  const session = new NfmStructuralEditingSession({
+    editor,
+    runtime,
+    apply: async () => {
+      submissions += 1;
+      throw new Error("submission reached");
+    },
+  });
+  try {
+    expect(session.duplicateBlocks(["page"])).toBe(true);
+    session.rebind({ ...runtime, accessContext: { kind: "library" } });
+    await Promise.resolve();
+    expect(preparations).toBe(1);
+    session.rebind({ ...runtime, getContainer: () => null });
+    expect(submissions).toBe(0);
+    complete();
+    await session.whenIdle();
+    expect(submissions).toBe(1);
+    expect(errors).toEqual(["submission reached"]);
+  } finally {
+    complete();
+    session.dispose();
+    undoManager.destroy();
+    document.destroy();
+  }
+});

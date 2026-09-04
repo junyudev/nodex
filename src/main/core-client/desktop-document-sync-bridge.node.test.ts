@@ -16,6 +16,7 @@ import type { CoreClientPort, CoreDocumentEventSubscription } from "./types";
 import { CoreAuthority, CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { live as coreModulesLive } from "../core-runtime/CoreModules";
 import { live as documentLiveRuntimeLive } from "../core-runtime/DocumentLiveRuntime";
+import { classifyCoreOperationFailure } from "../core-runtime/CoreRuntimeError";
 
 const subscribeRequest = {
   documentId: "document:one",
@@ -131,13 +132,15 @@ const acquireSession = Effect.fn("DesktopDocumentSessionRuntime.test.acquire")(f
   const generationClient = configureClient(client);
   const authority = authorityFor(generationClient);
   const coreSession = CoreSessionAccess.of({
-    use: (_operation, run, options) =>
-      Effect.promise((signal) =>
-        run(
-          options?.projectId ? generationClient.forProject(options.projectId) : generationClient,
-          signal,
-        ),
-      ),
+    use: (operation, run, options) =>
+      Effect.tryPromise({
+        try: (signal) =>
+          run(
+            options?.projectId ? generationClient.forProject(options.projectId) : generationClient,
+            signal,
+          ),
+        catch: (cause) => classifyCoreOperationFailure(operation, cause),
+      }),
     handshake: Effect.succeed(generationClient.handshake),
   });
   const coreSessionLayer = Layer.succeed(CoreSessionAccess, coreSession);

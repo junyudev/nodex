@@ -104,6 +104,29 @@ const acquireAudience = (bridge: ElectronRendererBridge, scope: ProjectionScope)
   };
 };
 
+/** Atom observers own their scoped audience and re-read after a lost delivery interval. */
+export const subscribeElectronRendererLocalCommitAtoms = (
+  bridge: ElectronRendererBridge,
+  scope: ProjectionScope,
+  onAtom: Parameters<typeof rendererLocalCommitIngress.subscribeAtoms>[0],
+  onReset: () => void,
+): (() => void) => {
+  initializeElectronRendererLocalCommitIngress(bridge);
+  const address = projectionScopeDeliveryAddress(scope);
+  const releaseAtoms = rendererLocalCommitIngress.subscribeAtoms((packet, atom) => {
+    if (sameRecipientIdentity(packet.authorization_scope, address)) onAtom(packet, atom);
+  });
+  const releaseReset = rendererLocalCommitIngress.subscribeProjection(scope, (message) => {
+    if (message.kind === "reset") onReset();
+  });
+  const releaseAudience = acquireAudience(bridge, scope);
+  return () => {
+    releaseAtoms();
+    releaseReset();
+    releaseAudience();
+  };
+};
+
 export const initializeElectronRendererLocalCommitIngress = (
   bridge: ElectronRendererBridge,
 ): void => {

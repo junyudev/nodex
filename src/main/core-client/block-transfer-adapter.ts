@@ -1,3 +1,4 @@
+import { documentSessionError, rethrowCoreTransportFailure } from "./document-session-error";
 import {
   parseBlockTransferIntent,
   parseBlockTransferUndoIntent,
@@ -328,7 +329,7 @@ const coreFailure = (
   if (!(error instanceof CoreModuleResponseError)) {
     return blockTransferFailure("unknown", error instanceof Error ? error.message : String(error), {
       operationId: intent.operationId,
-      retryable: true,
+      retryable: documentSessionError(error).retryable,
     });
   }
   const options = {
@@ -389,6 +390,7 @@ export const createCoreBlockTransferAdapter = (
       try {
         intent = parseBlockTransferIntent(rawIntent);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return { ok: false, error: coreFailure(rawIntent, error) };
       }
       const scopeError = assertIntentScope(input, intent);
@@ -417,6 +419,7 @@ export const createCoreBlockTransferAdapter = (
           ),
         };
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return { ok: false, error: coreFailure(intent, error) };
       }
     },
@@ -425,6 +428,7 @@ export const createCoreBlockTransferAdapter = (
       try {
         intent = parseBlockTransferUndoIntent(rawIntent);
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return { ok: false, error: coreFailure(rawIntent, error) };
       }
       if (intent.projectId !== input.projectId || intent.storeEpoch !== input.storeEpoch) {
@@ -467,6 +471,7 @@ export const createCoreBlockTransferAdapter = (
           ),
         };
       } catch (error) {
+        rethrowCoreTransportFailure(error);
         return { ok: false, error: coreFailure(intent, error) };
       }
     },

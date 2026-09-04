@@ -14,6 +14,38 @@ const emptyScene = {
   preview: "",
 };
 
+test("malformed Canvas subscription ACKs terminate instead of opening an endless retry loop", async () => {
+  const bridge = {
+    invoke: async () => ({ ok: true, value: {} }),
+    on: () => () => undefined,
+  } as unknown as ElectronRendererBridge;
+  const accessContext = { kind: "library" } as const;
+  const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
+    libraryId: "library-1",
+    accessContext,
+  });
+  const request = { accessContext, documentId: "canvas-1", clientSessionId: "client-1" };
+  const release = adapter.subscribe(request, () => undefined);
+  try {
+    await expect(adapter.sync({ ...request, syncRequestId: "sync-1" })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "invalid_response", retryable: false },
+    });
+    await expect(
+      adapter.sync({
+        ...request,
+        accessContext: { kind: "project", projectId: "foreign" },
+        syncRequestId: "sync-2",
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "access_scope_mismatch", retryable: false },
+    });
+  } finally {
+    release();
+  }
+});
+
 test("Electron Canvas adapter awaits subscription and carries presence", async () => {
   const calls: string[] = [];
   const listeners = new Set<(...args: unknown[]) => void>();

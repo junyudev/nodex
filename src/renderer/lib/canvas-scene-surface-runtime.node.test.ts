@@ -32,6 +32,7 @@ const runtimeDependencies = (input: {
   durable?: Promise<void>;
   committed?: Promise<void>;
   closeError?: Error;
+  recoveryError?: Error;
   status?: {
     readonly phase: "ready" | "saving" | "offline";
     readonly connected: boolean;
@@ -58,6 +59,10 @@ const runtimeDependencies = (input: {
     },
   } as unknown as CanvasSceneBinding;
   const provider = {
+    checkpointRecovery: async () => {
+      calls.push("preserve-recovery");
+      if (input.recoveryError) throw input.recoveryError;
+    },
     connect: async () => {
       calls.push("connect");
     },
@@ -102,6 +107,22 @@ const runtimeDependencies = (input: {
 };
 
 describe("CanvasSceneSurfaceRegistry", () => {
+  test("retains the only draft and blocks a replacement when recovery cannot be persisted", async () => {
+    const registry = createCanvasSceneSurfaceRegistry();
+    const first = runtimeDependencies({
+      durable: Promise.reject(new Error("durability unavailable")),
+      recoveryError: new Error("recovery unavailable"),
+    });
+    const runtime = registry.acquire({ key: "surface", ...first.input });
+    await expect(registry.release("surface", runtime)).rejects.toThrow("recovery unavailable");
+    expect(runtime.isClosed()).toBe(false);
+    expect(first.calls).not.toContain("destroy-binding");
+    await expect(registry.persistAllDurable()).rejects.toThrow("durability unavailable");
+    const second = runtimeDependencies({});
+    const replacement = registry.acquire({ key: "surface", ...second.input });
+    await expect(replacement.connect()).rejects.toThrow("recovery unavailable");
+    expect(second.calls).not.toContain("connect");
+  });
   test("uses Window Session, Project Session, and tab identity", () => {
     expect(makeCanvasSceneSurfaceKey("window-1", "session-1", "tab-1")).not.toBe(
       makeCanvasSceneSurfaceKey("window-2", "session-1", "tab-1"),
@@ -250,7 +271,7 @@ describe("CanvasSceneSurfaceRegistry", () => {
     );
   });
 
-  test("terminally releases a failed close and lets a replacement connect", async () => {
+  test("preserves recovery before releasing a failed close and lets a replacement connect", async () => {
     const registry = createCanvasSceneSurfaceRegistry();
     const first = runtimeDependencies({
       durable: Promise.reject(new Error("durability unavailable")),

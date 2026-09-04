@@ -35,6 +35,8 @@ export interface ScenarioPageSeed {
 }
 
 export interface ScenarioStandalonePageSeed {
+  readonly parentPageId?: string;
+  readonly beforeBlockId?: string;
   readonly pageId: string;
   readonly documentId: string;
   readonly operationId: string;
@@ -89,6 +91,12 @@ export interface ScenarioSeedPort {
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
   createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void>;
+  createStandaloneCanvas(input: {
+    readonly projectId: string;
+    readonly canvasId: string;
+    readonly documentId: string;
+    readonly name: string;
+  }): Promise<void>;
   ensurePrimaryDataSourcePropertyCount(
     projectId: string,
     count: number,
@@ -96,7 +104,9 @@ export interface ScenarioSeedPort {
   readPrimaryDataSourcePropertyCount(projectId: string): Promise<number>;
   readDatabase(request: DatabaseModuleReadRequestV2): Promise<DatabaseModuleReadResultV2>;
   applyDatabase(request: DatabaseApplyV2): Promise<DatabaseApplyResultV2>;
-  replaceOwnedDocument(input: ScenarioDocumentReplacement): Promise<{ readonly commitSeq: number }>;
+  replaceOwnedDocument(
+    input: ScenarioDocumentReplacement,
+  ): Promise<{ readonly commitSeq: number; readonly createdBlockIds: readonly string[] }>;
   readPage(
     projectId: string,
     pageId: string,

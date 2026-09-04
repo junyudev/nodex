@@ -12,6 +12,7 @@ import type {
   DocumentSyncSubscribeRequest,
   DocumentSyncSubscriptionAck,
 } from "../../shared/block-documents/document-sync";
+import { parseCoreFailureEvidence } from "../../shared/core-failure-evidence";
 import type { DocumentSyncAdapter } from "./nodex-y-provider";
 import type { ElectronRendererBridge } from "./electron-renderer-transport";
 import {
@@ -37,6 +38,8 @@ interface SubscriptionEntry {
 const ERROR_CODES = new Set<DocumentSyncErrorCode>([
   "transport_unavailable",
   "request_cancelled",
+  "request_timeout",
+  "service_busy",
   "unauthorized",
   "store_not_initialized",
   "store_epoch_mismatch",
@@ -119,8 +122,15 @@ const normalizeError = (value: unknown): DocumentSyncCommandError | null => {
   ) {
     return null;
   }
+  let core: DocumentSyncCommandError["core"];
+  try {
+    core = value.core === undefined ? undefined : parseCoreFailureEvidence(value.core);
+  } catch {
+    return null;
+  }
   return {
     code: value.code as DocumentSyncErrorCode,
+    ...(core === undefined ? {} : { core }),
     message: value.message,
     retryable: value.retryable,
     resetRequired: value.resetRequired,
@@ -300,6 +310,16 @@ const normalizeApplyResult = (
 const normalizeRealtimeEvent = (value: unknown): DocumentSyncRealtimeEvent | null => {
   if (!isRecord(value) || typeof value.kind !== "string" || typeof value.documentId !== "string") {
     return null;
+  }
+  if (value.kind === "terminated") {
+    const error = normalizeError(value.error);
+    if (!error || typeof value.clientSessionId !== "string") return null;
+    return {
+      kind: "terminated",
+      documentId: value.documentId,
+      clientSessionId: value.clientSessionId,
+      error,
+    };
   }
   if (value.kind === "connection") {
     if (
@@ -510,9 +530,13 @@ const createScopedElectronDocumentSyncAdapter = (
           if (!event || event.documentId !== request.documentId) {
             return;
           }
-          if (event.kind === "connection" && event.clientSessionId !== request.clientSessionId) {
+          if (
+            (event.kind === "connection" || event.kind === "terminated") &&
+            event.clientSessionId !== request.clientSessionId
+          ) {
             return;
           }
+          if (event.kind === "terminated") subscriptions.get(key)?.lifecycle.invalidate();
           subscribers.forEach((subscriber) => subscriber.listener(event));
         });
         const removeLocalListener = rendererLocalCommitIngress.subscribeDocument(

@@ -164,8 +164,10 @@ export default defineConfig({
   },
   renderer: {
     server: {
-      port: 51284,
-      strictPort: false,
+      port: process.env.NODEX_DEV_RENDERER_PORT
+        ? Number(process.env.NODEX_DEV_RENDERER_PORT)
+        : 51284,
+      strictPort: true,
       // Generic app/icon surfaces intentionally use Vite's /@fs route in development.
       fs: { strict: false },
       headers: {

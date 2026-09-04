@@ -310,6 +310,9 @@ impl LibraryModule {
                            SELECT 1 FROM page_file_versions version \
                            WHERE version.blob_hash = blob.content_hash \
                          ) AND NOT EXISTS ( \
+                           SELECT 1 FROM document_recovery_asset_roots recovery \
+                           WHERE recovery.asset_hash = blob.content_hash \
+                         ) AND NOT EXISTS ( \
                            SELECT 1 FROM prepared_blob_receipts receipt \
                            WHERE receipt.content_hash = blob.content_hash \
                              AND receipt.state = 'prepared' \

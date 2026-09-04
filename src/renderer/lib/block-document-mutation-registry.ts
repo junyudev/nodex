@@ -1,4 +1,5 @@
 import type { DocumentHeadFence } from "./block-document-surface-runtime";
+import type { DocumentWaitOptions } from "./document-wait";
 
 /**
  * One mounted editor's complete preparation boundary for a structural command.
@@ -7,7 +8,7 @@ import type { DocumentHeadFence } from "./block-document-surface-runtime";
  */
 export interface BlockDocumentStructuralMutationParticipant {
   readonly documentId?: string;
-  readonly prepareAndFence: () => Promise<DocumentHeadFence>;
+  readonly prepareAndFence: (options?: DocumentWaitOptions) => Promise<DocumentHeadFence>;
 }
 
 /**

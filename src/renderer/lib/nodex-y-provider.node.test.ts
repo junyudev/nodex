@@ -33,6 +33,7 @@ import type {
   DocumentCheckpointBoundary,
   DocumentLocalCheckpoint,
   DocumentLocalCheckpointStore,
+  DocumentRecoverySnapshot,
 } from "./document-local-checkpoint";
 import {
   isDocumentApplyAckHeadValid,
@@ -165,13 +166,16 @@ class MemoryDocumentLocalCheckpointStore implements DocumentLocalCheckpointStore
     });
   };
 
-  clearDocument = async (documentId: string): Promise<void> => {
-    this.clearedDocuments.push(documentId);
-    for (const [key, checkpoint] of this.checkpoints) {
-      if (checkpoint.documentId === documentId) {
-        this.checkpoints.delete(key);
-      }
-    }
+  readonly recoveries: DocumentRecoverySnapshot[] = [];
+  recordSubmission: DocumentLocalCheckpointStore["recordSubmission"] = async () => undefined;
+  acknowledgeSubmission: DocumentLocalCheckpointStore["acknowledgeSubmission"] = async () =>
+    undefined;
+  readRecovery: DocumentLocalCheckpointStore["readRecovery"] = async () => this.recoveries;
+  quarantine = async (snapshot: DocumentRecoverySnapshot): Promise<void> => {
+    if (this.writeError) throw this.writeError;
+    await this.writeGate;
+    this.recoveries.push(snapshot);
+    this.checkpoints.delete(checkpointKey(snapshot));
   };
 }
 
@@ -1186,7 +1190,7 @@ describe("NodexYProvider", () => {
     }
   });
 
-  test("drops old-epoch outbox and checkpoint state on an explicit store reset", async () => {
+  test("quarantines old-epoch edits without replaying them after an explicit store reset", async () => {
     const adapter = new MemoryDocumentSyncAdapter();
     const checkpoints = new MemoryDocumentLocalCheckpointStore();
     const document = new Y.Doc({ guid: "document-1" });
@@ -1207,12 +1211,16 @@ describe("NodexYProvider", () => {
         storeEpoch: "store-restored",
       });
 
-      await waitUntil(() => checkpoints.clearedDocuments.length === 1);
+      await waitUntil(() => checkpoints.recoveries.length === 1);
       expect(provider.getStatus().phase).toBe("reset-required");
-      expect(provider.getStatus().pendingUpdateCount).toBe(0);
+      expect(provider.getStatus().pendingUpdateCount).toBe(1);
       expect(provider.getStatus().error?.code).toBe("store_epoch_mismatch");
       expect(adapter.applyCalls.length).toBe(0);
-      expect(checkpoints.clearedDocuments[0]).toBe("document-1");
+      expect(checkpoints.recoveries[0]?.storeEpoch).toBe("store-1");
+      const recovered = new Y.Doc();
+      Y.applyUpdate(recovered, checkpoints.recoveries[0]!.state);
+      expect(recovered.getText("title").toString()).toBe("must not cross restore");
+      recovered.destroy();
     } finally {
       provider.destroy();
       document.destroy();
@@ -1491,4 +1499,138 @@ describe("NodexYProvider", () => {
       adapter.destroy();
     }
   });
+});
+
+test("an older checkpoint completion cannot claim protection for a newer local edit", async () => {
+  const adapter = new MemoryDocumentSyncAdapter();
+  seedCanonicalPageDocument(adapter, "Base");
+  const checkpoints = new MemoryDocumentLocalCheckpointStore();
+  const document = new Y.Doc({ guid: "document-1" });
+  const provider = new NodexYProvider({
+    documentId: "document-1",
+    document,
+    adapter,
+    autoConnect: false,
+    localCheckpointStore: checkpoints,
+  });
+  const gate = deferred<void>();
+  try {
+    await provider.connect();
+    await provider.checkpoint();
+    checkpoints.writeGate = gate.promise;
+    openPageDocument(document).title.insert(4, " first");
+    const oldWrite = provider.checkpoint();
+    openPageDocument(document).title.insert(10, " second");
+    gate.resolve(undefined);
+    await oldWrite;
+    expect(provider.getStatus().checkpoint).toMatchObject({
+      phase: "ready",
+      localVersion: 2,
+      protectedVersion: 1,
+    });
+    await provider.checkpoint();
+    expect(provider.getStatus().checkpoint).toMatchObject({ localVersion: 2, protectedVersion: 2 });
+  } finally {
+    gate.resolve(undefined);
+    provider.destroy();
+    document.destroy();
+    adapter.destroy();
+  }
+});
+
+test("an unresolved previous-session save becomes an exportable draft without replaying or blocking canonical editing", async () => {
+  const adapter = new MemoryDocumentSyncAdapter();
+  seedCanonicalPageDocument(adapter, "canonical");
+  const checkpoints = new MemoryDocumentLocalCheckpointStore();
+  const draft = new Y.Doc();
+  Y.applyUpdate(draft, Y.encodeStateAsUpdate(adapter.serverDocument));
+  const update = captureUpdate(draft, () => draft.getText("title").insert(0, "unconfirmed "));
+  await checkpoints.write({
+    documentId: "document-1",
+    storeEpoch: adapter.storeEpoch,
+    generation: adapter.generation,
+    headSeq: adapter.headSeq,
+    state: Y.encodeStateAsUpdate(draft),
+    updatedAt: new Date().toISOString(),
+    submissions: [
+      {
+        documentId: "document-1",
+        storeEpoch: adapter.storeEpoch,
+        generation: adapter.generation,
+        baseHeadSeq: adapter.headSeq,
+        clientSessionId: "old-window",
+        updateId: "old-update",
+        update,
+        touchedBlockIds: [],
+      },
+    ],
+  });
+  const document = new Y.Doc({ guid: "document-1" });
+  const provider = new NodexYProvider({
+    documentId: "document-1",
+    document,
+    adapter,
+    localCheckpointStore: checkpoints,
+    clientSessionId: "new-window",
+    autoConnect: false,
+  });
+  try {
+    await provider.connect();
+    await waitUntil(() => provider.getStatus().recoveredDraftCount === 1);
+    expect(document.getText("title").toString()).toBe("canonical");
+    expect(adapter.applyCalls).toHaveLength(0);
+    const exported = JSON.parse(await provider.exportRecovery());
+    expect(exported.snapshots[0].submissions[0]).toMatchObject({
+      clientSessionId: "old-window",
+      updateId: "old-update",
+    });
+    document.getText("title").insert(0, "next ");
+    await provider.flush();
+    expect(adapter.serverDocument.getText("title").toString()).toBe("next canonical");
+  } finally {
+    provider.destroy();
+    document.destroy();
+    draft.destroy();
+    adapter.destroy();
+  }
+});
+
+test("connect waits for a canonical resync requested by the first physical connection event", async () => {
+  const adapter = new MemoryDocumentSyncAdapter();
+  seedCanonicalPageDocument(adapter, "canonical");
+  adapter.syncHandler = async (request) => {
+    await Promise.resolve();
+    adapter.syncHandler = null;
+    adapter.emit({
+      kind: "connection",
+      documentId: "document-1",
+      clientSessionId: "test-session",
+      state: "connected",
+    });
+    return success({
+      documentId: request.documentId,
+      storeEpoch: adapter.storeEpoch,
+      generation: adapter.generation,
+      headSeq: adapter.headSeq,
+      stateVector: Y.encodeStateVector(adapter.serverDocument),
+      update: Y.encodeStateAsUpdate(adapter.serverDocument, request.stateVector),
+    });
+  };
+  const document = new Y.Doc({ guid: "document-1" });
+  const provider = new NodexYProvider({
+    documentId: "document-1",
+    document,
+    adapter,
+    localCheckpointStore: null,
+    autoConnect: false,
+  });
+  try {
+    await provider.connect();
+    expect(provider.getStatus().phase).toBe("synced");
+    expect(document.getText("title").toString()).toBe("canonical");
+  } finally {
+    provider.destroy();
+    document.destroy();
+    adapter.destroy();
+  }
 });

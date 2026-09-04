@@ -1,3 +1,5 @@
+mod recovery_drafts;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -121,6 +123,7 @@ struct DocumentUpdateJob {
     prepared_agent: Option<PreparedAgentExecutionJob>,
     semantic_block_etag_ids: Vec<String>,
     include_local_block_etags: bool,
+    recovery: Option<recovery_drafts::RecoveryCommit>,
 }
 
 struct PreparedAgentExecutionJob {
@@ -317,6 +320,54 @@ impl OwnedDocumentModule {
             return Err(invalid("Unsupported Owned Document contract version"));
         }
         match request.read {
+            OwnedDocumentRead::Recovery { read } => self.read_recovery(context, read),
+            OwnedDocumentRead::RecoveryArtifact {
+                document_id,
+                artifact_id,
+                store_epoch,
+                generation,
+            } => self
+                .readers
+                .read_default(|connection| {
+                    let authority = read_document_authority(connection, &document_id)?
+                        .ok_or_else(|| not_found("Owned Document was not found"))?;
+                    authorize_document_access(
+                        connection,
+                        context,
+                        &authority,
+                        DocumentAccessKind::Read,
+                    )?;
+                    let current_epoch = read_store_epoch(connection)?;
+                    if store_epoch.0 != current_epoch || generation != authority.head.generation {
+                        return Err(not_found(
+                            "Recovery artifact belongs to another document boundary",
+                        ));
+                    }
+                    let artifact = super::recovery::get_recovery_artifact(
+                        connection,
+                        &document_id,
+                        &artifact_id,
+                        &current_epoch,
+                        generation,
+                    )?
+                    .ok_or_else(|| not_found("Recovery artifact was not found"))?;
+                    let commit_head = read_local_commit_head(connection)?;
+                    let authorization = issue_descriptor_read_stamp(
+                        connection,
+                        context,
+                        &authority,
+                        &current_epoch,
+                        commit_head,
+                    )?;
+                    Ok(ModuleReadSnapshot {
+                        contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                        store_epoch: StoreEpoch(current_epoch),
+                        commit_head,
+                        authorization: Some(authorization),
+                        value: OwnedDocumentReadValue::RecoveryArtifact { artifact },
+                    })
+                })
+                .map_err(core_error),
             OwnedDocumentRead::Descriptor { owner_block_id } => self
                 .readers
                 .read_default(|connection| {
@@ -626,6 +677,12 @@ impl OwnedDocumentModule {
             return Err(invalid("Unsupported Owned Document contract version"));
         }
         match request.intent {
+            OwnedDocumentIntent::CaptureRecovery { capture } => {
+                self.capture_recovery(context, request.operation_id, request.store_epoch, *capture)
+            }
+            OwnedDocumentIntent::ResolveRecovery { resolve } => {
+                self.resolve_recovery(context, request.operation_id, request.store_epoch, resolve)
+            }
             OwnedDocumentIntent::PrepareOwner { owner_block_id } => self.prepare_owner(
                 context,
                 request.operation_id,
@@ -1414,6 +1471,7 @@ impl OwnedDocumentModule {
                             .map_or_else(|| sqlite_now(&transaction), Ok)?;
                         let committed = crate::ModuleWriterResult {
                             value: OwnedDocumentCommitValue {
+                                recovery: None,
                                 document_id: executed.primary_document_id.clone(),
                                 generation: executed.generation,
                                 head_seq: executed.head_seq,
@@ -2467,6 +2525,7 @@ impl OwnedDocumentModule {
                 prepared_agent: None,
                 semantic_block_etag_ids: Vec::new(),
                 include_local_block_etags: false,
+                recovery: None,
             },
             move |connection, authority, engine, materialization, store_epoch| {
                 if base_head_seq > authority.head.head_seq {
@@ -2688,6 +2747,7 @@ impl OwnedDocumentModule {
                 }),
                 semantic_block_etag_ids,
                 include_local_block_etags,
+                recovery: None,
             },
             move |connection, authority, engine, materialization, store_epoch| {
                 prepare_semantic_update(
@@ -2749,6 +2809,7 @@ impl OwnedDocumentModule {
                 prepared_agent: None,
                 semantic_block_etag_ids: Vec::new(),
                 include_local_block_etags: false,
+                recovery: None,
             },
             move |connection, authority, engine, materialization, _store_epoch| {
                 assert_document_head(authority, generation, expected_head_seq)?;
@@ -2865,6 +2926,7 @@ impl OwnedDocumentModule {
                 prepared_agent: None,
                 semantic_block_etag_ids: Vec::new(),
                 include_local_block_etags: false,
+                recovery: None,
             },
             move |connection, authority, engine, materialization, _store_epoch| {
                 assert_document_head(authority, generation, expected_head_seq)?;
@@ -3186,6 +3248,7 @@ impl OwnedDocumentModule {
                 prepared_agent: None,
                 semantic_block_etag_ids: Vec::new(),
                 include_local_block_etags: false,
+                recovery: None,
             },
             move |connection, authority, engine, materialization, _store_epoch| {
                 assert_document_head(authority, generation, expected_head_seq)?;
@@ -3661,11 +3724,15 @@ impl OwnedDocumentModule {
                     transaction.commit()?;
                     return Err(StoreError::new(
                         StoreErrorCode::RevisionConflict,
-                        format!(
-                            "Stale Yjs update crossed a structural barrier; recovery artifact {artifact_id}"
-                        ),
+                        "This edit conflicts with a structural change. A recovery copy is available.",
                         false,
-                    ));
+                    ).with_recovery(CoreErrorRecovery::DocumentRecoveryArtifact {
+                        artifact_id,
+                        document_id: authority.head.id.clone(),
+                        store_epoch: StoreEpoch(store_epoch.clone()),
+                        generation: authority.head.generation,
+                        update_id: job.operation_id.clone(),
+                    }));
                 }
                 let PreparedUpdate::Apply {
                     base_head_seq,
@@ -3700,16 +3767,7 @@ impl OwnedDocumentModule {
                         &base_materialization,
                         &mut committed,
                     )?;
-                    insert_typed_receipt(
-                        &transaction,
-                        &job.context,
-                        &job.operation_id,
-                        &job.request_hash,
-                        &store_epoch,
-                        job.operation_kind,
-                    &mut committed,
-                    None,
-                )?;
+                    recovery_drafts::finish_or_record_noop(&transaction, &job, &mut committed)?;
                     transaction.commit()?;
                     consume_prepared_agent_lease(&mut prepared_agent_lease)?;
                     cache
@@ -3746,16 +3804,7 @@ impl OwnedDocumentModule {
                         &base_materialization,
                         &mut committed,
                     )?;
-                    insert_typed_receipt(
-                        &transaction,
-                        &job.context,
-                        &job.operation_id,
-                        &job.request_hash,
-                        &store_epoch,
-                        job.operation_kind,
-                    &mut committed,
-                    None,
-                )?;
+                    recovery_drafts::finish_or_record_noop(&transaction, &job, &mut committed)?;
                     transaction.commit()?;
                     consume_prepared_agent_lease(&mut prepared_agent_lease)?;
                     cache
@@ -3908,6 +3957,7 @@ impl OwnedDocumentModule {
                             persisted.head_seq,
                             persisted.state_vector,
                         ));
+                        recovery_drafts::finish(scope, &job, &mut committed)?;
                         seal_typed_receipt(
                             scope,
                             job.operation_kind,
@@ -4250,6 +4300,7 @@ fn committed_value(
 ) -> crate::ModuleWriterResult<OwnedDocumentCommitValue, OwnedDocumentReceipt> {
     crate::ModuleWriterResult {
         value: OwnedDocumentCommitValue {
+            recovery: None,
             document_id: authority.head.id.clone(),
             generation: authority.head.generation,
             head_seq,
@@ -5890,7 +5941,7 @@ fn core_error(error: StoreError) -> CoreError {
         code,
         message: error.message,
         retryable: error.retryable,
-        recovery: CoreErrorRecovery::None,
+        recovery: error.recovery.unwrap_or(CoreErrorRecovery::None),
     }
 }
 
@@ -5955,6 +6006,7 @@ fn sqlite_now(connection: &rusqlite::Connection) -> Result<String, StoreError> {
 
 #[cfg(test)]
 mod tests {
+    mod recovery;
     use std::fs;
 
     use nodex_core_contracts::agent::{
@@ -10992,6 +11044,48 @@ mod tests {
     }
 
     #[test]
+    fn releasing_an_old_physical_lease_keeps_its_replacement_authorized() {
+        let seeded = seeded_module();
+        let realtime = super::super::OwnedDocumentRealtimeAdapter::new(seeded.module.clone());
+        let bound = context();
+        let first = realtime
+            .subscribe(
+                &bound,
+                DOCUMENT_ID.to_owned(),
+                "replacement-client".to_owned(),
+            )
+            .unwrap();
+        let replacement = realtime
+            .subscribe(
+                &bound,
+                DOCUMENT_ID.to_owned(),
+                "replacement-client".to_owned(),
+            )
+            .unwrap();
+        assert_ne!(first.lease_id, replacement.lease_id);
+        realtime
+            .release_lease(&bound.connection_id, "replacement-client", first.lease_id)
+            .unwrap();
+        assert!(
+            realtime
+                .require_subscription(&bound.connection_id, "replacement-client", DOCUMENT_ID)
+                .is_ok()
+        );
+        realtime
+            .release_lease(
+                &bound.connection_id,
+                "replacement-client",
+                replacement.lease_id,
+            )
+            .unwrap();
+        assert!(
+            realtime
+                .require_subscription(&bound.connection_id, "replacement-client", DOCUMENT_ID)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn stale_yjs_updates_crossing_structural_barriers_become_recovery_artifacts() {
         let seeded = seeded_module();
         let materialization = materialize_engine(
@@ -11052,12 +11146,64 @@ mod tests {
             "{}",
             recovery.message
         );
-        assert!(recovery.message.contains("document-recovery:"));
+        let CoreErrorRecovery::DocumentRecoveryArtifact {
+            ref artifact_id,
+            ref document_id,
+            ref update_id,
+            generation,
+            ..
+        } = recovery.recovery
+        else {
+            panic!("Structural rejection must include typed recovery evidence");
+        };
+        assert!(artifact_id.starts_with("document-recovery:"));
+        assert_eq!(document_id, DOCUMENT_ID);
+        assert_eq!(update_id, "update:stale-across-barrier");
+        assert_eq!(generation, 1);
+        let artifact_read = OwnedDocumentRead::RecoveryArtifact {
+            document_id: DOCUMENT_ID.to_owned(),
+            artifact_id: artifact_id.clone(),
+            store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+            generation: 1,
+        };
+        let snapshot = seeded
+            .module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                    read: artifact_read.clone(),
+                },
+            )
+            .unwrap();
+        let OwnedDocumentReadValue::RecoveryArtifact { artifact } = snapshot.value else {
+            panic!("Expected recovery artifact");
+        };
+        assert_eq!(artifact.update_id, "update:stale-across-barrier");
+        assert!(!artifact.update.is_empty());
+        assert_eq!(artifact.update_hash, sha256(&artifact.update));
+        let mut denied = context();
+        denied.project_id = Some(nodex_core_contracts::ProjectId(
+            "project:unrelated".to_owned(),
+        ));
+        assert!(
+            seeded
+                .module
+                .read(
+                    &denied,
+                    ModuleReadRequest {
+                        contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                        read: artifact_read
+                    }
+                )
+                .is_err()
+        );
         let repeated = seeded
             .module
             .apply(&context(), request.clone())
             .expect_err("recovery decision is durable");
         assert_eq!(repeated.message, recovery.message);
+        assert_eq!(repeated.recovery, recovery.recovery);
         let mut changed_request = request;
         let OwnedDocumentIntent::ApplyYjsUpdate { update, .. } = &mut changed_request.intent else {
             unreachable!()
@@ -11320,7 +11466,10 @@ mod tests {
             )
             .expect_err("whole-Document fence rejects disjoint stale insertions");
         assert_eq!(recovery.code, CoreErrorCode::RevisionConflict);
-        assert!(recovery.message.contains("document-recovery:"));
+        assert!(matches!(
+            recovery.recovery,
+            CoreErrorRecovery::DocumentRecoveryArtifact { .. }
+        ));
         seeded
             .kernel
             .readers()

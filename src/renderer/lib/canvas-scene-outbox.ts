@@ -1,3 +1,5 @@
+import { encodeRecoveryEnvelope } from "./document-recovery-package";
+import type { PortableCanvasScene } from "../../shared/block-documents";
 import {
   canonicalizeCanvasSceneMutationIntent,
   encodeCanonicalCanvasSceneMutationIntent,
@@ -11,6 +13,7 @@ import {
 } from "../../shared/content-access-context";
 
 export interface QuarantinedCanvasSceneMutation {
+  readonly scene?: PortableCanvasScene;
   readonly intent: CanvasSceneMutationIntent;
   readonly error: CanvasSceneMutationError;
   readonly rejectedAt: number;
@@ -31,6 +34,7 @@ export interface CanvasSceneOutbox {
     intent: CanvasSceneMutationIntent,
     error: CanvasSceneMutationError,
     rejectedAt: number,
+    scene?: PortableCanvasScene,
   ) => Promise<void>;
   remove: (
     accessContext: ContentAccessContext,
@@ -39,6 +43,24 @@ export interface CanvasSceneOutbox {
   ) => Promise<void>;
   clear: (accessContext: ContentAccessContext, documentId: string) => Promise<void>;
 }
+
+export const MAX_CANVAS_OUTBOX_MUTATIONS = 256;
+export const MAX_CANVAS_OUTBOX_BYTES = 32 * 1024 * 1024;
+const mutationBytes = (intent: CanvasSceneMutationIntent): number =>
+  new TextEncoder().encode(encodeCanonicalCanvasSceneMutationIntent(intent)).byteLength;
+const assertOutboxCapacity = (
+  existing: readonly CanvasSceneMutationIntent[],
+  next: CanvasSceneMutationIntent,
+): void => {
+  const bytes = existing.reduce(
+    (total, intent) => total + mutationBytes(intent),
+    mutationBytes(next),
+  );
+  if (existing.length >= MAX_CANVAS_OUTBOX_MUTATIONS || bytes > MAX_CANVAS_OUTBOX_BYTES)
+    throw new Error(
+      "Unsaved Canvas changes reached the local limit. Export recovery before continuing.",
+    );
+};
 
 const outboxBoundaryKey = (
   libraryId: string,
@@ -95,6 +117,7 @@ export class MemoryCanvasSceneOutbox implements CanvasSceneOutbox {
       throw new Error(`Canvas mutation ${intent.mutationId} already exists in the outbox`);
     }
     if (existing) return;
+    assertOutboxCapacity([...documentIntents.values()], intent);
     documentIntents.set(intent.mutationId, intent);
     this.intents.set(boundary, documentIntents);
   };
@@ -103,6 +126,7 @@ export class MemoryCanvasSceneOutbox implements CanvasSceneOutbox {
     input: CanvasSceneMutationIntent,
     error: CanvasSceneMutationError,
     rejectedAt: number,
+    scene?: PortableCanvasScene,
   ): Promise<void> => {
     const intent = canonicalizeCanvasSceneMutationIntent(input);
     const boundary = outboxBoundaryKey(this.libraryId, intent.accessContext, intent.documentId);
@@ -111,16 +135,17 @@ export class MemoryCanvasSceneOutbox implements CanvasSceneOutbox {
     if (!active) return;
     const documentQuarantine =
       this.quarantined.get(boundary) ?? new Map<string, QuarantinedCanvasSceneMutation>();
+    if (
+      !documentQuarantine.has(intent.mutationId) &&
+      documentQuarantine.size >= MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT
+    )
+      throw new Error("Canvas recovery storage is full; export recovery before continuing");
     documentQuarantine.set(intent.mutationId, {
       intent,
       error,
       rejectedAt,
+      scene,
     });
-    while (documentQuarantine.size > MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT) {
-      const oldest = documentQuarantine.keys().next().value;
-      if (typeof oldest !== "string") break;
-      documentQuarantine.delete(oldest);
-    }
     this.quarantined.set(boundary, documentQuarantine);
     documentIntents?.delete(intent.mutationId);
     if (documentIntents?.size === 0) this.intents.delete(boundary);
@@ -161,6 +186,7 @@ interface StoredCanvasSceneMutation {
 }
 
 interface StoredQuarantinedCanvasSceneMutation {
+  readonly scene?: PortableCanvasScene;
   readonly rejectedSequence?: number;
   readonly libraryId: string;
   readonly accessKey: string;
@@ -420,6 +446,7 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         intent: canonicalizeCanvasSceneMutationIntent(entry.intent),
         error: entry.error,
         rejectedAt: entry.rejectedAt,
+        scene: entry.scene,
       }));
   };
 
@@ -448,6 +475,27 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
       transaction.abort();
       throw new Error(`Canvas mutation ${intent.mutationId} already exists in the outbox`);
     }
+    const activeRows = (await requestResult(
+      store
+        .index(DOCUMENT_SEQUENCE_INDEX)
+        .getAll(
+          IDBKeyRange.bound(
+            [this.libraryId, accessKey, intent.documentId, 0],
+            [this.libraryId, accessKey, intent.documentId, Number.MAX_SAFE_INTEGER],
+          ),
+        ),
+    )) as StoredCanvasSceneMutation[];
+    try {
+      assertOutboxCapacity(
+        activeRows.map((value) => value.intent),
+        intent,
+      );
+    } catch (error) {
+      const completed = transactionComplete(transaction);
+      transaction.abort();
+      await completed.catch(() => undefined);
+      throw error;
+    }
     store.add({
       libraryId: this.libraryId,
       accessKey,
@@ -462,6 +510,7 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
     input: CanvasSceneMutationIntent,
     error: CanvasSceneMutationError,
     rejectedAt: number,
+    scene?: PortableCanvasScene,
   ): Promise<void> => {
     const intent = canonicalizeCanvasSceneMutationIntent(input);
     const accessKey = contentAccessContextKey(intent.accessContext);
@@ -492,6 +541,7 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         intent,
         error,
         rejectedAt,
+        scene,
       } satisfies StoredQuarantinedCanvasSceneMutation);
     }
     activeStore.delete(activeKey);
@@ -505,11 +555,11 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
           ),
         ),
     );
-    const surplus = rejectedKeys.length - MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT;
-    if (surplus > 0) {
-      for (const key of rejectedKeys.slice(0, surplus)) {
-        quarantineStore.delete(key);
-      }
+    if (rejectedKeys.length > MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT) {
+      const completed = transactionComplete(transaction);
+      transaction.abort();
+      await completed.catch(() => undefined);
+      throw new Error("Canvas recovery storage is full; export recovery before continuing");
     }
     await transactionComplete(transaction);
   };
@@ -559,6 +609,75 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         reject(request.error ?? new Error("Could not clear the Canvas scene outbox"));
     });
     await transactionComplete(transaction);
+  };
+
+  /** Read a single retained package across access contexts, scoped to its Library. */
+  nextRecovery = async (
+    after?: IDBValidKey,
+  ): Promise<{ key: IDBValidKey; snapshot: QuarantinedCanvasSceneMutation } | null> => {
+    const database = await this.getDatabase();
+    const transaction = database.transaction(QUARANTINE_STORE, "readonly");
+    const completed = transactionComplete(transaction);
+    const value = await new Promise<{
+      key: IDBValidKey;
+      snapshot: QuarantinedCanvasSceneMutation;
+    } | null>((resolve, reject) => {
+      const request = transaction
+        .objectStore(QUARANTINE_STORE)
+        .openCursor(after === undefined ? null : IDBKeyRange.lowerBound(after, true));
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(null);
+          return;
+        }
+        const entry = cursor.value as StoredQuarantinedCanvasSceneMutation;
+        if (entry.libraryId !== this.libraryId) {
+          cursor.continue();
+          return;
+        }
+        resolve({
+          key: cursor.primaryKey,
+          snapshot: {
+            intent: canonicalizeCanvasSceneMutationIntent(entry.intent),
+            error: entry.error,
+            rejectedAt: entry.rejectedAt,
+            scene: entry.scene,
+          },
+        });
+      };
+    });
+    await completed;
+    return value;
+  };
+
+  acknowledgeRecovery = async (snapshot: QuarantinedCanvasSceneMutation): Promise<void> => {
+    const database = await this.getDatabase();
+    const transaction = database.transaction(QUARANTINE_STORE, "readwrite");
+    const completed = transactionComplete(transaction);
+    const store = transaction.objectStore(QUARANTINE_STORE);
+    const key = await requestResult(
+      store
+        .index(DOCUMENT_MUTATION_INDEX)
+        .getKey([
+          this.libraryId,
+          contentAccessContextKey(snapshot.intent.accessContext),
+          snapshot.intent.documentId,
+          snapshot.intent.mutationId,
+        ]),
+    );
+    if (key !== undefined) {
+      const current = (await requestResult(store.get(key))) as StoredQuarantinedCanvasSceneMutation;
+      const envelope = {
+        intent: canonicalizeCanvasSceneMutationIntent(current.intent),
+        error: current.error,
+        rejectedAt: current.rejectedAt,
+        scene: current.scene,
+      };
+      if (encodeRecoveryEnvelope(envelope) === encodeRecoveryEnvelope(snapshot)) store.delete(key);
+    }
+    await completed;
   };
 
   private getDatabase(): Promise<IDBDatabase> {

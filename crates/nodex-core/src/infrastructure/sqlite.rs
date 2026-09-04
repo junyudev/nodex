@@ -65,6 +65,8 @@ pub struct StoreError {
     pub code: StoreErrorCode,
     pub message: String,
     pub retryable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<nodex_core_contracts::CoreErrorRecovery>,
 }
 
 impl StoreError {
@@ -73,7 +75,13 @@ impl StoreError {
             code,
             message: message.into(),
             retryable,
+            recovery: None,
         }
+    }
+
+    pub fn with_recovery(mut self, recovery: nodex_core_contracts::CoreErrorRecovery) -> Self {
+        self.recovery = Some(recovery);
+        self
     }
 
     pub fn from_sqlite(error: rusqlite::Error) -> Self {

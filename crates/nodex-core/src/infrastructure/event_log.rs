@@ -460,7 +460,7 @@ impl CoreEventLog {
         )
     }
 
-    /// Resolves projection/revocation-only packets for one trusted Host broker
+    /// Resolves metadata packets (atoms, projections and revocations) for one trusted Host broker
     /// publication. The commit is verified once and every requested audience
     /// is authorized by Core inside the same read transaction.
     pub fn authorized_projection_live_packets(
@@ -863,7 +863,7 @@ fn resolve_projection_live_packets(
                 context: &context,
                 audience: DeliveryAudience::BoundScope,
                 document_id: None,
-                resource_mode: DeliveryResourceMode::ProjectionOnly,
+                resource_mode: DeliveryResourceMode::MetadataOnly,
             },
         )? {
             packets.push(packet);

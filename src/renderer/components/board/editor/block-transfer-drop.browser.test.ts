@@ -33,40 +33,32 @@ describe("nested Block transfer targets in Chromium", () => {
     outer.append(outerContent, inner);
     document.body.append(outer);
 
-    const outerCleanup = setupBlockTransferDocumentDrop(
-      outer,
-      { document: [] },
-      {
-        ...structuralPreparation,
-        surfaceId: "surface-outer",
-        projectId: "project-a",
-        documentId: "document-outer",
-        storeEpoch: "epoch-a",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-outer",
-        transfer: async () => {
-          throw new Error("The test does not drop");
-        },
-        reportError: () => undefined,
+    const outerCleanup = setupBlockTransferDocumentDrop(outer, { document: [] }, () => ({
+      ...structuralPreparation,
+      surfaceId: "surface-outer",
+      projectId: "project-a",
+      documentId: "document-outer",
+      storeEpoch: "epoch-a",
+      ancestorPageIds: [],
+      createOperationId: () => "operation-outer",
+      transfer: async () => {
+        throw new Error("The test does not drop");
       },
-    );
-    const innerCleanup = setupBlockTransferDocumentDrop(
-      inner,
-      { document: [] },
-      {
-        ...structuralPreparation,
-        surfaceId: "surface-inner",
-        projectId: "project-a",
-        documentId: "document-inner",
-        storeEpoch: "epoch-a",
-        ancestorPageIds: [],
-        createOperationId: () => "operation-inner",
-        transfer: async () => {
-          throw new Error("The test does not drop");
-        },
-        reportError: () => undefined,
+      reportError: () => undefined,
+    }));
+    const innerCleanup = setupBlockTransferDocumentDrop(inner, { document: [] }, () => ({
+      ...structuralPreparation,
+      surfaceId: "surface-inner",
+      projectId: "project-a",
+      documentId: "document-inner",
+      storeEpoch: "epoch-a",
+      ancestorPageIds: [],
+      createOperationId: () => "operation-inner",
+      transfer: async () => {
+        throw new Error("The test does not drop");
       },
-    );
+      reportError: () => undefined,
+    }));
     const dataTransfer = new DataTransfer();
     beginLocalBlockDragSession(
       {

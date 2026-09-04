@@ -1,3 +1,4 @@
+import type { DocumentWaitOptions } from "@/lib/document-wait";
 import {
   useEffect,
   useLayoutEffect,
@@ -1634,7 +1635,7 @@ function NfmEditorInstance({
     if (!surfaceMutationBarrier) return undefined;
     return {
       documentId: source.documentId,
-      prepareAndFence: async () => {
+      prepareAndFence: async (options?: DocumentWaitOptions) => {
         const container = containerRef.current;
         if (!container) {
           throw new Error("The Page editor is not ready for a structural mutation.");
@@ -1643,6 +1644,7 @@ function NfmEditorInstance({
           editor as unknown as NfmEditorStructuralMutationRuntime,
           container,
           surfaceMutationBarrier,
+          options,
         );
       },
     };
@@ -1678,7 +1680,6 @@ function NfmEditorInstance({
       onClipboardFallback: (message) => toast.info(message),
       onFileOwnershipMoves: reportPageFileOwnershipMoveCollisions,
     });
-    return () => structuralEditingController.deactivate(structuralEditingSession);
   }, [
     contentAccessContext,
     source.documentId,
@@ -1690,6 +1691,12 @@ function NfmEditorInstance({
     surfaceMutationBarrier,
     structuralMutationParticipant,
   ]);
+
+  // Updating callbacks/props preserves a pending save wait; only leaving this view cancels it.
+  useLayoutEffect(
+    () => () => structuralEditingController.deactivate(structuralEditingSession),
+    [structuralEditingController, structuralEditingSession],
+  );
 
   useEffect(
     () => () => {
@@ -2179,12 +2186,12 @@ function NfmEditorInstance({
         ...(sourcePageContext?.pageId ? { hostPageId: sourcePageContext.pageId } : {}),
         ancestorPageIds: parentBlockReferenceRuntime?.ancestorPageIds ?? [],
         prepareAndFence: structuralMutationParticipant.prepareAndFence,
-        prepareSourceAndFence: async (sourceSurfaceId: string) => {
+        prepareSourceAndFence: async (sourceSurfaceId: string, options?: DocumentWaitOptions) => {
           const participant = resolveBlockDocumentStructuralMutationParticipant(sourceSurfaceId);
           if (!participant) {
             throw new Error("The dragged Page editor changed; start the drag again.");
           }
-          return await participant.prepareAndFence();
+          return await participant.prepareAndFence(options);
         },
         createOperationId: createUuidV7,
         transfer: (intent: Parameters<typeof transferBlocks>[1]) =>

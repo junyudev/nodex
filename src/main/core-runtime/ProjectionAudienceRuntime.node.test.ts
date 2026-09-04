@@ -102,6 +102,41 @@ const subscribeReady = (
     return subscription;
   });
 
+it.effect("reuses the active Core grant after all windows briefly release an address", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness();
+    const first = sender(1);
+    const subscription = yield* subscribeReady(harness, first);
+    yield* subscription.release;
+
+    // Scope churn can return before the broker replaces its physical stream.
+    const next = sender(2);
+    yield* harness.runtime.subscribe(next, address("project-1"));
+    const reset = harness.sent.at(-1)!.envelope;
+    assert.strictEqual(reset.payload.kind, "reset");
+    assert.isTrue(yield* acknowledge(harness.runtime, next.id, reset));
+    assert.strictEqual((yield* harness.runtime.publish(packet(1))).sent, 1);
+
+    yield* harness.runtime.releaseSender(next.id);
+    harness.sent.length = 0;
+    yield* harness.runtime.subscribe(first, address("project-1"));
+    const reopenedReset = harness.sent.at(-1)!.envelope;
+    assert.strictEqual(reopenedReset.payload.kind, "reset");
+    assert.isTrue(yield* acknowledge(harness.runtime, first.id, reopenedReset));
+    assert.strictEqual((yield* harness.runtime.publish(packet(2))).sent, 1);
+
+    // Only a replacement Core barrier retires the old grant.
+    yield* harness.runtime.installLeases(
+      [lease("project-2")],
+      { storeEpoch: "epoch-1", commitSeq: 2 },
+      [address("project-2")],
+      "stream_gap",
+    );
+    assert.strictEqual((yield* harness.runtime.publish(packet(3))).sent, 0);
+    yield* Scope.close(harness.ownerScope, Exit.void);
+  }),
+);
+
 it.effect("tracks a complete packet until the exact renderer ACK", () =>
   Effect.gen(function* () {
     const harness = yield* makeHarness();
@@ -422,13 +457,19 @@ it.effect("carries an in-flight floor across exact lease replacement", () =>
   }),
 );
 
-it.effect("prunes a sender's retired Core lease before a later subscription", () =>
+it.effect("does not reuse a grant retired by a replacement Core barrier", () =>
   Effect.gen(function* () {
     const harness = yield* makeHarness();
     const target = sender();
     yield* subscribeReady(harness, target);
 
     yield* harness.runtime.releaseSender(target.id);
+    yield* harness.runtime.installLeases(
+      [],
+      { storeEpoch: "epoch-1", commitSeq: 1 },
+      [],
+      "stream_gap",
+    );
     harness.sent.length = 0;
     yield* harness.runtime.subscribe(target, address("project-1"));
     assert.lengthOf(harness.sent, 0);

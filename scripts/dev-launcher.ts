@@ -1,3 +1,7 @@
+import {
+  resolveDevelopmentRendererPort,
+  requireDevelopmentRendererPort,
+} from "./development-renderer-origin";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
@@ -44,6 +48,7 @@ export interface DevLauncherArguments {
   readonly authJson?: string;
   readonly agentConfigToml?: string;
   readonly remoteDebuggingPort?: string;
+  readonly rendererPort?: string;
   readonly enabledFeatures: readonly string[];
   readonly deleteHome: boolean;
   readonly help: boolean;
@@ -70,6 +75,7 @@ Options:
   --seed <seed-id>           Initialize a new environment from the seed catalog
   --from-profile <dir>       Clone a published backup from a real Profile
   --backup <id|latest>       Backup to clone (default: latest assets-inclusive backup)
+  --renderer-port <port>     Explicitly choose and persist this home’s renderer cache origin
   --build                    Build optimized Rust binaries and run without HMR
   --auth-json <file>         Copy an auth.json into the environment
   --agent-config-toml <file> Copy a sanitized agent config.toml
@@ -112,6 +118,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   let build = false;
   let deleteHome = false;
   let help = false;
+  let rendererPort: string | undefined;
   const enabledFeatures: string[] = [];
   const setOnce = (option: string, current: string | undefined, value: string): string => {
     if (current !== undefined) throw new Error(`${option} may be specified only once`);
@@ -131,6 +138,15 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     }
     if (argument === "--help" || argument === "-h") {
       help = true;
+      continue;
+    }
+    if (argument === "--renderer-port") {
+      rendererPort = setOnce(
+        argument,
+        rendererPort,
+        String(requireDevelopmentRendererPort(readOptionValue(args, index, argument))),
+      );
+      index += 1;
       continue;
     }
     if (argument === "--home") {
@@ -198,6 +214,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     ...(authJson === undefined ? {} : { authJson }),
     ...(agentConfigToml === undefined ? {} : { agentConfigToml }),
     ...(remoteDebuggingPort === undefined ? {} : { remoteDebuggingPort }),
+    ...(rendererPort === undefined ? {} : { rendererPort }),
     enabledFeatures,
     deleteHome,
     help,
@@ -619,7 +636,7 @@ export const runDevLauncher = (input: {
       yield* Effect.sync(() => process.stdout.write(USAGE));
       return 0;
     }
-    const environment = input.environment ?? process.env;
+    const environment = { ...(input.environment ?? process.env) };
     const recipe = yield* Effect.try({
       try: () => (arguments_.seed ? getScenario(arguments_.seed) : null),
       catch: devLauncherError,
@@ -631,6 +648,16 @@ export const runDevLauncher = (input: {
         initializeProfileHome: arguments_.fromProfile === undefined,
       }),
     );
+    if (!arguments_.build) {
+      const port = yield* attemptPromise(() =>
+        resolveDevelopmentRendererPort({
+          root: home.root,
+          nodexHome: home.nodexHome,
+          requestedPort: arguments_.rendererPort,
+        }),
+      );
+      environment.NODEX_DEV_RENDERER_PORT = String(port);
+    }
     const planResult = yield* Effect.result(
       Effect.try({
         try: () => createDevLaunchPlan({ arguments: arguments_, environment, home }),

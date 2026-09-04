@@ -8926,3 +8926,29 @@ mod page_lifecycle_mutation;
 mod page_property_mutation;
 mod page_write_semantic;
 mod structural_edit;
+
+/// Creates only content whose resource closure was verified by the Document recovery owner.
+pub(crate) fn create_recovery_copy(
+    scope: &crate::infrastructure::durable_mutation::DurableMutationScope<'_>,
+    context: &nodex_core_contracts::BoundModuleContext,
+    owner_id: &str,
+    document_id: &str,
+    preview: &nodex_core_contracts::document::RecoveryPreview,
+    assets_root: &std::path::Path,
+) -> Result<(), crate::infrastructure::sqlite::StoreError> {
+    match preview {
+        nodex_core_contracts::document::RecoveryPreview::Document {
+            rich_title, nfm, ..
+        } => mutation::create_recovery_page(scope, context, owner_id, document_id, rich_title, nfm),
+        nodex_core_contracts::document::RecoveryPreview::Canvas { scene } => {
+            canvas_mutation::create_recovery_canvas(
+                scope,
+                context,
+                owner_id,
+                document_id,
+                crate::document::parse_recovery_canvas(scene)?,
+                assets_root,
+            )
+        }
+    }
+}

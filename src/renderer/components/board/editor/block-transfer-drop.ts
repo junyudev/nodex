@@ -30,6 +30,12 @@ import {
   type CollapsedToggleDropTarget,
 } from "./toggle-drop";
 
+import {
+  DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+  waitForDocumentOperation,
+  type DocumentWaitOptions,
+} from "@/lib/document-wait";
+
 interface EditorBlock {
   readonly id: string;
   readonly type?: string;
@@ -50,9 +56,12 @@ export interface BlockTransferDropBoundary {
   readonly hostPageId?: string;
   readonly ancestorPageIds: readonly string[];
   /** Settles the destination editor and flushes its durable causal head. */
-  readonly prepareAndFence: () => Promise<DocumentHeadFence>;
+  readonly prepareAndFence: (options?: DocumentWaitOptions) => Promise<DocumentHeadFence>;
   /** Settles and flushes the actual drag source mounted in this renderer. */
-  readonly prepareSourceAndFence: (sourceSurfaceId: string) => Promise<DocumentHeadFence>;
+  readonly prepareSourceAndFence: (
+    sourceSurfaceId: string,
+    options?: DocumentWaitOptions,
+  ) => Promise<DocumentHeadFence>;
   readonly transfer: (intent: PublicBlockTransferIntent) => Promise<BlockTransferCommandResult>;
   readonly structuralTransfer: (input: {
     readonly mode: "move" | "copy";
@@ -319,8 +328,9 @@ const isInnermostPragmaticDropTarget = (
 export const setupBlockTransferDocumentDrop = (
   container: HTMLElement,
   editor: BlockTransferDropEditor,
-  boundary: BlockTransferDropBoundary,
+  readBoundary: () => BlockTransferDropBoundary,
 ): (() => void) => {
+  const lifetime = new AbortController();
   let indicator: HTMLDivElement | null = null;
   const toggleCue = createToggleDropCueController(container);
   const dropCursor = editor.getExtension?.(DropCursorExtension) as
@@ -335,6 +345,7 @@ export const setupBlockTransferDocumentDrop = (
     dropCursor?.clearDropCursor?.();
   };
   const canTransfer = (source: unknown): boolean => {
+    const boundary = readBoundary();
     if (!isBoardCardDragData(source)) return false;
     if (source.projectId !== boundary.projectId || source.storeEpoch !== boundary.storeEpoch) {
       return false;
@@ -366,18 +377,28 @@ export const setupBlockTransferDocumentDrop = (
   };
 
   const prepareStructuralMutation = async (
+    boundary: BlockTransferDropBoundary,
     sourceSurfaceId?: string,
   ): Promise<readonly DocumentHeadFence[]> => {
-    const tokens = await Promise.all([
-      boundary.prepareAndFence(),
-      sourceSurfaceId === undefined || sourceSurfaceId === boundary.surfaceId
-        ? undefined
-        : boundary.prepareSourceAndFence(sourceSurfaceId),
-    ]);
+    const options = {
+      signal: lifetime.signal,
+      deadlineAt: Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+    };
+    const tokens = await waitForDocumentOperation(
+      () =>
+        Promise.all([
+          boundary.prepareAndFence(options),
+          sourceSurfaceId === undefined || sourceSurfaceId === boundary.surfaceId
+            ? undefined
+            : boundary.prepareSourceAndFence(sourceSurfaceId, options),
+        ]),
+      options,
+    );
     return tokens.filter((token): token is DocumentHeadFence => token !== undefined);
   };
 
   const causalDependenciesFromTokens = (
+    boundary: BlockTransferDropBoundary,
     tokens: readonly DocumentHeadFence[],
   ): readonly BlockTransferDocumentHead[] => {
     const dependencies = new Map<string, BlockTransferDocumentHead>();
@@ -395,7 +416,7 @@ export const setupBlockTransferDocumentDrop = (
   };
 
   const reportFailure = (error: unknown, fallback: string): void => {
-    boundary.reportError(error instanceof Error ? error.message : fallback);
+    readBoundary().reportError(error instanceof Error ? error.message : fallback);
   };
 
   const pragmaticCleanup = dropTargetForElements({
@@ -435,6 +456,7 @@ export const setupBlockTransferDocumentDrop = (
     },
     onDragLeave: clear,
     onDrop: ({ source, location, self }) => {
+      const boundary = readBoundary();
       if (!isInnermostPragmaticDropTarget(location, self.element)) {
         clear();
         return;
@@ -452,7 +474,7 @@ export const setupBlockTransferDocumentDrop = (
       );
       const target = plan.target;
       clear();
-      void prepareStructuralMutation()
+      void prepareStructuralMutation(boundary)
         .then((tokens) =>
           boundary.transfer({
             operationId: boundary.createOperationId(),
@@ -460,7 +482,7 @@ export const setupBlockTransferDocumentDrop = (
             storeEpoch: boundary.storeEpoch,
             mode: resolveCrossSurfaceTransferMode(location.current.input),
             rootBlockIds: sourceData.dragItems.map((item) => item.card.id),
-            causalDependencies: causalDependenciesFromTokens(tokens),
+            causalDependencies: causalDependenciesFromTokens(boundary, tokens),
             source: {
               kind: "data_source",
               dataSourceId: sourceData.dataSourceId,
@@ -487,7 +509,7 @@ export const setupBlockTransferDocumentDrop = (
   });
 
   const unregisterManagedDropTarget = registerLocalBlockDragDropTarget({
-    surfaceId: boundary.surfaceId,
+    surfaceId: readBoundary().surfaceId,
     element: container,
     deactivate: clear,
   });
@@ -497,7 +519,7 @@ export const setupBlockTransferDocumentDrop = (
     if (!session) return null;
     if (
       !claimLocalBlockDragDropTarget({
-        surfaceId: boundary.surfaceId,
+        surfaceId: readBoundary().surfaceId,
         event,
       })
     ) {
@@ -506,6 +528,7 @@ export const setupBlockTransferDocumentDrop = (
     return session;
   };
   const canTransferPayload = (payload: CrossSurfaceBlockTransferPayload): boolean => {
+    const boundary = readBoundary();
     if (payload.projectId !== boundary.projectId || payload.storeEpoch !== boundary.storeEpoch) {
       return false;
     }
@@ -518,6 +541,7 @@ export const setupBlockTransferDocumentDrop = (
     event.stopPropagation();
   };
   const onNativeDragOver = (event: DragEvent) => {
+    const boundary = readBoundary();
     const session = resolveManagedSession(event);
     if (!session) return;
     claimManagedEvent(event);
@@ -556,10 +580,11 @@ export const setupBlockTransferDocumentDrop = (
     if (!resolveLocalBlockDragOverSession(event.dataTransfer)) return;
     const next = event.relatedTarget;
     if (next instanceof Node && container.contains(next)) return;
-    releaseLocalBlockDragDropTarget(boundary.surfaceId);
+    releaseLocalBlockDragDropTarget(readBoundary().surfaceId);
     clear();
   };
   const onNativeDrop = (event: DragEvent) => {
+    const boundary = readBoundary();
     const managedSession = resolveManagedSession(event);
     if (!managedSession) return;
     claimManagedEvent(event);
@@ -594,14 +619,11 @@ export const setupBlockTransferDocumentDrop = (
     ) {
       return;
     }
-    const targetHeadPromise = boundary.prepareAndFence();
-    const sourceHeadPromise =
-      session.sourceSurfaceId === boundary.surfaceId
-        ? targetHeadPromise
-        : boundary.prepareSourceAndFence(session.sourceSurfaceId);
-    void Promise.all([targetHeadPromise, sourceHeadPromise])
-      .then(([targetHead, sourceHead]) =>
-        boundary.structuralTransfer({
+    void prepareStructuralMutation(boundary, session.sourceSurfaceId)
+      .then(([targetHead, sourceHead = targetHead]) => {
+        if (!targetHead || !sourceHead)
+          throw new Error("The structural transfer has no durable document head.");
+        return boundary.structuralTransfer({
           mode,
           rootBlockIds: session.payload.rootBlockIds,
           sourceHead,
@@ -613,8 +635,8 @@ export const setupBlockTransferDocumentDrop = (
           ...(plan.kind === "append_children"
             ? { preferredSelectionBlockId: plan.target.parentBlockId }
             : {}),
-        }),
-      )
+        });
+      })
       .then(() => undefined)
       .catch((error: unknown) => reportFailure(error, "Structural transfer failed"));
   };
@@ -625,6 +647,7 @@ export const setupBlockTransferDocumentDrop = (
   container.addEventListener("drop", onNativeDrop, true);
 
   return () => {
+    lifetime.abort();
     clear();
     pragmaticCleanup();
     container.removeEventListener("dragenter", onNativeDragOver, true);

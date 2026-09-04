@@ -6,6 +6,30 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::persistence::{DocumentAuthorityRow, sha256};
 
+pub(crate) fn get_recovery_artifact(
+    connection: &Connection,
+    document_id: &str,
+    artifact_id: &str,
+    store_epoch: &str,
+    generation: i64,
+) -> Result<Option<nodex_core_contracts::document::DocumentRecoveryArtifact>, StoreError> {
+    let artifact = connection.query_row(
+        "SELECT id, document_id, store_epoch, generation, update_id, client_session_id, base_head_seq, update_blob, update_hash, created_at, expires_at FROM document_recovery_artifacts WHERE id = ?1 AND document_id = ?2 AND store_epoch = ?3 AND generation = ?4",
+        params![artifact_id, document_id, store_epoch, generation],
+        |row| Ok(nodex_core_contracts::document::DocumentRecoveryArtifact {
+            artifact_id: row.get(0)?, document_id: row.get(1)?, store_epoch: nodex_core_contracts::StoreEpoch(row.get(2)?),
+            generation: row.get(3)?, update_id: row.get(4)?, client_session_id: row.get(5)?, base_head_seq: row.get(6)?,
+            update: row.get(7)?, update_hash: row.get(8)?, created_at: row.get(9)?, expires_at: row.get(10)?,
+        }),
+    ).optional()?;
+    if let Some(value) = &artifact
+        && sha256(&value.update) != value.update_hash
+    {
+        return Err(corrupt("Recovery artifact integrity check failed"));
+    }
+    Ok(artifact)
+}
+
 pub(crate) struct StaleYjsUpdate<'a> {
     pub(crate) actor_project_id: &'a str,
     pub(crate) store_epoch: &'a str,

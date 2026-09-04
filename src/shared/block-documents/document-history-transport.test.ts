@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   bindTrustedDocumentVersionCheckpoint,
   DocumentHistoryContractError,
+  parseCreateDocumentVersionCheckpoint,
   parseDocumentVersionSummary,
   parseListDocumentVersions,
 } from "./document-history-transport";
@@ -42,6 +43,7 @@ describe("Document history transport contracts", () => {
   test("binds checkpoint actor at the trusted transport boundary", () => {
     const bound = bindTrustedDocumentVersionCheckpoint(
       {
+        operationId: "checkpoint:one",
         projectId: "project-1",
         storeEpoch: "epoch-1",
         documentId: "document-1",
@@ -56,6 +58,11 @@ describe("Document history transport contracts", () => {
     );
     expect(bound.actor.kind).toBe("electron_renderer");
     expect(bound.actor.clientId).toBe("window-1");
+    expect(bound.operationId).toBe("checkpoint:one");
+    const { operationId: _operationId, ...withoutIdentity } = bound;
+    expect(() => parseCreateDocumentVersionCheckpoint(withoutIdentity)).toThrow(
+      DocumentHistoryContractError,
+    );
   });
 
   test("rejects partial pagination cursors and cross-scope checkpoints", () => {
@@ -73,6 +80,7 @@ describe("Document history transport contracts", () => {
     try {
       bindTrustedDocumentVersionCheckpoint(
         {
+          operationId: "checkpoint:cross-scope",
           projectId: "project-2",
           storeEpoch: "epoch-1",
           documentId: "document-1",
@@ -96,6 +104,7 @@ describe("Document history transport contracts", () => {
     expect(() =>
       bindTrustedDocumentVersionCheckpoint(
         {
+          operationId: "checkpoint:inconsistent-evidence",
           projectId: "project-1",
           storeEpoch: "epoch-1",
           documentId: "document-1",

@@ -30,6 +30,7 @@ pub enum DocumentSubscriptionEngine {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentSubscriptionAck {
+    pub lease_id: u64,
     pub document_id: String,
     pub store_epoch: StoreEpoch,
     pub generation: i64,
@@ -63,6 +64,7 @@ pub struct DocumentRealtimeActivity {
 }
 
 struct Subscription {
+    lease_id: u64,
     context: BoundModuleContext,
     document_id: String,
     client_session_id: String,
@@ -84,6 +86,7 @@ struct RealtimeState {
 pub struct OwnedDocumentRealtimeAdapter {
     module: OwnedDocumentModule,
     state: Arc<Mutex<RealtimeState>>,
+    next_lease_id: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl OwnedDocumentRealtimeAdapter {
@@ -91,6 +94,7 @@ impl OwnedDocumentRealtimeAdapter {
         Self {
             module,
             state: Arc::new(Mutex::new(RealtimeState::default())),
+            next_lease_id: Arc::new(std::sync::atomic::AtomicU64::new(1)),
         }
     }
 
@@ -159,10 +163,25 @@ impl OwnedDocumentRealtimeAdapter {
         } else {
             None
         };
+        let lease_id = self
+            .next_lease_id
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |value| value.checked_add(1),
+            )
+            .map_err(|_| resource_exhausted("Document lease identity exhausted"))?;
+        if let Some(subscription) = state.subscriptions.get_mut(&key) {
+            subscription.lease_id = lease_id;
+            subscription.store_epoch = boundary.store_epoch.clone();
+            subscription.generation = boundary.generation;
+            subscription.head_seq = boundary.head_seq;
+        }
         if !existing {
             state.subscriptions.insert(
                 key,
                 Subscription {
+                    lease_id,
                     context: context.clone(),
                     document_id: document_id.clone(),
                     client_session_id,
@@ -175,6 +194,7 @@ impl OwnedDocumentRealtimeAdapter {
             );
         }
         Ok(DocumentSubscriptionAck {
+            lease_id,
             document_id,
             store_epoch: boundary.store_epoch,
             generation: boundary.generation,
@@ -388,6 +408,25 @@ impl OwnedDocumentRealtimeAdapter {
         }))
     }
 
+    /// A late physical stream finalizer cannot revoke a newer lease of the same logical session.
+    pub fn release_lease(
+        &self,
+        connection_id: &str,
+        client_session_id: &str,
+        lease_id: u64,
+    ) -> Result<Option<AwarenessPublication>, CoreError> {
+        let mut state = self.lock_state()?;
+        let key = (connection_id.to_owned(), client_session_id.to_owned());
+        if !state
+            .subscriptions
+            .get(&key)
+            .is_some_and(|value| value.lease_id == lease_id)
+        {
+            return Ok(None);
+        }
+        remove_subscription(&mut state, &key)
+    }
+
     pub fn unsubscribe(
         &self,
         connection_id: &str,
@@ -492,6 +531,7 @@ impl OwnedDocumentRealtimeAdapter {
 
 fn subscription_ack(subscription: &Subscription, commit_head: i64) -> DocumentSubscriptionAck {
     DocumentSubscriptionAck {
+        lease_id: subscription.lease_id,
         document_id: subscription.document_id.clone(),
         store_epoch: subscription.store_epoch.clone(),
         generation: subscription.generation,
@@ -578,7 +618,9 @@ fn intent_document_id(intent: &OwnedDocumentIntent) -> Option<&str> {
         OwnedDocumentIntent::ExecutePreparedAgentSemanticMutation { mutation, .. } => {
             Some(&mutation.document_id)
         }
-        OwnedDocumentIntent::PrepareOwner { .. }
+        OwnedDocumentIntent::CaptureRecovery { .. }
+        | OwnedDocumentIntent::ResolveRecovery { .. }
+        | OwnedDocumentIntent::PrepareOwner { .. }
         | OwnedDocumentIntent::ApplyOwnerCommand { .. } => None,
     }
 }

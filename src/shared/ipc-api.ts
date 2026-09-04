@@ -759,6 +759,14 @@ export interface IpcApi {
     args: [projectId: string, documentId: string, request: CreateDocumentVersionCheckpoint];
     result: DocumentHistoryCommandResult<CreatedDocumentVersionSummary>;
   };
+  "document-recovery:read": {
+    args: [request: import("./block-documents/document-recovery").DocumentRecoveryReadRequest];
+    result: import("./block-documents/document-recovery").DocumentRecoveryReadResult;
+  };
+  "document-recovery:apply": {
+    args: [request: import("./block-documents/document-recovery").DocumentRecoveryCommand];
+    result: import("./block-documents/document-recovery").DocumentRecoveryCommandResult;
+  };
   "block-documents:history:list": {
     args: [request: ListDocumentVersions];
     result: DocumentHistoryCommandResult<readonly DocumentVersionSummary[]>;

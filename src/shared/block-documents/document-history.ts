@@ -14,6 +14,8 @@ export type DocumentVersionActor = Readonly<Record<string, BlockTreeValue>>;
 export type DocumentRevisionKind = "automatic" | "manual" | "operation" | "restore" | "safety";
 
 export interface CreateDocumentVersionCheckpoint {
+  /** Allocated once by the caller and retained unchanged throughout exact retries. */
+  readonly operationId: string;
   readonly projectId: string;
   readonly storeEpoch: string;
   readonly documentId: DocumentId;

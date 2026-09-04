@@ -18,7 +18,8 @@ const DELIVERY_PACKET_VERSION: u32 = 4;
 pub(crate) enum DeliveryResourceMode {
     RefOnly,
     Inline,
-    ProjectionOnly,
+    /// Authorized metadata atoms and projections, without engine update resources.
+    MetadataOnly,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -104,49 +105,47 @@ pub(crate) fn resolve_verified(
     validate_address_scope_compatibility(&delivery_address, &authorization_scope)?;
 
     let mut atoms = Vec::new();
-    if request.resource_mode != DeliveryResourceMode::ProjectionOnly {
-        for atom in &verified.delivery_atoms {
-            if request.document_id.is_some_and(|document_id| {
-                !atom.descriptor.required_resources.iter().any(|resource| {
-                    matches!(
-                        resource,
-                        ResourceKey::Document {
-                            document_id: candidate,
-                        } if candidate == document_id
-                    )
-                })
-            }) {
-                continue;
-            }
-            let mut allowed = true;
-            for resource in &atom.descriptor.required_resources {
-                if !super::resource_authorization::can_read(
-                    connection,
-                    request.context,
-                    &authorization_scope,
+    for atom in &verified.delivery_atoms {
+        if request.document_id.is_some_and(|document_id| {
+            !atom.descriptor.required_resources.iter().any(|resource| {
+                matches!(
                     resource,
-                )? {
-                    allowed = false;
-                    break;
-                }
+                    ResourceKey::Document {
+                        document_id: candidate,
+                    } if candidate == document_id
+                )
+            })
+        }) {
+            continue;
+        }
+        let mut allowed = true;
+        for resource in &atom.descriptor.required_resources {
+            if !super::resource_authorization::can_read(
+                connection,
+                request.context,
+                &authorization_scope,
+                resource,
+            )? {
+                allowed = false;
+                break;
             }
-            if allowed {
-                atoms.push(AuthorizedDeliveryAtom {
-                    descriptor: atom.descriptor.clone(),
-                    payload: atom.payload.clone(),
-                });
-            }
+        }
+        if allowed {
+            atoms.push(AuthorizedDeliveryAtom {
+                descriptor: atom.descriptor.clone(),
+                payload: atom.payload.clone(),
+            });
         }
     }
 
     let mut document_effects = Vec::new();
-    if request.resource_mode != DeliveryResourceMode::ProjectionOnly {
+    if request.resource_mode != DeliveryResourceMode::MetadataOnly {
         let document_resources = verified.delivery_document_effects(
             connection,
             match request.resource_mode {
                 DeliveryResourceMode::RefOnly => LocalCommitResourceMode::RefOnly,
                 DeliveryResourceMode::Inline => LocalCommitResourceMode::Inline,
-                DeliveryResourceMode::ProjectionOnly => unreachable!(),
+                DeliveryResourceMode::MetadataOnly => unreachable!(),
             },
         )?;
         for resource in document_resources {

@@ -101,6 +101,18 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   async createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void> {
+    const parent = input.parentPageId
+      ? requireSuccess(
+          await createCoreDocumentSyncAdapter(
+            this.#runtime.clientForProject(input.projectId),
+          ).prepareOwner({
+            ownerBlockId: input.parentPageId,
+            operationId: createUuidV7(),
+            clientSessionId: "scenario:child-page",
+          }),
+          "Prepare parent Page",
+        )
+      : null;
     const result = await this.#library(input.projectId).apply({
       operationId: input.operationId,
       storeEpoch: this.#runtime.identity.storeEpoch,
@@ -109,10 +121,40 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         pageId: input.pageId,
         documentId: input.documentId,
         title: input.title,
-        parent: { kind: "library" },
+        parent:
+          parent && input.parentPageId
+            ? {
+                kind: "page",
+                pageId: input.parentPageId,
+                expectedDocumentGeneration: parent.generation,
+                expectedDocumentHeadSeq: parent.headSeq,
+                insertion: input.beforeBlockId
+                  ? { kind: "before", anchorBlockId: input.beforeBlockId }
+                  : { kind: "append" },
+              }
+            : { kind: "library" },
       },
     });
     requireSuccess(result, `Create standalone ${input.title}`);
+  }
+
+  async createStandaloneCanvas(
+    input: Parameters<ScenarioSeedPort["createStandaloneCanvas"]>[0],
+  ): Promise<void> {
+    requireSuccess(
+      await this.#library(input.projectId).apply({
+        operationId: createUuidV7(),
+        storeEpoch: this.#runtime.identity.storeEpoch,
+        operation: {
+          kind: "create_canvas",
+          canvasId: input.canvasId,
+          documentId: input.documentId,
+          displayName: input.name,
+          destination: { kind: "library" },
+        },
+      }),
+      "Create Canvas",
+    );
   }
 
   async ensurePrimaryDataSourcePropertyCount(
@@ -136,7 +178,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
 
   async replaceOwnedDocument(
     input: ScenarioDocumentReplacement,
-  ): Promise<{ readonly commitSeq: number }> {
+  ): Promise<{ readonly commitSeq: number; readonly createdBlockIds: readonly string[] }> {
     const documents = createCoreDocumentSyncAdapter(
       this.#runtime.clientForProject(input.projectId),
     );
@@ -162,7 +204,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       }),
       `Replace ${input.pageId}`,
     );
-    return { commitSeq: mutation.commitSeq };
+    return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
   }
 
   async readPage(

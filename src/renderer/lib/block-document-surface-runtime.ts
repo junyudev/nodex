@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { writeTextToClipboardStrict } from "./clipboard";
 import type { Awareness } from "y-protocols/awareness";
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents";
 import {
@@ -8,8 +9,6 @@ import {
 } from "../../shared/block-documents/document-schema-adapters";
 import {
   createDefaultDocumentLocalCheckpointStore,
-  type DocumentLocalCheckpoint,
-  type DocumentLocalCheckpointStateConstraints,
   type DocumentLocalCheckpointStore,
 } from "./document-local-checkpoint";
 import {
@@ -20,6 +19,12 @@ import {
 } from "./nodex-y-provider";
 import { BlockDocumentSurfaceError } from "./block-document-surface-failure";
 import { parseContentAccessContext } from "../../shared/content-access-context";
+import {
+  DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+  assertDocumentWaitActive,
+  waitForDocumentOperation,
+  type DocumentWaitOptions,
+} from "./document-wait";
 
 const DEFAULT_CLOSE_TIMEOUT_MS = 2_000;
 
@@ -35,6 +40,7 @@ export type BlockDocumentSurfacePhase =
   | "closed";
 
 export interface BlockDocumentSurfaceStatus {
+  readonly structuralWaitStartedAt: number | null;
   readonly phase: BlockDocumentSurfacePhase;
   readonly ready: boolean;
   readonly reloadRequired: boolean;
@@ -55,7 +61,7 @@ export interface DocumentHeadFence {
 /** Surface-scoped causal barrier for a structural mutation. */
 export interface BlockDocumentMutationBarrier {
   readonly libraryId?: string;
-  readonly flushAndFence: () => Promise<DocumentHeadFence>;
+  readonly flushAndFence: (options?: DocumentWaitOptions) => Promise<DocumentHeadFence>;
 }
 
 export interface BlockDocumentSurfaceCloseResult {
@@ -84,8 +90,10 @@ export interface BlockDocumentSurfaceProvider {
   subscribeStatus: (listener: () => void) => () => void;
   connect: () => Promise<void>;
   disconnect: () => void;
-  flush: () => Promise<void>;
+  flush: (options?: DocumentWaitOptions) => Promise<void>;
   checkpoint: () => Promise<void>;
+  isolate: NodexYProvider["isolate"];
+  exportRecovery: NodexYProvider["exportRecovery"];
   destroy: () => void;
 }
 
@@ -214,73 +222,13 @@ const observeCloseTask = (task: Promise<void>, state: CloseTaskState): Promise<v
     },
   );
 
-/**
- * Serializes cache operations and can permanently isolate a surface boundary.
- * Once isolated, pending writes finish before one final clear and all future
- * provider writes become no-ops. This prevents a fatal provider.destroy() from
- * recreating the checkpoint that caused the reload boundary.
- */
-class IsolatedDocumentCheckpointStore implements DocumentLocalCheckpointStore {
-  private active = true;
-  private tail: Promise<void> = Promise.resolve();
-  private isolationPromise: Promise<void> | null = null;
-
-  constructor(
-    private readonly delegate: DocumentLocalCheckpointStore | null,
-    private readonly documentId: string,
-  ) {}
-
-  read = (
-    boundary: Parameters<DocumentLocalCheckpointStore["read"]>[0],
-    constraints?: DocumentLocalCheckpointStateConstraints,
-  ): Promise<DocumentLocalCheckpoint | null> =>
-    this.enqueue(async () => {
-      if (!this.active || !this.delegate) return null;
-      return await this.delegate.read(boundary, constraints);
-    });
-
-  write = (
-    checkpoint: DocumentLocalCheckpoint,
-    constraints?: DocumentLocalCheckpointStateConstraints,
-  ): Promise<void> =>
-    this.enqueue(async () => {
-      if (!this.active || !this.delegate) return;
-      await this.delegate.write(checkpoint, constraints);
-    });
-
-  clearDocument = (documentId: string): Promise<void> =>
-    this.enqueue(async () => {
-      if (!this.delegate) return;
-      await this.delegate.clearDocument(documentId);
-    });
-
-  isolate = (): Promise<void> => {
-    if (this.isolationPromise) return this.isolationPromise;
-    this.active = false;
-    this.isolationPromise = this.enqueue(async () => {
-      if (!this.delegate) return;
-      await this.delegate.clearDocument(this.documentId);
-    });
-    return this.isolationPromise;
-  };
-
-  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(operation, operation);
-    this.tail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
-  }
-}
-
 export class BlockDocumentSurfaceRuntime {
+  private readonly structuralWaits = new Map<AbortController, number>();
   readonly descriptor: OwnedDocumentDescriptor;
   readonly document: Y.Doc;
   readonly provider: BlockDocumentSurfaceProvider;
 
   private readonly openDocument: BlockDocumentSurfaceOpenDocument;
-  private readonly checkpointStore: IsolatedDocumentCheckpointStore;
   private readonly closeTimeoutMs: number;
   private readonly scheduleCloseTimeout: BlockDocumentSurfaceCloseTimeoutScheduler;
   private readonly reloadHandler?: BlockDocumentSurfaceRuntimeOptions["reload"];
@@ -293,7 +241,6 @@ export class BlockDocumentSurfaceRuntime {
   private terminal: SurfaceTerminalState | null = null;
   private isolationPromise: Promise<void> | null = null;
   private connectPromise: Promise<void> | null = null;
-  private durableMutationPreparationPromise: Promise<BlockDocumentSurfaceStatus> | null = null;
   private persistPromise: Promise<BlockDocumentSurfacePersistResult> | null = null;
   private closePromise: Promise<BlockDocumentSurfaceCloseResult> | null = null;
   private reloadPromise: Promise<void> | null = null;
@@ -323,10 +270,6 @@ export class BlockDocumentSurfaceRuntime {
       options.localCheckpointStore === undefined
         ? createDefaultDocumentLocalCheckpointStore()
         : options.localCheckpointStore;
-    this.checkpointStore = new IsolatedDocumentCheckpointStore(
-      checkpointDelegate,
-      this.descriptor.documentId,
-    );
     this.provider = (options.createProvider ?? createProvider)({
       documentId: this.descriptor.documentId,
       document: this.document,
@@ -334,7 +277,7 @@ export class BlockDocumentSurfaceRuntime {
       expectedStoreEpoch: this.descriptor.storeEpoch,
       expectedGeneration: this.descriptor.generation,
       autoConnect: false,
-      localCheckpointStore: checkpointDelegate ? this.checkpointStore : null,
+      localCheckpointStore: checkpointDelegate,
       documentSchema: {
         ownerType: this.descriptor.ownerType,
         schemaKey: this.descriptor.schemaKey,
@@ -420,32 +363,48 @@ export class BlockDocumentSurfaceRuntime {
    * Local checkpoints are recovery cache and deliberately stay off this
    * transaction-critical path.
    */
-  private flushDurableUpdates = (): Promise<BlockDocumentSurfaceStatus> => {
+  private flushDurableUpdates = async (
+    options: DocumentWaitOptions,
+  ): Promise<BlockDocumentSurfaceStatus> => {
     if (this.terminal) return Promise.reject(this.terminal.error);
     if (this.closed || this.closing) {
       return Promise.reject(new Error("Block Document surface is closed"));
     }
-    if (this.durableMutationPreparationPromise) {
-      return this.durableMutationPreparationPromise;
-    }
-
-    const promise = (async () => {
-      await Promise.all(
-        [...this.persistPreparers].map((preparer) => Promise.resolve().then(() => preparer())),
-      );
-      await this.provider.flush();
-      return this.getStatus();
-    })().finally(() => {
-      if (this.durableMutationPreparationPromise === promise) {
-        this.durableMutationPreparationPromise = null;
-      }
-    });
-    this.durableMutationPreparationPromise = promise;
-    return promise;
+    await waitForDocumentOperation(
+      () =>
+        Promise.all(
+          [...this.persistPreparers].map((preparer) => Promise.resolve().then(() => preparer())),
+        ),
+      options,
+    );
+    assertDocumentWaitActive(options);
+    await waitForDocumentOperation(() => this.provider.flush(options), options);
+    return this.getStatus();
   };
 
-  flushAndFence = async (): Promise<DocumentHeadFence> => {
-    const status = await this.flushDurableUpdates();
+  cancelStructuralWaits = (): void => {
+    this.structuralWaits.forEach((_startedAt, controller) => controller.abort());
+  };
+
+  flushAndFence = async (input: DocumentWaitOptions = {}): Promise<DocumentHeadFence> => {
+    const controller = new AbortController();
+    const options = {
+      deadlineAt: input.deadlineAt ?? Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+      signal: input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal,
+    };
+    this.structuralWaits.set(controller, Date.now());
+    this.refreshStatus();
+    try {
+      const status = await this.flushDurableUpdates(options);
+      assertDocumentWaitActive(options);
+      return this.headFence(status);
+    } finally {
+      this.structuralWaits.delete(controller);
+      this.refreshStatus();
+    }
+  };
+
+  private headFence(status: BlockDocumentSurfaceStatus): DocumentHeadFence {
     const generation = status.provider.generation ?? status.descriptor.generation;
     const storeEpoch = status.provider.storeEpoch ?? status.descriptor.storeEpoch;
     if (
@@ -466,7 +425,7 @@ export class BlockDocumentSurfaceRuntime {
       generation,
       expectedHeadSeq: status.provider.headSeq,
     };
-  };
+  }
 
   checkpoint = (): Promise<void> => {
     if (this.terminal) return Promise.reject(this.terminal.error);
@@ -501,6 +460,48 @@ export class BlockDocumentSurfaceRuntime {
     this.provider.awareness.setLocalState(null);
   };
 
+  copyDiagnostics = (): Promise<void> => {
+    const status = this.provider.getStatus();
+    return writeTextToClipboardStrict(
+      JSON.stringify(
+        {
+          documentId: status.documentId,
+          phase: status.phase,
+          connected: status.connected,
+          storeEpoch: status.storeEpoch,
+          generation: status.generation,
+          headSeq: status.headSeq,
+          pendingUpdateCount: status.pendingUpdateCount,
+          checkpoint: {
+            phase: status.checkpoint.phase,
+            localVersion: status.checkpoint.localVersion,
+            protectedVersion: status.checkpoint.protectedVersion,
+          },
+          error: status.error && {
+            code: status.error.code,
+            retryable: status.error.retryable,
+            coreCode: status.error.core?.code,
+            recoveryKind: status.error.core?.recovery.kind,
+            recoveryArtifactId: status.error.recoveryArtifactId,
+          },
+          recovery: status.recovery?.phase,
+        },
+        null,
+        2,
+      ),
+    );
+  };
+
+  exportRecovery = async (): Promise<void> => {
+    const data = await this.provider.exportRecovery();
+    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    const link = globalThis.document.createElement("a");
+    link.href = url;
+    link.download = `nodex-recovery-${this.descriptor.documentId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`;
+    link.click();
+    globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
   reload = (): Promise<void> => {
     if (!this.terminal) {
       return Promise.reject(new Error("Block Document surface does not require reload"));
@@ -510,19 +511,25 @@ export class BlockDocumentSurfaceRuntime {
     const terminal = this.terminal;
     this.reloadPromise = (async () => {
       await this.isolateCheckpoints();
-      await this.close();
+      const closed = await this.close();
+      if (closed.checkpoint === "failed" || closed.checkpoint === "timed-out")
+        throw new Error("Export recovery before reloading this document");
       await this.reloadHandler?.({
         descriptor: this.descriptor,
         reason: terminal.reason,
         error: terminal.error,
       });
-    })();
+    })().catch((error: unknown) => {
+      this.reloadPromise = null;
+      throw error;
+    });
     return this.reloadPromise;
   };
 
   close = (): Promise<BlockDocumentSurfaceCloseResult> => {
     if (this.closePromise) return this.closePromise;
     this.closing = true;
+    this.cancelStructuralWaits();
     this.refreshStatus();
     this.rejectReadyWaiters(
       this.terminal?.error ?? new Error("Block Document surface closed before ready"),
@@ -532,7 +539,11 @@ export class BlockDocumentSurfaceRuntime {
   };
 
   private readonly handleProviderStatus = (): void => {
-    if (this.closed || this.closing || this.terminal) return;
+    if (this.closed || this.closing) return;
+    if (this.terminal) {
+      this.refreshStatus();
+      return;
+    }
     const providerStatus = this.provider.getStatus();
     if (providerStatus.phase === "reset-required") {
       this.enterTerminal("reset-required", providerError(providerStatus));
@@ -561,16 +572,26 @@ export class BlockDocumentSurfaceRuntime {
   private enterTerminal(reason: SurfaceTerminalState["reason"], error: Error): void {
     if (this.terminal || this.closed || this.closing) return;
     this.terminal = { reason, error };
+    this.cancelStructuralWaits();
     this.readyDocument = null;
+    this.provider.isolate({
+      code: "invalid_response",
+      message: error.message,
+      retryable: false,
+      resetRequired: false,
+    });
     this.provider.disconnect();
-    void this.isolateCheckpoints();
+    void this.isolateCheckpoints().catch(() => undefined);
     this.rejectReadyWaiters(error);
     this.refreshStatus();
   }
 
   private isolateCheckpoints(): Promise<void> {
     if (!this.isolationPromise) {
-      this.isolationPromise = this.checkpointStore.isolate();
+      this.isolationPromise = this.provider.checkpoint().catch((error: unknown) => {
+        this.isolationPromise = null;
+        throw error;
+      });
     }
     return this.isolationPromise;
   }
@@ -583,6 +604,35 @@ export class BlockDocumentSurfaceRuntime {
       : false;
     const persisted = terminal ? null : await (this.persistPromise ?? this.persistOwnedDocument());
 
+    if (terminal && (terminalTimedOut || checkpointState.failed)) {
+      this.closing = false;
+      this.closePromise = null;
+      this.refreshStatus();
+      return {
+        timedOut: terminalTimedOut,
+        flush: "skipped",
+        checkpoint: terminalTimedOut ? "timed-out" : "failed",
+      };
+    }
+    const providerStatus = this.provider.getStatus();
+    const checkpoint = providerStatus.checkpoint;
+    const protectedLocally =
+      persisted?.checkpoint === "completed" &&
+      checkpoint.phase === "ready" &&
+      checkpoint.localVersion !== undefined &&
+      checkpoint.protectedVersion !== undefined &&
+      checkpoint.protectedVersion >= checkpoint.localVersion;
+    if (
+      persisted &&
+      persisted.flush !== "completed" &&
+      !protectedLocally &&
+      providerStatus.pendingUpdateCount > 0
+    ) {
+      this.closing = false;
+      this.closePromise = null;
+      this.refreshStatus();
+      return persisted;
+    }
     this.unsubscribeProviderStatus();
     try {
       this.provider.destroy();
@@ -702,6 +752,8 @@ export class BlockDocumentSurfaceRuntime {
     }
     return {
       phase,
+      structuralWaitStartedAt:
+        this.structuralWaits.size === 0 ? null : Math.min(...this.structuralWaits.values()),
       ready: this.readyDocument !== null && !this.terminal && !this.closed && !this.closing,
       reloadRequired: this.terminal !== null,
       descriptor: this.descriptor,

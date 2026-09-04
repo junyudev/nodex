@@ -29,6 +29,8 @@ import {
   type ContentAccessIdentity,
 } from "../../shared/content-access-context";
 import type { CanvasSceneOutbox } from "./canvas-scene-outbox";
+import { waitForDocumentOperation } from "./document-wait";
+import { createBoundedOperationId } from "../../shared/operation-identity";
 export interface CanvasSceneSyncAdapter {
   subscribe: (
     request: Pick<CanvasSceneSyncRequest, "accessContext" | "documentId" | "clientSessionId">,
@@ -279,11 +281,7 @@ const applyCommittedDelta = (
   });
 };
 
-let fallbackMutationSequence = 0;
-const createFallbackMutationId = (): string => {
-  fallbackMutationSequence += 1;
-  return `canvas-mutation:${Date.now().toString(36)}:${fallbackMutationSequence.toString(36)}`;
-};
+const createMutationId = (): string => createBoundedOperationId("canvas.mutation");
 
 let fallbackSyncSequence = 0;
 const createFallbackSyncRequestId = (): string => {
@@ -314,6 +312,8 @@ export class CanvasSceneProvider {
   private syncAgain = false;
   private activeSyncRequestId: string | null = null;
   private outboxHydrated = false;
+  private recoveryPromise: Promise<void> | null = null;
+  private connectionVersion = 0;
   private scene: PortableCanvasScene | null = null;
   private sceneHash: string | null = null;
   private storeEpoch: string | null = null;
@@ -339,7 +339,7 @@ export class CanvasSceneProvider {
     this.coalesceDelayMs = options.coalesceDelayMs ?? 150;
     this.schedule = options.schedule ?? defaultScheduler;
     this.scheduleRetry = options.scheduleRetry ?? defaultScheduler;
-    this.createMutationId = options.createMutationId ?? createFallbackMutationId;
+    this.createMutationId = options.createMutationId ?? createMutationId;
     this.createSyncRequestId = options.createSyncRequestId ?? createFallbackSyncRequestId;
     this.now = options.now ?? Date.now;
     this.random = options.random ?? Math.random;
@@ -503,15 +503,20 @@ export class CanvasSceneProvider {
   };
 
   retireOwner = (): Promise<void> => {
-    if (this.closePromise) {
-      return this.closePromise
-        .catch(() => undefined)
-        .then(() => this.options.outbox.clear(this.options.accessContext, this.options.documentId));
-    }
-    if (this.closed) {
-      return this.options.outbox.clear(this.options.accessContext, this.options.documentId);
-    }
-    const promise = this.retireOwnerInternal().finally(() => {
+    const retire = async (): Promise<void> => {
+      this.closing = true;
+      this.error = {
+        code: "canvas_scene_corrupt",
+        message: "Canvas owner was deleted",
+        retryable: false,
+        resetRequired: true,
+      };
+      this.rejectAll(new Error(this.error.message));
+      await this.preserveRejectedWork(this.error);
+      this.finalizeClosed();
+    };
+    if (this.closePromise) return this.closePromise.catch(() => undefined).then(retire);
+    const promise = retire().finally(() => {
       if (this.closePromise === promise) this.closePromise = null;
     });
     this.closePromise = promise;
@@ -519,31 +524,21 @@ export class CanvasSceneProvider {
   };
 
   private async closeInternal(requireCommitted: boolean): Promise<void> {
-    try {
-      if (requireCommitted) await this.flushCommitted();
-      else await this.persistDurable();
-    } finally {
-      if (!requireCommitted) {
-        const failure = new Error(
-          "Canvas scene provider closed after local durability; commit continues from the outbox",
-        );
-        this.inFlight?.waiters.forEach((waiter) => rejectCommitted(waiter, failure));
-        this.pending?.waiters.forEach((waiter) => rejectCommitted(waiter, failure));
-      }
+    if (this.error && !this.error.retryable) {
+      await this.preserveRejectedWork(this.error);
       this.finalizeClosed();
+      throw new Error(this.error.message);
     }
-  }
-
-  private async retireOwnerInternal(): Promise<void> {
-    this.closing = true;
-    this.refreshStatus();
-    const failure = new Error("Canvas owner was deleted");
-    this.rejectAll(failure);
-    try {
-      await this.options.outbox.clear(this.options.accessContext, this.options.documentId);
-    } finally {
-      this.finalizeClosed();
+    if (requireCommitted) await this.flushCommitted();
+    else await this.persistDurable();
+    if (!requireCommitted) {
+      const failure = new Error(
+        "Canvas scene provider closed after local durability; commit continues from the outbox",
+      );
+      this.inFlight?.waiters.forEach((waiter) => rejectCommitted(waiter, failure));
+      this.pending?.waiters.forEach((waiter) => rejectCommitted(waiter, failure));
     }
+    this.finalizeClosed();
   }
 
   private finalizeClosed(): void {
@@ -576,7 +571,6 @@ export class CanvasSceneProvider {
         this.handlePresenceEvent,
       );
     }
-    this.connected = true;
     this.error = undefined;
     this.refreshStatus();
     await this.requestSync();
@@ -597,7 +591,6 @@ export class CanvasSceneProvider {
           intent.generation !== this.generation,
       )
     ) {
-      await this.options.outbox.clear(this.options.accessContext, this.options.documentId);
       this.enterReset("Canvas outbox crossed a store epoch or generation boundary");
       return;
     }
@@ -609,24 +602,23 @@ export class CanvasSceneProvider {
   private requestSync(): Promise<void> {
     if (this.syncPromise) {
       this.syncAgain = true;
-      const active = this.syncPromise;
-      return active.then(() => this.syncPromise ?? Promise.resolve());
+      return this.syncPromise;
     }
     const promise = this.performSync().finally(() => {
       if (this.syncPromise === promise) this.syncPromise = null;
       const again = this.syncAgain;
       this.syncAgain = false;
       if (again && !this.closed && !this.error) {
-        void this.requestSync();
-      } else {
-        this.pump();
+        return this.requestSync();
       }
+      this.pump();
     });
     this.syncPromise = promise;
     return promise;
   }
 
   private async performSync(): Promise<void> {
+    const connectionVersion = this.connectionVersion;
     const syncRequestId = this.createSyncRequestId();
     this.activeSyncRequestId = syncRequestId;
     let result: CanvasSceneSyncCommandResult;
@@ -642,11 +634,23 @@ export class CanvasSceneProvider {
         ...(this.sceneHash ? { knownSceneHash: this.sceneHash } : {}),
       });
     } catch (error) {
-      if (this.activeSyncRequestId !== syncRequestId || this.closed) return;
+      if (
+        this.activeSyncRequestId !== syncRequestId ||
+        this.closed ||
+        this.connectionVersion !== connectionVersion ||
+        (this.error && !this.error.retryable)
+      )
+        return;
       this.handleRetryableError(transportError(error));
       return;
     }
-    if (this.activeSyncRequestId !== syncRequestId || this.closed) return;
+    if (
+      this.activeSyncRequestId !== syncRequestId ||
+      this.closed ||
+      this.connectionVersion !== connectionVersion ||
+      (this.error && !this.error.retryable)
+    )
+      return;
     if (!result.ok) {
       this.handleCommandError(result.error);
       return;
@@ -670,7 +674,6 @@ export class CanvasSceneProvider {
       (expectedEpoch !== undefined && expectedEpoch !== response.storeEpoch) ||
       (expectedGeneration !== undefined && expectedGeneration !== response.generation)
     ) {
-      await this.options.outbox.clear(this.options.accessContext, this.options.documentId);
       this.enterReset("Canvas sync response crossed its store epoch or generation boundary");
       return;
     }
@@ -726,7 +729,14 @@ export class CanvasSceneProvider {
     this.error = undefined;
     this.connected = true;
     if (!this.inFlight) this.retryAttempt = 0;
-    this.options.onScene(this.scene);
+    try {
+      this.options.onScene(this.scene);
+    } catch (error) {
+      this.enterFatal(
+        `The Canvas view could not integrate the scene: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
     this.flushPendingPresenceEvents();
     this.refreshStatus();
   }
@@ -749,6 +759,7 @@ export class CanvasSceneProvider {
       this.inFlight
     ) {
       if (
+        (!this.error || this.error.retryable) &&
         this.inFlight?.durable &&
         this.pending &&
         !this.cancelCoalesce &&
@@ -787,7 +798,8 @@ export class CanvasSceneProvider {
         rejectDurable(waiter, failure);
         rejectCommitted(waiter, failure);
       });
-      this.pump();
+      this.pending = pending;
+      this.enterFatal(`Could not prepare Canvas mutation: ${failure.message}`);
       return;
     }
     this.inFlight = { intent, waiters: pending.waiters, durable: false };
@@ -834,6 +846,7 @@ export class CanvasSceneProvider {
           rejectDurable(waiter, failure);
           rejectCommitted(waiter, failure);
         });
+        this.pending = this.pending ? mergeObservations(pending, this.pending) : pending;
         this.enterFatal(`Could not persist queued Canvas mutation: ${failure.message}`);
         return;
       }
@@ -957,7 +970,12 @@ export class CanvasSceneProvider {
     error: CanvasSceneMutationError,
   ): Promise<void> {
     try {
-      await this.options.outbox.quarantine(current.intent, error, this.now());
+      await this.options.outbox.quarantine(
+        current.intent,
+        error,
+        this.now(),
+        this.scene ?? undefined,
+      );
     } catch (quarantineError) {
       if (this.inFlight !== current) return;
       this.enterFatal(
@@ -977,7 +995,7 @@ export class CanvasSceneProvider {
   }
 
   private readonly handleRealtimeEvent = (event: CanvasSceneRealtimeEvent): void => {
-    if (this.closed || this.error) return;
+    if (this.closed || (this.error && !this.error.retryable)) return;
     if (
       event.libraryId !== this.options.libraryId ||
       !sameAccessContext(event.accessContext, this.options.accessContext) ||
@@ -986,11 +1004,27 @@ export class CanvasSceneProvider {
       this.enterFatal("Canvas realtime event crossed its Library, access, or Document boundary");
       return;
     }
+    if (event.type === "canvas_scene_session") {
+      if (event.clientSessionId !== this.options.clientSessionId) return;
+      this.cancelRetry?.();
+      this.cancelRetry = null;
+      if (event.state === "terminated") {
+        this.handleCommandError({ ...event.error, retryable: false });
+        return;
+      }
+      if (event.state === "disconnected") this.connectionVersion += 1;
+      this.connected = event.state === "connected";
+      this.refreshStatus();
+      if (this.connected) {
+        this.error = undefined;
+        void this.requestSync();
+      }
+      return;
+    }
     if (
       (this.storeEpoch && event.storeEpoch !== this.storeEpoch) ||
       (this.generation !== null && event.generation !== this.generation)
     ) {
-      void this.options.outbox.clear(this.options.accessContext, this.options.documentId);
       this.enterReset("Canvas realtime event crossed its store epoch or generation boundary");
       return;
     }
@@ -1046,8 +1080,8 @@ export class CanvasSceneProvider {
   }
 
   private handleCommandError(error: CanvasSceneMutationError): void {
+    if (this.closed || this.closing || (this.error && !this.error.retryable)) return;
     if (error.resetRequired) {
-      void this.options.outbox.clear(this.options.accessContext, this.options.documentId);
       this.error = error;
       this.connected = false;
       this.rejectAll(new Error(error.message));
@@ -1065,6 +1099,7 @@ export class CanvasSceneProvider {
   }
 
   private handleRetryableError(error: CanvasSceneMutationError): void {
+    if (this.closed || this.closing || (this.error && !this.error.retryable)) return;
     this.error = error;
     this.connected = false;
     this.cancelRetry?.();
@@ -1118,12 +1153,90 @@ export class CanvasSceneProvider {
     });
     this.flushWaiters.forEach((waiter) => rejectCommitted(waiter, error));
     this.durableFlushWaiters.forEach((waiter) => rejectDurable(waiter, error));
-    this.pending = null;
-    this.inFlight = null;
+    void this.preserveRejectedWork(this.error ?? invalidResponseError(error.message)).catch(
+      () => undefined,
+    );
     this.recoveredWaiters.clear();
     this.flushWaiters.clear();
     this.durableFlushWaiters.clear();
   }
+
+  private preserveRejectedWork(error: CanvasSceneMutationError): Promise<void> {
+    if (this.recoveryPromise) return this.recoveryPromise;
+    this.cancelCoalesce?.();
+    this.cancelRetry?.();
+    this.cancelCoalesce = null;
+    this.cancelRetry = null;
+    const pending = this.pending;
+    const current = this.inFlight;
+    const promise = (async () => {
+      await this.queuedPersistencePromise;
+      if (current) await this.options.outbox.put(current.intent);
+      if (pending) await this.options.outbox.put(this.createIntent(pending));
+      const retained = await this.options.outbox.list(
+        this.options.accessContext,
+        this.options.documentId,
+      );
+      for (const intent of retained)
+        await this.options.outbox.quarantine(intent, error, this.now(), this.scene ?? undefined);
+      if (this.pending === pending) this.pending = null;
+      if (this.inFlight === current) this.inFlight = null;
+      this.recovered = [];
+      this.refreshStatus();
+    })().catch((failure: unknown) => {
+      this.recoveryPromise = null;
+      this.error = {
+        ...error,
+        message: `${error.message} Recovery is only in this window: ${failure instanceof Error ? failure.message : String(failure)}`,
+      };
+      this.refreshStatus();
+      throw failure;
+    });
+    this.recoveryPromise = promise;
+    return promise;
+  }
+
+  checkpointRecovery = (): Promise<void> =>
+    this.error && !this.error.retryable
+      ? this.preserveRejectedWork(this.error)
+      : this.persistDurable();
+
+  exportRecovery = async (): Promise<string> => {
+    if (this.error?.code === "access_scope_mismatch")
+      throw new Error("Canvas access is required to export recovery");
+    const options = { deadlineAt: Date.now() + 2000 };
+    const [quarantined, active] = await Promise.all([
+      waitForDocumentOperation(
+        () =>
+          this.options.outbox.listQuarantined(this.options.accessContext, this.options.documentId),
+        options,
+      ).catch(() => []),
+      waitForDocumentOperation(
+        () => this.options.outbox.list(this.options.accessContext, this.options.documentId),
+        options,
+      ).catch(() => []),
+    ]);
+    return JSON.stringify(
+      {
+        format: "nodex-canvas-recovery",
+        version: 1,
+        documentId: this.options.documentId,
+        storeEpoch: this.storeEpoch,
+        generation: this.generation,
+        scene: this.scene,
+        pending: this.pending && {
+          elementCandidates: this.pending.elementCandidates,
+          appStateIntents: this.pending.appStateIntents,
+          fileAdditions: this.pending.fileAdditions,
+        },
+        inFlight: this.inFlight?.intent,
+        active,
+        quarantined,
+      },
+      null,
+      2,
+    );
+  };
 
   private isIdle(): boolean {
     return (

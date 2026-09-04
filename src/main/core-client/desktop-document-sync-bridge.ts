@@ -1,3 +1,6 @@
+import { CoreEventCompatibilityError } from "./uds-http";
+import { createHash } from "node:crypto";
+import { documentSessionError } from "./document-session-error";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -106,6 +109,7 @@ import type {
 } from "./types";
 import { CoreAuthority, CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
+import type { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { createOperationId } from "../core-runtime/operation-identity";
 import {
   DocumentLiveRuntime,
@@ -242,6 +246,11 @@ type OrderedDocumentRealtimeEvent = Extract<
   { readonly kind: "document-update" | "resync-required" }
 >;
 
+type OrderedCanvasRealtimeEvent = Exclude<
+  CanvasSceneRealtimeEvent,
+  { readonly type: "canvas_scene_session" }
+>;
+
 type PendingNativeRealtimeEvent =
   | {
       readonly engine: "yjs";
@@ -249,12 +258,14 @@ type PendingNativeRealtimeEvent =
     }
   | {
       readonly engine: "canvas_scene";
-      readonly event: CanvasSceneRealtimeEvent;
+      readonly event: OrderedCanvasRealtimeEvent;
     };
 
 const MAX_PENDING_REALTIME_EVENTS = 256;
 
 interface NativeSubscription {
+  failureCount?: number;
+  lastFailure?: string;
   readonly engine: "yjs" | "canvas_scene";
   readonly bindingKey: string;
   readonly scope: DesktopDocumentSyncScope;
@@ -264,6 +275,7 @@ interface NativeSubscription {
   readonly target: DocumentSyncClientTarget;
   readonly targetId: number;
   readonly close: () => void;
+  readonly lease: DocumentLiveLease;
   readonly pendingRealtimeEvents: Map<string, PendingNativeRealtimeEvent>;
   storeEpoch?: string;
   generation?: number;
@@ -345,14 +357,9 @@ const ownerCommandIdentity = (
   };
 };
 
-const transportUnavailable = <Value>(error: unknown): DocumentSyncCommandResult<Value> => ({
+const documentFailure = <Value>(error: unknown): DocumentSyncCommandResult<Value> => ({
   ok: false,
-  error: {
-    code: "transport_unavailable",
-    message: error instanceof Error ? error.message : String(error),
-    retryable: true,
-    resetRequired: false,
-  },
+  error: documentSessionError(error),
 });
 
 type CanvasCommandResult<Value> =
@@ -381,15 +388,6 @@ const canvasSceneFailure = (
 
 const canvasSceneUnauthorized = (mutationId?: string): CanvasCommandFailure =>
   canvasSceneFailure("access_scope_mismatch", "An exact Canvas scene subscription is required", {
-    mutationId,
-  });
-
-const canvasSceneTransportUnavailable = (
-  error: unknown,
-  mutationId?: string,
-): CanvasCommandFailure =>
-  canvasSceneFailure("unknown", error instanceof Error ? error.message : String(error), {
-    retryable: true,
     mutationId,
   });
 
@@ -498,7 +496,7 @@ const makeDesktopDocumentSessionState = (
   const sendCanvasRealtimeEvent = (
     key: string,
     target: DocumentSyncClientTarget,
-    event: CanvasSceneRealtimeEvent,
+    event: OrderedCanvasRealtimeEvent,
   ): boolean => {
     const identity =
       event.type === "canvas_scene_committed"
@@ -516,7 +514,7 @@ const makeDesktopDocumentSessionState = (
       ? `${event.storeEpoch}:${event.generation}:${event.headSeq}:${event.kind}`
       : `${event.storeEpoch}:${event.commitSeq}:${event.effectSequence ?? 0}`;
 
-  const canvasRealtimeIdentity = (event: CanvasSceneRealtimeEvent): string =>
+  const canvasRealtimeIdentity = (event: OrderedCanvasRealtimeEvent): string =>
     event.type === "canvas_scene_committed"
       ? `${event.storeEpoch}:${event.documentId}:${event.mutationId}`
       : `${event.storeEpoch}:${event.documentId}:${event.type}:${event.generation}:${event.headSeq}`;
@@ -818,6 +816,8 @@ const makeDesktopDocumentSessionState = (
     event: CanvasSceneRealtimeEvent,
     options: RealtimeDeliveryOptions = {},
   ): boolean {
+    if (event.type === "canvas_scene_session")
+      return safeSendToWebContents(target, DOCUMENT_SYNC_EVENT_CHANNEL, [event]);
     const subscription = subscriptions.get(key);
     if (!subscription || subscription.target !== target || subscription.engine !== "canvas_scene") {
       return sendCanvasRealtimeEvent(key, target, event);
@@ -964,27 +964,100 @@ const makeDesktopDocumentSessionState = (
       commands: ReturnType<typeof createCoreCanvasSceneCommands>,
     ) => Promise<Success | CanvasCommandFailure>,
     mutationId?: string,
-  ): Effect.Effect<Success | CanvasCommandFailure> =>
-    input.coreSession
-      .use(
-        operation,
-        async (client) =>
-          await run(
-            createCoreCanvasSceneCommands(client, {
+    key?: string,
+    replayAfterReconnect = false,
+  ): Effect.Effect<Success | CanvasCommandFailure> => {
+    const command = input.coreSession.use(
+      operation,
+      async (client, signal) =>
+        await run(
+          createCoreCanvasSceneCommands(
+            client,
+            {
               libraryId: input.coreAuthority.identity.libraryId,
               accessContext,
-            }),
+            },
+            { signal },
           ),
-        { projectId: projectIdFor(accessContext) },
-      )
-      .pipe(
-        Effect.catch((error) =>
-          Effect.succeed(mapCoreCanvasSceneFailure(error.cause ?? error, mutationId)),
         ),
-      );
+      { projectId: projectIdFor(accessContext) },
+    );
+    return (
+      key === undefined ? command : withDocumentLease(key, command, replayAfterReconnect)
+    ).pipe(Effect.catch((error) => Effect.succeed(mapCoreCanvasSceneFailure(error, mutationId))));
+  };
 
   const projectIdFor = (scope: DesktopDocumentSyncScope): string | undefined =>
     scope.kind === "project" ? scope.projectId : undefined;
+
+  // A recovery response belongs to the attempt that admitted the command. Late responses
+  // cannot retire a replacement lease, and the same command is replayed at most once here.
+  const withDocumentLease = <Value>(
+    key: string,
+    command: Effect.Effect<Value, CoreRuntimeError>,
+    replayAfterReconnect = false,
+  ) =>
+    Effect.gen(function* () {
+      const subscription = subscriptions.get(key);
+      if (!subscription)
+        return yield* documentLiveRuntimeError(
+          "command.subscription",
+          new Error("Document subscription ended"),
+        );
+      const version = yield* subscription.lease.waitUntilConnected;
+      return yield* command.pipe(
+        Effect.tapError((error) => {
+          const failure = documentSessionError(error);
+          const signature = JSON.stringify([
+            error.operation,
+            failure.code,
+            failure.core?.recovery.kind,
+          ]);
+          subscription.failureCount = (subscription.failureCount ?? 0) + 1;
+          if (subscription.lastFailure === signature) return Effect.void;
+          subscription.lastFailure = signature;
+          return Effect.logWarning("Document session command failed", {
+            session: createHash("sha256").update(key).digest("hex").slice(0, 16),
+            operation: error.operation,
+            code: failure.core?.code ?? failure.code,
+            recovery: failure.core?.recovery.kind ?? "none",
+            retryable: failure.retryable,
+            attempts: subscription.failureCount,
+            connectionVersion: version,
+          });
+        }),
+        Effect.catch((error) => {
+          if (documentSessionError(error).core?.recovery.kind !== "reconnect_document_subscription")
+            return Effect.fail(error);
+          return subscription.lease
+            .reconnectAfterSubscriptionLoss(version)
+            .pipe(Effect.andThen(replayAfterReconnect ? command : Effect.fail(error)));
+        }),
+      );
+    });
+
+  const reportDocumentRecovered = (key: string): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      const subscription = subscriptions.get(key);
+      if (!subscription?.failureCount) return Effect.void;
+      const attempts = subscription.failureCount;
+      subscription.failureCount = 0;
+      subscription.lastFailure = undefined;
+      return Effect.logInfo("Document session recovered", {
+        session: createHash("sha256").update(key).digest("hex").slice(0, 16),
+        attempts,
+      });
+    });
+
+  const reportDocumentTermination = (key: string, error: unknown): Effect.Effect<void> => {
+    const failure = documentSessionError(error);
+    return Effect.logWarning("Document session stopped", {
+      session: createHash("sha256").update(key).digest("hex").slice(0, 16),
+      code: failure.core?.code ?? failure.code,
+      recovery: failure.core?.recovery.kind ?? "none",
+      retryable: failure.retryable,
+    });
+  };
 
   const openPhysicalDocumentSubscription = (
     scope: DesktopDocumentSyncScope,
@@ -1060,7 +1133,7 @@ const makeDesktopDocumentSessionState = (
             error: documentMutationFailure(
               "unknown",
               error.cause instanceof Error ? error.cause.message : error.message,
-              { mutationId: request.mutationId, retryable: true },
+              { mutationId: request.mutationId, retryable: documentSessionError(error).retryable },
             ),
           }),
         ),
@@ -1092,6 +1165,7 @@ const makeDesktopDocumentSessionState = (
         return await commands.compact(request, eligibility.value);
       },
       request.mutationId,
+      canvasSceneSubscriptionKey(target, request),
     );
 
   const publishDocumentEffects = (
@@ -1362,8 +1436,8 @@ const makeDesktopDocumentSessionState = (
             ok: false as const,
             error: {
               code: "unknown" as const,
-              message: error.cause instanceof Error ? error.cause.message : error.message,
-              retryable: true,
+              message: documentSessionError(error).message,
+              retryable: documentSessionError(error).retryable,
               reloadRequired: false,
               operationId: intent.operationId,
             },
@@ -1392,8 +1466,8 @@ const makeDesktopDocumentSessionState = (
             ok: false as const,
             error: {
               code: "unknown" as const,
-              message: error.cause instanceof Error ? error.cause.message : error.message,
-              retryable: true,
+              message: documentSessionError(error).message,
+              retryable: documentSessionError(error).retryable,
               reloadRequired: false,
               operationId: intent.operationId,
             },
@@ -1443,7 +1517,7 @@ const makeDesktopDocumentSessionState = (
         };
       }).pipe(
         Effect.catch((error) =>
-          Effect.succeed(transportUnavailable<ProjectAccessedDocumentDescriptor>(error)),
+          Effect.succeed(documentFailure<ProjectAccessedDocumentDescriptor>(error)),
         ),
       ),
     prepareLibraryOwnedBlockDocument: (ownerBlockId) =>
@@ -1463,7 +1537,7 @@ const makeDesktopDocumentSessionState = (
         };
       }).pipe(
         Effect.catch((error) =>
-          Effect.succeed(transportUnavailable<LibraryAccessedDocumentDescriptor>(error)),
+          Effect.succeed(documentFailure<LibraryAccessedDocumentDescriptor>(error)),
         ),
       ),
     subscribe: (
@@ -1577,7 +1651,22 @@ const makeDesktopDocumentSessionState = (
                   });
                 }),
               onRealtime: (event) => Effect.sync(() => receive(event)),
-              onOpened: () => Effect.void,
+              onOpened: (barrier) => {
+                if (
+                  barrier.engine === "yjs" &&
+                  barrier.document_id === request.documentId &&
+                  barrier.store_epoch === input.coreAuthority.identity.storeEpoch
+                )
+                  return Effect.void;
+                return Effect.fail(
+                  documentLiveRuntimeError(
+                    "document.subscribe.barrier",
+                    new CoreEventCompatibilityError(
+                      "Core Document live barrier does not match the Yjs session",
+                    ),
+                  ),
+                );
+              },
               onInterrupted: () => Effect.void,
               onConnectionStateChanged: (state) =>
                 Effect.sync(() => {
@@ -1622,13 +1711,25 @@ const makeDesktopDocumentSessionState = (
               target,
               targetId: target.id,
               close: closeLease,
+              lease,
               pendingRealtimeEvents: new Map(),
             });
             admitted = true;
             openingEvents.forEach(deliver);
             background(
               lease.done.pipe(
-                Effect.ignore,
+                Effect.tapError((error) => reportDocumentTermination(key, error)),
+                Effect.catch((error) =>
+                  Effect.sync(() => {
+                    if (subscriptions.get(key)?.lease !== lease) return;
+                    receive({
+                      kind: "terminated",
+                      documentId: request.documentId,
+                      clientSessionId: request.clientSessionId,
+                      error: documentSessionError(error),
+                    });
+                  }),
+                ),
                 Effect.ensuring(
                   Effect.sync(() => {
                     if (subscriptions.get(key)?.close === closeLease) {
@@ -1645,7 +1746,7 @@ const makeDesktopDocumentSessionState = (
                 closeLease?.();
                 closeSubscription(key);
                 if (bindings.get(ownerKey) === key) bindings.delete(ownerKey);
-                return transportUnavailable<DocumentSyncSubscriptionAck>(error.cause);
+                return documentFailure<DocumentSyncSubscriptionAck>(error.cause);
               }),
             ),
           );
@@ -1670,13 +1771,16 @@ const makeDesktopDocumentSessionState = (
         }
         const key = subscriptionKey(target, scope, request);
         suspendSubscriptionBoundary(key);
-        const result = yield* input.coreModules.document.sync(request, projectIdFor(scope)).pipe(
+        const result = yield* withDocumentLease(
+          key,
+          input.coreModules.document.sync(request, projectIdFor(scope)),
+          true,
+        ).pipe(
           Effect.map((value) => ({ ok: true as const, value })),
-          Effect.catch((error) =>
-            Effect.succeed(transportUnavailable<DocumentSyncResponse>(error)),
-          ),
+          Effect.catch((error) => Effect.succeed(documentFailure<DocumentSyncResponse>(error))),
         );
         if (!result.ok) return result;
+        yield* reportDocumentRecovered(key);
         adoptSubscriptionBoundary(key, result.value);
         drainDocumentRealtimeEvents(key, target);
         return result;
@@ -1686,11 +1790,12 @@ const makeDesktopDocumentSessionState = (
         if (!hasNativeSubscription(target, scope, request)) {
           return documentSyncUnauthorized();
         }
-        return yield* input.coreModules.document.applyUpdate(request, projectIdFor(scope)).pipe(
+        return yield* withDocumentLease(
+          subscriptionKey(target, scope, request),
+          input.coreModules.document.applyUpdate(request, projectIdFor(scope)),
+        ).pipe(
           Effect.map((value) => ({ ok: true as const, value })),
-          Effect.catch((error) =>
-            Effect.succeed(transportUnavailable<DocumentSyncApplyAck>(error)),
-          ),
+          Effect.catch((error) => Effect.succeed(documentFailure<DocumentSyncApplyAck>(error))),
         );
       }),
     publishAwareness: (scope, target, request) =>
@@ -1698,14 +1803,15 @@ const makeDesktopDocumentSessionState = (
         if (!hasNativeSubscription(target, scope, request)) {
           return documentSyncUnauthorized();
         }
-        return yield* input.coreModules.document
-          .publishAwareness(request, projectIdFor(scope))
-          .pipe(
-            Effect.map((value) => ({ ok: true as const, value })),
-            Effect.catch((error) =>
-              Effect.succeed(transportUnavailable<DocumentAwarenessPublishAck>(error)),
-            ),
-          );
+        return yield* withDocumentLease(
+          subscriptionKey(target, scope, request),
+          input.coreModules.document.publishAwareness(request, projectIdFor(scope)),
+        ).pipe(
+          Effect.map((value) => ({ ok: true as const, value })),
+          Effect.catch((error) =>
+            Effect.succeed(documentFailure<DocumentAwarenessPublishAck>(error)),
+          ),
+        );
       }),
     subscribeCanvasScene: (target, request): Effect.Effect<CanvasSceneSubscriptionCommandResult> =>
       Effect.gen(function* () {
@@ -1731,6 +1837,12 @@ const makeDesktopDocumentSessionState = (
             let openingOverflowed = false;
             const openingEvents: CanvasSceneRealtimeEvent[] = [];
             const deliver = (event: CanvasSceneRealtimeEvent): void => {
+              if (event.type === "canvas_scene_session") {
+                if (event.state === "disconnected") suspendSubscriptionBoundary(key);
+                if (!safeSendToWebContents(target, DOCUMENT_SYNC_EVENT_CHANNEL, [event]))
+                  closeSubscription(key);
+                return;
+              }
               deliverCanvasRealtimeEvent(key, target, event);
             };
             const receive = (event: CanvasSceneRealtimeEvent): void => {
@@ -1776,8 +1888,22 @@ const makeDesktopDocumentSessionState = (
                   });
                 }),
               onRealtime: () => Effect.void,
-              onOpened: (barrier, reconnected) =>
-                Effect.sync(() => {
+              onOpened: (barrier, reconnected) => {
+                if (
+                  barrier.engine !== "canvas_scene" ||
+                  barrier.document_id !== request.documentId ||
+                  barrier.store_epoch !== input.coreAuthority.identity.storeEpoch
+                ) {
+                  return Effect.fail(
+                    documentLiveRuntimeError(
+                      "canvas.subscribe.barrier",
+                      new CoreEventCompatibilityError(
+                        "Core Document live barrier does not match the Canvas session",
+                      ),
+                    ),
+                  );
+                }
+                return Effect.sync(() => {
                   if (!reconnected) return;
                   receive({
                     type: "canvas_scene_resync_required",
@@ -1788,9 +1914,19 @@ const makeDesktopDocumentSessionState = (
                     generation: barrier.document_generation,
                     headSeq: barrier.head_seq,
                   });
-                }),
+                });
+              },
               onInterrupted: () => Effect.void,
-              onConnectionStateChanged: () => Effect.void,
+              onConnectionStateChanged: (state) =>
+                Effect.sync(() =>
+                  receive({
+                    type: "canvas_scene_session",
+                    ...binding,
+                    documentId: request.documentId,
+                    clientSessionId: request.clientSessionId,
+                    state,
+                  }),
+                ),
               shouldRetry: retryDocumentLive,
               maxInitialOpenAttempts: 3,
               retryDelay: 250,
@@ -1826,6 +1962,7 @@ const makeDesktopDocumentSessionState = (
               target,
               targetId: target.id,
               close: closeLease,
+              lease,
               pendingRealtimeEvents: new Map(),
             });
             admitted = true;
@@ -1845,7 +1982,20 @@ const makeDesktopDocumentSessionState = (
             });
             background(
               lease.done.pipe(
-                Effect.ignore,
+                Effect.tapError((error) => reportDocumentTermination(key, error)),
+                Effect.catch((error) =>
+                  Effect.sync(() => {
+                    if (subscriptions.get(key)?.lease !== lease) return;
+                    receive({
+                      type: "canvas_scene_session",
+                      ...binding,
+                      documentId: request.documentId,
+                      clientSessionId: request.clientSessionId,
+                      state: "terminated",
+                      error: mapCoreCanvasSceneFailure(error).error,
+                    });
+                  }),
+                ),
                 Effect.ensuring(
                   Effect.sync(() => {
                     if (subscriptions.get(key)?.close === closeLease) {
@@ -1862,7 +2012,7 @@ const makeDesktopDocumentSessionState = (
                 closeLease?.();
                 closeSubscription(key);
                 if (bindings.get(ownerKey) === key) bindings.delete(ownerKey);
-                return canvasSceneTransportUnavailable(error.cause);
+                return mapCoreCanvasSceneFailure(error.cause);
               }),
             ),
           );
@@ -1888,10 +2038,16 @@ const makeDesktopDocumentSessionState = (
         }
         const key = canvasSceneSubscriptionKey(target, request);
         suspendSubscriptionBoundary(key);
-        const result = yield* runCanvasCommand("canvas.sync", request.accessContext, (commands) =>
-          commands.sync(request),
+        const result = yield* runCanvasCommand(
+          "canvas.sync",
+          request.accessContext,
+          (commands) => commands.sync(request),
+          undefined,
+          key,
+          true,
         );
         if (result.ok) {
+          yield* reportDocumentRecovered(key);
           adoptSubscriptionBoundary(key, result.value);
           drainCanvasRealtimeEvents(key, target);
         }
@@ -1908,6 +2064,7 @@ const makeDesktopDocumentSessionState = (
           return await commands.applyMutation(request);
         },
         request.mutationId,
+        canvasSceneSubscriptionKey(target, request),
       ),
     publishCanvasPresence: (target, request) =>
       Effect.sync(() => {
@@ -1954,12 +2111,18 @@ const makeDesktopDocumentSessionState = (
         }
       }),
     readCanvasSceneCompaction: (target, request) =>
-      runCanvasCommand("canvas.read-compaction", request.accessContext, async (commands) => {
-        if (!hasNativeCanvasSceneSubscription(target, request)) {
-          return canvasSceneUnauthorized();
-        }
-        return await commands.readCompaction(request);
-      }),
+      runCanvasCommand(
+        "canvas.read-compaction",
+        request.accessContext,
+        async (commands) => {
+          if (!hasNativeCanvasSceneSubscription(target, request)) {
+            return canvasSceneUnauthorized();
+          }
+          return await commands.readCompaction(request);
+        },
+        undefined,
+        canvasSceneSubscriptionKey(target, request),
+      ),
     compactCanvasScene,
     applyAdditionalDocumentCommand: (request) =>
       input.coreSession

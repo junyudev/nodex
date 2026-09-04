@@ -1,3 +1,4 @@
+import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   AppState,
@@ -199,6 +200,7 @@ function CanvasEditor({
     readonly files: CanvasBinaryFiles;
   } | null>(null);
   const [sceneError, setSceneError] = useState<string | null>(null);
+  const exportRecoveryRef = useRef<(() => Promise<void>) | null>(null);
   const retrySceneRef = useRef<(() => void) | null>(null);
   const latestElementsRef = useRef<readonly OrderedExcalidrawElement[]>([]);
   const [placedPageIds, setPlacedPageIds] = useState(() =>
@@ -445,6 +447,8 @@ function CanvasEditor({
         }
         const status = provider.getStatus();
         if (status.phase === "reset-required" || status.phase === "error") {
+          // Retiring a failed replica must preserve its pending intents first.
+          await provider.checkpointRecovery();
           await onReload();
           return;
         }
@@ -455,6 +459,16 @@ function CanvasEditor({
         setSceneError(error instanceof Error ? error.message : String(error));
       });
     };
+    const exportRecovery = async (): Promise<void> => {
+      const data = await provider.exportRecovery();
+      const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "nodex-canvas-recovery.json";
+      link.click();
+      globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+    };
+    exportRecoveryRef.current = exportRecovery;
     retrySceneRef.current = retry;
     void runtime.connect().catch((error: unknown) => {
       if (active) setSceneError(error instanceof Error ? error.message : String(error));
@@ -462,6 +476,7 @@ function CanvasEditor({
 
     return () => {
       active = false;
+      if (exportRecoveryRef.current === exportRecovery) exportRecoveryRef.current = null;
       if (retrySceneRef.current === retry) retrySceneRef.current = null;
       if (bindingRef.current === binding) bindingRef.current = null;
       if (presenceRef.current === presence) presenceRef.current = null;
@@ -666,6 +681,16 @@ function CanvasEditor({
     <div
       className={variant === "inline" ? "h-full min-h-0 w-full" : "h-full min-h-0 w-full px-4 pb-4"}
     >
+      <div className="flex justify-end py-1">
+        <RecoveryEntry
+          scope={{ libraryId: descriptor.libraryId, accessContext: descriptor.accessContext }}
+          documentId={descriptor.documentId}
+          refreshKey={sceneError ?? undefined}
+          exportLocal={async () => {
+            await exportRecoveryRef.current?.();
+          }}
+        />
+      </div>
       {sceneError ? (
         <div
           role="alert"

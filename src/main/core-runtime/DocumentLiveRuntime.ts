@@ -61,8 +61,11 @@ export interface DocumentLiveSubscriptionInput {
 export interface DocumentLiveLease {
   readonly ready: Effect.Effect<DocumentLiveBarrier, DocumentLiveRuntimeError>;
   readonly done: Effect.Effect<void, DocumentLiveRuntimeError>;
-  readonly waitUntilConnected: Effect.Effect<void, DocumentLiveRuntimeError>;
-  readonly reconnectAfterSubscriptionLoss: Effect.Effect<void, DocumentLiveRuntimeError>;
+  /** Returns the physical attempt identity that admitted this command. */
+  readonly waitUntilConnected: Effect.Effect<number, DocumentLiveRuntimeError>;
+  readonly reconnectAfterSubscriptionLoss: (
+    connectionVersion: number,
+  ) => Effect.Effect<void, DocumentLiveRuntimeError>;
   readonly close: Effect.Effect<void>;
 }
 
@@ -74,6 +77,7 @@ export class DocumentLiveRuntime extends Context.Service<
 >()("nodex/main/core-runtime/DocumentLiveRuntime") {}
 
 interface LiveState {
+  readonly connectionVersion: number;
   readonly active: DocumentLivePhysicalSubscription | null;
   readonly closed: boolean;
   readonly connected: boolean;
@@ -119,6 +123,7 @@ export const make = Effect.gen(function* () {
     const initialConnection = yield* Deferred.make<void, DocumentLiveRuntimeError>();
     const done = yield* Deferred.make<void, DocumentLiveRuntimeError>();
     const state = yield* Ref.make<LiveState>({
+      connectionVersion: 0,
       active: null,
       closed: false,
       connected: false,
@@ -174,7 +179,12 @@ export const make = Effect.gen(function* () {
           Effect.gen(function* () {
             const current = yield* Ref.get(state);
             if (current.closed) return false;
-            yield* Ref.set(state, { ...current, connected: true, everConnected: true });
+            yield* Ref.set(state, {
+              ...current,
+              connected: true,
+              everConnected: true,
+              connectionVersion: current.connectionVersion + 1,
+            });
             yield* Ref.set(connectedThisAttempt, true);
             yield* Deferred.succeed(current.connection, undefined);
             yield* Deferred.succeed(ready, barrier);
@@ -424,7 +434,7 @@ export const make = Effect.gen(function* () {
     );
     const fiber = yield* FiberSet.run(fibers, program, { startImmediately: true });
 
-    const waitUntilConnected = transitions
+    const waitUntilConnected: Effect.Effect<number, DocumentLiveRuntimeError> = transitions
       .withPermits(1)(
         Effect.gen(function* () {
           const current = yield* Ref.get(state);
@@ -438,14 +448,21 @@ export const make = Effect.gen(function* () {
         Effect.flatMap((connection) =>
           connection === null ? Effect.void : Deferred.await(connection),
         ),
+        Effect.andThen(Ref.get(state)),
+        Effect.flatMap((current) =>
+          current.connected ? Effect.succeed(current.connectionVersion) : waitUntilConnected,
+        ),
       );
 
-    const reconnectAfterSubscriptionLoss = Effect.gen(function* () {
+    const reconnectAfterSubscriptionLoss = Effect.fn(
+      "DocumentLiveLease.reconnectAfterSubscriptionLoss",
+    )(function* (connectionVersion: number) {
       const transition = yield* transitions.withPermits(1)(
         Effect.gen(function* () {
           const current = yield* Ref.get(state);
           if (current.terminalError) return yield* current.terminalError;
           if (current.closed) return yield* closedError();
+          if (current.connected && current.connectionVersion !== connectionVersion) return null;
           if (!current.connected) {
             return {
               active: null,
@@ -464,6 +481,7 @@ export const make = Effect.gen(function* () {
           };
         }),
       );
+      if (transition === null) return;
       if (transition.disconnected) yield* observeConnection("disconnected");
       if (transition.active) yield* transition.active.close;
       if (transition.wake) yield* Deferred.succeed(transition.wake, undefined);

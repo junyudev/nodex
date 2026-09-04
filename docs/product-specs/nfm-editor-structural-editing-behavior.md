@@ -3,6 +3,14 @@
 Status: Active
 Last updated: 2026-09-03
 
+Structural preparation has one absolute 10-second deadline, including native
+drag/IME cleanup and durable fencing. After 700 ms the document status offers
+Cancel; Escape, view deactivation, or disposal cancels pending preparation.
+Cancellation removes only that operation's waiter and cannot discard pending
+text edits. A cancelled or expired command cannot execute when an earlier save
+later completes. Once submitted, the original operation identity and receipt
+remain authoritative. See [Document Sync and Recovery](document-sync-and-recovery-behavior.md).
+
 ## Purpose
 
 This document is the user-visible source of truth for editing selections that contain owning Page, Canvas, or Database Blocks. These Blocks own state outside the host Page Document, so the complete selection is committed by Core as one structural edit.

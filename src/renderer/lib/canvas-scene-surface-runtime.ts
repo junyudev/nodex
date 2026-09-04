@@ -7,6 +7,7 @@ import type { CanvasPresenceController } from "./canvas-presence-controller";
 export interface CanvasSceneSurfaceRuntime {
   readonly key: string;
   readonly descriptor: ReadyRegisteredOwnedBlockDocumentDescriptor;
+  isClosed(): boolean;
   connect(): Promise<void>;
   submitLocalScene(observation: CanvasLocalSceneObservation): CanvasSceneSubmission;
   persistDurable(): Promise<void>;
@@ -74,6 +75,8 @@ class DefaultCanvasSceneSurfaceRuntime implements CanvasSceneSurfaceRuntime {
   private readonly maintainIfIdle: (() => Promise<void>) | undefined;
   private readonly disposeSubscriptions: () => void;
 
+  isClosed = (): boolean => this.closed;
+
   connect = async (): Promise<void> => {
     if (this.closed) throw new Error("Canvas scene surface runtime is closed");
     await this.connectBarrier;
@@ -105,8 +108,14 @@ class DefaultCanvasSceneSurfaceRuntime implements CanvasSceneSurfaceRuntime {
   };
 
   private async closeInternal(): Promise<void> {
-    this.closed = true;
     let firstError: unknown = null;
+    try {
+      await this.binding.persistDurable();
+    } catch (error) {
+      await this.provider.checkpointRecovery();
+      firstError = error;
+    }
+    this.closed = true;
     const run = async (operation: () => void | Promise<void>): Promise<void> => {
       try {
         await operation();
@@ -115,7 +124,6 @@ class DefaultCanvasSceneSurfaceRuntime implements CanvasSceneSurfaceRuntime {
       }
     };
 
-    await run(() => this.binding.persistDurable());
     const status = this.provider.getStatus();
     if (
       this.maintainIfIdle &&
@@ -153,7 +161,8 @@ export const createCanvasSceneSurfaceRegistry = (): CanvasSceneSurfaceRegistry =
     try {
       await expected.close();
     } finally {
-      forgetSettled(key, expected);
+      // A failed durability barrier may leave this runtime holding the only draft.
+      if (expected.isClosed()) forgetSettled(key, expected);
     }
   };
 
@@ -161,8 +170,11 @@ export const createCanvasSceneSurfaceRegistry = (): CanvasSceneSurfaceRegistry =
     acquire(input) {
       const predecessor = currentByKey.get(input.key);
       const connectBarrier = predecessor
-        ? release(input.key, predecessor).catch(() => undefined)
+        ? release(input.key, predecessor).catch((error: unknown) => {
+            if (!predecessor.isClosed()) throw error;
+          })
         : Promise.resolve();
+      void connectBarrier.catch(() => undefined);
       const runtime = new DefaultCanvasSceneSurfaceRuntime(input, connectBarrier);
       currentByKey.set(input.key, runtime);
       activeOrClosing.add(runtime);

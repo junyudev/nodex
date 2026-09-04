@@ -15,6 +15,7 @@ import {
   type PortableCanvasScene,
 } from "./canvas-scene";
 import type { LocalCommitCommandSuccess } from "../local-commit-delivery";
+import type { CoreFailureEvidence } from "../core-failure-evidence";
 import { parseContentAccessContext, type ContentAccessContext } from "../content-access-context";
 
 export const MAX_CANVAS_SCENE_MUTATION_BYTES = 2 * 1024 * 1024;
@@ -82,6 +83,11 @@ export interface CanvasSceneCommittedDelta {
 }
 
 export type CanvasSceneMutationErrorCode =
+  | "transport_unavailable"
+  | "request_cancelled"
+  | "request_timeout"
+  | "service_busy"
+  | "invalid_response"
   | "invalid_canvas_scene_mutation"
   | "store_epoch_mismatch"
   | "access_scope_mismatch"
@@ -95,6 +101,7 @@ export type CanvasSceneMutationErrorCode =
   | "unknown";
 
 export interface CanvasSceneMutationError {
+  readonly core?: CoreFailureEvidence;
   readonly code: CanvasSceneMutationErrorCode;
   readonly message: string;
   readonly retryable: boolean;
@@ -192,7 +199,21 @@ export interface CanvasSceneResyncRequiredEvent {
   readonly headSeq: number;
 }
 
-export type CanvasSceneRealtimeEvent = CanvasSceneCommittedEvent | CanvasSceneResyncRequiredEvent;
+export type CanvasSceneSessionEvent = {
+  readonly type: "canvas_scene_session";
+  readonly libraryId: string;
+  readonly accessContext: ContentAccessContext;
+  readonly documentId: string;
+  readonly clientSessionId: string;
+} & (
+  | { readonly state: "connected" | "disconnected" }
+  | { readonly state: "terminated"; readonly error: CanvasSceneMutationError }
+);
+
+export type CanvasSceneRealtimeEvent =
+  | CanvasSceneCommittedEvent
+  | CanvasSceneResyncRequiredEvent
+  | CanvasSceneSessionEvent;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

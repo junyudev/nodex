@@ -2752,6 +2752,16 @@
                       }
                     ]
                   },
+                  "recovery": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RecoveryDraftSummary"
+                      }
+                    ]
+                  },
                   "semantic_block_etags": {
                     "type": [
                       "object",
@@ -2902,6 +2912,16 @@
                       },
                       {
                         "$ref": "#/components/schemas/DocumentOwnerEffect"
+                      }
+                    ]
+                  },
+                  "recovery": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RecoveryDraftSummary"
                       }
                     ]
                   },
@@ -3090,6 +3110,28 @@
       },
       "AuthorizedOwnedDocumentEvent": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "detached",
+              "kind"
+            ],
+            "properties": {
+              "detached": {
+                "type": "boolean"
+              },
+              "document_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "recovery_changed"
+                ]
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -7044,6 +7086,41 @@
                 "enum": [
                   "reconnect_document_subscription"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "artifact_id",
+              "document_id",
+              "store_epoch",
+              "generation",
+              "update_id",
+              "kind"
+            ],
+            "properties": {
+              "artifact_id": {
+                "type": "string"
+              },
+              "document_id": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "document_recovery_artifact"
+                ]
+              },
+              "store_epoch": {
+                "$ref": "#/components/schemas/StoreEpoch"
+              },
+              "update_id": {
+                "type": "string"
               }
             }
           },
@@ -13091,6 +13168,65 @@
             "format": "int64"
           },
           "owner_block_id": {
+            "type": "string"
+          }
+        }
+      },
+      "DocumentRecoveryArtifact": {
+        "type": "object",
+        "description": "Exact rejected input, retained separately from committed content. It is not a full document backup.",
+        "required": [
+          "artifact_id",
+          "document_id",
+          "store_epoch",
+          "generation",
+          "update_id",
+          "client_session_id",
+          "base_head_seq",
+          "update",
+          "update_hash",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string"
+          },
+          "base_head_seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "client_session_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "store_epoch": {
+            "$ref": "#/components/schemas/StoreEpoch"
+          },
+          "update": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          "update_hash": {
+            "type": "string"
+          },
+          "update_id": {
             "type": "string"
           }
         }
@@ -24686,6 +24822,42 @@
               {
                 "type": "object",
                 "required": [
+                  "capture",
+                  "kind"
+                ],
+                "properties": {
+                  "capture": {
+                    "$ref": "#/components/schemas/RecoveryDraftCapture"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "capture_recovery"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "resolve",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "resolve_recovery"
+                    ]
+                  },
+                  "resolve": {
+                    "$ref": "#/components/schemas/RecoveryDraftResolve"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "owner_block_id",
                   "kind"
                 ],
@@ -29664,6 +29836,55 @@
               {
                 "type": "object",
                 "required": [
+                  "read",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "recovery"
+                    ]
+                  },
+                  "read": {
+                    "$ref": "#/components/schemas/RecoveryRead"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "document_id",
+                  "artifact_id",
+                  "store_epoch",
+                  "generation",
+                  "kind"
+                ],
+                "properties": {
+                  "artifact_id": {
+                    "type": "string"
+                  },
+                  "document_id": {
+                    "type": "string"
+                  },
+                  "generation": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "recovery_artifact"
+                    ]
+                  },
+                  "store_epoch": {
+                    "$ref": "#/components/schemas/StoreEpoch"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "owner_block_id",
                   "kind"
                 ],
@@ -30845,6 +31066,28 @@
       },
       "OwnedDocumentEvent": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "detached",
+              "kind"
+            ],
+            "properties": {
+              "detached": {
+                "type": "boolean"
+              },
+              "document_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "recovery_changed"
+                ]
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -34653,6 +34896,548 @@
           }
         }
       },
+      "RecoveryChoice": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reconcile"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restore"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "copy"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "discard"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reopen"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RecoveryDraftCapture": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "document_id",
+          "source_store_epoch",
+          "generation",
+          "base_head_seq",
+          "created_at",
+          "schema_key",
+          "schema_version",
+          "content",
+          "source"
+        ],
+        "properties": {
+          "base_head_seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "$ref": "#/components/schemas/RecoveryDraftContent"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schema_key": {
+            "type": "string"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source": {
+            "description": "Lossless source envelope, including original request identities. Never replayed with new IDs."
+          },
+          "source_store_epoch": {
+            "type": "string"
+          }
+        }
+      },
+      "RecoveryDraftContent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "state",
+              "unintegrated_updates",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "yjs"
+                ]
+              },
+              "state": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              },
+              "unintegrated_updates": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mutations",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas"
+                ]
+              },
+              "mutations": {
+                "type": "array",
+                "items": {}
+              },
+              "scene": {}
+            }
+          }
+        ]
+      },
+      "RecoveryDraftInspection": {
+        "type": "object",
+        "required": [
+          "summary",
+          "capture",
+          "already_saved",
+          "can_restore",
+          "can_copy"
+        ],
+        "properties": {
+          "already_saved": {
+            "type": "boolean"
+          },
+          "can_copy": {
+            "type": "boolean"
+          },
+          "can_restore": {
+            "type": "boolean"
+          },
+          "capture": {
+            "$ref": "#/components/schemas/RecoveryDraftCapture"
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveryPreview"
+              }
+            ]
+          },
+          "current_generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "current_head_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "explanation": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "restored": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveryPreview"
+              }
+            ]
+          },
+          "retained": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveryPreview"
+              }
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RecoveryDraftSummary"
+          }
+        }
+      },
+      "RecoveryDraftPage": {
+        "type": "object",
+        "required": [
+          "drafts",
+          "pending_count"
+        ],
+        "properties": {
+          "drafts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecoveryDraftSummary"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pending_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RecoveryDraftResolve": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "revision",
+          "choice"
+        ],
+        "properties": {
+          "choice": {
+            "$ref": "#/components/schemas/RecoveryChoice"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "expected_generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "expected_head_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RecoveryDraftSummary": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "document_id",
+          "revision",
+          "created_at",
+          "received_at",
+          "byte_length",
+          "payload_hash"
+        ],
+        "properties": {
+          "byte_length": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "payload_hash": {
+            "type": "string"
+          },
+          "received_at": {
+            "type": "string"
+          },
+          "resolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveryResolution"
+              }
+            ]
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_document_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target_owner_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RecoveryPreview": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "title",
+              "rich_title",
+              "nfm",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "document"
+                ]
+              },
+              "nfm": {
+                "type": "string"
+              },
+              "rich_title": {},
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "scene",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas"
+                ]
+              },
+              "scene": {}
+            }
+          }
+        ]
+      },
+      "RecoveryRead": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "include_resolved",
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "before": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "document_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "include_resolved": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "list"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "draft_id",
+              "kind"
+            ],
+            "properties": {
+              "draft_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inspect"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RecoveryReadValue": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "page",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "list"
+                ]
+              },
+              "page": {
+                "$ref": "#/components/schemas/RecoveryDraftPage"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "inspection",
+              "kind"
+            ],
+            "properties": {
+              "inspection": {
+                "$ref": "#/components/schemas/RecoveryDraftInspection"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "inspect"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RecoveryResolution": {
+        "type": "string",
+        "enum": [
+          "already_saved",
+          "restored",
+          "copied",
+          "discarded"
+        ]
+      },
       "ReminderLease": {
         "type": "object",
         "required": [
@@ -36238,6 +37023,16 @@
                               }
                             ]
                           },
+                          "recovery": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/RecoveryDraftSummary"
+                              }
+                            ]
+                          },
                           "semantic_block_etags": {
                             "type": [
                               "object",
@@ -36388,6 +37183,16 @@
                               },
                               {
                                 "$ref": "#/components/schemas/DocumentOwnerEffect"
+                              }
+                            ]
+                          },
+                          "recovery": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/RecoveryDraftSummary"
                               }
                             ]
                           },
@@ -38758,6 +39563,42 @@
                   },
                   "value": {
                     "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "recovery"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/RecoveryReadValue"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "artifact",
+                          "kind"
+                        ],
+                        "properties": {
+                          "artifact": {
+                            "$ref": "#/components/schemas/DocumentRecoveryArtifact"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "recovery_artifact"
+                            ]
+                          }
+                        }
+                      },
                       {
                         "type": "object",
                         "required": [

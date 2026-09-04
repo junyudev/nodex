@@ -11,8 +11,27 @@ use crate::{
     ApplyResponse, ModuleMutationReceipt, ModuleName, StoreEpoch, VersionedModuleContract,
 };
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 10;
+mod recovery;
+pub use recovery::*;
+
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 12;
 pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 3;
+
+/// Exact rejected input, retained separately from committed content. It is not a full document backup.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+pub struct DocumentRecoveryArtifact {
+    pub artifact_id: String,
+    pub document_id: String,
+    pub store_epoch: StoreEpoch,
+    pub generation: i64,
+    pub update_id: String,
+    pub client_session_id: String,
+    pub base_head_seq: i64,
+    pub update: Vec<u8>,
+    pub update_hash: String,
+    pub created_at: String,
+    pub expires_at: String,
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -177,6 +196,15 @@ pub enum DocumentSemanticAnchor {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OwnedDocumentRead {
+    Recovery {
+        read: RecoveryRead,
+    },
+    RecoveryArtifact {
+        document_id: String,
+        artifact_id: String,
+        store_epoch: StoreEpoch,
+        generation: i64,
+    },
     Descriptor {
         owner_block_id: String,
     },
@@ -225,6 +253,12 @@ pub enum OwnedDocumentRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OwnedDocumentReadValue {
+    Recovery {
+        value: RecoveryReadValue,
+    },
+    RecoveryArtifact {
+        artifact: DocumentRecoveryArtifact,
+    },
     Descriptor {
         descriptor: OwnedDocumentDescriptor,
     },
@@ -309,6 +343,12 @@ pub struct AgentDocumentSemanticSnapshot {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OwnedDocumentIntent {
+    CaptureRecovery {
+        capture: Box<RecoveryDraftCapture>,
+    },
+    ResolveRecovery {
+        resolve: RecoveryDraftResolve,
+    },
     PrepareOwner {
         owner_block_id: String,
     },
@@ -576,6 +616,8 @@ pub struct DocumentOwnerEffect {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct OwnedDocumentCommitValue {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<RecoveryDraftSummary>,
     pub document_id: String,
     pub generation: i64,
     pub head_seq: i64,
@@ -667,6 +709,10 @@ pub enum PageFileReferenceChange {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OwnedDocumentEvent {
+    RecoveryChanged {
+        document_id: String,
+        detached: bool,
+    },
     DocumentUpdated {
         document_id: String,
         generation: i64,
