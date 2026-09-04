@@ -1,3 +1,4 @@
+import { testObservation } from "./config/vitest-observation";
 import { playwright } from "vite-plus/test/browser-playwright";
 import { defineConfig } from "vite-plus";
 import {
@@ -32,6 +33,7 @@ export default defineConfig({
     ],
   },
   test: {
+    ...testObservation("browser"),
     browser: {
       enabled: true,
       headless: true,

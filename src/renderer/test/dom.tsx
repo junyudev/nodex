@@ -5,44 +5,22 @@ import {
   type RenderOptions,
   waitFor,
 } from "@testing-library/react";
-import { useEffect, type ReactElement, type ReactNode } from "react";
-import {
-  createMaitaiStore,
-  disposeMaitaiStore,
-  MaitaiProvider,
-  type MaitaiStore,
-} from "@/lib/maitai";
+import { type ReactElement } from "react";
+import { renderWithAppMaitai } from "./app-maitai";
 import { TestThreadRouteScopePath } from "./maitai-scope-harness";
 
 export function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
   return rtlRender(ui, options);
 }
 
-function TestMaitaiRoot({
-  children,
-  store,
-}: {
-  readonly children: ReactNode;
-  readonly store: MaitaiStore;
-}) {
-  useEffect(() => () => disposeMaitaiStore(store), [store]);
-
-  return (
-    <MaitaiProvider store={store}>
-      <TestThreadRouteScopePath>{children}</TestThreadRouteScopePath>
-    </MaitaiProvider>
-  );
-}
-
 export function renderWithMaitai(ui: ReactElement, options?: RenderOptions) {
-  const store = createMaitaiStore();
   const { wrapper: NestedWrapper, ...renderOptions } = options ?? {};
-  return rtlRender(ui, {
+  return renderWithAppMaitai(ui, {
     ...renderOptions,
     wrapper: ({ children }) => (
-      <TestMaitaiRoot store={store}>
+      <TestThreadRouteScopePath>
         {NestedWrapper ? <NestedWrapper>{children}</NestedWrapper> : children}
-      </TestMaitaiRoot>
+      </TestThreadRouteScopePath>
     ),
   });
 }

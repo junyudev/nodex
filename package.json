@@ -163,6 +163,7 @@
     "verify:renderer-ui-boundaries": "tsx scripts/ci/verify-renderer-ui-boundaries.ts",
     "verify:effect-boundaries": "tsx scripts/ci/verify-effect-boundaries.ts",
     "tooling:verify": "tsx scripts/ci/verify-tooling-contracts.ts",
+    "tooling:benchmark": "tsx scripts/tooling/benchmark.ts",
     "dev": "tsx scripts/dev-launcher.ts",
     "build": "vp run clipboard-bridge:build && vp run appshot-helper:build:dev && tsx scripts/prepared-electron-build.ts build && vp run renderer-bootstrap:verify-build",
     "package": "vp run package:mac",

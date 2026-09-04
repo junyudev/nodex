@@ -1,3 +1,4 @@
+import { testObservation } from "./config/vitest-observation";
 import { defineConfig } from "vite-plus";
 import {
   createRendererVitePlugins,
@@ -44,6 +45,7 @@ export default defineConfig({
   resolve: rendererViteResolve,
   css: rendererViteCss,
   test: {
+    ...testObservation("renderer"),
     env: { TZ: "UTC" },
     environment: "jsdom",
     environmentOptions: {

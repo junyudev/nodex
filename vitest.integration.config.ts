@@ -1,3 +1,4 @@
+import { testObservation } from "./config/vitest-observation";
 import { defineConfig } from "vite-plus";
 import { assertElectronTestRuntime } from "./config/electron-test-runtime";
 import { selectTieredTestFiles } from "./config/vitest-test-tier";
@@ -11,6 +12,7 @@ const testFiles = selectTieredTestFiles({
 
 export default defineConfig({
   test: {
+    ...testObservation("integration"),
     env: { TZ: "UTC" },
     environment: "node",
     exclude: testFiles.exclude,

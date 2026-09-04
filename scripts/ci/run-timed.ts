@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
-import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runCommand } from "../tooling/process";
 
 export interface TimedCommandArguments {
   readonly name: string;
@@ -30,6 +30,8 @@ export interface RunTimedOptions {
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly now?: () => Date;
+  readonly signal?: AbortSignal;
+  readonly logFile?: string;
 }
 
 const readOption = (args: readonly string[], name: string): string | undefined => {
@@ -81,22 +83,6 @@ const optionalPositiveInteger = (value: string | undefined): number | null => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const runChild = async (
-  options: Pick<RunTimedOptions, "command" | "commandArguments" | "cwd" | "env">,
-): Promise<number> =>
-  await new Promise((resolve) => {
-    const child = spawn(options.command, [...options.commandArguments], {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: "inherit",
-    });
-    child.once("error", (error) => {
-      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-      resolve(1);
-    });
-    child.once("close", (code) => resolve(code ?? 1));
-  });
-
 const appendSummary = async (
   summaryPath: string | undefined,
   record: TimedCommandRecord,
@@ -124,7 +110,7 @@ export const runTimedCommand = async (options: RunTimedOptions): Promise<TimedCo
   if (!options.name.trim()) throw new Error("Timed command name must not be empty.");
   const now = options.now ?? (() => new Date());
   const started = now();
-  const exitCode = await runChild(options);
+  const result = await runCommand({ ...options, args: options.commandArguments });
   const finished = now();
   const environment = options.env ?? process.env;
   const record: TimedCommandRecord = {
@@ -135,8 +121,8 @@ export const runTimedCommand = async (options: RunTimedOptions): Promise<TimedCo
     sha: optionalText(environment.GITHUB_SHA),
     startedAt: started.toISOString(),
     finishedAt: finished.toISOString(),
-    durationMs: Math.max(0, finished.getTime() - started.getTime()),
-    exitCode,
+    durationMs: result.durationMs,
+    exitCode: result.exitCode,
   };
   const timingDirectory =
     options.timingDirectory ?? path.resolve(process.cwd(), ".generated/ci-timings");

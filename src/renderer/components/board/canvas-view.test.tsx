@@ -3,7 +3,8 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { createElement, StrictMode, type ReactNode } from "react";
 import { createHash } from "node:crypto";
 import type { BoardSummary, DatabasePageSummary } from "@/lib/types";
-import { render, settleAsyncRender, textContent } from "@/test/dom";
+import { settleAsyncRender, textContent } from "@/test/dom";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import {
   canonicalPortableCanvasSceneFingerprint,
   chooseCanvasSceneElementWinner,

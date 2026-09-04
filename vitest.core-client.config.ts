@@ -1,3 +1,4 @@
+import { testObservation } from "./config/vitest-observation";
 import { defineConfig } from "vite-plus";
 import { rendererViteResolve } from "./config/renderer-vite-shared";
 import { selectTieredTestFiles } from "./config/vitest-test-tier";
@@ -22,6 +23,7 @@ const testFiles = selectTieredTestFiles({
 export default defineConfig({
   resolve: rendererViteResolve,
   test: {
+    ...testObservation("core-client"),
     env: { TZ: "UTC" },
     environment: "node",
     include: testFiles.include,
