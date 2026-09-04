@@ -61,16 +61,27 @@ Every asynchronous clipboard publication compares an exact write claim with the
 current native slot. A newer copy always supersedes older work, including a copy
 performed by another application. The write claim is causal evidence only.
 
-On Electron 43, Chromium transports web custom clipboard data through an opaque
-platform representation. The destination renderer's native `ClipboardEvent`
-can read the private descriptor, but Electron Main cannot portably decode that
-same value with `clipboard.read()` or `readBuffer()`. The descriptor therefore
-routes the destination to Main by exact claim, while Main performs native-slot
-compare-and-swap against the matching claim in standard HTML. `begin` only
-registers the session because it may arrive before the browser has committed the
-clipboard event; the later asynchronous publication performs the authoritative
-slot comparison. This platform projection is isolated in the Electron clipboard
-Adapter so a future atomic multi-format API does not change the runtime contract.
+Chromium transports event custom data through an opaque platform representation.
+The native ClipboardEvent can read it, but Electron's raw and Web custom MIME
+writers do not reproduce that event representation. Nodex therefore keeps the
+original Chromium-owned formats instead of reading and reconstructing them.
+
+On macOS, a small in-process Node-API Adapter uses public AppKit operations. Main
+compares the HTML claim from a bounded, materialized observation, then passes its
+pasteboard generation to a synchronous conditional enhancement. AppKit rejects
+each format update if another process took ownership, including between the last
+generation check and the setter. The generation additionally fences later copies
+by another Nodex window. The Adapter never clears or redeclares the board, adds
+types, or rewrites opaque Chromium data. Ordinary File-path resolution changes
+only text; structural publication updates text first and HTML last, then verifies
+both within the same generation.
+
+This is not an OS-atomic multi-format replacement. Partial enhancement retains
+portable content and cannot authorize source deletion; a failed or superseded
+publication reports failure. `begin` only registers the session because it may
+arrive before Chromium commits the copy event. Publication and its completion
+observation run in one short, interruption-protected host operation; Core capture
+and source deletion remain outside it.
 
 ### Electron Main owns the ephemeral lifecycle
 
@@ -89,7 +100,11 @@ The Module hides preparing, ready, failed, and superseded state;
 waiter-before-begin rendezvous; bounded waiters; native compare-and-swap;
 timeout; source and target sender lifetime; Profile replacement; and shutdown
 cleanup. Repeated target waiters for one claim share the same readiness result,
-while Core still serializes consumption of a single-use cut claim.
+while Core still serializes consumption of a single-use cut claim. A published
+HTML capability still resolves through an existing host session; it cannot bypass
+the source Cut commit barrier. Only a host without that session uses it as a
+recovery candidate. A newer publication supersedes older preparing work, not a
+Cut whose source deletion is already in flight.
 
 Timeout is fail-closed by lifecycle phase. It may expire an unregistered or
 preparing claim because a later publication will then be rejected before source

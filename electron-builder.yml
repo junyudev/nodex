@@ -56,6 +56,8 @@ extraResources:
     to: native/nodex-sparkle.node
   - from: .generated/sparkle-runtime/${arch}/sparkle-runtime.json
     to: native/sparkle-runtime.json
+  - from: .generated/clipboard-runtime/${arch}/nodex-clipboard.node
+    to: native/nodex-clipboard.node
 extraFiles:
   - from: resources/macos/app.jyu.nodex.background-service.core.plist
     to: Helpers/Nodex Service.app/Contents/Library/LaunchAgents/app.jyu.nodex.background-service.core.plist
@@ -85,6 +87,7 @@ mac:
   category: public.app-category.productivity
   hardenedRuntime: true
   binaries:
+    - Contents/Resources/native/nodex-clipboard.node
     - Contents/Resources/bin/nodex
     - Contents/Resources/bin/nodex-appshot-helper
     - Contents/Resources/bin/nodex-dictation-helper

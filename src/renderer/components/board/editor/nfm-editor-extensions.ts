@@ -317,7 +317,6 @@ function handleNfmClipboardCommand(
       .then(async (resolved) => {
         const result = await writeClaimedClipboardPresentation({
           writeClaim,
-          html: resolved.externalHTML,
           text: resolved.structuredText,
         });
         if (result.ok || result.failure === "superseded") return;

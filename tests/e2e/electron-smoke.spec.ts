@@ -1509,7 +1509,7 @@ test.describe("parallel functional Electron smoke", () => {
             .toContain("![One](/");
           expect(
             await harness.application.evaluate(({ clipboard }) => clipboard.availableFormats()),
-          ).not.toContain("blocknote/html");
+          ).toContain("blocknote/html");
           await expect(
             sourceEditor.locator('.bn-block-content[data-content-type="image"]'),
           ).toHaveCount(command === "copy" ? 2 : 0);

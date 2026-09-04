@@ -47,14 +47,13 @@ const makeClipboard = (initialClaim = firstClaim) => {
     readFormat: () => "",
     readHtml: () => html,
     readText: () => text,
-    readStructuralDescriptor: () => null,
-    readStructuralWriteClaim: () => currentClaim,
-    writePresentation: (next) => {
-      html = next.html;
-      text = next.text;
-      currentClaim = null;
-    },
-    replaceClaimedPresentation: () => ({ ok: false, failure: "superseded" }),
+    replaceClaimedPresentation: (next) =>
+      Effect.sync(() => {
+        if (currentClaim !== next.writeClaim) return { ok: false, failure: "superseded" } as const;
+        if (next.html !== undefined) html = next.html;
+        text = next.text;
+        return { ok: true } as const;
+      }),
     writeImage: () => undefined,
     createImageFromBuffer: () => {
       throw new Error("unused");
@@ -178,7 +177,12 @@ it.effect("keeps cut pending until source commit settles and safely falls back t
       },
       "client-12",
     );
-    const waiting = yield* Effect.forkChild(runtime.awaitResolution({ writeClaim: firstClaim }));
+    const waiting = yield* Effect.forkChild(
+      runtime.awaitResolution({
+        writeClaim: firstClaim,
+        publishedEnvelope: envelope("cut"),
+      }),
+    );
     yield* Effect.yieldNow;
     assert.isUndefined(waiting.pollUnsafe());
 
@@ -221,12 +225,41 @@ it.effect("does not let a timeout infer that an in-flight source cut was preserv
 
     yield* TestClock.adjust(STRUCTURAL_CLIPBOARD_SESSION_TIMEOUT_MS);
     assert.isUndefined(waiting.pollUnsafe());
+    clipboard.setClaim(secondClaim);
+    yield* runtime.begin(
+      { writeClaim: secondClaim, actionHint: "copy", storeEpoch: "epoch-1" },
+      "client-16",
+    );
+    yield* runtime.publish(
+      {
+        writeClaim: secondClaim,
+        envelope: envelope("copy"),
+        html: "<p>Newer</p>",
+        text: "Newer",
+      },
+      "client-16",
+    );
+    assert.isUndefined(waiting.pollUnsafe());
     yield* runtime.settle({ writeClaim: firstClaim, outcome: "cut_committed" }, "client-15");
     assert.deepEqual(yield* Fiber.join(waiting), {
       kind: "ready",
       envelope: envelope("cut"),
       disposition: "structural",
     });
+  }).pipe(Effect.scoped),
+);
+
+it.effect("recovers a published capability only when no host session owns its claim", () =>
+  Effect.gen(function* () {
+    const context = yield* Layer.build(withRuntime(makeClipboard().port));
+    const runtime = Context.get(context, StructuralClipboardRuntime);
+    assert.deepEqual(
+      yield* runtime.awaitResolution({
+        writeClaim: firstClaim,
+        publishedEnvelope: envelope("cut"),
+      }),
+      { kind: "ready", envelope: envelope("cut"), disposition: "structural" },
+    );
   }).pipe(Effect.scoped),
 );
 

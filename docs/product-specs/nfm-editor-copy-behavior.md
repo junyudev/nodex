@@ -1,7 +1,7 @@
 # NFM Editor Copy Behavior
 
 Status: Active
-Last Updated: 2026-08-30
+Last Updated: 2026-09-04
 
 This document describes copy-related behavior inside the NFM / BlockNote editor. It covers ordinary selection copy/cut, structural selection copy/cut, and the separate image-toolbar copy action.
 
@@ -148,16 +148,22 @@ Legacy managed assets resolve synchronously. Page File identity resolves through
 the Page's authorized current metadata and a hash-only preload capability. For
 ordinary selections, Nodex synchronously writes a portable rich fallback with a
 bounded native clipboard claim, resolves the local paths, and asks Main to
-replace that claimed HTML/plain presentation. Main writes only when the claim
+enhance only its plain-text representation. Main writes only when the claim
 still owns the system clipboard, so a newer copy from Nodex or another app is
 never overwritten. The portable payload remains usable while resolution is in
-flight or if it fails. Structural copy uses the same claim/CAS writer after Core
-prepares its authoritative clipboard capability.
+flight or if it fails. The existing HTML and private clipboard formats are left
+intact. Structural copy uses the same conditional writer to enhance text and
+publish its HTML capability after Core prepares the authoritative bundle.
 
-The rich fragment survives both the pending and final standard-HTML writes;
+The rich fragment survives both ordinary enhancement and structural publication;
 rewriting plain-text paths never changes its File locators, Block hierarchy,
 or partial-selection boundaries. Ordinary write claims are not structural
 descriptors and never start a Core clipboard wait.
+
+A structural HTML capability does not bypass an active Main session. Cut remains
+pending until the source admits its LocalCommit, even if the capability is already
+present in the clipboard or a newer copy has replaced the native slot. A host with
+no matching session can recover the published capability, subject to Core validation.
 
 Local-path rewriting is all-or-nothing for one copied payload. If any Nodex File
 reference cannot be resolved, every reference remains portable instead of

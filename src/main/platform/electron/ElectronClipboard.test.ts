@@ -1,4 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
+import * as Effect from "effect/Effect";
+import { it } from "@effect/vitest";
 
 import {
   attachNodexStructuralClipboardWriteClaim,
@@ -36,40 +38,55 @@ const makeTarget = () => {
     },
     writeImage: () => undefined,
   };
-  return { port: makeElectronClipboardPort(target), read: () => ({ html, text }) };
+  return {
+    port: makeElectronClipboardPort(target, undefined, {
+      read: () => ({ generation: 1, html, text, fileUrls: [] }),
+      update: (_generation, nextText, nextHtml) => {
+        text = nextText;
+        if (nextHtml !== undefined) html = nextHtml;
+        return "written";
+      },
+    }),
+    read: () => ({ html, text }),
+  };
 };
 
 describe("Electron clipboard adapter", () => {
-  test("prefers a valid private structural descriptor over the HTML compatibility claim", () => {
-    const { port } = makeTarget();
-
-    expect(port.readStructuralDescriptor()).toMatchObject({ writeClaim, phase: "preparing" });
-    expect(port.readStructuralWriteClaim()).toBe(writeClaim);
-  });
-
+  it.effect("enhances plain text without changing the claimed rich presentation", () =>
+    Effect.gen(function* () {
+      const { port, read } = makeTarget();
+      const originalHtml = read().html;
+      expect(
+        yield* port.replaceClaimedPresentation({ writeClaim, text: "/resolved/file" }),
+      ).toEqual({ ok: true });
+      expect(read()).toEqual({ html: originalHtml, text: "/resolved/file" });
+    }),
+  );
   test("normalizes Electron custom formats stored only as native buffers", () => {
     const { port } = makeTarget();
 
     expect(port.readFormat(NODEX_STRUCTURAL_CLIPBOARD_MIME)).toContain('"phase":"preparing"');
   });
 
-  test("replaces only the currently claimed presentation and verifies readback", () => {
-    const { port, read } = makeTarget();
+  it.effect("replaces only the currently claimed presentation and verifies readback", () =>
+    Effect.gen(function* () {
+      const { port, read } = makeTarget();
 
-    expect(
-      port.replaceClaimedPresentation({
-        writeClaim,
-        html: "<p>Portable</p>",
-        text: "/profile/assets/a.blob",
-      }),
-    ).toEqual({ ok: true });
-    expect(read()).toEqual({ html: "<p>Portable</p>", text: "/profile/assets/a.blob" });
-    expect(
-      port.replaceClaimedPresentation({
-        writeClaim,
-        html: "<p>Older</p>",
-        text: "Older",
-      }),
-    ).toEqual({ ok: false, failure: "superseded" });
-  });
+      expect(
+        yield* port.replaceClaimedPresentation({
+          writeClaim,
+          html: "<p>Portable</p>",
+          text: "/profile/assets/a.blob",
+        }),
+      ).toEqual({ ok: true });
+      expect(read()).toEqual({ html: "<p>Portable</p>", text: "/profile/assets/a.blob" });
+      expect(
+        yield* port.replaceClaimedPresentation({
+          writeClaim,
+          html: "<p>Older</p>",
+          text: "Older",
+        }),
+      ).toEqual({ ok: false, failure: "superseded" });
+    }),
+  );
 });

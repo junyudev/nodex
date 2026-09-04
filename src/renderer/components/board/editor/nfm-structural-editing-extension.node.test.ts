@@ -249,20 +249,24 @@ describe("NFM structural editing session", () => {
       });
       return { ok: true };
     };
-    const awaitClipboard: typeof awaitStructuralClipboard = async () => ({
-      kind: "ready",
-      disposition: "structural",
-      envelope: {
-        version: 1,
-        profileId: "profile:test",
-        libraryId: "library:test",
-        storeEpoch: clipboard.storeEpoch,
-        bundleId: clipboard.bundleId,
-        capability: clipboard.capability,
-        manifestHash: clipboard.manifestHash,
-        actionHint: "copy",
-      },
-    });
+    const awaitedClaims: string[] = [];
+    const awaitClipboard: typeof awaitStructuralClipboard = async (input) => {
+      awaitedClaims.push(input.writeClaim);
+      return {
+        kind: "ready",
+        disposition: "structural",
+        envelope: input.publishedEnvelope ?? {
+          version: 1,
+          profileId: "profile:test",
+          libraryId: "library:test",
+          storeEpoch: clipboard.storeEpoch,
+          bundleId: clipboard.bundleId,
+          capability: clipboard.capability,
+          manifestHash: clipboard.manifestHash,
+          actionHint: "copy",
+        },
+      };
+    };
     const ownershipMoves: LibraryStructuralEditResult["fileOwnershipMoves"][] = [];
     const session = new NfmStructuralEditingSession({
       editor,
@@ -433,6 +437,7 @@ describe("NFM structural editing session", () => {
         ),
       ).toBe(true);
       await session.whenIdle();
+      expect(awaitedClaims).toEqual([copyWriteClaim, writeClaim(4)]);
       expect(events).toEqual([
         "fence",
         "capture_clipboard",

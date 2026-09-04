@@ -64,6 +64,8 @@ export type StructuralClipboardSettleInput =
 
 export interface StructuralClipboardAwaitInput {
   readonly writeClaim: string;
+  /** Recovery candidate only; an active host session always takes precedence. */
+  readonly publishedEnvelope?: NodexClipboardEnvelopeV1;
 }
 
 export type StructuralClipboardLifecycleResult =
@@ -95,7 +97,6 @@ export function isNodexStructuralClipboardWriteClaim(value: string): boolean {
 
 export interface ClaimedClipboardPresentationWriteInput {
   readonly writeClaim: string;
-  readonly html: string;
   readonly text: string;
 }
 
@@ -137,7 +138,7 @@ function decodeBase64Url(value: string): string | null {
   }
 }
 
-function isNodexClipboardEnvelope(value: unknown): value is NodexClipboardEnvelopeV1 {
+export function isNodexClipboardEnvelope(value: unknown): value is NodexClipboardEnvelopeV1 {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   if (candidate.version !== 1) return false;

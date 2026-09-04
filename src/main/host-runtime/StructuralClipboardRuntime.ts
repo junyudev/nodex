@@ -8,9 +8,8 @@ import * as Stream from "effect/Stream";
 
 import {
   attachNodexClipboardEnvelope,
-  decodeNodexClipboardEnvelope,
+  isNodexClipboardEnvelope,
   isNodexStructuralClipboardWriteClaim,
-  readNodexClipboardWriteClaim,
   type StructuralClipboardAwaitInput,
   type StructuralClipboardBeginInput,
   type StructuralClipboardLifecycleResult,
@@ -41,37 +40,6 @@ interface StructuralClipboardEntry {
   completedAt: number | null;
   finalResolution: StructuralClipboardResolution | null;
   waiterCount: number;
-}
-
-function writeFinalPresentation(
-  clipboard: ElectronClipboard["Service"],
-  input: StructuralClipboardWriteInput,
-): boolean {
-  try {
-    clipboard.writePresentation({
-      html: attachNodexClipboardEnvelope(input.html, input.envelope, input.writeClaim),
-      text: input.text,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function verifyFinalPresentation(
-  clipboard: ElectronClipboard["Service"],
-  input: StructuralClipboardWriteInput,
-): boolean {
-  try {
-    const readbackHtml = clipboard.readHtml();
-    return (
-      decodeNodexClipboardEnvelope(readbackHtml)?.capability === input.envelope.capability &&
-      readNodexClipboardWriteClaim(readbackHtml) === input.writeClaim &&
-      clipboard.readText() === input.text
-    );
-  } catch {
-    return false;
-  }
 }
 
 export class StructuralClipboardRuntime extends Context.Service<
@@ -269,21 +237,26 @@ export const live: Layer.Layer<
           ? ({ ok: true } as const)
           : ({ ok: false, failure: "superseded" } as const);
       }
-      if (clipboard.readStructuralWriteClaim() !== input.writeClaim) {
-        yield* complete(entry, { kind: "portable_fallback", reason: "superseded" });
-        return { ok: false, failure: "superseded" } as const;
+      const publication = yield* clipboard.replaceClaimedPresentation({
+        writeClaim: input.writeClaim,
+        html: attachNodexClipboardEnvelope(input.html, input.envelope, input.writeClaim),
+        text: input.text,
+      });
+      if (!publication.ok) {
+        yield* complete(entry, {
+          kind: "portable_fallback",
+          reason: publication.failure === "superseded" ? "superseded" : "clipboard_failed",
+        });
+        return publication;
       }
       for (const otherEntry of entries.values()) {
-        if (otherEntry.writeClaim === input.writeClaim || otherEntry.completedAt !== null) continue;
+        if (
+          otherEntry.writeClaim === input.writeClaim ||
+          otherEntry.completedAt !== null ||
+          otherEntry.state === "awaiting_source_commit"
+        )
+          continue;
         yield* complete(otherEntry, { kind: "portable_fallback", reason: "superseded" });
-      }
-      if (!writeFinalPresentation(clipboard, input)) {
-        yield* complete(entry, { kind: "portable_fallback", reason: "clipboard_failed" });
-        return { ok: false, failure: "write_failed" } as const;
-      }
-      if (!verifyFinalPresentation(clipboard, input)) {
-        yield* complete(entry, { kind: "portable_fallback", reason: "clipboard_failed" });
-        return { ok: false, failure: "readback_mismatch" } as const;
       }
 
       entry.envelope = input.envelope;
@@ -297,7 +270,7 @@ export const live: Layer.Layer<
         disposition: "structural",
       });
       return { ok: true } as const;
-    });
+    }, Effect.uninterruptible);
 
     const settle = Effect.fn("StructuralClipboardRuntime.settle")(function* (
       input: StructuralClipboardSettleInput,
@@ -341,6 +314,15 @@ export const live: Layer.Layer<
     ) {
       if (closed || !input || !isNodexStructuralClipboardWriteClaim(input.writeClaim)) {
         return { kind: "portable_fallback", reason: "timeout" } as const;
+      }
+      // A native HTML candidate may be visible before source Cut LocalCommit admission.
+      // Existing sessions must settle first. Only a forgotten/restarted host uses recovery.
+      if (!entries.has(input.writeClaim) && isNodexClipboardEnvelope(input.publishedEnvelope)) {
+        return {
+          kind: "ready",
+          envelope: input.publishedEnvelope,
+          disposition: "structural",
+        } as const;
       }
       const activeCount = [...entries.values()].filter(
         (entry) => entry.completedAt === null,

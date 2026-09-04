@@ -539,10 +539,10 @@ export class NfmStructuralEditingSession {
     return this.start(async () => {
       const releasePending = this.schedulePendingPasteIndicator(intent);
       try {
-        const resolution: StructuralClipboardResolution =
-          descriptor.phase === "ready"
-            ? { kind: "ready", envelope: descriptor.envelope, disposition: "structural" }
-            : await this.awaitClipboard({ writeClaim: descriptor.writeClaim });
+        const resolution: StructuralClipboardResolution = await this.awaitClipboard({
+          writeClaim: descriptor.writeClaim,
+          ...(descriptor.phase === "ready" ? { publishedEnvelope: descriptor.envelope } : {}),
+        });
         if (resolution.kind === "portable_fallback") {
           await this.pastePortableBlocks(frozenPortableBlocks, intent);
           this.boundRuntime.onClipboardFallback?.(

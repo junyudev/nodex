@@ -117,9 +117,10 @@ export const live: Layer.Layer<
     yield* handleControl("clipboard:write-claimed-presentation", (event, input) =>
       authorize(event).pipe(
         Effect.andThen(
-          run("write-claimed-clipboard-presentation", () =>
-            clipboard.replaceClaimedPresentation(input),
-          ),
+          clipboard.replaceClaimedPresentation({
+            writeClaim: input?.writeClaim,
+            text: input?.text,
+          }),
         ),
       ),
     );
